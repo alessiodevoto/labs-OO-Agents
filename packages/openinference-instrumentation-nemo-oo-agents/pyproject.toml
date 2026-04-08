@@ -1,7 +1,7 @@
 [project]
 name = "openinference-instrumentation-nemo-oo-agents"
 version = "0.1.0"
-description = "OpenInference instrumentation for Agent006"
+description = "OpenInference instrumentation for NeMo OO Agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

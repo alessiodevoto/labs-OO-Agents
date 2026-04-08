@@ -1607,7 +1607,7 @@ class EvalContextData:
             Properly constructed EvalContextData with nested ScoreDetail objects.
         """
         # Extract from nested structure if present (e.g., from OTel spans)
-        # But if 'test_id' is at top level, it's already flat (e.g., from .006eval.jsonl)
+        # But if 'test_id' is at top level, it's already flat (e.g., from .noo-eval.jsonl)
         if "eval_result" in data and "test_id" not in data:
             data = data["eval_result"]
 
@@ -1954,7 +1954,7 @@ class TraceExplorer:
         - Turns with messages and code executions
 
         Raises:
-            ValueError: If the file is not a valid trace file (e.g., .006eval.jsonl)
+            ValueError: If the file is not a valid trace file (e.g., .noo-eval.jsonl)
         """
         trace_path = Path(trace_path)
 
@@ -1974,7 +1974,7 @@ class TraceExplorer:
             raise ValueError(
                 f"File does not appear to be a valid trace file: {trace_path.name}\n"
                 "Expected JSONL with span objects containing 'name' field. "
-                "This may be an eval results file (.006eval.jsonl) or other format."
+                "This may be an eval results file (.noo-eval.jsonl) or other format."
             )
 
         # Build unified session tree from spans

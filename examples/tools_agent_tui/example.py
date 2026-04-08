@@ -1,6 +1,6 @@
 """TUI backed by an agent with deterministic helper tools.
 
-This example shows the next step beyond a pure chat agent: an Agent006 agent
+This example shows the next step beyond a pure chat agent: an NeMo OO Agents agent
 that exposes real Python methods the LLM can call via ``execute_python()``.
 When the agent calls a tool you'll see the Python execution panel appear in
 the TUI (use ``/python on|off`` to toggle it).

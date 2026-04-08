@@ -74,7 +74,7 @@ def get_headers() -> dict[str, str]:
 
 
 def parse_eval_file(eval_file: Path) -> dict[str, Any]:
-    """Parse a .006eval.jsonl file and extract metrics."""
+    """Parse a .noo-eval.jsonl file and extract metrics."""
     metadata = None
     results = []
     completion = None
@@ -153,8 +153,8 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
 
 
 def find_latest_eval_file(results_dir: Path) -> Path | None:
-    """Find the most recent .006eval.jsonl file."""
-    eval_files = list(results_dir.glob("**/*.006eval.jsonl"))
+    """Find the most recent .noo-eval.jsonl file."""
+    eval_files = list(results_dir.glob("**/*.noo-eval.jsonl"))
     if not eval_files:
         return None
     return sorted(eval_files, key=lambda p: p.stat().st_mtime, reverse=True)[0]
@@ -697,7 +697,7 @@ def main():
     parser.add_argument(
         "results_dir",
         type=Path,
-        help="Directory containing .006eval.jsonl results",
+        help="Directory containing .noo-eval.jsonl results",
     )
     parser.add_argument(
         "--compare-branch",
@@ -724,7 +724,7 @@ def main():
     eval_file = find_latest_eval_file(args.results_dir)
     if not eval_file:
         print(
-            f"ERROR: No .006eval.jsonl files found in {args.results_dir}",
+            f"ERROR: No .noo-eval.jsonl files found in {args.results_dir}",
             file=sys.stderr,
         )
         sys.exit(1)

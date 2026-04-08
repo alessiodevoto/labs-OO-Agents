@@ -1,4 +1,4 @@
-"""Catppuccin Mocha theme for Agent006 TUI.
+"""Catppuccin Mocha theme for NeMo OO Agents TUI.
 
 Color palette from https://catppuccin.com/palette/
 Using Mocha (darkest) variant for terminal aesthetics.
@@ -44,7 +44,7 @@ MOCHA = {
 # Rich theme using Catppuccin Mocha
 CATPPUCCIN_THEME = Theme(
     {
-        # Agent006 branding
+        # NeMo OO Agents branding
         "nemo_oo_agents": f"bold {MOCHA['mauve']}",
         "tagline": f"italic {MOCHA['pink']}",
         # User interface

@@ -1,4 +1,4 @@
-"""Slash command parser and handlers for Agent006 TUI.
+"""Slash command parser and handlers for NeMo OO Agents TUI.
 
 Uses Catppuccin Mocha theme from https://catppuccin.com/palette/
 """
@@ -58,14 +58,16 @@ class Command(abc.ABC):
         Args:
             console: TUI console for output
             config: Application configuration
-            agent: Any chat agent subclassing Agent006
+            agent: Any chat agent subclassing NeMo OO Agents
             **kwargs: Extra arguments (e.g. skills_dirs, mcp_file)
 
         Raises:
             ValueError: If agent is None
         """
         if agent is None:
-            raise ValueError("agent cannot be None. Commands require a valid Agent006 instance.")
+            raise ValueError(
+                "agent cannot be None. Commands require a valid NeMo OO Agents instance."
+            )
         self.console = console
         self.config = config
         self.agent: Any = agent  # duck-typed; capabilities checked via hasattr
@@ -849,7 +851,7 @@ class CommandRegistry:
 
         Args:
             config: Application configuration
-            agent: Any chat agent subclassing Agent006
+            agent: Any chat agent subclassing NeMo OO Agents
             skills_dirs: Directories to search for skills
             mcp_file: Path to MCP config file
             streaming_display: StreamingDisplay instance (for /python command)

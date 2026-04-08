@@ -113,7 +113,7 @@ class TestProcessSampleEvalSpan:
         trace_files = [
             f
             for f in trace_dir.glob("*.jsonl")
-            if not f.name.endswith((".annotations.jsonl", ".006eval.jsonl"))
+            if not f.name.endswith((".annotations.jsonl", ".noo-eval.jsonl"))
         ]
         assert len(trace_files) == 1, f"Expected 1 trace file, found {len(trace_files)}"
         trace_file = trace_files[0]

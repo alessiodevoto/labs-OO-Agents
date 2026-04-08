@@ -1,4 +1,4 @@
-"""TUI Agent extending Agent006 with Bash tools and summarization.
+"""TUI Agent extending NeMo OO Agents with Bash tools and summarization.
 
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
@@ -158,7 +158,7 @@ async def _verify_and_complete(agent: TUIAgent, plan: Plan | None = None) -> Non
 
 
 class TUIAgent(Agent, llm=_DEFAULT_LLM):
-    """Agent006 TUI agent."""
+    """NeMo OO Agents TUI agent."""
 
     _config: Annotated[AgentConfig, hidden]
     _phase: Annotated[str, hidden]
@@ -230,7 +230,7 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
     @hidden
     def _system_prompt(self) -> str:
         """System prompt for TUI agent. Phase-specific instructions are in method docstrings."""
-        return """You are Agent006, a development assistant running in a terminal.
+        return """You are NeMo OO Agents, a development assistant running in a terminal.
 
 You have access to these tools via self:
 - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)

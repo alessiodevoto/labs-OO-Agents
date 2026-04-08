@@ -69,7 +69,7 @@ def command(
     orchestrator: bool,
     no_trace: bool,
 ):
-    """Launch the Agent006 TUI (Text User Interface).
+    """Launch the NeMo OO Agents TUI (Text User Interface).
 
     Interactive REPL for chatting with agents, running commands, and managing
     skills and MCP servers.

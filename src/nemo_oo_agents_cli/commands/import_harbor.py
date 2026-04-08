@@ -1,4 +1,4 @@
-"""Import Agent006 OTLP traces from a Harbor job directory into the viewer.
+"""Import NeMo OO Agents OTLP traces from a Harbor job directory into the viewer.
 
 Walks a Harbor job directory (or any directory containing one), finds all
 traces under ``artifacts/traces/*.jsonl``, enriches them with Harbor metadata
@@ -126,7 +126,7 @@ def _trial_meta(jsonl_path: Path) -> dict:
     help="Batch ID for this import (default: job directory name).",
 )
 def command(path: str, endpoint: str, experiment: str | None, batch_id: str | None):
-    """Import Agent006 OTLP traces from a Harbor job directory.
+    """Import NeMo OO Agents OTLP traces from a Harbor job directory.
 
     \b
     PATH can be:

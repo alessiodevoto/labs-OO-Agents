@@ -518,7 +518,7 @@ class SelfImprovementRunner:
     def _get_experiment_path(self, benchmark: str) -> Path:
         """Get path to experiment file for a benchmark."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{benchmark}_{timestamp}.006eval.jsonl"
+        filename = f"{benchmark}_{timestamp}.noo-eval.jsonl"
         return Path(self.config.results_dir) / filename
 
     def _init_experiment_file(self, benchmark: str, started_at: datetime) -> None:
@@ -676,8 +676,8 @@ class SelfImprovementRunner:
     def _save_combined_report(self, reports: dict[str, BenchmarkReport]) -> None:
         """Save combined report across all benchmarks (summary file, not for viewer)."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Use .006summary.json (not .006eval.json) - this is a summary, not evaluation results
-        report_path = Path(self.config.results_dir) / f"combined_report_{timestamp}.006summary.json"
+        # Use .noo-summary.json (not .006eval.json) - this is a summary, not evaluation results
+        report_path = Path(self.config.results_dir) / f"combined_report_{timestamp}.noo-summary.json"
 
         data = {
             "timestamp": timestamp,

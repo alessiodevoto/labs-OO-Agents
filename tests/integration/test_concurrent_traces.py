@@ -85,7 +85,7 @@ def setup_tracing(temp_trace_dir):
 
     Returns the hooks instance for tests that need to propagate hooks to child tasks.
     """
-    from openinference_instrumentation_nemo_oo_agents import Agent006Instrumentor
+    from openinference_instrumentation_nemo_oo_agents import NemoOOAgentsInstrumentor
     from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import (
         OtlpJsonFileExporter,
     )
@@ -110,7 +110,7 @@ def setup_tracing(temp_trace_dir):
     tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
 
     # Instrument nemo_oo_agents - this sets hooks
-    Agent006Instrumentor().instrument(tracer_provider=tracer_provider)
+    NemoOOAgentsInstrumentor().instrument(tracer_provider=tracer_provider)
 
     # Return hooks for tests that need to propagate to child tasks
     hooks = get_hooks()

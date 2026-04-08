@@ -1,10 +1,10 @@
 # mcp-nemo-oo-agents
 
-MCP (Model Context Protocol) tool integration for Agent006.
+MCP (Model Context Protocol) tool integration for NeMo OO Agents.
 
 ## Overview
 
-**mcp-nemo-oo-agents** connects Agent006 agents to MCP servers. It discovers the tools exposed by a server, generates typed Python methods for each one, and returns a ready-to-use object that agents can assign as a class attribute — no boilerplate required.
+**mcp-nemo-oo-agents** connects NeMo OO Agents agents to MCP servers. It discovers the tools exposed by a server, generates typed Python methods for each one, and returns a ready-to-use object that agents can assign as a class attribute — no boilerplate required.
 
 ## Features
 

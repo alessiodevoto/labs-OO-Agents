@@ -113,7 +113,7 @@ async def inject_nat_tools(
     tool_names: list[str],
     builder: Builder,
 ) -> None:
-    """Inject NAT tools onto an Agent006 agent as native async methods.
+    """Inject NAT tools onto an NeMo OO Agents agent as native async methods.
 
     For each tool name, resolves the NAT Function from the builder,
     generates a native async method, and sets it directly on the agent's
@@ -123,7 +123,7 @@ async def inject_nat_tools(
         result = await self.search(query="hello")
 
     Args:
-        agent: The Agent006 agent instance
+        agent: The NeMo OO Agents agent instance
         tool_names: List of NAT tool names to inject
         builder: The NAT builder for resolving tools
     """

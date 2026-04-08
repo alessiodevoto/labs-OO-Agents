@@ -137,7 +137,7 @@ python run_ablation.py --config direct_llm --benchmark bfcl --limit 100
 Available configs:
 - `direct_llm`: Raw LLM, single call, no tools
 - `react_agent`: ReAct agent with tool calling
-- `nemo_oo_agents`: Agent006 with code generation and tools
+- `nemo_oo_agents`: NeMo OO Agents with code generation and tools
 
 ## Data Sources
 

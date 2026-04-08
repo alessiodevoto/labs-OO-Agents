@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import logging
 
-from evaluation.agent_adapter import Agent006Adapter, AgentConfig
+from evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
 from evaluation.concurrency import ConcurrencyEngine
 from evaluation.task_runner import (
     EvaluationTask,
@@ -83,7 +83,7 @@ async def run_with_engine(
     logger.info(f"Created {num_tasks} tasks")
 
     # Create agent adapter
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: TestAgent(),
         config=AgentConfig(timeout_seconds=30, enable_tracing=False),
     )

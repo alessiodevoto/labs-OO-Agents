@@ -86,7 +86,7 @@ Results: `experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009
 # opt63 progress
 python3 -c "
 import json
-f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_opt63_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.006eval.jsonl'
+f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_opt63_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.noo-eval.jsonl'
 results = [json.loads(l) for l in open(f) if json.loads(l).get('_type')=='result']
 print(f'opt63 progress: {len(results)}/450')
 "
@@ -94,7 +94,7 @@ print(f'opt63 progress: {len(results)}/450')
 # agent009 progress
 python3 -c "
 import json
-f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.006eval.jsonl'
+f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.noo-eval.jsonl'
 results = [json.loads(l) for l in open(f) if json.loads(l).get('_type')=='result']
 print(f'agent009 progress: {len(results)}/450')
 "

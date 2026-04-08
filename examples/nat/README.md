@@ -1,6 +1,6 @@
-# Agent006 + NAT Integration Examples
+# NeMo OO Agents + NAT Integration Examples
 
-Run Agent006 agents through NVIDIA NeMo Agent Toolkit (NAT) with zero modifications to agent code.
+Run NeMo OO Agents agents through NVIDIA NeMo Agent Toolkit (NAT) with zero modifications to agent code.
 
 ## Prerequisites
 
@@ -49,11 +49,11 @@ nat run --config_file config_full.yml --input "What time is it right now?"
 What happens:
 1. NAT reads `config_full.yml` and discovers the `nemo_oo_agents_wrapper` plugin
 2. The LLM bridge creates a `CompletionClient` from the YAML `llms:` config
-3. The OTel bridge sets up a shared TracerProvider + Agent006 JSONL tracing
+3. The OTel bridge sets up a shared TracerProvider + NeMo OO Agents JSONL tracing
 4. NAT builds the `current_datetime` function and injects it onto the agent as `self.current_datetime`
 5. NAT imports `DemoAgent` from `example_agent.py` and injects the LLM
 6. NAT routes input to `DemoAgent.chat()`
-7. Agent006's CodeAct strategy generates code that calls `await self.current_datetime.invoke()`
+7. NeMo OO Agents's CodeAct strategy generates code that calls `await self.current_datetime.invoke()`
 8. NAT displays the result and a JSONL trace is written to `traces/`
 
 ### Standalone Agent (own LLM)

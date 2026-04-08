@@ -1,6 +1,6 @@
-# OpenInference Instrumentation for Agent006
+# OpenInference Instrumentation for NeMo OO Agents
 
-OpenTelemetry instrumentation for [Agent006](https://github.com/nemo_oo_agents), following OpenInference semantic conventions.
+OpenTelemetry instrumentation for [NeMo OO Agents](https://github.com/nemo_oo_agents), following OpenInference semantic conventions.
 
 ## Installation
 
@@ -13,7 +13,7 @@ pip install openinference-instrumentation-nemo-oo-agents
 ```python
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry import trace
-from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor
+from openinference.instrumentation.nemo_oo_agents import NemoOOAgentsInstrumentor
 from openinference.instrumentation.litellm import LiteLLMInstrumentor
 
 # Setup tracer provider
@@ -21,7 +21,7 @@ provider = TracerProvider()
 trace.set_tracer_provider(provider)
 
 # Instrument nemo_oo_agents and litellm
-Agent006Instrumentor().instrument()
+NemoOOAgentsInstrumentor().instrument()
 LiteLLMInstrumentor().instrument()
 
 # Now all agent operations and LLM calls are traced
@@ -44,7 +44,7 @@ Send traces to multiple destinations simultaneously:
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor, JSONLSpanExporter
+from openinference.instrumentation.nemo_oo_agents import NemoOOAgentsInstrumentor, JSONLSpanExporter
 
 provider = TracerProvider()
 
@@ -61,7 +61,7 @@ provider.add_span_processor(
 trace.set_tracer_provider(provider)
 
 # Instrument everything
-Agent006Instrumentor().instrument()
+NemoOOAgentsInstrumentor().instrument()
 LiteLLMInstrumentor().instrument()
 ```
 

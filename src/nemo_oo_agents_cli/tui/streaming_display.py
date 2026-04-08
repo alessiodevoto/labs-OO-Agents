@@ -59,7 +59,7 @@ class StreamingDisplay:
         """Subscribe to agent events.
 
         Args:
-            agent: An Agent006 agent. All TUI agents have ``event_manager``
+            agent: An NeMo OO Agents agent. All TUI agents have ``event_manager``
                 (either TUIAgent or PassthroughAgent), so this always connects.
         """
         # Subscribe to reasoning events (accumulate, don't print immediately)
@@ -105,7 +105,7 @@ class StreamingDisplay:
             self._pending_reasoning.append(content)
 
     def _on_message(self, event) -> None:
-        """Capture message events for display in Agent006 panel."""
+        """Capture message events for display in NeMo OO Agents panel."""
         content = event.content or ""
         if content.strip():
             self._messages.append(content)

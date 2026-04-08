@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Plugin registration module for Agent006 NAT integration.
+"""Plugin registration module for NeMo OO Agents NAT integration.
 
 This module is the entry point discovered by NAT via:
     [project.entry-points.'nat.components']

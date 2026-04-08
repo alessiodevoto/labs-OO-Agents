@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""LLM bridge: register Agent006 as a framework type in NAT's LLM client registry.
+"""LLM bridge: register NeMo OO Agents as a framework type in NAT's LLM client registry.
 
 Each NAT LLM provider gets an 'nemo_oo_agents' wrapper that constructs a
 CompletionClient. The NAT YAML config is the primary source for api_key,

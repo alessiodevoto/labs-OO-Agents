@@ -11,7 +11,7 @@ Pipeline stages:
 4. Write: Append result to experiment file
 
 Output Format:
-Results are written in .006eval.jsonl format using typed EvalTestResult models.
+Results are written in .noo-eval.jsonl format using typed EvalTestResult models.
 Each result includes:
 - test_id: Unique ID including model and run suffix
 - base_test_id: For grouping runs of the same test

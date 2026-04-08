@@ -1,4 +1,4 @@
-"""OpenInference instrumentation for Agent006.
+"""OpenInference instrumentation for NeMo OO Agents.
 
 Composable exporter architecture with exporter-agnostic session routing.
 
@@ -69,8 +69,8 @@ exporters = exporters_mod
 # ---------------------------------------------------------------------------
 
 
-class Agent006Instrumentor:
-    """OpenTelemetry instrumentor for Agent006.
+class NemoOOAgentsInstrumentor:
+    """OpenTelemetry instrumentor for NeMo OO Agents.
 
     Instruments nemo_oo_agents framework to emit OpenTelemetry spans with
     OpenInference semantic conventions.
@@ -251,11 +251,11 @@ def enable_tracing(
     # Instrument nemo_oo_agents hooks; capture the instance for re-registration
     # in future asyncio task contexts (see _re_register_hooks).
     with contextlib.suppress(ImportError):
-        Agent006Instrumentor().instrument(tracer_provider=tracer_provider)
+        NemoOOAgentsInstrumentor().instrument(tracer_provider=tracer_provider)
         from nemo_oo_agents.runtime.hooks import get_hooks
 
         _hooks = get_hooks()  # type: ignore[assignment]
-        assert _hooks is not None, "Agent006Instrumentor.instrument() should have called set_hooks()"
+        assert _hooks is not None, "NemoOOAgentsInstrumentor.instrument() should have called set_hooks()"
 
     # Instrument litellm if available
     _instrument_litellm(tracer_provider)
@@ -412,7 +412,7 @@ def shutdown_traces() -> None:
 # ---------------------------------------------------------------------------
 
 __all__ = [
-    "Agent006Instrumentor",
+    "NemoOOAgentsInstrumentor",
     "OtlpJsonFileExporter",
     "OtlpJsonHttpExporter",
     "enable_tracing",

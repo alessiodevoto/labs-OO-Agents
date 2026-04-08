@@ -4,7 +4,7 @@ OpenTelemetry tracing has been moved to an external instrumentation package
 (openinference-instrumentation-nemo-oo-agents). This module is a stub that marks
 tests as skipped until the instrumentation package is integrated.
 
-See: docs/methodic006/phase-1-opentelemetry.md
+See: docs/design/phase-1-opentelemetry.md
 """
 
 import pytest

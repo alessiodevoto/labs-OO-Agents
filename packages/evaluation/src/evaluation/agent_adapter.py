@@ -1,8 +1,8 @@
 """
-Layer 3: Adapter for executing Agent006 agents.
+Layer 3: Adapter for executing NeMo OO Agents agents.
 
 This adapter bridges between the generic Layer 2 TaskRunner and specific
-Agent006 agent execution. It handles agent instantiation, execution,
+NeMo OO Agents agent execution. It handles agent instantiation, execution,
 tracing, and result capture.
 """
 
@@ -45,9 +45,9 @@ def import_class(class_path: str) -> type:
     return getattr(module, class_name)
 
 
-class Agent006Adapter:
+class NemoOOAgentsAdapter:
     """
-    Adapter for executing Agent006 agents within the evaluation framework.
+    Adapter for executing NeMo OO Agents agents within the evaluation framework.
 
     This adapter:
     1. Manages agent lifecycle (instantiation, execution, cleanup)
@@ -58,7 +58,7 @@ class Agent006Adapter:
 
     Usage:
         # Create adapter with agent factory
-        adapter = Agent006Adapter(
+        adapter = NemoOOAgentsAdapter(
             agent_factory=lambda: MyAgent(),
             config=AgentConfig(timeout_seconds=60)
         )
@@ -415,7 +415,7 @@ async def execute_agent_on_tasks(
     from evaluation.task_runner import RunnerConfig, TaskRunner
 
     config = AgentConfig(timeout_seconds=timeout_seconds)
-    adapter = Agent006Adapter(agent_factory=agent_factory, config=config)
+    adapter = NemoOOAgentsAdapter(agent_factory=agent_factory, config=config)
 
     # Register tasks
     adapter.register_tasks(tasks)

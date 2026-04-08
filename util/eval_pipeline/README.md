@@ -48,7 +48,7 @@ results = await evaluator.run(
 )
 
 print(results.summary())  # "15/18 passed (83.3%)"
-print(results.output_file)  # Path to .006eval.jsonl
+print(results.output_file)  # Path to .noo-eval.jsonl
 ```
 
 ### Option 2: YAML Config (Recommended for reproducibility)
@@ -131,7 +131,7 @@ results.passed       # Number passed
 results.total        # Total samples
 results.pass_rate    # Percentage (0-100)
 results.summary()    # "15/18 passed (83.3%)"
-results.output_file  # Path to .006eval.jsonl
+results.output_file  # Path to .noo-eval.jsonl
 results.results      # List of all result dicts
 ```
 
@@ -149,7 +149,7 @@ python -m eval_pipeline --config config.yaml -q              # Quiet mode
 ```text
 sentiment gpt-4: 4/4 ✓
 sentiment claude: 3/4 ✗
-TOTAL: 7/8 passed (87.5%) → experiments/my_eval_20251213_103000.006eval.jsonl
+TOTAL: 7/8 passed (87.5%) → experiments/my_eval_20251213_103000.noo-eval.jsonl
 ```
 
 ---
@@ -274,11 +274,11 @@ test_suite:
 
 ## Output Format
 
-Results are written to `.006eval.jsonl`:
+Results are written to `.noo-eval.jsonl`:
 
 ```text
 experiments/my_eval_20251213_103000/
-├── my_eval_20251213_103000.006eval.jsonl   # Results
+├── my_eval_20251213_103000.noo-eval.jsonl   # Results
 └── traces/
     └── *.jsonl                              # Per-sample traces
 ```
@@ -318,7 +318,7 @@ Start the viewer (e.g. `nemo_oo_agents start-dev` or the combined viewer on port
 python -m eval_pipeline --config config.yaml --runs 3
 ```
 
-Output directory will contain both the `.006eval.jsonl` results and a `traces/` folder with one `.jsonl` trace per sample.
+Output directory will contain both the `.noo-eval.jsonl` results and a `traces/` folder with one `.jsonl` trace per sample.
 
 ---
 
@@ -350,7 +350,7 @@ Evaluator
                                         │          │         │
                                         ▼          ▼         ▼
                                     Run agent   Apply     Append to
-                                    method     scorers   .006eval.jsonl
+                                    method     scorers   .noo-eval.jsonl
 ```
 
 Each sample runs independently with its own trace file, enabling:

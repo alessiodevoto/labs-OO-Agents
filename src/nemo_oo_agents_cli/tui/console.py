@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class TUIConsole:
-    """Rich console wrapper with Catppuccin styling for Agent006 TUI."""
+    """Rich console wrapper with Catppuccin styling for NeMo OO Agents TUI."""
 
     def __init__(self) -> None:
         self.console = Console(theme=CATPPUCCIN_THEME)
@@ -39,7 +39,7 @@ class TUIConsole:
 
         self._input_handler = TUIInputHandler(registry=registry)
 
-    def start_spinner(self, message: str = "Agent006 is thinking...") -> None:
+    def start_spinner(self, message: str = "NeMo OO Agents is thinking...") -> None:
         """Start the thinking spinner.
 
         Can be stopped with stop_spinner() or by the streaming display
@@ -72,7 +72,7 @@ class TUIConsole:
         """
         spinner = Spinner(
             "dots",
-            text=Text("Agent006 is thinking...", style=f"{COLORS['subtext1']}"),
+            text=Text("NeMo OO Agents is thinking...", style=f"{COLORS['subtext1']}"),
             style=COLORS["mauve"],
         )
         with Live(spinner, console=self.console, refresh_per_second=10) as live:
@@ -104,7 +104,7 @@ class TUIConsole:
         self.console.print(
             Panel(
                 Markdown(cleaned),
-                title="[agent]Agent006[/agent]",
+                title="[agent]NeMo OO Agents[/agent]",
                 border_style=COLORS["mauve"],
                 padding=(0, 1),
             )

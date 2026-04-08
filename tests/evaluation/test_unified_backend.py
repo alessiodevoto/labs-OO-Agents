@@ -4,7 +4,7 @@ Tests the complete stack:
 - Layer 0: ConcurrencyEngine
 - Layer 1: ExecutionEngine protocol
 - Layer 2: TaskRunner with TraceAnalyzer
-- Layer 3: Agent006Adapter
+- Layer 3: NemoOOAgentsAdapter
 
 These tests verify that the layers integrate correctly and produce expected results.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.agent_adapter import Agent006Adapter, AgentConfig
+from evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
 from evaluation.concurrency import ConcurrencyConfig, ConcurrencyEngine
 from evaluation.task_runner import EvaluationTask, RunnerConfig, TaskRunner
 
@@ -94,7 +94,7 @@ async def test_layer_2_task_runner():
     ]
 
     # Create agent adapter
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -119,8 +119,8 @@ async def test_layer_2_task_runner():
 
 @pytest.mark.asyncio
 async def test_layer_3_agent_adapter():
-    """Test Layer 3: Agent006Adapter with direct execution."""
-    agent_adapter = Agent006Adapter(
+    """Test Layer 3: NemoOOAgentsAdapter with direct execution."""
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -141,7 +141,7 @@ async def test_layer_3_agent_adapter():
 @pytest.mark.asyncio
 async def test_error_handling():
     """Test that errors are properly captured."""
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -168,7 +168,7 @@ async def test_timeout_handling():
             await asyncio.sleep(10)  # Sleep longer than timeout
             return {"done": True}
 
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SlowAgent(),
         config=AgentConfig(timeout_seconds=0.1, enable_tracing=False),
     )
@@ -189,7 +189,7 @@ async def test_concurrent_execution():
         for i in range(10)
     ]
 
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -234,7 +234,7 @@ async def test_task_level_agent_specification():
         metadata={"agent_class": "tests.evaluation.test_unified_backend.AddAgent"},
     )
 
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),  # Default
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -256,7 +256,7 @@ async def test_checkpoint_and_resume():
         for i in range(5)
     ]
 
-    agent_adapter = Agent006Adapter(
+    agent_adapter = NemoOOAgentsAdapter(
         agent_factory=lambda: SimpleCalculatorAgent(),
         config=AgentConfig(timeout_seconds=5, enable_tracing=False),
     )
@@ -294,7 +294,7 @@ async def test_checkpoint_and_resume():
         )
 
         # Re-register tasks
-        agent_adapter2 = Agent006Adapter(
+        agent_adapter2 = NemoOOAgentsAdapter(
             agent_factory=lambda: SimpleCalculatorAgent(),
             config=AgentConfig(timeout_seconds=5, enable_tracing=False),
         )

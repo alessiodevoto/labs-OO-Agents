@@ -1,4 +1,4 @@
-"""Entry point for Agent006 TUI.
+"""Entry point for NeMo OO Agents TUI.
 
 Usage:
     python -m tui

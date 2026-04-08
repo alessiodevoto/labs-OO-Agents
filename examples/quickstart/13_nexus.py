@@ -3,7 +3,7 @@
 
 NeMo Agent Toolkit Nexus (NAT Nexus) is a multi-language agent runtime that adds
 execution scope management, lifecycle events, and a configurable middleware pipeline
-(guardrails/intercepts) to every LLM call and tool execution in Agent006.
+(guardrails/intercepts) to every LLM call and tool execution in NeMo OO Agents.
 
 This example shows how to:
   1. Register an LLM request intercept (inject a system header into every request)
@@ -23,7 +23,7 @@ Prerequisites:
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     source ~/.cargo/env
 
-    # 2. Install Agent006 with the nexus extra (builds nat_nexus from source):
+    # 2. Install NeMo OO Agents with the nexus extra (builds nat_nexus from source):
     uv sync --extra nexus
 
 Usage:
@@ -106,7 +106,7 @@ class ReturnTypeDemoAgent(Agent, llm=llm):
         ...
 
     async def return_pydantic(self) -> Summary:
-        """Return a Summary about Agent006 with title 'Agent006' and 2 short key points."""
+        """Return a Summary about NeMo OO Agents with title 'NeMo OO Agents' and 2 short key points."""
         ...
 
     async def return_string(self) -> str:
@@ -124,7 +124,7 @@ def _add_tracing_header(name: str, request: nat_nexus.LLMRequest) -> nat_nexus.L
 
     Signature: (name, request) -> LLMRequest per nat_nexus intercept API.
     """
-    request.headers["X-Agent006-Trace"] = "nexus-poc"
+    request.headers["X-NemoOO-Trace"] = "nexus-poc"
     return request
 
 
@@ -294,7 +294,7 @@ async def main():
     print("  - Nested generation: summarize() → fact_check() created nested scopes")
     print("      → Both inner LLM and tool calls flowed through the Nexus pipeline")
     print("  - Every LLM call went through the Nexus LLM pipeline:")
-    print("      → add-tracing-header intercept injected X-Agent006-Trace header")
+    print("      → add-tracing-header intercept injected X-NemoOO-Trace header")
     print("  - Every execute_python call went through the Nexus tool pipeline:")
     print("      → code-safety guardrail rejected any shell-execution code")
     print("      → returned_value exposed via BestEffortAnyCodec:")

@@ -1,4 +1,4 @@
-# Pre-commit hooks for agent-proto-006
+# Pre-commit hooks for nemo-oo-agents
 # All hooks use local system commands — no network access needed.
 # Install: pip install pre-commit && pre-commit install
 # Run manually: pre-commit run --all-files

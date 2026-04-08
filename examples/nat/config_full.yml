@@ -1,4 +1,4 @@
-# Full Agent006 + NAT integration config.
+# Full NeMo OO Agents + NAT integration config.
 # Exercises all bridges: LLM, tools, OTel, and method routing.
 #
 # Usage:
@@ -27,4 +27,4 @@ workflow:
   tools:
     - current_datetime
   env: ../../.env
-  description: "Agent006 demo agent with NAT LLM and tools"
+  description: "NeMo OO Agents demo agent with NAT LLM and tools"

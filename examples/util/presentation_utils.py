@@ -1,4 +1,4 @@
-"""Presentation utilities for Agent006 Jupyter slides.
+"""Presentation utilities for NeMo OO Agents Jupyter slides.
 
 Usage in notebook:
     from presentation_utils import setup, trace, agent_pprint, list_traces
@@ -44,7 +44,7 @@ def list_traces():
     for trace_file in sorted(
         f
         for f in TRACE_DIR.glob("*.jsonl")
-        if not f.name.endswith(".annotations.jsonl") and not f.name.endswith(".006eval.jsonl")
+        if not f.name.endswith(".annotations.jsonl") and not f.name.endswith(".noo-eval.jsonl")
     ):
         with open(trace_file) as f:
             span_count = sum(1 for _ in f)

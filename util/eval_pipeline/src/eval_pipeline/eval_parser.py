@@ -1,4 +1,4 @@
-"""Parser for .006eval.jsonl files.
+"""Parser for .noo-eval.jsonl files.
 
 Provides stateful parsing of eval files with version checking and error handling.
 
@@ -6,7 +6,7 @@ Usage:
     from eval_pipeline.eval_parser import EvalFileParser
 
     parser = EvalFileParser()
-    metadata, results, completion, annotations = parser.parse_file(Path("experiment.006eval.jsonl"))
+    metadata, results, completion, annotations = parser.parse_file(Path("experiment.noo-eval.jsonl"))
 
     # Or parse lines incrementally
     for line in file:
@@ -56,7 +56,7 @@ class EvalParseError(Exception):
 
 
 class EvalFileParser:
-    """Stateful parser for .006eval.jsonl files.
+    """Stateful parser for .noo-eval.jsonl files.
 
     Tracks schema version from metadata line and validates subsequent lines.
     """
@@ -121,7 +121,7 @@ class EvalFileParser:
         """Parse entire file into structured components.
 
         Args:
-            path: Path to .006eval.jsonl file
+            path: Path to .noo-eval.jsonl file
 
         Returns:
             Tuple of (metadata, results, completion, annotations)

@@ -1,6 +1,6 @@
-"""Summarization agents for Agent006.
+"""Summarization agents for NeMo OO Agents.
 
-This module provides agent-based event summarization following the Agent006 pattern.
+This module provides agent-based event summarization following the NeMo OO Agents pattern.
 Summarizers are proper agents that subscribe to a parent's event manager and use
 LLM-generated code to produce summaries.
 

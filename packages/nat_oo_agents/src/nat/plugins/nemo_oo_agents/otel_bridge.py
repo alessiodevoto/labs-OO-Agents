@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """OTel bridge: shared TracerProvider for dual OTLP + JSONL export.
 
-Sets up a global OpenTelemetry TracerProvider before Agent006 agent
-instantiation. When Agent006's enable_tracing() is called later, it
+Sets up a global OpenTelemetry TracerProvider before NeMo OO Agents agent
+instantiation. When NeMo OO Agents's enable_tracing() is called later, it
 detects the existing provider and adds its JSONL processor alongside
 any OTLP exporters already configured.
 
-Result: Agent006 spans flow to both OTLP (NAT's Phoenix/Jaeger)
-and JSONL (Agent006's trace viewer).
+Result: NeMo OO Agents spans flow to both OTLP (NAT's Phoenix/Jaeger)
+and JSONL (NeMo OO Agents's trace viewer).
 """
 
 import logging
@@ -21,7 +21,7 @@ def setup_shared_tracer(otlp_endpoint: str | None = None) -> None:
     If an OTLP endpoint is provided, configures an OTLP exporter.
     If a TracerProvider already exists (e.g., from NAT), reuses it.
 
-    Agent006's enable_tracing() will detect this provider and add its
+    NeMo OO Agents's enable_tracing() will detect this provider and add its
     JSONL processor alongside, enabling dual export.
 
     Args:
@@ -35,13 +35,13 @@ def setup_shared_tracer(otlp_endpoint: str | None = None) -> None:
 
         # Check if an SDK TracerProvider already exists
         if hasattr(existing_provider, "add_span_processor"):
-            logger.info("Existing OTel TracerProvider found -- Agent006 will piggyback on it")
+            logger.info("Existing OTel TracerProvider found -- NeMo OO Agents will piggyback on it")
             provider = existing_provider
         else:
             # Create a new TracerProvider
             provider = TracerProvider()
             trace.set_tracer_provider(provider)
-            logger.info("Created new OTel TracerProvider for Agent006 bridge")
+            logger.info("Created new OTel TracerProvider for NeMo OO Agents bridge")
 
         # Add OTLP exporter if endpoint is provided
         if otlp_endpoint:

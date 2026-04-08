@@ -1,4 +1,4 @@
-# Agent006 Capability Tests - eval_pipeline Configuration
+# NeMo OO Agents Capability Tests - eval_pipeline Configuration
 #
 # This experiment tests nemo_oo_agents core capabilities:
 # 1. Scale awareness - when to answer directly vs write code
@@ -27,7 +27,7 @@
 
 name: capability
 no_cache: true
-description: "Agent006 capability tests for prompt optimization"
+description: "NeMo OO Agents capability tests for prompt optimization"
 
 # =============================================================================
 # OPTIMIZATION SETTINGS - Parameters for the optimization loop

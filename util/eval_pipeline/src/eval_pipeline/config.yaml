@@ -1,6 +1,6 @@
 # Capability Tests - 4 agent test types
 name: capability
-description: "Agent006 capability tests with 4 agent types"
+description: "NeMo OO Agents capability tests with 4 agent types"
 
 # Models to sweep across all tests
 models:

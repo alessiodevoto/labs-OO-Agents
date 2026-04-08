@@ -45,7 +45,7 @@ CLI usage:
 # Config loading
 from .config import EvalConfig, evaluator_from_config, load_config
 
-# Eval types (canonical schema for .006eval.jsonl files)
+# Eval types (canonical schema for .noo-eval.jsonl files)
 from .eval_parser import EvalFileParser, EvalParseError, get_experiment_status
 from .eval_types import (
     SUPPORTED_VERSIONS,

@@ -1,4 +1,4 @@
-"""Configuration loading for Agent006 TUI.
+"""Configuration loading for NeMo OO Agents TUI.
 
 Hydra-like config: structured dataclass with Config.load(**overrides).
 

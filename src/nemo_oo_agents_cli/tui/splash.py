@@ -1,4 +1,4 @@
-"""Splash screen with ASCII art for Agent006 TUI.
+"""Splash screen with ASCII art for NeMo OO Agents TUI.
 
 Uses Catppuccin Mocha theme from https://catppuccin.com/palette/
 """
@@ -23,7 +23,7 @@ AGENT006_ASCII = r"""
 
 
 def show_splash(console: Console, delay: float = 0.8) -> None:
-    """Display the Agent006 splash screen.
+    """Display the NeMo OO Agents splash screen.
 
     The splash stays on screen and scrolls off naturally as the user chats.
 

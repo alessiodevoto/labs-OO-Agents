@@ -1,4 +1,4 @@
-"""Example Agent006 agent for NAT integration.
+"""Example NeMo OO Agents agent for NAT integration.
 
 This agent has NO LLM or tools defined at class level.
 Everything is injected by NAT via the nemo_oo_agents_wrapper:

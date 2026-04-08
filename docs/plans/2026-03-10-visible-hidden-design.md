@@ -6,7 +6,7 @@
 
 ## Problem
 
-Agent006 has five separate mechanisms controlling what the LLM can see:
+NeMo OO Agents has five separate mechanisms controlling what the LLM can see:
 
 1. Underscore prefix convention (`_private` filtered from `doc(self)`)
 2. `_FRAMEWORK_ATTRS` hardcoded set

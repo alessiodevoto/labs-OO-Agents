@@ -1,10 +1,10 @@
-# Agent006
+# NeMo OO Agents
 
-> **Renaming notice:** Agent006 is being renamed to **NeMo Object-Oriented Agents** (`nemo_oo_agents`). The new name will take effect in an upcoming release.
+> **Renaming notice:** NeMo OO Agents is being renamed to **NeMo Object-Oriented Agents** (`nemo_oo_agents`). The new name will take effect in an upcoming release.
 
-**What if your Python methods could think?** With Agent006, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
+**What if your Python methods could think?** With NeMo OO Agents, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
 
-## Why Agent006?
+## Why NeMo OO Agents?
 
 - **Familiar Python OOP**: Classes for scope, methods for capabilities, inheritance for composition
 - **Zero Boilerplate**: Define `async def analyze_data(self, text: str) -> str: ...` and it just works
@@ -19,7 +19,7 @@
 
 ## Installation
 
-The recommended way to install Agent006 is using uv.
+The recommended way to install NeMo OO Agents is using uv.
 
 ```bash
 # Install uv (if needed)
@@ -30,7 +30,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv init my-agent-project
 cd my-agent-project
 
-# Add Agent006
+# Add NeMo OO Agents
 uv add git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git --branch main
 ```
 
@@ -49,7 +49,7 @@ Best internal provider:
 <details>
 <summary><strong>Click here to see instructions for the development setup</strong></summary>
 
-If you want to contribute to Agent006 or change code of the library, use the following steps.
+If you want to contribute to NeMo OO Agents or change code of the library, use the following steps.
 
 ```bash
 git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nemo_oo_agents.git
@@ -64,7 +64,7 @@ cd nemo_oo_agents/
 
 ## Quick Start
 
-Agent006's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
+NeMo OO Agents's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
 
 > **Note**: The examples below use `from nemo_oo_agents.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
 
@@ -104,7 +104,7 @@ llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")    # Nemotron
 
 Many more models are supported—see the [UnifiedLLM registry](packages/unifiedllm/src/unifiedllm/registry.py) for the full list of models or create your own `CompletionClient()` [see here for an example](packages/unifiedllm/examples/basic_usage.py).
 
-> **Key insight**: In Agent006, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
+> **Key insight**: In NeMo OO Agents, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -116,7 +116,7 @@ uv run python examples/quickstart/01_first_generation_method.py
 
 ### Step 2: Use Structured Output to Enforce Method Contracts with Auto-Retry
 
-Use any Pydantic model as a return type. Agent006 automatically validates outputs and retries on errors. The LLM receives validation messages and corrects its response, ensuring you always get type-safe, valid data. This makes integrating LLM outputs with deterministic code robust and reliable:
+Use any Pydantic model as a return type. NeMo OO Agents automatically validates outputs and retries on errors. The LLM receives validation messages and corrects its response, ensuring you always get type-safe, valid data. This makes integrating LLM outputs with deterministic code robust and reliable:
 
 ```python
 from typing import Literal
@@ -147,7 +147,7 @@ async def main():
     print(result)  # Guaranteed valid FeedbackAnalysis instance
 ```
 
-Any Pydantic features work: `Field` constraints, validators, nested models, optional fields, and more. In addition, Agent006 also supports `dataclasses`, `TypedDict`s, and validates basic types like `str`, `int`, `bool`, plus container types like `dict` and `list`.
+Any Pydantic features work: `Field` constraints, validators, nested models, optional fields, and more. In addition, NeMo OO Agents also supports `dataclasses`, `TypedDict`s, and validates basic types like `str`, `int`, `bool`, plus container types like `dict` and `list`.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -159,7 +159,7 @@ uv run python examples/quickstart/02_structured_outputs.py
 
 ### Step 3: Your Methods Are Your Tools (SW1/SW3 Interleaving)
 
-In Agent006, you don't need a separate "tool" abstraction—**your regular Python methods ARE the tools**. The LLM can call any method on `self`, enabling seamless interleaving of deterministic code (SW1) and LLM reasoning (SW3). No decorators, no registration, no schema definitions:
+In NeMo OO Agents, you don't need a separate "tool" abstraction—**your regular Python methods ARE the tools**. The LLM can call any method on `self`, enabling seamless interleaving of deterministic code (SW1) and LLM reasoning (SW3). No decorators, no registration, no schema definitions:
 
 ```python
 from typing import TypedDict
@@ -268,7 +268,7 @@ async def main():
 ```
 
 
-Agent006 supports two strategies (with more planned in the future). Advanced users can implement their own strategies.
+NeMo OO Agents supports two strategies (with more planned in the future). Advanced users can implement their own strategies.
 
 | Strategy | Best For | Description |
 |----------|----------|-------------|
@@ -778,7 +778,7 @@ For advanced workflows (port forwarding, long-running tasks, connecting to exist
 
 ## Advanced Features
 
-Beyond the quickstart, Agent006 offers these advanced capabilities:
+Beyond the quickstart, NeMo OO Agents offers these advanced capabilities:
 
 ### Self-Extending Agents
 

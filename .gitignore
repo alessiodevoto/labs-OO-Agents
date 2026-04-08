@@ -186,11 +186,11 @@ trace*.json
 !trace_viewer_config.json
 /tmp/
 
-# Agent006 generated trace and evaluation files (anywhere)
-*.006eval.jsonl
+# NeMo OO Agents generated trace and evaluation files (anywhere)
+*.noo-eval.jsonl
 *.006summary.json
 # Exception: Allow trace fixtures for testing/eval
-!evaluation/fixtures/**/*.006eval.jsonl
+!evaluation/fixtures/**/*.noo-eval.jsonl
 
 # Interface output markdown (experiment results)
 docs/interface_output/

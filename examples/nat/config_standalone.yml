@@ -1,4 +1,4 @@
-# Minimal Agent006 + NAT config.
+# Minimal NeMo OO Agents + NAT config.
 # Agent uses its own LLM, no NAT tools.
 #
 # Usage:
@@ -14,4 +14,4 @@ workflow:
   agent: example_agent_standalone.py:StandaloneAgent
   method: chat
   env: ../../.env
-  description: "Standalone Agent006 agent with its own LLM"
+  description: "Standalone NeMo OO Agents agent with its own LLM"

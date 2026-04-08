@@ -1,4 +1,4 @@
-"""Main REPL loop for Agent006 TUI."""
+"""Main REPL loop for NeMo OO Agents TUI."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ async def handle_bang_command(user_input: str, bash: BashTool) -> BashResult | N
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Agent006 TUI - A beautiful terminal interface for Agent006",
+        description="NeMo OO Agents TUI - A beautiful terminal interface for NeMo OO Agents",
         prog="python -m tui",
     )
     parser.add_argument(
@@ -109,8 +109,8 @@ async def main(
 
     Args:
         config: Optional Config instance. If None, will parse args and load config.
-        agent: Optional Agent006 agent. If None, a TUIAgent is created from
-            ``config``. Any Agent006 subclass with a ``respond(message)`` method
+        agent: Optional NeMo OO Agents agent. If None, a TUIAgent is created from
+            ``config``. Any NeMo OO Agents subclass with a ``respond(message)`` method
             works. TUI features are auto-detected via ``hasattr``; agents that
             lack ``bash`` or ``get_summarization_status`` simply have those
             commands hidden.
@@ -263,7 +263,7 @@ async def main(
                 except (NotImplementedError, OSError):
                     pass
 
-            # All agents are Agent006 agents — responses arrive via event_manager
+            # All agents are NeMo OO Agents agents — responses arrive via event_manager
             # (Message events), collected by StreamingDisplay.
             for msg in streaming_display.consume_messages():
                 console.print_agent(msg)

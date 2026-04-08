@@ -41,7 +41,7 @@ def command(port: int, host: str):
     logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
 
     click.echo()
-    click.secho("  Agent006 Viewer", fg="cyan", bold=True)
+    click.secho("  NeMo OO Agents Viewer", fg="cyan", bold=True)
     click.echo(f"  URL:  http://localhost:{port}")
     click.echo()
 

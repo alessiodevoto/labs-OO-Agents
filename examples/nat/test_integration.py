@@ -1,4 +1,4 @@
-"""Integration tests for Agent006 + NAT.
+"""Integration tests for NeMo OO Agents + NAT.
 
 Tests all four bridges independently and together.
 
@@ -9,7 +9,7 @@ Usage:
 Requires:
     - NAT installed (nvidia-nat-core)
     - nvidia-nat-nemo_oo_agents plugin installed (pip install -e ../../packages/nvidia_nat_nemo_oo_agents)
-    - Agent006 importable (../../src on PYTHONPATH or installed)
+    - NeMo OO Agents importable (../../src on PYTHONPATH or installed)
     - unifiedllm importable (../../packages/unifiedllm on PYTHONPATH or installed)
 
 Tests:
@@ -229,22 +229,22 @@ def test_input_conversion():
     # We can't import the full wrapper (needs NAT), so test the input model directly
     from pydantic import BaseModel, ConfigDict
 
-    class Agent006WrapperInput(BaseModel):
+    class NemoOOAgentsWrapperInput(BaseModel):
         model_config = ConfigDict(extra="allow")
         messages: list | str
 
     def convert_input(value):
         if isinstance(value, str):
-            return Agent006WrapperInput(messages=value)
+            return NemoOOAgentsWrapperInput(messages=value)
         if isinstance(value, dict):
             if "messages" in value:
-                return Agent006WrapperInput(**value)
+                return NemoOOAgentsWrapperInput(**value)
             if "content" in value:
-                return Agent006WrapperInput(messages=value["content"])
+                return NemoOOAgentsWrapperInput(messages=value["content"])
         if isinstance(value, list):
             if value and isinstance(value[-1], str):
-                return Agent006WrapperInput(messages=value[-1])
-        return Agent006WrapperInput(messages=str(value))
+                return NemoOOAgentsWrapperInput(messages=value[-1])
+        return NemoOOAgentsWrapperInput(messages=str(value))
 
     # Test string conversion
     result = convert_input("Hello world")
@@ -296,7 +296,7 @@ def test_pascal_case():
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logger.info("Agent006 + NAT Integration Tests")
+    logger.info("NeMo OO Agents + NAT Integration Tests")
     logger.info("=" * 50)
 
     tests = [

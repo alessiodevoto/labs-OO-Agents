@@ -1,4 +1,4 @@
-"""Reusable agent patterns for Agent006."""
+"""Reusable agent patterns for NeMo OO Agents."""
 
 from nemo_oo_agents.agents.summarization import (
     MethodSummarizer,

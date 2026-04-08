@@ -4,7 +4,7 @@ from unifiedllm import FakeLLMClient
 
 from agentdoc import doc
 
-# Try to import Agent006 if available
+# Try to import NeMo OO Agents if available
 try:
     from nemo_oo_agents import Agent
     from unifiedllm import FakeLLMClient

@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) tool integration for Agent006.
+"""MCP (Model Context Protocol) tool integration for NeMo OO Agents.
 
 This package provides tools for connecting to MCP servers and using their tools
 as agent capabilities.

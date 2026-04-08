@@ -150,7 +150,7 @@ class Spec:
 
         Note: ``target`` has an internal sentinel default; when rendered by
         ``doc(spec)``, it appears as ``target: Any = ...``.  This ``...`` is
-        **not** the Agent006 generation-method ellipsis — it just means "omit
+        **not** the NeMo OO Agents generation-method ellipsis — it just means "omit
         to get a ``SpecAnnotation`` back; supply a class/function to use the
         imperative form".
 

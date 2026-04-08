@@ -1,4 +1,4 @@
-# Agent006 Reference
+# NeMo OO Agents Reference
 
 Quick reference for paths, examples, commands, and configuration.
 
@@ -69,7 +69,7 @@ When creating significant designs (architecture, API specs, data models), write 
 
 ## Logging
 
-Agent006 uses Python's standard `logging` module throughout.  Every module
+NeMo OO Agents uses Python's standard `logging` module throughout.  Every module
 creates a logger with `logging.getLogger(__name__)`, producing a hierarchy
 rooted at `nemo_oo_agents`.
 

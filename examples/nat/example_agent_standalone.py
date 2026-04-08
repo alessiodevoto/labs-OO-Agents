@@ -1,4 +1,4 @@
-"""Example Agent006 agent with its own LLM.
+"""Example NeMo OO Agents agent with its own LLM.
 
 This agent defines its own LLM at class level, so it works with
 a minimal NAT config that doesn't specify an LLM.

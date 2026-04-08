@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Parse capability test results and generate GitLab CI metrics.
 
-This script parses .006eval.jsonl files and outputs:
+This script parses .noo-eval.jsonl files and outputs:
 1. GitLab metrics report (JSON) for visualization in MR
 2. Summary for job log
 3. Exit code (0=all passed, non-zero if failures)
@@ -25,7 +25,7 @@ from eval_pipeline import Tier
 
 
 def parse_eval_file(eval_file: Path) -> dict[str, Any]:
-    """Parse a .006eval.jsonl file and extract metrics.
+    """Parse a .noo-eval.jsonl file and extract metrics.
 
     Returns:
         dict with keys: passed, total, success_rate, test_results, metadata
@@ -105,8 +105,8 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
 
 
 def find_latest_eval_file(results_dir: Path) -> Path | None:
-    """Find the most recent .006eval.jsonl file in the results directory."""
-    eval_files = list(results_dir.glob("**/*.006eval.jsonl"))
+    """Find the most recent .noo-eval.jsonl file in the results directory."""
+    eval_files = list(results_dir.glob("**/*.noo-eval.jsonl"))
     if not eval_files:
         return None
     # Sort by modification time, newest first
@@ -215,7 +215,7 @@ def main():
     parser.add_argument(
         "results_dir",
         type=Path,
-        help="Directory containing .006eval.jsonl results",
+        help="Directory containing .noo-eval.jsonl results",
     )
     parser.add_argument(
         "--output",
@@ -234,7 +234,7 @@ def main():
     # Find latest eval file
     eval_file = find_latest_eval_file(args.results_dir)
     if not eval_file:
-        print(f"ERROR: No .006eval.jsonl files found in {args.results_dir}", file=sys.stderr)
+        print(f"ERROR: No .noo-eval.jsonl files found in {args.results_dir}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Parsing: {eval_file}")

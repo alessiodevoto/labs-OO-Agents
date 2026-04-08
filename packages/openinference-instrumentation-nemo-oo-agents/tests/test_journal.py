@@ -844,13 +844,13 @@ class TestSpanLimits:
         _mock_hooks = MagicMock()
 
         def _fake_instrument(**kwargs):
-            """Simulate what real Agent006Instrumentor.instrument() does."""
+            """Simulate what real NemoOOAgentsInstrumentor.instrument() does."""
             from nemo_oo_agents.runtime.hooks import set_hooks
 
             set_hooks(_mock_hooks)
 
         with (
-            patch("openinference_instrumentation_nemo_oo_agents.Agent006Instrumentor") as mock_cls,
+            patch("openinference_instrumentation_nemo_oo_agents.NemoOOAgentsInstrumentor") as mock_cls,
             patch("openinference_instrumentation_nemo_oo_agents._instrument_litellm"),
             patch("openinference_instrumentation_nemo_oo_agents.trace.get_tracer_provider", return_value=None),
         ):

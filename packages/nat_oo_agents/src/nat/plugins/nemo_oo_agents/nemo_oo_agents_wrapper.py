@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Agent006 wrapper for NVIDIA NeMo Agent Toolkit.
+"""NeMo OO Agents wrapper for NVIDIA NeMo Agent Toolkit.
 
-Wraps Agent006 agents as NAT workflow functions, enabling them to be
+Wraps NeMo OO Agents agents as NAT workflow functions, enabling them to be
 configured, run, and observed through NAT's infrastructure.
 """
 
@@ -34,22 +34,22 @@ NEMO_OO_AGENTS_FRAMEWORK = "nemo_oo_agents"
 # ---------------------------------------------------------------------------
 
 
-class Agent006WrapperInput(BaseModel):
-    """Input model for the Agent006 wrapper."""
+class NemoOOAgentsWrapperInput(BaseModel):
+    """Input model for the NeMo OO Agents wrapper."""
 
     model_config = ConfigDict(extra="allow")
     messages: list[Any] | str
 
 
-class Agent006WrapperOutput(BaseModel):
-    """Output model for the Agent006 wrapper."""
+class NemoOOAgentsWrapperOutput(BaseModel):
+    """Output model for the NeMo OO Agents wrapper."""
 
     model_config = ConfigDict(extra="allow")
     content: str
 
 
 class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper"):
-    """Configuration model for the Agent006 wrapper.
+    """Configuration model for the NeMo OO Agents wrapper.
 
     Example YAML::
 
@@ -91,7 +91,7 @@ class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper
     )
     enable_tracing: bool = Field(
         default=True,
-        description="Whether to enable Agent006 OTel tracing",
+        description="Whether to enable NeMo OO Agents OTel tracing",
     )
 
 
@@ -100,8 +100,10 @@ class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper
 # ---------------------------------------------------------------------------
 
 
-class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006WrapperOutput]):
-    """NAT Function that wraps an Agent006 agent method."""
+class NemoOOAgentsWrapperFunction(
+    Function[NemoOOAgentsWrapperInput, NoneType, NemoOOAgentsWrapperOutput]
+):
+    """NAT Function that wraps an NeMo OO Agents agent method."""
 
     def __init__(
         self,
@@ -114,36 +116,36 @@ class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006W
         super().__init__(
             config=config,
             description=description,
-            converters=[Agent006WrapperFunction.convert_to_str],
+            converters=[NemoOOAgentsWrapperFunction.convert_to_str],
         )
         self._agent = agent
         self._method_name = method_name
         self._method = getattr(agent, method_name)
 
-    def _convert_input(self, value: Any) -> Agent006WrapperInput:
-        """Convert raw input to Agent006WrapperInput."""
+    def _convert_input(self, value: Any) -> NemoOOAgentsWrapperInput:
+        """Convert raw input to NemoOOAgentsWrapperInput."""
         if isinstance(value, str):
-            return Agent006WrapperInput(messages=value)
+            return NemoOOAgentsWrapperInput(messages=value)
         if isinstance(value, dict):
             # Handle dict with 'messages' key or single message
             if "messages" in value:
-                return Agent006WrapperInput(**value)
+                return NemoOOAgentsWrapperInput(**value)
             if "content" in value:
-                return Agent006WrapperInput(messages=value["content"])
+                return NemoOOAgentsWrapperInput(messages=value["content"])
             if "input" in value:
-                return Agent006WrapperInput(messages=value["input"])
+                return NemoOOAgentsWrapperInput(messages=value["input"])
         if isinstance(value, list):
             # List of messages -- extract last message text
             if value and hasattr(value[-1], "content"):
-                return Agent006WrapperInput(messages=value[-1].content)
+                return NemoOOAgentsWrapperInput(messages=value[-1].content)
             if value and isinstance(value[-1], str):
-                return Agent006WrapperInput(messages=value[-1])
+                return NemoOOAgentsWrapperInput(messages=value[-1])
             if value and isinstance(value[-1], dict):
-                return Agent006WrapperInput(messages=value[-1].get("content", str(value[-1])))
-        return Agent006WrapperInput(messages=str(value))
+                return NemoOOAgentsWrapperInput(messages=value[-1].get("content", str(value[-1])))
+        return NemoOOAgentsWrapperInput(messages=str(value))
 
-    async def _ainvoke(self, value: Agent006WrapperInput) -> Agent006WrapperOutput:
-        """Invoke the Agent006 method with the input message."""
+    async def _ainvoke(self, value: NemoOOAgentsWrapperInput) -> NemoOOAgentsWrapperOutput:
+        """Invoke the NeMo OO Agents method with the input message."""
         # Extract the message text
         if isinstance(value.messages, list):
             # Take the last message
@@ -159,19 +161,21 @@ class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006W
 
         try:
             result = await self._method(message_text)
-            return Agent006WrapperOutput(content=str(result))
+            return NemoOOAgentsWrapperOutput(content=str(result))
         except Exception as e:
-            raise RuntimeError(f"Error in Agent006 agent method '{self._method_name}': {e}") from e
+            raise RuntimeError(
+                f"Error in NeMo OO Agents agent method '{self._method_name}': {e}"
+            ) from e
 
     async def _astream(
-        self, value: Agent006WrapperInput
-    ) -> AsyncGenerator[Agent006WrapperOutput, None]:
+        self, value: NemoOOAgentsWrapperInput
+    ) -> AsyncGenerator[NemoOOAgentsWrapperOutput, None]:
         """Streaming not yet supported -- falls back to single invoke."""
         result = await self._ainvoke(value)
         yield result
 
     @staticmethod
-    def convert_to_str(value: Agent006WrapperOutput) -> str:
+    def convert_to_str(value: NemoOOAgentsWrapperOutput) -> str:
         """Convert output to string."""
         return value.content
 
@@ -183,7 +187,7 @@ class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006W
 
 @register_function(config_type=NemoOOAgentsWrapperConfig)
 async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
-    """Register an Agent006 agent as a NAT workflow function.
+    """Register an NeMo OO Agents agent as a NAT workflow function.
 
     This function:
     1. Adds dependencies to sys.path
@@ -219,10 +223,10 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
                 for key, value in config.env.items():
                     os.environ[key] = value
 
-        # 3. Enable Agent006 JSONL tracing first (creates TracerProvider with resource),
+        # 3. Enable NeMo OO Agents JSONL tracing first (creates TracerProvider with resource),
         #    then set up OTel bridge (piggybacks on existing provider for OTLP export).
         if config.enable_tracing:
-            # Enable Agent006's own tracing first -- this creates the TracerProvider
+            # Enable NeMo OO Agents's own tracing first -- this creates the TracerProvider
             # with full resource metadata (including tags) attached.
             try:
                 from openinference_instrumentation_nemo_oo_agents import enable_tracing
@@ -230,9 +234,9 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
                 enable_tracing(
                     extra_resource_attrs={"tags": ["nat_integration"]},
                 )
-                logger.info("Agent006 tracing enabled")
+                logger.info("NeMo OO Agents tracing enabled")
             except ImportError:
-                logger.debug("Agent006 tracing instrumentation not available")
+                logger.debug("NeMo OO Agents tracing instrumentation not available")
 
             # Now set up the OTel bridge -- it will detect the existing provider
             # and add any OTLP exporters alongside the JSONL exporter.
@@ -276,7 +280,7 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             try:
                 llm = await b.get_llm(config.llm_name, wrapper_type=NEMO_OO_AGENTS_FRAMEWORK)
                 logger.info(
-                    "Using NAT-configured LLM '%s' for Agent006 agent",
+                    "Using NAT-configured LLM '%s' for NeMo OO Agents agent",
                     config.llm_name,
                 )
             except Exception as e:
@@ -312,13 +316,13 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             raise ValueError(f"Method '{config.method}' on {class_name} must be async.")
 
         logger.info(
-            "Agent006 wrapper ready: %s.%s",
+            "NeMo OO Agents wrapper ready: %s.%s",
             class_name,
             config.method,
         )
 
         # 9. Yield the wrapper function
-        yield Agent006WrapperFunction(
+        yield NemoOOAgentsWrapperFunction(
             config=config,
             description=config.description or f"{class_name}.{config.method}",
             agent=agent,

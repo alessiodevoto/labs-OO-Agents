@@ -1,4 +1,4 @@
-"""Canonical Pydantic types for .006eval.jsonl files.
+"""Canonical Pydantic types for .noo-eval.jsonl files.
 
 This module defines the schema for evaluation result files.
 Used by both producers (eval_pipeline, e2e_optimization) and
@@ -97,7 +97,7 @@ class EvalMetadata(BaseModel):
 
 
 class EvalMetadataLine(BaseModel):
-    """First line of .006eval.jsonl - experiment metadata with version."""
+    """First line of .noo-eval.jsonl - experiment metadata with version."""
 
     type_: Literal["metadata"] = Field(default="metadata", alias="_type")
     version: Literal["1"] = "1"  # Schema version for compatibility

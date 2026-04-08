@@ -92,9 +92,9 @@ def _find_trace_files(root: Path) -> list[Path]:
 
 
 def _find_eval_files(root: Path) -> list[Path]:
-    """Find all .006eval.jsonl and .006eval.json files."""
+    """Find all .noo-eval.jsonl and .006eval.json files."""
     eval_files: list[Path] = []
-    _collect_files(root, "*.006eval.jsonl", eval_files)
+    _collect_files(root, "*.noo-eval.jsonl", eval_files)
     _collect_files(root, "*.006eval.json", eval_files)
     return sorted(eval_files)
 
@@ -105,7 +105,7 @@ def _collect_files(root: Path, pattern: str, out: list[Path], *, exclude_non_tra
         for f in root.glob(pattern):
             if exclude_non_trace and (
                 f.name.endswith(".annotations.jsonl")
-                or f.name.endswith(".006eval.jsonl")
+                or f.name.endswith(".noo-eval.jsonl")
                 or f.name.endswith(".006eval.json")
                 or f.name.endswith(".006summary.json")
             ):
@@ -143,7 +143,7 @@ def command():
 @click.option("--dry-run", "-n", is_flag=True, help="Show what would be deleted without deleting.")
 @click.option("--older-than", type=int, metavar="DAYS", help="Only files older than N days.")
 @click.option("--all", "delete_all", is_flag=True, help="Delete ALL traces (ignore session.id).")
-@click.option("--evals", is_flag=True, help="Also delete eval files (.006eval.jsonl).")
+@click.option("--evals", is_flag=True, help="Also delete eval files (.noo-eval.jsonl).")
 @click.option("--evals-only", is_flag=True, help="Only delete eval files (skip traces).")
 @click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt.")
 def delete(
@@ -274,13 +274,13 @@ def list_dirs(root: str | None):
                 f
                 for f in d.glob("*.jsonl")
                 if not f.name.endswith(".annotations.jsonl")
-                and not f.name.endswith(".006eval.jsonl")
+                and not f.name.endswith(".noo-eval.jsonl")
             ]
         )
         total_size = sum(
             f.stat().st_size
             for f in d.glob("*.jsonl")
-            if not f.name.endswith(".annotations.jsonl") and not f.name.endswith(".006eval.jsonl")
+            if not f.name.endswith(".annotations.jsonl") and not f.name.endswith(".noo-eval.jsonl")
         )
         rel = d.relative_to(project_root) if d.is_relative_to(project_root) else d
 

@@ -70,7 +70,7 @@ traces/
 trace/
 tmp/
 *.jsonl
-*.006eval.jsonl
+*.noo-eval.jsonl
 *.006summary.json
 
 # Virtual environments and caches
