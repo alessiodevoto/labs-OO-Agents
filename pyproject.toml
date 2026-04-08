@@ -69,6 +69,9 @@ tui = [
     "rich>=13.0.0",
     "prompt-toolkit>=3.0.0",
 ]
+harbor-benchmarks = [
+    "harbor",
+]
 # nexus = [
 #     "nvidia-nat-nexus",  # TODO: update once published to PyPI
 # ]
