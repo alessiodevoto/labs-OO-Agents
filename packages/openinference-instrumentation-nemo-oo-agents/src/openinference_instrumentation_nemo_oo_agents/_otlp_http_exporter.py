@@ -79,7 +79,7 @@ class OtlpJsonHttpExporter(SpanExporter):
         except urllib.error.HTTPError as e:
             self._record_failure(
                 len(spans),
-                f"{e} — ensure the viewer is running (`nemo_oo_agents start-dev`) and nothing else is bound to this port.",
+                f"{e} — ensure the viewer is running (`nemo oo start-dev`) and nothing else is bound to this port.",
             )
             return SpanExportResult.FAILURE
         except Exception as e:

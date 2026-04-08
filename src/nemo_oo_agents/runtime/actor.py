@@ -24,16 +24,16 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.events import ExecutionSignal, LLMOutput
-from nemo_oo_agents.runtime.context_vars import _parent_agent_var
-from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
-from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 from context_blocks import (
     DynamicContext,
     ResolvedBlock,
     render_context,
 )
 from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+from nemo_oo_agents.events import ExecutionSignal, LLMOutput
+from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
+from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 
 logger = logging.getLogger(__name__)
 
@@ -771,6 +771,7 @@ class ActorRuntime:
             # installed below.
             import typing as _typing
 
+            from agentdoc import doc
             from nemo_oo_agents.decorators import strategy
             from nemo_oo_agents.media import Audio, File, Image, Media
             from nemo_oo_agents.runtime.media_capture import show
@@ -783,7 +784,6 @@ class ActorRuntime:
                 ReflexionStrategy,
                 TemplateStrategy,
             )
-            from agentdoc import doc
 
             exec_globals.update(
                 {
@@ -1118,7 +1118,9 @@ class ActorRuntime:
                             )
                             exec(compile(wrapper, cell_filename, "exec"), exec_globals)
                             # Execute with async safety (blocks Future.result() etc)
-                            from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+                            from nemo_oo_agents.runtime.async_safety import (
+                                agent_async_safety_context,
+                            )
 
                             coro = exec_globals["__wrapper__"]()
                             with agent_async_safety_context():
@@ -1134,7 +1136,9 @@ class ActorRuntime:
                                     await coro
                         else:
                             # Sync code execution - enable async safety for Future.result() etc
-                            from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+                            from nemo_oo_agents.runtime.async_safety import (
+                                agent_async_safety_context,
+                            )
 
                             with agent_async_safety_context():
                                 exec(compile(other_tree, cell_filename, "exec"), exec_globals)
@@ -2318,7 +2322,9 @@ async def {name}({params_str}) -> {return_type}:
         llm_client = _current_llm_var.get()
         count_tokens = getattr(llm_client, "count_tokens", None)
         try:
-            from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
+            from openinference_instrumentation_nemo_oo_agents._context_sideband import (
+                set_context_blocks,
+            )
 
             block_formatter = self.agent.render_config.block_formatter
             rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]

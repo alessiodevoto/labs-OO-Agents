@@ -19,6 +19,8 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 # Export core types
 # Export agent and decorators
 
+from agentdoc import hidden  # noqa: E402
+from context_blocks import DynamicContext  # noqa: E402
 from nemo_oo_agents._logging import enable_logging  # noqa: E402
 from nemo_oo_agents._visible import visible  # noqa: E402
 from nemo_oo_agents.agent import Agent  # noqa: E402
@@ -26,9 +28,9 @@ from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors
 from nemo_oo_agents.errors import (  # noqa: E402
+    GenerationError,
     NemoOOAgentsError,
     NemoOOAgentsRuntimeError,
-    GenerationError,
     RestrictedCodeError,
     SerializationError,
     SnapshotNotFoundError,
@@ -68,8 +70,6 @@ from nemo_oo_agents.strategies import (  # noqa: E402
     get_default_strategy,
     set_default_strategy,
 )
-from agentdoc import hidden  # noqa: E402
-from context_blocks import DynamicContext  # noqa: E402
 from unifiedllm import LLMResponse  # noqa: E402
 
 __all__ = [
@@ -141,7 +141,9 @@ install_debug_handler()
 # during nemo_oo_agents import (via actor.py), so agentdoc's _try_register_nemo_oo_agents()
 # fails silently during the circular import.
 try:
-    from agentdoc.providers.nemo_oo_agents import NemoOOAgentsProvider  # type: ignore[import-untyped]
+    from agentdoc.providers.nemo_oo_agents import (
+        NemoOOAgentsProvider,  # type: ignore[import-untyped]
+    )
 
     _register_provider = getattr(__import__("agentdoc"), "register_provider", None)
     if _register_provider is not None:

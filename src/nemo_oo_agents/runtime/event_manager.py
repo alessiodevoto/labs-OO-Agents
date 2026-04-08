@@ -15,14 +15,14 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from context_blocks import EventStatus
+from context_blocks.models import Role
 from nemo_oo_agents.events import (
     EventBase,
     Summary,
 )
 from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack
 from nemo_oo_agents.runtime.event_backend import EventBackend, InMemoryBackend
-from context_blocks import EventStatus
-from context_blocks.models import Role
 
 if TYPE_CHECKING:
     from nemo_oo_agents.runtime.event_query import EventQuery

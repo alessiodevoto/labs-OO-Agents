@@ -21,12 +21,12 @@ from typing import TYPE_CHECKING, Any, Union, get_args, get_origin, get_type_hin
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
+from agentdoc.visibility import is_hidden_field
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Error, Task
 from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
 from nemo_oo_agents.strategies.template import TemplateStrategy
-from agentdoc.visibility import is_hidden_field
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.strategy_config import PredictConfig

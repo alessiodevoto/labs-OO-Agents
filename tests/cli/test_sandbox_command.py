@@ -160,7 +160,8 @@ def test_upload_rw_does_not_patch_policy(runner):
     policy_path = Path(cmd[cmd.index("--policy") + 1])
     assert (
         policy_path
-        == Path(__file__).parent.parent.parent / "src/nemo_oo_agents_cli/commands/sandbox-policy.yaml"
+        == Path(__file__).parent.parent.parent
+        / "src/nemo_oo_agents_cli/commands/sandbox-policy.yaml"
         or "nemo_oo_agents-policy-" not in policy_path.name
     )
 

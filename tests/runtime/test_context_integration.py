@@ -5,8 +5,8 @@ Tests the dict-like ContextApi API and integration with Agent.
 
 import pytest
 
-from nemo_oo_agents.agent import Agent
 from context_blocks import DynamicContext
+from nemo_oo_agents.agent import Agent
 from unifiedllm import FakeLLMClient
 
 
@@ -438,8 +438,8 @@ class TestAgentContextParam:
 
     def test_dynamic_importable_from_nemo_oo_agents(self):
         """DynamicContext is importable from nemo_oo_agents top-level."""
-        from nemo_oo_agents import DynamicContext as D
         from context_blocks import DynamicContext as OrigDynamicContext
+        from nemo_oo_agents import DynamicContext as D
 
         assert D is OrigDynamicContext
 
@@ -464,9 +464,9 @@ class TestScopedContextCurrentCallFiltering:
         """
         import json
 
+        from context_blocks import ScopedContext
         from nemo_oo_agents import EventQuery, strategy
         from nemo_oo_agents.strategies.codeact import CodeActStrategy
-        from context_blocks import ScopedContext
         from unifiedllm import LLMResponse, ToolCall
 
         # Script a single LLM response: execute_python with inline return_result
@@ -524,8 +524,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_parameter_basic(self):
         """@strategy(context=ScopedContext(...)) basic usage works."""
-        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
+        from nemo_oo_agents import strategy
 
         fake_llm = FakeLLMClient()
 
@@ -558,8 +558,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_events(self):
         """@strategy(context=ScopedContext(events={...})) sets decorator events."""
-        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
+        from nemo_oo_agents import strategy
 
         fake_llm = FakeLLMClient()
 
@@ -577,8 +577,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_both_context_and_events(self):
         """@strategy(context=ScopedContext(context={...}, events={...})) works."""
-        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
+        from nemo_oo_agents import strategy
 
         fake_llm = FakeLLMClient()
 

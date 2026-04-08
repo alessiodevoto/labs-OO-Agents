@@ -10,8 +10,8 @@ import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
-from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 from context_blocks import ScopedContext
+from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC

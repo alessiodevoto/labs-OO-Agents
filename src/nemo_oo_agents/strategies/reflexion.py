@@ -25,9 +25,9 @@ from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
 from nemo_oo_agents.strategies.template import TemplateStrategy
 
 if TYPE_CHECKING:
+    from context_blocks import DynamicContext
     from nemo_oo_agents.config.strategy_config import ReflexionConfig
     from nemo_oo_agents.strategies.current_call import CurrentCall
-    from context_blocks import DynamicContext
 
 logger = logging.getLogger(__name__)
 

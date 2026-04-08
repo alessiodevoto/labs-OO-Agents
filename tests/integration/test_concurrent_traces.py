@@ -86,7 +86,9 @@ def setup_tracing(temp_trace_dir):
     Returns the hooks instance for tests that need to propagate hooks to child tasks.
     """
     from openinference_instrumentation_nemo_oo_agents import Agent006Instrumentor
-    from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
+    from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import (
+        OtlpJsonFileExporter,
+    )
     from openinference_instrumentation_nemo_oo_agents._session_processor import SessionSpanProcessor
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider

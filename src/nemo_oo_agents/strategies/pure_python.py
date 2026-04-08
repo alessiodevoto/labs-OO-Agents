@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, get_type_hints
 
 from pydantic import ValidationError as PydanticValidationError
 
+from context_blocks import DynamicContext, ResultStatus
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError, XMLFormatError
 from nemo_oo_agents.events import (
@@ -43,7 +44,6 @@ from nemo_oo_agents.strategies.generated_code import (
     ReturnValueValidator,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
-from context_blocks import DynamicContext, ResultStatus
 
 # Import httpx timeout exceptions if available (used by litellm)
 try:

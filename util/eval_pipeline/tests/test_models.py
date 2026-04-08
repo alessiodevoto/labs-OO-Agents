@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from nemo_oo_agents import Agent
 from eval_pipeline.model_factory import client, get, list_models
+from nemo_oo_agents import Agent
 
 # Skip entire module by default - only run when explicitly requested
 pytestmark = pytest.mark.skipif(

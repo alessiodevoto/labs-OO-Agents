@@ -13,9 +13,9 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel
 
+from context_blocks import DynamicContext
 from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.markers import is_nosnapshot_field
-from context_blocks import DynamicContext
 
 SNAPSHOT_VERSION: Final = 1
 

@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agentdoc._pformat import _pformat
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.strategies import PredictStrategy
-from agentdoc._pformat import _pformat
 
 from .model_factory import client as model_client
 from .models import ExecutionResult, ScoreResult, ScoringContext

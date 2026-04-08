@@ -11,10 +11,10 @@ import inspect
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent, hidden
-from nemo_oo_agents.runtime.actor import ActorRuntime
 from agentdoc import doc
 from agentdoc.visibility import filter_module_globals
+from nemo_oo_agents import Agent, hidden
+from nemo_oo_agents.runtime.actor import ActorRuntime
 from unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()

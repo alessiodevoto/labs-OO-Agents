@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from context_blocks import EventBase, EventStatus, Metadata
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -29,7 +30,6 @@ from nemo_oo_agents.events import (
 from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
-from context_blocks import EventBase, EventStatus, Metadata
 
 logger = logging.getLogger(__name__)
 

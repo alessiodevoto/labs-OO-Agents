@@ -4,8 +4,8 @@
 uv run python examples/quickstart/08_context_blocks.py
 """
 
-from nemo_oo_agents.util.quickstart import *
 from agentdoc import spec
+from nemo_oo_agents.util.quickstart import *
 
 
 class NoteTakingAgent(Agent, llm=llm):

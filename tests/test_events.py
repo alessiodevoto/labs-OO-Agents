@@ -1,8 +1,8 @@
 """Tests for Event types used in history pipeline."""
 
+from context_blocks import ResultStatus
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.events import EventsApi
-from context_blocks import ResultStatus
 from unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
@@ -289,8 +289,8 @@ class TestSummaryEvent:
 
     def test_summary_role_is_assistant(self):
         """Summary has assistant role (LLM's own recap)."""
-        from nemo_oo_agents.events import Summary
         from context_blocks.models import Role
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="1..3",

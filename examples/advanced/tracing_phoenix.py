@@ -20,8 +20,8 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent
 from examples.util.example_llm import qwen
+from nemo_oo_agents import Agent
 
 load_dotenv(override=True)
 

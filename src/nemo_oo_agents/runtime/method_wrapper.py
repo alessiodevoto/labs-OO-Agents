@@ -67,13 +67,13 @@ def create_agent_method_wrapper(
         """Unified wrapper for agent methods."""
         # Lazy imports: actor.py has bidirectional dependencies with agent.py/metaclass.py
         # that would cause circular imports if moved to module level
+        from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
         from nemo_oo_agents.runtime.actor import _in_generation_session
         from nemo_oo_agents.runtime.context_vars import (
             _get_agent_call_stack,
             _pop_agent_call_id,
             _push_agent_call_id,
         )
-        from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 
         # Generation-specific runtime checks and setup
         resolved_strategy = strategy
@@ -164,7 +164,10 @@ def create_agent_method_wrapper(
                         return await original_func(self, *a, **kw)
 
                 if has_agent_mw:
-                    from nemo_oo_agents.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
+                    from nemo_oo_agents.runtime.middleware import (
+                        _AGENT_RESULT_NOT_SET,
+                        AgentCallContext,
+                    )
 
                     ac_ctx = AgentCallContext(
                         agent=self,

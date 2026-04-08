@@ -34,6 +34,9 @@ from uuid import uuid4
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, create_model
 from pydantic import ValidationError as PydanticValidationError
 
+from agentdoc._structured import format_type as _format_type
+from context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
+from context_blocks.exceptions import BlockSyntaxError
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import (
@@ -56,9 +59,6 @@ from nemo_oo_agents.strategies.generated_code import (
     HelperMethodManager,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
-from agentdoc._structured import format_type as _format_type
-from context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
-from context_blocks.exceptions import BlockSyntaxError
 from unifiedllm import Tool
 
 if TYPE_CHECKING:
@@ -393,8 +393,8 @@ Standard Python builtins and agent instance (`self`) are available."""
         # Includes both instance attrs and class-level Skill attrs, so that
         # `frontend_design = Skill(path=...)` at class level is visible here.
         # Framework Skills (_-prefixed) are excluded.
-        from nemo_oo_agents.skill import Skill as _Skill
         from agentdoc.visibility import is_hidden_field
+        from nemo_oo_agents.skill import Skill as _Skill
 
         skill_attrs_dict = {
             name: val

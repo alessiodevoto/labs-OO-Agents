@@ -26,10 +26,10 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated, Any
 
+from agentdoc import hidden
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import PredictStrategy
-from agentdoc import hidden
 
 logger = logging.getLogger(__name__)
 

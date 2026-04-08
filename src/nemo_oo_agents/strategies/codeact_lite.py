@@ -18,6 +18,11 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from context_blocks import ResolvedBlock, ToolCallEvent
+from context_blocks.formatter import OpenAIProviderFormatter
+from context_blocks.models import Role
+from context_blocks.scoped import ScopedContext
+from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, safe_pformat
 from nemo_oo_agents.events import (
     Error,
     Feedback,
@@ -29,11 +34,6 @@ from nemo_oo_agents.events import (
 )
 from nemo_oo_agents.runtime.event_query import EventQuery
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from context_blocks import ResolvedBlock, ToolCallEvent
-from context_blocks.formatter import OpenAIProviderFormatter
-from context_blocks.models import Role
-from context_blocks.scoped import ScopedContext
-from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, safe_pformat
 
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import RuntimeServices

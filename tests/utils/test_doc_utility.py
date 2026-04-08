@@ -6,9 +6,9 @@ work correctly with nemo_oo_agents Agent instances.
 Note: The output format uses Python class syntax per the agentdoc design doc.
 """
 
-from nemo_oo_agents import Agent
 from agentdoc import doc
 from agentdoc.introspect import methods, variables
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
@@ -430,8 +430,8 @@ def test_underscore_method_hidden_by_default():
     """_private methods are hidden by default; @spec(hidden=False) opts them back in."""
     from unittest.mock import MagicMock
 
-    from nemo_oo_agents import Agent
     from agentdoc import spec
+    from nemo_oo_agents import Agent
 
     llm = MagicMock()
     llm.model = "test"
@@ -494,8 +494,8 @@ def test_underscore_field_visible_without_hidden():
 
 def test_framework_attrs_hidden_via_annotation():
     """runtime, _event_manager, event_query, render_config should be hidden via Annotated[T, hidden]."""
-    from nemo_oo_agents import Agent
     from agentdoc.visibility import is_hidden_field
+    from nemo_oo_agents import Agent
 
     assert is_hidden_field(Agent, "runtime") is True
     assert is_hidden_field(Agent, "event_manager") is True

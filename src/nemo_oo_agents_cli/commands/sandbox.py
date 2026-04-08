@@ -51,7 +51,9 @@ _PREFIX = "nemo_oo_agents-"
 
 def _check_openshell() -> None:
     if not shutil.which("openshell"):
-        raise click.ClickException("openshell not found. Install with: uv add nemo_oo_agents[sandbox]")
+        raise click.ClickException(
+            "openshell not found. Install with: uv add nemo_oo_agents[sandbox]"
+        )
 
 
 def _ensure_provider() -> None:

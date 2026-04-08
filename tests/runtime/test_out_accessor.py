@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from nemo_oo_agents.events import PythonOutput
 from context_blocks import ResultStatus
+from nemo_oo_agents.events import PythonOutput
 
 
 class MockEventManager:

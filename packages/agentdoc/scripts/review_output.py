@@ -37,10 +37,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated
 
+from context_blocks import DynamicContext
 from nemo_oo_agents import Agent
 from nemo_oo_agents.events import ExecutionResult, Task
 from nemo_oo_agents.runtime import TruncationConfig
-from context_blocks import DynamicContext
 from pydantic import BaseModel, Field
 from unifiedllm import FakeLLMClient
 

@@ -12,6 +12,6 @@ Importing this module triggers decorator-based registration of:
 
 # Import modules to trigger @register_function / @register_llm_client decorators
 from . import (
-    nemo_oo_agents_wrapper,  # noqa: F401
     llm,  # noqa: F401
+    nemo_oo_agents_wrapper,  # noqa: F401
 )

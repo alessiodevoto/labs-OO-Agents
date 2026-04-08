@@ -6,10 +6,10 @@ a user-role message (not a tool result) so it doesn't require pairing
 validation - providers don't enforce pairing for user messages.
 """
 
-from nemo_oo_agents.events import PythonOutput
-from nemo_oo_agents.runtime.event_manager import EventManager
 from context_blocks import ResultStatus
 from context_blocks.events import ToolCallEvent
+from nemo_oo_agents.events import PythonOutput
+from nemo_oo_agents.runtime.event_manager import EventManager
 
 
 def test_filter_with_limit_returns_most_recent_events():

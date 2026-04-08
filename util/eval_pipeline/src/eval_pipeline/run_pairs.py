@@ -76,8 +76,8 @@ async def main():
         sys.exit(1)
 
     # Load config to get default_strategy (before creating evaluator)
-    from nemo_oo_agents import set_default_strategy
     from eval_pipeline.config import StrategyConfig, load_config
+    from nemo_oo_agents import set_default_strategy
 
     config = load_config(args.config)
 
