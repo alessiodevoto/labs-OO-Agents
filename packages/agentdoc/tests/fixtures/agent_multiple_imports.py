@@ -4,7 +4,7 @@ import json  # noqa: F401
 from asyncio import sleep  # noqa: F401
 from datetime import datetime  # noqa: F401
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

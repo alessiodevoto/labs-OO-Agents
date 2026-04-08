@@ -9,11 +9,11 @@ a database-like interface for querying past interactions.
 
 from typing import TYPE_CHECKING
 
-from agent006.events import EventBase
-from agent006.skill import Skill
+from nemo_oo_agents.events import EventBase
+from nemo_oo_agents.skill import Skill
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 
 class EventsApi(Skill):

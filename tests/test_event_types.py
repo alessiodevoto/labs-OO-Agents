@@ -1,6 +1,6 @@
 """Tests for Event types used in event pipeline."""
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     Error,
     Feedback,
     LLMOutput,
@@ -8,7 +8,7 @@ from agent006.events import (
     Reasoning,
     Task,
 )
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.event_manager import EventManager
 
 
 class TestEventTypes:
@@ -184,7 +184,7 @@ class TestExecutionResult:
 
     def test_execution_result_success(self):
         """ExecutionResult for successful execution."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="Hello\n",
@@ -197,7 +197,7 @@ class TestExecutionResult:
 
     def test_execution_result_error(self):
         """ExecutionResult with error."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="",
@@ -208,7 +208,7 @@ class TestExecutionResult:
 
     def test_has_method(self):
         """has_method() checks if method was defined."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="",

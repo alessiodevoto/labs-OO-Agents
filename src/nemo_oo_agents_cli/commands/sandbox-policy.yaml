@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# agent006 sandbox policy.
+# nemo_oo_agents sandbox policy.
 #
 # Based on the NemoClaw default policy (deploy/docker/sandbox/dev-sandbox-policy.yaml).
-# Sections that differ from the default are marked with [agent006].
+# Sections that differ from the default are marked with [nemo_oo_agents].
 
 version: 1
 
@@ -93,14 +93,14 @@ network_policies:
       - { path: /usr/local/bin/claude }
       - { path: /usr/bin/gh }
 
-  # [agent006] Expanded from default.
+  # [nemo_oo_agents] Expanded from default.
   # Default allows integrate.api.nvidia.com for curl, bash, and opencode.
-  # agent006 adds:
+  # nemo_oo_agents adds:
   #   - inference.nvidia.com: alternate NVIDIA NIM endpoint used by some agents.
   #   - inference-api.nvidia.com: internal cluster endpoint; IP-pinned because
   #     the cluster name may not be resolvable outside NVIDIA DNS, and pinning
   #     prevents accidental resolution to a public IP.
-  #   - Python binary paths: agent006 workflows call inference APIs from Python
+  #   - Python binary paths: nemo_oo_agents workflows call inference APIs from Python
   #     scripts (not only from shell or opencode). Multiple paths are required
   #     because uv creates venvs with versioned interpreter symlinks
   #     (e.g. python3.12) that resolve to a different /proc/{pid}/exe path than
@@ -111,7 +111,7 @@ network_policies:
     endpoints:
       - { host: integrate.api.nvidia.com, port: 443 }
       - { host: inference.nvidia.com, port: 443 }
-      # [agent006] Internal inference cluster — IP-pinned to prevent
+      # [nemo_oo_agents] Internal inference cluster — IP-pinned to prevent
       # DNS-based redirection outside the NVIDIA datacenter network.
       - { host: inference-api.nvidia.com, port: 443, allowed_ips: ["10.48.202.0/24", "10.48.203.0/24"] }
     binaries:
@@ -119,7 +119,7 @@ network_policies:
       - { path: /bin/bash }
       - { path: /usr/bin/bash }
       - { path: /usr/local/bin/opencode }
-      # [agent006] Python callers in agent scripts and venv entry points.
+      # [nemo_oo_agents] Python callers in agent scripts and venv entry points.
       - { path: /usr/local/bin/python }
       - { path: /usr/local/bin/python3 }
       # Versioned Python binaries — nemoclaw resolves /proc/{pid}/exe through
@@ -129,13 +129,13 @@ network_policies:
       - { path: "/sandbox/.uv/python/**" }
       - { path: /sandbox/.venv/bin/python }
       - { path: /sandbox/.venv/bin/python3 }
-      # agent006 CLI entry point (installed into the sandbox venv)
-      - { path: /sandbox/.venv/bin/agent006 }
+      # nemo_oo_agents CLI entry point (installed into the sandbox venv)
+      - { path: /sandbox/.venv/bin/nemo_oo_agents }
 
-  # [agent006] Expanded from default.
+  # [nemo_oo_agents] Expanded from default.
   # Default allows pypi.org, files.pythonhosted.org, github.com,
   # objects.githubusercontent.com, api.github.com, and downloads.python.org.
-  # agent006 adds urm.nvidia.com: the NVIDIA internal Artifactory mirror for
+  # nemo_oo_agents adds urm.nvidia.com: the NVIDIA internal Artifactory mirror for
   # PyPI. Packages that are not yet on public PyPI (or internal forks) are
   # published here. IP-pinned to the known Artifactory node IPs to prevent
   # traffic from escaping the internal network if DNS changes.
@@ -150,11 +150,11 @@ network_policies:
       # uv resolves python-build-standalone release metadata via the GitHub API
       - { host: api.github.com, port: 443 }
       - { host: downloads.python.org, port: 443 }
-      # [agent006] NVIDIA internal Artifactory PyPI mirror.
+      # [nemo_oo_agents] NVIDIA internal Artifactory PyPI mirror.
       # IP-pinned to prevent resolution outside the internal network.
       - { host: urm.nvidia.com, port: 443, allowed_ips: ["10.121.10.15/32", "10.121.10.18/32", "10.121.10.19/32", "10.121.10.24/32", "10.121.10.20/32", "10.121.10.22/32", "10.121.10.23/32", "10.121.10.21/32"] }
     binaries:
-      # [agent006] Python callers in agent scripts and venv entry points.
+      # [nemo_oo_agents] Python callers in agent scripts and venv entry points.
       - { path: /usr/local/bin/python }
       - { path: /usr/local/bin/python3 }
       # Versioned Python binaries — nemoclaw resolves /proc/{pid}/exe through
@@ -185,8 +185,8 @@ network_policies:
       - { path: "/sandbox/.vscode-server/**" }
       - { path: "/sandbox/.vscode-remote-containers/**" }
 
-  # [agent006] NVIDIA internal GitLab — agent006 installation.
-  # agent006 is not yet on a public PyPI index, so each new sandbox installs
+  # [nemo_oo_agents] NVIDIA internal GitLab — nemo_oo_agents installation.
+  # nemo_oo_agents is not yet on a public PyPI index, so each new sandbox installs
   # it via: GIT_SSL_NO_VERIFY=1 uv pip install git+https://oauth2:<token>@gitlab-master.nvidia.com/...
   #
   # GIT_SSL_NO_VERIFY=1 is required because gitlab-master.nvidia.com uses an
@@ -196,8 +196,8 @@ network_policies:
   # A MITM would require control of that specific internal IP.
   #
   # Only Git Smart HTTP reads are permitted — git push is not allowed.
-  gitlab_agent006:
-    name: gitlab-agent006
+  gitlab_nemo_oo_agents:
+    name: gitlab-nemo_oo_agents
     endpoints:
       - host: gitlab-master.nvidia.com
         port: 443
@@ -216,10 +216,10 @@ network_policies:
       - { path: /usr/bin/git }
       - { path: /usr/local/bin/uv }
 
-  # [agent006] NVIDIA internal MCP servers.
+  # [nemo_oo_agents] NVIDIA internal MCP servers.
   # Agent workflows connect to internal tooling (e.g. Confluence, JIRA) via
   # MCP (Model Context Protocol). These servers are reachable only from the
-  # NVIDIA internal network. Only the agent006 Python venv is allowed — no
+  # NVIDIA internal network. Only the nemo_oo_agents Python venv is allowed — no
   # shell or curl — to limit blast radius if the policy is ever abused.
   nvidia_mcp:
     name: nvidia-mcp

@@ -85,10 +85,10 @@ These models were successfully tested on public NIM:
 
 ## Usage Examples
 
-### Using with agent006
+### Using with nemo_oo_agents
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import UnifiedLLM
 
 # Fast code generation
@@ -153,7 +153,7 @@ class VisionAgent(Agent, llm=llm_vision):
 
 ## Full Model List
 
-See `agent006-src/nvidia_models_available.txt` for complete output with all 170 models.
+See `nemo_oo_agents-src/nvidia_models_available.txt` for complete output with all 170 models.
 
 ## Next Steps
 
@@ -163,7 +163,7 @@ See `agent006-src/nvidia_models_available.txt` for complete output with all 170 
 
 ## Model Format
 
-When using in agent006, specify the model in the UnifiedLLM client:
+When using in nemo_oo_agents, specify the model in the UnifiedLLM client:
 
 ```python
 from unifiedllm import UnifiedLLM

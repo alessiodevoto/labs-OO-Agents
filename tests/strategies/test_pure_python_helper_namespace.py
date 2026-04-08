@@ -6,7 +6,7 @@ where helper methods were compiled without asyncio in their globals, causing Nam
 
 import pytest
 
-from agent006 import Agent, PurePythonStrategy, strategy
+from nemo_oo_agents import Agent, PurePythonStrategy, strategy
 from unifiedllm import FakeLLMClient
 
 

@@ -5,8 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from agent006 import Skill, SkillManager
-from agent006 import skill_manager as _skill_manager_module
+from nemo_oo_agents import Skill, SkillManager
+from nemo_oo_agents import skill_manager as _skill_manager_module
 
 
 class SampleSkill(Skill):
@@ -97,7 +97,7 @@ def test_install_skips_malformed_skill_md(tmp_path, caplog, monkeypatch):
         raise RuntimeError("parse error")
 
     monkeypatch.setattr(_skill_manager_module, "TextSkill", _bad_skill)
-    with caplog.at_level(logging.WARNING, logger="agent006.skill_manager"):
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
         SkillManager.install(make_agent(), skills_dir=tmp_path)
     assert "failed to load SKILL.md" in caplog.text
 
@@ -123,7 +123,7 @@ def test_discover_skips_malformed_skill_md(tmp_path, caplog, monkeypatch):
         raise RuntimeError("parse error")
 
     monkeypatch.setattr(_skill_manager_module, "TextSkill", _bad_skill)
-    with caplog.at_level(logging.WARNING, logger="agent006.skill_manager"):
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
         skills = SkillManager.discover(tmp_path)
     assert skills == {}
     assert "failed to load SKILL.md" in caplog.text

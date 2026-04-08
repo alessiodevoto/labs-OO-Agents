@@ -4,8 +4,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from agent006.config import CodeActConfig
-from agent006.strategies.codeact import CodeActStrategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from unifiedllm import CompletionClient, Tool
 
 

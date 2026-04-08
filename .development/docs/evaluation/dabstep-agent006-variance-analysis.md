@@ -1,11 +1,11 @@
-# DABStep agent006 Variance Analysis
+# DABStep nemo_oo_agents Variance Analysis
 
 **Date:** 2026-01-15
 **Model:** qwen/qwen3-next-80b-a3b-instruct (NVIDIA NIM)
 
 ## Observation: Performance Fluctuation
 
-Running agent006 baseline on the **same 10 tasks** multiple times shows variance in pass rates:
+Running nemo_oo_agents baseline on the **same 10 tasks** multiple times shows variance in pass rates:
 
 | Run Time | Pass Rate | Tasks Passed |
 |----------|-----------|--------------|
@@ -166,4 +166,4 @@ The detailed prompt changes:
 - ❌ Didn't hurt significantly
 - ⚠️ Added noise/complexity without benefit
 
-**Key Insight:** For agent006 baseline, the **hard variant's structural enforcement** (20% → doubled performance) is a much more effective approach than prompt engineering (no change).
+**Key Insight:** For nemo_oo_agents baseline, the **hard variant's structural enforcement** (20% → doubled performance) is a much more effective approach than prompt engineering (no change).

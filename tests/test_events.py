@@ -1,7 +1,7 @@
 """Tests for Event types used in history pipeline."""
 
-from agent006 import Agent
-from agent006.runtime.events import EventsApi
+from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime.events import EventsApi
 from context_blocks import ResultStatus
 from unifiedllm import FakeLLMClient
 
@@ -17,7 +17,7 @@ class TestEventTypes:
 
     def test_task_event(self):
         """Task has event_type='task' and prompt."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         event = Task(prompt="Do something")
         assert event.event_type == "task"
@@ -28,7 +28,7 @@ class TestEventTypes:
 
     def test_message_event(self):
         """Message for user-facing messages."""
-        from agent006.events import Message
+        from nemo_oo_agents.events import Message
 
         event = Message(content="Hello!")
         assert event.event_type == "message"
@@ -39,7 +39,7 @@ class TestEventTypes:
 
     def test_reasoning_event(self):
         """Reasoning for chain-of-thought."""
-        from agent006.events import Reasoning
+        from nemo_oo_agents.events import Reasoning
 
         event = Reasoning(content="Let me think...")
         assert event.event_type == "reasoning"
@@ -50,7 +50,7 @@ class TestEventTypes:
 
     def test_error_event(self):
         """Error for execution errors."""
-        from agent006.events import Error
+        from nemo_oo_agents.events import Error
 
         event = Error(content="SyntaxError: invalid")
         assert event.event_type == "error"
@@ -61,7 +61,7 @@ class TestEventTypes:
 
     def test_feedback_event(self):
         """Feedback for execution feedback."""
-        from agent006.events import Feedback
+        from nemo_oo_agents.events import Feedback
 
         event = Feedback(content="Code executed. Output: 42")
         assert event.event_type == "feedback"
@@ -72,7 +72,7 @@ class TestEventTypes:
 
     def test_llm_output_event(self):
         """LLMOutput for LLM responses."""
-        from agent006.events import LLMOutput
+        from nemo_oo_agents.events import LLMOutput
 
         event = LLMOutput(content="def foo(): pass")
         assert event.event_type == "llm_output"
@@ -83,7 +83,7 @@ class TestEventTypes:
 
     def test_tag_property_returns_event_position(self):
         """tag property returns event position (set by EventManager)."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         event = Task(prompt="test")
         # Not yet in event manager
@@ -94,7 +94,7 @@ class TestEventTypes:
 
     def test_event_serialization(self):
         """Events serialize to JSON with discriminator."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         event = Task(prompt="test")
         d = event.model_dump()
@@ -103,7 +103,7 @@ class TestEventTypes:
 
     def test_event_has_metadata(self):
         """Events can have metadata set after construction."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         event = Task(prompt="test")
         event.metadata["call_id"] = "abc123"
@@ -115,7 +115,7 @@ class TestEventTypes:
         """Events have auto-generated timestamp."""
         from datetime import datetime
 
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         event = Task(prompt="test")
         assert isinstance(event.timestamp, datetime)
@@ -126,7 +126,7 @@ class TestExecutionResult:
 
     def test_execution_result_success(self):
         """ExecutionResult for successful execution."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="Hello\n",
@@ -139,7 +139,7 @@ class TestExecutionResult:
 
     def test_execution_result_error(self):
         """ExecutionResult with error."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="",
@@ -150,7 +150,7 @@ class TestExecutionResult:
 
     def test_has_method(self):
         """has_method() checks if method was defined."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="",
@@ -165,7 +165,7 @@ class TestPythonOutputEvent:
 
     def test_event_type_excluded_from_repr(self):
         """event_type field should not appear in repr (repr=False)."""
-        from agent006.events import PythonOutput
+        from nemo_oo_agents.events import PythonOutput
 
         event = PythonOutput(
             tool_call_id="call_123",
@@ -180,7 +180,7 @@ class TestPythonOutputEvent:
 
     def test_public_fields_in_repr(self):
         """LLM-visible fields appear in repr; infrastructure fields (repr=False) do not."""
-        from agent006.events import PythonOutput
+        from nemo_oo_agents.events import PythonOutput
 
         event = PythonOutput(
             tool_call_id="call_123",
@@ -202,7 +202,7 @@ class TestPythonOutputEvent:
 
     def test_backward_compat_alias(self):
         """PythonOutput alias still works."""
-        from agent006.events import PythonOutput
+        from nemo_oo_agents.events import PythonOutput
 
         event = PythonOutput(
             tool_call_id="call_123",
@@ -219,7 +219,7 @@ class TestSummaryEvent:
 
     def test_summary_tag_returns_summary_tag(self):
         """Summary.tag is set by EventManager (same as regular events)."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="2..40",
@@ -235,7 +235,7 @@ class TestSummaryEvent:
 
     def test_summary_children_tags_field(self):
         """Summary.children_tags returns the list of child tags."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="2..40",
@@ -246,7 +246,7 @@ class TestSummaryEvent:
 
     def test_summary_with_summary_text(self):
         """Summary with summary_text represents summarization (not truncation)."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="5..10",
@@ -260,7 +260,7 @@ class TestSummaryEvent:
 
     def test_summary_without_summary_text_is_truncation(self):
         """Summary without summary_text represents truncation."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="1..5",
@@ -271,7 +271,7 @@ class TestSummaryEvent:
 
     def test_summary_serialization(self):
         """Summary serializes to dict with all fields."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
 
         summary = Summary(
             summary_tag="2..4",
@@ -289,7 +289,7 @@ class TestSummaryEvent:
 
     def test_summary_role_is_assistant(self):
         """Summary has assistant role (LLM's own recap)."""
-        from agent006.events import Summary
+        from nemo_oo_agents.events import Summary
         from context_blocks.models import Role
 
         summary = Summary(
@@ -304,7 +304,7 @@ class TestEventViewContains:
 
     def test_contains_by_tag(self):
         """'tag in events' returns True for existing tags."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         agent = _TestAgent()
         agent.event_manager.add(Task(prompt="First"))
@@ -317,7 +317,7 @@ class TestEventViewContains:
 
     def test_contains_by_uuid(self):
         """'uuid in events' returns True for existing UUIDs."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         agent = _TestAgent()
         event = Task(prompt="Test")
@@ -329,7 +329,7 @@ class TestEventViewContains:
 
     def test_contains_after_collapse(self):
         """'summary_tag in events' returns True after collapse."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         agent = _TestAgent()
         for i in range(4):
@@ -343,7 +343,7 @@ class TestEventViewContains:
 
     def test_event_view_repr(self):
         """EventsApi.__repr__ shows active event count."""
-        from agent006.events import Task
+        from nemo_oo_agents.events import Task
 
         agent = _TestAgent()
         agent.event_manager.add(Task(prompt="One"))

@@ -430,7 +430,7 @@ User reported: "It's not just 'find' it has to select. Go read how it works in t
 
 **Solution - Match Trace Viewer's Flat Navigation**:
 
-Read `/Volumes/dev/dev/agent006/util/trace-viewer/frontend/js/keyboard-nav.js` to understand the actual model:
+Read `/Volumes/dev/dev/nemo_oo_agents/util/trace-viewer/frontend/js/keyboard-nav.js` to understand the actual model:
 
 1. **Flat navigation**: j/k moves through ALL visible `.kb-block` elements in document order
 2. **Right arrow**: Expands the event, but selection STAYS on the same block (header)
@@ -579,7 +579,7 @@ All keyboard shortcuts working in detail view:
 Ran capability tests to verify ExperimentWriter integration and modern .006eval.jsonl format:
 
 ```bash
-cd /Volumes/dev/dev/agent006/util/prompt-optimization
+cd /Volumes/dev/dev/nemo_oo_agents/util/prompt-optimization
 source ../../.venv/bin/activate
 python runner.py config/capabilities.yaml --test sentiment_single --models qwen3-next-80b
 ```

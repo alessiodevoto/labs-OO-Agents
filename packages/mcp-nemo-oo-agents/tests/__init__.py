@@ -1,1 +1,1 @@
-"""Tests for mcp-agent006 package."""
+"""Tests for mcp-nemo-oo-agents package."""

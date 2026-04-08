@@ -8,7 +8,7 @@ shadow the builtin functions available in generated code.
 
 import pytest
 
-from agent006 import Agent, PurePythonStrategy, strategy
+from nemo_oo_agents import Agent, PurePythonStrategy, strategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 

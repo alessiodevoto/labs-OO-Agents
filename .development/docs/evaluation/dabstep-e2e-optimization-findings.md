@@ -31,7 +31,7 @@ Configured opt63 (90% on training) as the new baseline:
 - Copied `agent_opt63.py` to `agents/agent.py`
 - Added `markdown_helpers.py` dependency
 - Updated config to use `RSCDABAgentHardOpt63` class
-- Enabled tournament selection with agent006/agent007 as seeds
+- Enabled tournament selection with nemo_oo_agents/agent007 as seeds
 
 **New Issue Discovered**: Result collection bug
 - Evaluation runs and creates 10 trace files (5-6MB each)

@@ -5,7 +5,7 @@
 #   nat run --config_file examples/nat/config_standalone.yml --input "Hello!"
 
 workflow:
-  _type: agent006_wrapper
+  _type: nemo_oo_agents_wrapper
   dependencies:
     - ../../src
     - ../../packages/unifiedllm/src

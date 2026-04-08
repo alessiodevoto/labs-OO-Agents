@@ -42,17 +42,17 @@ results/capability_optimization_20260126_142013/
 
 ### Key Files
 
-1. **Exporter**: `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_jsonl_exporter.py`
+1. **Exporter**: `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_jsonl_exporter.py`
    - `JSONLSpanExporter` class writes spans to JSONL files
    - Uses `_current_trace_file` ContextVar for per-sample file routing
    - Caches file handles in `self._files` dict with `threading.Lock`
 
-2. **Initialization**: `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/__init__.py`
+2. **Initialization**: `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/__init__.py`
    - `enable_tracing()` - called once at startup in main process
    - `set_trace_file()` / `get_trace_file()` - per-sample file routing via ContextVar
    - `Agent006Instrumentor` - installs hooks via `set_hooks()`
 
-3. **Hooks**: `src/agent006/runtime/hooks.py`
+3. **Hooks**: `src/nemo_oo_agents/runtime/hooks.py`
    - `_instrumentation_hooks_var` - ContextVar storing hooks
    - `set_hooks()` / `get_hooks()` - hook installation
    - `call_before_hook()` / `call_after_hook()` - span creation/ending
@@ -93,7 +93,7 @@ The `history-phases-1-3` branch has these relevant changes:
 
 ```bash
 git log --oneline main..HEAD
-# 67ac3fe1 Fix circular import causing Agent006Provider not to register
+# 67ac3fe1 Fix circular import causing NemoOOAgentsProvider not to register
 # 88de539c feat: history context management system design and phase 1-3 implementation
 # eca70675 refactor(context-blocks): make BlockRenderer async-only
 # edc80f3d refactor: add Role enum to RenderSpec for declarative event role mapping
@@ -101,8 +101,8 @@ git log --oneline main..HEAD
 ```
 
 Key changed files:
-- `src/agent006/events.py` - Event structure changes
-- `src/agent006/runtime/history.py` - History management changes
+- `src/nemo_oo_agents/events.py` - Event structure changes
+- `src/nemo_oo_agents/runtime/history.py` - History management changes
 - `packages/context-blocks/src/context_blocks/formatter.py` - Formatter changes
 - `packages/context-blocks/src/context_blocks/renderer.py` - Renderer changes
 
@@ -124,7 +124,7 @@ Add debug logging to verify hooks are installed when samples run:
 
 ```python
 # In pipeline.py before execute_task()
-from agent006.runtime.hooks import get_hooks
+from nemo_oo_agents.runtime.hooks import get_hooks
 print(f"DEBUG: hooks installed = {get_hooks() is not None}")
 ```
 
@@ -205,8 +205,8 @@ Some of these failures also show "No LLM available for AnalyzerSubAgent" errors,
 ### Branch Changes Review
 
 The `history-phases-1-3` branch made NO changes to:
-- `packages/openinference-instrumentation-agent006/` (tracing infrastructure)
-- `src/agent006/runtime/hooks.py` (hook installation/invocation)
+- `packages/openinference-instrumentation-nemo-oo-agents/` (tracing infrastructure)
+- `src/nemo_oo_agents/runtime/hooks.py` (hook installation/invocation)
 
 The branch DID change:
 1. **Event API** - From `EventType(data=ContentData(content=...))` to `EventType(content=...)`
@@ -374,7 +374,7 @@ The following defensive patterns are recommended even though the root cause is u
 
 ### Test Created
 
-Created `packages/openinference-instrumentation-agent006/tests/test_concurrent_spans.py` with tests for concurrent span tracking. However, these tests pass even with the "buggy" code, confirming the issue is subtle and timing-dependent.
+Created `packages/openinference-instrumentation-nemo-oo-agents/tests/test_concurrent_spans.py` with tests for concurrent span tracking. However, these tests pass even with the "buggy" code, confirming the issue is subtle and timing-dependent.
 
 ### Recommendations
 
@@ -385,12 +385,12 @@ Created `packages/openinference-instrumentation-agent006/tests/test_concurrent_s
 
 ### Files Modified
 
-- `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py` - Debug logging (hypothesis tested)
-- `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_jsonl_exporter.py` - Debug logging
-- `src/agent006/runtime/hooks.py` - Debug logging
+- `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py` - Debug logging (hypothesis tested)
+- `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_jsonl_exporter.py` - Debug logging
+- `src/nemo_oo_agents/runtime/hooks.py` - Debug logging
 - `util/eval_pipeline/src/eval_pipeline/pipeline.py` - Debug logging and trace file verification
-- `src/agent006/metaclass.py` - Debug logging
-- `src/agent006/strategies/codeact.py` - Debug logging
+- `src/nemo_oo_agents/metaclass.py` - Debug logging
+- `src/nemo_oo_agents/strategies/codeact.py` - Debug logging
 - `util/eval_pipeline/src/eval_pipeline/agents.py` - Exception tracking
 
 ---
@@ -775,7 +775,7 @@ Need to capture:
 
 - `util/eval_pipeline/src/eval_pipeline/agents.py` - Defensive checks for None method in AgentWrapper
 - `util/eval_pipeline/src/eval_pipeline/evaluator.py` - Checks for method existence on class before instantiation
-- `src/agent006/metaclass.py` - Validation that _create_wrapper never returns None
+- `src/nemo_oo_agents/metaclass.py` - Validation that _create_wrapper never returns None
 
 ### Instrumentation Summary
 
@@ -922,7 +922,7 @@ RouterTestWrapper.process = _make_process_method()
 ```
 File "Cell In[8]", line 32, in process
     validator = self.ValidatorSubAgent()
-File "/Volumes/dev/dev/agent006/src/agent006/agent.py", line 222, in __init__
+File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/agent.py", line 222, in __init__
     self._llm: UnifiedLLM = self._resolve_llm(instance_llm)
 ...
 CRASH: No LLM available for ValidatorSubAgent

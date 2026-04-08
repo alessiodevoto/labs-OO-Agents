@@ -6,14 +6,14 @@
 #
 **Architecture:** Add a simple position-based accessor on `HistoryManager` and update formatter/renderer expr templates to use `self.history[n]` with correct `.data` paths. Update tests that assert expr strings to match the new, valid expressions.
 #
-**Tech Stack:** Python, pytest, `context_blocks` formatters/renderers, `agent006` history runtime.
+**Tech Stack:** Python, pytest, `context_blocks` formatters/renderers, `nemo_oo_agents` history runtime.
 #
 ---
 #
 ### Task 1: Add `HistoryManager.__getitem__` and document usage
 #
 **Files:**
-- Modify: `src/agent006/runtime/history.py`
+- Modify: `src/nemo_oo_agents/runtime/history.py`
 - Test: `tests/test_history_manager.py`
 #
 **Step 1: Write the failing test**
@@ -51,7 +51,7 @@ Expected: PASS
 #
 **Step 6: Commit**
 ```bash
-git add tests/test_history_manager.py src/agent006/runtime/history.py
+git add tests/test_history_manager.py src/nemo_oo_agents/runtime/history.py
 git commit -m "$(cat <<'EOF'
 feat: add HistoryManager indexing accessor
 Allows position-based event access for valid expr references.

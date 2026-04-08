@@ -1,5 +1,5 @@
 [project]
-name = "mcp-agent006"
+name = "mcp-nemo-oo-agents"
 version = "0.1.0"
 description = "MCP (Model Context Protocol) tool integration for Agent006"
 readme = "README.md"

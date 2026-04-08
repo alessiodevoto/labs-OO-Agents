@@ -53,7 +53,7 @@ This document describes how we annotate traces and store them as an eval set for
 
 ## Mechanical Analysis (Pre-pass)
 
-Deterministic checks specific to agent006 that don't require LLM judgment. Designed as a **pluggable system** so checks can be easily added/removed.
+Deterministic checks specific to nemo_oo_agents that don't require LLM judgment. Designed as a **pluggable system** so checks can be easily added/removed.
 
 ### Pluggable Architecture
 
@@ -491,10 +491,10 @@ langfuse.score(
     value=annotation.score,
     comment=annotation.comment,
     metadata={
-        "agent006_source": annotation.source,
-        "agent006_failure_mode": annotation.failure_mode,
-        "agent006_failure_detail": annotation.failure_detail,
-        "agent006_label": annotation.label,
+        "nemo_oo_agents_source": annotation.source,
+        "nemo_oo_agents_failure_mode": annotation.failure_mode,
+        "nemo_oo_agents_failure_detail": annotation.failure_detail,
+        "nemo_oo_agents_label": annotation.label,
     }
 )
 ```

@@ -16,8 +16,8 @@ class TestEnableTracingIdempotency:
 
     def test_no_arg_calls_are_noop_after_first(self):
         """No-arg enable_tracing() is a no-op once tracing is enabled."""
-        import openinference_instrumentation_agent006 as module
-        from openinference_instrumentation_agent006 import enable_tracing, exporters
+        import openinference_instrumentation_nemo_oo_agents as module
+        from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
         with tempfile.TemporaryDirectory() as tmpdir:
             enable_tracing(exporters=[exporters.jsonl(tmpdir)])
@@ -32,7 +32,7 @@ class TestEnableTracingIdempotency:
 
     def test_explicit_exporters_replace_after_enabled(self):
         """Calling with explicit exporters after enabled replaces the old ones."""
-        from openinference_instrumentation_agent006 import enable_tracing, exporters
+        from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
         with (
             tempfile.TemporaryDirectory() as dir1,
@@ -50,7 +50,7 @@ class TestEnableTracingIdempotency:
             with tracer.start_as_current_span("replace_test_span"):
                 pass
 
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
 
@@ -69,9 +69,9 @@ class TestEnableTracingIdempotency:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-        from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
-        from openinference_instrumentation_agent006._session import set_session
-        from openinference_instrumentation_agent006._session_processor import SessionSpanProcessor
+        from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
+        from openinference_instrumentation_nemo_oo_agents._session import set_session
+        from openinference_instrumentation_nemo_oo_agents._session_processor import SessionSpanProcessor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             exporter = OtlpJsonFileExporter(tmpdir)
@@ -103,19 +103,19 @@ class TestFlushAndShutdown:
 
     def test_flush_traces_no_op_when_not_enabled(self):
         """flush_traces() should be safe to call when tracing is not enabled."""
-        from openinference_instrumentation_agent006 import flush_traces
+        from openinference_instrumentation_nemo_oo_agents import flush_traces
 
         flush_traces()  # Should not raise
 
     def test_shutdown_traces_no_op_when_not_enabled(self):
         """shutdown_traces() should be safe to call when tracing is not enabled."""
-        from openinference_instrumentation_agent006 import shutdown_traces
+        from openinference_instrumentation_nemo_oo_agents import shutdown_traces
 
         shutdown_traces()  # Should not raise
 
     def test_flush_traces_after_enable(self):
         """flush_traces() should work after enable_tracing()."""
-        from openinference_instrumentation_agent006 import enable_tracing, exporters, flush_traces
+        from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters, flush_traces
 
         with tempfile.TemporaryDirectory() as tmpdir:
             enable_tracing(exporters=[exporters.jsonl(tmpdir)])

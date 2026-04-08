@@ -2,10 +2,10 @@
 
 from unittest.mock import MagicMock
 
-from agent006 import Agent
-from agent006.events import LLMOutput, Task
-from agent006.runtime.event_manager import EventManager
-from agent006.runtime.events import EventsApi
+from nemo_oo_agents import Agent
+from nemo_oo_agents.events import LLMOutput, Task
+from nemo_oo_agents.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.events import EventsApi
 from unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
@@ -216,7 +216,7 @@ class TestCallIdAutoInjection:
 
     def test_add_auto_injects_call_id_nested_stacks(self):
         """Nested call stacks should inject the innermost call_id."""
-        from agent006.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
+        from nemo_oo_agents.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
 
         manager = EventManager()
 
@@ -246,7 +246,7 @@ class TestCallIdAutoInjection:
 
     def test_add_auto_injects_call_id_on_unrecorded_events(self):
         """call_id should be injected even for record=False events."""
-        from agent006.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
+        from nemo_oo_agents.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
 
         manager = EventManager()
         _push_agent_call_id("call-xyz")
@@ -264,7 +264,7 @@ class TestEventsViewCallId:
 
     def test_events_view_filter_by_call_id(self):
         """Events.filter(call_id=...) delegates to EventManager."""
-        from agent006.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
+        from nemo_oo_agents.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
 
         agent = _TestAgent()
 
@@ -300,8 +300,8 @@ class TestPrefillCallId:
 
     def test_inspect_inputs_prefill_includes_call_signature(self):
         """InspectInputsPrefill generates code with reasoning and call signature."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.prefill import InspectInputsPrefill
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
 
         call = CurrentCall(
             id="test-call-1",
@@ -322,8 +322,8 @@ class TestPrefillCallId:
 
     def test_inspect_inputs_prefill_no_params_returns_none(self):
         """InspectInputsPrefill returns None when no kwargs."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.prefill import InspectInputsPrefill
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
 
         call = CurrentCall(
             id="test-call-2",

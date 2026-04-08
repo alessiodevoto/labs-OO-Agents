@@ -2,7 +2,7 @@
 
 Usage::
 
-    from agent006.storage.markers import nosnapshot
+    from nemo_oo_agents.storage.markers import nosnapshot
 
     class MyAgent(Agent, llm=llm):
         db_conn: Annotated[Connection, nosnapshot]  # skipped during snapshot

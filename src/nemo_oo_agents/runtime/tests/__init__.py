@@ -1,1 +1,1 @@
-"""Tests for agent006 runtime components."""
+"""Tests for nemo_oo_agents runtime components."""

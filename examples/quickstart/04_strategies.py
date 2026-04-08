@@ -7,9 +7,9 @@ uv run python examples/quickstart/04_strategies.py
 import os  # for LLM exec_globals (visible by default)
 from typing import Annotated
 
-from agent006.config import CodeActConfig
-from agent006.tools.web_search_tool import WebSearchTool
-from agent006.util.quickstart import *
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.tools.web_search_tool import WebSearchTool
+from nemo_oo_agents.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):

@@ -326,7 +326,7 @@ class MemoryMonitor:
 
         # Flush traces so the viewer has the full execution up to this point
         try:
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
         except Exception:

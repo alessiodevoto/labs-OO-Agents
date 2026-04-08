@@ -6,8 +6,8 @@ Quick reference for paths, examples, commands, and configuration.
 
 | Path | What |
 |------|------|
-| `src/agent006/` | Framework source |
-| `src/agent006_cli/` | Command line interface source and TUI agent |
+| `src/nemo_oo_agents/` | Framework source |
+| `src/nemo_oo_agents_cli/` | Command line interface source and TUI agent |
 | `packages/` | Workspace packages (UnifiedLLM, AgentDoc, ContextBlocks, etc.) |
 | `examples/` | Example agents (see below for details) |
 | `evaluation/` | Benchmark-agnostic evaluation framework (adapters, metrics) — see its `README.md` and `AGENTS.md` |
@@ -71,41 +71,41 @@ When creating significant designs (architecture, API specs, data models), write 
 
 Agent006 uses Python's standard `logging` module throughout.  Every module
 creates a logger with `logging.getLogger(__name__)`, producing a hierarchy
-rooted at `agent006`.
+rooted at `nemo_oo_agents`.
 
 ### Quick start
 
 ```python
-from agent006 import enable_logging
+from nemo_oo_agents import enable_logging
 
 enable_logging()                                     # everything at DEBUG
 enable_logging(level=logging.INFO)                   # calmer overview
-enable_logging(name="agent006.strategies")           # just strategies
-enable_logging(name="agent006.runtime.actor")        # just the executor
+enable_logging(name="nemo_oo_agents.strategies")           # just strategies
+enable_logging(name="nemo_oo_agents.runtime.actor")        # just the executor
 ```
 
 ### Logger hierarchy
 
 | Logger name | What it covers |
 |-------------|---------------|
-| `agent006` | Root — catches everything below |
-| `agent006.agent` | Agent lifecycle, configuration |
-| `agent006.runtime.actor` | Execution engine, code execution |
-| `agent006.runtime.hooks` | Hook dispatch |
-| `agent006.runtime.code_validator` | Code validation / safety checks |
-| `agent006.strategies.codeact` | CodeAct strategy |
-| `agent006.strategies.predict` | Predict strategy |
-| `agent006.strategies.pure_python` | PurePython strategy |
-| `agent006.strategies.reflexion` | Reflexion strategy |
-| `agent006.tools.*` | Individual tool modules |
-| `agent006.storage.*` | Storage backends |
-| `agent006.library_manager` | Library / skill loading |
-| `agent006.skill_manager` | Skill discovery |
+| `nemo_oo_agents` | Root — catches everything below |
+| `nemo_oo_agents.agent` | Agent lifecycle, configuration |
+| `nemo_oo_agents.runtime.actor` | Execution engine, code execution |
+| `nemo_oo_agents.runtime.hooks` | Hook dispatch |
+| `nemo_oo_agents.runtime.code_validator` | Code validation / safety checks |
+| `nemo_oo_agents.strategies.codeact` | CodeAct strategy |
+| `nemo_oo_agents.strategies.predict` | Predict strategy |
+| `nemo_oo_agents.strategies.pure_python` | PurePython strategy |
+| `nemo_oo_agents.strategies.reflexion` | Reflexion strategy |
+| `nemo_oo_agents.tools.*` | Individual tool modules |
+| `nemo_oo_agents.storage.*` | Storage backends |
+| `nemo_oo_agents.library_manager` | Library / skill loading |
+| `nemo_oo_agents.skill_manager` | Skill discovery |
 
 ### For application developers
 
 `enable_logging()` is a convenience for development.  In production, use
-`logging.config.dictConfig()` as usual — agent006 loggers are standard
+`logging.config.dictConfig()` as usual — nemo_oo_agents loggers are standard
 `logging.Logger` instances.  The library adds only a `NullHandler` to the
 root logger, so no output appears unless you configure handlers.
 

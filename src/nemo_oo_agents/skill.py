@@ -219,7 +219,7 @@ class TextSkill(Skill):
                 f"Script {name!r} not found in {scripts_dir}. Available: {available}"
             )
 
-        from agent006.tools.bash_tool import BashTool
+        from nemo_oo_agents.tools.bash_tool import BashTool
 
         cmd = _build_script_command(script, args, interpreter=interpreter)
         result = await BashTool(working_dir=self._skill_path).run(cmd, timeout=timeout)

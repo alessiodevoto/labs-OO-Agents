@@ -1,7 +1,7 @@
 # DABStep-1871 Phase 7 Analysis: Helper Method NOT Called
 
 **Date**: Mon Jan 19 00:26:30 CET 2026
-**Trace File**: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260119_001942_bedrock-claude-sonnet-4-5-v1_47f46b/traces/dabstep_1871_hard_566937f6.006trace.jsonl`
+**Trace File**: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260119_001942_bedrock-claude-sonnet-4-5-v1_47f46b/traces/dabstep_1871_hard_566937f6.006trace.jsonl`
 **Model**: bedrock-claude-sonnet-4-5-v1
 **Agent**: RSCDABAgentHardOpt8
 

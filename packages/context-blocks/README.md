@@ -13,7 +13,7 @@ Pre-resolved context block rendering for LLM applications.
 ## Installation
 
 ```bash
-# From the agent006 workspace
+# From the nemo_oo_agents workspace
 uv sync
 ```
 

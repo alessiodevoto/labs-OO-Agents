@@ -728,7 +728,7 @@ drawExperimentChart(experiments) {
 
 ```bash
 # Run tests with tier tracking
-cd agent006-src
+cd nemo_oo_agents-src
 uv run python -m eval_pipeline \
     --config tests/capability/config_ci.yaml \
     --runs 3 \

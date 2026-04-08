@@ -29,7 +29,7 @@ The capability test suite has 24 tests covering 9 categories. Many tests have ac
 ### Key Files
 
 - **Strategy (prompts)**: `tests/capability/agents/strategy.py` — overrides `strategy_instructions` and `_build_task_message`
-- **Base strategy**: `src/agent006/strategies/codeact.py` — default CodeAct prompts we inherit from
+- **Base strategy**: `src/nemo_oo_agents/strategies/codeact.py` — default CodeAct prompts we inherit from
 - **Config**: `tests/capability/config.yaml` — test suite definition, scorers, models
 - **Agents**: `tests/capability/agents/*.py` — 22 agent files
 - **Data**: `tests/capability/data/*.jsonl` — test case data
@@ -82,7 +82,7 @@ These are chosen because they're simple, deterministic, and cover the core "does
 
 ### Current Prompt Analysis
 
-The `CapabilityStrategy.strategy_instructions` in `tests/capability/agents/strategy.py` currently duplicates much of the base `CodeActStrategy.strategy_instructions` from `src/agent006/strategies/codeact.py`. The capability strategy should ideally add **nothing** — or only test-specific guidance — on top of the base.
+The `CapabilityStrategy.strategy_instructions` in `tests/capability/agents/strategy.py` currently duplicates much of the base `CodeActStrategy.strategy_instructions` from `src/nemo_oo_agents/strategies/codeact.py`. The capability strategy should ideally add **nothing** — or only test-specific guidance — on top of the base.
 
 Key areas to minimize:
 

@@ -10,11 +10,11 @@ kill -USR2 <pid>
 
 Output is written to:
 - stderr (terminal)
-- `~/.cache/agent006/debug_dump_<pid>.txt`
+- `~/.cache/nemo_oo_agents/debug_dump_<pid>.txt`
 
 ## Setup
 
-**Automatic** - installed when you `import agent006`. No setup needed.
+**Automatic** - installed when you `import nemo_oo_agents`. No setup needed.
 
 ## What You Get
 
@@ -39,7 +39,7 @@ ps aux | grep python | grep agent
 ============================================================
 DEBUG DUMP at 2026-01-16T14:30:00.123456
 Signal: 17 (SIGUSR2)
-Dump file: /Users/you/.cache/agent006/debug_dump_12345.txt
+Dump file: /Users/you/.cache/nemo_oo_agents/debug_dump_12345.txt
 ============================================================
 
 ⚠️  LIKELY STUCK IN LLM CALL
@@ -51,7 +51,7 @@ Registered pending calls: 1
 
 CURRENT TRACEBACK:
 ----------------------------------------
-  File "src/agent006/runtime/actor.py", line 642
+  File "src/nemo_oo_agents/runtime/actor.py", line 642
     result_value = await asyncio.wait_for(coro, timeout=timeout)
   ...
   File ".../litellm/main.py", line 1234, in acompletion

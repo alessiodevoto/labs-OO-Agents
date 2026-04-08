@@ -18,7 +18,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     Error,
     Feedback,
     LLMOutput,
@@ -27,8 +27,8 @@ from agent006.events import (
     Reasoning,
     Task,
 )
-from agent006.runtime.event_query import EventQuery
-from agent006.strategies.codeact import CodeActStrategy
+from nemo_oo_agents.runtime.event_query import EventQuery
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from context_blocks import ResolvedBlock, ToolCallEvent
 from context_blocks.formatter import OpenAIProviderFormatter
 from context_blocks.models import Role
@@ -36,8 +36,8 @@ from context_blocks.scoped import ScopedContext
 from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, safe_pformat
 
 if TYPE_CHECKING:
-    from agent006.strategies.base import RuntimeServices
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.strategies.base import RuntimeServices
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ class CodeActLiteStrategy(CodeActStrategy):
     3. Tool results inlined (PythonOutput merged into tool response)
 
     Usage:
-        from agent006.strategies.codeact_lite import CodeActLiteStrategy
+        from nemo_oo_agents.strategies.codeact_lite import CodeActLiteStrategy
 
         @strategy(CodeActLiteStrategy())
         async def my_method(self, x: str) -> str:
@@ -234,7 +234,7 @@ class CodeActLiteStrategy(CodeActStrategy):
         EventQuery.current_call() because CodeActStrategy.execute() mutates
         call.id to a tag number, which breaks the "current" resolution.
         """
-        from agent006.runtime.context_vars import _get_agent_call_stack
+        from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack
 
         # Capture the call_id from the agent call stack BEFORE super().execute()
         # mutates call.id. Events are tagged with this value via the call stack,

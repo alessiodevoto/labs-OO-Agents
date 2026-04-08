@@ -10,11 +10,11 @@ import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
-from agent006.ellipsis_detection import has_ellipsis_body
+from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 from context_blocks import ScopedContext
 
 if TYPE_CHECKING:
-    from agent006.strategies import GenerationStrategy as GenerationStrategyABC
+    from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC
     from unifiedllm import UnifiedLLM
 
 P = ParamSpec("P")
@@ -40,7 +40,7 @@ def strategy(
         llm: Optional LLM override for this method
 
     Examples:
-        from agent006 import EventQuery
+        from nemo_oo_agents import EventQuery
         from context_blocks import ScopedContext
 
         @strategy(CodeActStrategy(), ScopedContext(context={"focus": "security"}))
@@ -91,11 +91,11 @@ def strategy(
             if strategy_instance is not None:
                 strat = strategy_instance
             else:
-                from agent006.strategies import get_default_strategy
+                from nemo_oo_agents.strategies import get_default_strategy
 
                 strat = get_default_strategy()
 
-        from agent006.runtime.method_wrapper import create_agent_method_wrapper
+        from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
 
         wrapper = create_agent_method_wrapper(
             func,

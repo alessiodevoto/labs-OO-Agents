@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The current capability test suite has **14 tests** that validate core agent006 functionality but has significant gaps in measuring what makes agent006 valuable. This document consolidates all findings and defines actionable work packages.
+The current capability test suite has **14 tests** that validate core nemo_oo_agents functionality but has significant gaps in measuring what makes nemo_oo_agents valuable. This document consolidates all findings and defines actionable work packages.
 
 ### Key Gaps Identified
 

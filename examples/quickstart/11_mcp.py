@@ -5,11 +5,11 @@ uv run python examples/quickstart/11_mcp.py
 """
 
 try:
-    from mcp_agent006 import MCPManager
+    from mcp_nemo_oo_agents import MCPManager
 except ImportError as e:
-    raise ImportError("mcp-agent006 not installed. uv sync --extra mcp") from e
+    raise ImportError("mcp-nemo-oo-agents not installed. uv sync --extra mcp") from e
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class ConfluenceAgent(Agent, llm=llm):

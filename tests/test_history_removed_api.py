@@ -1,6 +1,6 @@
 """Test that legacy attributes have been removed and new API exists."""
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)

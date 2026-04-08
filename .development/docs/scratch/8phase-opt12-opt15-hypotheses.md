@@ -204,7 +204,7 @@ All 4 variants inherit these critical fixes:
 ## How to Run
 
 ```bash
-cd /Users/rcabral/agent006/experiments/evaluation-ablations
+cd /Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations
 source ../../.venv/bin/activate
 
 # Test opt12
@@ -241,7 +241,7 @@ python run_ablation.py --agent rsc_dab_agent_hard_opt15 --benchmark dabstep --li
 
 ## Files Created
 
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt12.py` (24K)
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt13.py` (25K)
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt14.py` (24K)
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt15.py` (24K)
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt12.py` (24K)
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt13.py` (25K)
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt14.py` (24K)
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt15.py` (24K)

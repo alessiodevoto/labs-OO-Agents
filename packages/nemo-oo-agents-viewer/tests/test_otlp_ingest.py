@@ -44,8 +44,8 @@ async def http_client(mock_store, tmp_path):
     The lifespan is NOT triggered (httpx limitation), so no worker task runs.
     Suitable for testing the endpoint handler in isolation.
     """
-    with patch("agent006_viewer.main.otlp_store", mock_store):
-        from agent006_viewer.main import app
+    with patch("nemo_oo_agents_viewer.main.otlp_store", mock_store):
+        from nemo_oo_agents_viewer.main import app
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             yield c
@@ -77,7 +77,7 @@ class TestOtlpIngestEndpoint:
 @pytest.fixture(autouse=True, scope="class")
 def _fresh_write_executor():
     """Ensure _write_executor is alive — a prior TestClient shutdown may have killed it."""
-    import agent006_viewer.main as main_mod
+    import nemo_oo_agents_viewer.main as main_mod
 
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sqlite-writer-test")
     original = main_mod._write_executor
@@ -89,14 +89,14 @@ def _fresh_write_executor():
 
 class TestIngestWorker:
     async def test_worker_calls_ingest_batch_write_bytes_with_queued_body(self, mock_store):
-        from agent006_viewer.main import _ingest_worker
+        from nemo_oo_agents_viewer.main import _ingest_worker
 
         queue: asyncio.Queue = asyncio.Queue()
         raw = b'{"resourceSpans": [{"spans": [{"spanId": "abc"}]}]}'
         await queue.put(raw)
 
-        with patch("agent006_viewer.main._ingest_queue", queue):
-            with patch("agent006_viewer.main.otlp_store", mock_store):
+        with patch("nemo_oo_agents_viewer.main._ingest_queue", queue):
+            with patch("nemo_oo_agents_viewer.main.otlp_store", mock_store):
                 task = asyncio.create_task(_ingest_worker())
                 await asyncio.sleep(0.1)
                 task.cancel()
@@ -106,15 +106,15 @@ class TestIngestWorker:
 
     async def test_worker_batches_multiple_bodies(self, mock_store):
         """All payloads already in the queue are batched into one transaction."""
-        from agent006_viewer.main import _ingest_worker
+        from nemo_oo_agents_viewer.main import _ingest_worker
 
         queue: asyncio.Queue = asyncio.Queue()
         payloads = [_json.dumps({"resourceSpans": [], "seq": i}).encode() for i in range(4)]
         for p in payloads:
             await queue.put(p)
 
-        with patch("agent006_viewer.main._ingest_queue", queue):
-            with patch("agent006_viewer.main.otlp_store", mock_store):
+        with patch("nemo_oo_agents_viewer.main._ingest_queue", queue):
+            with patch("nemo_oo_agents_viewer.main.otlp_store", mock_store):
                 task = asyncio.create_task(_ingest_worker())
                 await asyncio.sleep(0.1)
                 task.cancel()
@@ -124,7 +124,7 @@ class TestIngestWorker:
 
     async def test_worker_survives_ingest_exception(self, mock_store):
         """An exception from ingest_batch_write_bytes() must not kill the worker."""
-        from agent006_viewer.main import _ingest_worker
+        from nemo_oo_agents_viewer.main import _ingest_worker
 
         queue: asyncio.Queue = asyncio.Queue()
 
@@ -136,8 +136,8 @@ class TestIngestWorker:
 
         await queue.put(bad_payload)
 
-        with patch("agent006_viewer.main._ingest_queue", queue):
-            with patch("agent006_viewer.main.otlp_store", mock_store):
+        with patch("nemo_oo_agents_viewer.main._ingest_queue", queue):
+            with patch("nemo_oo_agents_viewer.main.otlp_store", mock_store):
                 task = asyncio.create_task(_ingest_worker())
                 await asyncio.sleep(0.1)
                 await queue.put(good_payload)
@@ -172,7 +172,7 @@ class TestEventLoopIsolation:
 
     async def test_post_not_blocked_by_slow_get(self, mock_store):
         """POST /v1/traces must return quickly while a slow GET is in-flight."""
-        from agent006_viewer.main import app
+        from nemo_oo_agents_viewer.main import app
 
         # Simulate a heavy SQLite read (2 s) in the evaluations-tab endpoint.
         def slow_list_sessions(*args, **kwargs):
@@ -181,8 +181,8 @@ class TestEventLoopIsolation:
 
         mock_store.list_sessions.side_effect = slow_list_sessions
 
-        with patch("agent006_viewer.main.otlp_store", mock_store):
-            with patch("agent006_viewer.eval_routes.otlp_store", mock_store):
+        with patch("nemo_oo_agents_viewer.main.otlp_store", mock_store):
+            with patch("nemo_oo_agents_viewer.eval_routes.otlp_store", mock_store):
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
                 ) as client:

@@ -4,22 +4,22 @@
 
 **Goal:** Capture the rendered system prompt / context blocks in a dedicated OTel span on every LLM call, so that `detect_context_diffs` can reliably detect context changes even when the rolling window truncates the system message from the `acompletion` span.
 
-**Architecture:** Add a new `on_llm_messages_built` hook to the agent006 hook protocol. Call it from `generate()` in `actor.py` after building messages. In `_hooks_impl.py`, implement it to create a short-lived `context_snapshot` child span with the system content. Update `trace_converter.py` to prefer these spans when detecting context diffs, falling back to the old approach for older traces.
+**Architecture:** Add a new `on_llm_messages_built` hook to the nemo_oo_agents hook protocol. Call it from `generate()` in `actor.py` after building messages. In `_hooks_impl.py`, implement it to create a short-lived `context_snapshot` child span with the system content. Update `trace_converter.py` to prefer these spans when detecting context diffs, falling back to the old approach for older traces.
 
 **Background:** LiteLLM's OTel instrumentation faithfully records only the messages that were actually sent to the LLM. When the rolling window is active, the system message (index 0) is not included in the messages array, so it never appears in the `acompletion` span. The OTel SDK's 128-attribute cap compounds this — it silently drops later attributes. The `context_snapshot` span is written by our own hook before the LLM call, so it always has the full system content regardless of windowing.
 
-**Tech Stack:** Python, OpenTelemetry SDK (`opentelemetry-sdk`), agent006 hooks protocol, `trace_converter.py` (sft_datagen package)
+**Tech Stack:** Python, OpenTelemetry SDK (`opentelemetry-sdk`), nemo_oo_agents hooks protocol, `trace_converter.py` (sft_datagen package)
 
 ---
 
 ### Task 1: Add `on_llm_messages_built` to the hooks protocol
 
 **Files:**
-- Modify: `src/agent006/runtime/hooks.py:185-233`
+- Modify: `src/nemo_oo_agents/runtime/hooks.py:185-233`
 
 **Step 1: Write the failing test**
 
-In `src/agent006/runtime/test_hooks_protocol.py` (if it exists) or by checking the protocol is runtime-checkable. Actually, protocol compliance is checked at runtime — no new test needed here. Skip to implementation.
+In `src/nemo_oo_agents/runtime/test_hooks_protocol.py` (if it exists) or by checking the protocol is runtime-checkable. Actually, protocol compliance is checked at runtime — no new test needed here. Skip to implementation.
 
 **Step 2: Add the hook method to `InstrumentationHooks`**
 
@@ -56,7 +56,7 @@ Also update `__all__` in `hooks.py` if it lists hook method names (it doesn't cu
 ```bash
 cd /Volumes/dev/dev/cleanup
 source .venv/bin/activate
-python -c "from agent006.runtime.hooks import InstrumentationHooks; print('OK')"
+python -c "from nemo_oo_agents.runtime.hooks import InstrumentationHooks; print('OK')"
 ```
 
 Expected: `OK`
@@ -64,7 +64,7 @@ Expected: `OK`
 **Step 4: Commit**
 
 ```bash
-git add src/agent006/runtime/hooks.py
+git add src/nemo_oo_agents/runtime/hooks.py
 git commit -m "feat(hooks): add on_llm_messages_built hook to InstrumentationHooks protocol"
 ```
 
@@ -73,7 +73,7 @@ git commit -m "feat(hooks): add on_llm_messages_built hook to InstrumentationHoo
 ### Task 2: Call the hook from `generate()` in `actor.py`
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:533-551`
+- Modify: `src/nemo_oo_agents/runtime/actor.py:533-551`
 
 **Step 1: Locate the call site**
 
@@ -114,7 +114,7 @@ Expected: same pass count as before (hook is a no-op when no hooks are installed
 **Step 4: Commit**
 
 ```bash
-git add src/agent006/runtime/actor.py
+git add src/nemo_oo_agents/runtime/actor.py
 git commit -m "feat(actor): call on_llm_messages_built hook after building LLM messages"
 ```
 
@@ -123,15 +123,15 @@ git commit -m "feat(actor): call on_llm_messages_built hook after building LLM m
 ### Task 3: Implement the hook in `_hooks_impl.py`
 
 **Files:**
-- Modify: `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py`
+- Modify: `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py`
 
 **Step 1: Write the failing test**
 
-In `packages/openinference-instrumentation-agent006/tests/`, add a test for `on_llm_messages_built`. Check the existing test patterns (e.g., `test_tracing_integration.py`) to understand how spans are captured in tests.
+In `packages/openinference-instrumentation-nemo-oo-agents/tests/`, add a test for `on_llm_messages_built`. Check the existing test patterns (e.g., `test_tracing_integration.py`) to understand how spans are captured in tests.
 
 The test should verify:
 - A `context_snapshot` span is created when messages include a system message
-- The span has `agent006.context_blocks` set to the system message content
+- The span has `nemo_oo_agents.context_blocks` set to the system message content
 - No span is created when there is no system message
 
 ```python
@@ -144,7 +144,7 @@ def test_on_llm_messages_built_creates_context_snapshot_span():
     hooks.on_llm_messages_built(agent=mock_agent, messages=messages)
     # Verify a span named "context_snapshot" was created with the right attribute
     span = captured_spans["context_snapshot"]
-    assert span.attributes["agent006.context_blocks"] == messages[0]["content"]
+    assert span.attributes["nemo_oo_agents.context_blocks"] == messages[0]["content"]
 
 def test_on_llm_messages_built_no_span_without_system_message():
     hooks = OpenInferenceHooks(tracer=mock_tracer)
@@ -157,7 +157,7 @@ def test_on_llm_messages_built_no_span_without_system_message():
 **Step 2: Run test to verify it fails**
 
 ```bash
-cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-agent006
+cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-nemo-oo-agents
 /Volumes/dev/dev/cleanup/.venv/bin/python -m pytest tests/ -k "context_snapshot" -v
 ```
 
@@ -190,7 +190,7 @@ def on_llm_messages_built(
         return
 
     with self.tracer.start_as_current_span("context_snapshot") as span:
-        span.set_attribute("agent006.context_blocks", system_content)
+        span.set_attribute("nemo_oo_agents.context_blocks", system_content)
 ```
 
 The `with` block ends immediately, so the span is created and closed in-place. It becomes a child of whatever span is currently active (the agent method span).
@@ -198,7 +198,7 @@ The `with` block ends immediately, so the span is created and closed in-place. I
 **Step 4: Run tests to verify they pass**
 
 ```bash
-cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-agent006
+cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-nemo-oo-agents
 /Volumes/dev/dev/cleanup/.venv/bin/python -m pytest tests/ -q
 ```
 
@@ -207,8 +207,8 @@ Expected: all pass.
 **Step 5: Commit**
 
 ```bash
-git add packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py
-git add packages/openinference-instrumentation-agent006/tests/
+git add packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py
+git add packages/openinference-instrumentation-nemo-oo-agents/tests/
 git commit -m "feat(instrumentation): add context_snapshot span in on_llm_messages_built hook"
 ```
 
@@ -222,19 +222,19 @@ git commit -m "feat(instrumentation): add context_snapshot span in on_llm_messag
 
 **Background:** `detect_context_diffs` currently reads the system message from `acompletion` spans via `_get_system_content`. For old traces (no `context_snapshot` spans) we keep the existing fallback. For new traces, use `context_snapshot` spans which always have the content.
 
-**Step 1: Update `_get_system_content` to check `agent006.context_blocks` first**
+**Step 1: Update `_get_system_content` to check `nemo_oo_agents.context_blocks` first**
 
 ```python
 def _get_system_content(attrs: dict[str, Any]) -> str:
     """Return the system message content from a span.
 
-    Checks agent006.context_blocks first (set by the context_snapshot hook,
+    Checks nemo_oo_agents.context_blocks first (set by the context_snapshot hook,
     always reliable). Falls back to scanning llm.input_messages for older
     traces or spans that lack the hook attribute.
     """
     # Prefer the dedicated context_blocks attribute (context_snapshot spans
     # and any acompletion spans that were enhanced by the hook)
-    if ctx := attrs.get("agent006.context_blocks"):
+    if ctx := attrs.get("nemo_oo_agents.context_blocks"):
         return ctx
     # Fallback: find the system message in input_messages (may be absent
     # for rolling-window spans that dropped message index 0)
@@ -250,7 +250,7 @@ def _get_system_content(attrs: dict[str, Any]) -> str:
 ```python
 def test_get_system_content_prefers_context_blocks_attr():
     attrs = {
-        "agent006.context_blocks": "from hook",
+        "nemo_oo_agents.context_blocks": "from hook",
         "llm.input_messages.0.message.role": "system",
         "llm.input_messages.0.message.content": "from messages",
     }
@@ -311,12 +311,12 @@ def test_detect_context_diffs_uses_context_snapshot_spans():
     # Simulate: two context_snapshot spans with changing content
     snapshot_spans = [
         {"name": "context_snapshot", "attributes": {
-            "agent006.context_blocks": (
+            "nemo_oo_agents.context_blocks": (
                 "<info expr=\"x\">\nold value\n</info>"
             ),
         }},
         {"name": "context_snapshot", "attributes": {
-            "agent006.context_blocks": (
+            "nemo_oo_agents.context_blocks": (
                 "<info expr=\"x\">\nnew value\n</info>"
             ),
         }},
@@ -356,7 +356,7 @@ After all tasks:
 cd /Volumes/dev/dev/cleanup/experiments/sft_datagen
 /Volumes/dev/dev/cleanup/.venv/bin/python -m pytest tests/ -v
 
-cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-agent006
+cd /Volumes/dev/dev/cleanup/packages/openinference-instrumentation-nemo-oo-agents
 /Volumes/dev/dev/cleanup/.venv/bin/python -m pytest tests/ -v
 ```
 

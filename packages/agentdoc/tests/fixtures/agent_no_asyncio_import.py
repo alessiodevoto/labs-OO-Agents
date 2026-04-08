@@ -1,6 +1,6 @@
 """Test agent without any asyncio imports."""
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

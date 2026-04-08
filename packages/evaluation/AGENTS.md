@@ -13,7 +13,7 @@ source ../../.venv/bin/activate
 # Direct LLM baseline (no agent)
 python run_ablation.py --provider nvidia_internal --model aws/anthropic/bedrock-claude-sonnet-4-5-v1 --benchmark bfcl --limit 10
 
-# With an agent006 agent
+# With an nemo_oo_agents agent
 python run_ablation.py --agent-file agents/dabstep_agent008.py --benchmark dabstep --limit 5
 
 # DABStep (always use Claude via nvidia_internal)
@@ -40,7 +40,7 @@ evaluation/
 ├── metrics.py           # MetricsCalculator
 ├── concurrency.py       # Parallel execution (async + subprocess)
 ├── trace_analyzer.py    # Failure pattern extraction from traces
-├── agent_adapter.py     # Bridges agent006 agents with the eval framework
+├── agent_adapter.py     # Bridges nemo_oo_agents agents with the eval framework
 ├── environments/        # Interactive execution environments
 │   ├── tau_bench.py     # TAU-bench (Docker, simulated user)
 │   ├── intercode.py     # InterCode (Docker SQL/Bash)
@@ -69,8 +69,8 @@ Agent files go in `experiments/evaluation-ablations/agents/`:
 
 ```python
 # agents/my_agent.py
-from agent006 import Agent, strategy
-from agent006.strategies import CodeActStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import CodeActStrategy
 
 class MyBenchmarkAgent(Agent, llm=llm):
     @strategy(CodeActStrategy(max_iterations=30))

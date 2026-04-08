@@ -13,7 +13,7 @@ The prompt-optimization library has been updated to be compatible with the Phase
 
 **Old API (string-based)**:
 ```python
-from agent006 import EPHEMERAL, PERSISTENT, PURE_PYTHON, STRUCTURED_OUTPUT, Agent, agent, plan
+from nemo_oo_agents import EPHEMERAL, PERSISTENT, PURE_PYTHON, STRUCTURED_OUTPUT, Agent, agent, plan
 
 @plan(generation_strategy=PURE_PYTHON, method_lifetime=EPHEMERAL)
 async def my_method(self, x: int):
@@ -22,8 +22,8 @@ async def my_method(self, x: int):
 
 **New API (instance-based)**:
 ```python
-from agent006 import Agent, agent, plan
-from agent006.strategies import PurePythonStrategy, StructuredOutputStrategy
+from nemo_oo_agents import Agent, agent, plan
+from nemo_oo_agents.strategies import PurePythonStrategy, StructuredOutputStrategy
 
 @plan(strategy=PurePythonStrategy())
 async def my_method(self, x: int):

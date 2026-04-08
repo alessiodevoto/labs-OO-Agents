@@ -87,7 +87,7 @@ async def stateless_query(self) -> str:
 These are the sensible defaults that work for most agents:
 
 ```python
-# Internal: agent006/runtime/defaults.py
+# Internal: nemo_oo_agents/runtime/defaults.py
 
 DEFAULT_CONTEXT_BLOCKS = {
     "agent_description": Block(
@@ -129,7 +129,7 @@ DEFAULT_EVENT_BLOCKS = {
 ## 2. @agent Decorator — Class-Level Configuration
 
 ```python
-from agent006 import Agent, agent, Block
+from nemo_oo_agents import Agent, agent, Block
 
 @agent(
     llm=client,
@@ -322,8 +322,8 @@ async def inner_method(self) -> str:
 For generated code to reconfigure blocks mid-execution:
 
 ```python
-from agent006.util import context
-from agent006 import scoped_blocks, Block
+from nemo_oo_agents.util import context
+from nemo_oo_agents import scoped_blocks, Block
 
 # === Permanent changes (rest of this call) ===
 
@@ -367,7 +367,7 @@ with scoped_blocks({"extra": Block(expr="self.extra_context")}):
 ## Complete Example
 
 ```python
-from agent006 import Agent, agent, plan, Block
+from nemo_oo_agents import Agent, agent, plan, Block
 
 @agent(
     llm=client,
@@ -680,11 +680,11 @@ method._plan_event_blocks: dict[str, Block | None] | None
 
 ---
 
-## Library Boundary: context-blocks vs agent006
+## Library Boundary: context-blocks vs nemo_oo_agents
 
 ### context-blocks (generic library)
 
-Reusable across any LLM application. No agent006 dependencies.
+Reusable across any LLM application. No nemo_oo_agents dependencies.
 
 | Component | Description |
 |-----------|-------------|
@@ -699,14 +699,14 @@ Reusable across any LLM application. No agent006 dependencies.
 | `BlockEvaluationError` | Error when expr returns None |
 | `ProtectedBlockError` | Error when modifying protected block |
 
-### agent006 (framework-specific)
+### nemo_oo_agents (framework-specific)
 
 Uses context-blocks, adds agent/decorator integration.
 
 | Component | Description |
 |-----------|-------------|
-| `DEFAULT_CONTEXT_BLOCKS` | agent006's sensible defaults |
-| `DEFAULT_EVENT_BLOCKS` | agent006's event defaults |
+| `DEFAULT_CONTEXT_BLOCKS` | nemo_oo_agents's sensible defaults |
+| `DEFAULT_EVENT_BLOCKS` | nemo_oo_agents's event defaults |
 | `@agent(blocks=...)` | Decorator integration |
 | `@plan(blocks=...)` | Method-level integration |
 | `Agent.__init__(blocks=...)` | Constructor integration |
@@ -723,7 +723,7 @@ Uses context-blocks, adds agent/decorator integration.
 - How blocks are configured on classes/methods
 - How to get the "current" BlockManager (that's framework's job)
 
-**agent006 provides the glue**:
+**nemo_oo_agents provides the glue**:
 - Stores BlockManager on agent instance
 - Context variable to access current agent
 - Thin wrappers (`scoped_blocks()`, `context.update_block()`) that locate the right BlockManager

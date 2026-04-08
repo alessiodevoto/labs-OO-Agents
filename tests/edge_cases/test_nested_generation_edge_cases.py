@@ -10,8 +10,8 @@ import asyncio  # noqa: F401 - Required by generated exploration code
 
 import pytest
 
-from agent006 import Agent, strategy
-from agent006.strategies import PurePythonStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 

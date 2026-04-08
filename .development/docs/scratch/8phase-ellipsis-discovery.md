@@ -7,7 +7,7 @@
 
 **The `@strategy(CodeActStrategy())` decorator requires the method body to contain ONLY an ellipsis (`...`) after the docstring.**
 
-From `/Users/rcabral/agent006/src/agent006/decorators.py` lines 64-79:
+From `/Users/rcabral/nemo_oo_agents/src/nemo_oo_agents/decorators.py` lines 64-79:
 
 ```python
 def is_ellipsis_body(func):
@@ -230,5 +230,5 @@ class RSCDABAgentHardOpt8(Agent):
 - **Discovery document**: `docs/8phase-ellipsis-discovery.md` (this file)
 - **Investigation trace**: Agent exploration findings
 - **Source code**:
-  - `/Users/rcabral/agent006/src/agent006/decorators.py` (lines 30-122)
-  - `/Users/rcabral/agent006/src/agent006/runtime/actor.py` (lines 1322-1364)
+  - `/Users/rcabral/nemo_oo_agents/src/nemo_oo_agents/decorators.py` (lines 30-122)
+  - `/Users/rcabral/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py` (lines 1322-1364)

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from litellm.types.utils import Choices
 from openinference.semconv.trace import OpenInferenceMimeTypeValues, SpanAttributes
 
-from openinference_instrumentation_agent006._litellm_patch import (
+from openinference_instrumentation_nemo_oo_agents._litellm_patch import (
     _patched_set_output_message_value,
     apply_litellm_patch,
 )

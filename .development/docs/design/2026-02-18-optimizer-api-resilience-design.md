@@ -17,7 +17,7 @@ The E2E optimizer fails on transient API issues:
 
 ### Why UnifiedLLM?
 - ✅ Already has retry logic implemented and tested
-- ✅ Used across agent006 codebase
+- ✅ Used across nemo_oo_agents codebase
 - ✅ Handles transient errors (429, 500, timeouts, connections)
 - ✅ Exponential backoff with configurable parameters
 - ✅ Observable via logging and callbacks

@@ -231,7 +231,7 @@ async def execute_code(...) -> ExecutionResult:
 
 ### Changes Required
 
-#### 1. `src/agent006/runtime/actor.py`
+#### 1. `src/nemo_oo_agents/runtime/actor.py`
 
 - Add `_stderr_buffer_var` contextvar
 - Create `ContextVarStream` class that wraps streams
@@ -239,17 +239,17 @@ async def execute_code(...) -> ExecutionResult:
 - Update `execute_code()` to set both buffers
 - Keep task-local print as optimization (avoids wrapper overhead for print())
 
-#### 2. `src/agent006/events.py`
+#### 2. `src/nemo_oo_agents/events.py`
 
 - Add `stderr: str = ""` field to `ExecutionResult`
 
-#### 3. `src/agent006/strategies/codeact.py`
+#### 3. `src/nemo_oo_agents/strategies/codeact.py`
 
 - Update `_format_tool_result()` to include stderr
 - Include partial stdout/stderr on error
 - Use consistent naming: "Stdout:" and "Stderr:" (or combined)
 
-#### 4. `src/agent006/strategies/pure_python.py`
+#### 4. `src/nemo_oo_agents/strategies/pure_python.py`
 
 - Update `_send_execution_error()` to include partial stdout/stderr
 - Update `_send_continuation_feedback()` with stderr if present

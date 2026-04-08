@@ -1,7 +1,7 @@
 # Critical Review: llm-inspect Package Proposal
 
 **Date:** December 8, 2025
-**Reviewer:** Analysis of proposal against agent006 codebase
+**Reviewer:** Analysis of proposal against nemo_oo_agents codebase
 
 ---
 
@@ -9,12 +9,12 @@
 
 **Recommendation:** ✅ **Strongly Recommended with Minor Modifications**
 
-The proposal is well-designed, feasible, and would significantly improve agent006's architecture. The extraction of introspection capabilities into a standalone package is architecturally sound and aligns with the project's goal of modularity.
+The proposal is well-designed, feasible, and would significantly improve nemo_oo_agents's architecture. The extraction of introspection capabilities into a standalone package is architecturally sound and aligns with the project's goal of modularity.
 
 **Key Strengths:**
 - Excellent API design: composable, stateless, expression-compatible
-- Clean separation of concerns from agent006 framework
-- Reduces 595 lines to ~20 lines in agent006
+- Clean separation of concerns from nemo_oo_agents framework
+- Reduces 595 lines to ~20 lines in nemo_oo_agents
 - Magic method protocol is elegant and extensible
 - Zero dependencies for core functionality
 
@@ -22,7 +22,7 @@ The proposal is well-designed, feasible, and would significantly improve agent00
 - Package name is misleading (see naming suggestions below)
 - Missing some functionality currently in `doc.py` (child agents, imports)
 - Need clarity on where `agent_doc()` helper lives
-- Configuration defaults for agent006 need definition
+- Configuration defaults for nemo_oo_agents need definition
 
 **Implementation Complexity:** Medium (4-6 weeks for Phase 1-3)
 
@@ -146,14 +146,14 @@ _SYSTEM_INTERNALS = frozenset({
 
 The proposal correctly moves this to **configuration**.
 
-### 4. Integration with agent006 ⚠️ Needs Clarification
+### 4. Integration with nemo_oo_agents ⚠️ Needs Clarification
 
 **The proposal says:**
 
 > Files to modify:
 > - Remove `self.doc = Doc(self)` from `__init__`
 > - Change `DEFAULT_CONTEXT_BLOCKS["python_tools"].expr` to `agent_doc(self)`
-> - Create `src/agent006/util/inspect_config.py` (~20 lines)
+> - Create `src/nemo_oo_agents/util/inspect_config.py` (~20 lines)
 
 **Issues to address:**
 
@@ -161,7 +161,7 @@ The proposal correctly moves this to **configuration**.
 
 Proposal shows:
 ```python
-# In agent006/util/inspect_config.py
+# In nemo_oo_agents/util/inspect_config.py
 from agentdoc import DocConfig, doc
 
 AGENT_DOC_CONFIG = DocConfig(...)
@@ -179,10 +179,10 @@ def agent_doc(agent, **kwargs):
 2. Make `agent_doc` helper available: `agent_doc(self)`
 3. Use context-blocks' eval namespace injection
 
-**Recommendation:** Import `agentdoc` functions into `agent006/util/__init__.py` for easy access:
+**Recommendation:** Import `agentdoc` functions into `nemo_oo_agents/util/__init__.py` for easy access:
 
 ```python
-# src/agent006/util/__init__.py
+# src/nemo_oo_agents/util/__init__.py
 from agentdoc import doc, brief, methods, variables, schema, imports
 from .inspect_config import AGENT_DOC_CONFIG
 
@@ -214,7 +214,7 @@ The proposal doesn't address migration path for:
 **Recommendation:** Add to P1:
 ```python
 def child_agents(obj) -> str:
-    """List Agent subclass attributes (for agent006 integration)."""
+    """List Agent subclass attributes (for nemo_oo_agents integration)."""
 ```
 
 Or: Make `methods()` and `variables()` smart enough to detect and group Agent subclasses.
@@ -223,7 +223,7 @@ Or: Make `methods()` and `variables()` smart enough to detect and group Agent su
 
 **Current code** (lines 557-594 in `doc.py`):
 - `_render_imports()` - categorizes module imports into Modules/Classes/Functions
-- Filters out `agent006` internals
+- Filters out `nemo_oo_agents` internals
 
 **In proposal:** Listed as P0 function ✅
 ```python
@@ -371,19 +371,19 @@ assert "['a', 'b', 'c']" in output
 - Need to extract and refactor formatting logic from `doc.py`
 - Protocol precedence needs clear implementation
 
-### Phase 2: agent006 Integration
+### Phase 2: nemo_oo_agents Integration
 
 **Effort:** 3-5 days
 
 **Tasks:**
-1. Add `agentdoc` to agent006 dependencies (pyproject.toml) ✅ 5 minutes
-2. Import `doc`, `brief`, `methods`, `variables` in agent006 namespace ✅ 30 minutes
+1. Add `agentdoc` to nemo_oo_agents dependencies (pyproject.toml) ✅ 5 minutes
+2. Import `doc`, `brief`, `methods`, `variables` in nemo_oo_agents namespace ✅ 30 minutes
 3. Make functions available in executor's eval namespace ⚠️ 1 day
 4. Implement `Agent.__doc_full__()` with child agent rendering ⚠️ 1-2 days
 5. Create `AGENT_DOC_CONFIG` constant with hidden names ✅ 30 minutes
 6. Update `DEFAULT_CONTEXT_BLOCKS["python_tools"]` to use `doc(self)` ✅ 5 minutes
 7. Update strategy templates (pure_python.py) ✅ 15 minutes
-8. Delete `src/agent006/util/doc.py` (595 lines removed!) ✅ 5 minutes
+8. Delete `src/nemo_oo_agents/util/doc.py` (595 lines removed!) ✅ 5 minutes
 9. Rewrite tests in `tests/utils/test_doc_utility.py` ⚠️ 1-2 days
 10. End-to-end testing with existing agents ⚠️ 1 day
 
@@ -417,7 +417,7 @@ assert "['a', 'b', 'c']" in output
 
 | Aspect | Current (`doc.py`) | Proposed (`agentdoc`) |
 |--------|-------------------|----------------------|
-| **Lines of code in agent006** | 595 lines | ~20 lines (config) |
+| **Lines of code in nemo_oo_agents** | 595 lines | ~20 lines (config) |
 | **API complexity** | Stateful (expand/collapse) | Stateless (composable) |
 | **Scope** | Agent-specific | Works on any object |
 | **Dependencies** | None (internal) | External package |
@@ -448,7 +448,7 @@ assert "['a', 'b', 'c']" in output
 1. **Core functions:** `doc()`, `brief()`, `methods()`, `variables()`
 2. **Magic method protocol:** `__doc_brief__`, `__doc_full__`, `__doc_schema__`
 3. **DocConfig system** with filtering (hidden_names, hidden_prefixes, etc.)
-4. **Make functions available in agent006 namespace** - import in executor
+4. **Make functions available in nemo_oo_agents namespace** - import in executor
 5. **Agent base class implements `__doc_full__`** - handles child agents rendering
 6. **Comprehensive tests** for all core functions
 7. **Typing support** - `py.typed` marker, full type annotations
@@ -478,7 +478,7 @@ assert "['a', 'b', 'c']" in output
 
 **Cons:**
 - Still agent-specific
-- Doesn't simplify agent006 architecture
+- Doesn't simplify nemo_oo_agents architecture
 - Can't be reused by other projects
 
 **Verdict:** ❌ Don't do this - proposal is better
@@ -544,7 +544,7 @@ The proposal is excellent and should be implemented with the following modificat
 4. **Create detailed migration guide**
 
 **Benefits:**
-- Reduces agent006 complexity by 575 lines
+- Reduces nemo_oo_agents complexity by 575 lines
 - Creates reusable introspection library
 - Improves composability and teachability
 - Better separation of concerns
@@ -586,7 +586,7 @@ The proposal is excellent and should be implemented with the following modificat
 The elegant solution: Let the `Agent` base class implement the magic method protocol.
 
 ```python
-# In agent006/agent.py
+# In nemo_oo_agents/agent.py
 from agentdoc import doc, methods, variables
 
 class Agent:
@@ -626,14 +626,14 @@ class Agent:
         ...
 ```
 
-This keeps agent-specific logic in agent006 while using agentdoc for generic introspection.
+This keeps agent-specific logic in nemo_oo_agents while using agentdoc for generic introspection.
 
 ### Namespace Integration
 
 Make agentdoc functions available in the execution namespace:
 
 ```python
-# In agent006/runtime/executor.py or similar
+# In nemo_oo_agents/runtime/executor.py or similar
 from agentdoc import doc, brief, methods, variables
 
 # Add to namespace dict used for expression evaluation
@@ -654,12 +654,12 @@ Then expressions work naturally:
 ### Timeline (Revised)
 
 - **Phase 1 (agentdoc MVP):** 1-2 weeks
-- **Phase 2 (agent006 integration):** 3-5 days
+- **Phase 2 (nemo_oo_agents integration):** 3-5 days
 - **Total:** 2-3 weeks to production
 
 ### Success Criteria
 
-1. ✅ Remove 595 lines from agent006 (`doc.py` deleted)
+1. ✅ Remove 595 lines from nemo_oo_agents (`doc.py` deleted)
 2. ✅ Zero external dependencies in agentdoc
 3. ✅ All existing tests pass (rewritten for new API)
 4. ✅ Child agents render correctly via `Agent.__doc_full__()`
@@ -673,7 +673,7 @@ Then expressions work naturally:
 3. Add magic method protocol support
 4. Implement `DocConfig`
 5. Write tests
-6. Integrate into agent006
+6. Integrate into nemo_oo_agents
 7. Delete old `doc.py`
 
 **Ready to proceed!** 🚀

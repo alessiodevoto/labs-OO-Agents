@@ -162,7 +162,7 @@ The `introspection_usage` scorer (LLMJudgeScorer) is inconsistent:
 ## Appendix: Files Analyzed
 
 **Main traces**: `/Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/`
-**Branch traces**: `/Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/`
+**Branch traces**: `/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/`
 
 **Key files compared**:
 - `EmployeeSalaryAgent_qwen3-80b_get_employee_salary_employee_lookup_*_01_*` (qwen regression)

@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING, Any, get_type_hints
 
 from pydantic import ValidationError as PydanticValidationError
 
-from agent006.decorators import strategy
-from agent006.errors import GenerationError, XMLFormatError
-from agent006.events import (
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.errors import GenerationError, XMLFormatError
+from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -34,15 +34,15 @@ from agent006.events import (
     Reasoning,
     Task,
 )
-from agent006.strategies.base import RuntimeServices
-from agent006.strategies.composite import CompositeStrategy
-from agent006.strategies.generated_code import (
+from nemo_oo_agents.strategies.base import RuntimeServices
+from nemo_oo_agents.strategies.composite import CompositeStrategy
+from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
     GeneratedCodeValidator,
     HelperMethodManager,
     ReturnValueValidator,
 )
-from agent006.strategies.template import TemplateStrategy
+from nemo_oo_agents.strategies.template import TemplateStrategy
 from context_blocks import DynamicContext, ResultStatus
 
 # Import httpx timeout exceptions if available (used by litellm)
@@ -61,9 +61,9 @@ except ImportError:
     _HTTPX_TIMEOUT_EXCEPTIONS = (TimeoutError,)
 
 if TYPE_CHECKING:
-    from agent006.runtime.event_manager import EventManager
-    from agent006.strategies.current_call import CurrentCall
-    from agent006.strategies.prefill import Prefill
+    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nemo_oo_agents.strategies.current_call import CurrentCall
+    from nemo_oo_agents.strategies.prefill import Prefill
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class GenerationSession:
 
     def __post_init__(self):
         """Initialize OutAccessor for Jupyter-style Out[n] access."""
-        from agent006.runtime.out_accessor import OutAccessor
+        from nemo_oo_agents.runtime.out_accessor import OutAccessor
 
         # Use event manager-backed mode if provided, otherwise internal storage
         self.out_accessor = OutAccessor(event_manager=self.event_manager)
@@ -461,7 +461,7 @@ class PurePythonStrategy(CompositeStrategy):
         Executes prefill code as a synthetic first turn through the normal
         execution path. Results persist in session_locals for subsequent turns.
         """
-        from agent006.events import LLMOutput
+        from nemo_oo_agents.events import LLMOutput
 
         if not self.prefill:
             return
@@ -638,7 +638,7 @@ class PurePythonStrategy(CompositeStrategy):
         session: GenerationSession,
         target_method_name: str,
     ) -> Any:
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         logger.debug(
             "[PURE_PYTHON] About to execute code (iter=%s, err=%s, chars=%s)",
@@ -683,8 +683,8 @@ class PurePythonStrategy(CompositeStrategy):
         }
         # Try to import other strategies for helper method decorators
         try:
-            from agent006.strategies.predict import PredictStrategy
-            from agent006.strategies.reflexion import ReflexionStrategy
+            from nemo_oo_agents.strategies.predict import PredictStrategy
+            from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
             strategy_extras["PredictStrategy"] = PredictStrategy
             strategy_extras["ReflexionStrategy"] = ReflexionStrategy
@@ -1100,6 +1100,6 @@ class PurePythonStrategy(CompositeStrategy):
         Returns:
             Formatted error string
         """
-        from agent006.errors.formatting import format_error_for_llm
+        from nemo_oo_agents.errors.formatting import format_error_for_llm
 
         return format_error_for_llm(error, code)

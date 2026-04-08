@@ -171,7 +171,7 @@ prompts = PromptSet.load("prompts/pure_python/v1.yaml")
 ```python
 from jinja2 import Environment, PackageLoader
 
-env = Environment(loader=PackageLoader("agent006", "prompts"))
+env = Environment(loader=PackageLoader("nemo_oo_agents", "prompts"))
 
 class PurePythonPrompts:
     def __init__(self, version: str = "v1"):

@@ -61,15 +61,15 @@ def get_environment_metadata() -> dict[str, str]:
 
     Returns:
         Dictionary with environment metadata:
-        - agent006.version: Framework version
+        - nemo_oo_agents.version: Framework version
         - python.version: Python version
         - hostname: Machine hostname
     """
     # Import here to avoid circular import
-    from openinference_instrumentation_agent006 import __version__
+    from openinference_instrumentation_nemo_oo_agents import __version__
 
     return {
-        "agent006.version": __version__,
+        "nemo_oo_agents.version": __version__,
         "python.version": platform.python_version(),
         "hostname": platform.node(),
     }

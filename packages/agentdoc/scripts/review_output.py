@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Streamlined review of pprint() and doc() output for agent006 types.
+"""Streamlined review of pprint() and doc() output for nemo_oo_agents types.
 
 This script generates markdown output showing how agentdoc handles the most
-important types and instances in agent006. Systematically shows doc(),
+important types and instances in nemo_oo_agents. Systematically shows doc(),
 doc(concise=True), and pformat() for consistent review.
 
 Output Format:
@@ -37,9 +37,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated
 
-from agent006 import Agent
-from agent006.events import ExecutionResult, Task
-from agent006.runtime import TruncationConfig
+from nemo_oo_agents import Agent
+from nemo_oo_agents.events import ExecutionResult, Task
+from nemo_oo_agents.runtime import TruncationConfig
 from context_blocks import DynamicContext
 from pydantic import BaseModel, Field
 from unifiedllm import FakeLLMClient
@@ -661,7 +661,7 @@ agent.db.query_count = 50
     # =========================================================================
 
     print("""
-**Purpose:** Test agent006-specific runtime components.
+**Purpose:** Test nemo_oo_agents-specific runtime components.
 """)
 
     subsection("3.1 Events")
@@ -784,7 +784,7 @@ calc.multiply(5, 6)
     # =========================================================================
 
     print("""
-**Purpose:** Test agent006 configuration objects.
+**Purpose:** Test nemo_oo_agents configuration objects.
 """)
 
     subsection("8.1 TruncationConfig")

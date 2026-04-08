@@ -6,11 +6,11 @@ No LLM call, just template rendering with Python expression evaluation.
 
 from typing import TYPE_CHECKING
 
-from agent006.strategies.base import GenerationStrategy
+from nemo_oo_agents.strategies.base import GenerationStrategy
 
 if TYPE_CHECKING:
-    from agent006.strategies.base import RuntimeServices
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.strategies.base import RuntimeServices
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
 
 class TemplateStrategy(GenerationStrategy):

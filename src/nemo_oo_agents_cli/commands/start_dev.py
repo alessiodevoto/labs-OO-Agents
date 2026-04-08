@@ -1,8 +1,8 @@
 """Start the development viewer.
 
 Usage:
-    agent006 start-dev                  # Start viewer on :5001
-    agent006 start-dev --port 5002      # Custom port
+    nemo_oo_agents start-dev                  # Start viewer on :5001
+    nemo_oo_agents start-dev --port 5002      # Custom port
 """
 
 import logging
@@ -27,10 +27,10 @@ class _AccessLogFilter(logging.Filter):
 def command(port: int, host: str):
     """Start the unified trace + evaluation viewer."""
     try:
-        from agent006_viewer.main import app
+        from nemo_oo_agents_viewer.main import app
     except ImportError:
         click.secho(
-            "Error: agent006-viewer is not installed.\nInstall it with:  uv add agent006[viewer]",
+            "Error: nemo-oo-agents-viewer is not installed.\nInstall it with:  uv add nemo_oo_agents[viewer]",
             fg="red",
             err=True,
         )

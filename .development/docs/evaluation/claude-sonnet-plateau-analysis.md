@@ -141,7 +141,7 @@ Test if different models naturally handle these tasks better:
 
 ### Short Term (Next 1-2 iterations)
 1. **Wait for full Qwen validation** to understand generalization completely
-2. **Try Option 1** (micro-fixes) - create `agent006_claude_iter6v.py`:
+2. **Try Option 1** (micro-fixes) - create `nemo_oo_agents_claude_iter6v.py`:
    - Focus ONLY on the 4 never-passing hard tasks
    - Add specific date conversion template
    - Add monthly metrics helper function

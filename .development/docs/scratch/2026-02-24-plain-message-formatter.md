@@ -6,7 +6,7 @@
 
 **Architecture:** Defer event serialization from `_phase_events` (context builder) to `render_context` (renderer), so the `BlockFormatter` controls both system-block formatting and event content rendering. Add `format_event(event) -> str` as an abstract method on `BlockFormatter`. `XMLBlockFormatter` preserves current pformat behaviour; new `PlainBlockFormatter` renders events as plain human-readable text with no XML wrapper.
 
-**Tech Stack:** Python, Pydantic, pytest, packages/context-blocks, src/agent006
+**Tech Stack:** Python, Pydantic, pytest, packages/context-blocks, src/nemo_oo_agents
 
 ---
 
@@ -34,7 +34,7 @@ provider_fmt()   →  {"role": "user", "content": "42\n[captured: result (int)]"
 ## Task 1: Defer event serialization in `_phase_events`
 
 **Files:**
-- Modify: `src/agent006/runtime/context_builder.py` (around line 399–413)
+- Modify: `src/nemo_oo_agents/runtime/context_builder.py` (around line 399–413)
 - Modify test: `tests/runtime/test_context_builder.py` (around line 505)
 
 **Step 1: Write updated test for deferred serialization**
@@ -43,7 +43,7 @@ In `tests/runtime/test_context_builder.py`, find `test_user_event` and update it
 
 ```python
 def test_user_event(self):
-    from agent006.runtime.context_builder import _phase_events
+    from nemo_oo_agents.runtime.context_builder import _phase_events
 
     event = UserEvent(content="Hello", tag="1")
     em = _make_event_manager([event])
@@ -65,7 +65,7 @@ Expected: FAIL — `AssertionError: 'Hello' in 'Hello'` (content is NOT empty ye
 
 **Step 3: Change `_phase_events` to defer non-tool event serialization**
 
-In `src/agent006/runtime/context_builder.py`, find the `else` branch in `_phase_events` (currently calls `agentdoc_pformat`). Replace:
+In `src/nemo_oo_agents/runtime/context_builder.py`, find the `else` branch in `_phase_events` (currently calls `agentdoc_pformat`). Replace:
 
 ```python
         else:
@@ -103,7 +103,7 @@ With:
 Also remove the `agentdoc_pformat` import from the top of `context_builder.py` if it's no longer used elsewhere in that file. Check with grep first:
 
 ```bash
-grep -n "agentdoc_pformat" src/agent006/runtime/context_builder.py
+grep -n "agentdoc_pformat" src/nemo_oo_agents/runtime/context_builder.py
 ```
 
 If it only appears in `_phase_events`, remove the import line:
@@ -128,7 +128,7 @@ Expected: Most pass. Note any failures — they will be fixed in Task 3.
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/runtime/context_builder.py tests/runtime/test_context_builder.py
+git add src/nemo_oo_agents/runtime/context_builder.py tests/runtime/test_context_builder.py
 git commit -m "refactor: defer non-tool event serialization to render time"
 ```
 
@@ -506,13 +506,13 @@ git commit -m "feat: add FormatType.PLAIN and plain branch to format_message_con
 
 ---
 
-## Task 5: Create `PlainBlockFormatter` in agent006
+## Task 5: Create `PlainBlockFormatter` in nemo_oo_agents
 
 **Files:**
-- Create: `src/agent006/plain_formatter.py`
+- Create: `src/nemo_oo_agents/plain_formatter.py`
 - Create: `tests/test_plain_formatter.py`
 
-This formatter lives in the agent006 package (not context-blocks) so it can import agent006-specific event types like `PythonOutput`, `Task`, `Error`.
+This formatter lives in the nemo_oo_agents package (not context-blocks) so it can import nemo_oo_agents-specific event types like `PythonOutput`, `Task`, `Error`.
 
 **Step 1: Write the failing tests first**
 
@@ -529,7 +529,7 @@ from context_blocks.models import BlockMetadata, ResolvedBlock, Role
 
 class TestPlainBlockFormatterFormatType:
     def test_format_type_is_plain(self):
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         assert PlainBlockFormatter().format_type == FormatType.PLAIN
 
@@ -538,7 +538,7 @@ class TestPlainBlockFormatterFormatSystemBlocks:
     """System blocks (format()) are identical to XMLBlockFormatter."""
 
     def test_format_delegates_to_xml(self):
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         formatter = PlainBlockFormatter()
         blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
@@ -552,8 +552,8 @@ class TestPlainBlockFormatterFormatEvent:
     """format_event() renders each event type as clean plain text."""
 
     def test_task_renders_prompt(self):
-        from agent006.events import Task
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         event = Task(prompt="Analyze the data.")
         result = PlainBlockFormatter().format_event(event)
@@ -562,8 +562,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "Task(" not in result  # no pformat repr
 
     def test_error_renders_content(self):
-        from agent006.events import Error
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import Error
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         event = Error(content="NameError: name 'x' is not defined")
         result = PlainBlockFormatter().format_event(event)
@@ -571,8 +571,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert result == "NameError: name 'x' is not defined"
 
     def test_python_output_stdout_only(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -587,8 +587,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "PythonOutput(" not in result
 
     def test_python_output_with_error(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -604,8 +604,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "[error]" in result
 
     def test_python_output_with_captured_locals(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -621,8 +621,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "[captured: result (list)]" in result
 
     def test_python_output_no_output(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -637,7 +637,7 @@ class TestPlainBlockFormatterFormatEvent:
     def test_generic_event_with_content_field(self):
         """Events with a 'content' field fall back to returning content directly."""
         from context_blocks.events import UserEvent
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         event = UserEvent(content="Hello there")
         result = PlainBlockFormatter().format_event(event)
@@ -651,11 +651,11 @@ class TestPlainBlockFormatterFormatEvent:
 ```bash
 source .venv/bin/activate && python -m pytest tests/test_plain_formatter.py -v
 ```
-Expected: FAIL — `ModuleNotFoundError: No module named 'agent006.plain_formatter'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'nemo_oo_agents.plain_formatter'`
 
 **Step 3: Create `PlainBlockFormatter`**
 
-Create `src/agent006/plain_formatter.py`:
+Create `src/nemo_oo_agents/plain_formatter.py`:
 
 ```python
 """PlainBlockFormatter — renders conversation messages as plain text.
@@ -750,7 +750,7 @@ Expected: All pass.
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/plain_formatter.py tests/test_plain_formatter.py
+git add src/nemo_oo_agents/plain_formatter.py tests/test_plain_formatter.py
 git commit -m "feat: add PlainBlockFormatter for plain-text message rendering"
 ```
 
@@ -771,9 +771,9 @@ import asyncio
 import sys
 sys.path.insert(0, "src")
 
-from agent006 import Agent
-from agent006.plain_formatter import PlainBlockFormatter
-from agent006.events import Task, PythonOutput
+from nemo_oo_agents import Agent
+from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+from nemo_oo_agents.events import Task, PythonOutput
 from context_blocks.events import ResultStatus
 
 
@@ -789,7 +789,7 @@ async def main():
 
     # Simulate what messages look like by calling _build_messages
     # (This is internal but sufficient for smoke testing)
-    from agent006.events import Task
+    from nemo_oo_agents.events import Task
     await agent.events.add(Task(prompt="Say hello."))
 
     # Check format_event directly
@@ -825,8 +825,8 @@ Expected: Prints `OK` with no errors.
 To use the plain formatter on an agent:
 
 ```python
-from agent006 import Agent
-from agent006.plain_formatter import PlainBlockFormatter
+from nemo_oo_agents import Agent
+from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
 class MyAgent(Agent):
     _block_formatter = PlainBlockFormatter()

@@ -72,7 +72,7 @@ Run a quick test to verify the integration:
 
 ```python
 import asyncio
-from agent006.tools.teams_tool import TeamsTool
+from nemo_oo_agents.tools.teams_tool import TeamsTool
 
 async def test_teams():
     teams = TeamsTool()

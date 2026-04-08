@@ -20,7 +20,7 @@ to verify that pre-ellipsis code extraction works correctly.
 import ast
 import textwrap
 
-from agent006.ellipsis_detection import get_pre_ellipsis_code, has_ellipsis_body
+from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code, has_ellipsis_body
 
 
 class TestHasEllipsisBody:
@@ -463,7 +463,7 @@ class TestEllipsisDetection:
 
     def test_detects_pure_ellipsis(self):
         """has_ellipsis_body should detect pure ellipsis functions."""
-        from agent006.ellipsis_detection import has_ellipsis_body
+        from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
         def pure_ellipsis(): ...
 
@@ -480,7 +480,7 @@ class TestEllipsisDetection:
 
     def test_detects_setup_code_with_ellipsis(self):
         """has_ellipsis_body should detect functions with setup code ending in ellipsis."""
-        from agent006.ellipsis_detection import has_ellipsis_body
+        from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
         def with_setup():
             x = 1
@@ -495,7 +495,7 @@ class TestCurrentCallIntegration:
 
     def test_current_call_extracts_pre_ellipsis_code(self):
         """CurrentCall.from_method should extract pre-ellipsis code."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         async def method_with_setup(self, data: list[str]) -> str:
             """Process data."""
@@ -511,7 +511,7 @@ class TestCurrentCallIntegration:
 
     def test_current_call_no_pre_ellipsis_for_pure_ellipsis(self):
         """CurrentCall should have None for pure-ellipsis methods."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         async def pure_ellipsis_method(self, x: int) -> int:
             """Just ellipsis."""
@@ -523,7 +523,7 @@ class TestCurrentCallIntegration:
 
     def test_current_call_no_pre_ellipsis_for_implemented(self):
         """CurrentCall should have None for implemented methods."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         async def implemented_method(self, x: int) -> int:
             """Has implementation."""

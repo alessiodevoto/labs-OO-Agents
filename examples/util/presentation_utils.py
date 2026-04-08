@@ -24,7 +24,7 @@ def setup():
 
     load_dotenv(override=True)
 
-    from openinference_instrumentation_agent006 import enable_tracing, exporters
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
     enable_tracing(exporters=[exporters.jsonl(TRACE_DIR)])
     print(f"Tracing enabled: {TRACE_DIR}")
@@ -32,7 +32,7 @@ def setup():
 
 def trace(name: str):
     """Point tracing to a new session for this demo."""
-    from openinference_instrumentation_agent006 import set_session
+    from openinference_instrumentation_nemo_oo_agents import set_session
 
     uid = uuid4().hex[:8]
     set_session(f"{name}_{uid}")

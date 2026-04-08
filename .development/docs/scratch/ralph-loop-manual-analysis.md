@@ -216,6 +216,6 @@ Given Ralph Loop commitment "dont stop until we are passing the 10 tasks", optio
 
 ## Files Referenced
 
-- Benchmark results: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260121_083945_bedrock-claude-sonnet-4-5-v1_b616b0/rsc_dab_hard_opt31_dabstep.006eval.jsonl`
+- Benchmark results: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260121_083945_bedrock-claude-sonnet-4-5-v1_b616b0/rsc_dab_hard_opt31_dabstep.006eval.jsonl`
 - Traces: `...traces/dabstep_1871_hard_fb9ecd2f.006trace.jsonl`, `...traces/dabstep_2697_hard_879c36b9.006trace.jsonl`
 - Data: `~/.cache/dabstep/data/context/`

@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent006.config.tool_configs import WebSearchConfig
-from agent006.tools.web_search_tool import WebSearchTool
+from nemo_oo_agents.config.tool_configs import WebSearchConfig
+from nemo_oo_agents.tools.web_search_tool import WebSearchTool
 
 
 def test_web_search_tool_defaults():

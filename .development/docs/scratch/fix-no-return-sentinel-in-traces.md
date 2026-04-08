@@ -73,7 +73,7 @@ check if any value is `type(v) is object` (exactly `object`, not a subclass) and
 
 ## Files to change
 
-1. `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py`
+1. `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py`
    - In `_safe_serialize`, filter sentinel values from Pydantic model_dump output
 
 2. Tests: add a test that `ExecutionResult` with no return serializes cleanly

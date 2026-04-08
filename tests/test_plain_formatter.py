@@ -6,7 +6,7 @@ from context_blocks.models import ResolvedBlock
 
 class TestPlainBlockFormatterFormatType:
     def test_format_type_is_plain(self):
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         assert PlainBlockFormatter().format_type == FormatType.PLAIN
 
@@ -15,7 +15,7 @@ class TestPlainBlockFormatterFormatSystemBlocks:
     """System blocks (format()) use XML — same as XMLBlockFormatter."""
 
     def test_format_delegates_to_xml(self):
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         formatter = PlainBlockFormatter()
         blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
@@ -29,8 +29,8 @@ class TestPlainBlockFormatterFormatEvent:
     """format_event() renders each event type as clean plain text."""
 
     def test_task_renders_prompt(self):
-        from agent006.events import Task
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         event = Task(prompt="Analyze the data.")
         result = PlainBlockFormatter().format_event(event)
@@ -39,8 +39,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "Task(" not in result  # no pformat repr
 
     def test_error_renders_content(self):
-        from agent006.events import Error
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import Error
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         event = Error(content="NameError: name 'x' is not defined")
         result = PlainBlockFormatter().format_event(event)
@@ -48,8 +48,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert result == "NameError: name 'x' is not defined"
 
     def test_python_output_stdout_only(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -65,8 +65,8 @@ class TestPlainBlockFormatterFormatEvent:
 
     def test_python_output_with_error_only(self):
         """Error-only output shows fields as XML tags."""
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -85,8 +85,8 @@ class TestPlainBlockFormatterFormatEvent:
 
     def test_python_output_with_stdout_and_error(self):
         """Multiple non-empty fields → <field>value</field> XML tags."""
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -103,8 +103,8 @@ class TestPlainBlockFormatterFormatEvent:
         assert "[stdout]" not in result  # old format gone
 
     def test_python_output_with_value(self):
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -122,8 +122,8 @@ class TestPlainBlockFormatterFormatEvent:
 
     def test_python_output_no_output(self):
         """No stdout/value/error — still shows status and tool_call_id as XML tags."""
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(
@@ -138,7 +138,7 @@ class TestPlainBlockFormatterFormatEvent:
 
     def test_generic_event_with_content_field(self):
         """Events with a 'content' field fall back to returning content directly."""
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import UserEvent
 
         event = UserEvent(content="Hello there")
@@ -149,8 +149,8 @@ class TestPlainBlockFormatterFormatEvent:
 
     def test_python_output_captured_locals_not_shown(self):
         """captured_locals is infrastructure — must never appear in plain output."""
-        from agent006.events import PythonOutput
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
         from context_blocks.events import ResultStatus
 
         event = PythonOutput(

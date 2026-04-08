@@ -8,11 +8,11 @@ import inspect
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from agent006.metaclass import AgentMeta
+from nemo_oo_agents.metaclass import AgentMeta
 
 if TYPE_CHECKING:
-    from agent006.runtime.restrictions import RestrictionsConfig
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+    from nemo_oo_agents.strategies.current_call import CurrentCall
     from context_blocks import DynamicContext
 
 
@@ -305,7 +305,7 @@ class GenerationStrategy(ABC, metaclass=AgentMeta):
         """
         from uuid import uuid4
 
-        from agent006.runtime.hooks import call_after_hook, call_before_hook
+        from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
         invocation_id = str(uuid4())
         hook_context = call_before_hook(

@@ -6,7 +6,7 @@ intercepts, event subscribers, ATIF export).
 
 Usage::
 
-    from agent006.nexus_middleware import install_nexus
+    from nemo_oo_agents.nexus_middleware import install_nexus
 
     # Inside an async context where nat_nexus scope is active:
     uninstall = install_nexus(agent.event_manager)
@@ -17,7 +17,7 @@ Usage::
 
 Or use ``nexus_scope()`` which handles install/uninstall automatically::
 
-    from agent006.nexus_middleware import nexus_scope
+    from nemo_oo_agents.nexus_middleware import nexus_scope
 
     async with nexus_scope(agent, "my-agent"):
         result = await agent.my_method()
@@ -35,7 +35,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from agent006.runtime.middleware import (
+from nemo_oo_agents.runtime.middleware import (
     MIDDLEWARE_AGENT_CALL,
     MIDDLEWARE_EXECUTE_PYTHON,
     MIDDLEWARE_LLM_CALL,
@@ -44,8 +44,8 @@ from agent006.runtime.middleware import (
 _logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent006.runtime.event_manager import EventManager
-    from agent006.runtime.middleware import (
+    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nemo_oo_agents.runtime.middleware import (
         AgentCallContext,
         AgentCallNext,
         ExecutePythonContext,
@@ -131,7 +131,7 @@ async def nexus_llm_middleware(
         # Nexus request intercepts can transform the LLMRequest (e.g. inject
         # system messages, modify headers).  The modified request is passed
         # here as `req`; we must propagate those changes to ctx so the rest
-        # of the agent006 middleware chain (and the actual LLM call) sees them.
+        # of the nemo_oo_agents middleware chain (and the actual LLM call) sees them.
         if hasattr(req, "content") and isinstance(req.content, dict):
             intercepted = req.content
             intercepted_msgs = intercepted.get("messages")
@@ -226,7 +226,7 @@ async def nexus_tool_middleware(
             return codec.to_json(None)
 
         # Extract meaningful return value (same priority as original _nat_nexus.py)
-        from agent006.events import _NO_RETURN
+        from nemo_oo_agents.events import _NO_RETURN
 
         rv = getattr(result, "returned_value", _NO_RETURN)
         if rv is _NO_RETURN:

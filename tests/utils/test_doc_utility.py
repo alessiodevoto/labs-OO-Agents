@@ -1,12 +1,12 @@
-"""Tests for agentdoc integration with agent006.
+"""Tests for agentdoc integration with nemo_oo_agents.
 
 These tests verify that agentdoc functions (doc, brief, methods, variables)
-work correctly with agent006 Agent instances.
+work correctly with nemo_oo_agents Agent instances.
 
 Note: The output format uses Python class syntax per the agentdoc design doc.
 """
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from agentdoc import doc
 from agentdoc.introspect import methods, variables
 from unifiedllm import FakeLLMClient
@@ -290,7 +290,7 @@ class TestAgentDocFrameworkAPIs:
 
     def test_context_always_present_on_agent(self):
         """Test that self.context is always present on agent."""
-        from agent006.runtime.context import ContextApi
+        from nemo_oo_agents.runtime.context import ContextApi
 
         agent_instance = SimpleAgent()
         assert hasattr(agent_instance, "context"), "self.context should always be present"
@@ -315,7 +315,7 @@ class TestAgentDocFrameworkAPIs:
 
     def test_events_always_present_on_agent(self):
         """Test that self.events is always present on agent."""
-        from agent006.runtime.events import EventsApi
+        from nemo_oo_agents.runtime.events import EventsApi
 
         agent_instance = SimpleAgent()
         assert hasattr(agent_instance, "events"), "self.events should always be present"
@@ -405,7 +405,7 @@ def test_hidden_method_excluded_from_type_info():
     """@hidden methods should not appear in __type_info__()."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent, hidden
+    from nemo_oo_agents import Agent, hidden
 
     llm = MagicMock()
     llm.model = "test"
@@ -430,7 +430,7 @@ def test_underscore_method_hidden_by_default():
     """_private methods are hidden by default; @spec(hidden=False) opts them back in."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
     from agentdoc import spec
 
     llm = MagicMock()
@@ -457,7 +457,7 @@ def test_hidden_field_excluded_from_instance_values():
     from typing import Annotated
     from unittest.mock import MagicMock
 
-    from agent006 import Agent, hidden
+    from nemo_oo_agents import Agent, hidden
 
     llm = MagicMock()
     llm.model = "test"
@@ -478,7 +478,7 @@ def test_underscore_field_visible_without_hidden():
     """_private fields should now be VISIBLE (no underscore convention)."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     llm = MagicMock()
     llm.model = "test"
@@ -494,7 +494,7 @@ def test_underscore_field_visible_without_hidden():
 
 def test_framework_attrs_hidden_via_annotation():
     """runtime, _event_manager, event_query, render_config should be hidden via Annotated[T, hidden]."""
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
     from agentdoc.visibility import is_hidden_field
 
     assert is_hidden_field(Agent, "runtime") is True

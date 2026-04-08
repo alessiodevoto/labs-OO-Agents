@@ -7,7 +7,7 @@
 
 ## Goal
 
-Port the DABstab solver agent into the agent006 framework with native 006 conventions.
+Port the DABstab solver agent into the nemo_oo_agents framework with native 006 conventions.
 The agent's *operation* should match the original as closely as possible; the *implementation*
 should be idiomatic 006 (Agent subclasses, CodeActStrategy, Pydantic models, inline docstrings).
 

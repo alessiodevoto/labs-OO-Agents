@@ -1,10 +1,10 @@
-# mcp-agent006
+# mcp-nemo-oo-agents
 
 MCP (Model Context Protocol) tool integration for Agent006.
 
 ## Overview
 
-**mcp-agent006** connects Agent006 agents to MCP servers. It discovers the tools exposed by a server, generates typed Python methods for each one, and returns a ready-to-use object that agents can assign as a class attribute — no boilerplate required.
+**mcp-nemo-oo-agents** connects Agent006 agents to MCP servers. It discovers the tools exposed by a server, generates typed Python methods for each one, and returns a ready-to-use object that agents can assign as a class attribute — no boilerplate required.
 
 ## Features
 
@@ -18,10 +18,10 @@ MCP (Model Context Protocol) tool integration for Agent006.
 ## Installation
 
 ```bash
-uv pip install mcp-agent006
+uv pip install mcp-nemo-oo-agents
 ```
 
-Or from the agent006 workspace:
+Or from the nemo_oo_agents workspace:
 
 ```bash
 uv sync --extra mcp
@@ -30,8 +30,8 @@ uv sync --extra mcp
 ## Quick Start
 
 ```python
-from agent006 import Agent
-from mcp_agent006 import MCPManager
+from nemo_oo_agents import Agent
+from mcp_nemo_oo_agents import MCPManager
 from unifiedllm.registry import get_llm_client
 
 llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")
@@ -132,7 +132,7 @@ agent.confluence = MCPManager.create_from_server(
 `MCPTool` is the base class for all generated tool instances. You can also subclass it directly for custom implementations:
 
 ```python
-from mcp_agent006 import MCPTool
+from mcp_nemo_oo_agents import MCPTool
 
 class LanguageServerTool(MCPTool):
     async def definition(self, filepath: str, line: int):

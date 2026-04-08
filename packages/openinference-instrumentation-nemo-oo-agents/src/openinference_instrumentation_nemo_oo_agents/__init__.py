@@ -4,7 +4,7 @@ Composable exporter architecture with exporter-agnostic session routing.
 
 Usage::
 
-    from openinference_instrumentation_agent006 import enable_tracing, exporters
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
     # Zero-config: OTLP to local viewer, falls back to JSONL files
     enable_tracing()
@@ -37,13 +37,13 @@ from opentelemetry.sdk.trace.export import (
     SpanExporter,
 )
 
-from openinference_instrumentation_agent006 import exporters as exporters_mod
-from openinference_instrumentation_agent006._hooks_impl import OpenInferenceHooks
-from openinference_instrumentation_agent006._metadata import get_all_metadata
-from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
-from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
-from openinference_instrumentation_agent006._session import get_session, set_session
-from openinference_instrumentation_agent006._session_processor import SessionSpanProcessor
+from openinference_instrumentation_nemo_oo_agents import exporters as exporters_mod
+from openinference_instrumentation_nemo_oo_agents._hooks_impl import OpenInferenceHooks
+from openinference_instrumentation_nemo_oo_agents._metadata import get_all_metadata
+from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
+from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
+from openinference_instrumentation_nemo_oo_agents._session import get_session, set_session
+from openinference_instrumentation_nemo_oo_agents._session_processor import SessionSpanProcessor
 
 __version__ = "0.1.0"
 
@@ -60,7 +60,7 @@ _probe_failed: bool = False
 
 
 # `exporters` is importable directly:
-#   from openinference_instrumentation_agent006 import exporters
+#   from openinference_instrumentation_nemo_oo_agents import exporters
 exporters = exporters_mod
 
 
@@ -72,7 +72,7 @@ exporters = exporters_mod
 class Agent006Instrumentor:
     """OpenTelemetry instrumentor for Agent006.
 
-    Instruments agent006 framework to emit OpenTelemetry spans with
+    Instruments nemo_oo_agents framework to emit OpenTelemetry spans with
     OpenInference semantic conventions.
     """
 
@@ -81,7 +81,7 @@ class Agent006Instrumentor:
         self._is_instrumented = False
 
     def instrument(self, **kwargs: Any) -> None:
-        """Enable agent006 instrumentation."""
+        """Enable nemo_oo_agents instrumentation."""
         if self._is_instrumented:
             return
 
@@ -90,17 +90,17 @@ class Agent006Instrumentor:
 
         self._hooks = OpenInferenceHooks(tracer=tracer)
 
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(self._hooks)
         self._is_instrumented = True
 
     def uninstrument(self, **kwargs: Any) -> None:
-        """Disable agent006 instrumentation."""
+        """Disable nemo_oo_agents instrumentation."""
         if not self._is_instrumented:
             return
 
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(None)
         self._hooks = None
@@ -248,11 +248,11 @@ def enable_tracing(
     # Store provider for flush/shutdown
     _provider = tracer_provider
 
-    # Instrument agent006 hooks; capture the instance for re-registration
+    # Instrument nemo_oo_agents hooks; capture the instance for re-registration
     # in future asyncio task contexts (see _re_register_hooks).
     with contextlib.suppress(ImportError):
         Agent006Instrumentor().instrument(tracer_provider=tracer_provider)
-        from agent006.runtime.hooks import get_hooks
+        from nemo_oo_agents.runtime.hooks import get_hooks
 
         _hooks = get_hooks()  # type: ignore[assignment]
         assert _hooks is not None, "Agent006Instrumentor.instrument() should have called set_hooks()"
@@ -280,7 +280,7 @@ def _re_register_hooks() -> None:
     if _hooks is None:
         return
     with contextlib.suppress(ImportError):
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(_hooks)
 
@@ -330,7 +330,7 @@ def _default_exporters() -> list[SpanExporter] | None:
 
     When ``OTLP_ENDPOINT`` is explicitly set the user opted in — warn on failure.
     When using the default endpoint, stay silent so tracing is invisible until
-    ``agent006 start-dev`` is running.
+    ``nemo_oo_agents start-dev`` is running.
     """
     global _probe_failed
 
@@ -356,7 +356,7 @@ def _instrument_litellm(tracer_provider: TracerProvider) -> None:
     with contextlib.suppress(ImportError):
         from openinference.instrumentation.litellm import LiteLLMInstrumentor
 
-        from openinference_instrumentation_agent006._litellm_patch import apply_litellm_patch
+        from openinference_instrumentation_nemo_oo_agents._litellm_patch import apply_litellm_patch
 
         LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
         apply_litellm_patch()
@@ -386,7 +386,7 @@ def _print_trace_target(exporters: list[SpanExporter], experiment: str | None) -
     print(f"OTel tracing enabled: {', '.join(descriptions)}{suffix}")
 
     if has_file_exporter:
-        print("  Tip: Run `agent006 start-dev` to launch the trace viewer for interactive exploration.")
+        print("  Tip: Run `nemo_oo_agents start-dev` to launch the trace viewer for interactive exploration.")
 
 
 # ---------------------------------------------------------------------------

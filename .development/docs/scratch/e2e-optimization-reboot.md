@@ -108,7 +108,7 @@ Instead of modifying the runner, we integrated directly into the optimizer:
 └─────────────────────────────────────────────────────────────────────────┘
 
 INPUTS:
-  - strategy_source: PurePythonStrategy code (src/agent006/strategies/pure_python.py)
+  - strategy_source: PurePythonStrategy code (src/nemo_oo_agents/strategies/pure_python.py)
   - agent_source: SentimentAgent code (examples/sentiment/agent.py)
   - benchmark: 20 sentiment classification tasks (examples/sentiment/data.jsonl)
   - framework_doc: Agent006 reference (framework_doc.md)

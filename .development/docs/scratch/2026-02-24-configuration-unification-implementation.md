@@ -10,13 +10,13 @@
 
 **Design reference:** `docs/plans/2026-02-23-configuration-unification-design.md`
 
-**Test runner:** All `pytest` commands run from repo root (`/Volumes/dev/dev/agent006`) with venv activated.
+**Test runner:** All `pytest` commands run from repo root (`/Volumes/dev/dev/nemo_oo_agents`) with venv activated.
 
 ---
 
 ## Phase 1: Package-level configs (unifiedllm, agentdoc, context-blocks)
 
-These four tasks are independent of each other and of agent006 — do them in any order.
+These four tasks are independent of each other and of nemo_oo_agents — do them in any order.
 
 ---
 
@@ -712,15 +712,15 @@ EOF
 
 ---
 
-## Phase 2: Create agent006/config/ and add config models
+## Phase 2: Create nemo_oo_agents/config/ and add config models
 
 ---
 
 ### Task 5: Create config/ module + ExecutionConfig
 
 **Files:**
-- Create: `src/agent006/config/__init__.py`
-- Create: `src/agent006/config/execution_config.py`
+- Create: `src/nemo_oo_agents/config/__init__.py`
+- Create: `src/nemo_oo_agents/config/execution_config.py`
 - Create: `tests/config/__init__.py`
 - Create: `tests/config/test_execution_config.py`
 
@@ -730,7 +730,7 @@ EOF
 # tests/config/test_execution_config.py
 import pytest
 from pydantic import BaseModel, ValidationError
-from agent006.config.execution_config import ExecutionConfig
+from nemo_oo_agents.config.execution_config import ExecutionConfig
 
 
 def test_execution_config_is_pydantic_model():
@@ -760,18 +760,18 @@ def test_merge_with_overrides_only_explicit_fields():
 ```bash
 pytest tests/config/test_execution_config.py -v
 ```
-Expected: `ModuleNotFoundError: No module named 'agent006.config'`
+Expected: `ModuleNotFoundError: No module named 'nemo_oo_agents.config'`
 
 **Step 3: Create the config module**
 
 ```bash
-mkdir -p src/agent006/config tests/config
-touch src/agent006/config/__init__.py tests/config/__init__.py
+mkdir -p src/nemo_oo_agents/config tests/config
+touch src/nemo_oo_agents/config/__init__.py tests/config/__init__.py
 ```
 
-Create `src/agent006/config/execution_config.py`:
+Create `src/nemo_oo_agents/config/execution_config.py`:
 ```python
-# src/agent006/config/execution_config.py
+# src/nemo_oo_agents/config/execution_config.py
 from pydantic import BaseModel, ConfigDict
 
 
@@ -795,9 +795,9 @@ class ExecutionConfig(BaseModel):
         )
 ```
 
-Update `src/agent006/config/__init__.py`:
+Update `src/nemo_oo_agents/config/__init__.py`:
 ```python
-from agent006.config.execution_config import ExecutionConfig
+from nemo_oo_agents.config.execution_config import ExecutionConfig
 
 __all__ = ["ExecutionConfig"]
 ```
@@ -812,9 +812,9 @@ Expected: All PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/config/ tests/config/
+git add src/nemo_oo_agents/config/ tests/config/
 git commit -m "$(cat <<'EOF'
-feat(agent006): create config/ module with ExecutionConfig
+feat(nemo_oo_agents): create config/ module with ExecutionConfig
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -825,7 +825,7 @@ EOF
 
 ### Task 6: TruncationConfig — rename fields, move, switch merge strategy
 
-**Context:** TruncationConfig already exists at `src/agent006/runtime/truncation_config.py` as a frozen Pydantic model using a private `_explicitly_set` field for merge tracking. We rename 8 fields, move to `config/`, and switch to `model_fields_set`.
+**Context:** TruncationConfig already exists at `src/nemo_oo_agents/runtime/truncation_config.py` as a frozen Pydantic model using a private `_explicitly_set` field for merge tracking. We rename 8 fields, move to `config/`, and switch to `model_fields_set`.
 
 **Field rename map:**
 | Old | New |
@@ -840,11 +840,11 @@ EOF
 | `max_depth` | `max_pprint_depth` |
 
 **Files:**
-- Create: `src/agent006/config/truncation_config.py`
-- Delete: `src/agent006/runtime/truncation_config.py` (replaced, no re-export)
+- Create: `src/nemo_oo_agents/config/truncation_config.py`
+- Delete: `src/nemo_oo_agents/runtime/truncation_config.py` (replaced, no re-export)
 - Modify: `tests/runtime/test_truncation_config.py` (update field names)
 - Modify: `tests/runtime/test_truncation_config_integration.py` (update field names)
-- Modify: All files that `import TruncationConfig from agent006.runtime.truncation_config`
+- Modify: All files that `import TruncationConfig from nemo_oo_agents.runtime.truncation_config`
 
 **Step 1: Find all import sites**
 
@@ -874,10 +874,10 @@ pytest tests/runtime/test_truncation_config.py -v
 ```
 Expected: FAIL — old field names no longer accepted (or `ModuleNotFoundError` from new import path)
 
-**Step 4: Create `src/agent006/config/truncation_config.py`**
+**Step 4: Create `src/nemo_oo_agents/config/truncation_config.py`**
 
 ```python
-# src/agent006/config/truncation_config.py
+# src/nemo_oo_agents/config/truncation_config.py
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Annotated
 
@@ -934,15 +934,15 @@ class TruncationConfig(BaseModel):
 For each file found in Step 1, change:
 ```python
 # Before:
-from agent006.runtime.truncation_config import TruncationConfig
+from nemo_oo_agents.runtime.truncation_config import TruncationConfig
 # After:
-from agent006.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.truncation_config import TruncationConfig
 ```
 
-Also update `src/agent006/config/__init__.py`:
+Also update `src/nemo_oo_agents/config/__init__.py`:
 ```python
-from agent006.config.execution_config import ExecutionConfig
-from agent006.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.execution_config import ExecutionConfig
+from nemo_oo_agents.config.truncation_config import TruncationConfig
 
 __all__ = ["ExecutionConfig", "TruncationConfig"]
 ```
@@ -950,7 +950,7 @@ __all__ = ["ExecutionConfig", "TruncationConfig"]
 **Step 6: Delete old file**
 
 ```bash
-git rm src/agent006/runtime/truncation_config.py
+git rm src/nemo_oo_agents/runtime/truncation_config.py
 ```
 
 **Step 7: Run tests**
@@ -963,12 +963,12 @@ Expected: All PASS
 **Step 8: Commit**
 
 ```bash
-git add src/agent006/config/truncation_config.py \
-        src/agent006/config/__init__.py \
+git add src/nemo_oo_agents/config/truncation_config.py \
+        src/nemo_oo_agents/config/__init__.py \
         tests/runtime/test_truncation_config.py \
         tests/runtime/test_truncation_config_integration.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): rename TruncationConfig fields and move to config/
+feat(nemo_oo_agents): rename TruncationConfig fields and move to config/
 
 - block_limit -> max_block_chars, context_limit -> max_context_tokens, etc.
 - Moved from runtime/ to config/
@@ -984,7 +984,7 @@ EOF
 ### Task 7: Strategy configs
 
 **Files:**
-- Create: `src/agent006/config/strategy_config.py`
+- Create: `src/nemo_oo_agents/config/strategy_config.py`
 - Create: `tests/config/test_strategy_configs.py`
 
 **Step 1: Write the failing tests**
@@ -993,7 +993,7 @@ EOF
 # tests/config/test_strategy_configs.py
 import pytest
 from pydantic import BaseModel, ValidationError
-from agent006.config.strategy_config import (
+from nemo_oo_agents.config.strategy_config import (
     CodeActConfig,
     ReflexionConfig,
     StructuredOutputConfig,
@@ -1069,7 +1069,7 @@ pytest tests/config/test_strategy_configs.py -v
 **Step 3: Create `strategy_config.py`**
 
 ```python
-# src/agent006/config/strategy_config.py
+# src/nemo_oo_agents/config/strategy_config.py
 from pydantic import BaseModel, ConfigDict
 
 
@@ -1130,9 +1130,9 @@ class ReflexionConfig(BaseModel):
 
 **Step 4: Export from config `__init__.py`**
 
-Add to `src/agent006/config/__init__.py`:
+Add to `src/nemo_oo_agents/config/__init__.py`:
 ```python
-from agent006.config.strategy_config import CodeActConfig, ReflexionConfig, StructuredOutputConfig
+from nemo_oo_agents.config.strategy_config import CodeActConfig, ReflexionConfig, StructuredOutputConfig
 ```
 
 **Step 5: Run tests**
@@ -1145,11 +1145,11 @@ Expected: All PASS
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/config/strategy_config.py \
-        src/agent006/config/__init__.py \
+git add src/nemo_oo_agents/config/strategy_config.py \
+        src/nemo_oo_agents/config/__init__.py \
         tests/config/test_strategy_configs.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): add CodeActConfig, StructuredOutputConfig, ReflexionConfig
+feat(nemo_oo_agents): add CodeActConfig, StructuredOutputConfig, ReflexionConfig
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1161,7 +1161,7 @@ EOF
 ### Task 8: Summarizer configs
 
 **Files:**
-- Create: `src/agent006/config/summarizer_config.py`
+- Create: `src/nemo_oo_agents/config/summarizer_config.py`
 - Create: `tests/config/test_summarizer_configs.py`
 
 **Step 1: Write the failing tests**
@@ -1170,7 +1170,7 @@ EOF
 # tests/config/test_summarizer_configs.py
 import pytest
 from pydantic import BaseModel, ValidationError
-from agent006.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
 
 
 class TestTokenBudgetConfig:
@@ -1222,7 +1222,7 @@ pytest tests/config/test_summarizer_configs.py -v
 **Step 3: Create `summarizer_config.py`**
 
 ```python
-# src/agent006/config/summarizer_config.py
+# src/nemo_oo_agents/config/summarizer_config.py
 from pydantic import BaseModel, ConfigDict
 
 
@@ -1259,10 +1259,10 @@ class MethodSummarizerConfig(BaseModel):
 **Step 4: Export + run + commit** (same pattern as Task 7)
 
 ```bash
-git add src/agent006/config/summarizer_config.py \
+git add src/nemo_oo_agents/config/summarizer_config.py \
         tests/config/test_summarizer_configs.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): add TokenBudgetConfig and MethodSummarizerConfig
+feat(nemo_oo_agents): add TokenBudgetConfig and MethodSummarizerConfig
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1274,7 +1274,7 @@ EOF
 ### Task 9: Tool configs
 
 **Files:**
-- Create: `src/agent006/config/tool_configs.py`
+- Create: `src/nemo_oo_agents/config/tool_configs.py`
 - Create: `tests/config/test_tool_configs.py`
 
 **Step 1: Write the failing tests**
@@ -1284,7 +1284,7 @@ EOF
 from pathlib import Path
 import pytest
 from pydantic import BaseModel, ValidationError
-from agent006.config.tool_configs import BashConfig, WebSearchConfig
+from nemo_oo_agents.config.tool_configs import BashConfig, WebSearchConfig
 
 
 class TestBashConfig:
@@ -1330,7 +1330,7 @@ class TestWebSearchConfig:
 **Step 2: Create `tool_configs.py`**
 
 ```python
-# src/agent006/config/tool_configs.py
+# src/nemo_oo_agents/config/tool_configs.py
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
@@ -1369,9 +1369,9 @@ class WebSearchConfig(BaseModel):
 pytest tests/config/test_tool_configs.py -v
 # Expected: All PASS
 
-git add src/agent006/config/tool_configs.py tests/config/test_tool_configs.py
+git add src/nemo_oo_agents/config/tool_configs.py tests/config/test_tool_configs.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): add BashConfig and WebSearchConfig
+feat(nemo_oo_agents): add BashConfig and WebSearchConfig
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1398,7 +1398,7 @@ Add to `packages/context-blocks/tests/test_renderer.py`:
 ```python
 def test_render_raises_if_token_limit_set_without_counter():
     from context_blocks.renderer import render_context
-    from agent006.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     config = TruncationConfig(max_context_tokens=10_000)
     with pytest.raises(ValueError, match="max_context_tokens requires a token counter"):
         render_context(..., truncation=config, count_tokens=None)
@@ -1406,7 +1406,7 @@ def test_render_raises_if_token_limit_set_without_counter():
 
 def test_render_uses_count_tokens_when_provided():
     from context_blocks.renderer import render_context
-    from agent006.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     call_count = []
     def counter(s: str) -> int:
         call_count.append(1)
@@ -1419,7 +1419,7 @@ def test_render_uses_count_tokens_when_provided():
 
 def test_render_accepts_none_counter_when_no_token_limits():
     from context_blocks.renderer import render_context
-    from agent006.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     config = TruncationConfig()  # no max_context_tokens or max_event_tokens
     # Should not raise
     render_context(..., truncation=config, count_tokens=None)
@@ -1454,7 +1454,7 @@ if total + len(b.content) > truncation.max_context_tokens:
 if total + count_tokens(b.content) > truncation.max_context_tokens:
 ```
 
-Also update the callers of `render_context()` in the runtime/actor to pass `count_tokens=self._llm.count_tokens` (or similar — search for `render_context(` in `src/agent006/`).
+Also update the callers of `render_context()` in the runtime/actor to pass `count_tokens=self._llm.count_tokens` (or similar — search for `render_context(` in `src/nemo_oo_agents/`).
 
 **Step 3: Run tests**
 
@@ -1484,13 +1484,13 @@ EOF
 ### Task 11: Update CodeActStrategy to use CodeActConfig
 
 **Files:**
-- Modify: `src/agent006/strategies/codeact.py`
+- Modify: `src/nemo_oo_agents/strategies/codeact.py`
 - Modify: `tests/strategies/test_codeact_strategy.py`
 
 **Step 1: Write failing tests** (add to existing test file)
 
 ```python
-from agent006.config.strategy_config import CodeActConfig
+from nemo_oo_agents.config.strategy_config import CodeActConfig
 
 def test_codeact_accepts_config_object():
     strategy = CodeActStrategy(config=CodeActConfig(max_iterations=5))
@@ -1530,7 +1530,7 @@ def __init__(
     *,
     error_formatter: "IPythonErrorFormatter | None" = None,
 ):
-    from agent006.config.strategy_config import CodeActConfig as _CC
+    from nemo_oo_agents.config.strategy_config import CodeActConfig as _CC
     self.config = config or _CC()
     self.error_formatter = error_formatter
 ```
@@ -1573,10 +1573,10 @@ Expected: All PASS (including existing tests, which need their CodeActStrategy()
 **Step 4: Commit**
 
 ```bash
-git add src/agent006/strategies/codeact.py \
+git add src/nemo_oo_agents/strategies/codeact.py \
         tests/strategies/test_codeact_strategy.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): CodeActStrategy accepts CodeActConfig — remove flat kwargs
+feat(nemo_oo_agents): CodeActStrategy accepts CodeActConfig — remove flat kwargs
 
 - config= parameter replaces individual max_iterations, max_retries etc.
 - cell_timeout replaces code_execution_timeout
@@ -1593,21 +1593,21 @@ EOF
 ### Task 12: Update StructuredOutputStrategy to use StructuredOutputConfig
 
 **Files:**
-- Modify: `src/agent006/strategies/structured_output.py`
+- Modify: `src/nemo_oo_agents/strategies/structured_output.py`
 - Modify: tests as needed
 
 **Step 1: Write failing test**
 
 ```python
-from agent006.config.strategy_config import StructuredOutputConfig
+from nemo_oo_agents.config.strategy_config import StructuredOutputConfig
 
 def test_structured_output_accepts_config():
-    from agent006.strategies.structured_output import StructuredOutputStrategy
+    from nemo_oo_agents.strategies.structured_output import StructuredOutputStrategy
     s = StructuredOutputStrategy(config=StructuredOutputConfig(max_retries=5))
     assert s.config.max_retries == 5
 
 def test_structured_output_rejects_flat_kwargs():
-    from agent006.strategies.structured_output import StructuredOutputStrategy
+    from nemo_oo_agents.strategies.structured_output import StructuredOutputStrategy
     with pytest.raises(TypeError):
         StructuredOutputStrategy(max_retries=5)
 ```
@@ -1616,7 +1616,7 @@ def test_structured_output_rejects_flat_kwargs():
 
 ```python
 def __init__(self, config: StructuredOutputConfig | None = None):
-    from agent006.config.strategy_config import StructuredOutputConfig as _SC
+    from nemo_oo_agents.config.strategy_config import StructuredOutputConfig as _SC
     self.config = config or _SC()
 ```
 
@@ -1628,9 +1628,9 @@ Add `_build_sampling_kwargs()` and use in `llm.acall()`.
 
 ```bash
 pytest tests/strategies/ -k "structured" -v
-git add src/agent006/strategies/structured_output.py
+git add src/nemo_oo_agents/strategies/structured_output.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): StructuredOutputStrategy accepts StructuredOutputConfig
+feat(nemo_oo_agents): StructuredOutputStrategy accepts StructuredOutputConfig
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1642,7 +1642,7 @@ EOF
 ### Task 13: Update ReflexionStrategy to use ReflexionConfig
 
 **Files:**
-- Modify: `src/agent006/strategies/reflexion.py`
+- Modify: `src/nemo_oo_agents/strategies/reflexion.py`
 - Modify: `tests/strategies/test_reflexion_strategy.py`
 
 **Step 1: Write failing test**
@@ -1665,8 +1665,8 @@ def __init__(
     base: GenerationStrategy | None = None,
     config: ReflexionConfig | None = None,
 ):
-    from agent006.strategies.pure_python import PurePythonStrategy
-    from agent006.config.strategy_config import ReflexionConfig as _RC
+    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+    from nemo_oo_agents.config.strategy_config import ReflexionConfig as _RC
     self.base = base if base is not None else PurePythonStrategy()
     self.config = config or _RC()
 ```
@@ -1678,10 +1678,10 @@ Add `_build_sampling_kwargs()` and use in `llm.acall()`.
 
 ```bash
 pytest tests/strategies/test_reflexion_strategy.py -v
-git add src/agent006/strategies/reflexion.py \
+git add src/nemo_oo_agents/strategies/reflexion.py \
         tests/strategies/test_reflexion_strategy.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): ReflexionStrategy accepts ReflexionConfig
+feat(nemo_oo_agents): ReflexionStrategy accepts ReflexionConfig
 
 - max_reflections -> max_iterations
 - config= replaces flat kwargs
@@ -1696,7 +1696,7 @@ EOF
 ### Task 14: Update TokenBudgetSummarizer and MethodSummarizer
 
 **Files:**
-- Modify: `src/agent006/agents/summarization.py`
+- Modify: `src/nemo_oo_agents/agents/summarization.py`
 - Modify: `tests/agents/test_summarization_agents.py`
 
 **Context:** Both summarizers currently use `Annotated` class attributes and accept `**kwargs` in `install()`. We replace the class attrs with a `config=` parameter on `install()` and move the values into the config objects. The `target_chars` attr on `SummarizationAgent` base class should also be removed — it moves into each config.
@@ -1704,7 +1704,7 @@ EOF
 **Step 1: Write failing tests**
 
 ```python
-from agent006.config.summarizer_config import TokenBudgetConfig, MethodSummarizerConfig
+from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig, MethodSummarizerConfig
 
 def test_token_budget_install_with_config(mock_agent):
     s = TokenBudgetSummarizer.install(mock_agent, config=TokenBudgetConfig(max_tokens=80_000))
@@ -1740,10 +1740,10 @@ summary = await self.summarize(history_markdown, self.config.target_chars)
 
 ```bash
 pytest tests/agents/test_summarization_agents.py -v
-git add src/agent006/agents/summarization.py \
+git add src/nemo_oo_agents/agents/summarization.py \
         tests/agents/test_summarization_agents.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): summarizers accept config= instead of Annotated class attrs
+feat(nemo_oo_agents): summarizers accept config= instead of Annotated class attrs
 
 - TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(...))
 - MethodSummarizer.install(agent, config=MethodSummarizerConfig(...))
@@ -1758,13 +1758,13 @@ EOF
 ### Task 15: Update BashTool to use BashConfig
 
 **Files:**
-- Modify: `src/agent006/tools/bash_tool.py`
+- Modify: `src/nemo_oo_agents/tools/bash_tool.py`
 - Modify: `tests/tools/test_bash.py`
 
 **Step 1: Write failing test**
 
 ```python
-from agent006.config.tool_configs import BashConfig
+from nemo_oo_agents.config.tool_configs import BashConfig
 
 def test_bash_tool_accepts_config():
     tool = BashTool(config=BashConfig(default_timeout=60.0))
@@ -1783,7 +1783,7 @@ def __init__(
     working_dir: str | Path = ".",      # kept: per-instance, not a shared config
     config: BashConfig | None = None,
 ) -> None:
-    from agent006.config.tool_configs import BashConfig as _BC
+    from nemo_oo_agents.config.tool_configs import BashConfig as _BC
     self.working_dir = Path(working_dir).resolve()
     self.config = config or _BC()
 ```
@@ -1794,9 +1794,9 @@ Replace `self.timeout` → `self.config.default_timeout`, `self.use_sandbox` →
 
 ```bash
 pytest tests/tools/test_bash.py -v
-git add src/agent006/tools/bash_tool.py tests/tools/test_bash.py
+git add src/nemo_oo_agents/tools/bash_tool.py tests/tools/test_bash.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): BashTool accepts BashConfig — rename timeout -> default_timeout
+feat(nemo_oo_agents): BashTool accepts BashConfig — rename timeout -> default_timeout
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1808,12 +1808,12 @@ EOF
 ### Task 16: Update WebSearchTool to use WebSearchConfig
 
 **Files:**
-- Modify: `src/agent006/tools/web_search_tool.py`
+- Modify: `src/nemo_oo_agents/tools/web_search_tool.py`
 
 **Step 1: Write failing test**
 
 ```python
-from agent006.config.tool_configs import WebSearchConfig
+from nemo_oo_agents.config.tool_configs import WebSearchConfig
 
 def test_web_search_tool_accepts_config():
     tool = WebSearchTool(config=WebSearchConfig(request_timeout=30.0))
@@ -1830,7 +1830,7 @@ def test_web_search_tool_uses_config_timeout():
 
 ```python
 def __init__(self, config: WebSearchConfig | None = None):
-    from agent006.config.tool_configs import WebSearchConfig as _WC
+    from nemo_oo_agents.config.tool_configs import WebSearchConfig as _WC
     self.config = config or _WC()
 ```
 
@@ -1841,9 +1841,9 @@ Replace hardcoded `timeout=10` at lines 74 and 129 with `timeout=self.config.req
 
 ```bash
 pytest tests/ -k "web_search" -v
-git add src/agent006/tools/web_search_tool.py
+git add src/nemo_oo_agents/tools/web_search_tool.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): WebSearchTool accepts WebSearchConfig — surface request_timeout
+feat(nemo_oo_agents): WebSearchTool accepts WebSearchConfig — surface request_timeout
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
@@ -1854,10 +1854,10 @@ EOF
 
 ### Task 17: Wire RenderConfig into Agent
 
-**Context:** `src/agent006/agent.py` currently has `_block_formatter` and `_provider_formatter` as class attributes. We add `render_config: RenderConfig | None = None` to `Agent.__init__`, store it as an instance attribute, and update the runtime to read formatters from it.
+**Context:** `src/nemo_oo_agents/agent.py` currently has `_block_formatter` and `_provider_formatter` as class attributes. We add `render_config: RenderConfig | None = None` to `Agent.__init__`, store it as an instance attribute, and update the runtime to read formatters from it.
 
 **Files:**
-- Modify: `src/agent006/agent.py`
+- Modify: `src/nemo_oo_agents/agent.py`
 - Modify: wherever the runtime reads `_block_formatter` / `_provider_formatter`
 
 **Step 1: Find all usages of `_block_formatter` and `_provider_formatter`**
@@ -1905,9 +1905,9 @@ Wherever the runtime previously accessed `self._block_formatter` and `self._prov
 
 ```bash
 pytest tests/ -x -q
-git add src/agent006/agent.py
+git add src/nemo_oo_agents/agent.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): Agent accepts render_config= — replace class attr formatters
+feat(nemo_oo_agents): Agent accepts render_config= — replace class attr formatters
 
 - RenderConfig replaces _block_formatter and _provider_formatter class attrs
 - Agent(render_config=RenderConfig(block_formatter=MarkdownBlockFormatter()))
@@ -1924,18 +1924,18 @@ EOF
 **Context:** ExecutionConfig is set at class definition time: `class MyAgent(Agent, execution=ExecutionConfig(...))`. This requires AgentMeta to accept the `execution` keyword in `__init_subclass__`.
 
 **Files:**
-- Modify: `src/agent006/agent.py` (or wherever `AgentMeta` is defined)
+- Modify: `src/nemo_oo_agents/agent.py` (or wherever `AgentMeta` is defined)
 
 **Step 1: Find AgentMeta**
 
 ```bash
-grep -n "AgentMeta\|__init_subclass__" src/agent006/agent.py | head -20
+grep -n "AgentMeta\|__init_subclass__" src/nemo_oo_agents/agent.py | head -20
 ```
 
 **Step 2: Write failing test**
 
 ```python
-from agent006.config.execution_config import ExecutionConfig
+from nemo_oo_agents.config.execution_config import ExecutionConfig
 
 def test_agent_class_level_execution_config():
     class MyAgent(Agent, execution=ExecutionConfig(max_nesting_depth=5)):
@@ -1954,7 +1954,7 @@ In the metaclass or `Agent.__init_subclass__`:
 ```python
 def __init_subclass__(cls, execution: ExecutionConfig | None = None, **kwargs):
     super().__init_subclass__(**kwargs)
-    from agent006.config.execution_config import ExecutionConfig as _EC
+    from nemo_oo_agents.config.execution_config import ExecutionConfig as _EC
     cls._execution_config = execution or _EC()
 ```
 
@@ -1972,9 +1972,9 @@ if depth > self._execution_config.max_nesting_depth:
 
 ```bash
 pytest tests/ -x -q
-git add src/agent006/agent.py
+git add src/nemo_oo_agents/agent.py
 git commit -m "$(cat <<'EOF'
-feat(agent006): ExecutionConfig wired into Agent via __init_subclass__
+feat(nemo_oo_agents): ExecutionConfig wired into Agent via __init_subclass__
 
 - class MyAgent(Agent, execution=ExecutionConfig(max_nesting_depth=5))
 - Raises RecursionError with clear message when depth exceeded
@@ -2004,7 +2004,7 @@ pytest tests/ packages/unifiedllm/tests/ packages/context-blocks/tests/ packages
 Common failure patterns to expect:
 - Any test that constructs a strategy/tool with old flat kwargs → update to `config=` form
 - Any test that reads old field names (`block_limit`, `code_execution_timeout`, etc.) → update to new names
-- Any test that imports from `agent006.runtime.truncation_config` → update to `agent006.config.truncation_config`
+- Any test that imports from `nemo_oo_agents.runtime.truncation_config` → update to `nemo_oo_agents.config.truncation_config`
 
 Fix each failure, run the specific test file after each fix, and commit fixes in logical groups.
 
@@ -2034,17 +2034,17 @@ EOF
 | agentdoc | `config.py` | **Replace** — re-export only |
 | context-blocks | `render_config.py` | **Create** — Pydantic RenderConfig |
 | context-blocks | `renderer.py` | **Modify** — add count_tokens param, raise if token limit set without counter |
-| agent006 | `config/` | **Create** — new directory |
-| agent006 | `config/execution_config.py` | **Create** |
-| agent006 | `config/truncation_config.py` | **Create** — renamed fields, model_fields_set |
-| agent006 | `config/strategy_config.py` | **Create** — CodeActConfig, StructuredOutputConfig, ReflexionConfig |
-| agent006 | `config/summarizer_config.py` | **Create** — TokenBudgetConfig, MethodSummarizerConfig |
-| agent006 | `config/tool_configs.py` | **Create** — BashConfig, WebSearchConfig |
-| agent006 | `runtime/truncation_config.py` | **Delete** |
-| agent006 | `strategies/codeact.py` | **Modify** — config= API, sampling kwargs |
-| agent006 | `strategies/structured_output.py` | **Modify** — config= API |
-| agent006 | `strategies/reflexion.py` | **Modify** — config= API, max_reflections→max_iterations |
-| agent006 | `agents/summarization.py` | **Modify** — config= API, remove Annotated attrs |
-| agent006 | `tools/bash_tool.py` | **Modify** — config= API, timeout→default_timeout |
-| agent006 | `tools/web_search_tool.py` | **Modify** — config= API, surface request_timeout |
-| agent006 | `agent.py` | **Modify** — render_config= API, ExecutionConfig class kwarg |
+| nemo_oo_agents | `config/` | **Create** — new directory |
+| nemo_oo_agents | `config/execution_config.py` | **Create** |
+| nemo_oo_agents | `config/truncation_config.py` | **Create** — renamed fields, model_fields_set |
+| nemo_oo_agents | `config/strategy_config.py` | **Create** — CodeActConfig, StructuredOutputConfig, ReflexionConfig |
+| nemo_oo_agents | `config/summarizer_config.py` | **Create** — TokenBudgetConfig, MethodSummarizerConfig |
+| nemo_oo_agents | `config/tool_configs.py` | **Create** — BashConfig, WebSearchConfig |
+| nemo_oo_agents | `runtime/truncation_config.py` | **Delete** |
+| nemo_oo_agents | `strategies/codeact.py` | **Modify** — config= API, sampling kwargs |
+| nemo_oo_agents | `strategies/structured_output.py` | **Modify** — config= API |
+| nemo_oo_agents | `strategies/reflexion.py` | **Modify** — config= API, max_reflections→max_iterations |
+| nemo_oo_agents | `agents/summarization.py` | **Modify** — config= API, remove Annotated attrs |
+| nemo_oo_agents | `tools/bash_tool.py` | **Modify** — config= API, timeout→default_timeout |
+| nemo_oo_agents | `tools/web_search_tool.py` | **Modify** — config= API, surface request_timeout |
+| nemo_oo_agents | `agent.py` | **Modify** — render_config= API, ExecutionConfig class kwarg |

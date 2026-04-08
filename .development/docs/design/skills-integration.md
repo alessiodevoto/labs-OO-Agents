@@ -8,7 +8,7 @@ Add a reusable way for agents to access specialized knowledge, workflows, and to
 
 ### Skill: Runtime Object
 
-The `Skill` class (`packages/skills-agent006/src/skills_agent006/skill.py`) provides the agent-facing interface:
+The `Skill` class (`packages/skills-nemo_oo_agents/src/skills_nemo_oo_agents/skill.py`) provides the agent-facing interface:
 
 **Initialization:**
 - Created via manager methods: `SkillManager.create_from_id()` or `SkillManager.create_from_path()`
@@ -29,7 +29,7 @@ The `Skill` class (`packages/skills-agent006/src/skills_agent006/skill.py`) prov
 
 ### SkillManager: Manager for Discovery
 
-The `SkillManager` class (`packages/skills-agent006/src/skills_agent006/skill.py`) provides discovery and loading methods:
+The `SkillManager` class (`packages/skills-nemo_oo_agents/src/skills_nemo_oo_agents/skill.py`) provides discovery and loading methods:
 
 **Discovery Methods:**
 - `SkillManager.discover(paths)`: Recursively searches directories for `SKILL.md` files, returns `dict[str, Skill]`
@@ -47,7 +47,7 @@ The `SkillManager` class (`packages/skills-agent006/src/skills_agent006/skill.py
 ### Basic Usage
 
 ```python
-from skills_agent006 import SkillManager
+from skills_nemo_oo_agents import SkillManager
 from pathlib import Path
 from agentdoc import doc
 
@@ -67,7 +67,7 @@ async def my_method(self):
 ### With SkillManager (Discovery)
 
 ```python
-from skills_agent006 import SkillManager
+from skills_nemo_oo_agents import SkillManager
 from pathlib import Path
 
 # Discover all skills in directories
@@ -134,7 +134,7 @@ Content here...
 **Docstring Format:**
 - Manager methods (`SkillManager.create_from_id()`, `SkillManager.create_from_path()`) create dynamic subclasses
 - Dynamic subclasses have docstrings formatted as: `{description} Hint: use doc(skill, concise=False) to access full content.\n---{full_content}`
-- Usage hint is included inline with description for agent006-style clarity
+- Usage hint is included inline with description for nemo_oo_agents-style clarity
 - Base `Skill` class requires explicit parameters (id, description, content) - use manager methods instead
 
 **Error Handling:**

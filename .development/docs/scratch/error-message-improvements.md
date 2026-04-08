@@ -11,7 +11,7 @@ Error messages included full framework tracebacks that were noisy and unhelpful 
 
 ## Solution
 
-New error formatting module (`agent006/errors/formatting.py`) that:
+New error formatting module (`nemo_oo_agents/errors/formatting.py`) that:
 1. Filters out framework tracebacks - shows only user code frames
 2. Shows syntax errors with caret (^^^) pointing to exact error location
 3. Formats validation errors cleanly without tracebacks
@@ -26,13 +26,13 @@ New error formatting module (`agent006/errors/formatting.py`) that:
 Execution error:
 ```
 Traceback (most recent call last):
-  File "/Volumes/dev/dev/agent006/src/agent006/runtime/actor.py", line 261, in execute_code
+  File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py", line 261, in execute_code
     validate_planning_code(
-  File "/Volumes/dev/dev/agent006/src/agent006/runtime/validator.py", line 113, in validate_planning_code
+  File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/validator.py", line 113, in validate_planning_code
     validator.validate(code)
-  File "/Volumes/dev/dev/agent006/src/agent006/runtime/validator.py", line 53, in validate
+  File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/validator.py", line 53, in validate
     raise ValidationError("\n".join(self.errors))
-agent006.errors.PlanningCodeViolation: Line 1: import statements are forbidden. Add imports to the module where the agent is defined instead.
+nemo_oo_agents.errors.PlanningCodeViolation: Line 1: import statements are forbidden. Add imports to the module where the agent is defined instead.
 
 Available in scope: Agent, AnalyzerResult, AnalyzerSubAgent, CompositeStrategy, PurePythonStrategy, ReflexionStrategy, RouterResult, RouterTestWrapper, StructuredOutputStrategy, TemplateStrategy, TransformerSubAgent, TypedDict, ValidatorResult, ValidatorSubAgent, __builtins__, __cached__, __doc__, __file__, __loader__, __name__, __package__, __spec__, agent, asyncio, brief, default_strategy, doc, message, methods, plan ... (5 more)
 ```
@@ -71,7 +71,7 @@ Fix and try again.
 Execution error:
 ```
 Traceback (most recent call last):
-  File "/Volumes/dev/dev/agent006/src/agent006/runtime/actor.py", line 313, in execute_code
+  File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py", line 313, in execute_code
     result_value = await exec_globals["__repl_wrapper__"]()
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "<execute_code>", line 6, in __repl_wrapper__
@@ -115,7 +115,7 @@ Fix and try again.
 Execution error:
 ```
 Traceback (most recent call last):
-  File "/Volumes/dev/dev/agent006/src/agent006/runtime/actor.py", line 272, in execute_code
+  File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py", line 272, in execute_code
     tree = ast.parse(code)
   File "<unknown>", line 2
     def foo(
@@ -154,24 +154,24 @@ Fix and try again.
 
 ### Files Changed
 
-1. **`src/agent006/errors/formatting.py`** (NEW)
+1. **`src/nemo_oo_agents/errors/formatting.py`** (NEW)
    - `format_error_for_llm(error, code)` - Main entry point
    - `_format_syntax_error()` - Syntax error with caret
    - `_format_validation_error()` - Clean message without traceback
    - `_format_runtime_error()` - Filters to user code frames only
    - `_is_user_code_frame()` - Detects user vs framework frames
 
-2. **`src/agent006/errors/__init__.py`**
+2. **`src/nemo_oo_agents/errors/__init__.py`**
    - Added export: `format_error_for_llm`
 
-3. **`src/agent006/strategies/pure_python.py`**
+3. **`src/nemo_oo_agents/strategies/pure_python.py`**
    - `_format_error()` - Now uses `format_error_for_llm()`
    - `_send_execution_error()` - Passes code for better context
 
 ### Framework Path Detection
 
 Framework frames are identified by these markers:
-- `agent006/` - Framework source code
+- `nemo_oo_agents/` - Framework source code
 - `site-packages/` - Third-party packages
 - `lib/python` - Python standard library
 - `<frozen` - Frozen importlib modules

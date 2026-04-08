@@ -14,8 +14,8 @@ from .console import TUIConsole
 from .splash import show_splash
 
 if TYPE_CHECKING:
-    from agent006 import Agent
-    from agent006.tools import BashResult, BashTool
+    from nemo_oo_agents import Agent
+    from nemo_oo_agents.tools import BashResult, BashTool
 
 
 async def handle_bang_command(user_input: str, bash: BashTool) -> BashResult | None:
@@ -129,7 +129,7 @@ async def main(
         # Enable tracing
         if not config.no_trace:
             try:
-                from openinference_instrumentation_agent006 import enable_tracing, exporters
+                from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
                 trace_dir = config.tui.trace_dir
                 if trace_dir is not None:
@@ -139,7 +139,7 @@ async def main(
                     enable_tracing()
             except ImportError:
                 console.print_warning(
-                    "Tracing package not installed (openinference-instrumentation-agent006)"
+                    "Tracing package not installed (openinference-instrumentation-nemo-oo-agents)"
                 )
             except Exception as e:
                 console.print_warning(f"Failed to enable tracing: {e}")

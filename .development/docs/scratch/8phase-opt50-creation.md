@@ -143,7 +143,7 @@ Task 2697 also involves fee matching but for a different question type ("which A
 ## Test Plan
 
 ```bash
-cd /Users/rcabral/agent006
+cd /Users/rcabral/nemo_oo_agents
 source .venv/bin/activate
 cd experiments/evaluation-ablations
 python run_ablation.py \

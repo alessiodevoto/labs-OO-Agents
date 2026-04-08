@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from openinference_instrumentation_agent006._otlp_serialize import build_resource_spans
+from openinference_instrumentation_nemo_oo_agents._otlp_serialize import build_resource_spans
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class OtlpJsonHttpExporter(SpanExporter):
         except urllib.error.HTTPError as e:
             self._record_failure(
                 len(spans),
-                f"{e} — ensure the viewer is running (`agent006 start-dev`) and nothing else is bound to this port.",
+                f"{e} — ensure the viewer is running (`nemo_oo_agents start-dev`) and nothing else is bound to this port.",
             )
             return SpanExportResult.FAILURE
         except Exception as e:

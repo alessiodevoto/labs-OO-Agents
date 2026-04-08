@@ -34,9 +34,9 @@ from uuid import uuid4
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from agent006.decorators import strategy
-from agent006.errors import GenerationError
-from agent006.events import (
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.errors import GenerationError
+from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -46,25 +46,25 @@ from agent006.events import (
     Reasoning,
     Task,
 )
-from agent006.runtime.hooks import call_after_hook, call_before_hook
-from agent006.strategies.base import RuntimeServices
-from agent006.strategies.codeact_errors import format_validation_error
-from agent006.strategies.composite import CompositeStrategy
-from agent006.strategies.generated_code import (
+from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
+from nemo_oo_agents.strategies.base import RuntimeServices
+from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+from nemo_oo_agents.strategies.composite import CompositeStrategy
+from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
     GeneratedCodeValidator,
     HelperMethodManager,
 )
-from agent006.strategies.template import TemplateStrategy
+from nemo_oo_agents.strategies.template import TemplateStrategy
 from agentdoc._structured import format_type as _format_type
 from context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
 from context_blocks.exceptions import BlockSyntaxError
 from unifiedllm import Tool
 
 if TYPE_CHECKING:
-    from agent006.config.strategy_config import CodeActConfig
-    from agent006.errors.formatting import IPythonErrorFormatter
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.config.strategy_config import CodeActConfig
+    from nemo_oo_agents.errors.formatting import IPythonErrorFormatter
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class CodeActSession:
 
     def __post_init__(self):
         """Initialize OutAccessor for Jupyter-style Out[n] access."""
-        from agent006.runtime.out_accessor import OutAccessor
+        from nemo_oo_agents.runtime.out_accessor import OutAccessor
 
         self.out_accessor = OutAccessor(event_manager=self.event_manager)
         # Make Out available in session namespace for LLM code
@@ -264,7 +264,7 @@ class CodeActStrategy(CompositeStrategy):
         Note:
             Prefill is always enabled and uses InspectInputsPrefill internally.
         """
-        from agent006.config.strategy_config import CodeActConfig as _CC
+        from nemo_oo_agents.config.strategy_config import CodeActConfig as _CC
 
         self.config = config or _CC()
         self.error_formatter = error_formatter
@@ -295,7 +295,7 @@ class CodeActStrategy(CompositeStrategy):
         Returns:
             TruncationConfig from agent, or default if not available
         """
-        from agent006.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
         return getattr(runtime.agent, "_truncation", DEFAULT_TRUNCATION_CONFIG)
 
@@ -330,7 +330,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         context = self._extract_module_context(agent_module, agent=runtime.agent)
 
         # Filter out blocked modules so the LLM doesn't see unavailable symbols
-        from agent006.runtime.restrictions import is_from_blocked_module
+        from nemo_oo_agents.runtime.restrictions import is_from_blocked_module
 
         blocked = self.config.restrictions.blocked_modules
 
@@ -393,7 +393,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         # Includes both instance attrs and class-level Skill attrs, so that
         # `frontend_design = Skill(path=...)` at class level is visible here.
         # Framework Skills (_-prefixed) are excluded.
-        from agent006.skill import Skill as _Skill
+        from nemo_oo_agents.skill import Skill as _Skill
         from agentdoc.visibility import is_hidden_field
 
         skill_attrs_dict = {
@@ -1672,7 +1672,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         1. InspectInputsPrefill: Auto-generated code to inspect input parameters
         2. Pre-ellipsis code: User-defined setup code before the `...` marker
         """
-        from agent006.strategies.prefill import InspectInputsPrefill
+        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
 
         prefill_builtins = {**builtins, "_call": call}
 
@@ -1815,7 +1815,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         tool_call_id: str | None = None,
     ) -> Any:
         """Execute Python code via the runtime."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         logger.debug(
             "[CODEACT] Executing code (iter=%s, err=%s, chars=%s)",
@@ -1839,7 +1839,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             "CodeActStrategy": type(self),
         }
         try:
-            from agent006.strategies.predict import PredictStrategy
+            from nemo_oo_agents.strategies.predict import PredictStrategy
 
             strategy_extras["PredictStrategy"] = PredictStrategy
         except ImportError:
@@ -1903,7 +1903,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 # Formatter doesn't accept line_offset
                 return self.error_formatter.format(error, code)
 
-        from agent006.errors.formatting import format_error_for_llm
+        from nemo_oo_agents.errors.formatting import format_error_for_llm
 
         return format_error_for_llm(error, code, line_offset=line_offset)
 
@@ -1966,8 +1966,8 @@ Standard Python builtins and agent instance (`self`) are available."""
     ) -> None:
         """Auto-import classes for agent attributes not already in the execution context.
 
-        When agents use dynamically generated tools/skills (e.g. from mcp_agent006 or
-        skills_agent006), their classes won't be in the module's imports. This discovers
+        When agents use dynamically generated tools/skills (e.g. from mcp_nemo_oo_agents or
+        skills_nemo_oo_agents), their classes won't be in the module's imports. This discovers
         them from the agent's attributes and makes them available for doc()/isinstance().
 
         Package-agnostic: works for any class, not just known packages.

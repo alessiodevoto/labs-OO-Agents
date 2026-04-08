@@ -48,8 +48,8 @@ class ExecutionNamespaceBuilder:
         namespace: dict[str, Any] = filter_module_globals(agent_module) if agent_module else {}
 
         # Mirror core execute_code symbols.
-        from agent006.decorators import strategy
-        from agent006.runtime.pprint import pprint
+        from nemo_oo_agents.decorators import strategy
+        from nemo_oo_agents.runtime.pprint import pprint
         from agentdoc import doc
         from agentdoc.introspect import methods, variables
 

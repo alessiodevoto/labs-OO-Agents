@@ -8,7 +8,7 @@
 
 | Iter | Pass Rate | Key Changes | Code Gen Errors | Logic Errors | Status |
 |------|-----------|-------------|-----------------|--------------|--------|
-| 0 (Baseline) | 10% (1/10) | agent006 vanilla | 80% (8/10) | 10% (1/10) | ✅ Complete |
+| 0 (Baseline) | 10% (1/10) | nemo_oo_agents vanilla | 80% (8/10) | 10% (1/10) | ✅ Complete |
 | 1 | 10% (1/10) | Code cleaning, markdown stripping | **0%** (0/10) ✅ | 90% (9/10) | ✅ Complete |
 | 2 | **40% (4/10)** | Null semantics, filter logic, Decimal precision | 0% (0/10) ✅ | 60% (6/10) | ✅ Complete |
 | 3 | **30% (3/10)** ❌ | Manual.md mandatory, error recovery, validation | 0% (0/10) ✅ | 70% (7/10) ⬆️ | ✅ Complete (REGRESSION) |
@@ -17,9 +17,9 @@
 
 ---
 
-## Iteration 0: Baseline (agent006)
+## Iteration 0: Baseline (nemo_oo_agents)
 
-**Config**: `agent006` with PurePythonStrategy
+**Config**: `nemo_oo_agents` with PurePythonStrategy
 **Pass Rate**: 10% (1/10)
 **Duration**: ~5 minutes
 
@@ -39,9 +39,9 @@ Claude outputs prose + pseudo-code instead of executable Python.
 
 ---
 
-## Iteration 1: agent006_claude_optimized
+## Iteration 1: nemo_oo_agents_claude_optimized
 
-**Config**: `agent006_claude_opt`
+**Config**: `nemo_oo_agents_claude_opt`
 **Pass Rate**: 10% (1/10)
 **Duration**: ~5 minutes
 **Commit**: `18e3aa4`
@@ -88,9 +88,9 @@ Now all failures are logic/accuracy errors:
 
 ---
 
-## Iteration 2: agent006_claude_iter2
+## Iteration 2: nemo_oo_agents_claude_iter2
 
-**Config**: `agent006_claude_iter2`
+**Config**: `nemo_oo_agents_claude_iter2`
 **Pass Rate**: 40% (4/10) ✅
 **Duration**: ~11 minutes
 **Status**: ✅ Complete
@@ -143,9 +143,9 @@ Based on failure analysis:
 
 ---
 
-## Iteration 3: agent006_claude_iter3
+## Iteration 3: nemo_oo_agents_claude_iter3
 
-**Config**: `agent006_claude_iter3`
+**Config**: `nemo_oo_agents_claude_iter3`
 **Pass Rate**: ⏳ Running
 **Status**: Started 13:27, estimated completion 13:37
 
@@ -213,9 +213,9 @@ Based on failure analysis:
 
 ---
 
-## Iteration 4: agent006_claude_iter4
+## Iteration 4: nemo_oo_agents_claude_iter4
 
-**Config**: `agent006_claude_iter4`
+**Config**: `nemo_oo_agents_claude_iter4`
 **Pass Rate**: ⏳ Running
 **Status**: Started 13:33, estimated completion 13:43
 
@@ -270,7 +270,7 @@ Based on failure analysis:
 
 ## Iteration 4 Re-run: Full 10 Tasks
 
-**Config**: `agent006_claude_iter4` (same code)
+**Config**: `nemo_oo_agents_claude_iter4` (same code)
 **Pass Rate**: **50% (5/10)** ✅🎯
 **Status**: ✅ Complete - Duration: 15 minutes
 
@@ -329,7 +329,7 @@ Iter 4:    50% █████      (Simplicity + data inspection)
 4. **Learned from failures** - Iter3's regression taught us what NOT to do
 
 ### Final Agent
-- **File**: `agents/agent006_claude_iter4.py`
+- **File**: `agents/nemo_oo_agents_claude_iter4.py`
 - **Pass Rate**: 50% (5/10 tasks)
 - **Key Features**: Code cleaning, null semantics, Decimal precision, mandatory data inspection
 

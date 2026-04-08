@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent006.runtime.hooks import (
+from nemo_oo_agents.runtime.hooks import (
     InstrumentationHooks,
     get_hooks,
     set_hooks,
@@ -229,9 +229,9 @@ class TestTraceableSkipsHooks:
         """execute_nested must NOT call generation hooks when strategy.traceable is False."""
         from unittest.mock import Mock
 
-        from agent006.runtime.actor import ActorRuntime
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.template import TemplateStrategy
+        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.template import TemplateStrategy
         from tests.strategies.test_template_strategy import MockRuntime
 
         mock_hooks = MockHooks()
@@ -267,9 +267,9 @@ class TestTraceableSkipsHooks:
         """Control test: traceable=True strategy DOES call generation hooks via execute_nested."""
         from unittest.mock import Mock
 
-        from agent006.runtime.actor import ActorRuntime
-        from agent006.strategies.base import GenerationStrategy
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         class TraceableStrategy(GenerationStrategy):
             async def execute(self, runtime, call):

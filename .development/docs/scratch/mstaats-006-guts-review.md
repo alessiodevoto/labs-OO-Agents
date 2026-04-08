@@ -24,7 +24,7 @@ Traditional LLM call:
   system_message  = "You are a ..."
   messages        = [{role: user, ...}, {role: assistant, ...}, ...]
 
-agent006 equivalent:
+nemo_oo_agents equivalent:
   CONTEXT BLOCKS  → rendered together → become the system message
   EVENT BLOCKS    → rendered          → become the conversation messages
 ```
@@ -188,7 +188,7 @@ The problem: if you have 10 `asyncio.Task`s running concurrently in the same pro
 
 `ContextVar` lets each task have its own value for a variable. When task A sets `my_var.set(buffer_a)` and task B sets `my_var.set(buffer_b)`, each sees its own value when calling `my_var.get()` — even though they share the same event loop in the same thread.
 
-In agent006, `sys.stdout` is replaced once with a `ContextVarStream` wrapper. When code does `print("hello")`, the wrapper checks the `ContextVar` to find the current task's buffer and writes there. No buffer set? Falls through to real stdout.
+In nemo_oo_agents, `sys.stdout` is replaced once with a `ContextVarStream` wrapper. When code does `print("hello")`, the wrapper checks the `ContextVar` to find the current task's buffer and writes there. No buffer set? Falls through to real stdout.
 
 It's the async equivalent of thread-local storage.
 
@@ -367,17 +367,17 @@ Thu Feb 12 15:38:00 CET 2026
 Let me look at the actual code to give you a concrete answer rather than an abstract one.
 
 Read agent.py
-Grep "design.principles|design_principles|DESIGN" (in /Users/mstaats/git-repos/agent006/durability, glob: *.md)
+Grep "design.principles|design_principles|DESIGN" (in /Users/mstaats/git-repos/nemo_oo_agents/durability, glob: *.md)
 2 lines of output
-Grep "_system_prompt" (in /Users/mstaats/git-repos/agent006/durability/src/agent006/agent.py)
+Grep "_system_prompt" (in /Users/mstaats/git-repos/nemo_oo_agents/durability/src/nemo_oo_agents/agent.py)
 3 lines of output
-Grep "design_principles|design.principles|DESIGN_PRINCIPLES" (in /Users/mstaats/git-repos/agent006/durability, glob: *.{py,md})
+Grep "design_principles|design.principles|DESIGN_PRINCIPLES" (in /Users/mstaats/git-repos/nemo_oo_agents/durability, glob: *.{py,md})
 2 lines of output
 Globpattern: "**/block-customization*.md"
 Found 1 file
 Read agent.py (lines 389-438)
 Read block-customization-api.md
-Grep "def _build_messages|def _render|ContextSpec|BlockRenderer" (in /Users/mstaats/git-repos/agent006/durability/src/agent006/runtime/actor.py)
+Grep "def _build_messages|def _render|ContextSpec|BlockRenderer" (in /Users/mstaats/git-repos/nemo_oo_agents/durability/src/nemo_oo_agents/runtime/actor.py)
 6 lines of output
 Read actor.py (lines 1954-2033)
 OK. Here's the mapping to what you already know:
@@ -392,7 +392,7 @@ Traditional LLM call:
   system_message  = "You are a ..."
   messages        = [{role: user, ...}, {role: assistant, ...}, ...]
 
-agent006 equivalent:
+nemo_oo_agents equivalent:
   CONTEXT BLOCKS  → rendered together → become the system message
   EVENT BLOCKS    → rendered          → become the conversation messages
 The specific blocks
@@ -554,12 +554,12 @@ Thu Feb 12 15:51:00 CET 2026
 
 Let me check the actual implementation to give you precise answers.
 
-Grep "class GenerationSession" (in /Users/mstaats/git-repos/agent006/durability/src/agent006)
+Grep "class GenerationSession" (in /Users/mstaats/git-repos/nemo_oo_agents/durability/src/nemo_oo_agents)
 2 lines of output
-Grep "session_locals|captured_locals|exec\(|compile\(" (in /Users/mstaats/git-repos/agent006/durability/src/agent006/runtime/actor.py)
+Grep "session_locals|captured_locals|exec\(|compile\(" (in /Users/mstaats/git-repos/nemo_oo_agents/durability/src/nemo_oo_agents/runtime/actor.py)
 24 lines of output
 Read actor.py (lines 701-820)
-Grep "class GenerationSession" (in /Users/mstaats/git-repos/agent006/durability/src/agent006/strategies/pure_python.py)
+Grep "class GenerationSession" (in /Users/mstaats/git-repos/nemo_oo_agents/durability/src/nemo_oo_agents/strategies/pure_python.py)
 31 lines of output
 Read actor.py (lines 524-583)
 OK here's the concrete picture:
@@ -613,6 +613,6 @@ my_buffer.set(StringIO())  # only Task A sees this
 
 # Task B sets its buffer
 my_buffer.set(StringIO())  # only Task B sees this
-In agent006, this is how sys.stdout capture works: the real sys.stdout is replaced once with a ContextVarStream wrapper. When code does print("hello"), the wrapper checks the ContextVar to find the current task's buffer and writes there. No buffer set? Falls through to the real stdout.
+In nemo_oo_agents, this is how sys.stdout capture works: the real sys.stdout is replaced once with a ContextVarStream wrapper. When code does print("hello"), the wrapper checks the ContextVar to find the current task's buffer and writes there. No buffer set? Falls through to the real stdout.
 
 So it's the async equivalent of thread-local storage — same concept, different concurrency model.

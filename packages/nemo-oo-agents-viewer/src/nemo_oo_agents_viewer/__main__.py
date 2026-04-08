@@ -1,4 +1,4 @@
-"""Allow running the viewer with `python -m agent006_viewer`."""
+"""Allow running the viewer with `python -m nemo_oo_agents_viewer`."""
 
 import logging
 import os

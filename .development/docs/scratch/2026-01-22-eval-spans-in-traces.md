@@ -6,7 +6,7 @@
 
 **Architecture:** After scoring completes in the eval pipeline, create an OTel span named `eval` with attributes for test_id, pass/fail, scores, and per-scorer details. This span is written to the same trace file as the agent execution, enabling the trace viewer to display evaluation results inline.
 
-**Tech Stack:** OpenTelemetry Python SDK, existing `openinference_instrumentation_agent006` package
+**Tech Stack:** OpenTelemetry Python SDK, existing `openinference_instrumentation_nemo_oo_agents` package
 
 ---
 

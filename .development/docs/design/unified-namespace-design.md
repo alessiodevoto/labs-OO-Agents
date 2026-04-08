@@ -96,8 +96,8 @@ The caller decides what goes in `extra`. No magic.
 Utilities are **not magically injected**. Agents opt-in by assigning them in `__init__`:
 
 ```python
-from agent006 import Agent
-from agent006 import utils
+from nemo_oo_agents import Agent
+from nemo_oo_agents import utils
 
 class MyAgent(Agent):
     def __init__(self):
@@ -186,7 +186,7 @@ Usage:
     self.metrics.end_timer("api_call")
 """
 
-from agent006.util._context import _current_agent
+from nemo_oo_agents.util._context import _current_agent
 
 def start_timer(name: str) -> None:
     """Start a named timer."""
@@ -201,7 +201,7 @@ def record(name: str, value: float) -> None:
 
 Then export from `util/__init__.py`:
 ```python
-from agent006.util import context, logger, task, metrics
+from nemo_oo_agents.util import context, logger, task, metrics
 __all__ = ["context", "logger", "task", "metrics"]
 ```
 
@@ -219,7 +219,7 @@ import inspect
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 def make_agent_namespace(
     agent: Agent,

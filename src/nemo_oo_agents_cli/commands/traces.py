@@ -1,11 +1,11 @@
 """Manage trace and evaluation files.
 
 Usage:
-    agent006 traces delete                          # Delete, with confirmation
-    agent006 traces delete -n                       # Dry run
-    agent006 traces delete --older-than 7           # Only files >7 days old
-    agent006 traces list                            # List trace directories
-    agent006 traces stats                           # Show trace file statistics
+    nemo_oo_agents traces delete                          # Delete, with confirmation
+    nemo_oo_agents traces delete -n                       # Dry run
+    nemo_oo_agents traces delete --older-than 7           # Only files >7 days old
+    nemo_oo_agents traces list                            # List trace directories
+    nemo_oo_agents traces stats                           # Show trace file statistics
 """
 
 import re
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import click
 
-from agent006_cli._common import find_project_root, format_size
+from nemo_oo_agents_cli._common import find_project_root, format_size
 
 SESSION_ID_RE = re.compile(r'"session\.id"\s*:\s*"[^"]+"')
 
@@ -165,11 +165,11 @@ def delete(
 
     \b
     Examples:
-        agent006 traces delete                          # Delete, with confirmation
-        agent006 traces delete -n                       # Dry run (show what would go)
-        agent006 traces delete --older-than 7           # Only files >7 days old
-        agent006 traces delete --all -y                 # Delete everything, no prompt
-        agent006 traces delete --evals                  # Include eval files
+        nemo_oo_agents traces delete                          # Delete, with confirmation
+        nemo_oo_agents traces delete -n                       # Dry run (show what would go)
+        nemo_oo_agents traces delete --older-than 7           # Only files >7 days old
+        nemo_oo_agents traces delete --all -y                 # Delete everything, no prompt
+        nemo_oo_agents traces delete --evals                  # Include eval files
     """
     root = Path(directory).resolve()
     click.echo(f"Scanning: {root}")
@@ -257,8 +257,8 @@ def list_dirs(root: str | None):
 
     \b
     Examples:
-        agent006 traces list
-        agent006 traces list --root /path/to/project
+        nemo_oo_agents traces list
+        nemo_oo_agents traces list --root /path/to/project
     """
     project_root = Path(root) if root else find_project_root()
     dirs = _discover_trace_dirs(project_root)
@@ -297,8 +297,8 @@ def stats(directory: str):
 
     \b
     Examples:
-        agent006 traces stats
-        agent006 traces stats ./experiments
+        nemo_oo_agents traces stats
+        nemo_oo_agents traces stats ./experiments
     """
     root = Path(directory).resolve()
     trace_files = _find_trace_files(root)

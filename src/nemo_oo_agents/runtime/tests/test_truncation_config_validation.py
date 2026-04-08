@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent006.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.truncation_config import TruncationConfig
 
 
 class TestTruncationConfigValidation:

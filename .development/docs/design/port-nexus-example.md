@@ -8,7 +8,7 @@ Port `examples/quickstart/13_nexus.py` from `origin/feat/nat-nexus-integration` 
 
 | Aspect | Old (`feat/nat-nexus-integration`) | New (`feat/event-middleware-alt`) |
 |--------|-------------------------------------|-----------------------------------|
-| Integration module | `agent006._nat_nexus` + `agent006.nexus` | `agent006.nexus_middleware` |
+| Integration module | `nemo_oo_agents._nat_nexus` + `nemo_oo_agents.nexus` | `nemo_oo_agents.nexus_middleware` |
 | Scope activation | `set_hooks(NexusHooks())` + global `nexus_scope(name)` | Per-agent `nexus_scope(agent, name)` |
 | LLM routing | `llm_call_hook_var` contextvar in unifiedllm | `event_manager.intercept("llm_call", ...)` |
 | Tool routing | `_nat_nexus.tool_execute()` called from actor.py | `event_manager.intercept("execute_python", ...)` |
@@ -24,7 +24,7 @@ Port `examples/quickstart/13_nexus.py` from `origin/feat/nat-nexus-integration` 
 
 Port the example with these adaptations:
 
-- **Imports**: Replace `from agent006.nexus import NexusHooks, nexus_scope` and `from agent006.runtime.hooks import set_hooks` with `from agent006.nexus_middleware import nexus_scope`
+- **Imports**: Replace `from nemo_oo_agents.nexus import NexusHooks, nexus_scope` and `from nemo_oo_agents.runtime.hooks import set_hooks` with `from nemo_oo_agents.nexus_middleware import nexus_scope`
 - **No `set_hooks()`**: The middleware branch doesn't need global hooks — middleware is installed per-agent by `nexus_scope(agent, name)`
 - **Agent creation before scope**: Since `nexus_scope()` takes an agent instance, create the agent before entering the scope
 - **Multiple agents**: The example uses `ResearchAgent` and `ReturnTypeDemoAgent`. Each needs its own `nexus_scope()` call (or share middleware via `install_nexus()`)
@@ -54,7 +54,7 @@ The old branch used `NexusHooks.before_agent_call()` to push `ScopeType.Function
 ## Files to Touch
 
 1. `pyproject.toml` — add nexus dependency and extra
-2. `src/agent006/nexus_middleware.py` — add `agent_call` middleware
+2. `src/nemo_oo_agents/nexus_middleware.py` — add `agent_call` middleware
 3. `examples/quickstart/13_nexus.py` — new file (ported example)
 
 ## Edge Cases

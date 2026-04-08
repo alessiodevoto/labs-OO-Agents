@@ -12,8 +12,8 @@ This branch implements history management phases 5-7: history tagging, policies,
 
 | Issue | Location | Status |
 |-------|----------|--------|
-| **Race condition: turn counter dict mutation** | [actor.py](src/agent006/runtime/actor.py) | ✅ Fixed (copy-on-write) |
-| **Bytecode heuristic unreliable** | [decorators.py](src/agent006/decorators.py) | ✅ Fixed (removed, AST-only) |
+| **Race condition: turn counter dict mutation** | [actor.py](src/nemo_oo_agents/runtime/actor.py) | ✅ Fixed (copy-on-write) |
+| **Bytecode heuristic unreliable** | [decorators.py](src/nemo_oo_agents/decorators.py) | ✅ Fixed (removed, AST-only) |
 | **Untracked new files** | `context_vars.py`, `method_wrapper.py` | ⏳ Pending commit |
 
 ### Breaking API Changes (this branch)
@@ -41,7 +41,7 @@ All Phase 0 fixes have been implemented and tested.
 
 ### Fix 1: Turn Counter Race Condition ✅
 
-**Location**: [actor.py:559-565](src/agent006/runtime/actor.py#L559-L565), [actor.py:1880-1885](src/agent006/runtime/actor.py#L1880-L1885)
+**Location**: [actor.py:559-565](src/nemo_oo_agents/runtime/actor.py#L559-L565), [actor.py:1880-1885](src/nemo_oo_agents/runtime/actor.py#L1880-L1885)
 
 **Problem**: The `_turn_counters_var` dict was mutable and shared across context copies. Parallel tasks could read the same counter value and both increment to the same number.
 
@@ -63,7 +63,7 @@ if generation_id in turn_counters:
 
 ### Fix 2: Remove Bytecode Heuristic ✅
 
-**Location**: [decorators.py](src/agent006/decorators.py)
+**Location**: [decorators.py](src/nemo_oo_agents/decorators.py)
 
 **Problem**: Bytecode-based ellipsis detection (`len(code.co_code) <= 12`) was unreliable across Python versions and could produce false positives for short implemented functions.
 
@@ -95,18 +95,18 @@ if generation_id in turn_counters:
 
 ### MR 1: Architecture Cleanup - Circular Import Resolution ⏳ IN PROGRESS
 
-**MR**: !299 - https://gitlab-master.nvidia.com/interactive-agents/agent006/-/merge_requests/299
+**MR**: !299 - https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/merge_requests/299
 
 **Purpose**: Break circular imports and unify method wrapping logic
 
 **Files**:
-- `src/agent006/runtime/context_vars.py` (NEW) - Break circular import for `_parent_agent_var`
-- `src/agent006/runtime/method_wrapper.py` (NEW) - Unified wrapper logic
-- `src/agent006/agent.py` - Import updates
-- `src/agent006/decorators.py` - Use shared wrapper
-- `src/agent006/metaclass.py` - Now imports `is_ellipsis_body` from decorators.py (DRY)
-- `src/agent006/runtime/actor.py` - Import from context_vars
-- `src/agent006/strategies/generated_code.py` - `_exec_with_source_tracking()` for decorated exec'd functions
+- `src/nemo_oo_agents/runtime/context_vars.py` (NEW) - Break circular import for `_parent_agent_var`
+- `src/nemo_oo_agents/runtime/method_wrapper.py` (NEW) - Unified wrapper logic
+- `src/nemo_oo_agents/agent.py` - Import updates
+- `src/nemo_oo_agents/decorators.py` - Use shared wrapper
+- `src/nemo_oo_agents/metaclass.py` - Now imports `is_ellipsis_body` from decorators.py (DRY)
+- `src/nemo_oo_agents/runtime/actor.py` - Import from context_vars
+- `src/nemo_oo_agents/strategies/generated_code.py` - `_exec_with_source_tracking()` for decorated exec'd functions
 
 **Tests**:
 - `tests/test_ellipsis_detection_exec.py` (NEW) - 8 tests for exec'd function detection
@@ -153,7 +153,7 @@ if generation_id in turn_counters:
 - `packages/context-blocks/tests/test_events.py`
 
 **Files** (history tagging):
-- `src/agent006/runtime/history.py` - Tagging system (`active()` returns `(tag, event)` tuples)
+- `src/nemo_oo_agents/runtime/history.py` - Tagging system (`active()` returns `(tag, event)` tuples)
 - `tests/test_history_manager.py` - Updated tests
 
 **Key Changes**:
@@ -172,9 +172,9 @@ if generation_id in turn_counters:
 **Purpose**: Add turn tracking and BeforeTurnEvent emission
 
 **Files**:
-- `src/agent006/runtime/actor.py` - BeforeTurnEvent, turn counters
-- `src/agent006/strategies/codeact.py` - Turn tracking integration
-- `src/agent006/strategies/prefill.py` - Strategy updates
+- `src/nemo_oo_agents/runtime/actor.py` - BeforeTurnEvent, turn counters
+- `src/nemo_oo_agents/strategies/codeact.py` - Turn tracking integration
+- `src/nemo_oo_agents/strategies/prefill.py` - Strategy updates
 - `tests/runtime/test_span_parent_relationship.py`
 - `tests/edge_cases/test_child_agent_edge_cases.py`
 
@@ -189,9 +189,9 @@ if generation_id in turn_counters:
 **Purpose**: Implement history management policies (truncation/summarization)
 
 **Files**:
-- `src/agent006/runtime/history_policies.py` (NEW)
-- `src/agent006/runtime/budget.py` (NEW)
-- `src/agent006/util/tokens.py` (NEW)
+- `src/nemo_oo_agents/runtime/history_policies.py` (NEW)
+- `src/nemo_oo_agents/runtime/budget.py` (NEW)
+- `src/nemo_oo_agents/util/tokens.py` (NEW)
 - `tests/test_history_policies.py` (NEW - 750 lines)
 - `tests/test_history_truncation.py`
 

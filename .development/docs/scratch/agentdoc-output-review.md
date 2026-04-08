@@ -1778,7 +1778,7 @@ async def CoordinatorAgent.distribute_tasks(self, tasks: list[str]) -> list[str]
 ## 3. Runtime Objects
 
 
-**Purpose:** Test agent006-specific runtime components.
+**Purpose:** Test nemo_oo_agents-specific runtime components.
 
 
 ### 3.1 Events
@@ -2554,7 +2554,7 @@ TaskStatus.RUNNING
 ## 8. Configuration Types
 
 
-**Purpose:** Test agent006 configuration objects.
+**Purpose:** Test nemo_oo_agents configuration objects.
 
 
 ### 8.1 TruncationConfig

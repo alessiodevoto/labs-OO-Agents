@@ -12,11 +12,11 @@ import asyncio
 
 import pytest
 
-from agent006.runtime.actor import (
+from nemo_oo_agents.runtime.actor import (
     _pop_generation_id,
     _push_generation_id,
 )
-from agent006.runtime.context_vars import (
+from nemo_oo_agents.runtime.context_vars import (
     _pop_agent_call_id,
     _push_agent_call_id,
 )
@@ -33,7 +33,7 @@ class TestStackIsolation:
         generation_id_stack. Without proper isolation, they would see each
         other's generation IDs.
         """
-        from agent006.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:
@@ -98,7 +98,7 @@ class TestStackIsolation:
         agent_call_stack. Without proper isolation, they would see each
         other's call IDs.
         """
-        from agent006.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:
@@ -158,7 +158,7 @@ class TestStackIsolation:
     @pytest.mark.asyncio
     async def test_same_context_sees_its_own_stack(self):
         """Within the same async context, stack operations should be consistent."""
-        from agent006.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:
@@ -189,7 +189,7 @@ class TestStackIsolation:
     @pytest.mark.asyncio
     async def test_multiple_concurrent_contexts_isolated(self):
         """Multiple concurrent contexts should each have their own stack tracking."""
-        from agent006.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:

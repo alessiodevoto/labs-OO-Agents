@@ -8,8 +8,8 @@ instead of actual results.
 
 import pytest
 
-from agent006 import Agent, PurePythonStrategy, strategy
-from agent006.errors import GenerationError
+from nemo_oo_agents import Agent, PurePythonStrategy, strategy
+from nemo_oo_agents.errors import GenerationError
 from unifiedllm import FakeLLMClient, LLMResponse
 
 
@@ -182,7 +182,7 @@ return results
 @pytest.mark.asyncio
 async def test_validation_unit():
     """Unit test the validation method directly."""
-    from agent006.strategies.generated_code import GeneratedCodeValidator
+    from nemo_oo_agents.strategies.generated_code import GeneratedCodeValidator
 
     validator = GeneratedCodeValidator()
 

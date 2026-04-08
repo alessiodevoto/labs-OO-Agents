@@ -1,1 +1,1 @@
-"""Tests for the agent006 CLI and TUI components."""
+"""Tests for the nemo_oo_agents CLI and TUI components."""

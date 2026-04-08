@@ -2,7 +2,7 @@
 
 from asyncio import gather, sleep  # noqa: F401
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

@@ -1,9 +1,9 @@
 """Serialization and storage errors."""
 
-from agent006.errors import Agent006Error
+from nemo_oo_agents.errors import NemoOOAgentsError
 
 
-class SerializationError(Agent006Error):
+class SerializationError(NemoOOAgentsError):
     """Error serializing agent state for a snapshot.
 
     Raised by StorageManager.save_snapshot() when a value can't be
@@ -14,7 +14,7 @@ class SerializationError(Agent006Error):
     pass
 
 
-class SnapshotNotFoundError(Agent006Error):
+class SnapshotNotFoundError(NemoOOAgentsError):
     """Snapshot ID not found in storage.
 
     Raised by Agent.load() when StorageManager.restore_snapshot()
@@ -24,7 +24,7 @@ class SnapshotNotFoundError(Agent006Error):
     pass
 
 
-class StorageNotConfiguredError(Agent006Error):
+class StorageNotConfiguredError(NemoOOAgentsError):
     """Agent.save() called without a StorageManager.
 
     Raised when attempting to save an agent that was constructed

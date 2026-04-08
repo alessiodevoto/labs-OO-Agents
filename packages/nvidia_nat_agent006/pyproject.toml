@@ -1,5 +1,5 @@
 [project]
-name = "nvidia-nat-agent006"
+name = "nvidia-nat-nemo_oo_agents"
 version = "0.1.0"
 requires-python = ">=3.11"
 description = "Agent006 integration plugin for NVIDIA NeMo Agent Toolkit"
@@ -16,11 +16,11 @@ dev = [
 ]
 
 [project.entry-points.'nat.components']
-nat_agent006 = "nat.plugins.agent006.register"
+nat_nemo_oo_agents = "nat.plugins.nemo_oo_agents.register"
 
 [build-system]
 requires = ["uv_build>=0.9.11,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "nat.plugins.agent006"
+module-name = "nat.plugins.nemo_oo_agents"

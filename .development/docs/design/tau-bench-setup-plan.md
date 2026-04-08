@@ -1,7 +1,7 @@
 # τ-bench Setup Plan
 
 **Date:** 2025-12-27
-**Goal:** Get τ-bench running with agent006 from a clean fetch of main, producing traces and evals visible in the viewer.
+**Goal:** Get τ-bench running with nemo_oo_agents from a clean fetch of main, producing traces and evals visible in the viewer.
 
 ---
 
@@ -157,7 +157,7 @@ Per-test score tracking enables Pareto selection:
 
 ## Runner Decision
 
-### Decision: Use `run_ablation.py` with agent006 only
+### Decision: Use `run_ablation.py` with nemo_oo_agents only
 
 **Rationale:**
 1. **Already working** - Recent runs (Dec 27) show successful τ-bench execution
@@ -175,7 +175,7 @@ The `run_ablation.py` script successfully:
 - ✅ Evaluates against expected tool calls
 - ✅ Writes trace files (but wrong format - see gaps below)
 
-**Note:** Recent runs (Dec 27) use `PurePythonStrategy` via `agent006_tools.py`, achieving ~40% pass rate. Infrastructure works; we need CodeActStrategy for better performance.
+**Note:** Recent runs (Dec 27) use `PurePythonStrategy` via `nemo_oo_agents_tools.py`, achieving ~40% pass rate. Infrastructure works; we need CodeActStrategy for better performance.
 
 ---
 
@@ -194,15 +194,15 @@ The `run_ablation.py` script successfully:
 
 ### Changes Required
 
-#### 1. Use agent006 Only (Simplify CONFIGS)
+#### 1. Use nemo_oo_agents Only (Simplify CONFIGS)
 
 ```python
 # experiments/evaluation-ablations/run_ablation.py
 
 CONFIGS = {
-    "agent006": {
+    "nemo_oo_agents": {
         "description": "Agent006 with CodeActStrategy",
-        "agent_type": "agent006_codeact",  # New agent type
+        "agent_type": "nemo_oo_agents_codeact",  # New agent type
         "tools": True,
         "refinement": False,
     },
@@ -210,16 +210,16 @@ CONFIGS = {
 }
 ```
 
-Or just run with `--config agent006 --benchmark tau_bench`.
+Or just run with `--config nemo_oo_agents --benchmark tau_bench`.
 
 #### 2. Create CodeAct Agent
 
 **Already exists:** `util/e2e_optimization/src/e2e_optimization/examples/tau_bench/agents/tau_agent.py`
 
-Copy to `experiments/evaluation-ablations/agents/agent006_codeact.py`:
+Copy to `experiments/evaluation-ablations/agents/nemo_oo_agents_codeact.py`:
 
 ```python
-from agent006 import Agent, CodeActStrategy, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from unifiedllm import FakeLLMClient
 
 class TauBenchAgent(Agent, llm=FakeLLMClient()):
@@ -254,8 +254,8 @@ def create_agent_factory(config_name: str, llm_config: LLMConfig, shared_client:
     config = CONFIGS[config_name]
     agent_type = config["agent_type"]
 
-    if agent_type == "agent006_codeact":
-        from agents.agent006_codeact import TauBenchAgent
+    if agent_type == "nemo_oo_agents_codeact":
+        from agents.nemo_oo_agents_codeact import TauBenchAgent
 
         def factory(llm_client=None):
             return TauBenchAgent(llm=llm_client or shared_client)
@@ -290,7 +290,7 @@ def load_agent_from_file(agent_path: Path, llm_client=None):
 
 #### 5. One Trace File Per Sample (TODO)
 
-**Current:** All traces go to one file per benchmark (`agent006_tau_bench.006trace.jsonl`)
+**Current:** All traces go to one file per benchmark (`nemo_oo_agents_tau_bench.006trace.jsonl`)
 
 **Required:** One trace file per sample (`retail_000_abc123.006trace.jsonl`)
 
@@ -305,7 +305,7 @@ def write_per_sample_trace(traces_dir: Path, task_id: str, session_id: str, span
     return trace_path
 ```
 
-**Note:** agent006's OTel instrumentation already writes per-sample traces when properly configured. May just need to configure trace output path per task rather than changing span writing.
+**Note:** nemo_oo_agents's OTel instrumentation already writes per-sample traces when properly configured. May just need to configure trace output path per task rather than changing span writing.
 
 #### 6. Canonical Eval Format (TODO)
 
@@ -363,7 +363,7 @@ The original `tau_bench.py` has provider-based switching:
 **Existing Implementation:** `util/e2e_optimization/src/e2e_optimization/examples/tau_bench/agents/tau_agent.py`
 
 ```python
-from agent006 import Agent, CodeActStrategy, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from unifiedllm import FakeLLMClient
 
 class TauBenchAgent(Agent, llm=FakeLLMClient()):
@@ -459,7 +459,7 @@ The optimizer rewrites the **entire agent file**. It can modify:
 - [ ] Verify prompt-opt viewer can load results
 
 ### Phase 5: Create Baseline Agent
-- [ ] Copy `util/e2e_optimization/.../tau_agent.py` to `experiments/evaluation-ablations/agents/agent006_codeact.py`
+- [ ] Copy `util/e2e_optimization/.../tau_agent.py` to `experiments/evaluation-ablations/agents/nemo_oo_agents_codeact.py`
 - [ ] Verify it uses `CodeActStrategy`
 - [ ] Test basic import and execution
 
@@ -469,13 +469,13 @@ cd experiments/evaluation-ablations
 
 # Single task test with CodeActStrategy agent
 python run_ablation.py \
-  --agent-file agents/agent006_codeact.py \
+  --agent-file agents/nemo_oo_agents_codeact.py \
   --benchmark tau_bench \
   --limit 1
 
 # Full baseline (10 tasks)
 python run_ablation.py \
-  --agent-file agents/agent006_codeact.py \
+  --agent-file agents/nemo_oo_agents_codeact.py \
   --benchmark tau_bench \
   --limit 10
 ```
@@ -493,7 +493,7 @@ python run_ablation.py \
 | File | Purpose | Changes |
 |------|---------|---------|
 | `experiments/evaluation-ablations/run_ablation.py` | Main runner | 📝 Modify: add `--agent-file`, OTel per-sample traces |
-| `experiments/evaluation-ablations/agents/agent006_codeact.py` | Baseline CodeAct agent | 📁 Create: copy from e2e_optimization |
+| `experiments/evaluation-ablations/agents/nemo_oo_agents_codeact.py` | Baseline CodeAct agent | 📁 Create: copy from e2e_optimization |
 | `evaluation/environments/tau_bench.py` | Docker environment | ✅ Already correct |
 | `evaluation/adapters/tau_bench.py` | Task loading, evaluation | ✅ Already correct |
 
@@ -589,7 +589,7 @@ curl https://inference-api.nvidia.com/v1/chat/completions \
 
 **Total estimated effort:** Half day to 1 day
 
-**Good news:** The hard parts (OTel per-sample routing, file handle management) are already implemented in `openinference-instrumentation-agent006`. We just need to call the right APIs.
+**Good news:** The hard parts (OTel per-sample routing, file handle management) are already implemented in `openinference-instrumentation-nemo-oo-agents`. We just need to call the right APIs.
 
 ---
 
@@ -604,13 +604,13 @@ curl https://inference-api.nvidia.com/v1/chat/completions \
 - All ablation experiments benefit from improvements
 - Backward compatible with `--agent-file` being optional
 
-### 2. How does agent006's OTel tracing integrate with per-sample traces?
+### 2. How does nemo_oo_agents's OTel tracing integrate with per-sample traces?
 
-**Answer:** The `openinference-instrumentation-agent006` package already supports this!
+**Answer:** The `openinference-instrumentation-nemo-oo-agents` package already supports this!
 
 **Key API:**
 ```python
-from openinference_instrumentation_agent006 import (
+from openinference_instrumentation_nemo_oo_agents import (
     enable_tracing,        # Initialize OTel with JSONL exporter
     set_trace_file,        # Route spans to specific file (context-var based)
     get_current_exporter,  # Access exporter to close files
@@ -645,7 +645,7 @@ if exporter:
 
 ### Target State
 
-Use agent006's OTel instrumentation which captures rich traces:
+Use nemo_oo_agents's OTel instrumentation which captures rich traces:
 - Every LLM call with input/output messages
 - Tool calls with arguments and results
 - Strategy state (iterations, retries)
@@ -657,7 +657,7 @@ Use agent006's OTel instrumentation which captures rich traces:
 
 ```python
 # At top of run_ablation.py
-from openinference_instrumentation_agent006 import (
+from openinference_instrumentation_nemo_oo_agents import (
     enable_tracing,
     set_trace_file,
     get_current_exporter,
@@ -693,7 +693,7 @@ parser.add_argument(
 def load_agent_from_file(agent_path: Path, llm_client=None):
     """Dynamically import agent class from file path."""
     import importlib.util
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     spec = importlib.util.spec_from_file_location("agent_module", agent_path)
     module = importlib.util.module_from_spec(spec)
@@ -841,7 +841,7 @@ All requirements have been implemented in `experiments/evaluation-ablations/run_
    - Final line: `{"_type": "completion", "status": "completed", "result_count": N, ...}`
 
 4. **Baseline Agent**
-   - Using existing `experiments/evaluation-ablations/agents/agent006_tools.py`
+   - Using existing `experiments/evaluation-ablations/agents/nemo_oo_agents_tools.py`
    - Uses `PurePythonStrategy` for general tasks, `CodeActStrategy` for code generation
    - Already handles τ-bench via `_run_evaluation()` method
 
@@ -850,15 +850,15 @@ All requirements have been implemented in `experiments/evaluation-ablations/run_
 ```bash
 # Run τ-bench with dynamic agent loading
 python run_ablation.py \
-  --agent-file agents/agent006_tools.py \
+  --agent-file agents/nemo_oo_agents_tools.py \
   --benchmark tau_bench \
   --limit 10 \
   --provider nvidia
 
 # Output structure:
 results/20251227_161514/
-├── agent006_tau_bench.006eval.json      # Summary JSON
-├── agent006_tau_bench.006eval.jsonl     # Canonical eval format
+├── nemo_oo_agents_tau_bench.006eval.json      # Summary JSON
+├── nemo_oo_agents_tau_bench.006eval.jsonl     # Canonical eval format
 └── traces/
     ├── retail_000_abc123.006trace.jsonl # Per-sample OTel traces
     ├── retail_001_def456.006trace.jsonl

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent006_cli.tui.models import (
+from nemo_oo_agents_cli.tui.models import (
     BrainstormResult,
     DiagnosisResult,
     Intent,

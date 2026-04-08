@@ -124,7 +124,7 @@ This is **memorizing the test suite structure**, not learning transferable patte
 Experiments consistently died at iteration 4 due to OOM. Memory grew ~150MB per iteration and was never released.
 
 ### Root Cause
-`enable_tracing()` in `openinference_instrumentation_agent006` was called once per iteration. Each call:
+`enable_tracing()` in `openinference_instrumentation_nemo_oo_agents` was called once per iteration. Each call:
 1. Created a new `JSONLSpanExporter`
 2. Added a new `SimpleSpanProcessor` to the global `TracerProvider`
 3. Stored the new exporter in a `ContextVar` (overwriting the old reference)
@@ -140,7 +140,7 @@ Made `enable_tracing()` idempotent:
 2. Early return if exporter already exists
 3. Both global and ContextVar track the same exporter
 
-**File:** `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/__init__.py`
+**File:** `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/__init__.py`
 
 ### Test
 ```python

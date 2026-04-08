@@ -1,6 +1,6 @@
 # Agent006 Capability Tests - eval_pipeline Configuration
 #
-# This experiment tests agent006 core capabilities:
+# This experiment tests nemo_oo_agents core capabilities:
 # 1. Scale awareness - when to answer directly vs write code
 # 2. Generation methods - when to use `...` for LLM judgment
 # 3. REPL exploration - using introspection for complex state

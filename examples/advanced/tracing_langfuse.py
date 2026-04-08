@@ -21,7 +21,7 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from examples.util.example_llm import qwen
 
 load_dotenv(override=True)
@@ -65,7 +65,7 @@ class SentimentAgent(Agent, llm=qwen):
 
 
 async def main() -> None:
-    from openinference_instrumentation_agent006 import enable_tracing, exporters
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
     print("=" * 80)
     print("Langfuse Tracing Example")

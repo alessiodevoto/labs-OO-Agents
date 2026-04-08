@@ -541,7 +541,7 @@ Simpler than string enums, no typo risk, intuitive meaning.
 
 ---
 
-## Usage in agent006
+## Usage in nemo_oo_agents
 
 agentdoc functions are injected into the LLM's execution namespace:
 

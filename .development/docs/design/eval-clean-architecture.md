@@ -3,10 +3,10 @@
 ## Problem Statement
 
 **Current issues:**
-- agent006 details leak into runners (OTel setup, strategy knowledge, tool awareness)
+- nemo_oo_agents details leak into runners (OTel setup, strategy knowledge, tool awareness)
 - Adapters know too much about execution details (tracing, timeout, progress)
 - Hard to test runner in isolation
-- Hard to add non-agent006 evaluations
+- Hard to add non-nemo_oo_agents evaluations
 
 **Goal:** Clear layer separation with dependency inversion
 
@@ -108,7 +108,7 @@ class ConcurrencyEngine:
 - Nothing concrete
 
 **Does NOT know about:**
-- agent006 specifics
+- nemo_oo_agents specifics
 - How to actually run tasks
 - Trace formats, output formats
 
@@ -201,7 +201,7 @@ class ResultWriter(Protocol):
 - Generic orchestration patterns
 
 **Does NOT know about:**
-- agent006 specifics
+- nemo_oo_agents specifics
 - How adapters execute tasks
 - What's in results
 - Trace formats
@@ -227,7 +227,7 @@ class EvaluationRunner:
 
     This class knows about evaluation concepts (tasks, results, adapters)
     but has NO KNOWLEDGE of:
-    - agent006 internals
+    - nemo_oo_agents internals
     - How adapters work internally
     - What's in task data or results
 
@@ -311,12 +311,12 @@ class EvaluationRunner:
 
 **Responsibilities:**
 - Implement `ExecutionAdapter` protocol
-- Know domain specifics (agent006, benchmarks, etc.)
+- Know domain specifics (nemo_oo_agents, benchmarks, etc.)
 - Set up execution environment (tracing, Docker, etc.)
 - Handle domain-specific errors
 
 **Knows about:**
-- agent006 internals (this layer CAN know!)
+- nemo_oo_agents internals (this layer CAN know!)
 - Benchmark specifics
 - How to set up tracing
 - Scoring logic
@@ -327,17 +327,17 @@ class EvaluationRunner:
 - File formats (delegates to writers)
 
 ```python
-# evaluation/adapters/agent006_adapter.py
+# evaluation/adapters/nemo_oo_agents_adapter.py
 
 from ..protocol import ExecutionAdapter, EvaluationTask, EvaluationResult
 from typing import Any, Callable
 import asyncio
 
 class Agent006Adapter(ExecutionAdapter):
-    """Adapter for running agent006 agents.
+    """Adapter for running nemo_oo_agents agents.
 
     THIS LAYER KNOWS ABOUT AGENT006 - that's its job!
-    The runner doesn't need to know about agent006 because
+    The runner doesn't need to know about nemo_oo_agents because
     it only interacts with this adapter through the protocol.
     """
 
@@ -354,9 +354,9 @@ class Agent006Adapter(ExecutionAdapter):
         self.trace_dir = trace_dir
 
     async def execute_task(self, task: EvaluationTask) -> EvaluationResult:
-        """Execute agent006 task.
+        """Execute nemo_oo_agents task.
 
-        This method can do ANYTHING agent006-specific:
+        This method can do ANYTHING nemo_oo_agents-specific:
         - Set up OTel tracing
         - Instantiate agent with strategy
         - Call agent methods
@@ -364,25 +364,25 @@ class Agent006Adapter(ExecutionAdapter):
 
         The runner doesn't know or care about any of this.
         """
-        # Set up tracing (agent006-specific!)
+        # Set up tracing (nemo_oo_agents-specific!)
         trace_file = None
         if self.enable_tracing and self.trace_dir:
-            from openinference_instrumentation_agent006 import set_trace_file
+            from openinference_instrumentation_nemo_oo_agents import set_trace_file
             trace_file = self.trace_dir / f"{task.task_id}.006trace.jsonl"
             set_trace_file(trace_file)
 
         try:
-            # Create agent (agent006-specific!)
+            # Create agent (nemo_oo_agents-specific!)
             agent = self.agent_factory()
 
-            # Call method (agent006-specific!)
+            # Call method (nemo_oo_agents-specific!)
             method = getattr(agent, self.method_name)
             kwargs = task.data.get("kwargs", {})
             output = await method(**kwargs)
 
-            # Flush traces (agent006-specific!)
+            # Flush traces (nemo_oo_agents-specific!)
             if trace_file:
-                from openinference_instrumentation_agent006 import get_current_exporter
+                from openinference_instrumentation_nemo_oo_agents import get_current_exporter
                 exporter = get_current_exporter()
                 if exporter:
                     exporter.force_flush()
@@ -512,7 +512,7 @@ class BenchmarkAdapter(ExecutionAdapter):
 
 from evaluation.runner import EvaluationRunner, EvaluationConfig
 from evaluation.protocol import EvaluationTask
-from evaluation.adapters.agent006_adapter import Agent006Adapter
+from evaluation.adapters.nemo_oo_agents_adapter import Agent006Adapter
 from evaluation.writers.jsonl_writer import JsonlWriter
 
 class Evaluator:
@@ -560,7 +560,7 @@ class Evaluator:
                 for i, item in enumerate(test.data)
             ]
 
-            # Run (runner knows nothing about agent006!)
+            # Run (runner knows nothing about nemo_oo_agents!)
             results = await runner.run_evaluation(tasks)
 ```
 
@@ -579,7 +579,7 @@ class Evaluator:
 │ Layer 3: Adapters (Concrete)         │ Layer 3: Writers │
 │ - Agent006Adapter                    │ - JsonlWriter    │
 │ - BenchmarkAdapter                   │ - WandbWriter    │
-│ Knows: agent006, benchmarks          │ Knows: Formats   │
+│ Knows: nemo_oo_agents, benchmarks          │ Knows: Formats   │
 │ Depends on: Layer 1 (protocols)      │ Depends on: L1   │
 └───────────────────┬──────────────────┴──────────────────┘
                     │
@@ -613,10 +613,10 @@ class Evaluator:
 
 **Bad (current):**
 ```python
-# Runner knows about agent006
+# Runner knows about nemo_oo_agents
 class Runner:
     async def run_task(self, task):
-        from openinference_instrumentation_agent006 import set_trace_file
+        from openinference_instrumentation_nemo_oo_agents import set_trace_file
         set_trace_file(...)  # LEAK!
         agent = Agent006(...)  # LEAK!
 ```
@@ -690,7 +690,7 @@ class MockAdapter(ExecutionAdapter):
 
 async def test_runner():
     runner = EvaluationRunner(
-        adapter=MockAdapter(),  # No agent006 needed!
+        adapter=MockAdapter(),  # No nemo_oo_agents needed!
         writer=MockWriter(),
         config=EvaluationConfig(...),
     )
@@ -701,7 +701,7 @@ async def test_runner():
 ### Layer 3: Test adapters independently
 
 ```python
-async def test_agent006_adapter():
+async def test_nemo_oo_agents_adapter():
     adapter = Agent006Adapter(
         agent_factory=lambda: MyAgent(),
         method_name="classify",
@@ -727,12 +727,12 @@ async def test_agent006_adapter():
 
 ### Phase 3: Refactor Layer 2
 - Rewrite runner to use protocols
-- Remove all agent006 knowledge
+- Remove all nemo_oo_agents knowledge
 - Test with mocks
 
 ### Phase 4: Implement Layer 3
 - Create concrete adapters
-- Move agent006 knowledge here
+- Move nemo_oo_agents knowledge here
 - Test independently
 
 ### Phase 5: Update Layer 4
@@ -742,19 +742,19 @@ async def test_agent006_adapter():
 ## Benefits
 
 ✅ **Testability**: Each layer tested in isolation with mocks
-✅ **Flexibility**: Easy to add new execution models (not just agent006)
+✅ **Flexibility**: Easy to add new execution models (not just nemo_oo_agents)
 ✅ **Maintainability**: Clear boundaries, single responsibility
 ✅ **Reusability**: Layer 0 and 2 are reusable for any evaluation
 ✅ **Evolution**: Can change adapters without touching runner
 
 ## Example: Adding New Execution Model
 
-Want to add direct LLM evaluation (no agent006)?
+Want to add direct LLM evaluation (no nemo_oo_agents)?
 
 **Just add a new adapter (Layer 3):**
 ```python
 class DirectLLMAdapter(ExecutionAdapter):
-    """Adapter for direct LLM calls - no agent006!"""
+    """Adapter for direct LLM calls - no nemo_oo_agents!"""
 
     async def execute_task(self, task):
         # Call LLM directly
@@ -777,7 +777,7 @@ class DirectLLMAdapter(ExecutionAdapter):
 - Layer 3: Implementation (concrete domain)
 - Layer 4: User interface
 
-**agent006 knowledge is ONLY in Layer 3 (adapters)**
+**nemo_oo_agents knowledge is ONLY in Layer 3 (adapters)**
 
 **Runner (Layer 2) is completely generic and reusable**
 

@@ -5,7 +5,7 @@ No global state, no TracerProvider setup -- that's :func:`enable_tracing`'s job.
 
 Usage::
 
-    from openinference_instrumentation_agent006 import enable_tracing, exporters
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
     enable_tracing(exporters=[exporters.jsonl("./traces")])
     enable_tracing(exporters=[exporters.otlp("http://localhost:4318/v1/traces")])
@@ -34,7 +34,7 @@ def jsonl(trace_dir: str | Path | None = None) -> SpanExporter:
     .. _OTLP File Exporter specification:
        https://opentelemetry.io/docs/specs/otel/protocol/file-exporter/
     """
-    from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
+    from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
 
     if trace_dir is None:
         trace_dir = _auto_detect_trace_dir()
@@ -91,12 +91,12 @@ def langfuse(
 def local_otlp(
     endpoint: str | None = None,
 ) -> SpanExporter:
-    """Lightweight OTLP JSON/HTTP exporter for the local agent006 viewer.
+    """Lightweight OTLP JSON/HTTP exporter for the local nemo_oo_agents viewer.
 
     Zero external dependencies (uses ``urllib``).  Defaults to
     ``OTLP_ENDPOINT`` env var or ``http://localhost:5001/v1/traces``.
     """
-    from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+    from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
     endpoint = endpoint or os.getenv("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")
     return OtlpJsonHttpExporter(endpoint=endpoint)
@@ -105,7 +105,7 @@ def local_otlp(
 def journal(
     endpoint: str | None = None,
 ) -> SpanExporter:
-    """Content-addressed journal exporter for the local agent006 viewer.
+    """Content-addressed journal exporter for the local nemo_oo_agents viewer.
 
     Sends spans to the viewer with ``llm.input_messages.*`` /
     ``llm.output_messages.*`` attributes stripped, and installs a litellm
@@ -119,7 +119,7 @@ def journal(
 
     Defaults to ``OTLP_ENDPOINT`` env var or ``http://localhost:5001``.
     """
-    from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+    from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
     base = endpoint or os.getenv("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")
     parsed = urlparse(base)

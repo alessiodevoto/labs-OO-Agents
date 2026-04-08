@@ -9,7 +9,7 @@ work across all supported providers.
 
 ## Architecture
 
-### Media classes (`agent006.media`)
+### Media classes (`nemo_oo_agents.media`)
 
 LLM-agnostic data holders. Store raw data (as data URLs) + MIME type. No
 provider-specific logic.
@@ -104,7 +104,7 @@ Both `ExecutionResult` and `PythonOutput` carry an `images: list[dict]` field
 
 ### Provider formatting
 
-Cross-package boundary: `context_blocks` cannot import `agent006`. Uses
+Cross-package boundary: `context_blocks` cannot import `nemo_oo_agents`. Uses
 `getattr(block.event, 'images', None)` for generic access.
 
 - **OpenAI format**: multipart content array with text + image_url blocks
@@ -112,7 +112,7 @@ Cross-package boundary: `context_blocks` cannot import `agent006`. Uses
   native `{"type": "image", "source": {"type": "base64", ...}}` blocks
 
 > NOTE: The data URL parsing in `formatter.py:_openai_image_to_anthropic()` mirrors
-> `Media._base64_data()` in `agent006/media.py`. If the parsing logic changes,
+> `Media._base64_data()` in `nemo_oo_agents/media.py`. If the parsing logic changes,
 > update both locations.
 
 ### Vision capability check
@@ -122,16 +122,16 @@ Returns `False` for unknown models.
 
 ## Files Changed
 
-1. **NEW** `src/agent006/media.py` — `Media` base + `Image`, `Audio`, `File` (LLM-agnostic data holders)
-2. **NEW** `src/agent006/runtime/media_capture.py` — ContextVar collector, `show()`, `media_to_content_block()`, PIL/matplotlib auto-conversion
-3. **EDIT** `src/agent006/events.py` — `images` field on `ExecutionResult`, `PythonOutput`, `Task`
-4. **EDIT** `src/agent006/runtime/actor.py` — Wire media buffer lifecycle, inject `show`+Media types into exec_globals
-5. **EDIT** `src/agent006/strategies/codeact.py` — Propagate `result.images` to all `PythonOutput` sites
-6. **EDIT** `src/agent006/strategies/predict.py` — Collect Media from args+kwargs as content blocks
-7. **EDIT** `src/agent006/strategies/prefill.py` — `InspectInputsPrefill` auto-calls `show()` for Media params
+1. **NEW** `src/nemo_oo_agents/media.py` — `Media` base + `Image`, `Audio`, `File` (LLM-agnostic data holders)
+2. **NEW** `src/nemo_oo_agents/runtime/media_capture.py` — ContextVar collector, `show()`, `media_to_content_block()`, PIL/matplotlib auto-conversion
+3. **EDIT** `src/nemo_oo_agents/events.py` — `images` field on `ExecutionResult`, `PythonOutput`, `Task`
+4. **EDIT** `src/nemo_oo_agents/runtime/actor.py` — Wire media buffer lifecycle, inject `show`+Media types into exec_globals
+5. **EDIT** `src/nemo_oo_agents/strategies/codeact.py` — Propagate `result.images` to all `PythonOutput` sites
+6. **EDIT** `src/nemo_oo_agents/strategies/predict.py` — Collect Media from args+kwargs as content blocks
+7. **EDIT** `src/nemo_oo_agents/strategies/prefill.py` — `InspectInputsPrefill` auto-calls `show()` for Media params
 8. **EDIT** `packages/context-blocks/src/context_blocks/formatter.py` — Provider formatters emit multipart content
 9. **EDIT** `packages/unifiedllm/src/unifiedllm/unifiedllm.py` — `supports_vision()` method
-10. **EDIT** `examples/quickstart/12_multimodal.py` — Use `agent006.media` types
+10. **EDIT** `examples/quickstart/12_multimodal.py` — Use `nemo_oo_agents.media` types
 11. **NEW** `tests/test_media_capture.py` — Unit tests for media capture, show(), auto-conversion, limits
 12. **NEW** `tests/test_provider_image_rendering.py` — Unit tests for multipart content in provider formatters
 

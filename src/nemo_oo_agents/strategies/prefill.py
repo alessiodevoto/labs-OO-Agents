@@ -16,13 +16,13 @@ import typing
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
 
 def _is_media(value: Any) -> bool:
     """Check if a value is a Media instance (lazy import to avoid circular deps)."""
     try:
-        from agent006.media import Media
+        from nemo_oo_agents.media import Media
 
         return isinstance(value, Media)
     except ImportError:

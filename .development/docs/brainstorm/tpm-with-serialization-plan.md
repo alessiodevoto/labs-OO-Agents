@@ -11,7 +11,7 @@ The goal is to wire these into the TPM agent and re-enable auto-deploy on every
 push to main, while preserving agent memory across restarts.
 
 A secondary goal is to exercise the new persistence framework in production — the
-TPM agent is our continuous integration target for agent006, so using it here gives
+TPM agent is our continuous integration target for nemo_oo_agents, so using it here gives
 us real confidence in the serialization stack.
 
 ## Proposed Approach

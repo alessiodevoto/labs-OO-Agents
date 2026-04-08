@@ -8,7 +8,7 @@
 Generation methods are methods where the LLM "fills in" the implementation. With the metaclass-based system, methods with ellipsis (`...`) bodies are automatically wrapped for generation - no decorator needed!
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 class MyAgent(Agent, llm=my_llm):
     async def analyze(self, data: str) -> Analysis:
@@ -29,8 +29,8 @@ The `...` (ellipsis) is the key - it signals that this method needs LLM generati
 The metaclass detects ellipsis bodies and wraps them automatically. To override the default strategy, use `@strategy`:
 
 ```python
-from agent006 import strategy
-from agent006.strategies import ReflexionStrategy
+from nemo_oo_agents import strategy
+from nemo_oo_agents.strategies import ReflexionStrategy
 
 @strategy(ReflexionStrategy(max_iterations=5))
 async def complex_task(self): ...
@@ -110,8 +110,8 @@ Strategy methods can also use ellipsis for generation. They must receive `runtim
 By default, ellipsis methods use `CodeActStrategy()`. Override with `@strategy`:
 
 ```python
-from agent006 import Agent, strategy
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import PredictStrategy
 
 class MyAgent(Agent, llm=my_llm):
     # Default strategy (CodeActStrategy) — code execution + iteration
@@ -170,7 +170,7 @@ class MyAgent(Agent, llm=my_llm):
 To opt-out of tracing for a public method:
 
 ```python
-from agent006 import no_trace
+from nemo_oo_agents import no_trace
 
 class MyAgent(Agent, llm=my_llm):
     @no_trace
@@ -242,7 +242,7 @@ If you're updating code from the old `@agent` and `@plan` decorators:
 
 **Before:**
 ```python
-from agent006 import agent, plan
+from nemo_oo_agents import agent, plan
 
 @agent(llm=my_llm)
 class MyAgent(Agent):
@@ -255,8 +255,8 @@ class MyAgent(Agent):
 
 **After:**
 ```python
-from agent006 import Agent, strategy
-from agent006.strategies import ReflexionStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import ReflexionStrategy
 
 class MyAgent(Agent, llm=my_llm):
     async def task(self): ...  # No decorator needed!

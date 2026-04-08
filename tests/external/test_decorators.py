@@ -1,9 +1,9 @@
 """Tests for agent decorators."""
 
-from agent006 import strategy
-from agent006.agent import Agent
-from agent006.ellipsis_detection import has_ellipsis_body
-from agent006.strategies import PurePythonStrategy
+from nemo_oo_agents import strategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
+from nemo_oo_agents.strategies import PurePythonStrategy
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)

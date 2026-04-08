@@ -1,4 +1,4 @@
-"""Slack integration tool for agent006.
+"""Slack integration tool for nemo_oo_agents.
 
 Provides async Slack API operations for sending messages, reading threads, and managing channels.
 All methods are async and can be awaited in agent code.

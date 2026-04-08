@@ -101,7 +101,7 @@ Loop Steps 3.2-3.4 until:
 | 4 | Run baseline eval for dabstep_agent003 | COMPLETED |
 | 5 | Run baseline eval for dabstep_agent004 | COMPLETED |
 | 6 | Run baseline eval for dabstep_agent005 | COMPLETED |
-| 7 | Run baseline eval for dabstep_agent006 | COMPLETED |
+| 7 | Run baseline eval for dabstep_nemo_oo_agents | COMPLETED |
 | 8 | Run baseline eval for dabstep_agent007 | COMPLETED |
 | 9 | Create pareto table comparing all agents | COMPLETED |
 | 10 | Create e2e optimizer config for DABStep | COMPLETED |
@@ -276,19 +276,19 @@ python run_ablation.py --benchmark dabstep --agent-file agents/dabstep_agent008.
   --output-dir results/dabstep/agent008/fullbatch/
 ```
 
-**Next:** Run e2e optimization with agent006 as baseline.
+**Next:** Run e2e optimization with nemo_oo_agents as baseline.
 
 ---
 
 ### 2026-01-21 ~14:40 - 9-Run Reliability Results
 
-Completed 9-run reliability testing for all 8 agents. **Surprise: agent006 is the leader!**
+Completed 9-run reliability testing for all 8 agents. **Surprise: nemo_oo_agents is the leader!**
 
 **Overall Results (9 runs × 10 tests = ~90 results per agent):**
 
 | Rank | Agent | Passed/Total | Rate | Single-Run Rate |
 |------|-------|--------------|------|-----------------|
-| 1 | **agent006** | 60/92 | **65.2%** | 50% |
+| 1 | **nemo_oo_agents** | 60/92 | **65.2%** | 50% |
 | 2 | agent005 | 56/92 | 60.8% | 30% |
 | 3 | agent007 | 54/92 | 58.6% | 60% |
 | 4 | agent001 | 37/92 | 40.2% | 50% |
@@ -298,13 +298,13 @@ Completed 9-run reliability testing for all 8 agents. **Surprise: agent006 is th
 | 8 | agent004 | 16/92 | 17.3% | 20% |
 
 **Key Insight:** Multi-run reliability differs significantly from single-run results!
-- agent006 went from 50% → 65.2% (consistent performer)
+- nemo_oo_agents went from 50% → 65.2% (consistent performer)
 - agent007 went from 60% → 58.6% (less reliable)
 - agent005 went from 30% → 60.8% (surprisingly good with more runs)
 
 **Per-Test Reliability Comparison (Top 3 Agents):**
 
-| Test | agent006 | agent005 | agent007 |
+| Test | nemo_oo_agents | agent005 | agent007 |
 |------|----------|----------|----------|
 | dabstep_5_easy | 9/9 (100%) | 9/9 (100%) | 9/9 (100%) |
 | dabstep_49_easy | 9/9 (100%) | 9/9 (100%) | 9/9 (100%) |
@@ -319,11 +319,11 @@ Completed 9-run reliability testing for all 8 agents. **Surprise: agent006 is th
 
 **Analysis:**
 - **Stable (100%):** 5_easy, 49_easy, 1464_hard (all top agents)
-- **agent006 unique strength:** 70_easy (100%), 1273_hard (100%)
+- **nemo_oo_agents unique strength:** 70_easy (100%), 1273_hard (100%)
 - **Unstable but solvable:** 1681_hard, 1753_hard (need optimization)
 - **Unsolved:** 1871_hard, 2697_hard (0% across all agents)
 
-**Decision:** Use **agent006** as baseline for e2e optimization (highest reliability).
+**Decision:** Use **nemo_oo_agents** as baseline for e2e optimization (highest reliability).
 
 ---
 
@@ -335,9 +335,9 @@ Set up the agent directory structure retroactively and prepared for the first me
 
 ```
 experiments/evaluation-ablations/results/dabstep/
-├── agent006/
-│   ├── agent006.py                    # 8-phase soft decomposition
-│   ├── agent006.006opt.jsonl          # Event log
+├── nemo_oo_agents/
+│   ├── nemo_oo_agents.py                    # 8-phase soft decomposition
+│   ├── nemo_oo_agents.006opt.jsonl          # Event log
 │   └── fullbatch/
 │       └── 9run_reliability.006eval.jsonl
 ├── agent007/
@@ -347,7 +347,7 @@ experiments/evaluation-ablations/results/dabstep/
 │       └── 9run_reliability.006eval.jsonl
 └── agent008/
     ├── agent008.py                    # Placeholder for merge
-    ├── agent008.006opt.jsonl          # parents: [agent006, agent007], method: merge
+    ├── agent008.006opt.jsonl          # parents: [nemo_oo_agents, agent007], method: merge
     ├── minibatch/traces/
     ├── fullbatch/traces/
     └── analysis/
@@ -355,7 +355,7 @@ experiments/evaluation-ablations/results/dabstep/
 
 **Event Logs Created:**
 
-agent006.006opt.jsonl:
+nemo_oo_agents.006opt.jsonl:
 ```jsonl
 {"type": "created", "parents": [], "method": "baseline", "description": "8-phase soft decomposition (guidance-based)"}
 {"type": "fullbatch_eval", "passed": 6, "total": 10, "pass_rate": 0.6, "per_test": {...}}
@@ -369,7 +369,7 @@ agent007.006opt.jsonl:
 
 agent008.006opt.jsonl:
 ```jsonl
-{"type": "created", "parents": ["agent006", "agent007"], "method": "merge", "description": "GEPA crossover of agent006 (soft) + agent007 (hard)"}
+{"type": "created", "parents": ["nemo_oo_agents", "agent007"], "method": "merge", "description": "GEPA crossover of nemo_oo_agents (soft) + agent007 (hard)"}
 ```
 
 **Iteration Plan:**
@@ -377,7 +377,7 @@ agent008.006opt.jsonl:
 The merge iteration will proceed step-by-step:
 
 1. **Generate Merge** - Use LLM to analyze both agents and produce merged code
-   - Input: agent006.py, agent007.py, per-test results
+   - Input: nemo_oo_agents.py, agent007.py, per-test results
    - Output: Updated agent008.py with merged implementation
    - Log: AgentMutation event with source_hash
 
@@ -396,7 +396,7 @@ The merge iteration will proceed step-by-step:
    - Log: FullbatchEval event
 
 5. **Compare & Decide**
-   - Compare agent008 to parents (agent006: 65.2%, agent007: 58.6%)
+   - Compare agent008 to parents (nemo_oo_agents: 65.2%, agent007: 58.6%)
    - Target: >70% reliability (7/10 tests)
    - Decision: Accept, iterate, or abandon
 
@@ -412,7 +412,7 @@ The merge iteration will proceed step-by-step:
 └─────────────────────────────────────────────────────────────────────┘
 
 INPUTS:
-  - Parent agents (agent006.py, agent007.py)
+  - Parent agents (nemo_oo_agents.py, agent007.py)
   - Per-test reliability data (9-run results)
   - Traces from failing runs
   - Target tests (1681_hard, 1753_hard)
@@ -445,7 +445,7 @@ INPUTS:
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  Input:                                                              │
-│    - Parent agent sources (agent006.py, agent007.py)                 │
+│    - Parent agent sources (nemo_oo_agents.py, agent007.py)                 │
 │    - Per-test results (what each parent passes/fails)                │
 │    - Trace analysis summary (why they fail)                          │
 │                                                                      │
@@ -551,7 +551,7 @@ INPUTS:
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  Compare agent008 to parents:                                        │
-│    - agent006: 65.2% (6/10 per-test, 60/92 per-run)                  │
+│    - nemo_oo_agents: 65.2% (6/10 per-test, 60/92 per-run)                  │
 │    - agent007: 58.6% (6/10 per-test, 54/92 per-run)                  │
 │    - agent008: ???                                                   │
 │                                                                      │
@@ -576,7 +576,7 @@ KEY FILES:
   - agent008/analysis/              Trace analysis output
 
 EVENT TYPES:
-  - AgentCreated    parents=["agent006", "agent007"], method="merge"
+  - AgentCreated    parents=["nemo_oo_agents", "agent007"], method="merge"
   - TraceAnalysis   source_hash=..., failing_tests=[...], summary=...
   - AgentMutation   source_hash=..., description="Merged from parents"
   - MinibatchEval   tests=[...], passed=N, total=M
@@ -629,7 +629,7 @@ EVENT TYPES:
 | `util/e2e_optimization/src/e2e_optimization/agent_types.py` | Pydantic event types for .006opt.jsonl |
 | `util/e2e_optimization/src/e2e_optimization/agent_directory.py` | AgentDirectory helper class |
 | `experiments/evaluation-ablations/agents/dabstep_agent000.py` | Original agent000 |
-| `experiments/evaluation-ablations/agents/dabstep_agent006.py` | 8-phase soft decomposition |
+| `experiments/evaluation-ablations/agents/dabstep_nemo_oo_agents.py` | 8-phase soft decomposition |
 | `experiments/evaluation-ablations/agents/dabstep_agent007.py` | 8-phase hard decomposition |
 
 ---
@@ -710,7 +710,7 @@ This section documents where all produced files go for reproducibility and organ
 │   │   ├── dabstep_agent003.py          # 3p-style prompts
 │   │   ├── dabstep_agent004.py          # 3-subagent + regex
 │   │   ├── dabstep_agent005.py          # 3-subagent + improved prompts
-│   │   ├── dabstep_agent006.py          # 8-phase soft decomposition
+│   │   ├── dabstep_nemo_oo_agents.py          # 8-phase soft decomposition
 │   │   └── dabstep_agent007.py          # 8-phase hard decomposition
 │   │
 │   ├── results/                         # Evaluation outputs
@@ -731,7 +731,7 @@ This section documents where all produced files go for reproducibility and organ
 │   ├── config.yaml                      # Optimizer configuration
 │   ├── train_data.jsonl                 # 10 training samples
 │   ├── agent.py                         # Target agent (copy of 000)
-│   ├── agent006.py                      # Copy for Pareto frontier
+│   ├── nemo_oo_agents.py                      # Copy for Pareto frontier
 │   ├── agent007.py                      # Copy for Pareto frontier
 │   ├── setup_pareto_frontier.py         # Populate frontier script
 │   └── merge_agents.py                  # GEPA crossover script
@@ -764,7 +764,7 @@ The `.006eval` and `.006trace` suffixes are **format version identifiers** (not 
 <agent_name>_<benchmark>.006eval.json    # Aggregated summary (single JSON object)
 
 # Examples:
-agent006_dabstep.006eval.jsonl    # Agent 006 results on DABStep
+nemo_oo_agents_dabstep.006eval.jsonl    # Agent 006 results on DABStep
 agent000_dabstep.006eval.jsonl    # Agent 000 results on DABStep
 ```
 
@@ -782,8 +782,8 @@ dabstep_5_easy_7b2c4d1e.006trace.jsonl      # Another task trace
 **Structure inside a result directory:**
 ```
 results/20260121_045031/
-├── agent006_dabstep.006eval.json        # Summary: pass rate, duration, etc.
-├── agent006_dabstep.006eval.jsonl       # Per-task: 90 result objects (9 runs × 10 tests)
+├── nemo_oo_agents_dabstep.006eval.json        # Summary: pass rate, duration, etc.
+├── nemo_oo_agents_dabstep.006eval.jsonl       # Per-task: 90 result objects (9 runs × 10 tests)
 └── traces/
     ├── 20260121_045033.006trace.jsonl   # Session trace
     ├── dabstep_5_easy_7b2c4d1e.006trace.jsonl
@@ -798,8 +798,8 @@ Each run creates a timestamped directory. **IMPORTANT:** The directory name does
 
 ```
 results/20260121_045031/                      # Timestamped run directory
-├── agent006_dabstep.006eval.jsonl            # Streaming results (all runs in one file)
-├── agent006_dabstep.006eval.json             # Aggregated summary (pass rate, duration)
+├── nemo_oo_agents_dabstep.006eval.jsonl            # Streaming results (all runs in one file)
+├── nemo_oo_agents_dabstep.006eval.json             # Aggregated summary (pass rate, duration)
 └── traces/
     ├── 20260121_045033.006trace.jsonl        # Session-level trace
     ├── dabstep_5_easy_7b2c4d1e.006trace.jsonl
@@ -811,8 +811,8 @@ results/20260121_045031/                      # Timestamped run directory
 **Identifying which agent produced a result:**
 ```bash
 # Check the config_file in metadata (first line of jsonl)
-head -1 results/20260121_045031/agent006_dabstep.006eval.jsonl | jq '.metadata.config_file'
-# Returns: "agents/dabstep_agent006.py"
+head -1 results/20260121_045031/nemo_oo_agents_dabstep.006eval.jsonl | jq '.metadata.config_file'
+# Returns: "agents/dabstep_nemo_oo_agents.py"
 
 # Bulk check all directories:
 for dir in results/2026*/; do
@@ -839,12 +839,12 @@ results/
 Future improvement: Add `--output-dir` flag to run_ablation.py to specify destination:
 ```bash
 # Proposed usage (not yet implemented):
-python run_ablation.py --benchmark dabstep --agent-file agents/dabstep_agent006.py \
-  --runs 9 --output-dir results/reliability/agent006/
+python run_ablation.py --benchmark dabstep --agent-file agents/dabstep_nemo_oo_agents.py \
+  --runs 9 --output-dir results/reliability/nemo_oo_agents/
 
 # For now, manually move after running:
-mkdir -p results/reliability/agent006
-mv results/20260121_045031 results/reliability/agent006/9runs_20260121
+mkdir -p results/reliability/nemo_oo_agents
+mv results/20260121_045031 results/reliability/nemo_oo_agents/9runs_20260121
 ```
 
 ### Reliability Test Wrapper (run_reliability_test.py)
@@ -896,7 +896,7 @@ Quick reference for the 9-run reliability test results:
 | `20260121_010055` | agent003 | 90 | ✓ Complete |
 | `20260121_012800` | agent004 | 90 | ✓ Complete |
 | `20260121_025643` | agent005 | 90 | ✓ Complete |
-| `20260121_045031` | agent006 | 90 | ✓ Complete |
+| `20260121_045031` | nemo_oo_agents | 90 | ✓ Complete |
 | `20260121_070251` | agent007 | 90 | ✓ Complete |
 
 **Note:** These are in `experiments/evaluation-ablations/results/`

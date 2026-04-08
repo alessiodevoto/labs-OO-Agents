@@ -8,7 +8,7 @@
 
 I test drove the `trace_explorer` CLI and Python package using:
 1. Fixture traces in the repository (initial testing)
-2. **Actual regression traces** from `/Volumes/dev/dev/agent006/results/` and `/Volumes/dev/dev/viewer/results/` (RCA analysis)
+2. **Actual regression traces** from `/Volumes/dev/dev/nemo_oo_agents/results/` and `/Volumes/dev/dev/viewer/results/` (RCA analysis)
 
 **Overall Assessment:** The trace_explorer is a **well-designed, agent-friendly interface** that **successfully enabled root cause analysis**. The hierarchical navigation pattern (overview → session → turn) is intuitive and the output formatting is clean and informative.
 

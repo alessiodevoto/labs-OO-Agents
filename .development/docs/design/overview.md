@@ -15,7 +15,7 @@ This plan simplifies the runtime into **three phases**:
 
 ## Component Interfaces
 
-After this refactor, agent006 has **four core components** with clear, minimal interfaces:
+After this refactor, nemo_oo_agents has **four core components** with clear, minimal interfaces:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -359,11 +359,11 @@ The `@agent` decorator detects creation within a generation session and propagat
 
 ## Comparison with Methodic
 
-agent006's strategy middleware design draws inspiration from [Methodic](https://gitlab-master.nvidia.com/sklingler/methodic) while adapting patterns to fit agent006's architecture.
+nemo_oo_agents's strategy middleware design draws inspiration from [Methodic](https://gitlab-master.nvidia.com/sklingler/methodic) while adapting patterns to fit nemo_oo_agents's architecture.
 
 ### What We're Adopting from Methodic
 
-| Pattern | Methodic | agent006 |
+| Pattern | Methodic | nemo_oo_agents |
 |---------|----------|----------|
 | **Strategy owns config** | `FunctionCalling(max_iterations=20)` | `PurePythonStrategy(max_iterations=20)` |
 | **Strategy as instance** | `@strategy(Predict)` | `@plan(strategy=PurePythonStrategy())` |
@@ -372,7 +372,7 @@ agent006's strategy middleware design draws inspiration from [Methodic](https://
 
 ### Key Differences
 
-| Aspect | Methodic | agent006 |
+| Aspect | Methodic | nemo_oo_agents |
 |--------|----------|----------|
 | **Context management** | `PromptRequirements` dataclass | **Context blocks** with `show` expressions |
 | **History** | `chat_history` list on strategy | `HistoryManager` event bus on runtime |
@@ -395,10 +395,10 @@ class Predict(Strategy):
         )
 ```
 
-agent006 uses **context blocks** with dynamic `show` expressions:
+nemo_oo_agents uses **context blocks** with dynamic `show` expressions:
 
 ```python
-# agent006 approach - context blocks
+# nemo_oo_agents approach - context blocks
 Block(key="tools", expr="self.doc()", show="strategy.needs_tools")
 Block(key="state", expr="self.state", show="True")
 
@@ -417,7 +417,7 @@ async def my_ahistoric_method(self):
 
 ### Strategy Patterns Comparison
 
-| Strategy Type | Methodic | agent006 Equivalent |
+| Strategy Type | Methodic | nemo_oo_agents Equivalent |
 |---------------|----------|---------------------|
 | **Direct prediction** | `Predict` | `@plan` with `max_iterations=1` |
 | **Tool calling** | `FunctionCalling` | Future: `ToolCallingStrategy` |
@@ -426,7 +426,7 @@ async def my_ahistoric_method(self):
 | **Adaptive routing** | `AdaptiveCoT` | Strategy with complexity check in `execute()` |
 | **Code planning** | `CodePlan` | `PurePythonStrategy` (core pattern) |
 
-### What agent006 Adds
+### What nemo_oo_agents Adds
 
 | Feature | Description |
 |---------|-------------|
@@ -439,7 +439,7 @@ async def my_ahistoric_method(self):
 
 ### How to Create Methodic-Style Agents
 
-Methodic agents are stateless—each call is independent with no shared conversation history. To achieve this in agent006:
+Methodic agents are stateless—each call is independent with no shared conversation history. To achieve this in nemo_oo_agents:
 
 **1. Strategy with `requires_lock = False`**
 
@@ -467,7 +467,7 @@ This combination enables:
 
 ### Summary
 
-agent006's strategy middleware takes Methodic's core insight (**strategy as instance with owned config**) and builds on it with:
+nemo_oo_agents's strategy middleware takes Methodic's core insight (**strategy as instance with owned config**) and builds on it with:
 
 1. **Context blocks** instead of `PromptRequirements` - more dynamic and introspectable
 2. **Hook-based instrumentation** - strategies are completely tracing-agnostic

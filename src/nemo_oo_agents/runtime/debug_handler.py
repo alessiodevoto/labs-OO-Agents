@@ -1,4 +1,4 @@
-"""Debug signal handler for agent006.
+"""Debug signal handler for nemo_oo_agents.
 
 Provides SIGUSR2 handler that dumps:
 1. Full Python traceback with source lines
@@ -7,17 +7,17 @@ Provides SIGUSR2 handler that dumps:
 4. Debug file location
 
 Usage:
-    from agent006.runtime.debug_handler import install_debug_handler
+    from nemo_oo_agents.runtime.debug_handler import install_debug_handler
     install_debug_handler()  # Call once at startup
 
 Then send SIGUSR2 to dump debug info:
     kill -USR2 <pid>
 
 Debug output is written to:
-    ~/.cache/agent006/debug_dump_<pid>.txt
+    ~/.cache/nemo_oo_agents/debug_dump_<pid>.txt
 
 LLM Call Tracking:
-    from agent006.runtime.debug_handler import llm_call_context
+    from nemo_oo_agents.runtime.debug_handler import llm_call_context
 
     with llm_call_context(model="gpt-4", prompt_tokens=1500):
         response = client.complete(...)
@@ -201,12 +201,12 @@ def _get_debug_dump_path() -> Path:
     """
     # Use XDG_CACHE_HOME or default to ~/.cache
     cache_dir = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    agent006_dir = cache_dir / "agent006"
+    nemo_oo_agents_dir = cache_dir / "nemo_oo_agents"
 
     # Create directory if needed (with user-only permissions)
-    agent006_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    nemo_oo_agents_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    return agent006_dir / f"debug_dump_{os.getpid()}.txt"
+    return nemo_oo_agents_dir / f"debug_dump_{os.getpid()}.txt"
 
 
 def _dump_cell_code(file=None):

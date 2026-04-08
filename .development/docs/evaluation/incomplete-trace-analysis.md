@@ -158,7 +158,7 @@ except TimeoutError:
 Add a hook to ensure spans are finalized even on timeout:
 
 ```python
-# In openinference_instrumentation_agent006/_hooks_impl.py
+# In openinference_instrumentation_nemo_oo_agents/_hooks_impl.py
 def ensure_span_finalized(self, span, timeout_occurred=False):
     """Ensure span has minimal data even on timeout."""
     if timeout_occurred and span.is_recording():
@@ -227,7 +227,7 @@ Ensure spans are flushed before the process exits:
 # In runner.py timeout handler
 except TimeoutError:
     # Force span export before handling timeout
-    from openinference_instrumentation_agent006 import get_current_exporter
+    from openinference_instrumentation_nemo_oo_agents import get_current_exporter
     exporter = get_current_exporter()
     if exporter:
         exporter.force_flush()  # Add this method to JSONLSpanExporter
@@ -280,5 +280,5 @@ with tracer.start_as_current_span("test_execution") as test_span:
 
 - [runner.py](../util/prompt-optimization/runner.py) - Test runner with timeout logic
 - [otel_hooks.py](../util/prompt-optimization/otel_hooks.py) - Tracing instrumentation
-- [_hooks_impl.py](../packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py) - Hook implementation
-- [_jsonl_exporter.py](../packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_jsonl_exporter.py) - Span exporter
+- [_hooks_impl.py](../packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py) - Hook implementation
+- [_jsonl_exporter.py](../packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_jsonl_exporter.py) - Span exporter

@@ -14,13 +14,13 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, BeforeValidator
 
-from agent006 import Agent, strategy
-from agent006.config import CodeActConfig
-from agent006.strategies.codeact import CodeActStrategy
-from agent006.strategies.current_call import CurrentCall
-from agent006.strategies.generated_code import ReturnValueValidator
-from agent006.strategies.predict import PredictStrategy
-from agent006.strategies.pure_python import PurePythonStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
+from nemo_oo_agents.strategies.current_call import CurrentCall
+from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+from nemo_oo_agents.strategies.predict import PredictStrategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------

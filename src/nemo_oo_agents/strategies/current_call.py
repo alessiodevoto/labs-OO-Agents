@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, get_type_hints
 from uuid import uuid4
 
-from agent006.ellipsis_detection import get_pre_ellipsis_code
+from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code
 
 
 @dataclass(frozen=True)

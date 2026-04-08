@@ -7,11 +7,11 @@ Formats errors to match IPython/Jupyter-style output:
 - Source code lines are shown automatically via linecache registration
 
 Usage:
-    from agent006.errors.formatting import format_error_for_llm
+    from nemo_oo_agents.errors.formatting import format_error_for_llm
     result = format_error_for_llm(error, code, line_offset=2)
 
     # Or use the formatter class directly
-    from agent006.errors.formatting import IPythonErrorFormatter
+    from nemo_oo_agents.errors.formatting import IPythonErrorFormatter
     formatter = IPythonErrorFormatter()
     result = formatter.format(error, code, line_offset=2)
 """
@@ -20,7 +20,7 @@ import re
 import traceback
 
 # Framework path markers - frames containing these are filtered out
-_FRAMEWORK_MARKERS = ("agent006/", "site-packages/", "lib/python", "<frozen")
+_FRAMEWORK_MARKERS = ("nemo_oo_agents/", "site-packages/", "lib/python", "<frozen")
 
 # User code filename pattern - matches "Cell In[N]" format
 _CELL_PATTERN = re.compile(r"^Cell In\[\d+\]$")
@@ -38,7 +38,7 @@ def _is_user_code_frame(filename: str) -> bool:
     - Any file NOT in framework paths (user's own agent files, etc.)
 
     Returns False for:
-    - Framework paths (agent006/, site-packages/, lib/python, etc.)
+    - Framework paths (nemo_oo_agents/, site-packages/, lib/python, etc.)
     """
     # Filter out framework paths first
     if any(marker in filename for marker in _FRAMEWORK_MARKERS):
@@ -51,7 +51,7 @@ def _is_user_code_frame(filename: str) -> bool:
 def _is_validation_error(error: Exception) -> bool:
     """Check if error is a static validation error (no traceback needed)."""
     try:
-        from agent006.errors import RestrictedCodeError, ValidationError
+        from nemo_oo_agents.errors import RestrictedCodeError, ValidationError
 
         return isinstance(error, (ValidationError, RestrictedCodeError))
     except ImportError:

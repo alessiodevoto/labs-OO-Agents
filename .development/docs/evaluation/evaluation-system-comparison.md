@@ -17,7 +17,7 @@ This document analyzes each system and provides recommendations for consolidatio
 
 **Location**: `util/eval_pipeline/`
 
-**Purpose**: Flexible evaluation framework for agent006 agents with YAML-based configuration
+**Purpose**: Flexible evaluation framework for nemo_oo_agents agents with YAML-based configuration
 
 ### Features
 - **Dual interface**: Python API + CLI + YAML config
@@ -31,7 +31,7 @@ This document analyzes each system and provides recommendations for consolidatio
 
 ### Use Cases
 ✅ **Local and CI capability tests** - Primary use case
-- Designed for testing agent006 capabilities (scale awareness, REPL, routing, etc.)
+- Designed for testing nemo_oo_agents capabilities (scale awareness, REPL, routing, etc.)
 - Used by `tests/capability/` for CI runs
 - Config files in `tests/capability/config*.yaml`
 
@@ -54,7 +54,7 @@ This document analyzes each system and provides recommendations for consolidatio
 ❌ **No native benchmark support** - Would need adapter layer
 ❌ **No multi-step environments** - Single-shot evaluation only
 ❌ **No concurrency control** - Sequential execution
-❌ **Limited to agent006** - Tightly coupled to agent006 framework
+❌ **Limited to nemo_oo_agents** - Tightly coupled to nemo_oo_agents framework
 
 ### Current Usage
 - `tests/capability/` - CI capability tests
@@ -84,7 +84,7 @@ This document analyzes each system and provides recommendations for consolidatio
 ### Use Cases
 ✅ **Local benchmark runs** - Primary use case
 - Run BFCL, LiveCodeBench, BigCodeBench, etc. locally
-- Compare agent configurations (agent006 vs ReAct vs baseline)
+- Compare agent configurations (nemo_oo_agents vs ReAct vs baseline)
 - Analyze failure modes and iterate on agent implementations
 
 ✅ **Ablation studies**
@@ -102,7 +102,7 @@ This document analyzes each system and provides recommendations for consolidatio
 ✅ **Multi-step environments** - Docker support for complex benchmarks
 ✅ **High parallelism** - Semaphore-based concurrency control
 ✅ **Crash-safe** - Resume capability, incremental writes
-✅ **Flexible agent support** - Works with agent006, ReAct, baseline LLM
+✅ **Flexible agent support** - Works with nemo_oo_agents, ReAct, baseline LLM
 ✅ **Rich tracing** - Per-sample OTel traces
 ✅ **Production-ready** - Used for real experiments
 ✅ **Well-maintained** - Active development, recent fixes
@@ -169,10 +169,10 @@ This document analyzes each system and provides recommendations for consolidatio
 ❌ **External dependency** - Third-party system, limited control
 ❌ **Setup complexity** - Container registry access required
 ❌ **Not designed for capability tests** - Focused on benchmark suites
-❌ **No agent006 integration** - Would require significant adapter work
+❌ **No nemo_oo_agents integration** - Would require significant adapter work
 
 ### Current Usage
-- **None in agent006 codebase** - Currently unused
+- **None in nemo_oo_agents codebase** - Currently unused
 - Available in `3p/` directory for potential future use
 
 ---
@@ -197,7 +197,7 @@ This document analyzes each system and provides recommendations for consolidatio
 | Multi-step envs | ❌ Not supported | ✅ Docker support | ✅ Via frameworks |
 | **Integration** | | | |
 | Python API | ✅ Yes | ❌ No (script only) | ❌ No (CLI only) |
-| Agent006 | ✅ Tight integration | ✅ Supports agent006 | ❌ No integration |
+| Agent006 | ✅ Tight integration | ✅ Supports nemo_oo_agents | ❌ No integration |
 | Other agents | ⚠️ Limited | ✅ ReAct, baseline | ✅ Model-agnostic |
 | **Maintenance** | | | |
 | Lines of code | ~2000 (package) | ~1600 (single file) | Large (3p system) |
@@ -242,7 +242,7 @@ This document analyzes each system and provides recommendations for consolidatio
      test_suite:
        - name: bfcl_ablation
          agent:
-           module: agents.agent006_tools
+           module: agents.nemo_oo_agents_tools
            class: ToolsAgent
          benchmark: bfcl  # New: use benchmark adapter
          limit: 100
@@ -253,7 +253,7 @@ This document analyzes each system and provides recommendations for consolidatio
 
 4. **Keep nvidia-core-evals for NVIDIA infra only**
    - Use for running standard benchmarks on NVIDIA compute clusters
-   - Don't try to integrate with agent006 evaluation
+   - Don't try to integrate with nemo_oo_agents evaluation
    - Keep as optional tool for teams that need it
 
 #### Pros
@@ -316,7 +316,7 @@ This document analyzes each system and provides recommendations for consolidatio
 #### Why Not?
 ❌ **Heavy Docker dependency** - Slows down development
 ❌ **Not designed for capability tests** - Would need significant work
-❌ **No agent006 integration** - Major rewrite required
+❌ **No nemo_oo_agents integration** - Major rewrite required
 ❌ **External dependency** - Less control over features
 ❌ **Different paradigm** - Model evaluation vs agent evaluation
 ❌ **CI complexity** - Docker in CI is problematic
@@ -419,7 +419,7 @@ test_suite:
 **run_ablation.py** (CLI):
 ```bash
 python run_ablation.py \
-  --config agent006 \
+  --config nemo_oo_agents \
   --benchmark bfcl \
   --model gpt-4o-mini \
   --provider openai \

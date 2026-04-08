@@ -15,7 +15,7 @@
 
 ### Root Cause: Field Name Mismatch
 
-**File**: `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt9.py`
+**File**: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt9.py`
 **Line**: 181
 **Bug**: Helper method `_calculate_fee_switching_delta()` uses wrong field name
 

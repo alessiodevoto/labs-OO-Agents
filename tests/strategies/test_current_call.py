@@ -11,7 +11,7 @@ class TestCurrentCallBasic:
 
     def test_create_with_required_fields(self):
         """CurrentCall should require id, method_name, decorator."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_123",
@@ -25,7 +25,7 @@ class TestCurrentCallBasic:
 
     def test_optional_fields_default_to_none_or_empty(self):
         """Optional fields should have sensible defaults."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_123",
@@ -41,7 +41,7 @@ class TestCurrentCallBasic:
 
     def test_create_with_all_fields(self):
         """CurrentCall should accept all fields."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_123",
@@ -69,7 +69,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_extracts_signature(self):
         """from_method should extract method signature."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def example_method(self, data: str, count: int = 10) -> list:
             """Process data and return list."""
@@ -91,7 +91,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_extracts_docstring(self):
         """from_method should extract method docstring."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def documented_method(self):
             """This is the docstring for the method."""
@@ -103,7 +103,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_handles_no_docstring(self):
         """from_method should handle methods without docstrings."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def no_docs(self):
             pass
@@ -114,7 +114,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_generates_unique_id(self):
         """from_method should generate unique call ID."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def test_method(self):
             pass
@@ -128,7 +128,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_accepts_decorator_type(self):
         """from_method should accept decorator type."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def test_method(self):
             pass
@@ -139,7 +139,7 @@ class TestCurrentCallFromMethod:
 
     def test_from_method_accepts_parent_id(self):
         """from_method should accept parent_id for nested calls."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         def child_method(self):
             pass
@@ -157,7 +157,7 @@ class TestCurrentCallEquality:
 
     def test_equality_by_id(self):
         """Two CurrentCall with same id should be equal."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call1 = CurrentCall(id="same_id", method_name="test", decorator="plan")
         call2 = CurrentCall(id="same_id", method_name="test", decorator="plan")
@@ -166,7 +166,7 @@ class TestCurrentCallEquality:
 
     def test_inequality_by_id(self):
         """Two CurrentCall with different id should not be equal."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call1 = CurrentCall(id="id_1", method_name="test", decorator="plan")
         call2 = CurrentCall(id="id_2", method_name="test", decorator="plan")
@@ -175,7 +175,7 @@ class TestCurrentCallEquality:
 
     def test_hashable(self):
         """CurrentCall should be hashable for use in sets/dicts."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(id="call_123", method_name="test", decorator="plan")
 
@@ -192,7 +192,7 @@ class TestCurrentCallImmutability:
 
     def test_fields_are_frozen(self):
         """CurrentCall should be frozen (immutable)."""
-        from agent006.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(id="call_123", method_name="test", decorator="plan")
 

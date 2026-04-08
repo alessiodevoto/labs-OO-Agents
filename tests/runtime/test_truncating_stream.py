@@ -1,6 +1,6 @@
 """Tests for TruncatingStringIO."""
 
-from agent006.runtime.truncating_stream import TruncatingStringIO
+from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 
 
 class TestTruncatingStringIO:

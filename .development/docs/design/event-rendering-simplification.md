@@ -121,7 +121,7 @@ Done processing""",
    - `_tag: ClassVar[str]` - XML tag name
    - `_role: ClassVar[Role]` - message role (USER/ASSISTANT/TOOL)
 
-### Changes to `agent006/events.py`
+### Changes to `nemo_oo_agents/events.py`
 
 The `type` field is removed entirely - `_tag` serves as both the discriminator and the XML tag name.
 

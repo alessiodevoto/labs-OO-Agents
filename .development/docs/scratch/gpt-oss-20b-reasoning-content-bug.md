@@ -9,7 +9,7 @@ When using the `openai/gpt-oss-20b` model with the PURE_PYTHON strategy, the mod
 
 ## Example Trace
 
-File: `/Volumes/dev/dev/agent006/util/e2e_optimization/experiments/capability_20251212_161605/traces/SentimentAgent_gpt-oss-20b_classify_batch_20251212_161642_857053.006trace.jsonl`
+File: `/Volumes/dev/dev/nemo_oo_agents/util/e2e_optimization/experiments/capability_20251212_161605/traces/SentimentAgent_gpt-oss-20b_classify_batch_20251212_161642_857053.006trace.jsonl`
 
 **LLM Response** (span 6):
 ```json
@@ -62,7 +62,7 @@ This creates an `LLMResponse` with:
 
 ### 3. Actor Runtime Handling
 
-**File**: [src/agent006/runtime/actor.py:163](../src/agent006/runtime/actor.py#L163)
+**File**: [src/nemo_oo_agents/runtime/actor.py:163](../src/nemo_oo_agents/runtime/actor.py#L163)
 
 The `generate()` method uses only the content field:
 ```python
@@ -71,7 +71,7 @@ content = response.content or ""  # Empty string when reasoning-only response
 
 ### 4. PURE_PYTHON Strategy Detection
 
-**File**: [src/agent006/strategies/pure_python.py:197-210](../src/agent006/strategies/pure_python.py#L197-L210)
+**File**: [src/nemo_oo_agents/strategies/pure_python.py:197-210](../src/nemo_oo_agents/strategies/pure_python.py#L197-L210)
 
 The `_generate_code()` method:
 ```python
@@ -79,7 +79,7 @@ response, event_id = await runtime.generate(tools=[])
 code = (response.content or "").strip()  # Empty string!
 ```
 
-**File**: [src/agent006/strategies/pure_python.py:158-161](../src/agent006/strategies/pure_python.py#L158-L161)
+**File**: [src/nemo_oo_agents/strategies/pure_python.py:158-161](../src/nemo_oo_agents/strategies/pure_python.py#L158-L161)
 
 Empty code triggers the error path:
 ```python
@@ -91,7 +91,7 @@ if not code:
 
 ### 5. Error Message
 
-**File**: [src/agent006/strategies/pure_python.py:315-317](../src/agent006/strategies/pure_python.py#L315-L317)
+**File**: [src/nemo_oo_agents/strategies/pure_python.py:315-317](../src/nemo_oo_agents/strategies/pure_python.py#L315-L317)
 
 The error message is generic:
 ```python

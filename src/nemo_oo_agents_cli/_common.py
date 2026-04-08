@@ -1,8 +1,8 @@
-"""Shared utilities for agent006 CLI commands.
+"""Shared utilities for nemo_oo_agents CLI commands.
 
 Import from here instead of duplicating helpers across command modules:
 
-    from agent006_cli._common import find_project_root, format_size
+    from nemo_oo_agents_cli._common import find_project_root, format_size
 """
 
 from pathlib import Path

@@ -123,7 +123,7 @@ Server-side issue where long-running streaming responses stop sending data witho
 - Investigate if issue is specific to long-running streaming responses
 
 **Contact:**
-- Repository: https://gitlab-master.nvidia.com/interactive-agents/agent006
+- Repository: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents
 - Issue: See MR #214 for full investigation details
 
 ## Testing

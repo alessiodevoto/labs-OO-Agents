@@ -1,4 +1,4 @@
-"""Hook-based instrumentation for agent006.
+"""Hook-based instrumentation for nemo_oo_agents.
 
 Provides optional callbacks at key execution points, enabling external
 instrumentation (OpenTelemetry, logging, etc.) without coupling to core runtime.
@@ -10,7 +10,7 @@ Design principles:
 - Fast context variable lookup (<1% overhead when not installed)
 
 Usage:
-    from agent006.runtime.hooks import set_hooks, get_hooks, InstrumentationHooks
+    from nemo_oo_agents.runtime.hooks import set_hooks, get_hooks, InstrumentationHooks
 
     class MyHooks:
         def before_agent_call(self, agent, method_name, args, kwargs, call_id, parent_call_id):
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class InstrumentationHooks(Protocol):
-    """Optional instrumentation hooks for agent006 operations.
+    """Optional instrumentation hooks for nemo_oo_agents operations.
 
     All hook methods are called defensively - exceptions in hooks
     never affect agent execution.
@@ -323,7 +323,7 @@ def set_hooks(hooks: InstrumentationHooks | None) -> None:
         hooks: InstrumentationHooks implementation, or None to remove
 
     Example:
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         # Install hooks
         set_hooks(MyOpenTelemetryHooks())

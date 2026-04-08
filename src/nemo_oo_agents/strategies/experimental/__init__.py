@@ -4,7 +4,7 @@ These strategies are importable but not part of the recommended API.
 Importing any of them is silent; instantiating emits a FutureWarning.
 
 Usage:
-    from agent006.strategies.experimental import PurePythonStrategy
+    from nemo_oo_agents.strategies.experimental import PurePythonStrategy
     strategy = PurePythonStrategy()  # FutureWarning emitted here
 """
 
@@ -25,7 +25,7 @@ def _warn_experimental(name: str) -> None:
 def PurePythonStrategy(*args: Any, **kwargs: Any) -> Any:
     """Create a PurePythonStrategy instance (experimental, emits FutureWarning)."""
     _warn_experimental("PurePythonStrategy")
-    from agent006.strategies.pure_python import PurePythonStrategy as _Cls
+    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy as _Cls
 
     return _Cls(*args, **kwargs)
 
@@ -33,7 +33,7 @@ def PurePythonStrategy(*args: Any, **kwargs: Any) -> Any:
 def CodeActLiteStrategy(*args: Any, **kwargs: Any) -> Any:
     """Create a CodeActLiteStrategy instance (experimental, emits FutureWarning)."""
     _warn_experimental("CodeActLiteStrategy")
-    from agent006.strategies.codeact_lite import CodeActLiteStrategy as _Cls
+    from nemo_oo_agents.strategies.codeact_lite import CodeActLiteStrategy as _Cls
 
     return _Cls(*args, **kwargs)
 
@@ -41,7 +41,7 @@ def CodeActLiteStrategy(*args: Any, **kwargs: Any) -> Any:
 def ReflexionStrategy(*args: Any, **kwargs: Any) -> Any:
     """Create a ReflexionStrategy instance (experimental, emits FutureWarning)."""
     _warn_experimental("ReflexionStrategy")
-    from agent006.strategies.reflexion import ReflexionStrategy as _Cls
+    from nemo_oo_agents.strategies.reflexion import ReflexionStrategy as _Cls
 
     return _Cls(*args, **kwargs)
 

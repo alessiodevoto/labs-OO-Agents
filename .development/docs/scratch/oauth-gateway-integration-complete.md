@@ -24,19 +24,19 @@ Successfully implemented comprehensive OAuth 2.0 authentication support for NVID
 
 ### Key Components
 
-1. **`NVIDIAOAuthManager`** (`src/agent006/llm/nvidia_oauth.py`)
+1. **`NVIDIAOAuthManager`** (`src/nemo_oo_agents/llm/nvidia_oauth.py`)
    - Async OAuth 2.0 client credentials flow
    - Automatic token refresh (5-minute threshold)
    - Environment variable updates for LiteLLM compatibility
    - NVIDIA-specific correlation headers
 
-2. **`LiteLLMClient`** (modified `src/agent006/llm/client.py`)
+2. **`LiteLLMClient`** (modified `src/nemo_oo_agents/llm/client.py`)
    - Auto-detects gateway URLs (`prod.api.nvidia.com`)
    - Deferred token fetching (first `chat()` call, not `__init__`)
    - Token refresh before each LLM call
    - GPT-5 temperature workaround (`temperature=1.0`)
 
-3. **`ActorRuntime._create_default_llm_client()`** (modified `src/agent006/runtime/actor.py`)
+3. **`ActorRuntime._create_default_llm_client()`** (modified `src/nemo_oo_agents/runtime/actor.py`)
    - Gateway model detection and mapping
    - Claude model alias resolution
    - Automatic OAuth credential passing
@@ -181,7 +181,7 @@ litellm.drop_params = True
 ### Gateway Model (GPT-5)
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import UnifiedLLM
 
 llm = UnifiedLLM(model="gpt-5")
@@ -226,9 +226,9 @@ class CoderAgent(Agent, llm=llm_coder):
 ## Documentation
 
 - **Implementation Guide**: `docs/scratch/gpt5-oauth-integration-summary.md`
-- **OAuth Module**: `agent006-src/src/agent006/llm/nvidia_oauth.py`
-- **Test Suite**: `agent006-src/tests/test_oauth.py`
-- **Model Detection**: `agent006-src/tests/test_model_api_detection.py`
+- **OAuth Module**: `nemo_oo_agents-src/src/nemo_oo_agents/llm/nvidia_oauth.py`
+- **Test Suite**: `nemo_oo_agents-src/tests/test_oauth.py`
+- **Model Detection**: `nemo_oo_agents-src/tests/test_model_api_detection.py`
 
 ## Status Summary
 

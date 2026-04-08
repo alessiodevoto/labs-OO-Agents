@@ -27,8 +27,8 @@ MR !285 (history-phases-1-3) shows a **-2.3pp regression** in capability eval co
 
 **MR results:**
 ```
-/Volumes/dev/dev/agent006/results/capability_optimization_20260126_120328/capabilityoptimization_20260126_120328.006eval.jsonl
-/Volumes/dev/dev/agent006/results/capability_optimization_20260126_120328/traces/
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260126_120328/capabilityoptimization_20260126_120328.006eval.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260126_120328/traces/
 ```
 
 **main results:**
@@ -175,7 +175,7 @@ The MR made these key changes:
 - Added `explicit_return` field to `ExecutePythonEvent` (return vs value distinction)
 - Fixed `BlockRenderer` truncation metadata bug
 - Changed formatter field name stripping (`return_` → `<return>`)
-- Fixed circular import for Agent006Provider registration
+- Fixed circular import for NemoOOAgentsProvider registration
 - Changed `StructuredOutputStrategy` logging level
 
 Check if any trace differences correlate with these changes.
@@ -192,18 +192,18 @@ Check if any trace differences correlate with these changes.
 
 ```bash
 # Count entries
-wc -l /Volumes/dev/dev/agent006/results/capability_optimization_20260126_120328/*.jsonl
+wc -l /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260126_120328/*.jsonl
 wc -l /Volumes/dev/dev/viewer/results/capability_optimization_20260126_120319/*.jsonl
 
 # View a trace
-cat /Volumes/dev/dev/agent006/results/capability_optimization_20260126_120328/traces/<trace_id>.jsonl | python -m json.tool
+cat /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260126_120328/traces/<trace_id>.jsonl | python -m json.tool
 
 # Parse JSONL and find flipped tests
 python3 -c "
 import json
 
 mr_results = {}
-with open('/Volumes/dev/dev/agent006/results/capability_optimization_20260126_120328/capabilityoptimization_20260126_120328.006eval.jsonl') as f:
+with open('/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260126_120328/capabilityoptimization_20260126_120328.006eval.jsonl') as f:
     for line in f:
         r = json.loads(line)
         key = (r.get('test_id'), r.get('model'))
@@ -369,10 +369,10 @@ These changes likely reduce the agent’s ability to correctly choose tools or i
 
 - `packages/context-blocks/src/context_blocks/formatter.py`
   - `XMLBlockFormatter.format_event()` (expr path rendering and field-name stripping)
-- `src/agent006/events.py`
+- `src/nemo_oo_agents/events.py`
   - `TaskEvent.render_spec()` (uses `prompt`)
   - `ExecutePythonEvent.render_spec()` (return_ vs value tag selection)
-- `src/agent006/runtime/history.py`
+- `src/nemo_oo_agents/runtime/history.py`
   - `HistoryManager.__getitem__` and `_rendering_expr` reporting
 - `packages/agentdoc/src/agentdoc/core.py`
   - `methods()` and docstring inclusion (why some doc lines/methods are missing)

@@ -11,8 +11,8 @@ Not all ingredients are available in the stock. The agent must find alternative 
 
 import json  # noqa: F401
 
-from agent006 import Agent, CodeActStrategy, strategy
-from agent006.config import CodeActConfig
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents.config import CodeActConfig
 
 
 class RefinementTestAgent(Agent):

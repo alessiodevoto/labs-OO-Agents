@@ -219,11 +219,11 @@ llm_inspect.default_config = config
 
 ---
 
-## Integration with agent006
+## Integration with nemo_oo_agents
 
 ### Direct Usage (No Wrapper)
 
-The `Doc` class is **removed entirely**. agent006 uses `llm-inspect` functions directly in context-block expressions:
+The `Doc` class is **removed entirely**. nemo_oo_agents uses `llm-inspect` functions directly in context-block expressions:
 
 ```python
 from context_blocks import Block
@@ -263,12 +263,12 @@ The output includes hints teaching agents they can drill down:
 
 This is **simpler and more powerful** - agents learn to use the same functions on any object, not just `self`.
 
-### agent006-Specific Filtering
+### nemo_oo_agents-Specific Filtering
 
 Filtering of internal attributes is handled via a pre-configured `DocConfig`:
 
 ```python
-# In agent006/util/inspect_config.py (new file, ~20 lines)
+# In nemo_oo_agents/util/inspect_config.py (new file, ~20 lines)
 from llm_inspect import DocConfig
 
 # Agent006-specific config that hides framework internals
@@ -280,32 +280,32 @@ AGENT_DOC_CONFIG = DocConfig(
 
 # Helper function for use in expressions
 def agent_doc(agent, **kwargs):
-    """doc() with agent006-specific defaults."""
+    """doc() with nemo_oo_agents-specific defaults."""
     return doc(agent, config=AGENT_DOC_CONFIG, **kwargs)
 ```
 
 ---
 
-## Required Code Changes in agent006
+## Required Code Changes in nemo_oo_agents
 
 ### Files to Modify
 
 | File | Change | Lines |
 |------|--------|-------|
-| `src/agent006/agent.py` | Remove `self.doc = Doc(self)` from `__init__`, update DEFAULT_CONTEXT_BLOCKS | ~10 |
-| `src/agent006/util/doc.py` | **Delete entirely** (595 lines removed) | -595 |
-| `src/agent006/util/inspect_config.py` | **Create** - agent006 config + helper | ~20 |
-| `src/agent006/util/__init__.py` | Update exports | ~2 |
-| `src/agent006/strategies/pure_python.py` | Update template from `{self.doc.show()}` to `{agent_doc(self)}` | ~5 |
+| `src/nemo_oo_agents/agent.py` | Remove `self.doc = Doc(self)` from `__init__`, update DEFAULT_CONTEXT_BLOCKS | ~10 |
+| `src/nemo_oo_agents/util/doc.py` | **Delete entirely** (595 lines removed) | -595 |
+| `src/nemo_oo_agents/util/inspect_config.py` | **Create** - nemo_oo_agents config + helper | ~20 |
+| `src/nemo_oo_agents/util/__init__.py` | Update exports | ~2 |
+| `src/nemo_oo_agents/strategies/pure_python.py` | Update template from `{self.doc.show()}` to `{agent_doc(self)}` | ~5 |
 | `tests/utils/test_doc_utility.py` | Rewrite tests for new API | ~150 |
 
 ### Detailed Changes
 
-**1. `src/agent006/agent.py`**
+**1. `src/nemo_oo_agents/agent.py`**
 
 ```python
 # REMOVE these lines from __init__:
-from agent006.util.doc import Doc
+from nemo_oo_agents.util.doc import Doc
 self.doc: Doc = Doc(self)
 
 # CHANGE DEFAULT_CONTEXT_BLOCKS:
@@ -324,7 +324,7 @@ self.doc: Doc = Doc(self)
 )
 ```
 
-**2. `src/agent006/strategies/pure_python.py`**
+**2. `src/nemo_oo_agents/strategies/pure_python.py`**
 
 ```python
 # CHANGE template (line 73):
@@ -335,10 +335,10 @@ initial_task: str = "{instructions}\n\n{self.doc.show()}\n\n{task}..."
 initial_task: str = "{instructions}\n\n{agent_doc(self)}\n\n{task}..."
 ```
 
-**3. `src/agent006/util/inspect_config.py` (NEW FILE)**
+**3. `src/nemo_oo_agents/util/inspect_config.py` (NEW FILE)**
 
 ```python
-"""agent006-specific llm-inspect configuration."""
+"""nemo_oo_agents-specific llm-inspect configuration."""
 from llm_inspect import DocConfig, doc
 
 AGENT_DOC_CONFIG = DocConfig(
@@ -348,7 +348,7 @@ AGENT_DOC_CONFIG = DocConfig(
 )
 
 def agent_doc(agent, **kwargs):
-    """doc() with agent006-specific filtering."""
+    """doc() with nemo_oo_agents-specific filtering."""
     return doc(agent, config=AGENT_DOC_CONFIG, **kwargs)
 ```
 
@@ -410,15 +410,15 @@ packages/llm-inspect/
 - Add magic method protocol support
 - Documentation and examples
 
-### Phase 3: agent006 Integration
-- **Delete** `src/agent006/util/doc.py` (595 lines)
-- **Create** `src/agent006/util/inspect_config.py` (~20 lines)
-- **Update** `src/agent006/agent.py`:
+### Phase 3: nemo_oo_agents Integration
+- **Delete** `src/nemo_oo_agents/util/doc.py` (595 lines)
+- **Create** `src/nemo_oo_agents/util/inspect_config.py` (~20 lines)
+- **Update** `src/nemo_oo_agents/agent.py`:
   - Remove `self.doc = Doc(self)` from `__init__`
   - Change `DEFAULT_CONTEXT_BLOCKS["python_tools"].expr` to `agent_doc(self)`
-- **Update** `src/agent006/strategies/pure_python.py` templates
+- **Update** `src/nemo_oo_agents/strategies/pure_python.py` templates
 - **Rewrite** tests in `tests/utils/test_doc_utility.py`
-- Add `llm-inspect` to agent006 dependencies
+- Add `llm-inspect` to nemo_oo_agents dependencies
 
 ---
 
@@ -443,7 +443,7 @@ packages/llm-inspect/
 
 ## Appendix: Current doc.py Analysis
 
-The existing `agent006/util/doc.py` (595 lines) will be **deleted entirely**.
+The existing `nemo_oo_agents/util/doc.py` (595 lines) will be **deleted entirely**.
 
 **Extract to llm-inspect (core functionality)**:
 - `_format_method_summary()` / `_format_method_full()` → `methods()`
@@ -452,12 +452,12 @@ The existing `agent006/util/doc.py` (595 lines) will be **deleted entirely**.
 - `_format_tool_summary()` / `_format_tool_full()` → `doc()` for tool objects
 - Truncation logic → `DocConfig.max_value_length`, etc.
 
-**Move to agent006 config (20 lines)**:
+**Move to nemo_oo_agents config (20 lines)**:
 - `_SYSTEM_INTERNALS` constant → `DocConfig.hidden_names`
-- `_is_agent_subclass()` → Keep in agent006 if needed for child agent section
+- `_is_agent_subclass()` → Keep in nemo_oo_agents if needed for child agent section
 
 **Remove (simplify)**:
 - `Doc` class and stateful expand/collapse tracking
 - All the `self.doc.*` method infrastructure
 
-**Net result**: -575 lines of code in agent006, cleaner separation of concerns
+**Net result**: -575 lines of code in nemo_oo_agents, cleaner separation of concerns

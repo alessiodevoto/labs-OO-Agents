@@ -106,7 +106,7 @@ docker run ... eval-factory run_eval \
 ❌ **Agent-focused evaluation** - Not designed for this
 - Model evaluation paradigm (single request → response)
 - No multi-turn agent state management
-- No agent006 integration
+- No nemo_oo_agents integration
 
 ### Pros (Updated)
 
@@ -127,7 +127,7 @@ docker run ... eval-factory run_eval \
 ❌ **Output format mismatch** - YAML `results.yml` vs our `.006eval.jsonl`
 ❌ **Different evaluation model** - Not designed for agent interactions
 ❌ **Setup complexity** - Multiple packages, framework initialization
-❌ **Not agent006-aware** - No agent state, strategies, tools
+❌ **Not nemo_oo_agents-aware** - No agent state, strategies, tools
 ❌ **Limited customization** - Jinja templates, not full Python control
 ❌ **NVIDIA-internal tooling** - GitLab-centric, requires access
 ❌ **No iterative improvement** - Single-shot evaluation only
@@ -154,7 +154,7 @@ The system includes 30+ frameworks in `frameworks/llm/`:
 | **Python API** | ❌ CLI only | ❌ Script only | ✅ Yes |
 | **YAML config** | ✅ Yes (FDFs) | ❌ CLI args | ✅ Yes |
 | **Benchmark coverage** | ✅ 30+ frameworks | ✅ 11 adapters | ❌ None (custom tests) |
-| **Agent support** | ❌ Model-only | ✅ agent006, ReAct | ✅ agent006 |
+| **Agent support** | ❌ Model-only | ✅ nemo_oo_agents, ReAct | ✅ nemo_oo_agents |
 | **Multi-turn** | ❌ Single request | ✅ Environments | ❌ Single call |
 | **Infra integration** | ✅ Designed for it | ⚠️ Manual | ❌ Not designed |
 | **Output format** | YAML | JSONL (.006eval) | JSONL (.006eval) |
@@ -169,14 +169,14 @@ The system includes 30+ frameworks in `frameworks/llm/`:
 ### Recommended: Consolidate on eval_pipeline + evaluation package
 
 **Rationale:**
-1. **agent006-native** - eval_pipeline and run_ablation understand agents
+1. **nemo_oo_agents-native** - eval_pipeline and run_ablation understand agents
 2. **Python API** - Programmatic control for optimization loops
 3. **Multi-turn agents** - Support for stateful, iterative agent execution
 4. **JSONL output** - Compatible with our trace viewer
 5. **Full customization** - Not limited to Jinja templates
 
 **When to use nvidia-core-evals:**
-- ✅ Comparing agent006 against industry-standard benchmarks on NVIDIA infra
+- ✅ Comparing nemo_oo_agents against industry-standard benchmarks on NVIDIA infra
 - ✅ Running leaderboard evaluations (MMLU, IFEval, etc.) for reports
 - ✅ Participating in cross-team benchmark campaigns
 - ❌ NOT for agent development, capability tests, or optimization experiments
@@ -186,7 +186,7 @@ The system includes 30+ frameworks in `frameworks/llm/`:
 **For different use cases:**
 
 1. **Capability tests** → **eval_pipeline**
-   - CI tests for agent006 capabilities
+   - CI tests for nemo_oo_agents capabilities
    - Prompt optimization experiments
    - Custom test suites
 
@@ -208,7 +208,7 @@ Same as before - add benchmark support to eval_pipeline
 #### Phase 2: nvidia-core-evals integration (Optional, Week 3)
 If we need NVIDIA infra integration:
 - [ ] Create adapter layer: `.006eval.jsonl` → `results.yml`
-- [ ] Write FDF for agent006 evaluation
+- [ ] Write FDF for nemo_oo_agents evaluation
 - [ ] Test locally with nemo-evaluator
 - [ ] Deploy to NVIDIA infra for leaderboard runs
 
@@ -259,18 +259,18 @@ core-evals-lm-evaluation-harness run_eval --run_config test.yml
 # Result: temperature=0.7, limit_samples=100
 ```
 
-### Why It's Still Not Ideal for agent006
+### Why It's Still Not Ideal for nemo_oo_agents
 
 **Paradigm mismatch:**
 - nvidia-core-evals: `config.yml` → `command` → `model_endpoint` → `results.yml`
-- agent006: `test.yaml` → `Agent.run()` → `strategy.execute()` → `.006eval.jsonl`
+- nemo_oo_agents: `test.yaml` → `Agent.run()` → `strategy.execute()` → `.006eval.jsonl`
 
 **Key differences:**
 1. **Execution model**: CLI commands vs Python agents
 2. **State management**: Stateless requests vs stateful agents
 3. **Multi-turn**: Not supported vs core feature
 4. **Tool use**: Model function calling vs agent tool registry
-5. **Strategies**: Not a concept vs central to agent006
+5. **Strategies**: Not a concept vs central to nemo_oo_agents
 
 **Bottom line**: We CAN use nvidia-core-evals locally, but it doesn't understand agents.
 

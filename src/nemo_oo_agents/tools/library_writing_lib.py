@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent006.library_manager import LibraryManager
-from agent006.skill import Skill
-from agent006.tools.bash_tool import BashTool, FileTool
+from nemo_oo_agents.library_manager import LibraryManager
+from nemo_oo_agents.skill import Skill
+from nemo_oo_agents.tools.bash_tool import BashTool, FileTool
 
 # ---------------------------------------------------------------------------
 # LintReport
@@ -58,7 +58,7 @@ class LintReport:
 class LibraryWriting(Skill):
     """Write persistent Python libraries that survive across sessions.
 
-    Libraries are standard Python packages stored at ~/.agent006/<AgentClass>/libs/.
+    Libraries are standard Python packages stored at ~/.nemo_oo_agents/<AgentClass>/libs/.
     Any valid package layout is accepted — no specific file name is required.
 
     ## Lifecycle
@@ -95,7 +95,7 @@ class LibraryWriting(Skill):
 
     def __init__(self, agent: Any, path: Path | None = None) -> None:
         self._agent = agent
-        self._path = path or (Path.home() / ".agent006" / type(agent).__name__ / "libs")
+        self._path = path or (Path.home() / ".nemo_oo_agents" / type(agent).__name__ / "libs")
         self._path.mkdir(parents=True, exist_ok=True)
         self._bash = BashTool(working_dir=self._path)
         self._files = FileTool(self._bash)
@@ -300,7 +300,7 @@ class LibraryWriting(Skill):
         Only SecurityValidator applies — library source is plain Python,
         not a REPL cell, so REPL/CodeAct policies don't apply.
         """
-        from agent006.runtime.code_validator import SecurityValidator, ValidationContext
+        from nemo_oo_agents.runtime.code_validator import SecurityValidator, ValidationContext
 
         try:
             tree = ast.parse(source)

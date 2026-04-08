@@ -269,7 +269,7 @@ def _calculate_fee_delta_with_switching(
 ## Test Plan
 
 ```bash
-cd /Users/rcabral/agent006/experiments/evaluation-ablations
+cd /Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations
 source ../../.venv/bin/activate
 
 # Test on 10-task set

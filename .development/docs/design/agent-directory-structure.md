@@ -31,7 +31,7 @@ results/dabstep/
 │
 ├── agent008/                          # Merged from 006 + 007
 │   ├── agent008.py
-│   ├── agent008.006opt.jsonl          # parents: ["agent006", "agent007"], method: "merge"
+│   ├── agent008.006opt.jsonl          # parents: ["nemo_oo_agents", "agent007"], method: "merge"
 │   └── ...
 ```
 
@@ -47,7 +47,7 @@ First event when an agent directory is initialized.
 {
   "type": "created",
   "timestamp": "2026-01-21T14:00:00Z",
-  "parents": ["agent006", "agent007"],
+  "parents": ["nemo_oo_agents", "agent007"],
   "method": "merge",
   "description": "GEPA crossover of 006 (soft) + 007 (hard)"
 }
@@ -184,7 +184,7 @@ Fields:
 
 ```
 # Day 1: Create agent008 by merging 006 and 007
-{"type": "created", "timestamp": "2026-01-21T14:00:00Z", "parents": ["agent006", "agent007"], "method": "merge", "description": "GEPA crossover"}
+{"type": "created", "timestamp": "2026-01-21T14:00:00Z", "parents": ["nemo_oo_agents", "agent007"], "method": "merge", "description": "GEPA crossover"}
 
 # Run minibatch on the tests we're trying to improve
 {"type": "minibatch_eval", "timestamp": "2026-01-21T14:05:00Z", "tests": ["dabstep_1273_hard", "dabstep_1753_hard"], "passed": 2, "total": 2, "result_file": "minibatch/latest.006eval.jsonl"}

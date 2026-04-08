@@ -5,7 +5,7 @@
 
 ## TL;DR
 
-All configuration across agent006, unifiedllm, agentdoc, and context-blocks has been unified into **frozen Pydantic models** with a consistent `merge_with()` override pattern. Flat kwargs on strategies, tools, and summarizers are replaced by a single `config=` parameter.
+All configuration across nemo_oo_agents, unifiedllm, agentdoc, and context-blocks has been unified into **frozen Pydantic models** with a consistent `merge_with()` override pattern. Flat kwargs on strategies, tools, and summarizers are replaced by a single `config=` parameter.
 
 ---
 
@@ -17,7 +17,7 @@ Every configurable component now takes an optional `config=` argument instead of
 
 ---
 
-## agent006 — Quick Migration Table
+## nemo_oo_agents — Quick Migration Table
 
 ### Strategies
 
@@ -63,7 +63,7 @@ Every configurable component now takes an optional `config=` argument instead of
 | `max_string` | `max_pprint_string` |
 | `max_depth` | `max_pprint_depth` |
 
-Import is now `from agent006.config import TruncationConfig` (old `runtime.truncation_config` still re-exports for compat).
+Import is now `from nemo_oo_agents.config import TruncationConfig` (old `runtime.truncation_config` still re-exports for compat).
 
 ### Agent class
 
@@ -89,7 +89,7 @@ agent = MyAgent(llm, render_config=RenderConfig(block_formatter=PlainBlockFormat
 Controls framework-level limits. Set at class level:
 
 ```python
-from agent006.config import ExecutionConfig
+from nemo_oo_agents.config import ExecutionConfig
 
 class MyAgent(Agent, llm=llm, execution=ExecutionConfig(max_nesting_depth=5)):
     ...
@@ -99,10 +99,10 @@ class MyAgent(Agent, llm=llm, execution=ExecutionConfig(max_nesting_depth=5)):
 
 ## Imports
 
-All new config classes are exported from `agent006.config`:
+All new config classes are exported from `nemo_oo_agents.config`:
 
 ```python
-from agent006.config import (
+from nemo_oo_agents.config import (
     ExecutionConfig,
     CodeActConfig,
     StructuredOutputConfig,

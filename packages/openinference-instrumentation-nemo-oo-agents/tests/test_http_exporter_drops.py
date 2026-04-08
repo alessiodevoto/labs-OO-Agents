@@ -14,11 +14,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from opentelemetry.sdk.trace.export import SpanExportResult
 
-from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
 # Patch build_resource_spans throughout — we're testing HTTP/drop behaviour,
 # not span serialization.
-_SERIALIZE_PATH = "openinference_instrumentation_agent006._otlp_http_exporter.build_resource_spans"
+_SERIALIZE_PATH = "openinference_instrumentation_nemo_oo_agents._otlp_http_exporter.build_resource_spans"
 _FAKE_RESOURCE_SPANS = [{"spans": []}]
 
 

@@ -1,6 +1,6 @@
 """Large data handling agent - tests truncation system."""
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class LargeDataAgent(Agent):

@@ -6,15 +6,15 @@
 
 **Architecture:** The `_agent_call_stack` is currently only managed (push/pop) when `is_nested=True`, but `is_nested` is based on `_in_generation_session` context var which starts False for the first method. This means the root method never pushes its call_id to the stack, so child methods get `parent_call_id=None`. The fix is to always push/pop the call_id regardless of `is_nested`.
 
-**Tech Stack:** Python, pytest, agent006 runtime
+**Tech Stack:** Python, pytest, nemo_oo_agents runtime
 
-**GitLab Issue:** https://gitlab-master.nvidia.com/interactive-agents/agent006/-/issues/81
+**GitLab Issue:** https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/81
 
 ---
 
 ## Summary of Changes
 
-The fix is in `src/agent006/runtime/actor.py`:
+The fix is in `src/nemo_oo_agents/runtime/actor.py`:
 - Line ~1574: Remove `if is_nested:` condition around push
 - Line ~1703: Remove `if is_nested:` condition around pop
 
@@ -37,8 +37,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from agent006.agent import Agent
-from agent006.runtime.hooks import set_hooks, get_hooks
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.runtime.hooks import set_hooks, get_hooks
 from unifiedllm import FakeLLMClient
 
 
@@ -204,8 +204,8 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 ### Task 2: Fix the Bug in actor.py
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:1573-1576` (push)
-- Modify: `src/agent006/runtime/actor.py:1702-1705` (pop)
+- Modify: `src/nemo_oo_agents/runtime/actor.py:1573-1576` (push)
+- Modify: `src/nemo_oo_agents/runtime/actor.py:1702-1705` (pop)
 
 **Step 1: Fix the push - always push call_id to stack**
 
@@ -261,7 +261,7 @@ Expected: All tests pass.
 **Step 5: Commit fix**
 
 ```bash
-git add src/agent006/runtime/actor.py
+git add src/nemo_oo_agents/runtime/actor.py
 git commit -m "fix: always push/pop agent_call_id for correct span parent relationships
 
 Remove the is_nested condition from agent_call_stack management.
@@ -281,11 +281,11 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 ### Task 3: Verify with Stack Isolation Tests
 
 **Files:**
-- Read: `src/agent006/runtime/tests/test_stack_isolation.py`
+- Read: `src/nemo_oo_agents/runtime/tests/test_stack_isolation.py`
 
 **Step 1: Run existing stack isolation tests**
 
-Run: `pytest src/agent006/runtime/tests/test_stack_isolation.py -v`
+Run: `pytest src/nemo_oo_agents/runtime/tests/test_stack_isolation.py -v`
 
 Expected: PASS - existing isolation tests should still pass since we're still using ContextVars for isolation.
 
@@ -312,8 +312,8 @@ Create `scripts/verify_span_fix.py` (temporary, don't commit):
 
 import asyncio
 import json
-from agent006.agent import Agent
-from agent006.runtime.hooks import set_hooks, get_hooks
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.runtime.hooks import set_hooks, get_hooks
 from unifiedllm import FakeLLMClient
 
 
@@ -407,13 +407,13 @@ Run: `rm scripts/verify_span_fix.py` (don't commit the verification script)
 
 **Step 1: Run full test suite**
 
-Run: `pytest tests/ src/agent006/runtime/tests/ -v --tb=short`
+Run: `pytest tests/ src/nemo_oo_agents/runtime/tests/ -v --tb=short`
 
 Expected: All tests pass.
 
 **Step 2: Check for type errors (if mypy configured)**
 
-Run: `mypy src/agent006/runtime/actor.py --ignore-missing-imports` (optional)
+Run: `mypy src/nemo_oo_agents/runtime/actor.py --ignore-missing-imports` (optional)
 
 **Step 3: Update issue**
 

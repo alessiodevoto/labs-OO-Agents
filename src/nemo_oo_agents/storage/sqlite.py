@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -26,15 +26,15 @@ from agent006.events import (
     Summary,
     Task,
 )
-from agent006.runtime.event_manager import EventManager
-from agent006.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
-from agent006.storage.snapshot import AgentSnapshot
+from nemo_oo_agents.runtime.event_manager import EventManager
+from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
+from nemo_oo_agents.storage.snapshot import AgentSnapshot
 from context_blocks import EventBase, EventStatus, Metadata
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 # Core event types pre-registered for deserialization.
 _CORE_TYPES: dict[str, type[EventBase]] = {
@@ -309,7 +309,7 @@ class SQLiteStorageManager:
         return snapshot_id
 
     def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
-        from agent006.errors.storage import SnapshotNotFoundError
+        from nemo_oo_agents.errors.storage import SnapshotNotFoundError
 
         row = self._conn.execute(
             "SELECT data FROM snapshots WHERE snapshot_id = ?", (snapshot_id,)

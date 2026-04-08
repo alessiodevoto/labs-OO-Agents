@@ -33,7 +33,7 @@ def media_to_content_block(media: Any) -> dict:
     (e.g. Anthropic image source format) is handled by LiteLLM.
     See: https://docs.litellm.ai/docs/completion/vision
     """
-    from agent006.media import Audio, File, Image, Media
+    from nemo_oo_agents.media import Audio, File, Image, Media
 
     if not isinstance(media, Media):
         raise TypeError(f"Expected Media (Image/Audio/File), got {type(media).__name__}")
@@ -77,7 +77,7 @@ def show(obj: Any) -> None:
     Call show() on any Image, Audio, or File object to perceive its contents.
     Also accepts PIL images and matplotlib figures (auto-converted to PNG).
     """
-    from agent006.media import Media
+    from nemo_oo_agents.media import Media
 
     if isinstance(obj, Media):
         block = media_to_content_block(obj)

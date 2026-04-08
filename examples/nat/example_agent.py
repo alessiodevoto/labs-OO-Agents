@@ -1,7 +1,7 @@
 """Example Agent006 agent for NAT integration.
 
 This agent has NO LLM or tools defined at class level.
-Everything is injected by NAT via the agent006_wrapper:
+Everything is injected by NAT via the nemo_oo_agents_wrapper:
 - LLM comes from the llms: section in YAML
 - Tools come from the functions: section in YAML (injected as native Python objects)
 
@@ -9,7 +9,7 @@ Usage:
     nat run --config_file config_full.yml --input "What time is it right now?"
 """
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class DemoAgent(Agent):

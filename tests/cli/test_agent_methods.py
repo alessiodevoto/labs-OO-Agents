@@ -2,7 +2,7 @@
 
 import inspect
 
-from agent006_cli.tui.models import (
+from nemo_oo_agents_cli.tui.models import (
     BrainstormResult,
     DiagnosisResult,
     Plan,
@@ -14,7 +14,7 @@ from agent006_cli.tui.models import (
 
 def _get_method(name):
     """Return the named method from TUIAgent, asserting it exists."""
-    from agent006_cli.tui.agent import TUIAgent
+    from nemo_oo_agents_cli.tui.agent import TUIAgent
 
     method = getattr(TUIAgent, name, None)
     assert method is not None, f"TUIAgent must have {name} method"

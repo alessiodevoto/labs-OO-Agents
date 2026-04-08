@@ -16,14 +16,14 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 # These imports are safe at module level (no circular dependencies)
-from agent006.runtime.context_vars import _parent_agent_var
-from agent006.runtime.hooks import call_after_hook, call_before_hook
+from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
 # Protocol import for isinstance() checks - RuntimeServices is @runtime_checkable
-from agent006.strategies.base import RuntimeServices
+from nemo_oo_agents.strategies.base import RuntimeServices
 
 if TYPE_CHECKING:
-    from agent006.strategies.base import GenerationStrategy
+    from nemo_oo_agents.strategies.base import GenerationStrategy
 
 
 def create_agent_method_wrapper(
@@ -67,8 +67,8 @@ def create_agent_method_wrapper(
         """Unified wrapper for agent methods."""
         # Lazy imports: actor.py has bidirectional dependencies with agent.py/metaclass.py
         # that would cause circular imports if moved to module level
-        from agent006.runtime.actor import _in_generation_session
-        from agent006.runtime.context_vars import (
+        from nemo_oo_agents.runtime.actor import _in_generation_session
+        from nemo_oo_agents.runtime.context_vars import (
             _get_agent_call_stack,
             _pop_agent_call_id,
             _push_agent_call_id,
@@ -83,14 +83,14 @@ def create_agent_method_wrapper(
 
             # Lazy import: only needed for generation path, avoids loading
             # generated_code.py machinery for non-generation methods
-            from agent006.strategies.generated_code import ArgumentValidator
+            from nemo_oo_agents.strategies.generated_code import ArgumentValidator
 
             ArgumentValidator().validate(original_func, args, kwargs)
 
             # Strategy resolution if not provided
             if resolved_strategy is None:
                 # Lazy import: avoids circular dependency with strategies/__init__.py
-                from agent006.strategies import get_default_strategy
+                from nemo_oo_agents.strategies import get_default_strategy
 
                 resolved_strategy = get_default_strategy()
 
@@ -164,7 +164,7 @@ def create_agent_method_wrapper(
                         return await original_func(self, *a, **kw)
 
                 if has_agent_mw:
-                    from agent006.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
+                    from nemo_oo_agents.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
 
                     ac_ctx = AgentCallContext(
                         agent=self,
@@ -252,7 +252,7 @@ def create_agent_method_wrapper(
                 )
 
             # Lazy import: only needed for strategy method path
-            from agent006.strategies.current_call import CurrentCall
+            from nemo_oo_agents.strategies.current_call import CurrentCall
 
             # Build CurrentCall from method signature
             call = CurrentCall.from_method(original_func, call_args, call_kwargs)
@@ -268,7 +268,7 @@ def create_agent_method_wrapper(
         else:
             # Check if this is an Agent instance missing initialization
             # Import here to avoid circular dependency
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             if isinstance(self, Agent) and not hasattr(self, "runtime"):
                 raise RuntimeError(

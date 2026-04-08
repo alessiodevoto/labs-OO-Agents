@@ -5,9 +5,9 @@
 
 ## Summary
 
-This document investigates reasoning support in agent006 and unifiedllm (via LiteLLM) across three areas:
+This document investigates reasoning support in nemo_oo_agents and unifiedllm (via LiteLLM) across three areas:
 1. How to enable reasoning in LiteLLM
-2. Whether it's properly implemented in agent006/unifiedllm
+2. Whether it's properly implemented in nemo_oo_agents/unifiedllm
 3. Whether reasoning output is captured in traces
 
 ## 1. How to Enable Reasoning in LiteLLM
@@ -209,5 +209,5 @@ Or enable debug logging on unifiedllm to see full responses.
 |------|---------|
 | `packages/unifiedllm/src/unifiedllm/unifiedllm.py` | LLM client with reasoning extraction |
 | `packages/unifiedllm/src/unifiedllm/retry.py` | EmptyContentError for reasoning retry |
-| `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py` | Tracing hooks (missing reasoning) |
+| `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py` | Tracing hooks (missing reasoning) |
 | `util/eval_pipeline/src/eval_pipeline/model_factory.py` | reasoning_effort config handling |

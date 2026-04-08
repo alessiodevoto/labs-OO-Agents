@@ -1,8 +1,8 @@
 """Delete imported trace batches from the viewer.
 
 Usage:
-    agent006 delete-traces --batch-id my-experiment-v2
-    agent006 delete-traces --batch-id my-experiment-v2 --endpoint http://host:5001
+    nemo_oo_agents delete-traces --batch-id my-experiment-v2
+    nemo_oo_agents delete-traces --batch-id my-experiment-v2 --endpoint http://host:5001
 """
 
 import json

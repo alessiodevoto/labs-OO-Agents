@@ -38,9 +38,9 @@ The intended design pattern is to **subclass** `PurePythonStrategy` and override
 ### Example: Prompt Variant via Subclass
 
 ```python
-from agent006.strategies import PurePythonStrategy
-from agent006.strategies.template import TemplateStrategy
-from agent006.decorators import plan
+from nemo_oo_agents.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies.template import TemplateStrategy
+from nemo_oo_agents.decorators import plan
 
 class V3YoloStrategy(PurePythonStrategy):
     """Variant: Simple baseline prompt without classification step."""
@@ -105,9 +105,9 @@ Create `util/prompt-optimization/strategy_variants.py` containing subclasses for
 ```python
 # strategy_variants.py
 
-from agent006.strategies import PurePythonStrategy
-from agent006.strategies.template import TemplateStrategy
-from agent006.decorators import plan
+from nemo_oo_agents.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies.template import TemplateStrategy
+from nemo_oo_agents.decorators import plan
 
 
 class V3YoloStrategy(PurePythonStrategy):

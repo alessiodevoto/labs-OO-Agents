@@ -1,4 +1,4 @@
-"""Unified trace and evaluation viewer for agent006."""
+"""Unified trace and evaluation viewer for nemo_oo_agents."""
 
 from pathlib import Path
 

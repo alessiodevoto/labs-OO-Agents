@@ -1,6 +1,6 @@
 """Tests for TruncationConfig."""
 
-from agent006.config.truncation_config import (
+from nemo_oo_agents.config.truncation_config import (
     DEFAULT_TRUNCATION_CONFIG,
     TruncationConfig,
 )

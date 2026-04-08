@@ -9,9 +9,9 @@ Focus on:
 
 import pytest
 
-from agent006 import strategy
-from agent006.agent import Agent
-from agent006.strategies import PurePythonStrategy
+from nemo_oo_agents import strategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.strategies import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 

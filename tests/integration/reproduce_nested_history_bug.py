@@ -32,7 +32,7 @@ import os
 import sys
 from pathlib import Path
 
-from agent006.config import CodeActConfig
+from nemo_oo_agents.config import CodeActConfig
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -45,8 +45,8 @@ if env_file.exists():
 
     load_dotenv(env_file)
 
-from agent006 import Agent, strategy  # noqa: E402
-from agent006.strategies.codeact import CodeActStrategy  # noqa: E402
+from nemo_oo_agents import Agent, strategy  # noqa: E402
+from nemo_oo_agents.strategies.codeact import CodeActStrategy  # noqa: E402
 
 
 def get_llm_client(provider: str, model: str | None = None):

@@ -23,8 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agent006 import Agent, strategy
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import PredictStrategy
 from agentdoc._pformat import _pformat
 
 from .model_factory import client as model_client
@@ -1000,7 +1000,7 @@ class LLMJudgeScorer:
         agent_session = None
         judge_session = None
         try:
-            from openinference_instrumentation_agent006 import get_session, set_session
+            from openinference_instrumentation_nemo_oo_agents import get_session, set_session
 
             agent_session = get_session()
             judge_session = f"{agent_session}_judge" if agent_session else f"{ctx.task_id}_judge"
@@ -1032,7 +1032,7 @@ class LLMJudgeScorer:
         # Switch back to agent session
         if agent_session:
             try:
-                from openinference_instrumentation_agent006 import set_session
+                from openinference_instrumentation_nemo_oo_agents import set_session
 
                 set_session(agent_session)
             except Exception:
@@ -1040,7 +1040,7 @@ class LLMJudgeScorer:
 
         # Flush judge traces
         try:
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
         except Exception:
@@ -1184,7 +1184,7 @@ class LLMMethodologyScorer:
         agent_session = None
         judge_session = None
         try:
-            from openinference_instrumentation_agent006 import get_session, set_session
+            from openinference_instrumentation_nemo_oo_agents import get_session, set_session
 
             agent_session = get_session()
             judge_session = (
@@ -1218,7 +1218,7 @@ class LLMMethodologyScorer:
         # Switch back to agent session
         if agent_session:
             try:
-                from openinference_instrumentation_agent006 import set_session
+                from openinference_instrumentation_nemo_oo_agents import set_session
 
                 set_session(agent_session)
             except Exception:
@@ -1226,7 +1226,7 @@ class LLMMethodologyScorer:
 
         # Flush judge traces
         try:
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
         except Exception:

@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Port the mjeblick DABstab solver into native agent006 conventions as `agents/dabstep-solver/`, replicating bootstrap/discover/benchmark modes and skill accumulation.
+**Goal:** Port the mjeblick DABstab solver into native nemo_oo_agents conventions as `agents/dabstep-solver/`, replicating bootstrap/discover/benchmark modes and skill accumulation.
 
-**Architecture:** Two top-level orchestrators (`BootstrapOrchestrator`, `BenchmarkSolver`) share four sub-agents (`DiscoveryAgent`, `SolverAgent`, `SolutionVerifier`, `SkillExtractor`). A plain `SkillLibrary` class manages I/O to `skills/zero_shot_examples.py`. All agents use `agent006.Agent` + `CodeActStrategy` with inline docstrings.
+**Architecture:** Two top-level orchestrators (`BootstrapOrchestrator`, `BenchmarkSolver`) share four sub-agents (`DiscoveryAgent`, `SolverAgent`, `SolutionVerifier`, `SkillExtractor`). A plain `SkillLibrary` class manages I/O to `skills/zero_shot_examples.py`. All agents use `nemo_oo_agents.Agent` + `CodeActStrategy` with inline docstrings.
 
-**Tech Stack:** `agent006` (Agent, CodeActStrategy, strategy, no_trace), `unifiedllm` (FakeLLMClient for tests), `pydantic` (BaseModel, Field, field_validator), `pytest`, `ast` (syntax validation), `pandas`, `json`
+**Tech Stack:** `nemo_oo_agents` (Agent, CodeActStrategy, strategy, no_trace), `unifiedllm` (FakeLLMClient for tests), `pydantic` (BaseModel, Field, field_validator), `pytest`, `ast` (syntax validation), `pandas`, `json`
 
 **Reference:** Design doc at `docs/plans/2026-02-24-dabstep-solver-agent-design.md`
 **Reference agent:** `experiments/evaluation-ablations/agents/dabstep_agent008.py` (reuse PythonSource, DataContext, fee helpers, markdown_helpers patterns)
@@ -141,7 +141,7 @@ Expected: `ModuleNotFoundError: No module named 'dabstep_solver'`
 
 ```python
 """
-DABstep Solver Agent — native agent006 port.
+DABstep Solver Agent — native nemo_oo_agents port.
 
 Replicates the mjeblick DABstab solver with:
   - bootstrap mode: solve + verify vs GT + reflect + extract skills
@@ -168,7 +168,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import pandas as pd  # noqa: F401 - available to LLM-generated code
 from pydantic import BaseModel, Field, field_validator
 
-from agent006 import Agent, CodeActStrategy, no_trace, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, no_trace, strategy
 from unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
@@ -1824,7 +1824,7 @@ if __name__ == "__main__":
 ```markdown
 # DABstep Solver Agent
 
-Native agent006 port of the mjeblick DABstab solver.
+Native nemo_oo_agents port of the mjeblick DABstab solver.
 
 ## Modes
 
@@ -1902,7 +1902,7 @@ if str(_solver_dir) not in sys.path:
 
 from dabstep_solver import BenchmarkSolver, DataContext  # noqa: E402
 
-from agent006 import Agent  # noqa: E402
+from nemo_oo_agents import Agent  # noqa: E402
 from unifiedllm import FakeLLMClient  # noqa: E402
 
 

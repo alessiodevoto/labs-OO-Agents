@@ -9,7 +9,7 @@ with a data dependency between them:
 
 from typing import Annotated, TypedDict
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 # ============================================================================
 # Typed return structures

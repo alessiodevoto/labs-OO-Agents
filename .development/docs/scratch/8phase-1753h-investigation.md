@@ -287,9 +287,9 @@ When the question asks for "applicable" or "matching" fee IDs:
 
 ## Files to Examine
 
-1. Trace: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260120_133936_bedrock-claude-sonnet-4-5-v1_e04b1f/traces/dabstep_1753_hard_34deba88.006trace.jsonl` (13MB)
+1. Trace: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260120_133936_bedrock-claude-sonnet-4-5-v1_e04b1f/traces/dabstep_1753_hard_34deba88.006trace.jsonl` (13MB)
 
-2. Agent code: `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt20.py` (Phase 6, lines ~450-550)
+2. Agent code: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt20.py` (Phase 6, lines ~450-550)
 
 3. Data files:
    - `merchant_data.json` - Belles_cookbook_store metadata

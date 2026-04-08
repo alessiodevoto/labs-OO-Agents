@@ -1,4 +1,4 @@
-"""Error taxonomy for agent006.
+"""Error taxonomy for nemo_oo_agents.
 
 Provides clear error categories for:
 - Generation failures
@@ -8,16 +8,16 @@ Provides clear error categories for:
 Also provides error formatting utilities for LLM feedback.
 """
 
-from agent006.errors.formatting import (
+from nemo_oo_agents.errors.formatting import (
     IPythonErrorFormatter as IPythonErrorFormatter,
 )
-from agent006.errors.formatting import (
+from nemo_oo_agents.errors.formatting import (
     format_error_for_llm as format_error_for_llm,
 )
 
 
-class Agent006Error(Exception):
-    """Base exception for all agent006 errors."""
+class NemoOOAgentsError(Exception):
+    """Base exception for all nemo_oo_agents errors."""
 
     pass
 
@@ -27,7 +27,7 @@ class Agent006Error(Exception):
 # =============================================================================
 
 
-class GenerationError(Agent006Error):
+class GenerationError(NemoOOAgentsError):
     """Error during LLM code generation."""
 
     pass
@@ -44,7 +44,7 @@ class GenerationAborted(GenerationError):
 # =============================================================================
 
 
-class ValidationError(Agent006Error):
+class ValidationError(NemoOOAgentsError):
     """Error validating generated code."""
 
     pass
@@ -89,7 +89,7 @@ class RestrictedCodeError(ValidationError):
 # =============================================================================
 
 
-class Agent006RuntimeError(Agent006Error):
+class NemoOOAgentsRuntimeError(NemoOOAgentsError):
     """Error in agent runtime system.
 
     Named to avoid shadowing Python's built-in RuntimeError.
@@ -99,7 +99,7 @@ class Agent006RuntimeError(Agent006Error):
 
 
 # Serialization / Storage Errors
-from agent006.errors.storage import (  # noqa: E402, I001
+from nemo_oo_agents.errors.storage import (  # noqa: E402, I001
     SerializationError as SerializationError,
     SnapshotNotFoundError as SnapshotNotFoundError,
     StorageNotConfiguredError as StorageNotConfiguredError,

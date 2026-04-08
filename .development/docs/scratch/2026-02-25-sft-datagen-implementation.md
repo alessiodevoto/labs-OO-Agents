@@ -100,7 +100,7 @@ but we need to handle filtering (skip runtime events) and normalization.
 
 import pytest
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -343,7 +343,7 @@ from typing import Any
 from context_blocks.events import EventBase, ToolCallEvent
 from context_blocks.models import Role
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -442,7 +442,7 @@ PYTHONPATH=. pytest tests/test_event_serializer.py -v
 
 Expected: All tests PASS.
 
-Note: You may need `PYTHONPATH=.` or to install the package in dev mode. If imports fail, check that `.venv` has agent006 and context-blocks installed.
+Note: You may need `PYTHONPATH=.` or to install the package in dev mode. If imports fail, check that `.venv` has nemo_oo_agents and context-blocks installed.
 
 **Step 4: Commit**
 
@@ -1096,9 +1096,9 @@ from pathlib import Path
 
 import pytest
 
-from agent006.events import LLMOutput, Task
-from agent006.runtime.event_backend import InMemoryBackend
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.events import LLMOutput, Task
+from nemo_oo_agents.runtime.event_backend import InMemoryBackend
+from nemo_oo_agents.runtime.event_manager import EventManager
 from context_blocks.events import ToolCallEvent, ToolResult
 
 from sft_datagen.trajectory_dumper import dump_trajectory
@@ -1183,7 +1183,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.event_manager import EventManager
 
 from sft_datagen.event_serializer import serialize_events
 
@@ -1590,8 +1590,8 @@ serialize events → dump trajectory → clean → convert to NeMo RL.
 import json
 from pathlib import Path
 
-from agent006.events import Error, LLMOutput, PythonOutput, Task
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.events import Error, LLMOutput, PythonOutput, Task
+from nemo_oo_agents.runtime.event_manager import EventManager
 from context_blocks.events import ToolCallEvent, ToolResult
 
 from sft_datagen.trajectory_dumper import dump_trajectory

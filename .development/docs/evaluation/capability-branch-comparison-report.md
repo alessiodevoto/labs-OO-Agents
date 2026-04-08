@@ -135,7 +135,7 @@ A good RCA should answer:
 **Models Affected**: All 6 models show similar regression
 
 **Trace Files (Diff Stack - Failing)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/RouterTestWrapper_*_process_router_multi_transform_validate_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/RouterTestWrapper_*_process_router_multi_transform_validate_*.006trace.jsonl
 
 **Trace Files (Main - Passing)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/RouterTestWrapper_*_process_router_multi_transform_validate_*.006trace.jsonl
@@ -160,7 +160,7 @@ Use trace_explorer to analyze these traces and determine:
 **Models Affected**: All models show regression
 
 **Trace Files (Diff Stack - Failing)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/RouterTestWrapper_*_process_router_transform_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/RouterTestWrapper_*_process_router_transform_*.006trace.jsonl
 
 **Trace Files (Main - Passing)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/RouterTestWrapper_*_process_router_transform_*.006trace.jsonl
@@ -185,7 +185,7 @@ Use trace_explorer to analyze these traces and determine:
 **Models Affected**: Primarily qwen3-80b
 
 **Trace Files (Diff Stack)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/JsonQAAgent_qwen3-80b_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/JsonQAAgent_qwen3-80b_*.006trace.jsonl
 
 **Trace Files (Main)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/JsonQAAgent_qwen3-80b_*.006trace.jsonl
@@ -210,7 +210,7 @@ Use trace_explorer to analyze these traces and determine:
 **Model**: gemini-2.5-flash-lite
 
 **Trace Files (Diff Stack - Now Passing)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/JsonQAAgent_gemini-2.5-flash-lite_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/JsonQAAgent_gemini-2.5-flash-lite_*.006trace.jsonl
 
 **Trace Files (Main - Was Failing)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/JsonQAAgent_gemini-2.5-flash-lite_*.006trace.jsonl
@@ -235,7 +235,7 @@ Use trace_explorer to analyze these traces and determine:
 **Model**: gemini-2.5-flash-lite
 
 **Trace Files (Diff Stack - Some Passing)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/OrderTestWrapper_gemini-2.5-flash-lite_run_conversation_fast_food_order_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/OrderTestWrapper_gemini-2.5-flash-lite_run_conversation_fast_food_order_*.006trace.jsonl
 
 **Trace Files (Main - All Failing)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/OrderTestWrapper_gemini-2.5-flash-lite_run_conversation_fast_food_order_*.006trace.jsonl
@@ -260,7 +260,7 @@ Use trace_explorer to analyze these traces and determine:
 **Model**: qwen3-80b
 
 **Trace Files (Diff Stack - Now Passing)**:
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/SentimentSingleAgent_qwen3-80b_classify_sentiment_single_*_000002_*.006trace.jsonl
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/SentimentSingleAgent_qwen3-80b_classify_sentiment_single_*_000002_*.006trace.jsonl
 
 **Trace Files (Main - Was Failing)**:
 /Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/SentimentSingleAgent_qwen3-80b_classify_sentiment_single_*_000002_*.006trace.jsonl
@@ -285,11 +285,11 @@ Use trace_explorer to analyze these traces and determine:
 
 ## Appendix: Full Data
 
-Full comparison data saved to: `/Volumes/dev/dev/agent006/results/comparison_data.json`
+Full comparison data saved to: `/Volumes/dev/dev/nemo_oo_agents/results/comparison_data.json`
 
 ### File Locations
 
-- **Diff Stack Results**: `/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/capabilityoptimization_20260127_084247.006eval.jsonl`
+- **Diff Stack Results**: `/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/capabilityoptimization_20260127_084247.006eval.jsonl`
 - **Main Results**: `/Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/capabilityoptimization_20260127_084243.006eval.jsonl`
-- **Diff Stack Traces**: `/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/`
+- **Diff Stack Traces**: `/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/`
 - **Main Traces**: `/Volumes/dev/dev/viewer/results/capability_optimization_20260127_084243/traces/`

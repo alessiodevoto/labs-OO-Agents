@@ -166,7 +166,7 @@ No context variables. No implicit inheritance. Each agent is self-contained.
 | `_current_runtime_var` | Explicit `llm=self._llm` |
 | `model` param on Agent | Just use `llm=` |
 | `llm_config` param on Agent | Just use `llm=` |
-| **`src/agent006/config.py` (entire file)** | Caller passes model/key in decorator |
+| **`src/nemo_oo_agents/config.py` (entire file)** | Caller passes model/key in decorator |
 
 ### Delete `config.py` entirely
 

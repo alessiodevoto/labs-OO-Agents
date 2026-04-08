@@ -1,4 +1,4 @@
-"""Tests for agent006.tools.bash_tool.BashTool and BashResult.
+"""Tests for nemo_oo_agents.tools.bash_tool.BashTool and BashResult.
 
 Contract-focused: assert public interface (initialization, command execution,
 result properties) without depending on implementation details.
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from agent006.config.tool_configs import BashConfig
-from agent006.tools.bash_tool import BashResult, BashTool
+from nemo_oo_agents.config.tool_configs import BashConfig
+from nemo_oo_agents.tools.bash_tool import BashResult, BashTool
 
 # ============================================================================
 # BashResult Tests

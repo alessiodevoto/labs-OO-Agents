@@ -6,7 +6,7 @@ uv run python examples/quickstart/02_structured_outputs.py
 
 from typing import Literal
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class FeedbackAnalysis(BaseModel):

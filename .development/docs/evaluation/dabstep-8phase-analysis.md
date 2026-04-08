@@ -7,7 +7,7 @@
 
 | Agent | Pass Rate | Tasks Passed |
 |-------|-----------|--------------|
-| **agent006 (baseline)** | 10% | 1/10 (dabstep_5_easy) |
+| **nemo_oo_agents (baseline)** | 10% | 1/10 (dabstep_5_easy) |
 | **rsc_dab_soft** | 10% | 1/10 (dabstep_70_easy) |
 | **rsc_dab_hard** | 20% | 2/10 (dabstep_5_easy, dabstep_70_easy) |
 
@@ -29,7 +29,7 @@
 
 **Root Cause:** The prompt's guideline text says "If a question does not have a relevant or applicable answer for the task, please respond with 'Not Applicable'" - the LLM is misinterpreting this and giving up prematurely instead of following the 8-phase decomposition.
 
-### 3. Baseline agent006 Performance Varies
+### 3. Baseline nemo_oo_agents Performance Varies
 
 Our baseline run got 1/10 (10%), but:
 - Previous analysis showed 2/10 (20%) pass rate
@@ -40,7 +40,7 @@ Our baseline run got 1/10 (10%), but:
 
 ### Task-by-Task Comparison
 
-| Task ID | Difficulty | agent006 | rsc_dab_soft | rsc_dab_hard |
+| Task ID | Difficulty | nemo_oo_agents | rsc_dab_soft | rsc_dab_hard |
 |---------|------------|----------|--------------|--------------|
 | **dabstep_5_easy** | Easy | ✅ NL | ❌ Not Applicable | ✅ NL |
 | **dabstep_49_easy** | Easy | ❌ A. NL (wrong) | ❌ Not Applicable | ❌ NL (wrong) |
@@ -55,7 +55,7 @@ Our baseline run got 1/10 (10%), but:
 
 ### Failure Pattern Classification
 
-**agent006 baseline:**
+**nemo_oo_agents baseline:**
 - 1× Correct (10%)
 - 1× Wrong answer (10%)
 - 1× Empty output (10%)
@@ -112,7 +112,7 @@ Examples:
 
 **dabstep_2697_hard:**
 - Expected: `E:13.57` (scheme:amount)
-- agent006: `Not Applicable`
+- nemo_oo_agents: `Not Applicable`
 - Hard variant: `Visa:0.025` (wrong scheme, wrong amount, but correct format pattern)
 
 **dabstep_1305_hard:**
@@ -141,7 +141,7 @@ The hard variant at least attempted these (1753 returned a very long wrong list)
 
 **dabstep_1871_hard:**
 - Expected: `-0.94000000000005`
-- agent006: `0.0`
+- nemo_oo_agents: `0.0`
 - Hard variant: `0.97500000000000`
 
 Both wrong, but hard variant is closer in magnitude.

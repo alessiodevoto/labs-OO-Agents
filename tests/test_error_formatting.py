@@ -9,8 +9,8 @@ Ensures errors shown to the LLM match IPython/Jupyter-style output:
 - Validation errors show clean messages without tracebacks
 """
 
-from agent006.errors import IPythonErrorFormatter, RestrictedCodeError, format_error_for_llm
-from agent006.errors.formatting import (
+from nemo_oo_agents.errors import IPythonErrorFormatter, RestrictedCodeError, format_error_for_llm
+from nemo_oo_agents.errors.formatting import (
     _adjust_line_numbers,
     _is_user_code_frame,
     _is_validation_error,
@@ -31,10 +31,10 @@ class TestIsUserCodeFrame:
         """Frames from <execute_code> are user code (legacy compatibility)."""
         assert _is_user_code_frame("<execute_code>") is True
 
-    def test_agent006_is_framework(self):
-        """Frames from agent006/ are framework code."""
-        assert _is_user_code_frame("/path/to/agent006/runtime/actor.py") is False
-        assert _is_user_code_frame("agent006/strategies/pure_python.py") is False
+    def test_nemo_oo_agents_is_framework(self):
+        """Frames from nemo_oo_agents/ are framework code."""
+        assert _is_user_code_frame("/path/to/nemo_oo_agents/runtime/actor.py") is False
+        assert _is_user_code_frame("nemo_oo_agents/strategies/pure_python.py") is False
 
     def test_site_packages_is_framework(self):
         """Frames from site-packages are framework code."""
@@ -230,7 +230,7 @@ class TestFormatRuntimeError:
 
             assert "ZeroDivisionError" in result
             # Should NOT contain framework paths
-            assert "agent006/" not in result
+            assert "nemo_oo_agents/" not in result
             assert "site-packages/" not in result
 
     def test_runtime_error_ipython_format(self):
@@ -349,13 +349,13 @@ class TestBeforeAfterComparison:
         BEFORE (noisy - from the trace file):
         ```
         Traceback (most recent call last):
-          File "/Volumes/dev/dev/agent006/src/agent006/runtime/actor.py", line 261, in execute_code
+          File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py", line 261, in execute_code
             validate_planning_code(
-          File "/Volumes/dev/dev/agent006/src/agent006/runtime/validator.py", line 113, in validate_planning_code
+          File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/validator.py", line 113, in validate_planning_code
             validator.validate(code)
-          File "/Volumes/dev/dev/agent006/src/agent006/runtime/validator.py", line 53, in validate
+          File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/validator.py", line 53, in validate
             raise ValidationError("\\n".join(self.errors))
-        agent006.errors.RestrictedCodeError: Line 1: import statements are forbidden...
+        nemo_oo_agents.errors.RestrictedCodeError: Line 1: import statements are forbidden...
         ```
 
         AFTER (clean):
@@ -385,7 +385,7 @@ class TestBeforeAfterComparison:
         BEFORE (noisy):
         ```
         Traceback (most recent call last):
-          File "/Volumes/dev/dev/agent006/src/agent006/runtime/actor.py", line 313, in execute_code
+          File "/Volumes/dev/dev/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py", line 313, in execute_code
             result_value = await exec_globals["__repl_wrapper__"]()
                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
           File "<execute_code>", line 6, in __repl_wrapper__

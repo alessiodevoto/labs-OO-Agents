@@ -22,9 +22,9 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 
-from agent006 import Agent
-from agent006_cli.tui.config import DEFAULT_MODEL, Config
-from agent006_cli.tui.main import main
+from nemo_oo_agents import Agent
+from nemo_oo_agents_cli.tui.config import DEFAULT_MODEL, Config
+from nemo_oo_agents_cli.tui.main import main
 from unifiedllm import FakeLLMClient, get_llm_client
 
 # ---------------------------------------------------------------------------

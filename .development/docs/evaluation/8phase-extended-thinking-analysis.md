@@ -322,14 +322,14 @@ The 8-phase framework encourages "proper" generic solutions (Phase 6: Apply Doma
 ## Files Referenced
 
 **Baseline trace**:
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260117_153426_bedrock-claude-sonnet-4-5-v1_d92d45/traces/dabstep_1871_hard_bfd93e39.006trace.jsonl`
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260117_153426_bedrock-claude-sonnet-4-5-v1_d92d45/traces/dabstep_1871_hard_bfd93e39.006trace.jsonl`
 
 **Extended thinking trace**:
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260120_111215_bedrock-claude-sonnet-4-5-v1_43012c/traces/dabstep_1871_hard_d351a67c.006trace.jsonl`
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260120_111215_bedrock-claude-sonnet-4-5-v1_43012c/traces/dabstep_1871_hard_d351a67c.006trace.jsonl`
 
 **Related docs**:
-- `/Users/rcabral/agent006/docs/8phase-batch1-final-results.md`
-- `/Users/rcabral/agent006/docs/dabstep-1871-investigation.md`
+- `/Users/rcabral/nemo_oo_agents/docs/8phase-batch1-final-results.md`
+- `/Users/rcabral/nemo_oo_agents/docs/dabstep-1871-investigation.md`
 
 ---
 

@@ -56,7 +56,7 @@ The bug isn't the exception itself - it's conflating "control flow signal" with 
 Have `actor.py` recognize signals and handle them differently from errors:
 
 ```python
-# Define base class in agent006.events
+# Define base class in nemo_oo_agents.events
 class ExecutionSignal(Exception):
     """Base class for control flow signals (not errors)."""
     pass
@@ -103,7 +103,7 @@ def _is_control_flow(self, error: str) -> bool:
 
 ## Files Involved
 
-- `src/agent006/strategies/codeact.py` - Defines `_ReturnResultSignal`
-- `src/agent006/runtime/actor.py` - Catches exceptions, calls hooks
-- `packages/openinference-instrumentation-agent006/.../hooks_impl.py` - Records to traces
+- `src/nemo_oo_agents/strategies/codeact.py` - Defines `_ReturnResultSignal`
+- `src/nemo_oo_agents/runtime/actor.py` - Catches exceptions, calls hooks
+- `packages/openinference-instrumentation-nemo-oo-agents/.../hooks_impl.py` - Records to traces
 - `util/e2e_optimization/src/e2e_optimization/mechanical_checks/checks.py` - Has workaround filter

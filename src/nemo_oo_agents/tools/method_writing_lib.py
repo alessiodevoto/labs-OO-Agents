@@ -1,6 +1,6 @@
 """MethodWriting — opt-in capability for agents to define helper methods."""
 
-from agent006.skill import Skill
+from nemo_oo_agents.skill import Skill
 
 
 class MethodWriting(Skill):

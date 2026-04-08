@@ -107,7 +107,7 @@ def get_strategy_instance(strategy_name: str):
     Raises:
         ValueError: If strategy_name is not recognized
     """
-    from agent006 import (
+    from nemo_oo_agents import (
         CodeActLiteStrategy,
         CodeActStrategy,
         PredictStrategy,
@@ -538,7 +538,7 @@ def load_custom_strategy(module_path: str, class_name: str):
 async def main_async():
     """Async main entry point."""
     args = parse_args()
-    from agent006 import set_default_strategy
+    from nemo_oo_agents import set_default_strategy
 
     from .config import StrategyConfig, evaluator_from_config, load_config
 
@@ -559,7 +559,7 @@ async def main_async():
         logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
     else:
         logging.basicConfig(level=logging.WARNING)
-        logging.getLogger("agent006").setLevel(logging.ERROR)
+        logging.getLogger("nemo_oo_agents").setLevel(logging.ERROR)
         logging.getLogger("LiteLLM").setLevel(logging.ERROR)
         logging.getLogger("litellm").setLevel(logging.ERROR)
 

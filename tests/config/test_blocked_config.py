@@ -2,9 +2,9 @@ import subprocess
 
 import pytest
 
-from agent006.config.strategy_config import CodeActConfig
-from agent006.runtime.code_validator import UnifiedCodeValidator, ValidationContext, ValidationError
-from agent006.runtime.restrictions import (
+from nemo_oo_agents.config.strategy_config import CodeActConfig
+from nemo_oo_agents.runtime.code_validator import UnifiedCodeValidator, ValidationContext, ValidationError
+from nemo_oo_agents.runtime.restrictions import (
     DEFAULT_BLOCKED_CALLS,
     DEFAULT_BLOCKED_MODULES,
     RestrictionsConfig,

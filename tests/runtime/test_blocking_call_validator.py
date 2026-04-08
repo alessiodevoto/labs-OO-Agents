@@ -4,11 +4,11 @@ import time
 
 import pytest
 
-from agent006.runtime.code_validator import (
+from nemo_oo_agents.runtime.code_validator import (
     BlockingCallValidator,
     ValidationContext,
 )
-from agent006.runtime.restrictions import DEFAULT_BLOCKED_MODULES, RestrictionsConfig
+from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_MODULES, RestrictionsConfig
 
 
 @pytest.fixture

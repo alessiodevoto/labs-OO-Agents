@@ -1,7 +1,7 @@
 """Tests for EventQuery - event filtering configuration."""
 
-from agent006.events import Task
-from agent006.runtime.event_query import EventQuery
+from nemo_oo_agents.events import Task
+from nemo_oo_agents.runtime.event_query import EventQuery
 
 
 class TestEventQueryApply:

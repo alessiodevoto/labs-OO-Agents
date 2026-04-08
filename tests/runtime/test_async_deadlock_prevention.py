@@ -14,8 +14,8 @@ After applying the fix, all tests should PASS.
 
 import pytest
 
-from agent006 import Agent
-from agent006.errors import RestrictedCodeError
+from nemo_oo_agents import Agent
+from nemo_oo_agents.errors import RestrictedCodeError
 from unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()

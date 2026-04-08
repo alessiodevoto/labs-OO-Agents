@@ -80,10 +80,10 @@ Step 4 returns `None` - the context variable is not propagating correctly.
 
 | File | Purpose |
 |------|---------|
-| `src/agent006/agent.py` | `_parent_agent_var` definition, `_resolve_llm()` method |
-| `src/agent006/runtime/actor.py` | `execute_python()` sets/resets parent context, `_call_plan()` creates tasks |
-| `src/agent006/strategies/codeact.py` | CodeActStrategy that calls execute_python |
-| `src/agent006/metaclass.py` | Method wrapper that routes to `runtime._call_plan()` |
+| `src/nemo_oo_agents/agent.py` | `_parent_agent_var` definition, `_resolve_llm()` method |
+| `src/nemo_oo_agents/runtime/actor.py` | `execute_python()` sets/resets parent context, `_call_plan()` creates tasks |
+| `src/nemo_oo_agents/strategies/codeact.py` | CodeActStrategy that calls execute_python |
+| `src/nemo_oo_agents/metaclass.py` | Method wrapper that routes to `runtime._call_plan()` |
 | `tests/capability/agents/router.py` | RouterTestWrapper and sub-agent definitions |
 | `util/eval_pipeline/src/eval_pipeline/` | Pipeline that runs samples in parallel |
 
@@ -137,8 +137,8 @@ def _call_plan(self, method, args, kwargs) -> asyncio.Task:
 3. Are there nested `execute_python` calls that might reset the context prematurely?
 
 **Files to examine**:
-- `src/agent006/runtime/actor.py` - lines 560-1010 (execute_python), lines 1476-1502 (_call_plan)
-- `src/agent006/agent.py` - lines 253-348 (_resolve_llm)
+- `src/nemo_oo_agents/runtime/actor.py` - lines 560-1010 (execute_python), lines 1476-1502 (_call_plan)
+- `src/nemo_oo_agents/agent.py` - lines 253-348 (_resolve_llm)
 
 **Test approach**:
 ```python
@@ -178,7 +178,7 @@ print(f"_parent_agent_var in context: {_parent_agent_var in contextvars.copy_con
 3. Could the sub-agent be cached or reused from a previous run?
 
 **Files to examine**:
-- `src/agent006/strategies/codeact.py` - how code is generated and executed
+- `src/nemo_oo_agents/strategies/codeact.py` - how code is generated and executed
 - `tests/capability/agents/router.py` - sub-agent class definitions
 
 **Suspicious pattern**: Class attributes on RouterTestWrapper:
@@ -201,8 +201,8 @@ class RouterTestWrapper(Agent):
 3. Is there a default/fallback return value somewhere?
 
 **Files to examine**:
-- `src/agent006/strategies/codeact.py` - early return paths
-- `src/agent006/runtime/actor.py` - `_execute_with_generation` early exits
+- `src/nemo_oo_agents/strategies/codeact.py` - early return paths
+- `src/nemo_oo_agents/runtime/actor.py` - `_execute_with_generation` early exits
 
 **Check for**:
 - Cached results
@@ -214,7 +214,7 @@ class RouterTestWrapper(Agent):
 ## How to Reproduce
 
 ```bash
-cd /Volumes/dev/dev/agent006
+cd /Volumes/dev/dev/nemo_oo_agents
 source .venv/bin/activate
 
 # Run the debug script (creates 50 runs per model across 6 models)

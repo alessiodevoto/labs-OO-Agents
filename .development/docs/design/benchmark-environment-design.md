@@ -118,7 +118,7 @@ class BenchmarkEnvironment(ABC):
     - reset(task) → initial observation
     - step(action) → StepResult(observation, reward, done, info)
 
-    Plus agent006-specific:
+    Plus nemo_oo_agents-specific:
     - get_tools() → tool class instances for agent to use as self.<name>
     """
 
@@ -483,7 +483,7 @@ async def run_task_with_environment(
     initial_obs = await env.reset(task)
     tools = env.get_tools()
 
-    # Inject tools into agent (agent006 pattern)
+    # Inject tools into agent (nemo_oo_agents pattern)
     for name, tool in tools.items():
         setattr(agent, name, tool)
 
@@ -556,7 +556,7 @@ def get_environment(adapter: BenchmarkAdapter) -> BenchmarkEnvironment:
 ### Phase 3: Integration
 
 8. **Runner integration**: Update evaluation runner to use environments
-9. **Agent wiring**: Ensure agent006 agents receive environment tools
+9. **Agent wiring**: Ensure nemo_oo_agents agents receive environment tools
 
 ## Dependencies
 

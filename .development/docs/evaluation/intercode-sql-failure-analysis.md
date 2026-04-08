@@ -2,7 +2,7 @@
 
 **Date**: 2025-12-08
 **Updated**: 2025-12-08 (After adapter investigation)
-**Issue**: All agents (baseline_react, agent006_bare, agent006_tools) achieve 0% on InterCode SQL
+**Issue**: All agents (baseline_react, nemo_oo_agents_bare, nemo_oo_agents_tools) achieve 0% on InterCode SQL
 
 ## Problem Summary
 
@@ -76,12 +76,12 @@ This is a classic **tool distraction** problem - the presence of file/command to
 - Tools conflict with SQL-only requirement
 - Agent uses tools instead of generating SQL
 
-### agent006_bare
+### nemo_oo_agents_bare
 - Has NO tools by design
 - But also doesn't generate SQL queries (different root cause - needs investigation)
 - Likely generates Python code or plain text
 
-### agent006_tools
+### nemo_oo_agents_tools
 - Has FileTools hardcoded
 - Same tool distraction as baseline_react
 - Never generates SQL

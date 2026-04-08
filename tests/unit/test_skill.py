@@ -1,10 +1,10 @@
-"""Tests for agent006.Skill — path-based loading."""
+"""Tests for nemo_oo_agents.Skill — path-based loading."""
 
 import math
 
 import pytest
 
-from agent006 import Skill, TextSkill
+from nemo_oo_agents import Skill, TextSkill
 
 
 @pytest.fixture

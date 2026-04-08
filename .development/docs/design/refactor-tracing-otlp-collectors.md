@@ -20,9 +20,9 @@ The OTel-proper approach is `session.id` as a **span attribute** (per-span, set 
 
 ### 3. OTLP-first developer workflow (new)
 
-The new `agent006-viewer` provides a local OTLP ingest endpoint, making the default developer workflow:
+The new `nemo-oo-agents-viewer` provides a local OTLP ingest endpoint, making the default developer workflow:
 
-1. `agent006 start-dev` (spins up viewer + OTLP endpoint on localhost:5001)
+1. `nemo_oo_agents start-dev` (spins up viewer + OTLP endpoint on localhost:5001)
 2. `enable_tracing()` sends to local OTLP endpoint by default
 3. Developers see traces in the viewer immediately
 
@@ -43,7 +43,7 @@ JSONL file export remains available as an explicit choice but is no longer the d
 ### Exporter configuration
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing, exporters
+from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
 # Zero-config default (OTLP to local viewer at localhost:5001)
 enable_tracing()
@@ -79,7 +79,7 @@ enable_tracing(exporters=[OTLPSpanExporter(endpoint="http://localhost:4318/v1/tr
 ### Session management
 
 ```python
-from openinference_instrumentation_agent006 import set_session, get_session
+from openinference_instrumentation_nemo_oo_agents import set_session, get_session
 
 # Set session for the current async context (uses ContextVar)
 set_session("eval-run-042-sample-007")
@@ -102,7 +102,7 @@ for sample in samples:
 ### Lifecycle management
 
 ```python
-from openinference_instrumentation_agent006 import flush_traces, shutdown_traces
+from openinference_instrumentation_nemo_oo_agents import flush_traces, shutdown_traces
 
 # Force-flush all pending spans (delegates to TracerProvider.force_flush)
 flush_traces()
@@ -188,7 +188,7 @@ def enable_tracing(
    `set_session(meaningful_id)` for real workloads. The UUID suffix prevents collisions
    in multi-process scenarios (parallel test workers, concurrent evaluation processes).
 10. Store `TracerProvider` in `_provider` for `flush_traces()` / `shutdown_traces()`.
-11. Instrument agent006 + LiteLLM once.
+11. Instrument nemo_oo_agents + LiteLLM once.
 12. Print trace target (endpoint URL or file path).
 
 **New top-level functions:** `flush_traces()`, `shutdown_traces()`
@@ -232,7 +232,7 @@ Session-extraction checks **span attributes first**, then falls back to **resour
 **`evaluator.py`:** Both `run()` and `run_samples()` choose exporters based on `OTLP_ENDPOINT`:
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing, exporters
+from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
 
 exporter_list = []
 if use_otlp:
@@ -291,8 +291,8 @@ otlp = ["opentelemetry-exporter-otlp-proto-http>=1.20.0"]
 - `_hooks_impl.py` (span creation) -- unchanged.
 - `_metadata.py` -- unchanged.
 - `_litellm_patch.py` -- unchanged.
-- Core framework (`src/agent006/`) -- zero changes needed.
-- `agent006-viewer` package -- adopted as-is from upstream.
+- Core framework (`src/nemo_oo_agents/`) -- zero changes needed.
+- `nemo-oo-agents-viewer` package -- adopted as-is from upstream.
 - `start-dev` CLI command -- adopted as-is from upstream.
 
 ## Test Results

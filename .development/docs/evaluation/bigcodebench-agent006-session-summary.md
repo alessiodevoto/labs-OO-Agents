@@ -1,13 +1,13 @@
-# BigCodeBench agent006 Improvement Session Summary
+# BigCodeBench nemo_oo_agents Improvement Session Summary
 
 **Date**: 2026-01-08
 **Branch**: `fix/bigcodebench-adapter-improvements`
 
 ## Goal
 
-Investigate why agent006 (47.1% pass rate) underperforms compared to direct_llm (49.6%) and react_agent (48.2%) on BigCodeBench with Qwen model, and fix framework/tooling issues.
+Investigate why nemo_oo_agents (47.1% pass rate) underperforms compared to direct_llm (49.6%) and react_agent (48.2%) on BigCodeBench with Qwen model, and fix framework/tooling issues.
 
-## Fixes Applied to `experiments/evaluation-ablations/agents/agent006_tools.py`
+## Fixes Applied to `experiments/evaluation-ablations/agents/nemo_oo_agents_tools.py`
 
 ### 1. textwrap.dedent fix for PythonCode validator (lines 52-64)
 
@@ -51,26 +51,26 @@ Started 6 parallel runs (all BigCodeBench, 1140 tasks each):
 
 | Run | Provider | Model | Config |
 |-----|----------|-------|--------|
-| qwen_agent006 | nvidia | qwen3-next-80b-a3b-instruct | agent006 |
+| qwen_nemo_oo_agents | nvidia | qwen3-next-80b-a3b-instruct | nemo_oo_agents |
 | qwen_direct_llm | nvidia | qwen3-next-80b-a3b-instruct | direct_llm |
 | qwen_react_agent | nvidia | qwen3-next-80b-a3b-instruct | react_agent |
-| gpt_agent006 | openai | gpt-4o-mini | agent006 |
+| gpt_nemo_oo_agents | openai | gpt-4o-mini | nemo_oo_agents |
 | gpt_direct_llm | openai | gpt-4o-mini | direct_llm |
 | gpt_react_agent | openai | gpt-4o-mini | react_agent |
 
 **Results directories**: `results/20260108_195051_*/`
 
-**Log files**: `/tmp/{qwen,gpt}_{agent006,direct_llm,react_agent}.log`
+**Log files**: `/tmp/{qwen,gpt}_{nemo_oo_agents,direct_llm,react_agent}.log`
 
 **Monitor script**: `/tmp/monitor_runs.sh`
 
 ### Last Progress (22:07)
 
 ```
-qwen_agent006:    300/1140 (50.7%)
+qwen_nemo_oo_agents:    300/1140 (50.7%)
 qwen_direct_llm:   50/1140 (54.0%)
 qwen_react_agent: Starting...
-gpt_agent006:     200/1140 (29.5%)
+gpt_nemo_oo_agents:     200/1140 (29.5%)
 gpt_direct_llm:   550/1140 (33.5%)
 gpt_react_agent:  400/1140 (37.8%)
 ```
@@ -84,7 +84,7 @@ gpt_react_agent:  400/1140 (37.8%)
 
 ## Key Files Modified
 
-- `experiments/evaluation-ablations/agents/agent006_tools.py` - Main agent with all fixes
+- `experiments/evaluation-ablations/agents/nemo_oo_agents_tools.py` - Main agent with all fixes
 
 ## Original 21 Import-Forbidden Tasks (Not Yet Fully Tested)
 

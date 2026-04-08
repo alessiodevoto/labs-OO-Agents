@@ -191,7 +191,7 @@ Create opt35 with pattern-matched forced execution:
 
 ## Test Logs
 
-- opt31: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260121_083945_bedrock-claude-sonnet-4-5-v1_b616b0/`
-- opt33: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260121_091813_bedrock-claude-sonnet-4-5-v1_a14f97/` (60% regression)
-- opt34: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260121_095948_bedrock-claude-sonnet-4-5-v1_dcfc7f/` (80% same as opt31)
+- opt31: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260121_083945_bedrock-claude-sonnet-4-5-v1_b616b0/`
+- opt33: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260121_091813_bedrock-claude-sonnet-4-5-v1_a14f97/` (60% regression)
+- opt34: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260121_095948_bedrock-claude-sonnet-4-5-v1_dcfc7f/` (80% same as opt31)
 - agent007: Running...

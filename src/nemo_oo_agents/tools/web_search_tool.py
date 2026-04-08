@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent006.config.tool_configs import WebSearchConfig
+    from nemo_oo_agents.config.tool_configs import WebSearchConfig
 
 
 @dataclass
@@ -43,7 +43,7 @@ class WebSearchTool:
         Args:
             config: WebSearchConfig instance. Use WebSearchConfig(field=value) to override.
         """
-        from agent006.config.tool_configs import WebSearchConfig as _WC
+        from nemo_oo_agents.config.tool_configs import WebSearchConfig as _WC
 
         self.config = config or _WC()
 
@@ -72,7 +72,7 @@ class WebSearchTool:
         url = f"https://html.duckduckgo.com/html/?{urllib.parse.urlencode(params)}"
 
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; agent006/1.0)",
+            "User-Agent": "Mozilla/5.0 (compatible; nemo_oo_agents/1.0)",
         }
 
         req = urllib.request.Request(url, headers=headers)
@@ -128,7 +128,7 @@ class WebSearchTool:
         params = {"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"}
         url = f"https://api.duckduckgo.com/?{urllib.parse.urlencode(params)}"
 
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; agent006/1.0)"}
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; nemo_oo_agents/1.0)"}
 
         req = urllib.request.Request(url, headers=headers)
         try:
@@ -178,7 +178,7 @@ class WebSearchTool:
             Page content as string
         """
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; agent006/1.0)",
+            "User-Agent": "Mozilla/5.0 (compatible; nemo_oo_agents/1.0)",
         }
 
         effective_timeout = timeout if timeout is not None else self.config.request_timeout

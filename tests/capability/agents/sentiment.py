@@ -1,6 +1,6 @@
 """Sentiment classification agent."""
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class SentimentAgent(Agent):

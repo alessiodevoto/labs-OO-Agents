@@ -61,7 +61,7 @@ check-frontend-build:
   before_script:
     - apt-get update -qq && apt-get install -y -qq git > /dev/null
   script:
-    - cd packages/agent006-viewer/frontend-react
+    - cd packages/nemo-oo-agents-viewer/frontend-react
     - npm ci --ignore-scripts
     - npm run build
     - |
@@ -134,7 +134,7 @@ upload-test-report:
     - merge_requests
     - main
 
-# Capability testing - runs agent006 against LLM test suite
+# Capability testing - runs nemo_oo_agents against LLM test suite
 # Requires NVIDIA_INFERENCE_API_KEY environment variable to be set
 # Runs automatically on all MRs and main commits
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)

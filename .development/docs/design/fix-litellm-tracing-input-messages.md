@@ -146,7 +146,7 @@ Extend the existing `_patched_get_attributes_from_message_param` function since 
 
 2. **Integration Test**: Run BigCodeBench task and verify traces show full input messages:
    ```bash
-   python run_ablation.py --config agent006 --benchmark bigcodebench --task-ids BigCodeBench/19 --limit 1
+   python run_ablation.py --config nemo_oo_agents --benchmark bigcodebench --task-ids BigCodeBench/19 --limit 1
    ```
 
 3. **Trace Validation**: Inspect trace file and confirm:
@@ -157,7 +157,7 @@ Extend the existing `_patched_get_attributes_from_message_param` function since 
 
 | File | Change |
 |------|--------|
-| `packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_litellm_patch.py` | Extend `_patched_get_attributes_from_message_param` to fix content extraction |
+| `packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_litellm_patch.py` | Extend `_patched_get_attributes_from_message_param` to fix content extraction |
 
 ## Rollout Plan
 

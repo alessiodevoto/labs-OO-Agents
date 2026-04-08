@@ -1,11 +1,11 @@
-"""Prompt inspection utilities for agent006.
+"""Prompt inspection utilities for nemo_oo_agents.
 
 Inspect the exact prompts that would be sent to the LLM — with real agent
 state and real arguments — without triggering an actual LLM call:
 
     agent = MyAgent(llm=client)
     # ... lots of things happen
-    await agent006.print_prompt(agent.analyze, my_data)
+    await nemo_oo_agents.print_prompt(agent.analyze, my_data)
 """
 
 from __future__ import annotations
@@ -78,10 +78,10 @@ def _get_prefill(strategy: Any, call: Any) -> tuple[str | None, str | None]:
     For strategies that don't have explicit prefill support, ``pre_ellipsis``
     is still returned so that code the user wrote is never silently discarded.
     """
-    from agent006.strategies.codeact import CodeActStrategy
-    from agent006.strategies.codeact_lite import CodeActLiteStrategy
-    from agent006.strategies.prefill import InspectInputsPrefill
-    from agent006.strategies.pure_python import PurePythonStrategy
+    from nemo_oo_agents.strategies.codeact import CodeActStrategy
+    from nemo_oo_agents.strategies.codeact_lite import CodeActLiteStrategy
+    from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
+    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
     pre_ellipsis = call.pre_ellipsis_code
 
@@ -115,9 +115,9 @@ async def _build_prompt_data_from_agent(
         calling this mid-session with speculative arguments if your agent
         relies on cached DynamicContext values between turns.
     """
-    from agent006.runtime.actor import _current_strategy_var
-    from agent006.strategies import get_default_strategy
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.runtime.actor import _current_strategy_var
+    from nemo_oo_agents.strategies import get_default_strategy
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
     strategy = getattr(wrapper, "_plan_strategy", None) or get_default_strategy()
     call = CurrentCall.from_method(original_func, args=args, kwargs=kwargs)
@@ -195,7 +195,7 @@ async def build_prompt_data(method: Any, /, *args: Any, **kwargs: Any) -> Prompt
     """Build prompt data for *method* without printing.
 
     Args:
-        method: Bound generation method on an :class:`~agent006.Agent` instance.
+        method: Bound generation method on an :class:`~nemo_oo_agents.Agent` instance.
         *args, **kwargs: Arguments the method would be called with.
 
     Returns:
@@ -208,7 +208,7 @@ async def build_prompt_data(method: Any, /, *args: Any, **kwargs: Any) -> Prompt
 
     Example::
 
-        data = await agent006.build_prompt_data(agent.analyze, my_data)
+        data = await nemo_oo_agents.build_prompt_data(agent.analyze, my_data)
         print(data.task_prompt)
     """
     if not (hasattr(method, "__self__") and hasattr(method, "__func__")):
@@ -216,7 +216,7 @@ async def build_prompt_data(method: Any, /, *args: Any, **kwargs: Any) -> Prompt
             f"build_prompt_data() requires a bound agent method, got {type(method).__name__!r}. "
             "Pass a method like agent.analyze, not a bare function."
         )
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     agent = method.__self__
     if not isinstance(agent, Agent):
@@ -238,7 +238,7 @@ async def print_prompt(method: Any, /, *args: Any, **kwargs: Any) -> None:
     Output is plain text written to stdout.
 
     Args:
-        method: Bound generation method on an :class:`~agent006.Agent` instance.
+        method: Bound generation method on an :class:`~nemo_oo_agents.Agent` instance.
         *args: Positional arguments the method would be called with.
         **kwargs: Keyword arguments the method would be called with.
 
@@ -246,7 +246,7 @@ async def print_prompt(method: Any, /, *args: Any, **kwargs: Any) -> None:
 
         agent = MyAgent(llm=client)
         # ... lots of things happen
-        await agent006.print_prompt(agent.analyze, my_data)
+        await nemo_oo_agents.print_prompt(agent.analyze, my_data)
     """
     data = await build_prompt_data(method, *args, **kwargs)
     sys.stdout.write(render_prompt_data(data))

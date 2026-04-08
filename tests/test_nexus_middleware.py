@@ -19,15 +19,15 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
-from agent006.nexus_middleware import (
+from nemo_oo_agents.nexus_middleware import (
     install_nexus,
     nexus_agent_call_middleware,
     nexus_llm_middleware,
     nexus_scope,
     nexus_tool_middleware,
 )
-from agent006.runtime.event_manager import EventManager
-from agent006.runtime.middleware import (
+from nemo_oo_agents.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.middleware import (
     AgentCallContext,
     ExecutePythonContext,
     LLMCallContext,
@@ -66,7 +66,7 @@ class FakeLLMResponse:
 
 
 # ---------------------------------------------------------------------------
-# Fake ExecutionResult (mirrors agent006.events.ExecutionResult)
+# Fake ExecutionResult (mirrors nemo_oo_agents.events.ExecutionResult)
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ def _make_real_agent(model_name: str = "test-model"):
     """Create a real Agent with a mock LLM for model_name extraction."""
     from unittest.mock import MagicMock
 
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     mock_llm = MagicMock()
     mock_llm.model = model_name
@@ -793,7 +793,7 @@ class TestToolMiddlewareEdgeCases:
             ctx = _make_exec_ctx(code="return_result(99)")
 
             # Simulate signal-based result (returned_value is _NO_RETURN sentinel)
-            from agent006.events import _NO_RETURN
+            from nemo_oo_agents.events import _NO_RETURN
 
             @dataclass
             class FakeSignal:
@@ -835,7 +835,7 @@ class TestToolMiddlewareEdgeCases:
         try:
             ctx = _make_exec_ctx(code="print('hello')")
 
-            from agent006.events import _NO_RETURN
+            from nemo_oo_agents.events import _NO_RETURN
 
             fake_result = FakeExecutionResult(
                 returned_value=_NO_RETURN,
@@ -940,7 +940,7 @@ class TestAgentCallNoneReturn:
     @pytest.mark.asyncio
     async def test_none_return_is_preserved(self):
         """An agent method that legitimately returns None must not raise RuntimeError."""
-        from agent006.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
+        from nemo_oo_agents.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
 
         ctx = AgentCallContext(
             agent=None,
@@ -962,7 +962,7 @@ class TestAgentCallNoneReturn:
     @pytest.mark.asyncio
     async def test_sentinel_detected_when_nxt_not_called(self):
         """If middleware short-circuits without setting result, sentinel remains."""
-        from agent006.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
+        from nemo_oo_agents.runtime.middleware import _AGENT_RESULT_NOT_SET, AgentCallContext
 
         ctx = AgentCallContext(
             agent=None,

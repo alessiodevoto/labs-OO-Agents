@@ -225,7 +225,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: calculate_batch
 
 WRITE REPORT TO: docs/scratch/rca-calculate-batch-regression.md
@@ -251,7 +251,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: employee_lookup
 
 WRITE REPORT TO: docs/scratch/rca-employee-lookup-regression.md
@@ -277,7 +277,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: repl_exploration
 
 WRITE REPORT TO: docs/scratch/rca-repl-exploration-regression.md
@@ -305,7 +305,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: router_validate
 
 WRITE REPORT TO: docs/scratch/rca-router-validate-improvement.md
@@ -331,7 +331,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: refinement
 
 WRITE REPORT TO: docs/scratch/rca-refinement-improvement.md
@@ -357,7 +357,7 @@ INSTRUCTIONS:
 
 TRACE LOCATIONS:
 - Main traces: /Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/
-- Branch traces: /Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+- Branch traces: /Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 - Filter for test type: error_recovery
 
 WRITE REPORT TO: docs/scratch/rca-error-recovery-improvement.md

@@ -40,7 +40,7 @@ If you change `instructions` to `"meow meow"`, `PurePythonStrategy` breaks. That
 
 1. **Misleading API**: Users think they can customize prompts freely
 2. **No clear override mechanism**: Subclassing requires understanding internal config structure
-3. **Inconsistent with agent006**: Agent methods use docstrings for prompts; strategies use config strings
+3. **Inconsistent with nemo_oo_agents**: Agent methods use docstrings for prompts; strategies use config strings
 4. **Not visible in traces**: Prompt generation is invisible
 5. **Testing is awkward**: Must mock config objects instead of methods
 
@@ -165,7 +165,7 @@ Define `{method}` to complete the task."""
 ### Key Points
 
 1. **`@plan(strategy=TemplateStrategy())`** - Declares this is a prompt template
-2. **Docstring IS the template** - Consistent with agent006 philosophy
+2. **Docstring IS the template** - Consistent with nemo_oo_agents philosophy
 3. **Method parameters become template variables** - `{method}`, `{defined_methods}`, etc.
 4. **No LLM call** - `TemplateStrategy` just formats the string
 5. **Executes via agent** - Follows composite strategy pattern from MR 45
@@ -468,7 +468,7 @@ This provides visibility into prompt construction that's currently hidden.
 Add `TemplateStrategy` as a new primitive strategy. No breaking changes.
 
 ```python
-# agent006/strategies/template.py
+# nemo_oo_agents/strategies/template.py
 class TemplateStrategy(GenerationStrategy):
     ...
 ```

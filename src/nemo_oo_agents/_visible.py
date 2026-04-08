@@ -1,7 +1,7 @@
 """No-op context manager for backward compatibility.
 
 ``with visible:`` is a no-op because everything is visible by default in
-agent006. This exists purely for compatibility with agent files that were
+nemo_oo_agents. This exists purely for compatibility with agent files that were
 written against an older API that had an explicit ``visible`` context manager.
 """
 

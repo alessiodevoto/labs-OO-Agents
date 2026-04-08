@@ -54,8 +54,8 @@
 **Fix**: Added `scoped_context` parameter to `build_context()` and `_phase_scoped_blocks()`. Removed import of `_scoped_blocks_var` from `context_builder.py`. The call site in actor.py now passes `scoped_context=_scoped_blocks_var.get()` explicitly.
 
 **Files**:
-- `src/agent006/runtime/context_builder.py` (added parameter, removed import)
-- `src/agent006/runtime/actor.py` (pass scoped_context explicitly)
+- `src/nemo_oo_agents/runtime/context_builder.py` (added parameter, removed import)
+- `src/nemo_oo_agents/runtime/actor.py` (pass scoped_context explicitly)
 - `tests/runtime/test_context_builder.py` (updated 3 tests to pass None or dict directly)
 
 ---
@@ -69,7 +69,7 @@
 **Fix**: Updated `__getitem__` docstring to clearly document that Dynamic blocks return `None` before the first LLM turn, since resolution happens during `_prepare_context()`. Added note that immediate evaluation requires static blocks or manual expression calls.
 
 **Files**:
-- `src/agent006/runtime/context_manager.py` (improved docstring)
+- `src/nemo_oo_agents/runtime/context_manager.py` (improved docstring)
 
 ---
 
@@ -86,7 +86,7 @@
 Also removed duplicate `import pprint` from top-level imports (now imported locally in the function).
 
 **Files**:
-- `src/agent006/runtime/context_builder.py` (restructured logic, moved import)
+- `src/nemo_oo_agents/runtime/context_builder.py` (restructured logic, moved import)
 
 ---
 
@@ -137,7 +137,7 @@ Also removed duplicate `import pprint` from top-level imports (now imported loca
 - Simpler and more maintainable
 
 **Files**:
-- `src/agent006/runtime/truncation_config.py` (converted to Pydantic)
+- `src/nemo_oo_agents/runtime/truncation_config.py` (converted to Pydantic)
 - `tests/runtime/test_truncation_config.py` (all 17 tests pass)
 
 ---

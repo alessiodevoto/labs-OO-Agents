@@ -64,5 +64,5 @@ This guides the LLM toward constructing the object in code (where it has access 
 
 ## Files to change
 
-- `src/agent006/strategies/codeact.py` — add `_safe_return_type()`, modify 4 call sites
+- `src/nemo_oo_agents/strategies/codeact.py` — add `_safe_return_type()`, modify 4 call sites
 - `tests/strategies/test_non_pydantic_return_types.py` — new test file

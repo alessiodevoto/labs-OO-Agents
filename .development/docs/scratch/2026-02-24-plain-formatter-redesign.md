@@ -59,7 +59,7 @@ I think through this carefully...
 
 | File | Change |
 |------|--------|
-| `src/agent006/plain_formatter.py` | Rewrite `format_event()`: inner `<field>value</field>` tags (or bare for single field) |
+| `src/nemo_oo_agents/plain_formatter.py` | Rewrite `format_event()`: inner `<field>value</field>` tags (or bare for single field) |
 | `packages/context-blocks/src/context_blocks/renderer.py` | Plain branch of `format_message_content()`: event type name as outer tag, `tag=` only |
 | `packages/context-blocks/tests/test_renderer.py` | Update plain format tests |
 | `tests/test_plain_formatter.py` | Update tests to match new inner-field XML format |

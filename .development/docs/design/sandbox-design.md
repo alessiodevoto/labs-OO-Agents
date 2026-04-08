@@ -83,7 +83,7 @@ or maintain anything. We provide:
 
 1. **A policy file** (`sandbox-policy.yaml`) — declares what the sandbox is
    allowed to do (filesystem, process, network).
-2. **The `agent006 sandbox` CLI command** — an opinionated zero-config wrapper
+2. **The `nemo_oo_agents sandbox` CLI command** — an opinionated zero-config wrapper
    around `openshell sandbox` that handles dependency installation, file uploads,
    and credential injection automatically.
 
@@ -143,28 +143,28 @@ uv pip install openshell \
 
 ---
 
-## agent006 Interface to Openshell
+## nemo_oo_agents Interface to Openshell
 
-The `agent006 sandbox` CLI is an **opinionated, zero-config** wrapper around
+The `nemo_oo_agents sandbox` CLI is an **opinionated, zero-config** wrapper around
 `openshell sandbox`. The design goal is that common use cases work with minimal
 flags; advanced users drop down to `openshell` directly.
 
 ### Design principles
 
 - **Always requires `pyproject.toml`.** Dependencies are installed via `uv sync`
-  before the command runs, picking up the exact agent006 version pinned in the
+  before the command runs, picking up the exact nemo_oo_agents version pinned in the
   project.
 - **Upload by default.** The current directory is uploaded into the sandbox
   automatically. Use `--upload` to specify explicit paths.
 - **Ephemeral.** Sandboxes are not kept alive after the command exits.
 - **No subcommands.** Unlike the previous nemoclaw-based design, there is no
   `list`, `connect`, `delete`, etc. — these are `openshell` concerns. The
-  `agent006 sandbox` command does exactly one thing: run a command in a sandbox.
+  `nemo_oo_agents sandbox` command does exactly one thing: run a command in a sandbox.
 
 ### Command interface
 
 ```
-agent006 sandbox [OPTIONS] CMD...
+nemo_oo_agents sandbox [OPTIONS] CMD...
 
   Run a command in an isolated sandbox.
 
@@ -180,16 +180,16 @@ Options:
 
 ### How it works
 
-For a call like `agent006 sandbox --upload src:ro --env HF_TOKEN=x -- python agent.py`:
+For a call like `nemo_oo_agents sandbox --upload src:ro --env HF_TOKEN=x -- python agent.py`:
 
 1. Check `openshell` is installed and `pyproject.toml` exists.
 2. Parse `--upload` entries — strip `:ro`/`:rw` suffixes, collect read-only paths.
 3. If `--allow-domain` or `:ro` paths are present, write a patched policy YAML
    (temp file extending the bundled `sandbox-policy.yaml`).
 4. If `--env` vars are present, create a named openshell credential provider
-   (e.g. `agent006-<timestamp>-env`) with those credentials.
+   (e.g. `nemo_oo_agents-<timestamp>-env`) with those credentials.
 5. Call `openshell sandbox create` with:
-   - Auto-generated `agent006-<timestamp>` name
+   - Auto-generated `nemo_oo_agents-<timestamp>` name
    - Patched or bundled policy
    - `env-vars` provider (always) + env provider (if any)
    - `--upload` for each path
@@ -200,25 +200,25 @@ For a call like `agent006 sandbox --upload src:ro --env HF_TOKEN=x -- python age
 
 ```bash
 # Run a script (uploads cwd, installs deps, runs command)
-agent006 sandbox -- python agent.py
+nemo_oo_agents sandbox -- python agent.py
 
-# Launch the agent006 TUI
-agent006 sandbox -- agent006 tui
+# Launch the nemo_oo_agents TUI
+nemo_oo_agents sandbox -- nemo_oo_agents tui
 
 # Open a shell for debugging
-agent006 sandbox -- bash
+nemo_oo_agents sandbox -- bash
 
 # Upload specific paths; make data read-only
-agent006 sandbox --upload src --upload data:ro -- python agent.py
+nemo_oo_agents sandbox --upload src --upload data:ro -- python agent.py
 
 # Inject extra credentials
-agent006 sandbox --env HF_TOKEN=abc123 -- python agent.py
+nemo_oo_agents sandbox --env HF_TOKEN=abc123 -- python agent.py
 
 # Allow an extra outbound domain
-agent006 sandbox --allow-domain api.myservice.com -- python agent.py
+nemo_oo_agents sandbox --allow-domain api.myservice.com -- python agent.py
 
 # Combine options
-agent006 sandbox \
+nemo_oo_agents sandbox \
   --upload src:ro \
   --env HF_TOKEN=abc123 \
   --allow-domain api.myservice.com \
@@ -231,11 +231,11 @@ agent006 sandbox \
 
 The policy file declares everything the sandbox is allowed to do. It is passed
 to `openshell sandbox create --policy`. The bundled `sandbox-policy.yaml` extends
-the Openshell default with the network access agent006 workflows require.
+the Openshell default with the network access nemo_oo_agents workflows require.
 
 ### Dynamic policy patching
 
-When `--allow-domain` or `:ro` upload paths are used, `agent006 sandbox` writes
+When `--allow-domain` or `:ro` upload paths are used, `nemo_oo_agents sandbox` writes
 a temporary policy YAML that extends the bundled policy:
 
 - **`--allow-domain HOST`**: adds a `user_domains` network policy entry allowing
@@ -260,15 +260,15 @@ The comparison is against the Openshell default dev sandbox policy.
 | `github_rest_api` | `gh` CLI + Claude → GitHub REST API (read-only) |
 | `vscode` | VS Code Remote-SSH server download |
 
-**Network policies — agent006 additions or expansions:**
+**Network policies — nemo_oo_agents additions or expansions:**
 
 | Policy | Change | Reason |
 |--------|--------|--------|
 | `nvidia_inference` | Expanded | Added `inference.nvidia.com`, `inference-api.nvidia.com` (IP-pinned), and Python/venv/uv binary paths. Agent workflows call inference APIs directly from Python. |
 | `pypi` | Expanded | Added `urm.nvidia.com` with IP pins. NVIDIA internal Artifactory mirror for packages not yet on public PyPI. |
-| `nvidia_mcp` | New | Agent workflows call NVIDIA-internal MCP servers (Confluence, etc.). Only the agent006 venv Python binary is allowed. |
+| `nvidia_mcp` | New | Agent workflows call NVIDIA-internal MCP servers (Confluence, etc.). Only the nemo_oo_agents venv Python binary is allowed. |
 
-See `src/agent006_cli/commands/sandbox-policy.yaml` for the full policy with
+See `src/nemo_oo_agents_cli/commands/sandbox-policy.yaml` for the full policy with
 inline comments explaining each addition.
 
 ---

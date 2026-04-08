@@ -108,8 +108,8 @@ The fix correctly prevents class definitions from being treated as complete, but
 
 ## Files Modified
 
-- `src/agent006/runtime/actor.py` - Fixed return detection logic
-- `src/agent006/strategies/pure_python.py` - Added debug instrumentation
+- `src/nemo_oo_agents/runtime/actor.py` - Fixed return detection logic
+- `src/nemo_oo_agents/strategies/pure_python.py` - Added debug instrumentation
 - `tests/strategies/test_pure_python_class_definitions.py` - New test file
 
 ## Related Issues

@@ -59,7 +59,7 @@ import re
 from pathlib import Path
 from typing import Annotated
 
-from agent006 import Agent, hidden, spec
+from nemo_oo_agents import Agent, hidden, spec
 
 CATEGORIES = ["billing", "technical", "general"]   # visible to LLM by default
 MAX_RESULTS = 10
@@ -144,7 +144,7 @@ self.context.set_dynamic("project_state", "self.format_project_state()")
 ### Tracing
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing
+from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
 exporter = enable_tracing(trace_dir="traces/my_agent")
 ```
@@ -155,7 +155,7 @@ Trace viewer runs on `TRACE_VIEWER_PORT` (default 5001). See `examples/quickstar
 - **Use `@no_trace` to exclude from traces.** Decorate any method (public, private, or dunder) with `@no_trace` to prevent it from appearing in traces while still allowing generation.
 
 ```python
-from agent006 import no_trace
+from nemo_oo_agents import no_trace
 
 class MyAgent(Agent, llm=llm):
     @no_trace

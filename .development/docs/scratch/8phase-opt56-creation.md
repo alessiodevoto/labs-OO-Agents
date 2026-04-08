@@ -191,7 +191,7 @@ But if opt56 succeeds at 90%:
 ## Test Command
 
 ```bash
-cd /Users/rcabral/agent006
+cd /Users/rcabral/nemo_oo_agents
 source .venv/bin/activate
 cd experiments/evaluation-ablations
 python run_ablation.py \

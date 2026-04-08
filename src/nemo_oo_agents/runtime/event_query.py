@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent006.events import EventBase
+    from nemo_oo_agents.events import EventBase
 
 
 @dataclass(frozen=True)

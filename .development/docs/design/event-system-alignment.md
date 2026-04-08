@@ -6,7 +6,7 @@
 
 ## Summary
 
-Aligned agent006 events with context-blocks to eliminate code duplication and ensure consistency.
+Aligned nemo_oo_agents events with context-blocks to eliminate code duplication and ensure consistency.
 
 ## Changes Made
 
@@ -29,11 +29,11 @@ class EventBase(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 ```
 
-**Why**: agent006 needs event IDs for correlation tracking. By adding `id` to context-blocks EventBase, we enable agent006 events to inherit from context-blocks without duplication.
+**Why**: nemo_oo_agents needs event IDs for correlation tracking. By adding `id` to context-blocks EventBase, we enable nemo_oo_agents events to inherit from context-blocks without duplication.
 
-### 2. Migrated agent006 events to use context-blocks base types
+### 2. Migrated nemo_oo_agents events to use context-blocks base types
 
-**File**: `src/agent006/events.py`
+**File**: `src/nemo_oo_agents/events.py`
 
 **Before**:
 ```python
@@ -61,12 +61,12 @@ class TaskEvent(EventBase):
 
 **Benefits**:
 - Eliminated duplicate EventBase and ContentData definitions
-- agent006 events now compatible with context-blocks tools
+- nemo_oo_agents events now compatible with context-blocks tools
 - Shared data types ensure consistency
 
 ### 3. Made OpenAIProviderFormatter configurable
 
-**File**: `src/agent006/context/formats.py`
+**File**: `src/nemo_oo_agents/context/formats.py`
 
 **Before**:
 ```python
@@ -88,7 +88,7 @@ class OpenAIProviderFormatter:
 ```python
 class OpenAIProviderFormatter:
     DEFAULT_ROLE_MAP = {
-        # agent006-specific event types
+        # nemo_oo_agents-specific event types
         "task": "user",
         "error": "user",
         "feedback": "user",
@@ -111,7 +111,7 @@ class OpenAIProviderFormatter:
 
 **Benefits**:
 - Role mapping is now configurable per-formatter instance
-- Supports both agent006 and context-blocks event types
+- Supports both nemo_oo_agents and context-blocks event types
 - Enables experiments with different role mappings (e.g., treat reasoning as user role)
 - No metadata pollution (role determined by event type, not stored in metadata)
 
@@ -130,7 +130,7 @@ custom_formatter = OpenAIProviderFormatter(role_map={
 
 ### 4. Removed backward compatibility aliases
 
-**File**: `src/agent006/context/formats.py`
+**File**: `src/nemo_oo_agents/context/formats.py`
 
 **Removed**:
 ```python
@@ -146,10 +146,10 @@ from context_blocks import MarkdownBlockFormatter, XMLBlockFormatter
 
 ### 5. Updated documentation
 
-**Files**: `src/agent006/context/formats.py`, `src/agent006/events.py`
+**Files**: `src/nemo_oo_agents/context/formats.py`, `src/nemo_oo_agents/events.py`
 
 - Updated docstrings to reflect shared EventBase
-- Clarified that ProviderFormatter supports both agent006 and context-blocks events
+- Clarified that ProviderFormatter supports both nemo_oo_agents and context-blocks events
 - Added examples of configurable role mapping
 
 ## Architecture After Changes
@@ -172,7 +172,7 @@ from context_blocks import MarkdownBlockFormatter, XMLBlockFormatter
                               │ extends
                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                       agent006 package                          │
+│                       nemo_oo_agents package                          │
 │                                                                 │
 │  Agent006-specific events (inherit from context-blocks):       │
 │     ├─ TaskEvent (extends EventBase)                           │
@@ -182,7 +182,7 @@ from context_blocks import MarkdownBlockFormatter, XMLBlockFormatter
 │     └─ ReasoningEvent (extends EventBase)                      │
 │                                                                 │
 │  OpenAIProviderFormatter (configurable role_map)                │
-│     - Supports both agent006 and context-blocks events         │
+│     - Supports both nemo_oo_agents and context-blocks events         │
 │     - Configurable per-instance                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -191,12 +191,12 @@ from context_blocks import MarkdownBlockFormatter, XMLBlockFormatter
 
 | Event Type | Source | Base Class | OpenAI Role (Default) |
 |-----------|--------|------------|----------------------|
-| **TaskEvent** | agent006 | EventBase | user |
-| **ErrorEvent** | agent006 | EventBase | user |
-| **FeedbackEvent** | agent006 | EventBase | user |
-| **MessageEvent** | agent006 | EventBase | assistant |
-| **ReasoningEvent** | agent006 | EventBase | assistant |
-| **AssistantEvent** | agent006 | EventBase | assistant |
+| **TaskEvent** | nemo_oo_agents | EventBase | user |
+| **ErrorEvent** | nemo_oo_agents | EventBase | user |
+| **FeedbackEvent** | nemo_oo_agents | EventBase | user |
+| **MessageEvent** | nemo_oo_agents | EventBase | assistant |
+| **ReasoningEvent** | nemo_oo_agents | EventBase | assistant |
+| **AssistantEvent** | nemo_oo_agents | EventBase | assistant |
 | **UserEvent** | context-blocks | EventBase | user |
 | **AssistantEvent** | context-blocks | EventBase | assistant |
 | **ToolCallEvent** | context-blocks | EventBase | assistant |
@@ -206,14 +206,14 @@ from context_blocks import MarkdownBlockFormatter, XMLBlockFormatter
 
 1. **No duplication** ✅
    - Single EventBase definition in context-blocks
-   - agent006 events extend, don't redefine
+   - nemo_oo_agents events extend, don't redefine
 
 2. **Strong typing preserved** ✅
    - TaskEvent, ErrorEvent, etc. remain distinct classes
    - Type safety maintained throughout codebase
 
 3. **Compatibility** ✅
-   - agent006 events work with context-blocks tools
+   - nemo_oo_agents events work with context-blocks tools
    - Shared data types (ContentData, etc.)
 
 4. **Configurability** ✅
@@ -239,7 +239,7 @@ Verified:
 ## Migration Checklist
 
 - [x] Add `id` field to context-blocks EventBase
-- [x] Migrate agent006 events to use context-blocks base types
+- [x] Migrate nemo_oo_agents events to use context-blocks base types
 - [x] Make OpenAIProviderFormatter configurable
 - [x] Remove backward compatibility aliases
 - [x] Update documentation and docstrings
@@ -260,7 +260,7 @@ Added to context-blocks version:
 - Configurable `role_map` via constructor parameter
 - `format_events()` method for formatting events without system context
 - Token truncation with `_truncate_to_tokens()`
-- Support for agent006 event types in DEFAULT_ROLE_MAP
+- Support for nemo_oo_agents event types in DEFAULT_ROLE_MAP
 - Tag prefix support from event metadata
 
 **Benefits**:
@@ -268,9 +268,9 @@ Added to context-blocks version:
 - Available to all packages that use context-blocks
 - Fully backward compatible with existing code
 
-### 2. Removed agent006 Duplication
+### 2. Removed nemo_oo_agents Duplication
 
-**Directory**: `src/agent006/context/` - **DELETED ENTIRELY** ✅
+**Directory**: `src/nemo_oo_agents/context/` - **DELETED ENTIRELY** ✅
 
 The entire directory has been removed (6 files):
 - `context/__init__.py` - Re-exported context-blocks (unused by any code)
@@ -278,19 +278,19 @@ The entire directory has been removed (6 files):
 - `context/prompts.py` - Old prompt code (already deleted in refactor)
 - `context/prompt_data/` - Old prompt data (already deleted in refactor)
 
-**Why safe to delete**: Zero imports from `agent006.context` anywhere in the codebase. Everything now imports directly from `context_blocks`.
+**Why safe to delete**: Zero imports from `nemo_oo_agents.context` anywhere in the codebase. Everything now imports directly from `context_blocks`.
 
 ### 3. Updated Imports
 
 **Files updated**:
-- `src/agent006/runtime/prompts.py` - Import from context-blocks
+- `src/nemo_oo_agents/runtime/prompts.py` - Import from context-blocks
 - `tests/runtime/test_history_manager_events.py` - Import from context-blocks
 - `tests/test_history_manager.py` - Import from context-blocks
 - `tests/test_history_integration.py` - Import from context-blocks
 
 **Before**:
 ```python
-from agent006.context.formats import OpenAIProviderFormatter
+from nemo_oo_agents.context.formats import OpenAIProviderFormatter
 ```
 
 **After**:
@@ -305,7 +305,7 @@ context-blocks/
   events.py          ← EventBase with id, timestamp, metadata
   formatter.py       ← OpenAIProviderFormatter (configurable)
 
-agent006/
+nemo_oo_agents/
   events.py          ← TaskEvent, ErrorEvent, etc. (extend EventBase)
   runtime/prompts.py ← Imports directly from context_blocks
 ```
@@ -332,7 +332,7 @@ All 39 tests pass ✅:
 
 **Related commits**:
 - `refactor: add id field to context-blocks EventBase`
-- `refactor: align agent006 events with context-blocks`
+- `refactor: align nemo_oo_agents events with context-blocks`
 - `feat: make OpenAIProviderFormatter configurable`
 - `refactor: move OpenAIProviderFormatter to context-blocks`
 - `refactor: delete entire context/ directory (unused re-export layer)`

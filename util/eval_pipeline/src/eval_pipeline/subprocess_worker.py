@@ -79,7 +79,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # Set up tracing (fresh process — no inherited state)
     if task_input.use_otlp:
         try:
-            from openinference_instrumentation_agent006 import (
+            from openinference_instrumentation_nemo_oo_agents import (
                 enable_tracing,
                 exporters,
                 set_session,
@@ -136,7 +136,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
 
     # Flush spans so the exporter has sent everything to the headless backend.
     try:
-        from openinference_instrumentation_agent006 import flush_traces
+        from openinference_instrumentation_nemo_oo_agents import flush_traces
 
         flush_traces()
     except Exception:
@@ -173,7 +173,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # Clean up session
     if task_input.use_otlp:
         try:
-            from openinference_instrumentation_agent006 import set_session
+            from openinference_instrumentation_nemo_oo_agents import set_session
 
             set_session(None)
         except Exception:

@@ -18,7 +18,7 @@ def _to_attr_name(name: str) -> str:
 
 
 if TYPE_CHECKING:
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     from .config import TUIConfig
     from .console import TUIConsole
@@ -453,7 +453,7 @@ class MCPCommand(Command):
 
         # Lazy import to avoid module-level side effects and enable test mocking
         try:
-            from mcp_agent006 import MCPManager
+            from mcp_nemo_oo_agents import MCPManager
         except ImportError:
             return CommandResult(
                 False,
@@ -565,7 +565,7 @@ class SkillsCommand(Command):
 
     async def execute(self, args: list[str]) -> CommandResult:
         try:
-            from agent006 import SkillManager
+            from nemo_oo_agents import SkillManager
         except ImportError:
             return CommandResult(
                 False,

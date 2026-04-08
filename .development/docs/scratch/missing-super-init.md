@@ -12,7 +12,7 @@ The real issue is that `self.runtime` doesn't exist because `Agent.__init__()` w
 
 ## Root Cause
 
-In `src/agent006/runtime/method_wrapper.py` lines 88-200, the wrapper logic:
+In `src/nemo_oo_agents/runtime/method_wrapper.py` lines 88-200, the wrapper logic:
 
 1. Checks `hasattr(self, "runtime")` at line 89
 2. If False and method needs generation, checks if first arg is `RuntimeServices` (line 168)
@@ -24,7 +24,7 @@ Enhance the error detection in the method wrapper to check if we're dealing with
 
 ### Changes Required
 
-**File: `src/agent006/runtime/method_wrapper.py`**
+**File: `src/nemo_oo_agents/runtime/method_wrapper.py`**
 
 Modify the final `else` block (lines 195-200) to detect missing initialization:
 
@@ -32,7 +32,7 @@ Modify the final `else` block (lines 195-200) to detect missing initialization:
 else:
     # Check if this is an Agent instance missing initialization
     # Import here to avoid circular dependency
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     if isinstance(self, Agent) and not hasattr(self, "runtime"):
         raise RuntimeError(

@@ -18,7 +18,7 @@ const INTERNAL_KEYS = new Set([
   'status_description',
 ]);
 
-const NOISE_PREFIXES = ['git.', 'python.', 'hostname', 'agent006.version'];
+const NOISE_PREFIXES = ['git.', 'python.', 'hostname', 'nemo_oo_agents.version'];
 
 function isNoiseKey(key: string): boolean {
   return NOISE_PREFIXES.some((p) => key.startsWith(p));
@@ -32,8 +32,8 @@ function findHeroContent(attrs: Record<string, unknown>): {
 } | null {
   // Known large-text attributes worth showing as a code box
   const candidates: [string, string, string][] = [
-    ['agent006.system_message', 'System Message', 'markdown'],
-    ['agent006.user_message', 'User Message', 'markdown'],
+    ['nemo_oo_agents.system_message', 'System Message', 'markdown'],
+    ['nemo_oo_agents.user_message', 'User Message', 'markdown'],
     ['code', 'Code', 'python'],
     ['result', 'Result', 'json'],
     ['message', 'Message', 'text'],
@@ -106,10 +106,10 @@ export function SpanPlugin({ event, viewState, rawJsonOpen, viewControls }: Plug
       {hero && (
         <div className="mb-2">
           <div className="text-xs text-gray-500 mb-1">{hero.label}</div>
-          {hero.attrKey === 'agent006.system_message' ? (
+          {hero.attrKey === 'nemo_oo_agents.system_message' ? (
             <ContextBlockRenderer
               content={hero.content}
-              plain={attrs['agent006.system_message.is_diff'] === true}
+              plain={attrs['nemo_oo_agents.system_message.is_diff'] === true}
             />
           ) : (
             <CodeBox

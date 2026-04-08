@@ -19,7 +19,7 @@ class MyAgent...
 Tag name = block key. `expr` attribute is optional (only present when `block.metadata.expr` is set).
 `PlainBlockFormatter` uses the same XML format for system blocks; conversation event fields inside blocks may use `<field>value</field>` inline XML.
 
-`agent006.system_message.is_diff` (bool attribute) — when `true`, the content is a unified diff of the system message change, NOT parsed XML blocks.
+`nemo_oo_agents.system_message.is_diff` (bool attribute) — when `true`, the content is a unified diff of the system message change, NOT parsed XML blocks.
 
 Correct parsing regex:
 ```
@@ -67,7 +67,7 @@ Best matches the existing `ReasoningSection` component pattern. Provides:
 
 ### New File: `ContextBlockRenderer.tsx`
 
-Location: `packages/agent006-viewer/frontend-react/src/components/shared/ContextBlockRenderer.tsx`
+Location: `packages/nemo-oo-agents-viewer/frontend-react/src/components/shared/ContextBlockRenderer.tsx`
 
 Responsibilities:
 1. Parse the raw text for `<key_name ...>...\n</key_name>` blocks using the correct regex
@@ -93,12 +93,12 @@ In `MessageBox`: when `role === 'system'`, use `<ContextBlockRenderer>` instead 
 
 ### Modified: `SpanPlugin.tsx`
 
-The `agent006.system_message` hero content:
-- Check `attrs['agent006.system_message.is_diff']`: if `true`, render as plain `<CodeBox>` (it's a diff, not XML blocks)
+The `nemo_oo_agents.system_message` hero content:
+- Check `attrs['nemo_oo_agents.system_message.is_diff']`: if `true`, render as plain `<CodeBox>` (it's a diff, not XML blocks)
 - If `false`/absent: render through `<ContextBlockRenderer>`
 
 Implement by adding a check in the `SpanPlugin` render body (not in `findHeroContent`), after extracting the hero.
-`agent006.user_message` — intentionally unchanged (plain prose, not XML blocks).
+`nemo_oo_agents.user_message` — intentionally unchanged (plain prose, not XML blocks).
 
 ### Styling
 

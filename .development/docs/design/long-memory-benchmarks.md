@@ -145,7 +145,7 @@ Standard agents (`ToolsAgent`, `ReactAgent`) process everything in a single cont
 Using the `context-blocks` package for dynamic context management:
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from context_blocks import BlockManager, Block, scoped_blocks
 
 class LongMemoryAgent(Agent):
@@ -275,13 +275,13 @@ For a conversation with 32 sessions (~16K tokens), the agent uses:
 ```bash
 # Basic usage with any agent
 python experiments/evaluation-ablations/run_ablation.py \
-    --config agent006 \
+    --config nemo_oo_agents \
     --benchmark locomo \
     --limit 50
 
 # LongMemEval variants
 python experiments/evaluation-ablations/run_ablation.py \
-    --config agent006 \
+    --config nemo_oo_agents \
     --benchmark longmemeval_oracle \
     --limit 100
 ```

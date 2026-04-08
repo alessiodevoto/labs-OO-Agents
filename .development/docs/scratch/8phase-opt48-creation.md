@@ -140,7 +140,7 @@ opt48 Test Results:
 
 **Testing**:
 ```bash
-cd /Users/rcabral/agent006
+cd /Users/rcabral/nemo_oo_agents
 source .venv/bin/activate
 cd experiments/evaluation-ablations
 python run_ablation.py \

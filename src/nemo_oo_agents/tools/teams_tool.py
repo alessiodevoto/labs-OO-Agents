@@ -1,4 +1,4 @@
-"""Microsoft Teams integration tool for agent006.
+"""Microsoft Teams integration tool for nemo_oo_agents.
 
 Provides access to Teams meeting transcripts via Microsoft Graph API.
 """

@@ -4,7 +4,7 @@
 uv run python examples/quickstart/07_dynamic_prompts.py
 """
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class TranslatorAgent(Agent, llm=llm):

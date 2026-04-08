@@ -34,7 +34,7 @@ When an agent is instantiated without an explicit LLM, cascade through multiple 
 ### API Design
 
 ```python
-from agent006 import Agent  # Note: INHERIT is internal only, not exported
+from nemo_oo_agents import Agent  # Note: INHERIT is internal only, not exported
 from unifiedllm import CompletionClient
 
 my_llm = CompletionClient(model="gpt-4o")
@@ -129,7 +129,7 @@ agent = FlexibleAgent(llm=my_llm)  # ✓ Uses my_llm
 
 **Example 5: Method-Level LLM Configuration**
 ```python
-from agent006 import Agent, strategy
+from nemo_oo_agents import Agent, strategy
 from unifiedllm import CompletionClient
 
 # Configure different LLMs for different use cases

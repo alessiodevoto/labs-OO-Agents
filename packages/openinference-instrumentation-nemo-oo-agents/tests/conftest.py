@@ -19,8 +19,8 @@ def reset_tracing_module_state():
     Necessary because enable_tracing() uses module-level flags for idempotency.
     Tests need to reset this to verify behaviour in isolation.
     """
-    import openinference_instrumentation_agent006 as module
-    from openinference_instrumentation_agent006._session import _current_session
+    import openinference_instrumentation_nemo_oo_agents as module
+    from openinference_instrumentation_nemo_oo_agents._session import _current_session
 
     # Shutdown provider if any
     if module._provider is not None:
@@ -38,7 +38,7 @@ def reset_tracing_module_state():
 
     # Reset instrumentation hooks ContextVar (set by enable_tracing / set_hooks)
     with contextlib.suppress(ImportError):
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(None)
 
@@ -49,7 +49,7 @@ def reset_tracing_module_state():
     # use asyncio.gather() inherit the shared dict and fail because all child
     # tasks see the same non-None value instead of getting their own fresh dict.
     with contextlib.suppress(ImportError):
-        from openinference_instrumentation_agent006._hooks_impl import _context_active_spans
+        from openinference_instrumentation_nemo_oo_agents._hooks_impl import _context_active_spans
 
         _context_active_spans.set(None)
 

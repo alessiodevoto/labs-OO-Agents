@@ -46,10 +46,10 @@ def test_tpm_agent_imports():
     from agents.tpm_agent.runner import TPMAgentRunner
     assert TPMAgentRunner is not None
 
-def test_agent006_runtime_imports():
-    """Test that agent006 runtime with agentdoc dependency works."""
-    from agent006.runtime import enable_tracing
-    from agent006.runtime.actor import ActorRuntime
+def test_nemo_oo_agents_runtime_imports():
+    """Test that nemo_oo_agents runtime with agentdoc dependency works."""
+    from nemo_oo_agents.runtime import enable_tracing
+    from nemo_oo_agents.runtime.actor import ActorRuntime
     assert enable_tracing is not None
     assert ActorRuntime is not None
 ```
@@ -88,7 +88,7 @@ jobs:
       - name: Create virtual environment
         run: uv venv .venv
 
-      - name: Install agent006
+      - name: Install nemo_oo_agents
         run: |
           source .venv/bin/activate
           uv pip install -e .
@@ -108,7 +108,7 @@ jobs:
           source .venv/bin/activate
           pytest tests/agents/ -v
 
-      - name: Run agent006 tests
+      - name: Run nemo_oo_agents tests
         run: |
           source .venv/bin/activate
           pytest tests/ -v --ignore=tests/agents/
@@ -124,7 +124,7 @@ Optionally add a local pre-commit hook to catch import errors early:
     hooks:
       - id: test-imports
         name: Test critical imports
-        entry: python -c "from agent006.runtime import enable_tracing; from agentdoc import doc"
+        entry: python -c "from nemo_oo_agents.runtime import enable_tracing; from agentdoc import doc"
         language: system
         pass_filenames: false
         always_run: true
@@ -143,7 +143,7 @@ Update `CLAUDE.md` or create `SETUP.md`:
    source .venv/bin/activate
    ```
 
-2. Install agent006:
+2. Install nemo_oo_agents:
    ```bash
    uv pip install -e .
    ```

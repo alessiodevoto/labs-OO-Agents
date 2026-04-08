@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from agent006.runtime.restrictions import RestrictionsConfig
+from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
 
 class CodeActConfig(BaseModel):

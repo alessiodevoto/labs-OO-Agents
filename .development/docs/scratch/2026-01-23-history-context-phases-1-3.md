@@ -4,9 +4,9 @@
 
 **Goal:** Implement phases 1–3 for history rendering: valid exprs, RenderSpec-driven rendering, and flattened event fields.
 
-**Architecture:** Add position-based indexing to `HistoryManager`, repair formatter expr paths, introduce `RenderSpec` to separate event structure from formatting, and flatten event fields across `context_blocks` and `agent006`.
+**Architecture:** Add position-based indexing to `HistoryManager`, repair formatter expr paths, introduce `RenderSpec` to separate event structure from formatting, and flatten event fields across `context_blocks` and `nemo_oo_agents`.
 
-**Tech Stack:** Python 3.12, Pydantic, `context_blocks`, `agent006` runtime, pytest
+**Tech Stack:** Python 3.12, Pydantic, `context_blocks`, `nemo_oo_agents` runtime, pytest
 
 ---
 
@@ -17,7 +17,7 @@
 - Test: `packages/context-blocks/tests/test_formatters.py`, `tests/test_history_manager.py`
 
 **Step 1: Create a worktree**
-Run: `git worktree add ../agent006-history-phases-1-3 -b history-phases-1-3`
+Run: `git worktree add ../nemo_oo_agents-history-phases-1-3 -b history-phases-1-3`
 
 **Step 2: Activate venv**
 Run: `source .venv/bin/activate`
@@ -31,7 +31,7 @@ Expected: PASS (or note pre-existing failures)
 ### Task 1: Phase 1 — Add `HistoryManager.__getitem__`
 
 **Files:**
-- Modify: `src/agent006/runtime/history.py`
+- Modify: `src/nemo_oo_agents/runtime/history.py`
 - Test: `tests/test_history_manager.py`
 
 **Step 1: Write the failing test**
@@ -63,7 +63,7 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add tests/test_history_manager.py src/agent006/runtime/history.py
+git add tests/test_history_manager.py src/nemo_oo_agents/runtime/history.py
 git commit -m "feat: add HistoryManager indexing"
 ```
 
@@ -249,16 +249,16 @@ git commit -m "feat: render events via RenderSpec"
 
 ---
 
-### Task 6: Phase 2 — Add `render_spec()` to agent006 events
+### Task 6: Phase 2 — Add `render_spec()` to nemo_oo_agents events
 
 **Files:**
-- Modify: `src/agent006/events.py`
+- Modify: `src/nemo_oo_agents/events.py`
 - Test: `tests/test_events.py`
 
 **Step 1: Write failing tests**
 Add:
 ```python
-from agent006.events import TaskEvent
+from nemo_oo_agents.events import TaskEvent
 
 def test_agent_event_render_spec():
     event = TaskEvent(content="do it")
@@ -272,7 +272,7 @@ Run: `pytest tests/test_events.py::test_agent_event_render_spec -v`
 Expected: FAIL with `AttributeError: 'TaskEvent' object has no attribute 'render_spec'`
 
 **Step 3: Write minimal implementation**
-Implement `render_spec()` on agent006 events mirroring context-blocks.
+Implement `render_spec()` on nemo_oo_agents events mirroring context-blocks.
 
 **Step 4: Run test to verify it passes**
 Run: `pytest tests/test_events.py::test_agent_event_render_spec -v`
@@ -280,8 +280,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add src/agent006/events.py tests/test_events.py
-git commit -m "feat: add render_spec to agent006 events"
+git add src/nemo_oo_agents/events.py tests/test_events.py
+git commit -m "feat: add render_spec to nemo_oo_agents events"
 ```
 
 ---
@@ -331,12 +331,12 @@ git commit -m "refactor: flatten context-blocks event fields"
 
 ---
 
-### Task 8: Phase 3 — Flatten agent006 events + history usage
+### Task 8: Phase 3 — Flatten nemo_oo_agents events + history usage
 
 **Files:**
-- Modify: `src/agent006/events.py`
-- Modify: `src/agent006/runtime/history.py`
-- Modify: `src/agent006/runtime/out_accessor.py`
+- Modify: `src/nemo_oo_agents/events.py`
+- Modify: `src/nemo_oo_agents/runtime/history.py`
+- Modify: `src/nemo_oo_agents/runtime/out_accessor.py`
 - Test: `tests/test_history_manager.py`, `tests/test_events.py`, `tests/runtime/test_out_accessor.py`
 
 **Step 1: Update tests for flat fields**
@@ -346,7 +346,7 @@ Replace `.data.content` with `.content` and update event construction to pass di
 Run: `pytest tests/test_history_manager.py tests/test_events.py tests/runtime/test_out_accessor.py -v`
 Expected: FAIL with missing `data` attribute
 
-**Step 3: Flatten agent006 event models**
+**Step 3: Flatten nemo_oo_agents event models**
 Mirror context-blocks flat fields and update `render_spec()` to use direct fields.
 
 **Step 4: Update HistoryManager helpers**
@@ -358,10 +358,10 @@ Expected: PASS
 
 **Step 6: Commit**
 ```bash
-git add src/agent006/events.py src/agent006/runtime/history.py \
-  src/agent006/runtime/out_accessor.py tests/test_history_manager.py \
+git add src/nemo_oo_agents/events.py src/nemo_oo_agents/runtime/history.py \
+  src/nemo_oo_agents/runtime/out_accessor.py tests/test_history_manager.py \
   tests/test_events.py tests/runtime/test_out_accessor.py
-git commit -m "refactor: flatten agent006 event fields"
+git commit -m "refactor: flatten nemo_oo_agents event fields"
 ```
 
 ---
@@ -370,7 +370,7 @@ git commit -m "refactor: flatten agent006 event fields"
 
 **Files:**
 - Modify: `tests/` (remaining `.data.` references)
-- Modify: `src/agent006/` and `packages/context-blocks/` usages
+- Modify: `src/nemo_oo_agents/` and `packages/context-blocks/` usages
 
 **Step 1: Update remaining references**
 Search for `.data.` in both packages and update to flat fields.
@@ -381,7 +381,7 @@ Expected: PASS
 
 **Step 3: Commit**
 ```bash
-git add src/agent006 packages/context-blocks tests
+git add src/nemo_oo_agents packages/context-blocks tests
 git commit -m "chore: update remaining event field references"
 ```
 

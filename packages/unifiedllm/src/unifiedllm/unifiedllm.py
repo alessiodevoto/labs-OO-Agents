@@ -18,10 +18,10 @@ from .retry_config import RetryConfig
 
 logger = logging.getLogger(__name__)
 
-# Optional integration with agent006 debug handler for LLM call tracking
+# Optional integration with nemo_oo_agents debug handler for LLM call tracking
 # This allows the debug signal handler to show pending LLM calls
 try:
-    from agent006.runtime.debug_handler import llm_call_context as _llm_call_context
+    from nemo_oo_agents.runtime.debug_handler import llm_call_context as _llm_call_context
 
     _HAS_DEBUG_HANDLER = True
 except ImportError:
@@ -31,7 +31,7 @@ except ImportError:
 
 @contextmanager
 def _track_llm_call(model: str, endpoint: str | None = None, prompt_tokens: int | None = None):
-    """Track LLM call for debug purposes (if agent006 debug handler is available)."""
+    """Track LLM call for debug purposes (if nemo_oo_agents debug handler is available)."""
     if _HAS_DEBUG_HANDLER and _llm_call_context:
         with _llm_call_context(model=model, endpoint=endpoint, prompt_tokens=prompt_tokens):
             yield
@@ -876,7 +876,7 @@ class CompletionClient(UnifiedLLM):
 
             return raw_response
 
-        # Track LLM call for debugging (visible via SIGUSR2 if agent006 debug handler installed)
+        # Track LLM call for debugging (visible via SIGUSR2 if nemo_oo_agents debug handler installed)
         with _track_llm_call(model=self.model, endpoint=self.config.get("api_base")):
             raw_response = sync_retry(_make_call, config=self.retry_config) if self.retry_config else _make_call()
 
@@ -1013,7 +1013,7 @@ class CompletionClient(UnifiedLLM):
 
             return raw_response
 
-        # Track LLM call for debugging (visible via SIGUSR2 if agent006 debug handler installed)
+        # Track LLM call for debugging (visible via SIGUSR2 if nemo_oo_agents debug handler installed)
         with _track_llm_call(model=self.model, endpoint=self.config.get("api_base")):
             raw_response = (
                 await with_retry(_make_call, config=self.retry_config) if self.retry_config else await _make_call()

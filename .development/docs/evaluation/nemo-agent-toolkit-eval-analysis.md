@@ -4,7 +4,7 @@
 
 **Recommendation: Do NOT use NeMo-Agent-Toolkit's evaluation system as our backend.**
 
-**Reason**: Architecture mismatch - NAT's evaluation system is deeply coupled to their workflow framework, violating our key requirement that "none of the internals of agent006 leak into the parallel runner."
+**Reason**: Architecture mismatch - NAT's evaluation system is deeply coupled to their workflow framework, violating our key requirement that "none of the internals of nemo_oo_agents leak into the parallel runner."
 
 **Instead**: Continue with our clean 5-layer architecture, but adopt several good patterns from NAT.
 
@@ -264,12 +264,12 @@ async def run_one(item: EvalInputItem):
 
 **To use this, we'd need to:**
 1. Adopt NAT's SessionManager
-2. Wrap agent006 in NAT's workflow framework
+2. Wrap nemo_oo_agents in NAT's workflow framework
 3. Integrate with NAT's runtime system
 
-**This violates our key requirement**: "Can you make it so that none of the internals of agent006 leak into the parallel runner part?"
+**This violates our key requirement**: "Can you make it so that none of the internals of nemo_oo_agents leak into the parallel runner part?"
 
-With NAT, agent006 would need to become a NAT workflow, and NAT-specific knowledge would leak into our runner.
+With NAT, nemo_oo_agents would need to become a NAT workflow, and NAT-specific knowledge would leak into our runner.
 
 ### 2. Two-Phase Execution Model
 
@@ -550,7 +550,7 @@ class DatasetLoader:
 | **Domain Knowledge** | ❌ Coupled to NAT workflows | ✅ Isolated in Layer 3 |
 | **Execution Model** | Two-phase (run, then evaluate) | ✅ Flexible (adapter decides) |
 | **Reusability** | ❌ All-or-nothing framework | ✅ Layer 0 is pure primitive |
-| **Agent Integration** | Must wrap as NAT workflow | ✅ Direct agent006 calls |
+| **Agent Integration** | Must wrap as NAT workflow | ✅ Direct nemo_oo_agents calls |
 | **Benchmark Adapters** | Would need custom workflows | ✅ Native adapter support |
 | **Checkpoint/Resume** | ✅ `skip_completed_entries` | ✅ Generic checkpoint |
 | **Usage Stats** | ✅ Excellent tracking | ⚠️ Need to add |
@@ -567,7 +567,7 @@ class DatasetLoader:
 
 **Reasons:**
 1. Architecture mismatch - requires adopting NAT's workflow framework
-2. Violates clean separation - agent006 knowledge would leak into runner
+2. Violates clean separation - nemo_oo_agents knowledge would leak into runner
 3. Two-phase model doesn't fit our benchmark needs
 4. Not a reusable primitive - all-or-nothing framework
 
@@ -576,7 +576,7 @@ class DatasetLoader:
 **Our advantages:**
 - ✅ Pure concurrency engine (Layer 0) with no domain knowledge
 - ✅ Protocol-based adapters (Layer 3) with full flexibility
-- ✅ Direct agent006 integration without wrappers
+- ✅ Direct nemo_oo_agents integration without wrappers
 - ✅ Supports diverse benchmark patterns
 - ✅ Truly reusable across different domains
 
@@ -644,7 +644,7 @@ Based on NAT analysis, update our plan:
 **NeMo-Agent-Toolkit has an excellent evaluation system** for their use case (framework-agnostic workflow evaluation with standard metrics).
 
 **But it doesn't fit our requirements** because:
-- We need clean separation between agent006 and the parallel runner
+- We need clean separation between nemo_oo_agents and the parallel runner
 - We need flexible execution patterns for diverse benchmarks
 - We want a reusable concurrency primitive, not a complete framework
 

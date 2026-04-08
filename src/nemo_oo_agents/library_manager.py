@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from agent006.library_skill import LibrarySkill
+from nemo_oo_agents.library_skill import LibrarySkill
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class LibraryManager:
     @classmethod
     def install(cls, agent: Any, *, libs_dir: Path | None = None) -> LibraryManager:
         """Scan libs_dir and attach all libraries to *agent*. Returns the manager."""
-        libs_path = libs_dir or (Path.home() / ".agent006" / type(agent).__name__ / "libs")
+        libs_path = libs_dir or (Path.home() / ".nemo_oo_agents" / type(agent).__name__ / "libs")
         manager = cls(agent, libs_path)
         manager._scan()
         return manager

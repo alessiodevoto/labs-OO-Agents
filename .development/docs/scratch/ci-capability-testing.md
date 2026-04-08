@@ -197,8 +197,8 @@ script:
 capability-test:
   rules:
     - changes:
-        - src/agent006/runtime/**/*
-        - src/agent006/strategies/**/*
+        - src/nemo_oo_agents/runtime/**/*
+        - src/nemo_oo_agents/strategies/**/*
         - packages/unifiedllm/**/*
 ```
 
@@ -302,5 +302,5 @@ cat metrics.txt
 
 - [Capability Test Documentation](../experiments/capability_eval/README.md)
 - [Eval Pipeline Documentation](../util/eval_pipeline/README.md)
-- [Agent006 Programming Guide](../.cursor/rules/agent006-programming-guide.md)
+- [Agent006 Programming Guide](../.cursor/rules/nemo_oo_agents-programming-guide.md)
 - [GitLab Metrics Reports](https://docs.gitlab.com/ee/ci/metrics_reports.html)

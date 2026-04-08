@@ -31,10 +31,10 @@ class JournalExporter(SpanExporter):
     """
 
     def __init__(self, base_url: str) -> None:
-        from openinference_instrumentation_agent006._litellm_journal import (
+        from openinference_instrumentation_nemo_oo_agents._litellm_journal import (
             MessageJournalCallback,
         )
-        from openinference_instrumentation_agent006._otlp_http_exporter import (
+        from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import (
             OtlpJsonHttpExporter,
         )
 
@@ -51,7 +51,7 @@ class JournalExporter(SpanExporter):
         try:
             import litellm
 
-            from openinference_instrumentation_agent006._litellm_journal import (
+            from openinference_instrumentation_nemo_oo_agents._litellm_journal import (
                 MessageJournalCallback,
             )
 

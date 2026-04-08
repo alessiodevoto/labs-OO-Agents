@@ -137,7 +137,7 @@ python run_ablation.py --config direct_llm --benchmark bfcl --limit 100
 Available configs:
 - `direct_llm`: Raw LLM, single call, no tools
 - `react_agent`: ReAct agent with tool calling
-- `agent006`: Agent006 with code generation and tools
+- `nemo_oo_agents`: Agent006 with code generation and tools
 
 ## Data Sources
 
@@ -159,10 +159,10 @@ Tests memory over 600-turn conversations across up to 32 sessions (~16K tokens e
 
 ```bash
 # Run LoCoMo QA tasks
-python run_ablation.py --config agent006 --benchmark locomo --limit 50
+python run_ablation.py --config nemo_oo_agents --benchmark locomo --limit 50
 
 # Include event summarization tasks
-python run_ablation.py --config agent006 --benchmark locomo_events --limit 50
+python run_ablation.py --config nemo_oo_agents --benchmark locomo_events --limit 50
 ```
 
 **Question categories**: single-hop, multi-hop, temporal, open-domain, adversarial
@@ -173,13 +173,13 @@ python run_ablation.py --config agent006 --benchmark locomo_events --limit 50
 
 ```bash
 # Oracle variant (evidence sessions only - good for debugging)
-python run_ablation.py --config agent006 --benchmark longmemeval_oracle --limit 100
+python run_ablation.py --config nemo_oo_agents --benchmark longmemeval_oracle --limit 100
 
 # Small variant (~115K tokens, ~40 sessions)
-python run_ablation.py --config agent006 --benchmark longmemeval_small --limit 50
+python run_ablation.py --config nemo_oo_agents --benchmark longmemeval_small --limit 50
 
 # Medium variant (~500 sessions, stress test)
-python run_ablation.py --config agent006 --benchmark longmemeval_medium --limit 20
+python run_ablation.py --config nemo_oo_agents --benchmark longmemeval_medium --limit 20
 ```
 
 **Memory abilities**: information extraction, multi-session reasoning, temporal reasoning, knowledge updates, abstention
@@ -203,11 +203,11 @@ Terminal-Bench evaluates AI agents on real terminal tasks in Docker sandboxes:
 
 ```bash
 # Run all Terminal-Bench tasks
-python run_ablation.py --config agent006 --benchmark terminal_bench --limit 20
+python run_ablation.py --config nemo_oo_agents --benchmark terminal_bench --limit 20
 
 # Filter by difficulty
-python run_ablation.py --config agent006 --benchmark terminal_bench_easy --limit 20
-python run_ablation.py --config agent006 --benchmark terminal_bench_hard --limit 10
+python run_ablation.py --config nemo_oo_agents --benchmark terminal_bench_easy --limit 20
+python run_ablation.py --config nemo_oo_agents --benchmark terminal_bench_hard --limit 10
 ```
 
 **Task categories**: file-operations, system-administration, security, data-science, model-training, git, networking

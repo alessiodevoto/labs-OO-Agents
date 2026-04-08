@@ -15,7 +15,7 @@ From the repo root, install with the `nat-dev` dependency group:
 uv sync --group nat-dev
 ```
 
-This installs NAT core (from `3p/NeMo-Agent-Toolkit/`) and the `nvidia-nat-agent006` plugin (from `packages/nvidia_nat_agent006/`). The plugin is automatically discovered by NAT via Python entry points.
+This installs NAT core (from `3p/NeMo-Agent-Toolkit/`) and the `nvidia-nat-nemo_oo_agents` plugin (from `packages/nvidia_nat_nemo_oo_agents/`). The plugin is automatically discovered by NAT via Python entry points.
 
 Verify it works:
 
@@ -47,7 +47,7 @@ nat run --config_file config_full.yml --input "What time is it right now?"
 ```
 
 What happens:
-1. NAT reads `config_full.yml` and discovers the `agent006_wrapper` plugin
+1. NAT reads `config_full.yml` and discovers the `nemo_oo_agents_wrapper` plugin
 2. The LLM bridge creates a `CompletionClient` from the YAML `llms:` config
 3. The OTel bridge sets up a shared TracerProvider + Agent006 JSONL tracing
 4. NAT builds the `current_datetime` function and injects it onto the agent as `self.current_datetime`
@@ -90,11 +90,11 @@ Expected output: `7 passed, 0 failed, 7 total`
 
 ## Config Reference
 
-The `agent006_wrapper` workflow type accepts these fields:
+The `nemo_oo_agents_wrapper` workflow type accepts these fields:
 
 ```yaml
 workflow:
-  _type: agent006_wrapper
+  _type: nemo_oo_agents_wrapper
   agent: path/to/module.py:ClassName   # Required: agent module and class
   method: chat                          # Required: async method to invoke
   dependencies:                         # Directories to add to sys.path
@@ -122,4 +122,4 @@ The tool bridge generates native Python classes from NAT function schemas and in
 
 ## Architecture
 
-See [docs/scratch/agent006-nat-integration.md](../../docs/scratch/agent006-nat-integration.md) for the full design document.
+See [docs/scratch/nemo_oo_agents-nat-integration.md](../../docs/scratch/nemo_oo_agents-nat-integration.md) for the full design document.

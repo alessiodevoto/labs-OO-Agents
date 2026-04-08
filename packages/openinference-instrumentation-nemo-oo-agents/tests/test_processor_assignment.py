@@ -13,9 +13,9 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
 )
 
-from openinference_instrumentation_agent006 import _add_exporters
-from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
-from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+from openinference_instrumentation_nemo_oo_agents import _add_exporters
+from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
+from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
 
 def _processors(provider: TracerProvider):

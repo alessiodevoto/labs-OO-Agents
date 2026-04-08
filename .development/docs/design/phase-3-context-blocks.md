@@ -8,7 +8,7 @@
 
 ## Overview
 
-Extract the context-blocks system from `agent006` into a standalone reusable library in `packages/context-blocks`. This addresses three issues:
+Extract the context-blocks system from `nemo_oo_agents` into a standalone reusable library in `packages/context-blocks`. This addresses three issues:
 
 - **#10**: Special value to conditionally hide prompt blocks
 - **#23**: Base class for formatters
@@ -16,7 +16,7 @@ Extract the context-blocks system from `agent006` into a standalone reusable lib
 
 ## Motivation
 
-**Why extract?** The context block system is general-purpose infrastructure with no agent006-specific dependencies. Extraction enables reuse and cleaner separation.
+**Why extract?** The context block system is general-purpose infrastructure with no nemo_oo_agents-specific dependencies. Extraction enables reuse and cleaner separation.
 
 **Key design decisions:**
 
@@ -46,19 +46,19 @@ Extract the context-blocks system from `agent006` into a standalone reusable lib
 
 | Current Location | LOC | Description |
 |-----------------|-----|-------------|
-| `src/agent006/context/renderer.py` | 306 | BlockRenderer class |
-| `src/agent006/context/formats.py` | 139 | Formatters (no base class) |
-| `src/agent006/context/scoped.py` | 118 | ScopedContext manager |
-| `src/agent006/util/context_blocks.py` | 202 | Block manipulation helpers |
-| `src/agent006/util/prompt.py` | 115 | Utility functions (preview, take, last) |
+| `src/nemo_oo_agents/context/renderer.py` | 306 | BlockRenderer class |
+| `src/nemo_oo_agents/context/formats.py` | 139 | Formatters (no base class) |
+| `src/nemo_oo_agents/context/scoped.py` | 118 | ScopedContext manager |
+| `src/nemo_oo_agents/util/context_blocks.py` | 202 | Block manipulation helpers |
+| `src/nemo_oo_agents/util/prompt.py` | 115 | Utility functions (preview, take, last) |
 | **Total** | ~880 | |
 
-### Files Staying in agent006
+### Files Staying in nemo_oo_agents
 
 | Location | Reason |
 |----------|--------|
-| `src/agent006/context/prompts.py` | Agent006-specific prompt loading |
-| `src/agent006/context/prompt_data/` | Agent006-specific prompt templates |
+| `src/nemo_oo_agents/context/prompts.py` | Agent006-specific prompt loading |
+| `src/nemo_oo_agents/context/prompt_data/` | Agent006-specific prompt templates |
 
 ## Target Architecture
 
@@ -190,7 +190,7 @@ result = renderer.render(
 - Block rendering (BlockRenderer)
 - All formatters (BlockFormatter, ProviderFormatter + implementations)
 
-**agent006** (consuming application):
+**nemo_oo_agents** (consuming application):
 - Stores event history (which blocks reference via `expr`)
 - Passes formatted messages to LLM API
 - Can extend formatters if needed
@@ -361,20 +361,20 @@ def handle_event(event: Event):
 **Extending with custom events (in consuming apps):**
 
 ```python
-# agent006/events.py
+# nemo_oo_agents/events.py
 from context_blocks.events import EventBase, ContentData, Event as BaseEvent
 
 class TaskEvent(EventBase):
-    """Task prompt event (agent006-specific)."""
+    """Task prompt event (nemo_oo_agents-specific)."""
     type: Literal["task"] = "task"
     data: ContentData
 
 class ReasoningEvent(EventBase):
-    """Chain-of-thought event (agent006-specific)."""
+    """Chain-of-thought event (nemo_oo_agents-specific)."""
     type: Literal["reasoning"] = "reasoning"
     data: ContentData
 
-# Extended union for agent006
+# Extended union for nemo_oo_agents
 Event = BaseEvent | TaskEvent | ReasoningEvent
 ```
 
@@ -649,7 +649,7 @@ def make_eval(namespace: dict[str, Any]) -> Callable[[str], Any]:
 
     Includes safe builtins (len, True, False, None, etc.) for common expressions.
 
-    Note: agent006 uses make_agent_namespace() which provides full __builtins__,
+    Note: nemo_oo_agents uses make_agent_namespace() which provides full __builtins__,
     so this helper is primarily for standalone library usage.
     """
     safe_builtins = {
@@ -704,7 +704,7 @@ __all__ = [
 
 **Note:** Library exports both `BlockFormatter` and `ProviderFormatter` ABCs with implementations. Apps can extend or add new formatters as needed.
 
-## Integration with agent006
+## Integration with nemo_oo_agents
 
 ### pyproject.toml Changes
 
@@ -720,12 +720,12 @@ members = [
 ]
 ```
 
-### Import Changes in agent006
+### Import Changes in nemo_oo_agents
 
 ```python
 # Before
-from agent006.context.renderer import BlockRenderer
-from agent006.util.context_blocks import get_block, set_block
+from nemo_oo_agents.context.renderer import BlockRenderer
+from nemo_oo_agents.util.context_blocks import get_block, set_block
 
 # After
 from context_blocks import BlockRenderer, BlockManager, Block
@@ -734,9 +734,9 @@ from context_blocks import BlockRenderer, BlockManager, Block
 ### Migration Path
 
 1. Create new package with all functionality
-2. Update agent006 imports to use new package
-3. Keep thin re-exports in agent006 for backwards compatibility (optional)
-4. Remove old code from agent006
+2. Update nemo_oo_agents imports to use new package
+3. Keep thin re-exports in nemo_oo_agents for backwards compatibility (optional)
+4. Remove old code from nemo_oo_agents
 
 ## Implementation Steps
 
@@ -765,10 +765,10 @@ from context_blocks import BlockRenderer, BlockManager, Block
 7. **Update __init__.py**
    - [x] Public API exports + make_eval() helper
 
-8. **Update agent006**
+8. **Update nemo_oo_agents**
    - [x] Add workspace dependency (`context-blocks` in pyproject.toml)
-   - [x] Re-export context-blocks types from `agent006.context`
-   - [x] Re-export block formatters from `agent006.context.formats`
+   - [x] Re-export context-blocks types from `nemo_oo_agents.context`
+   - [x] Re-export block formatters from `nemo_oo_agents.context.formats`
    - [x] Inline DictBlockRenderer in `runtime/prompts.py` for dict-based blocks
    - [x] context-blocks tests pass (121 passed)
 
@@ -782,7 +782,7 @@ from context_blocks import BlockRenderer, BlockManager, Block
 
 **Phase 3 is complete:**
 - context-blocks package fully implemented with 121 tests passing
-- agent006 integrated with exports from context-blocks
+- nemo_oo_agents integrated with exports from context-blocks
 - Old dict-based code removed (no backward compatibility)
 - Inline `DictBlockRenderer` in `runtime/prompts.py` for current dict-based agent.context
 
@@ -804,9 +804,9 @@ packages/context-blocks/
     └── test_utils.py
 ```
 
-**In agent006:**
+**In nemo_oo_agents:**
 - Integration tests for rendering with different formatter combinations
-- Existing agent006 tests should continue to pass after migration
+- Existing nemo_oo_agents tests should continue to pass after migration
 
 ## Resolved Design Questions
 
@@ -922,7 +922,7 @@ def make_eval(namespace: dict[str, Any]) -> Callable[[str], Any]:
         result = my_eval("self.name")  # Returns agent.name
 
     Note: Includes safe builtins (len, True, False, None, etc.).
-    agent006 uses make_agent_namespace() with full __builtins__ instead.
+    nemo_oo_agents uses make_agent_namespace() with full __builtins__ instead.
     """
     safe_builtins = {
         "len": len, "str": str, "int": int, "float": float, "bool": bool,

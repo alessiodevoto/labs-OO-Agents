@@ -1,4 +1,4 @@
-"""GitLab integration tool for agent006.
+"""GitLab integration tool for nemo_oo_agents.
 
 Provides async GitLab API operations for querying commits, merge requests, and project information.
 All methods are async and can be awaited in agent code.

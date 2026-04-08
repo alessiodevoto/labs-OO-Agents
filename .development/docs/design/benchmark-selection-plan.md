@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-This document recommends an orthogonal set of benchmarks for agent006 that exercise its unique capabilities:
+This document recommends an orthogonal set of benchmarks for nemo_oo_agents that exercise its unique capabilities:
 
 1. **Code-as-action** - REPL-style execution with embedded tool calls
 2. **Subagent orchestration** - Hierarchical routing, parallel execution
@@ -26,7 +26,7 @@ This document recommends an orthogonal set of benchmarks for agent006 that exerc
 | Memory | **GAIA** | General reasoning | Hard | - |
 | Memory | **LOCOMO** | Long-term memory | Medium | - |
 
-**Why DABStep first:** Clean benchmark (models aren't polluted), factoid answers (automatic eval), multi-step code reasoning is agent006's strength. Best agent at 45% - room to differentiate.
+**Why DABStep first:** Clean benchmark (models aren't polluted), factoid answers (automatic eval), multi-step code reasoning is nemo_oo_agents's strength. Best agent at 45% - room to differentiate.
 
 ---
 
@@ -95,7 +95,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** Multi-turn customer service with tool calling + policy compliance
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - Multi-turn dialogue via `respond_to_user()` - exercises conversation flow
 - 16 domain tools - exercises tool selection and sequencing
 - Policy constraints - exercises instruction following
@@ -118,7 +118,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** Multi-step data analytics with code + contextual reasoning
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - **Clean benchmark** - Built on Adyen financial data, models aren't polluted
 - **Code-as-action native** - Requires iterative code-based data processing
 - **Multi-step reasoning** - Cross-referencing docs + data manipulation
@@ -133,7 +133,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 **Why adopt early:**
 - Low contamination risk (proprietary financial data context)
 - Clean eval (factoid answers, no LLM judge needed)
-- Multi-step code iteration is agent006's sweet spot
+- Multi-step code iteration is nemo_oo_agents's sweet spot
 - Good signal for GEPA-style optimization
 
 **Resources:**
@@ -150,7 +150,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** End-to-end data science: analysis + modeling
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - **Realistic setting** - Long contexts, multimodal backgrounds, large data files
 - **Multi-table reasoning** - Tests context management with complex schemas
 - **End-to-end modeling** - Not just analysis, includes ML pipeline tasks
@@ -182,7 +182,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** Real-world questions requiring reasoning + tools + web browsing
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - Questions are "conceptually simple for humans" but require multi-step reasoning
 - Requires tool orchestration (web search, file ops, calculation)
 - Multi-modal handling (PDFs, images, spreadsheets)
@@ -211,7 +211,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** Very long-term conversational memory with temporal reasoning
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - **Multi-session conversations** - 300 turns, 9K tokens avg, up to 35 sessions
 - **Temporal reasoning** - Date/order/interval inference across sessions
 - **Cross-session QA** - Multi-hop reasoning over conversation history
@@ -225,7 +225,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **Why LOCOMO over MemoryAgentBench:**
 - More realistic: temporal sessions with timestamps
-- Tests exactly what agent006's context management does
+- Tests exactly what nemo_oo_agents's context management does
 - Clear human baseline (88%) to measure against
 - Multi-modal support (image sharing/reactions)
 
@@ -247,7 +247,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 
 **What it tests:** Enterprise-scale software engineering tasks requiring hours to days
 
-**Why it fits agent006:**
+**Why it fits nemo_oo_agents:**
 - **True long-horizon** - Tasks take hours/days for professional SWEs
 - **Multi-file complexity** - Avg 107 lines across 4.1 files, min 10 lines change
 - **Context engineering stress test** - Can't fit everything in context, must manage
@@ -262,7 +262,7 @@ Unique to this project - evolving prompts/strategies based on trace analysis.
 **Why it's different from Lite/Verified:**
 - Lite/Verified = short bug fixes, ~72% SOTA (saturated)
 - Pro = "hours to days" tasks, ~23% SOTA (wide open)
-- Pro tests exactly what agent006's context management enables
+- Pro tests exactly what nemo_oo_agents's context management enables
 
 **The chaining insight:**
 > "If base task success rate is 90%, chaining reduces probability dramatically"
@@ -514,7 +514,7 @@ DABStep is particularly good for optimization because:
 - [LOCOMO Paper](https://arxiv.org/abs/2402.17753) | [GitHub](https://github.com/snap-research/locomo)
 
 ### Related Work
-- [CodeAct Paper](https://arxiv.org/abs/2402.01030) - Executable code actions (validates agent006's approach)
+- [CodeAct Paper](https://arxiv.org/abs/2402.01030) - Executable code actions (validates nemo_oo_agents's approach)
 - [OpenHands CodeAct 2.1](https://openhands.dev/blog/openhands-codeact-21-an-open-state-of-the-art-software-development-agent)
 - [Google DS-STAR](https://research.google/blog/ds-star-a-state-of-the-art-versatile-data-science-agent/) - SOTA on DABStep
 - [AgentArch](https://arxiv.org/html/2509.10769v1) - Architecture evaluation

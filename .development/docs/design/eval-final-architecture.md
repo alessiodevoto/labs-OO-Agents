@@ -49,7 +49,7 @@
 
 from evaluation.runner import EvaluationRunner, EvaluationConfig
 from evaluation.protocol import EvaluationTask
-from evaluation.adapters.agent006_adapter import Agent006Adapter
+from evaluation.adapters.nemo_oo_agents_adapter import Agent006Adapter
 from evaluation.adapters.benchmark_adapter import BenchmarkAdapter
 from evaluation.writers.jsonl_writer import JsonlWriter
 
@@ -153,7 +153,7 @@ import argparse
 async def main():
     """CLI frontend - parses args, creates backend objects."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", choices=["agent006", "react_agent", "direct_llm"])
+    parser.add_argument("--config", choices=["nemo_oo_agents", "react_agent", "direct_llm"])
     parser.add_argument("--benchmark", required=True)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--parallel", type=int, default=10)
@@ -206,8 +206,8 @@ async def main():
 
 def _get_agent_factory(config_name: str):
     """CLI knows how to create agent factories."""
-    if config_name == "agent006":
-        from agents.agent006_tools import ToolsAgent
+    if config_name == "nemo_oo_agents":
+        from agents.nemo_oo_agents_tools import ToolsAgent
         return lambda: ToolsAgent()
     elif config_name == "react_agent":
         from agents.react_agent import ReactAgent
@@ -243,7 +243,7 @@ def _get_agent_factory(config_name: str):
 **Responsibilities:**
 - Implement `ExecutionAdapter` protocol
 - Execute tasks in domain-specific way
-- Know about agent006, benchmarks, etc.
+- Know about nemo_oo_agents, benchmarks, etc.
 
 **Created by frontend, used by runner.**
 
@@ -252,7 +252,7 @@ def _get_agent_factory(config_name: str):
 | Aspect | eval_pipeline | CLI |
 |--------|---------------|-----|
 | **Input parsing** | YAML → Python objects | argparse → args |
-| **Agent creation** | From config `agent.module.class` | From string `"agent006"` |
+| **Agent creation** | From config `agent.module.class` | From string `"nemo_oo_agents"` |
 | **Task creation** | From JSONL or benchmark | From benchmark |
 | **Adapter selection** | Based on test type | Based on args |
 | **Config** | YAML models section | CLI flags |

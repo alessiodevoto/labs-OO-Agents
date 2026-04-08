@@ -1,4 +1,4 @@
-"""Tests for the ``agent006 sandbox`` CLI command.
+"""Tests for the ``nemo_oo_agents sandbox`` CLI command.
 
 Covers:
 - openshell availability check
@@ -8,7 +8,7 @@ Covers:
 - --no-upload: uploads only pyproject.toml
 - --allow-domain: patches policy with extra domains
 - --env: creates a temporary provider, attaches it, deletes it after
-- name is auto-generated with agent006- prefix
+- name is auto-generated with nemo_oo_agents- prefix
 """
 
 from pathlib import Path
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from agent006_cli.commands.sandbox import _PREFIX, command
+from nemo_oo_agents_cli.commands.sandbox import _PREFIX, command
 
 
 @pytest.fixture()
@@ -42,7 +42,7 @@ def _run(runner, args, *, pyproject=True):
             Path("pyproject.toml").write_text("[project]\nname = 'test'\n")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            with patch("agent006_cli.commands.sandbox._ensure_provider"):
+            with patch("nemo_oo_agents_cli.commands.sandbox._ensure_provider"):
                 with patch("sys.exit"):
                     result = runner.invoke(command, args, catch_exceptions=False)
     return result, mock_run
@@ -142,7 +142,7 @@ def test_upload_ro_adds_path_to_policy_readonly(runner):
     with runner.isolated_filesystem():
         Path("pyproject.toml").write_text("[project]\nname = 'test'\n")
         with patch("subprocess.run", side_effect=capture_run):
-            with patch("agent006_cli.commands.sandbox._ensure_provider"):
+            with patch("nemo_oo_agents_cli.commands.sandbox._ensure_provider"):
                 with patch("sys.exit"):
                     runner.invoke(
                         command,
@@ -160,8 +160,8 @@ def test_upload_rw_does_not_patch_policy(runner):
     policy_path = Path(cmd[cmd.index("--policy") + 1])
     assert (
         policy_path
-        == Path(__file__).parent.parent.parent / "src/agent006_cli/commands/sandbox-policy.yaml"
-        or "agent006-policy-" not in policy_path.name
+        == Path(__file__).parent.parent.parent / "src/nemo_oo_agents_cli/commands/sandbox-policy.yaml"
+        or "nemo_oo_agents-policy-" not in policy_path.name
     )
 
 
@@ -184,7 +184,7 @@ def test_allow_domain_patches_policy(runner):
     with runner.isolated_filesystem():
         Path("pyproject.toml").write_text("[project]\nname = 'test'\n")
         with patch("subprocess.run", side_effect=capture_run):
-            with patch("agent006_cli.commands.sandbox._ensure_provider"):
+            with patch("nemo_oo_agents_cli.commands.sandbox._ensure_provider"):
                 with patch("sys.exit"):
                     runner.invoke(
                         command,
@@ -212,7 +212,7 @@ class TestEnv:
         with runner.isolated_filesystem():
             Path("pyproject.toml").write_text("[project]\nname = 'test'\n")
             with patch("subprocess.run", side_effect=capture):
-                with patch("agent006_cli.commands.sandbox._ensure_provider"):
+                with patch("nemo_oo_agents_cli.commands.sandbox._ensure_provider"):
                     with patch("sys.exit"):
                         runner.invoke(command, args, catch_exceptions=False)
         return calls

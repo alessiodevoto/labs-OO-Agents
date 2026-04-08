@@ -1,13 +1,13 @@
 # Benchmark Failure Analysis - December 7, 2025
 
-**Run Directory**: `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251207_164845/`
+**Run Directory**: `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251207_164845/`
 **Model**: `nvidia_nim/qwen/qwen3-next-80b-a3b-instruct`
-**Configuration**: `agent006_bare`
+**Configuration**: `nemo_oo_agents_bare`
 **Sample Size**: 10 tasks per benchmark
 
 ## Executive Summary
 
-The agent006_bare configuration shows **catastrophic failure** across all benchmarks (0-20% pass rates). The root cause is consistent across benchmarks: **the agent is solving problems directly instead of using the required tools/APIs**. The agent generates correct answers but in the wrong format, bypassing the expected interaction patterns.
+The nemo_oo_agents_bare configuration shows **catastrophic failure** across all benchmarks (0-20% pass rates). The root cause is consistent across benchmarks: **the agent is solving problems directly instead of using the required tools/APIs**. The agent generates correct answers but in the wrong format, bypassing the expected interaction patterns.
 
 ### Overall Results
 | Benchmark | Pass Rate | Error Pattern |
@@ -413,7 +413,7 @@ Type: Mathematical calculation from known constants
 
 ## Conclusion
 
-The **agent006_bare** configuration has a **fundamental tool-use failure** across all benchmarks. The model is highly capable at reasoning and code generation but fails to follow procedural instructions about HOW to interact with systems.
+The **nemo_oo_agents_bare** configuration has a **fundamental tool-use failure** across all benchmarks. The model is highly capable at reasoning and code generation but fails to follow procedural instructions about HOW to interact with systems.
 
 **The agent understands problems but refuses to use the provided interfaces.**
 

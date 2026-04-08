@@ -4,16 +4,16 @@ from typing import Annotated
 
 import pytest
 
-from agent006 import Agent
-from agent006.errors.storage import SerializationError
-from agent006.storage.json_snapshot import (
+from nemo_oo_agents import Agent
+from nemo_oo_agents.errors.storage import SerializationError
+from nemo_oo_agents.storage.json_snapshot import (
     snapshot_from_dict,
     snapshot_from_json,
     snapshot_to_dict,
     snapshot_to_json,
 )
-from agent006.storage.markers import nosnapshot
-from agent006.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
+from nemo_oo_agents.storage.markers import nosnapshot
+from nemo_oo_agents.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
 from unifiedllm import FakeLLMClient
 
 fake_llm = FakeLLMClient()

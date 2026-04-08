@@ -12,7 +12,7 @@ from abc import ABCMeta
 from collections.abc import Callable
 from typing import Any
 
-from agent006.ellipsis_detection import has_ellipsis_body
+from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
 
 class AgentMeta(ABCMeta):
@@ -173,7 +173,7 @@ class AgentMeta(ABCMeta):
             Wrapped async function
         """
         # Import shared wrapper logic
-        from agent006.runtime.method_wrapper import create_agent_method_wrapper
+        from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
 
         # Generation-specific validation at class creation time
         if needs_generation:

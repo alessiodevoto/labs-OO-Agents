@@ -1,6 +1,6 @@
 # Prompt Optimizer - How To Guide
 
-A framework for testing and comparing different prompt configurations for agent006 agents.
+A framework for testing and comparing different prompt configurations for nemo_oo_agents agents.
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ Defines test cases, strategy configs, and experiments:
 
 ```yaml
 name: capability_tests
-description: "Tests for agent006 capabilities"
+description: "Tests for nemo_oo_agents capabilities"
 
 # Strategy configs define how prompts are constructed
 strategy_configs:
@@ -132,7 +132,7 @@ models:
 In `test_agents/capability_tests.py`:
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import UnifiedLLM
 
 llm = UnifiedLLM(model="...")

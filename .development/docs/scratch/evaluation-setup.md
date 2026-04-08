@@ -13,8 +13,8 @@ This guide explains how to set up and run the benchmark evaluation framework, in
 ### 1. Clone and Set Up Virtual Environment
 
 ```bash
-git clone <repo-url> agent006
-cd agent006
+git clone <repo-url> nemo_oo_agents
+cd nemo_oo_agents
 
 # Create virtual environment with uv
 uv venv
@@ -151,7 +151,7 @@ source ../../.venv/bin/activate
 python run_ablation.py --config direct_llm --benchmark bfcl --limit 10
 
 # Run TAU-bench specifically
-python run_ablation.py --config agent006 --benchmark tau_bench --limit 5
+python run_ablation.py --config nemo_oo_agents --benchmark tau_bench --limit 5
 ```
 
 ### Available Configs
@@ -160,7 +160,7 @@ python run_ablation.py --config agent006 --benchmark tau_bench --limit 5
 |--------|-------------|
 | `direct_llm` | Raw LLM, single call, no agent framework |
 | `react_agent` | ReAct-style agent with tool calling |
-| `agent006` | Full agent006 with code generation and tools |
+| `nemo_oo_agents` | Full nemo_oo_agents with code generation and tools |
 
 ### Available Benchmarks
 
@@ -178,7 +178,7 @@ python run_ablation.py --config agent006 --benchmark tau_bench --limit 5
 
 ```bash
 python run_ablation.py \
-  --config agent006 \           # Agent configuration
+  --config nemo_oo_agents \           # Agent configuration
   --benchmark tau_bench \       # Benchmark to run
   --limit 50 \                  # Max tasks (default: 10)
   --concurrent-tasks 5 \        # Parallel task execution (default: 5)
@@ -214,7 +214,7 @@ TAU-bench evaluates multi-turn conversations with domain-specific tools:
 
 ```bash
 # Run retail domain tasks
-python run_ablation.py --config agent006 --benchmark tau_bench --limit 10
+python run_ablation.py --config nemo_oo_agents --benchmark tau_bench --limit 10
 
 # Results will show Pass^k metrics for consistency
 ```
@@ -284,11 +284,11 @@ Results are saved to `experiments/evaluation-ablations/results/<timestamp>/`:
 ```
 results/20251226_231116/
 ├── run_metadata.json           # Run configuration
-├── agent006_tau_bench.006eval.json    # Detailed results
-├── agent006_tau_bench.006eval.jsonl   # Per-task results
+├── nemo_oo_agents_tau_bench.006eval.json    # Detailed results
+├── nemo_oo_agents_tau_bench.006eval.jsonl   # Per-task results
 ├── full_results.006eval.json   # Aggregated results
 └── traces/                     # Execution traces
-    └── agent006_tau_bench.006trace.jsonl
+    └── nemo_oo_agents_tau_bench.006trace.jsonl
 ```
 
 ### Viewing Results
@@ -373,7 +373,7 @@ See `experiments/evaluation-ablations/agents/` for agent implementations:
 
 - `direct_llm.py` - Simple LLM wrapper
 - `react_agent.py` - ReAct agent with tools
-- `agent006_tools.py` - Full agent006 agent
+- `nemo_oo_agents_tools.py` - Full nemo_oo_agents agent
 
 To add a custom agent:
 1. Create `agents/my_agent.py`

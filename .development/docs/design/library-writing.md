@@ -142,7 +142,7 @@ mgr.reload()                        # reload every installed library
 LibraryManager.discover(path)       # list library names without loading
 ```
 
-On startup it scans `~/.agent006/<AgentClass>/libs/` (or an explicit `libs_dir`), finds every subdirectory with a `pyproject.toml`, imports the package, and sets it on the agent as `agent.<lib_name>`.
+On startup it scans `~/.nemo_oo_agents/<AgentClass>/libs/` (or an explicit `libs_dir`), finds every subdirectory with a `pyproject.toml`, imports the package, and sets it on the agent as `agent.<lib_name>`.
 
 Hot-reload is triggered automatically after a clean `write_file()` or `edit_file()`. To reload all libraries manually (e.g. after an out-of-band edit):
 
@@ -170,7 +170,7 @@ stats.percentile(data, 95)  # call via the module, not via self.stats
 Libraries are standard Python packages. Any layout that makes the package importable is accepted:
 
 ```
-~/.agent006/DataAgent/libs/
+~/.nemo_oo_agents/DataAgent/libs/
 └── stats/
     ├── pyproject.toml   ← required — marks the directory as a library
     ├── __init__.py      ← required — module docstring = library description
@@ -209,9 +209,9 @@ doc(self.stats)
 
 | File | Contents |
 |---|---|
-| `src/agent006/library_skill.py` | `LibrarySkill` |
-| `src/agent006/library_manager.py` | `LibraryManager` |
-| `src/agent006/tools/library_writing_lib.py` | `LintReport`, `LibraryWriting` |
-| `src/agent006/tools/__init__.py` | Exports `LibraryWriting` |
-| `src/agent006_cli/tui/agent.py` | `self.libs = LibraryWriting(self)` in `__init__` |
+| `src/nemo_oo_agents/library_skill.py` | `LibrarySkill` |
+| `src/nemo_oo_agents/library_manager.py` | `LibraryManager` |
+| `src/nemo_oo_agents/tools/library_writing_lib.py` | `LintReport`, `LibraryWriting` |
+| `src/nemo_oo_agents/tools/__init__.py` | Exports `LibraryWriting` |
+| `src/nemo_oo_agents_cli/tui/agent.py` | `self.libs = LibraryWriting(self)` in `__init__` |
 | `tests/tools/test_library_writing_lib.py` | Tests for all three classes |

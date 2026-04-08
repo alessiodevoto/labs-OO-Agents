@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 
 
-def test_agent006_runtime_imports():
-    """Test that agent006 runtime with agentdoc dependency works."""
-    from openinference_instrumentation_agent006 import enable_tracing
+def test_nemo_oo_agents_runtime_imports():
+    """Test that nemo_oo_agents runtime with agentdoc dependency works."""
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
-    from agent006.runtime.actor import ActorRuntime
+    from nemo_oo_agents.runtime.actor import ActorRuntime
 
     assert enable_tracing is not None
     assert ActorRuntime is not None

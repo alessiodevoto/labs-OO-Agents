@@ -154,9 +154,9 @@ None of the failing tasks have obvious fixes:
 
 ## Files Updated
 
-- `/Users/rcabral/agent006/docs/8phase-complete-evaluation-matrix.md` - Updated with opt4, opt8, opt11 results
-- `/Users/rcabral/agent006/docs/8phase-evaluation-queue.md` - Marked Batch 1 as complete
-- `/Users/rcabral/agent006/docs/8phase-batch1-final-results.md` - This summary
+- `/Users/rcabral/nemo_oo_agents/docs/8phase-complete-evaluation-matrix.md` - Updated with opt4, opt8, opt11 results
+- `/Users/rcabral/nemo_oo_agents/docs/8phase-evaluation-queue.md` - Marked Batch 1 as complete
+- `/Users/rcabral/nemo_oo_agents/docs/8phase-batch1-final-results.md` - This summary
 
 ---
 

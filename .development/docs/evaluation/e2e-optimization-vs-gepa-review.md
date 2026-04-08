@@ -9,7 +9,7 @@ Our e2e_optimization framework is heavily inspired by GEPA but aims to evolve **
 
 | Aspect | e2e_optimization | GEPA | Winner |
 |--------|-----------------|------|--------|
-| Abstraction layer | Tight coupling to agent006 | Protocol-based adapter | GEPA |
+| Abstraction layer | Tight coupling to nemo_oo_agents | Protocol-based adapter | GEPA |
 | Candidate selection | `get_best_by_accuracy()` only | Pareto/CurrentBest/EpsilonGreedy | GEPA |
 | Component selection | All-at-once | Round-robin or All | GEPA |
 | Minibatch sampling | Random FRONTIER | Epoch-shuffled deterministic | GEPA |
@@ -139,9 +139,9 @@ class GEPAAdapter(Protocol):
 **Our problem**: We're tightly coupled to:
 - `eval_pipeline` CLI subprocess
 - `.006eval.jsonl` / `.006trace.jsonl` file formats
-- agent006 framework assumptions
+- nemo_oo_agents framework assumptions
 
-**Impact**: Hard to use for non-agent006 systems, hard to test in isolation.
+**Impact**: Hard to use for non-nemo_oo_agents systems, hard to test in isolation.
 
 **Recommendation**: Extract an `OptimizationAdapter` protocol:
 ```python

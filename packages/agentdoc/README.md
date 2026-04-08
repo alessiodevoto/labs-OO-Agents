@@ -87,7 +87,7 @@ doc(ClassA, ClassB, fn)    # multiple objects, deduplicated referenced types
 
 **Inherited fields:** `doc()` walks the full MRO so parent-class fields appear before child-class fields. Fields hidden in a parent remain hidden unless the child re-declares them without `hidden`.
 
-**Docstring `{param}` placeholders:** Curly-brace placeholders in method docstrings are an agent006 runtime convention — the framework substitutes actual argument values when calling generation methods. `doc()` shows the raw template string, which is correct: it displays the prompt pattern as-is for documentation consumers to see the API contract.
+**Docstring `{param}` placeholders:** Curly-brace placeholders in method docstrings are an nemo_oo_agents runtime convention — the framework substitutes actual argument values when calling generation methods. `doc()` shows the raw template string, which is correct: it displays the prompt pattern as-is for documentation consumers to see the API contract.
 
 ### `pformat(obj, ...) -> str` and `pprint(obj, ...)`
 
@@ -315,7 +315,7 @@ Early versions had a three-function model: `spec()` → `doc()` → `show()`, wh
 
 ## Deferred / not yet implemented
 
-- **`Environment` / `spec.capture()`** — snapshot a module's visible globals for agent context. Deferred; not currently used by agent006.
+- **`Environment` / `spec.capture()`** — snapshot a module's visible globals for agent context. Deferred; not currently used by nemo_oo_agents.
 
 ## License
 

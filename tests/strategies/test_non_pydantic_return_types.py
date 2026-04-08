@@ -21,9 +21,9 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel
 
-from agent006 import Agent, strategy
-from agent006.config import CodeActConfig
-from agent006.strategies.codeact import CodeActStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # --- Non-Pydantic types for testing ---

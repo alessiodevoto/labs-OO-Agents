@@ -21,7 +21,7 @@ from pathlib import Path
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from openinference_instrumentation_agent006._otlp_serialize import build_resource_spans
+from openinference_instrumentation_nemo_oo_agents._otlp_serialize import build_resource_spans
 
 log = logging.getLogger(__name__)
 

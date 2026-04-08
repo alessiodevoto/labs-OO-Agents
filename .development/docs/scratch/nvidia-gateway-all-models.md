@@ -160,7 +160,7 @@ Successfully authenticated to NVIDIA LLM Gateway via OAuth and discovered **10 p
 
 ---
 
-## Usage with agent006
+## Usage with nemo_oo_agents
 
 ### Current State
 
@@ -171,8 +171,8 @@ The OAuth implementation is complete and working. To use gateway models, you nee
 ### Azure OpenAI Models
 
 ```python
-from agent006.llm.client import LiteLLMClient
-from agent006.types import LLMConfig
+from nemo_oo_agents.llm.client import LiteLLMClient
+from nemo_oo_agents.types import LLMConfig
 import os
 
 config = LLMConfig(
@@ -272,13 +272,13 @@ else:
 
 ### List Azure Models
 ```bash
-cd agent006-src
+cd nemo_oo_agents-src
 python list_gateway_models_working.py
 ```
 
 ### List AWS/Anthropic Models
 ```bash
-cd agent006-src
+cd nemo_oo_agents-src
 python check_anthropic_models.py
 ```
 

@@ -6,7 +6,7 @@ When an outer agent's `execute_python` code calls a nested agent method, the too
 
 ## Root Cause
 
-In `_handle_execute_python()` ([codeact.py:540](../src/agent006/strategies/codeact.py#L540)):
+In `_handle_execute_python()` ([codeact.py:540](../src/nemo_oo_agents/strategies/codeact.py#L540)):
 
 1. LLM returns `execute_python` tool call with `tool_call_id=A`
 2. Code execution starts via `_execute_code()`
@@ -50,7 +50,7 @@ When nested method calls happen on the same agent (`self`), they share the same 
 
 ## Why This is Baked Into the Architecture
 
-The agent006 framework **actively encourages** nested agent calls as a core design pattern:
+The nemo_oo_agents framework **actively encourages** nested agent calls as a core design pattern:
 
 ### 1. Strategy Method Composition
 

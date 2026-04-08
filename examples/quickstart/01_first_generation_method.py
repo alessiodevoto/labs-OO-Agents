@@ -4,7 +4,7 @@
 uv run python examples/quickstart/01_first_generation_method.py
 """
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 from unifiedllm.registry import get_llm_client
 
 # Get a preconfigured LLM client (Inference Hub model)

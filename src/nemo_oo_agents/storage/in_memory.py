@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent006.runtime.event_backend import InMemoryBackend
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.event_backend import InMemoryBackend
+from nemo_oo_agents.runtime.event_manager import EventManager
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 
 class InMemoryStorageManager:
@@ -30,7 +30,7 @@ class InMemoryStorageManager:
         return self._event_manager
 
     def save_snapshot(self, agent: Agent) -> str:
-        from agent006.errors.storage import StorageNotConfiguredError
+        from nemo_oo_agents.errors.storage import StorageNotConfiguredError
 
         raise StorageNotConfiguredError(
             "InMemoryStorageManager does not support persistence. "
@@ -38,7 +38,7 @@ class InMemoryStorageManager:
         )
 
     def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
-        from agent006.errors.storage import StorageNotConfiguredError
+        from nemo_oo_agents.errors.storage import StorageNotConfiguredError
 
         raise StorageNotConfiguredError(
             "InMemoryStorageManager does not support persistence. "

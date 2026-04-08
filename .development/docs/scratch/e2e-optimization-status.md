@@ -113,7 +113,7 @@ with open(incremental_path, "w") as f:
 
 ### Quick Test (1 generation, small dataset)
 ```bash
-cd /Volumes/dev/dev/agent006
+cd /Volumes/dev/dev/nemo_oo_agents
 source .venv/bin/activate
 
 # Copy latest fixes to installed package

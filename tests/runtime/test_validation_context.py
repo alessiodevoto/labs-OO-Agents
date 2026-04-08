@@ -1,4 +1,4 @@
-from agent006.runtime.code_validator import ValidationContext
+from nemo_oo_agents.runtime.code_validator import ValidationContext
 
 
 def test_validation_context_has_exec_globals():

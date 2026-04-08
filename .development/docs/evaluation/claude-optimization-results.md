@@ -8,7 +8,7 @@
 
 **Major Success**: Fixed code generation errors. All 10 tasks now generate and execute valid Python code.
 
-| Metric | Baseline (agent006) | Optimized (agent006_claude_opt) | Change |
+| Metric | Baseline (nemo_oo_agents) | Optimized (nemo_oo_agents_claude_opt) | Change |
 |--------|---------------------|----------------------------------|--------|
 | **Pass Rate** | 10% (1/10) | 10% (1/10) | ✅ **0% (same)** |
 | **Code Generation Failures** | 8/10 (80%) | **0/10 (0%)** | ✅ **-100%** |
@@ -21,7 +21,7 @@
 
 ## Detailed Comparison
 
-### Baseline (agent006) - 10% Pass Rate
+### Baseline (nemo_oo_agents) - 10% Pass Rate
 
 | Task | Status | Issue |
 |------|--------|-------|
@@ -41,7 +41,7 @@
 - Logic errors: 1/10 (10%)
 - Passes: 1/10 (10%)
 
-### Optimized (agent006_claude_opt) - 10% Pass Rate
+### Optimized (nemo_oo_agents_claude_opt) - 10% Pass Rate
 
 | Task | Status | Score | Issue |
 |------|--------|-------|-------|
@@ -124,11 +124,11 @@ The optimization is **production-ready** for Claude Sonnet:
 
 ## Recommendation
 
-**Deploy** `agent006_claude_optimized` as the default for Claude Sonnet. The code cleaning prevents 80% of failures and makes debugging much easier (can now see actual logic errors instead of syntax errors).
+**Deploy** `nemo_oo_agents_claude_optimized` as the default for Claude Sonnet. The code cleaning prevents 80% of failures and makes debugging much easier (can now see actual logic errors instead of syntax errors).
 
 ## Files
 
 - **Baseline results**: `results/20260117_130237_bedrock-claude-sonnet-4-5-v1_d0b007/`
 - **Optimized results**: `results/20260117_130946_bedrock-claude-sonnet-4-5-v1_0f50b8/`
-- **Implementation**: `agents/agent006_claude_optimized.py`
+- **Implementation**: `agents/nemo_oo_agents_claude_optimized.py`
 - **Documentation**: `docs/claude-sonnet-optimization.md`

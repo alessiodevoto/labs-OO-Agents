@@ -1,4 +1,4 @@
-# How Prompts Work in agent006
+# How Prompts Work in nemo_oo_agents
 
 ## The Ellipsis IS the Key
 

@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class SentimentSingleAgent(Agent):

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 def test_tui_agent_instantiation():
     """TUIAgent should instantiate with all workflow methods available."""
-    from agent006_cli.tui.agent import TUIAgent
+    from nemo_oo_agents_cli.tui.agent import TUIAgent
 
     # Check all expected methods exist
     expected_methods = [
@@ -25,7 +25,7 @@ def test_tui_agent_instantiation():
 
 def test_tui_agent_phase_tracking_initial_state():
     """New TUIAgent instance should start in idle phase."""
-    from agent006_cli.tui.agent import TUIAgent
+    from nemo_oo_agents_cli.tui.agent import TUIAgent
 
     mock_llm = MagicMock()
     agent = TUIAgent(llm=mock_llm)
@@ -36,6 +36,6 @@ def test_tui_agent_phase_tracking_initial_state():
 
 def test_orchestrate_function_importable():
     """_orchestrate should be importable for testing."""
-    from agent006_cli.tui.agent import _orchestrate
+    from nemo_oo_agents_cli.tui.agent import _orchestrate
 
     assert callable(_orchestrate)

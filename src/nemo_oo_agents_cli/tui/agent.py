@@ -1,17 +1,17 @@
 """TUI Agent extending Agent006 with Bash tools and summarization.
 
-Uses the new summarization subagent pattern from agent006.agents.
+Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from agent006 import Agent, hidden, strategy
-from agent006.agents import TokenBudgetSummarizer
-from agent006.config import CodeActConfig
-from agent006.strategies import CodeActStrategy, PredictStrategy
-from agent006.tools import BashTool, FileTool, LibraryWriting
+from nemo_oo_agents import Agent, hidden, strategy
+from nemo_oo_agents.agents import TokenBudgetSummarizer
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from unifiedllm import FakeLLMClient
 
 from .config import AgentConfig, SummarizationConfig
@@ -52,7 +52,7 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     if config.policy == "none":
         return
 
-    from agent006.config.summarizer_config import TokenBudgetConfig
+    from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
 
     TokenBudgetSummarizer.install(
         agent,

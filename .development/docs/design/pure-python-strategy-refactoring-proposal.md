@@ -1,7 +1,7 @@
 # PurePythonStrategy Refactoring Proposal
 
 **Date**: 2025-12-10
-**Current File**: `src/agent006/strategies/pure_python.py` (709 lines)
+**Current File**: `src/nemo_oo_agents/strategies/pure_python.py` (709 lines)
 
 ## Executive Summary
 

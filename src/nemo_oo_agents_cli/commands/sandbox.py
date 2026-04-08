@@ -1,14 +1,14 @@
-"""Sandbox command for agent006 CLI.
+"""Sandbox command for nemo_oo_agents CLI.
 
-``agent006 sandbox`` is an opinionated zero-config wrapper around
+``nemo_oo_agents sandbox`` is an opinionated zero-config wrapper around
 ``openshell sandbox``:
 
-    agent006 sandbox -- python agent.py              # run a script
-    agent006 sandbox -- agent006 tui                 # launch the TUI
-    agent006 sandbox -- bash                         # open a shell
-    agent006 sandbox --upload src:ro -- python a.py  # read-only mount
-    agent006 sandbox --env HF_TOKEN=x -- python a.py # inject credentials
-    agent006 sandbox --allow-domain api.x.com -- ... # allow extra domain
+    nemo_oo_agents sandbox -- python agent.py              # run a script
+    nemo_oo_agents sandbox -- nemo_oo_agents tui                 # launch the TUI
+    nemo_oo_agents sandbox -- bash                         # open a shell
+    nemo_oo_agents sandbox --upload src:ro -- python a.py  # read-only mount
+    nemo_oo_agents sandbox --env HF_TOKEN=x -- python a.py # inject credentials
+    nemo_oo_agents sandbox --allow-domain api.x.com -- ... # allow extra domain
 
 Always requires a ``pyproject.toml`` in the current directory.  Before
 running the command the sandbox:
@@ -41,7 +41,7 @@ import yaml
 
 _POLICY = Path(__file__).parent / "sandbox-policy.yaml"
 _PROVIDER = "env-vars"
-_PREFIX = "agent006-"
+_PREFIX = "nemo_oo_agents-"
 
 
 # ------------------------------------------------------------------ #
@@ -51,7 +51,7 @@ _PREFIX = "agent006-"
 
 def _check_openshell() -> None:
     if not shutil.which("openshell"):
-        raise click.ClickException("openshell not found. Install with: uv add agent006[sandbox]")
+        raise click.ClickException("openshell not found. Install with: uv add nemo_oo_agents[sandbox]")
 
 
 def _ensure_provider() -> None:
@@ -135,7 +135,7 @@ def _write_policy(
         fs["read_only"] = list({*existing, *readonly_paths})
 
     tmp = tempfile.NamedTemporaryFile(
-        suffix=".yaml", delete=False, mode="w", prefix="agent006-policy-"
+        suffix=".yaml", delete=False, mode="w", prefix="nemo_oo_agents-policy-"
     )
     yaml.dump(policy, tmp)
     tmp.close()
@@ -249,7 +249,7 @@ def command(
 ) -> None:
     """Run a command in an isolated sandbox.
 
-    CMD is the command to run. Use "tui" to launch the agent006 TUI.
+    CMD is the command to run. Use "tui" to launch the nemo_oo_agents TUI.
 
     Always requires a pyproject.toml in the current directory.
     Dependencies are installed via uv sync before the command runs.
@@ -258,11 +258,11 @@ def command(
 
     \b
     Examples:
-        agent006 sandbox -- agent006 tui
-        agent006 sandbox -- python agent.py
-        agent006 sandbox --upload src --upload data -- python agent.py
-        agent006 sandbox --allow-domain api.myservice.com -- python agent.py
-        agent006 sandbox --env HF_TOKEN=abc123 -- python agent.py
+        nemo_oo_agents sandbox -- nemo_oo_agents tui
+        nemo_oo_agents sandbox -- python agent.py
+        nemo_oo_agents sandbox --upload src --upload data -- python agent.py
+        nemo_oo_agents sandbox --allow-domain api.myservice.com -- python agent.py
+        nemo_oo_agents sandbox --env HF_TOKEN=abc123 -- python agent.py
 
     For advanced sandbox control use openshell directly.
     """

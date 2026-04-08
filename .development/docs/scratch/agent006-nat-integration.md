@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the integration between Agent006 (a code-generating agent framework) and NVIDIA NeMo Agent Toolkit (NAT). The integration is implemented as a NAT plugin package (`nvidia-nat-agent006`) that wraps Agent006 agents as NAT workflows, requiring zero modifications to Agent006 agent code.
+This document describes the integration between Agent006 (a code-generating agent framework) and NVIDIA NeMo Agent Toolkit (NAT). The integration is implemented as a NAT plugin package (`nvidia-nat-nemo_oo_agents`) that wraps Agent006 agents as NAT workflows, requiring zero modifications to Agent006 agent code.
 
 ## Architecture
 
@@ -15,21 +15,21 @@ The integration is implemented as four bridges:
 
 ## Package Location
 
-- **Development**: `packages/nvidia_nat_agent006/` in the agent006 repo
+- **Development**: `packages/nvidia_nat_nemo_oo_agents/` in the nemo_oo_agents repo
 - **Production**: Submitted as MR to NAT monorepo
 - **Discovery**: Standard Python entry points (`[project.entry-points.'nat.components']`)
 
 ## Bridge 1: LLM
 
-NAT LLM providers (OpenAI, NIM, etc.) are registered with `wrapper_type="agent006"`. Each registration constructs a `UnifiedLLM` from the NAT config:
+NAT LLM providers (OpenAI, NIM, etc.) are registered with `wrapper_type="nemo_oo_agents"`. Each registration constructs a `UnifiedLLM` from the NAT config:
 
 ```python
-@register_llm_client(config_type=OpenAIModelConfig, wrapper_type="agent006")
-async def openai_agent006(config, builder):
+@register_llm_client(config_type=OpenAIModelConfig, wrapper_type="nemo_oo_agents")
+async def openai_nemo_oo_agents(config, builder):
     yield UnifiedLLM(model=config.model_name, api_key=..., api_base=config.base_url)
 ```
 
-The wrapper calls `builder.get_llm("agent", wrapper_type="agent006")` to get a native `UnifiedLLM`.
+The wrapper calls `builder.get_llm("agent", wrapper_type="nemo_oo_agents")` to get a native `UnifiedLLM`.
 
 ## Bridge 2: Tools
 
@@ -60,7 +60,7 @@ tools:
     _type: current_time
 
 workflow:
-  _type: agent006_wrapper
+  _type: nemo_oo_agents_wrapper
   agent: my_agent.py:MyAgent
   method: chat
   tools:
@@ -69,8 +69,8 @@ workflow:
 
 ## Files
 
-- `packages/nvidia_nat_agent006/src/nat/plugins/agent006/agent006_wrapper.py` -- Core wrapper
-- `packages/nvidia_nat_agent006/src/nat/plugins/agent006/llm.py` -- LLM bridge
-- `packages/nvidia_nat_agent006/src/nat/plugins/agent006/tool_bridge.py` -- Tool bridge
-- `packages/nvidia_nat_agent006/src/nat/plugins/agent006/otel_bridge.py` -- OTel bridge
+- `packages/nvidia_nat_nemo_oo_agents/src/nat/plugins/nemo_oo_agents/nemo_oo_agents_wrapper.py` -- Core wrapper
+- `packages/nvidia_nat_nemo_oo_agents/src/nat/plugins/nemo_oo_agents/llm.py` -- LLM bridge
+- `packages/nvidia_nat_nemo_oo_agents/src/nat/plugins/nemo_oo_agents/tool_bridge.py` -- Tool bridge
+- `packages/nvidia_nat_nemo_oo_agents/src/nat/plugins/nemo_oo_agents/otel_bridge.py` -- OTel bridge
 - `examples/nat/` -- Example agents and configs

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Setting up agent006 development environment..."
+echo "🚀 Setting up nemo_oo_agents development environment..."
 
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then

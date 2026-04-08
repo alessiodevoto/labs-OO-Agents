@@ -1,6 +1,6 @@
 """<One-line description of what this command does.>
 
-Copy this file as a starting point for a new agent006 CLI command.
+Copy this file as a starting point for a new nemo_oo_agents CLI command.
 
     1. Copy this file:     cp _template.py mycommand.py
     2. Rename `command` if needed (it stays as `command`)
@@ -8,14 +8,14 @@ Copy this file as a starting point for a new agent006 CLI command.
     4. Done — it's automatically discovered.
 
 The filename becomes the subcommand name:
-    mycommand.py  →  agent006 mycommand ...
+    mycommand.py  →  nemo_oo_agents mycommand ...
 
 To override the name, add at module level:
     NAME = "custom-name"
 
 Usage:
-    agent006 mycommand
-    agent006 mycommand --verbose
+    nemo_oo_agents mycommand
+    nemo_oo_agents mycommand --verbose
 """
 
 import click
@@ -33,14 +33,14 @@ import click
 @click.argument("target", default="world")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output.")
 def command(target: str, verbose: bool):
-    """Short description shown in `agent006 --help`.
+    """Short description shown in `nemo_oo_agents --help`.
 
     TARGET is the thing to operate on.
 
     \b
     Examples:
-        agent006 mycommand
-        agent006 mycommand foo --verbose
+        nemo_oo_agents mycommand
+        nemo_oo_agents mycommand foo --verbose
     """
     click.echo(f"Hello, {target}!")
     if verbose:
@@ -49,7 +49,7 @@ def command(target: str, verbose: bool):
 
 # ---------------------------------------------------------------------------
 # GROUP COMMAND — uncomment this instead if you need subcommands
-#                 (e.g. agent006 things list / agent006 things create)
+#                 (e.g. nemo_oo_agents things list / nemo_oo_agents things create)
 # ---------------------------------------------------------------------------
 
 # @click.group()
@@ -76,12 +76,12 @@ def command(target: str, verbose: bool):
 # ---------------------------------------------------------------------------
 #
 # Shared utilities:
-#     from agent006_cli._common import find_project_root, format_size
+#     from nemo_oo_agents_cli._common import find_project_root, format_size
 #
 # Lazy imports (keep CLI startup fast — only import heavy deps inside handlers):
 #     def command(...):
 #         import pandas as pd    # ← lazy, not at module level
 #
-# Import the agent006 framework (lazy — only when the command actually runs):
+# Import the nemo_oo_agents framework (lazy — only when the command actually runs):
 #     def command(...):
-#         from agent006 import Agent
+#         from nemo_oo_agents import Agent

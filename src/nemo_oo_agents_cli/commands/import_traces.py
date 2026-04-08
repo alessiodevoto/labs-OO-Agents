@@ -1,9 +1,9 @@
 """Import OTLP trace .jsonl files into the viewer.
 
 Usage:
-    agent006 import-traces ./traces/
-    agent006 import-traces my_trace.jsonl --endpoint http://host:5001
-    agent006 import-traces ./experiment/ --batch-id my-experiment-v2
+    nemo_oo_agents import-traces ./traces/
+    nemo_oo_agents import-traces my_trace.jsonl --endpoint http://host:5001
+    nemo_oo_agents import-traces ./experiment/ --batch-id my-experiment-v2
 """
 
 import json

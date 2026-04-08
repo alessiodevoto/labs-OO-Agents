@@ -109,7 +109,7 @@ The primary configuration interface. Provides sensible defaults but allows deep 
 ### 1.1 Basic Usage (Sensible Defaults)
 
 ```python
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 # Default: No summarization, history grows unbounded
 agent = Agent()
@@ -129,7 +129,7 @@ agent = Agent(
 ### 1.2 Customized Configuration
 
 ```python
-from agent006.runtime.summarization import SummarizerSpec, TokenBudgetPolicy
+from nemo_oo_agents.runtime.summarization import SummarizerSpec, TokenBudgetPolicy
 
 class MyAgent(Agent, llm=my_llm):
     def __init__(self, **kwargs):
@@ -491,7 +491,7 @@ class TruncationOnlyPolicy(HistoryPolicy):
 ### 3.3 Example: Combined Policies
 
 ```python
-from agent006.runtime.summarization import (
+from nemo_oo_agents.runtime.summarization import (
     SummarizerSpec,
     TokenBudgetPolicy,
     ProactiveMethodPolicy,
@@ -1013,7 +1013,7 @@ summarization (root span)
 ```python
 from opentelemetry import trace
 
-tracer = trace.get_tracer("agent006.summarization")
+tracer = trace.get_tracer("nemo_oo_agents.summarization")
 
 class HistoryManager:
     async def _do_summarize(self, task: SummarizationTask) -> None:
@@ -1134,8 +1134,8 @@ agent = Agent(
 ### Full Example with Different LLMs
 
 ```python
-from agent006 import Agent
-from agent006.runtime.summarization import (
+from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime.summarization import (
     SummarizerSpec,
     TokenBudgetPolicy,
     MarkdownRenderer,

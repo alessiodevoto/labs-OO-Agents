@@ -40,8 +40,8 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 ### 3. Updated Public API ✅
 
-- `agent006.GenerationStrategy` now exports the ABC (from strategies)
-- `agent006.PurePythonStrategy` exported for direct use
+- `nemo_oo_agents.GenerationStrategy` now exports the ABC (from strategies)
+- `nemo_oo_agents.PurePythonStrategy` exported for direct use
 - Removed `PURE_PYTHON`, `STRUCTURED_OUTPUT` convenience aliases
 - `@plan(strategy="PURE_PYTHON")` string shorthand still works
 
@@ -49,9 +49,9 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 | File | Dead Import | Status |
 |------|-------------|--------|
-| `examples/tracing.py` | `agent006.tracing.otel` | Pending |
-| `examples/memory_trace_example.py` | `agent006.tracing.otel` | Pending |
-| `agents/tpm-agent/runner.py` | `agent006.tracing.otel` | Pending |
+| `examples/tracing.py` | `nemo_oo_agents.tracing.otel` | Pending |
+| `examples/memory_trace_example.py` | `nemo_oo_agents.tracing.otel` | Pending |
+| `agents/tpm-agent/runner.py` | `nemo_oo_agents.tracing.otel` | Pending |
 
 ---
 
@@ -59,7 +59,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 ### Completed Components ✅
 
-#### 1. Event Types (`src/agent006/events.py`)
+#### 1. Event Types (`src/nemo_oo_agents/events.py`)
 
 ```
 ✅ EventBase (id, timestamp, metadata) - id is auto-generated UUID
@@ -71,7 +71,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 **Matches design spec exactly.**
 
-#### 2. HistoryManager (`src/agent006/runtime/history.py`)
+#### 2. HistoryManager (`src/nemo_oo_agents/runtime/history.py`)
 
 ```
 ✅ add(event, record=True) -> str - returns event.id
@@ -84,7 +84,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 **Matches design spec exactly.**
 
-#### 3. GenerationStrategy ABC (`src/agent006/strategies/base.py`)
+#### 3. GenerationStrategy ABC (`src/nemo_oo_agents/strategies/base.py`)
 
 ```
 ✅ name property (abstract)
@@ -96,7 +96,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 **Matches design spec exactly.**
 
-#### 4. CurrentCall Dataclass (`src/agent006/strategies/current_call.py`)
+#### 4. CurrentCall Dataclass (`src/nemo_oo_agents/strategies/current_call.py`)
 
 ```
 ✅ id, method_name, decorator, signature, docstring
@@ -105,7 +105,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 **Matches design spec.**
 
-#### 5. PurePythonStrategy (`src/agent006/strategies/pure_python.py`)
+#### 5. PurePythonStrategy (`src/nemo_oo_agents/strategies/pure_python.py`)
 
 ```
 ✅ Configurable max_iterations, max_retries
@@ -116,7 +116,7 @@ Updated `ActorRuntime` to check `strategy.requires_lock` before acquiring lock.
 
 **Matches design spec.**
 
-#### 6. RuntimeServices in ActorRuntime (`src/agent006/runtime/actor.py`)
+#### 6. RuntimeServices in ActorRuntime (`src/nemo_oo_agents/runtime/actor.py`)
 
 ```
 ✅ agent property
@@ -140,8 +140,8 @@ All Phase 2 tasks completed:
 3. ✅ **PurePythonStrategy** - Deleted `_build_messages()`, calls `runtime.generate()` directly
 4. ✅ **Context variables** - Fixed parallel nested calls by using contextvars for `_current_call`, `_current_method`, `_current_strategy`
 5. ✅ **Deleted legacy code**:
-   - `src/agent006/runtime/executors/` (~2000 lines)
-   - `src/agent006/runtime/errors/messages/` (~300 lines)
+   - `src/nemo_oo_agents/runtime/executors/` (~2000 lines)
+   - `src/nemo_oo_agents/runtime/errors/messages/` (~300 lines)
 6. ✅ **Tests** - 443 passed, 92 skipped (old executor tests)
 7. ✅ **Strategy simplification** - Removed `_execute_python_code()` wrapper:
    - Replaced with simple `_build_builtins()` method
@@ -163,7 +163,7 @@ All Phase 2 tasks completed:
 
 ### Current State: NOT STARTED
 
-**Goal**: Implement context-blocks design improvements in place within agent006 (not extract to separate package).
+**Goal**: Implement context-blocks design improvements in place within nemo_oo_agents (not extract to separate package).
 
 ### Files to Refactor
 
@@ -204,7 +204,7 @@ All tasks completed - see Phase 2 Completion Log above.
 | 3.4 | Add OO BlockManager | `context/manager.py` - Replace C-style functions |
 | 3.5 | Update BlockRenderer | `context/renderer.py` - Use new models + formatters |
 | 3.6 | Update ScopedContext | `context/scoped.py` - Use new Block models |
-| 3.7 | Migrate existing code | Update imports throughout agent006 |
+| 3.7 | Migrate existing code | Update imports throughout nemo_oo_agents |
 | 3.8 | Delete old utilities | `util/context_blocks.py`, `util/prompt.py` |
 
 ---
@@ -214,4 +214,4 @@ All tasks completed - see Phase 2 Completion Log above.
 1. **Phase 3**: Implement Pydantic Block models with `show` expression
 2. **Phase 3**: Add BlockFormatter and ProviderFormatter ABCs
 3. **Phase 3**: Refactor BlockRenderer to use new architecture
-4. **Phase 3**: Update agent006 to use new context block system
+4. **Phase 3**: Update nemo_oo_agents to use new context block system

@@ -5,7 +5,7 @@ import json  # noqa: F401
 # agentdoc: hide
 import os  # noqa: F401
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

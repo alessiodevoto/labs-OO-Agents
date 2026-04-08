@@ -120,7 +120,7 @@ NeMo RL's `OpenAIFormatDataset` (in `nemo_rl/data/datasets/response_datasets/oai
 data:
   train:
     dataset_name: openai_format
-    data_path: /path/to/agent006_sft_data.jsonl
+    data_path: /path/to/nemo_oo_agents_sft_data.jsonl
     chat_key: "messages"
     tool_key: "tools"
     use_preserving_dataset: true   # CRITICAL for heterogeneous tool arguments
@@ -150,7 +150,7 @@ Our traces are OpenTelemetry spans (span_id, parent_span_id, attributes). We nee
    - `tool_execution.*` spans -> named tool calls (BashTool, etc.)
 4. Outputs NeMo RL's OpenAI format JSONL
 
-The span attributes are defined in our instrumentation hooks (`packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py`):
+The span attributes are defined in our instrumentation hooks (`packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py`):
 - Agent spans: `openinference.span.kind=AGENT`, `agent.name`, `agent.method`
 - Generation spans: `openinference.span.kind=LLM`, `generation.strategy`, `generation.result`
 - Code execution spans: `openinference.span.kind=TOOL`, `tool.name=python_executor`, `code`, `result`
@@ -320,15 +320,15 @@ grpo:
 data:
   train:
     dataset_name: openai_format
-    data_path: /path/to/agent006_tasks.jsonl    # Pre-exported task prompts
+    data_path: /path/to/nemo_oo_agents_tasks.jsonl    # Pre-exported task prompts
     chat_key: "messages"
     tool_key: "tools"
     use_preserving_dataset: true
-    env_name: "agent006"                         # Points to our environment
-    task_name: "agent006_swebench"
+    env_name: "nemo_oo_agents"                         # Points to our environment
+    task_name: "nemo_oo_agents_swebench"
 
 env:
-  agent006:
+  nemo_oo_agents:
     benchmark: "swebench"
     num_workers: 4                               # Docker containers
     max_steps_per_episode: 30

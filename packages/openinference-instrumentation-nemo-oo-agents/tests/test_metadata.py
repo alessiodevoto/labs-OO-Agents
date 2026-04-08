@@ -3,7 +3,7 @@
 import subprocess
 from unittest.mock import patch
 
-from openinference_instrumentation_agent006._metadata import (
+from openinference_instrumentation_nemo_oo_agents._metadata import (
     get_all_metadata,
     get_environment_metadata,
     get_git_metadata,
@@ -83,7 +83,7 @@ class TestEnvironmentMetadata:
 
             metadata = get_environment_metadata()
 
-            assert "agent006.version" in metadata
+            assert "nemo_oo_agents.version" in metadata
             assert metadata["python.version"] == "3.12.0"
             assert metadata["hostname"] == "test-machine"
 
@@ -94,15 +94,15 @@ class TestAllMetadata:
     def test_get_all_metadata(self):
         """Test that all metadata is combined correctly."""
         with (
-            patch("openinference_instrumentation_agent006._metadata.get_git_metadata") as mock_git,
-            patch("openinference_instrumentation_agent006._metadata.get_environment_metadata") as mock_env,
+            patch("openinference_instrumentation_nemo_oo_agents._metadata.get_git_metadata") as mock_git,
+            patch("openinference_instrumentation_nemo_oo_agents._metadata.get_environment_metadata") as mock_env,
         ):
             mock_git.return_value = {
                 "git.commit": "abc123",
                 "git.branch": "main",
             }
             mock_env.return_value = {
-                "agent006.version": "0.1.0",
+                "nemo_oo_agents.version": "0.1.0",
                 "python.version": "3.12.0",
             }
 
@@ -110,5 +110,5 @@ class TestAllMetadata:
 
             assert metadata["git.commit"] == "abc123"
             assert metadata["git.branch"] == "main"
-            assert metadata["agent006.version"] == "0.1.0"
+            assert metadata["nemo_oo_agents.version"] == "0.1.0"
             assert metadata["python.version"] == "3.12.0"

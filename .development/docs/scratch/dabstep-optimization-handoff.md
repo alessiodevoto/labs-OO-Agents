@@ -29,7 +29,7 @@ python -m e2e_optimization run --config src/e2e_optimization/examples/dabstep/co
 | `util/e2e_optimization/src/e2e_optimization/examples/dabstep/config.yaml` | Optimization config |
 | `util/e2e_optimization/src/e2e_optimization/optimizer.py` | Core optimizer (fixed seed eval API) |
 | `util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/agent.py` | Target file being optimized (simple CodeAct, 50%) |
-| `util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/agent006.py` | Seed: 8-phase soft decomposition (50%) |
+| `util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/nemo_oo_agents.py` | Seed: 8-phase soft decomposition (50%) |
 | `util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/agent007.py` | Seed: 8-phase hard decomposition (60%) |
 | `util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/agent_opt63.py` | Seed: Best manual opt (90% train, 55.6% full) |
 | `util/e2e_optimization/src/e2e_optimization/examples/dabstep/solutions/` | Ground truth solutions for 10 training tasks |
@@ -66,7 +66,7 @@ python -m e2e_optimization run --config src/e2e_optimization/examples/dabstep/co
 │     ├── Load config.yaml                                    │
 │     ├── Copy agent.py to iteration_000/agents/              │
 │     └── If seed_strategies defined:                         │
-│         └── Evaluate each seed (agent006, agent007, opt63)  │
+│         └── Evaluate each seed (nemo_oo_agents, agent007, opt63)  │
 │             on all 10 training tasks → add to Pareto front  │
 │                                                             │
 │  2. EVALUATE BASELINE (iteration 1)                         │

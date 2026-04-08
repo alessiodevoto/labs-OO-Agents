@@ -221,7 +221,7 @@ RefinementTestAgent_qwen3-80b__order_recipe_ingredients_with_result_parsing_refi
 
 **Branch (Passed)**:
 ```
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/
 RefinementTestAgent_qwen3-80b__order_recipe_ingredients_with_result_parsing_refinement_20260127_124617_04_000000_qwen3-80b.006trace.jsonl
 ```
 

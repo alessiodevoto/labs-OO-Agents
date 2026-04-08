@@ -1,7 +1,7 @@
-"""Integration tests for ``agent006 sandbox``.
+"""Integration tests for ``nemo_oo_agents sandbox``.
 
 These tests exercise the real ``openshell`` CLI.  They require:
-  - ``openshell`` to be installed (``uv pip install agent006[sandbox]``)
+  - ``openshell`` to be installed (``uv pip install nemo_oo_agents[sandbox]``)
   - Docker running (the gateway fixture starts/stops the gateway automatically)
 
 Run explicitly:
@@ -38,7 +38,7 @@ def openshell_bin() -> str:
 
     path = shutil.which("openshell")
     if path is None:
-        pytest.skip("openshell not installed — run: uv pip install agent006[sandbox]")
+        pytest.skip("openshell not installed — run: uv pip install nemo_oo_agents[sandbox]")
     return path
 
 
@@ -125,7 +125,7 @@ def sandbox_project(tmp_path: Path) -> Path:
 @pytest.mark.integration
 def test_ensure_provider_creates_when_absent(gateway: None, openshell_bin: str) -> None:
     """_ensure_provider should create the env-vars provider when it doesn't exist."""
-    from agent006_cli.commands.sandbox import _PROVIDER, _ensure_provider
+    from nemo_oo_agents_cli.commands.sandbox import _PROVIDER, _ensure_provider
 
     # Delete the provider first so we start from a clean state.
     subprocess.run([openshell_bin, "provider", "delete", _PROVIDER], capture_output=True)
@@ -144,7 +144,7 @@ def test_ensure_provider_creates_when_absent(gateway: None, openshell_bin: str) 
 @pytest.mark.integration
 def test_ensure_provider_idempotent(gateway: None) -> None:
     """_ensure_provider is safe to call multiple times — no duplicate/error."""
-    from agent006_cli.commands.sandbox import _ensure_provider
+    from nemo_oo_agents_cli.commands.sandbox import _ensure_provider
 
     _ensure_provider()
     _ensure_provider()  # second call should be a no-op
@@ -153,9 +153,9 @@ def test_ensure_provider_idempotent(gateway: None) -> None:
 @pytest.mark.integration
 def test_create_and_delete_env_provider(gateway: None, openshell_bin: str) -> None:
     """_create_env_provider / _delete_provider round-trip against real openshell."""
-    from agent006_cli.commands.sandbox import _create_env_provider, _delete_provider
+    from nemo_oo_agents_cli.commands.sandbox import _create_env_provider, _delete_provider
 
-    name = "agent006-integration-test-env"
+    name = "nemo_oo_agents-integration-test-env"
     try:
         _create_env_provider(name, ("MY_TOKEN=test123", "OTHER_KEY=abc"))
 
@@ -187,7 +187,7 @@ def test_create_and_delete_env_provider(gateway: None, openshell_bin: str) -> No
 @pytest.mark.integration
 def test_write_policy_with_domains(tmp_path: Path) -> None:
     """_write_policy produces valid YAML with the extra domains in the right place."""
-    from agent006_cli.commands.sandbox import _write_policy
+    from nemo_oo_agents_cli.commands.sandbox import _write_policy
 
     policy_path = _write_policy(domains=("api.example.com", "data.example.com"))
     try:
@@ -205,7 +205,7 @@ def test_write_policy_with_domains(tmp_path: Path) -> None:
 @pytest.mark.integration
 def test_write_policy_with_readonly_paths(tmp_path: Path) -> None:
     """_write_policy adds read-only sandbox paths to filesystem_policy."""
-    from agent006_cli.commands.sandbox import _write_policy
+    from nemo_oo_agents_cli.commands.sandbox import _write_policy
 
     policy_path = _write_policy(readonly_paths=["/sandbox/data", "/sandbox/models"])
     try:
@@ -220,7 +220,7 @@ def test_write_policy_with_readonly_paths(tmp_path: Path) -> None:
 @pytest.mark.integration
 def test_write_policy_temp_file_cleaned_up(tmp_path: Path) -> None:
     """Calling unlink on the returned path removes the temp file."""
-    from agent006_cli.commands.sandbox import _write_policy
+    from nemo_oo_agents_cli.commands.sandbox import _write_policy
 
     policy_path = _write_policy(domains=("example.com",))
     assert policy_path.exists()
@@ -231,7 +231,7 @@ def test_write_policy_temp_file_cleaned_up(tmp_path: Path) -> None:
 @pytest.mark.integration
 def test_write_policy_extends_bundled() -> None:
     """_write_policy preserves existing entries from the bundled policy."""
-    from agent006_cli.commands.sandbox import _POLICY, _write_policy
+    from nemo_oo_agents_cli.commands.sandbox import _POLICY, _write_policy
 
     bundled = yaml.safe_load(_POLICY.read_text())
     policy_path = _write_policy(domains=("extra.example.com",))
@@ -255,11 +255,11 @@ def test_sandbox_runs_simple_command(
     sandbox_project: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """agent006 sandbox should execute a trivial command and exit 0."""
+    """nemo_oo_agents sandbox should execute a trivial command and exit 0."""
     monkeypatch.chdir(sandbox_project)
 
     result = subprocess.run(
-        ["agent006", "sandbox", "--", "python", "-c", "print('hello from sandbox')"],
+        ["nemo_oo_agents", "sandbox", "--", "python", "-c", "print('hello from sandbox')"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -279,7 +279,7 @@ def test_sandbox_env_var_visible_inside(
 
     result = subprocess.run(
         [
-            "agent006",
+            "nemo_oo_agents",
             "sandbox",
             "--env",
             "MY_SECRET=hunter2",
@@ -306,7 +306,7 @@ def test_sandbox_uv_sync_runs(
     monkeypatch.chdir(sandbox_project)
 
     result = subprocess.run(
-        ["agent006", "sandbox", "--", "python", "-c", "print('deps ok')"],
+        ["nemo_oo_agents", "sandbox", "--", "python", "-c", "print('deps ok')"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -320,7 +320,7 @@ def test_sandbox_nonzero_exit_propagated(
     sandbox_project: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A command that exits non-zero should cause agent006 sandbox to exit non-zero.
+    """A command that exits non-zero should cause nemo_oo_agents sandbox to exit non-zero.
 
     openshell normalises the SSH session exit code to 1, so we only assert
     non-zero (not the specific inner exit code).  The actual inner exit code
@@ -329,7 +329,7 @@ def test_sandbox_nonzero_exit_propagated(
     monkeypatch.chdir(sandbox_project)
 
     result = subprocess.run(
-        ["agent006", "sandbox", "--", "python", "-c", "raise SystemExit(42)"],
+        ["nemo_oo_agents", "sandbox", "--", "python", "-c", "raise SystemExit(42)"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -353,7 +353,7 @@ def test_sandbox_readonly_upload_enforced(
 
     result = subprocess.run(
         [
-            "agent006",
+            "nemo_oo_agents",
             "sandbox",
             "--upload",
             "data:ro",
@@ -387,7 +387,7 @@ def test_sandbox_allow_domain_accepted_by_cli(
 
     result = subprocess.run(
         [
-            "agent006",
+            "nemo_oo_agents",
             "sandbox",
             "--allow-domain",
             "api.example.com",
@@ -419,7 +419,7 @@ def test_sandbox_unknown_domain_blocked(
 
     result = subprocess.run(
         [
-            "agent006",
+            "nemo_oo_agents",
             "sandbox",
             "--",
             "python",
@@ -444,11 +444,11 @@ def test_sandbox_missing_pyproject_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """agent006 sandbox should fail immediately when pyproject.toml is absent."""
+    """nemo_oo_agents sandbox should fail immediately when pyproject.toml is absent."""
     monkeypatch.chdir(tmp_path)  # no pyproject.toml here
 
     result = subprocess.run(
-        ["agent006", "sandbox", "--", "python", "-c", "print('hi')"],
+        ["nemo_oo_agents", "sandbox", "--", "python", "-c", "print('hi')"],
         capture_output=True,
         text=True,
         timeout=30,

@@ -1,6 +1,6 @@
 # Trace Explorer: Viewer API Integration & OTLP Migration
 
-**Issue:** [#137](https://gitlab-master.nvidia.com/interactive-agents/agent006/-/issues/137)
+**Issue:** [#137](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/137)
 **Date:** 2026-03-24
 
 ## Goal

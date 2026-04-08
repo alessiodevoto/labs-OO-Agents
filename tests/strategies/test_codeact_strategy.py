@@ -15,11 +15,11 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from agent006 import Agent, strategy
-from agent006.config import CodeActConfig
-from agent006.events import PythonOutput, ResultStatus
-from agent006.strategies.codeact import CodeActStrategy
-from agent006.strategies.codeact_errors import (
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.events import PythonOutput, ResultStatus
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
+from nemo_oo_agents.strategies.codeact_errors import (
     format_validation_error,
     get_type_example,
     get_type_hint_str,
@@ -141,7 +141,7 @@ class TestCodeActStrategyInheritance:
 
     def test_is_generation_strategy(self):
         """CodeActStrategy should inherit from GenerationStrategy."""
-        from agent006.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
 
         strat = CodeActStrategy(config=CodeActConfig())
         assert isinstance(strat, GenerationStrategy)
@@ -883,7 +883,7 @@ class TestCodeActStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_max_iterations_exceeded(self):
         """Should raise GenerationError when max_iterations exceeded."""
-        from agent006.errors import GenerationError
+        from nemo_oo_agents.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=2)))
@@ -910,7 +910,7 @@ class TestCodeActStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_missing_return_type_raises_error(self):
         """Should raise GenerationError if method has no return type."""
-        from agent006.errors import GenerationError
+        from nemo_oo_agents.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -1404,13 +1404,13 @@ class TestCodeActStrategyExport:
 
     def test_exported_from_strategies_module(self):
         """CodeActStrategy should be exported from strategies module."""
-        from agent006.strategies import CodeActStrategy
+        from nemo_oo_agents.strategies import CodeActStrategy
 
         assert CodeActStrategy is not None
 
     def test_exported_from_main_module(self):
-        """CodeActStrategy should be exported from main agent006 module."""
-        from agent006 import CodeActStrategy
+        """CodeActStrategy should be exported from main nemo_oo_agents module."""
+        from nemo_oo_agents import CodeActStrategy
 
         assert CodeActStrategy is not None
 
@@ -1686,7 +1686,7 @@ class TestCodeActInlineReturnResult:
         """return_result() inside try block should not be caught by 'except Exception'.
 
         This is a regression test for GitLab issue #55:
-        https://gitlab.com/nvidia/cloudnative/ai-workflow/agent006/-/issues/55
+        https://gitlab.com/nvidia/cloudnative/ai-workflow/nemo_oo_agents/-/issues/55
 
         The _ReturnResultSignal inherits from BaseException (not Exception), so it
         should NOT be caught by 'except Exception:' blocks. This ensures that
@@ -1944,7 +1944,7 @@ class TestCodeActReturnTypeInspection:
 @pytest.fixture
 def mock_runtime():
     """Create mock runtime for strategy tests."""
-    from agent006.events import ExecutionResult
+    from nemo_oo_agents.events import ExecutionResult
 
     class MockRuntime:
         def __init__(self):
@@ -2011,7 +2011,7 @@ class TestCodeActNoneReturnType:
     completing the task without requiring a result value.
 
     Regression tests for GitLab issue #59:
-    https://gitlab.com/nvidia/cloudnative/ai-workflow/agent006/-/issues/59
+    https://gitlab.com/nvidia/cloudnative/ai-workflow/nemo_oo_agents/-/issues/59
     """
 
     @pytest.mark.asyncio
@@ -2339,7 +2339,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_emits_before_and_after_turn_events_on_success(self):
         """Strategy should emit BeforeTurn and AfterTurn on successful execution."""
-        from agent006.events import AfterTurn, BeforeTurn
+        from nemo_oo_agents.events import AfterTurn, BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -2397,7 +2397,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_number_increments_across_iterations(self):
         """Turn number should increment with each iteration."""
-        from agent006.events import BeforeTurn
+        from nemo_oo_agents.events import BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -2448,7 +2448,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_inline_return_result_emits_success_event(self):
         """Inline return_result() should emit AfterTurn with success=True."""
-        from agent006.events import AfterTurn, BeforeTurn
+        from nemo_oo_agents.events import AfterTurn, BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))

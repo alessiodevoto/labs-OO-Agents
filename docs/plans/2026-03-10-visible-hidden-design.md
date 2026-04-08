@@ -25,10 +25,10 @@ Replace all visibility mechanisms with two concepts: `visible` and `hidden`.
 
 ### Public API
 
-Both exported from `agent006`:
+Both exported from `nemo_oo_agents`:
 
 ```python
-from agent006 import visible, hidden
+from nemo_oo_agents import visible, hidden
 ```
 
 ### The `hidden` sentinel
@@ -39,14 +39,14 @@ A single object that works in two roles:
 2. **Annotation marker** on fields: `Annotated[T, hidden]`
 
 ```python
-# src/agent006/visibility.py
+# src/nemo_oo_agents/visibility.py
 
 class _Hidden:
     """Marker for hiding methods and fields from the LLM."""
 
     def __call__(self, func):
         """Use as @hidden decorator on methods."""
-        func._agent006_hidden = True
+        func._nemo_oo_agents_hidden = True
         return func
 
     def __repr__(self):
@@ -57,7 +57,7 @@ hidden = _Hidden()
 
 Detection helpers:
 
-- `is_hidden_method(func)` — checks for `_agent006_hidden` attribute
+- `is_hidden_method(func)` — checks for `_nemo_oo_agents_hidden` attribute
 - `is_hidden_field(cls, name)` — inspects `typing.get_type_hints(cls, include_extras=True)`, checks if `hidden` sentinel is in `Annotated` metadata
 
 ### The `visible` context manager
@@ -69,7 +69,7 @@ Rename of the existing `_VisibleToAgent`. Controls which module-level names are 
 import json
 import os
 
-from agent006 import visible
+from nemo_oo_agents import visible
 
 with visible:
     from pathlib import Path
@@ -96,7 +96,7 @@ Same dict-diff mechanism, same reentrant stack. Only the name changes:
 import json
 import os
 
-from agent006 import Agent, hidden, visible
+from nemo_oo_agents import Agent, hidden, visible
 
 with visible:
     from pathlib import Path
@@ -190,7 +190,7 @@ class Agent:
 ### Unchanged
 - `@no_trace` — orthogonal (tracing)
 - `blocked_modules` / `blocked_calls` — orthogonal (security)
-- `exec_globals` filtering via `_agent006_visible_names` — same mechanism, `visible` is just the rename
+- `exec_globals` filtering via `_nemo_oo_agents_visible_names` — same mechanism, `visible` is just the rename
 
 ## Breaking changes
 

@@ -81,12 +81,12 @@ Step 3: Full dataset run
             --concurrent-tasks 10 \
             --output-dir results/dabstep/opt63_deepseek_fullrun
         Output: results/dabstep/opt63_deepseek_fullrun/
-                  agent006_dabstep.006eval.json  (answers per task)
+                  nemo_oo_agents_dabstep.006eval.json  (answers per task)
                   traces/                          (per-task .006trace.jsonl files)
 
 Step 4: build_sft_dataset.py
         Location: experiments/evaluation-ablations/build_sft_dataset.py
-        Input:  --eval-json results/dabstep/opt63_deepseek_fullrun/agent006_dabstep.006eval.json
+        Input:  --eval-json results/dabstep/opt63_deepseek_fullrun/nemo_oo_agents_dabstep.006eval.json
                 --solutions dabstep-full-solutions.jsonl
                 --traces-dir results/dabstep/opt63_deepseek_fullrun/traces/
                 --output dabstep_sft_deepseek_v3.2_20260224.jsonl

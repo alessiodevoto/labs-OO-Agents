@@ -40,7 +40,7 @@ Claude Code Agent (receives output)
 ### Project Structure
 
 ```
-agent006/
+nemo_oo_agents/
 ├── .claude/
 │   ├── mcp_servers/
 │   │   └── unrestricted-bash/
@@ -171,7 +171,7 @@ Error handling matches built-in Bash tool behavior, just without sandbox prompts
 
 **For new machines:**
 ```bash
-cd agent006
+cd nemo_oo_agents
 .claude/mcp_servers/unrestricted-bash/install.sh
 ```
 

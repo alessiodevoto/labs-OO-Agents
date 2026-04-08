@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent006.events import Error, Feedback, LLMOutput, Task
-from agent006.runtime.event_manager import EventManager
+from nemo_oo_agents.events import Error, Feedback, LLMOutput, Task
+from nemo_oo_agents.runtime.event_manager import EventManager
 
 
 def _format_events_for_test(events: list, *, last_n: int | None = None) -> list[dict]:
@@ -422,7 +422,7 @@ def test_parse_tag_end_defensive():
 
 def test_before_turn_event_first_turn():
     """Test BeforeTurn can identify first turn (turn_number=1)."""
-    from agent006.events import BeforeTurn
+    from nemo_oo_agents.events import BeforeTurn
 
     # First turn
     event = BeforeTurn(
@@ -440,7 +440,7 @@ def test_before_turn_event_first_turn():
 
 def test_after_turn_event_intermediate():
     """Test AfterTurn for intermediate turns (is_final=False)."""
-    from agent006.events import AfterTurn
+    from nemo_oo_agents.events import AfterTurn
 
     # Intermediate turn - method continues
     event = AfterTurn(
@@ -458,7 +458,7 @@ def test_after_turn_event_intermediate():
 
 def test_after_turn_event_final_success():
     """Test AfterTurn for final turn with successful return."""
-    from agent006.events import AfterTurn
+    from nemo_oo_agents.events import AfterTurn
 
     # Final turn - method completed successfully
     event = AfterTurn(
@@ -482,7 +482,7 @@ def test_after_turn_event_final_success():
 
 def test_after_turn_event_final_failure():
     """Test AfterTurn for final turn with exception."""
-    from agent006.events import AfterTurn
+    from nemo_oo_agents.events import AfterTurn
 
     # Final turn - method failed with exception
     event = AfterTurn(
@@ -507,7 +507,7 @@ def test_after_turn_event_final_failure():
 
 def test_turn_events_symmetry():
     """Test that BeforeTurn and AfterTurn have symmetric fields."""
-    from agent006.events import AfterTurn, BeforeTurn
+    from nemo_oo_agents.events import AfterTurn, BeforeTurn
 
     # Create matching before/after events for the same turn
     before = BeforeTurn(
@@ -545,7 +545,7 @@ def test_turn_events_symmetry():
 
 def test_custom_backend_can_be_injected():
     """Test that a custom backend can be provided to EventManager."""
-    from agent006.runtime.event_backend import InMemoryBackend
+    from nemo_oo_agents.runtime.event_backend import InMemoryBackend
 
     # Create a custom backend instance
     backend = InMemoryBackend()
@@ -563,7 +563,7 @@ def test_custom_backend_can_be_injected():
 
 def test_backend_protocol_is_runtime_checkable():
     """Test that EventBackend protocol is runtime checkable."""
-    from agent006.runtime.event_backend import EventBackend, InMemoryBackend
+    from nemo_oo_agents.runtime.event_backend import EventBackend, InMemoryBackend
 
     backend = InMemoryBackend()
     assert isinstance(backend, EventBackend)
@@ -574,7 +574,7 @@ def test_backend_protocol_is_runtime_checkable():
 
 def test_turn_events_not_recorded_in_history():
     """Verify turn events are not recorded in event_manager when record=False."""
-    from agent006.events import BeforeTurn
+    from nemo_oo_agents.events import BeforeTurn
 
     hm = EventManager()
 
@@ -592,7 +592,7 @@ def test_turn_events_not_recorded_in_history():
 
 def test_inmemory_backend_update_merges_metadata():
     """Verify metadata update merges rather than replaces."""
-    from agent006.runtime.event_backend import InMemoryBackend
+    from nemo_oo_agents.runtime.event_backend import InMemoryBackend
 
     backend = InMemoryBackend()
     event = Task(prompt="test")
@@ -608,7 +608,7 @@ def test_inmemory_backend_update_merges_metadata():
 
 def test_inmemory_backend_get_by_id_not_found():
     """Verify get_by_id returns None for non-existent event."""
-    from agent006.runtime.event_backend import InMemoryBackend
+    from nemo_oo_agents.runtime.event_backend import InMemoryBackend
 
     backend = InMemoryBackend()
     backend.store("1", Task(prompt="test"))
@@ -619,7 +619,7 @@ def test_inmemory_backend_get_by_id_not_found():
 
 def test_inmemory_backend_set_status_transitions():
     """Verify set_status correctly transitions between states."""
-    from agent006.runtime.event_backend import InMemoryBackend
+    from nemo_oo_agents.runtime.event_backend import InMemoryBackend
 
     backend = InMemoryBackend()
     event = Task(prompt="test")

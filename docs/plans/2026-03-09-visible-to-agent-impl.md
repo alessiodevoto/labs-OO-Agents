@@ -4,7 +4,7 @@
 
 **Goal:** Add a `visible_to_agent` context manager that controls which module-level names are visible to LLM-generated code in exec_globals, replacing the current "everything leaks" default.
 
-**Architecture:** `_VisibleToAgent` context manager uses module dict diff to track names defined inside its block, stores them as `_agent006_visible_names` on the module. `execute_code` in `actor.py` reads this set to build exec_globals from only visible names instead of the full module dict. Validates conflicts with `blocked_modules` (error) and `RESTRICTED_MODULES` (warning).
+**Architecture:** `_VisibleToAgent` context manager uses module dict diff to track names defined inside its block, stores them as `_nemo_oo_agents_visible_names` on the module. `execute_code` in `actor.py` reads this set to build exec_globals from only visible names instead of the full module dict. Validates conflicts with `blocked_modules` (error) and `RESTRICTED_MODULES` (warning).
 
 **Tech Stack:** Python `sys._getframe`, `types.ModuleType`, pytest, warnings module
 
@@ -15,7 +15,7 @@
 ### Task 1: Create `_VisibleToAgent` context manager with dict diff
 
 **Files:**
-- Create: `src/agent006/visibility.py`
+- Create: `src/nemo_oo_agents/visibility.py`
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write the failing test**
@@ -28,7 +28,7 @@ import sys
 
 def test_visible_to_agent_captures_new_names():
     """Names defined inside the block are recorded on the module."""
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     # Create a fake module to test against
     mod = types.ModuleType("fake_module")
@@ -42,9 +42,9 @@ def test_visible_to_agent_captures_new_names():
     mod.another = 42
     vta.__exit__(None, None, None)
 
-    assert "new_name" in mod._agent006_visible_names
-    assert "another" in mod._agent006_visible_names
-    assert "existing" not in mod._agent006_visible_names
+    assert "new_name" in mod._nemo_oo_agents_visible_names
+    assert "another" in mod._nemo_oo_agents_visible_names
+    assert "existing" not in mod._nemo_oo_agents_visible_names
 
     # Cleanup
     del sys.modules["fake_module"]
@@ -52,7 +52,7 @@ def test_visible_to_agent_captures_new_names():
 
 def test_visible_to_agent_multiple_blocks_are_additive():
     """Second block adds to the set, doesn't replace."""
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_module2")
     sys.modules["fake_module2"] = mod
@@ -67,15 +67,15 @@ def test_visible_to_agent_multiple_blocks_are_additive():
     mod.second = 2
     vta.__exit__(None, None, None)
 
-    assert "first" in mod._agent006_visible_names
-    assert "second" in mod._agent006_visible_names
+    assert "first" in mod._nemo_oo_agents_visible_names
+    assert "second" in mod._nemo_oo_agents_visible_names
 
     del sys.modules["fake_module2"]
 
 
 def test_visible_to_agent_empty_block():
     """Empty block records nothing."""
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_module3")
     sys.modules["fake_module3"] = mod
@@ -84,7 +84,7 @@ def test_visible_to_agent_empty_block():
     vta._enter_for_module(mod)
     vta.__exit__(None, None, None)
 
-    assert mod._agent006_visible_names == set()
+    assert mod._nemo_oo_agents_visible_names == set()
 
     del sys.modules["fake_module3"]
 ```
@@ -92,17 +92,17 @@ def test_visible_to_agent_empty_block():
 **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_visibility.py -v`
-Expected: FAIL with `ImportError` — `agent006.visibility` doesn't exist
+Expected: FAIL with `ImportError` — `nemo_oo_agents.visibility` doesn't exist
 
 **Step 3: Write the implementation**
 
 ```python
-# src/agent006/visibility.py
+# src/nemo_oo_agents/visibility.py
 """Context manager for controlling agent namespace visibility.
 
 Tracks which module-level names are visible to LLM-generated code.
 Names defined inside a `with visible_to_agent:` block are recorded
-on the module as `_agent006_visible_names` for consumption by
+on the module as `_nemo_oo_agents_visible_names` for consumption by
 exec_globals construction in actor.py.
 """
 
@@ -116,13 +116,13 @@ class _VisibleToAgent:
     """Context manager that tracks names defined inside its block.
 
     Uses module dict diff: snapshots keys on __enter__, diffs on __exit__.
-    Records new names on the module as `_agent006_visible_names`.
+    Records new names on the module as `_nemo_oo_agents_visible_names`.
 
     Usage at module level::
 
-        import agent006
+        import nemo_oo_agents
 
-        with agent006.visible_to_agent:
+        with nemo_oo_agents.visible_to_agent:
             import json
             import pandas as pd
             THRESHOLD = 0.5
@@ -147,8 +147,8 @@ class _VisibleToAgent:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         new_names = set(self._module.__dict__.keys()) - self._snapshot
-        existing = getattr(self._module, "_agent006_visible_names", set())
-        self._module._agent006_visible_names = existing | new_names
+        existing = getattr(self._module, "_nemo_oo_agents_visible_names", set())
+        self._module._nemo_oo_agents_visible_names = existing | new_names
         self._module = None
         self._snapshot = None
         return False
@@ -166,7 +166,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/visibility.py tests/test_visibility.py
+git add src/nemo_oo_agents/visibility.py tests/test_visibility.py
 git commit -m "feat: add _VisibleToAgent context manager with dict diff"
 ```
 
@@ -175,7 +175,7 @@ git commit -m "feat: add _VisibleToAgent context manager with dict diff"
 ### Task 2: Add blocked_modules conflict validation (startup error)
 
 **Files:**
-- Modify: `src/agent006/visibility.py:43-52` (the `__exit__` method)
+- Modify: `src/nemo_oo_agents/visibility.py:43-52` (the `__exit__` method)
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write the failing test**
@@ -189,7 +189,7 @@ import pytest
 
 def test_blocked_module_in_visible_raises_error():
     """Importing a blocked module inside visible_to_agent raises ConfigurationError."""
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_blocked")
     sys.modules["fake_blocked"] = mod
@@ -206,7 +206,7 @@ def test_blocked_module_in_visible_raises_error():
 
 def test_function_from_blocked_module_in_visible_raises_error():
     """Importing a function from a blocked module raises ConfigurationError."""
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_blocked2")
     sys.modules["fake_blocked2"] = mod
@@ -228,7 +228,7 @@ Expected: FAIL — no error raised, test's `pytest.raises` fails
 
 **Step 3: Write the implementation**
 
-Add validation to `__exit__` in `src/agent006/visibility.py`. Add a helper `_get_module_name`:
+Add validation to `__exit__` in `src/nemo_oo_agents/visibility.py`. Add a helper `_get_module_name`:
 
 ```python
 def _get_module_name(obj) -> str | None:
@@ -249,8 +249,8 @@ def __exit__(self, exc_type, exc_val, exc_tb):
         return False
 
     new_names = set(self._module.__dict__.keys()) - self._snapshot
-    existing = getattr(self._module, "_agent006_visible_names", set())
-    self._module._agent006_visible_names = existing | new_names
+    existing = getattr(self._module, "_nemo_oo_agents_visible_names", set())
+    self._module._nemo_oo_agents_visible_names = existing | new_names
 
     self._validate_new_names(new_names)
 
@@ -259,7 +259,7 @@ def __exit__(self, exc_type, exc_val, exc_tb):
     return False
 
 def _validate_new_names(self, names: set[str]) -> None:
-    from agent006.runtime.restrictions import (
+    from nemo_oo_agents.runtime.restrictions import (
         DEFAULT_BLOCKED_MODULES,
         is_from_blocked_module,
     )
@@ -278,10 +278,10 @@ def _validate_new_names(self, names: set[str]) -> None:
             )
 ```
 
-Add `ConfigurationError` to `src/agent006/errors/__init__.py`:
+Add `ConfigurationError` to `src/nemo_oo_agents/errors/__init__.py`:
 
 ```python
-class ConfigurationError(Agent006Error):
+class ConfigurationError(NemoOOAgentsError):
     """Agent configuration is invalid.
 
     Raised at import time when visible_to_agent contains conflicting entries
@@ -293,7 +293,7 @@ class ConfigurationError(Agent006Error):
 Import in visibility.py:
 
 ```python
-from agent006.errors import ConfigurationError
+from nemo_oo_agents.errors import ConfigurationError
 ```
 
 **Step 4: Run test to verify it passes**
@@ -304,7 +304,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/visibility.py src/agent006/errors/__init__.py tests/test_visibility.py
+git add src/nemo_oo_agents/visibility.py src/nemo_oo_agents/errors/__init__.py tests/test_visibility.py
 git commit -m "feat: validate blocked_modules conflicts in visible_to_agent"
 ```
 
@@ -313,7 +313,7 @@ git commit -m "feat: validate blocked_modules conflicts in visible_to_agent"
 ### Task 3: Add RESTRICTED_MODULES warning
 
 **Files:**
-- Modify: `src/agent006/visibility.py` (the `_validate_new_names` method)
+- Modify: `src/nemo_oo_agents/visibility.py` (the `_validate_new_names` method)
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write the failing test**
@@ -327,7 +327,7 @@ def test_restricted_module_in_visible_warns():
     """Importing a restricted (but not blocked) module logs a warning."""
     import os
 
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_restricted")
     sys.modules["fake_restricted"] = mod
@@ -351,7 +351,7 @@ def test_non_restricted_module_no_warning():
     """Non-restricted modules produce no warning."""
     import json
 
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     mod = types.ModuleType("fake_clean")
     sys.modules["fake_clean"] = mod
@@ -376,12 +376,12 @@ Expected: FAIL — no warning emitted
 
 **Step 3: Write the implementation**
 
-Add to `_validate_new_names` in `src/agent006/visibility.py`, after the blocked check:
+Add to `_validate_new_names` in `src/nemo_oo_agents/visibility.py`, after the blocked check:
 
 ```python
 import warnings
 
-from agent006.runtime.restrictions import (
+from nemo_oo_agents.runtime.restrictions import (
     DEFAULT_BLOCKED_MODULES,
     RESTRICTED_MODULES,
     is_from_blocked_module,
@@ -419,41 +419,41 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/visibility.py tests/test_visibility.py
+git add src/nemo_oo_agents/visibility.py tests/test_visibility.py
 git commit -m "feat: warn when restricted modules are made visible to agent"
 ```
 
 ---
 
-### Task 4: Export `visible_to_agent` from `agent006.__init__`
+### Task 4: Export `visible_to_agent` from `nemo_oo_agents.__init__`
 
 **Files:**
-- Modify: `src/agent006/__init__.py:12-71`
+- Modify: `src/nemo_oo_agents/__init__.py:12-71`
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write the failing test**
 
 ```python
 # Add to tests/test_visibility.py
-def test_importable_from_agent006():
+def test_importable_from_nemo_oo_agents():
     """visible_to_agent is importable from the top-level package."""
-    from agent006 import visible_to_agent as vta
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents import visible_to_agent as vta
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     assert isinstance(vta, _VisibleToAgent)
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/test_visibility.py::test_importable_from_agent006 -v`
+Run: `uv run pytest tests/test_visibility.py::test_importable_from_nemo_oo_agents -v`
 Expected: FAIL — `ImportError: cannot import name 'visible_to_agent'`
 
 **Step 3: Write the implementation**
 
-In `src/agent006/__init__.py`, add:
+In `src/nemo_oo_agents/__init__.py`, add:
 
 ```python
-from agent006.visibility import visible_to_agent  # noqa: E402
+from nemo_oo_agents.visibility import visible_to_agent  # noqa: E402
 ```
 
 And add to `__all__`:
@@ -464,22 +464,22 @@ And add to `__all__`:
 
 **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest tests/test_visibility.py::test_importable_from_agent006 -v`
+Run: `uv run pytest tests/test_visibility.py::test_importable_from_nemo_oo_agents -v`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/__init__.py tests/test_visibility.py
-git commit -m "feat: export visible_to_agent from agent006 package"
+git add src/nemo_oo_agents/__init__.py tests/test_visibility.py
+git commit -m "feat: export visible_to_agent from nemo_oo_agents package"
 ```
 
 ---
 
-### Task 5: Wire exec_globals construction to use `_agent006_visible_names`
+### Task 5: Wire exec_globals construction to use `_nemo_oo_agents_visible_names`
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:647-649`
+- Modify: `src/nemo_oo_agents/runtime/actor.py:647-649`
 - Test: `tests/runtime/test_exec_globals_visibility.py`
 
 **Step 1: Write the failing test**
@@ -490,11 +490,11 @@ git commit -m "feat: export visible_to_agent from agent006 package"
 import sys
 import types
 
-from agent006.runtime.actor import _build_module_exec_globals
+from nemo_oo_agents.runtime.actor import _build_module_exec_globals
 
 
 def test_no_visible_names_returns_empty():
-    """Module with no _agent006_visible_names → empty dict."""
+    """Module with no _nemo_oo_agents_visible_names → empty dict."""
     mod = types.ModuleType("mod_no_vta")
     mod.json = __import__("json")
     mod.os = __import__("os")
@@ -507,12 +507,12 @@ def test_no_visible_names_returns_empty():
 
 
 def test_visible_names_filters_module_dict():
-    """Only names in _agent006_visible_names are included."""
+    """Only names in _nemo_oo_agents_visible_names are included."""
     mod = types.ModuleType("mod_with_vta")
     mod.json = __import__("json")
     mod.os = __import__("os")
     mod.SECRET = "hidden"
-    mod._agent006_visible_names = {"json"}
+    mod._nemo_oo_agents_visible_names = {"json"}
     sys.modules["mod_with_vta"] = mod
 
     result = _build_module_exec_globals(mod)
@@ -529,7 +529,7 @@ def test_visible_names_includes_non_module_objects():
     mod.THRESHOLD = 0.5
     mod.json = __import__("json")
     mod._private = "hidden"
-    mod._agent006_visible_names = {"THRESHOLD", "json"}
+    mod._nemo_oo_agents_visible_names = {"THRESHOLD", "json"}
     sys.modules["mod_with_consts"] = mod
 
     result = _build_module_exec_globals(mod)
@@ -547,19 +547,19 @@ Expected: FAIL — `_build_module_exec_globals` doesn't exist
 
 **Step 3: Write the implementation**
 
-Extract the module-dict-to-exec_globals logic into a helper in `src/agent006/runtime/actor.py`:
+Extract the module-dict-to-exec_globals logic into a helper in `src/nemo_oo_agents/runtime/actor.py`:
 
 ```python
 def _build_module_exec_globals(agent_module: types.ModuleType | None) -> dict[str, Any]:
     """Build exec_globals from the agent module, respecting visible_to_agent.
 
-    If the module has `_agent006_visible_names` (set by visible_to_agent),
+    If the module has `_nemo_oo_agents_visible_names` (set by visible_to_agent),
     only those names are included. Otherwise returns empty dict (strict default).
     """
     if agent_module is None:
         return {}
 
-    visible_names = getattr(agent_module, "_agent006_visible_names", None)
+    visible_names = getattr(agent_module, "_nemo_oo_agents_visible_names", None)
 
     if visible_names is not None:
         return {
@@ -597,7 +597,7 @@ Expected: All PASS (stripping tests use `_strip_blocked_modules` directly, not t
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/runtime/actor.py tests/runtime/test_exec_globals_visibility.py
+git add src/nemo_oo_agents/runtime/actor.py tests/runtime/test_exec_globals_visibility.py
 git commit -m "feat: wire exec_globals to respect visible_to_agent allowlist"
 ```
 
@@ -618,7 +618,7 @@ Run: `uv run pytest tests/ -x --tb=short 2>&1 | head -80`
 **Step 2: For each failure, determine the fix**
 
 Two categories of fixes:
-1. **Test creates an agent and expects module imports in exec_globals** → add `_agent006_visible_names` to the test module, or use `visible_to_agent` in the test setup.
+1. **Test creates an agent and expects module imports in exec_globals** → add `_nemo_oo_agents_visible_names` to the test module, or use `visible_to_agent` in the test setup.
 2. **Test directly calls `execute_code` and provides its own exec_globals** → no change needed (these bypass module dict entirely).
 
 **Step 3: Apply fixes and re-run until green**
@@ -649,9 +649,9 @@ def test_end_to_end_visible_to_agent():
     import json
     import os
 
-    from agent006.runtime.actor import _build_module_exec_globals, _strip_blocked_modules
-    from agent006.runtime.restrictions import DEFAULT_BLOCKED_MODULES
-    from agent006.visibility import _VisibleToAgent
+    from nemo_oo_agents.runtime.actor import _build_module_exec_globals, _strip_blocked_modules
+    from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_MODULES
+    from nemo_oo_agents.visibility import _VisibleToAgent
 
     # Simulate a module with mixed imports
     mod = types.ModuleType("fake_e2e")

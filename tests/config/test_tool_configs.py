@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent006.config.tool_configs import BashConfig, WebSearchConfig
+from nemo_oo_agents.config.tool_configs import BashConfig, WebSearchConfig
 
 
 class TestBashConfig:

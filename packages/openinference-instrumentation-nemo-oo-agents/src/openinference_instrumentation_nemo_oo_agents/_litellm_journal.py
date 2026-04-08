@@ -12,7 +12,7 @@ not the full accumulated context window.
 Usage (handled automatically by ``enable_tracing()``)::
 
     import litellm
-    from openinference_instrumentation_agent006._litellm_journal import (
+    from openinference_instrumentation_nemo_oo_agents._litellm_journal import (
         MessageJournalCallback,
     )
     litellm.callbacks.append(MessageJournalCallback("http://localhost:5001"))
@@ -32,7 +32,7 @@ from typing import Any
 from litellm.integrations.custom_logger import CustomLogger
 from opentelemetry import trace as otel_trace
 
-from openinference_instrumentation_agent006._session import get_session
+from openinference_instrumentation_nemo_oo_agents._session import get_session
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ class MessageJournalCallback(CustomLogger):
         separately.  This reduces storage from O(N × |system|) to
         O(N × |delta|) for sessions with growing context blocks.
         """
-        from openinference_instrumentation_agent006._context_sideband import (
+        from openinference_instrumentation_nemo_oo_agents._context_sideband import (
             get_context_blocks,
             set_context_blocks,
         )

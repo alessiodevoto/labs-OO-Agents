@@ -9,7 +9,7 @@ description = "Evaluation pipeline for agent testing"
 requires-python = ">=3.12"
 dependencies = [
     "pyyaml>=6.0",
-    "agent006-viewer",
+    "nemo-oo-agents-viewer",
     "trace-explorer",
     "uvicorn[standard]>=0.20.0",
     "fastapi>=0.109.1",

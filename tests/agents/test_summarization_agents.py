@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent006 import Agent
-from agent006.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
-from agent006.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
-from agent006.events import AfterTurn, Message
+from nemo_oo_agents import Agent
+from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
+from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nemo_oo_agents.events import AfterTurn, Message
 from unifiedllm import FakeLLMClient, LLMResponse
 
 
@@ -555,7 +555,7 @@ class TestSummarizationAsyncIntegration:
         await summarizer._pending_task
 
         # Create before_turn event
-        from agent006.events import BeforeTurn
+        from nemo_oo_agents.events import BeforeTurn
 
         event = BeforeTurn(
             method_name="test",

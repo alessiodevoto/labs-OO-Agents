@@ -2,7 +2,7 @@
 
 ## Motivation
 
-agent006 currently has OpenTelemetry-based tracing that writes spans to local JSONL files. While this works well for individual development, three key capabilities are missing:
+nemo_oo_agents currently has OpenTelemetry-based tracing that writes spans to local JSONL files. While this works well for individual development, three key capabilities are missing:
 
 1. **Remote/Centralized Storage**: Teams need to share traces across developers and environments. Currently, traces are only stored locally.
 
@@ -10,7 +10,7 @@ agent006 currently has OpenTelemetry-based tracing that writes spans to local JS
 
 3. **Reproducibility Metadata**: Traces don't capture the code version (git commit) or environment that produced them, making it hard to reproduce issues or understand what changed.
 
-These gaps limit agent006's usefulness for:
+These gaps limit nemo_oo_agents's usefulness for:
 - Team collaboration on agent development
 - Building evaluation datasets from production traces
 - Debugging issues reported by users
@@ -33,7 +33,7 @@ After implementing this design:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        agent006 Runtime                          │
+│                        nemo_oo_agents Runtime                          │
 │                                                                  │
 │   enable_tracing()          enable_tracing_langfuse()           │
 │         │                            │                           │
@@ -108,7 +108,7 @@ Every trace automatically captures environment metadata for reproducibility:
 | `git.commit_full` | Full commit hash | `a1b2c3d4e5f6...` |
 | `git.dirty` | Uncommitted changes exist | `true` / `false` |
 | `git.branch` | Current branch name | `main`, `feature/foo` |
-| `agent006.version` | Framework version | `0.1.0` |
+| `nemo_oo_agents.version` | Framework version | `0.1.0` |
 | `python.version` | Python version | `3.12.0` |
 | `hostname` | Machine hostname | `dev-laptop` |
 
@@ -164,7 +164,7 @@ This metadata is attached as **OTel Resource Attributes**, meaning it appears on
 
 ### Annotation Schema
 
-The schema uses agent006 terminology while maintaining compatibility with Langfuse's score API.
+The schema uses nemo_oo_agents terminology while maintaining compatibility with Langfuse's score API.
 
 ```python
 class Annotation(BaseModel):
@@ -197,7 +197,7 @@ class Annotation(BaseModel):
 
 **Field Mapping to Langfuse:**
 
-| agent006 Field | Langfuse Field | Notes |
+| nemo_oo_agents Field | Langfuse Field | Notes |
 |----------------|----------------|-------|
 | `trace_id` | `traceId` | Direct mapping |
 | `span_id` | `observationId` | Langfuse term for sub-trace spans |
@@ -324,7 +324,7 @@ Annotated spans show visual indicators:
 ### Local Development (Default)
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing
+from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
 # Zero config - traces go to ./traces/
 enable_tracing()
@@ -348,7 +348,7 @@ export LANGFUSE_SECRET_KEY=sk-...
 ```
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing_langfuse
+from openinference_instrumentation_nemo_oo_agents import enable_tracing_langfuse
 
 enable_tracing_langfuse(project_name="my-agent")
 ```
@@ -367,12 +367,12 @@ Configure trace-viewer to read from Langfuse:
 
 | Phase | Task | Files |
 |-------|------|-------|
-| 1 | Add git/env metadata capture to tracing | `packages/openinference-instrumentation-agent006/` |
+| 1 | Add git/env metadata capture to tracing | `packages/openinference-instrumentation-nemo-oo-agents/` |
 | 2 | Add Annotation model | `util/trace-viewer/backend/models.py` |
 | 3 | Create TraceProvider interface + LocalProvider | `util/trace-viewer/backend/providers.py` |
 | 4 | Add annotation API endpoints | `util/trace-viewer/backend/main.py` |
 | 5 | Implement LangfuseProvider | `util/trace-viewer/backend/providers.py` |
-| 6 | Add `enable_tracing_langfuse()` | `packages/openinference-instrumentation-agent006/` |
+| 6 | Add `enable_tracing_langfuse()` | `packages/openinference-instrumentation-nemo-oo-agents/` |
 | 7 | Frontend: display trace metadata (commit, dirty) | `util/trace-viewer/frontend/js/` |
 | 8 | Frontend: keyboard shortcut + annotation form | `util/trace-viewer/frontend/js/` |
 | 9 | Frontend: annotation indicators on spans | `util/trace-viewer/frontend/js/`, `css/` |
@@ -465,7 +465,7 @@ class Annotation(BaseModel):
 When syncing to Langfuse, prefix the comment with `[target]`:
 
 ```python
-# agent006 storage
+# nemo_oo_agents storage
 Annotation(span_id="abc123", target="prompt", comment="Clear and specific")
 
 # When syncing to Langfuse
@@ -485,7 +485,7 @@ Use Langfuse's `metadata` field (available as of 2025):
 langfuse.create_score(
     observation_id="abc123",
     comment="Clear and specific",
-    metadata={"agent006_target": "prompt"}  # Target in metadata
+    metadata={"nemo_oo_agents_target": "prompt"}  # Target in metadata
 )
 ```
 
@@ -699,7 +699,7 @@ class LangfuseProvider:
         # Build metadata with target
         metadata = {}
         if annotation.target:
-            metadata['agent006_target'] = annotation.target
+            metadata['nemo_oo_agents_target'] = annotation.target
 
         # Create score in Langfuse
         self.client.create_score(
@@ -722,7 +722,7 @@ class LangfuseProvider:
         annotations = []
         for score in scores:
             # Extract target from metadata
-            target = score.metadata.get('agent006_target') if score.metadata else None
+            target = score.metadata.get('nemo_oo_agents_target') if score.metadata else None
 
             annotations.append(Annotation(
                 id=score.id,

@@ -1,7 +1,7 @@
 # Evaluation Framework Trade-Off Analysis
 
 **Date**: 2025-12-12
-**Purpose**: Evaluate open-source alternatives to current agent006 evaluation infrastructure
+**Purpose**: Evaluate open-source alternatives to current nemo_oo_agents evaluation infrastructure
 
 ## Executive Summary
 
@@ -337,7 +337,7 @@ Our current evaluation infrastructure has reliability issues. This analysis comp
 - Alert capabilities
 
 ### For Quick Migration: Hybrid Approach
-Keep agent006 for test definitions, integrate DeepEval metrics:
+Keep nemo_oo_agents for test definitions, integrate DeepEval metrics:
 - Use existing .006eval.jsonl format
 - Add DeepEval metrics as evaluators
 - Gradual migration path
@@ -378,7 +378,7 @@ Keep agent006 for test definitions, integrate DeepEval metrics:
 
 ### Option 2: Hybrid Approach (⭐ Lower Risk)
 
-**Strategy**: Keep agent006 test definitions, integrate DeepEval metrics
+**Strategy**: Keep nemo_oo_agents test definitions, integrate DeepEval metrics
 
 **Pros**:
 - Gradual migration
@@ -403,7 +403,7 @@ Keep agent006 for test definitions, integrate DeepEval metrics:
 
 ### Option 3: Add Arize Phoenix for Production
 
-**Strategy**: Keep agent006 for testing, add Phoenix for production monitoring
+**Strategy**: Keep nemo_oo_agents for testing, add Phoenix for production monitoring
 
 **Pros**:
 - Separate concerns (testing vs monitoring)
@@ -429,7 +429,7 @@ Keep agent006 for test definitions, integrate DeepEval metrics:
 
 ### Option 4: Fix Current System
 
-**Strategy**: Debug and fix agent006 evaluation infrastructure
+**Strategy**: Debug and fix nemo_oo_agents evaluation infrastructure
 
 **Pros**:
 - No migration needed

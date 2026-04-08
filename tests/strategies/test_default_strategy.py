@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent006 import (
+from nemo_oo_agents import (
     Agent,
     CodeActStrategy,
     PurePythonStrategy,
@@ -21,7 +21,7 @@ from agent006 import (
     get_default_strategy,
     set_default_strategy,
 )
-from agent006.config import CodeActConfig
+from nemo_oo_agents.config import CodeActConfig
 
 
 class TestGetDefaultStrategy:

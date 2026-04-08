@@ -35,8 +35,8 @@ import json
 import nat_nexus
 from pydantic import BaseModel
 
-from agent006.nexus_middleware import nexus_scope
-from agent006.util.quickstart import *
+from nemo_oo_agents.nexus_middleware import nexus_scope
+from nemo_oo_agents.util.quickstart import *
 
 # ---------------------------------------------------------------------------
 # Agent definitions

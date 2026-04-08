@@ -11,7 +11,7 @@ These tests complement test_execute_code.py with specific REPL-style behavior te
 
 import pytest
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM

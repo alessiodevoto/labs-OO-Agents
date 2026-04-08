@@ -141,8 +141,8 @@ Complex/Other         35.3% (159 tasks)
 ## File Locations
 
 ### Analysis Results
-- **This directory**: `/Users/rcabral/agent006/docs/`
-- **Raw data**: `/Users/rcabral/agent006/experiments/dabstep-analysis/`
+- **This directory**: `/Users/rcabral/nemo_oo_agents/docs/`
+- **Raw data**: `/Users/rcabral/nemo_oo_agents/experiments/dabstep-analysis/`
   - `dabstep_full_450_tasks.json` - All 450 task details
   - `dabstep_statistics.json` - Statistical summary
   - `analyze_*.py` - Analysis scripts
@@ -152,7 +152,7 @@ Complex/Other         35.3% (159 tasks)
   - `payments.csv`, `fees.json`, `manual.md`, etc.
 
 ### Implementation
-- **Adapter**: `/Users/rcabral/agent006/evaluation/adapters/dabstep.py`
+- **Adapter**: `/Users/rcabral/nemo_oo_agents/evaluation/adapters/dabstep.py`
 
 ---
 

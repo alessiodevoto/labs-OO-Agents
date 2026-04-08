@@ -284,7 +284,7 @@ class EvaluationRunner:
 ### Layer 3: Adapters Are Oblivious
 
 ```python
-# evaluation/adapters/agent006_adapter.py
+# evaluation/adapters/nemo_oo_agents_adapter.py
 
 class Agent006Adapter(ExecutionAdapter):
     """Adapter has NO KNOWLEDGE of checkpointing!"""
@@ -422,17 +422,17 @@ python -m eval_pipeline --config config.yaml --resume
 
 ```bash
 # First run
-python run_ablation.py --config agent006 --benchmark bfcl --limit 1000
+python run_ablation.py --config nemo_oo_agents --benchmark bfcl --limit 1000
 
 # Crashes after 500 tasks, checkpoint saved to:
-# experiments/results/agent006_bfcl.checkpoint.json
+# experiments/results/nemo_oo_agents_bfcl.checkpoint.json
 
 # Resume
 python run_ablation.py \
-  --config agent006 \
+  --config nemo_oo_agents \
   --benchmark bfcl \
   --limit 1000 \
-  --resume-from experiments/results/agent006_bfcl.checkpoint.json
+  --resume-from experiments/results/nemo_oo_agents_bfcl.checkpoint.json
 ```
 
 ### Programmatic API
@@ -519,8 +519,8 @@ def _load_checkpoint(self, checkpoint_path):
 ```python
 # Top-level checkpoint: which (config, benchmark) pairs completed
 ablation_checkpoint = {
-  "agent006_bfcl": {"completed": True, "pass_rate": 0.85},
-  "agent006_livecodebench": {"completed": False, "error": "..."},
+  "nemo_oo_agents_bfcl": {"completed": True, "pass_rate": 0.85},
+  "nemo_oo_agents_livecodebench": {"completed": False, "error": "..."},
   "react_agent_bfcl": {"completed": True, "pass_rate": 0.72},
 }
 

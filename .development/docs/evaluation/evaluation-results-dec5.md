@@ -114,14 +114,14 @@ Example trace IDs from BFCL:
 ## Files Generated
 
 ### Result Directories (8 runs)
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112716/` - BFCL
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112736/` - LiveCodeBench
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112757/` - InterCode SQL
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112818/` - BigCodeBench
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112910/` - TAU-Bench
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112923/` - DABStep
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_112937/` - GAIA
-- `/home/rcabral/agent006/experiments/evaluation-ablations/results/20251205_113008/` - SWE-bench
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112716/` - BFCL
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112736/` - LiveCodeBench
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112757/` - InterCode SQL
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112818/` - BigCodeBench
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112910/` - TAU-Bench
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112923/` - DABStep
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_112937/` - GAIA
+- `/home/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20251205_113008/` - SWE-bench
 
 Each directory contains:
 - `baseline_oneshot_{benchmark}.json` - Full results

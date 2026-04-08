@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent006.config.tool_configs import BashConfig
+    from nemo_oo_agents.config.tool_configs import BashConfig
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class BashTool:
             working_dir: Directory to run commands in (per-instance, not in config)
             config: BashConfig instance. Use BashConfig(field=value) to override defaults.
         """
-        from agent006.config.tool_configs import BashConfig as _BC
+        from nemo_oo_agents.config.tool_configs import BashConfig as _BC
 
         self.working_dir = Path(working_dir).resolve()
         self.config = config or _BC()

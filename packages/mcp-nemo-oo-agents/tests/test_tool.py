@@ -1,4 +1,4 @@
-"""Tests for mcp_agent006.tool.MCPTool interface.
+"""Tests for mcp_nemo_oo_agents.tool.MCPTool interface.
 
 Contract-focused: assert public interface (construction, factory method,
 generated methods delegate) without depending on implementation details.
@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from mcp_agent006.tool import MCPTool, MCPToolSpec, _make_dynamic_class
+from mcp_nemo_oo_agents.tool import MCPTool, MCPToolSpec, _make_dynamic_class
 
 # ============================================================================
 # Helper Functions

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class TraceEvent(BaseModel):
-    """A single trace event in agent006 format (OTel-compatible)."""
+    """A single trace event in nemo_oo_agents format (OTel-compatible)."""
 
     model_config = {"extra": "allow"}
 

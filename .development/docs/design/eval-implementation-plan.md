@@ -154,7 +154,7 @@ class EvaluationRunner:
 
 ### Layer 3: Execution Adapters
 **Files**:
-- `evaluation/adapters/agent006_adapter.py` ⏳ TODO
+- `evaluation/adapters/nemo_oo_agents_adapter.py` ⏳ TODO
 - `evaluation/adapters/benchmark_adapter.py` ⏳ TODO
 
 **Responsibilities**:
@@ -372,7 +372,7 @@ class AggregateUsageStats:
 
 ### Phase 2: Adapters
 
-5. ⏳ **Agent006Adapter** - `evaluation/adapters/agent006_adapter.py`
+5. ⏳ **Agent006Adapter** - `evaluation/adapters/nemo_oo_agents_adapter.py`
    - Execute agent methods
    - Set up OTel tracing per task
    - Return trace file path in result
@@ -416,7 +416,7 @@ class AggregateUsageStats:
 ## Benefits Summary
 
 ### From Clean Architecture
-✅ Zero agent006 leakage into runner
+✅ Zero nemo_oo_agents leakage into runner
 ✅ Reusable concurrency engine (Layer 0)
 ✅ Protocol-based adapters (flexible)
 ✅ Generic checkpoint/resume
@@ -457,7 +457,7 @@ class AggregateUsageStats:
 - `evaluation/protocol.py` (protocols + dataclasses)
 - `evaluation/trace_analyzer.py` (analyze OTel traces)
 - `evaluation/runner.py` (orchestration)
-- `evaluation/adapters/agent006_adapter.py` (agent execution)
+- `evaluation/adapters/nemo_oo_agents_adapter.py` (agent execution)
 - `evaluation/adapters/benchmark_adapter.py` (benchmark execution)
 - `evaluation/writers/jsonl_writer.py` (JSONL output)
 
@@ -475,7 +475,7 @@ class AggregateUsageStats:
 
 ## Success Criteria
 
-1. ✅ Clean architecture - no agent006 leakage into Layer 0-2
+1. ✅ Clean architecture - no nemo_oo_agents leakage into Layer 0-2
 2. ✅ Both frontends work - eval_pipeline and run_ablation CLI
 3. ✅ Backward compatible - existing tests pass
 4. ✅ Rich statistics - usage_stats.json with per-model breakdown

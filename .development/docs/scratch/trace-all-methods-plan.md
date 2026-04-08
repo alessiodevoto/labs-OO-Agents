@@ -17,7 +17,7 @@ When a class sets `_enable_tracing = True`:
 
 ## Implementation Changes
 
-### File: `src/agent006/metaclass.py`
+### File: `src/nemo_oo_agents/metaclass.py`
 
 #### Change 1: Update wrapping condition (lines 164-168)
 

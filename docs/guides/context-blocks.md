@@ -1,4 +1,4 @@
-# Context Blocks in agent006
+# Context Blocks in nemo_oo_agents
 
 ## The Model
 
@@ -47,5 +47,5 @@ Context blocks are **per-agent-instance**. They are NOT shared across agents. Ea
 
 ## Further Reading
 
-- `.development/docs/design/agent006-context-blocks-explainer.md` — Core philosophy and Block model
+- `.development/docs/design/nemo_oo_agents-context-blocks-explainer.md` — Core philosophy and Block model
 - `.development/docs/design/context-blocks-architecture.md` — Three concerns: content, format, assembly

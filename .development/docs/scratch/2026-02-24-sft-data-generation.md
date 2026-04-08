@@ -15,7 +15,7 @@
 ### Working directory
 All work happens in the worktree:
 ```
-/localhome/local-rcabral/agent006/.worktrees/sft-data-generation/
+/localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation/
 ```
 
 ### Key files to understand first
@@ -44,7 +44,7 @@ These contain:
 - `start_time` → ISO timestamp string or float (for ordering spans)
 
 ### What the eval result JSON looks like
-After a run, `agent006_dabstep.006eval.json` contains a list of task results. Each has:
+After a run, `nemo_oo_agents_dabstep.006eval.json` contains a list of task results. Each has:
 - `task_id` — the DABStep task ID (e.g., `"1"`, `"2"`, ...)
 - `answer` or `response` — what the agent returned
 - `trace_file` — absolute or relative path to the `.006trace.jsonl` for this task
@@ -84,7 +84,7 @@ Before writing any code, look at what the actual eval result JSON contains so th
 **Step 1: Find how results are saved**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 grep -n "006eval\|trace_file\|task_id\|results\[" experiments/evaluation-ablations/run_ablation.py | head -40
 ```
 
@@ -148,9 +148,9 @@ grep -n "CompletionClient\|from unifiedllm\|import.*Client" \
 cat > /tmp/test_deepseek_client.py << 'EOF'
 import os
 import sys
-sys.path.insert(0, '/localhome/local-rcabral/agent006/.worktrees/sft-data-generation')
+sys.path.insert(0, '/localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation')
 from dotenv import load_dotenv
-load_dotenv('/localhome/local-rcabral/agent006/.env')
+load_dotenv('/localhome/local-rcabral/nemo_oo_agents/.env')
 
 from unifiedllm import CompletionClient
 
@@ -164,7 +164,7 @@ client = CompletionClient(
 print(f"Client created: {client}")
 print("PASS: CompletionClient for DeepSeek V3.2 created successfully")
 EOF
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation && source .venv/bin/activate && python3 /tmp/test_deepseek_client.py
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation && source .venv/bin/activate && python3 /tmp/test_deepseek_client.py
 ```
 
 **Step 3: Add a default_llm factory function to opt63 (evaluation-ablations version)**
@@ -202,7 +202,7 @@ Same change in:
 **Step 5: Verify the agent can be imported without error**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 python3 -c "
 import sys
@@ -218,7 +218,7 @@ Expected: prints `Import OK` and the LLM config.
 **Step 6: Commit**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 git add experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt63.py
 git add util/e2e_optimization/src/e2e_optimization/examples/dabstep/agents/agent_opt63.py
 git commit -m "feat: set DeepSeek V3.2 as default model for opt63 (SFT data generation)"
@@ -253,7 +253,7 @@ mkdir -p experiments/evaluation-ablations/results/dabstep/opt63_deepseek_fullrun
 **Step 3: Launch the full run in background**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 
 nohup python experiments/evaluation-ablations/run_ablation.py \
@@ -303,7 +303,7 @@ We do this BEFORE the run finishes so it's ready to go.
 
 Usage:
     python build_sft_dataset.py \
-        --eval-json results/dabstep/opt63_deepseek_fullrun/agent006_dabstep.006eval.json \
+        --eval-json results/dabstep/opt63_deepseek_fullrun/nemo_oo_agents_dabstep.006eval.json \
         --solutions dabstep-full-solutions.jsonl \
         --traces-dir results/dabstep/opt63_deepseek_fullrun/traces/ \
         --output dabstep_sft_deepseek_v3.2_20260224.jsonl
@@ -617,7 +617,7 @@ def _run_selftest():
 **Step 3: Run the self-test**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 python experiments/evaluation-ablations/build_sft_dataset.py --selftest
 ```
@@ -636,7 +636,7 @@ or may not be done — the script should work on whatever tasks are available.
 **Step 1: Inspect the actual eval JSON from a previous run to confirm the format**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 python3 -c "
 import json
 # Look at an existing eval result
@@ -814,7 +814,7 @@ if __name__ == "__main__":
 **Step 3: Run self-test again to make sure nothing broke**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 python experiments/evaluation-ablations/build_sft_dataset.py --selftest
 ```
@@ -822,7 +822,7 @@ python experiments/evaluation-ablations/build_sft_dataset.py --selftest
 **Step 4: Commit**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 git add experiments/evaluation-ablations/build_sft_dataset.py
 git commit -m "feat: add build_sft_dataset.py for NeMo RL SFT data generation
 
@@ -841,14 +841,14 @@ traces from a PREVIOUS run (not the new full run).
 **Step 1: Find a previous run with trace files**
 
 ```bash
-find /localhome/local-rcabral/agent006/util/e2e_optimization/src/e2e_optimization/examples/dabstep/results \
+find /localhome/local-rcabral/nemo_oo_agents/util/e2e_optimization/src/e2e_optimization/examples/dabstep/results \
   -name "*.006trace.jsonl" | head -5
 ```
 
 **Step 2: Run the converter on a single trace file directly**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 python3 -c "
 import json
@@ -903,12 +903,12 @@ ls experiments/evaluation-ablations/results/dabstep/opt63_deepseek_fullrun/trace
 **Step 2: Once eval JSON is available, run the converter**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 source .venv/bin/activate
 
 TODAY=$(date +%Y%m%d)
 python experiments/evaluation-ablations/build_sft_dataset.py \
-  --eval-json experiments/evaluation-ablations/results/dabstep/opt63_deepseek_fullrun/agent006_dabstep.006eval.json \
+  --eval-json experiments/evaluation-ablations/results/dabstep/opt63_deepseek_fullrun/nemo_oo_agents_dabstep.006eval.json \
   --solutions experiments/evaluation-ablations/dabstep-full-solutions.jsonl \
   --traces-dir experiments/evaluation-ablations/results/dabstep/opt63_deepseek_fullrun/traces/ \
   --output experiments/evaluation-ablations/dabstep_sft_deepseek_v3.2_${TODAY}.jsonl
@@ -918,7 +918,7 @@ Expected output (rough):
 ```
 Loading solutions from: .../dabstep-full-solutions.jsonl
   450 ground-truth answers loaded
-Loading eval results from: .../agent006_dabstep.006eval.json
+Loading eval results from: .../nemo_oo_agents_dabstep.006eval.json
   450 task results loaded
 
 Results:
@@ -977,7 +977,7 @@ print(f'Tools present: {sum(1 for r in records if \"tools\" in r)} / {len(record
 **Step 4: Commit the final script (if any changes from dry-run)**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 git add experiments/evaluation-ablations/build_sft_dataset.py
 git commit -m "fix: finalize build_sft_dataset.py after dry-run validation" || echo "nothing to commit"
 ```
@@ -1013,7 +1013,7 @@ python run_ablation.py \
 
 # 2. Build SFT dataset from correct traces
 python build_sft_dataset.py \
-  --eval-json results/dabstep/opt63_deepseek_fullrun/agent006_dabstep.006eval.json \
+  --eval-json results/dabstep/opt63_deepseek_fullrun/nemo_oo_agents_dabstep.006eval.json \
   --solutions dabstep-full-solutions.jsonl \
   --output dabstep_sft_deepseek_v3.2_YYYYMMDD.jsonl
 ```
@@ -1026,7 +1026,7 @@ EOF
 **Step 2: Final commit and push**
 
 ```bash
-cd /localhome/local-rcabral/agent006/.worktrees/sft-data-generation
+cd /localhome/local-rcabral/nemo_oo_agents/.worktrees/sft-data-generation
 git add -A
 git status
 git commit -m "docs: add SFT generation instructions to evaluation-ablations README" || echo "nothing to commit"

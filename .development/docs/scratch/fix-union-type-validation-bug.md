@@ -2,7 +2,7 @@
 
 ## Problem
 
-The `ReturnValueValidator._is_instance_of()` method in `src/agent006/strategies/generated_code.py` does not correctly handle Python 3.10+ union types (`int | float`).
+The `ReturnValueValidator._is_instance_of()` method in `src/nemo_oo_agents/strategies/generated_code.py` does not correctly handle Python 3.10+ union types (`int | float`).
 
 When a method has return type `list[int | float]` and returns `[4, 5, 6]` (a list of integers), the validator incorrectly rejects it with:
 
@@ -36,7 +36,7 @@ The code doesn't handle union types specially - it just checks if the value is a
 
 Update `_is_instance_of()` to detect union types and check if the value matches ANY member:
 
-**File:** `src/agent006/strategies/generated_code.py`
+**File:** `src/nemo_oo_agents/strategies/generated_code.py`
 
 **Before:**
 ```python

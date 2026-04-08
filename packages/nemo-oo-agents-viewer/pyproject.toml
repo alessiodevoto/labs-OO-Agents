@@ -1,7 +1,7 @@
 [project]
-name = "agent006-viewer"
+name = "nemo-oo-agents-viewer"
 version = "0.1.0"
-description = "Unified trace and evaluation viewer for agent006"
+description = "Unified trace and evaluation viewer for nemo_oo_agents"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.100.0",
@@ -25,7 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent006_viewer"]
+packages = ["src/nemo_oo_agents_viewer"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"frontend-react/dist" = "agent006_viewer/frontend"
+"frontend-react/dist" = "nemo_oo_agents_viewer/frontend"

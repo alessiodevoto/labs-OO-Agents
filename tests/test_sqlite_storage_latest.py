@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from agent006 import Agent
-from agent006.storage import SQLiteStorageManager
+from nemo_oo_agents import Agent
+from nemo_oo_agents.storage import SQLiteStorageManager
 from unifiedllm import CompletionClient
 
 

@@ -2,8 +2,8 @@
 
 from typing import Annotated, Literal
 
-from agent006 import Agent
-from agent006.tools.method_writing_lib import MethodWriting
+from nemo_oo_agents import Agent
+from nemo_oo_agents.tools.method_writing_lib import MethodWriting
 
 
 class SentimentBatchAgent(Agent):

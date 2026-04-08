@@ -4,7 +4,7 @@
 
 When an agent module uses `from __future__ import annotations` (PEP 563), all annotations become lazy strings at runtime. `inspect.signature(method).return_annotation` returns the string `"CSVResult"` instead of the actual type object. When this string reaches `pydantic.create_model(result=(return_type, ...))`, Pydantic cannot resolve it and raises a `PydanticUserError`.
 
-Affected location: `src/agent006/strategies/codeact.py`, lines 539–541 (`execute()` method).
+Affected location: `src/nemo_oo_agents/strategies/codeact.py`, lines 539–541 (`execute()` method).
 
 ## Root Cause
 
@@ -44,12 +44,12 @@ Key points:
 
 | File | Change |
 |------|--------|
-| `src/agent006/strategies/codeact.py` | Replace `inspect.signature` + `return_annotation` with `get_type_hints` in `execute()` |
-| `src/agent006/strategies/predict.py` | Same fix in `PredictStrategy.execute()` |
-| `src/agent006/strategies/current_call.py` | Same fix in `CurrentCall.from_method()` |
-| `src/agent006/strategies/generated_code.py` | Same fix in `ReturnValueValidator.validate()` |
-| `src/agent006/runtime/actor.py` | Same fix in actor dispatch return-type extraction |
-| `src/agent006/strategies/pure_python.py` | Same fix in `PurePythonStrategy._is_task_complete()` |
+| `src/nemo_oo_agents/strategies/codeact.py` | Replace `inspect.signature` + `return_annotation` with `get_type_hints` in `execute()` |
+| `src/nemo_oo_agents/strategies/predict.py` | Same fix in `PredictStrategy.execute()` |
+| `src/nemo_oo_agents/strategies/current_call.py` | Same fix in `CurrentCall.from_method()` |
+| `src/nemo_oo_agents/strategies/generated_code.py` | Same fix in `ReturnValueValidator.validate()` |
+| `src/nemo_oo_agents/runtime/actor.py` | Same fix in actor dispatch return-type extraction |
+| `src/nemo_oo_agents/strategies/pure_python.py` | Same fix in `PurePythonStrategy._is_task_complete()` |
 | `tests/strategies/test_codeact_future_annotations.py` | New test file with 18 PEP 563 tests (unit + end-to-end + fallback) |
 
 ## Test Strategy

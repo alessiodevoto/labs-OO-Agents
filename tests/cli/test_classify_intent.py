@@ -2,12 +2,12 @@
 
 import inspect
 
-from agent006_cli.tui.models import Intent
+from nemo_oo_agents_cli.tui.models import Intent
 
 
 def test_classify_intent_returns_intent():
     """classify_intent should return an Intent with valid task_type."""
-    from agent006_cli.tui.agent import TUIAgent
+    from nemo_oo_agents_cli.tui.agent import TUIAgent
 
     method = getattr(TUIAgent, "classify_intent", None)
     assert method is not None, "TUIAgent must have classify_intent method"

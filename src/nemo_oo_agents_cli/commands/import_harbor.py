@@ -6,9 +6,9 @@ traces under ``artifacts/traces/*.jsonl``, enriches them with Harbor metadata
 the viewer.
 
 Usage:
-    agent006 import-harbor ./jobs/my-job/
-    agent006 import-harbor ./workspaces/ --endpoint http://host:5001
-    agent006 import-harbor ./jobs/ --experiment my-eval --batch-id run-42
+    nemo_oo_agents import-harbor ./jobs/my-job/
+    nemo_oo_agents import-harbor ./workspaces/ --endpoint http://host:5001
+    nemo_oo_agents import-harbor ./jobs/ --experiment my-eval --batch-id run-42
 """
 
 import json
@@ -135,9 +135,9 @@ def command(path: str, endpoint: str, experiment: str | None, batch_id: str | No
 
     \b
     Examples:
-        agent006 import-harbor ./jobs/my-job/
-        agent006 import-harbor ./workspaces/ --endpoint http://host:5001
-        agent006 import-harbor ./jobs/ --experiment my-eval
+        nemo_oo_agents import-harbor ./jobs/my-job/
+        nemo_oo_agents import-harbor ./workspaces/ --endpoint http://host:5001
+        nemo_oo_agents import-harbor ./jobs/ --experiment my-eval
     """
     root = Path(path)
     files = _find_harbor_traces(root)

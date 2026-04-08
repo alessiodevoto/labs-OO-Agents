@@ -5,7 +5,7 @@ This module is importable by subprocess workers (unlike test files).
 
 
 class DummyAgent:
-    """Plain Python agent for testing — no LLM, no agent006."""
+    """Plain Python agent for testing — no LLM, no nemo_oo_agents."""
 
     def __init__(self, llm=None):
         pass

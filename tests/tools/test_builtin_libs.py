@@ -1,9 +1,9 @@
 import inspect
 
-from agent006.runtime.context import ContextApi
-from agent006.runtime.events import EventsApi
-from agent006.skill import Skill
-from agent006.tools.method_writing_lib import MethodWriting
+from nemo_oo_agents.runtime.context import ContextApi
+from nemo_oo_agents.runtime.events import EventsApi
+from nemo_oo_agents.skill import Skill
+from nemo_oo_agents.tools.method_writing_lib import MethodWriting
 
 
 def _check_library_docstring(cls):
@@ -38,21 +38,21 @@ def test_builtin_libs_are_skills():
 
 
 def test_codeact_strategy_instructions_no_longer_has_decomposition():
-    from agent006.strategies.codeact import CodeActStrategy
+    from nemo_oo_agents.strategies.codeact import CodeActStrategy
 
     src = inspect.getsource(CodeActStrategy.strategy_instructions)
     assert "Task decomposition" not in src
 
 
 def test_context_api_not_in_framework_blocks():
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     assert "context_api" not in Agent._framework_blocks
     assert "events_api" not in Agent._framework_blocks
 
 
 def test_codeact_block_order_no_api_keys():
-    from agent006.strategies.codeact import CodeActStrategy
+    from nemo_oo_agents.strategies.codeact import CodeActStrategy
 
     strategy = CodeActStrategy.__new__(CodeActStrategy)
     order = strategy.get_block_order() or []

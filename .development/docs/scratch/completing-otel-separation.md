@@ -8,8 +8,8 @@ Completes Phase 4 of [phase-1-opentelemetry.md](methodic006/phase-1-opentelemetr
 
 ## Files Changed
 
-**Created:** `packages/openinference-instrumentation-agent006/` (726 lines)
-**Deleted:** `src/agent006/runtime/otel_hooks.py` (958 lines)
+**Created:** `packages/openinference-instrumentation-nemo-oo-agents/` (726 lines)
+**Deleted:** `src/nemo_oo_agents/runtime/otel_hooks.py` (958 lines)
 **Modified:** 13 files (core, examples, utils, docs)
 **Net:** -232 lines
 
@@ -38,14 +38,14 @@ provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(...)))  # Phoeni
 
 **Import change (all tracing code):**
 ```python
-- from agent006.runtime import enable_tracing
-+ from openinference_instrumentation_agent006 import enable_tracing
+- from nemo_oo_agents.runtime import enable_tracing
++ from openinference_instrumentation_nemo_oo_agents import enable_tracing
 ```
 
 **Access current exporter:**
 ```python
-- from agent006.runtime.otel_hooks import _exporter
-+ from openinference_instrumentation_agent006 import get_current_exporter
+- from nemo_oo_agents.runtime.otel_hooks import _exporter
++ from openinference_instrumentation_nemo_oo_agents import get_current_exporter
 + exporter = get_current_exporter()
 ```
 
@@ -53,9 +53,9 @@ provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(...)))  # Phoeni
 
 **Quick start (most common):**
 ```python
-from openinference_instrumentation_agent006 import enable_tracing
+from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
-exporter = enable_tracing()  # Auto-instruments agent006 + litellm
+exporter = enable_tracing()  # Auto-instruments nemo_oo_agents + litellm
 ```
 
 **Manual setup (multi-destination):**

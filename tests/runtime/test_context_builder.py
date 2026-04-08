@@ -35,7 +35,7 @@ async def _identity_resolve(key: str, value: str | DynamicContext) -> str:
 
 def _make_context_manager(blocks: dict[str, Any] | None = None) -> Any:
     """Create a minimal ContextManager object for testing."""
-    from agent006.runtime.context_manager import ContextManager
+    from nemo_oo_agents.runtime.context_manager import ContextManager
 
     cm = ContextManager(protected_keys=set())
     if blocks:
@@ -64,7 +64,7 @@ class TestApplyOverrides:
 
     @pytest.mark.asyncio
     async def test_static_override_appends(self):
-        from agent006.runtime.context_builder import _apply_overrides
+        from nemo_oo_agents.runtime.context_builder import _apply_overrides
 
         blocks = [_block("a")]
         result = await _apply_overrides(
@@ -76,7 +76,7 @@ class TestApplyOverrides:
 
     @pytest.mark.asyncio
     async def test_dynamic_override_uses_expr(self):
-        from agent006.runtime.context_builder import _apply_overrides
+        from nemo_oo_agents.runtime.context_builder import _apply_overrides
 
         blocks = [_block("a")]
         result = await _apply_overrides(
@@ -89,7 +89,7 @@ class TestApplyOverrides:
 
     @pytest.mark.asyncio
     async def test_none_removes(self):
-        from agent006.runtime.context_builder import _apply_overrides
+        from nemo_oo_agents.runtime.context_builder import _apply_overrides
 
         blocks = [_block("a"), _block("b")]
         result = await _apply_overrides(
@@ -99,7 +99,7 @@ class TestApplyOverrides:
 
     @pytest.mark.asyncio
     async def test_replaces_existing_key(self):
-        from agent006.runtime.context_builder import _apply_overrides
+        from nemo_oo_agents.runtime.context_builder import _apply_overrides
 
         blocks = [_block("a", "old")]
         result = await _apply_overrides(
@@ -110,7 +110,7 @@ class TestApplyOverrides:
 
     @pytest.mark.asyncio
     async def test_does_not_mutate_input(self):
-        from agent006.runtime.context_builder import _apply_overrides
+        from nemo_oo_agents.runtime.context_builder import _apply_overrides
 
         original = [_block("a")]
         original_copy = list(original)
@@ -125,7 +125,7 @@ class TestApplyOverrides:
 
 class TestBuildResult:
     def test_stores_blocks_and_cache(self):
-        from agent006.runtime.context_builder import BuildResult
+        from nemo_oo_agents.runtime.context_builder import BuildResult
 
         blocks = [_block("a")]
         cache = {"x": "resolved_x"}
@@ -142,7 +142,7 @@ class TestBuildResult:
 
 def _get_framework_blocks() -> dict:
     """Get framework blocks from Agent class for tests that need them."""
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     return Agent._framework_blocks
 
@@ -152,7 +152,7 @@ class TestPhaseFrameworkBlocks:
 
     @pytest.mark.asyncio
     async def test_adds_framework_blocks(self):
-        from agent006.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
 
         result = await _phase_framework_blocks(
             [], _get_framework_blocks(), resolve_fn=_identity_resolve
@@ -165,7 +165,7 @@ class TestPhaseFrameworkBlocks:
     @pytest.mark.asyncio
     async def test_empty_resolved_content_still_renders(self):
         """Empty string is valid content — blocks are included (only None skips)."""
-        from agent006.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
 
         async def empty_resolve(key: str, value: str | DynamicContext) -> str:
             return ""
@@ -180,7 +180,7 @@ class TestPhaseFrameworkBlocks:
     @pytest.mark.asyncio
     async def test_none_resolved_content_skips(self):
         """None from resolve_fn means 'not applicable' — block is skipped."""
-        from agent006.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
 
         async def none_resolve(key: str, value: str | DynamicContext) -> str | None:
             return None
@@ -190,7 +190,7 @@ class TestPhaseFrameworkBlocks:
 
     @pytest.mark.asyncio
     async def test_does_not_mutate_input(self):
-        from agent006.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
 
         original: list[ResolvedBlock] = []
         await _phase_framework_blocks(
@@ -207,7 +207,7 @@ class TestPhaseFrameworkBlocks:
 class TestPhasePersistentBlocks:
     @pytest.mark.asyncio
     async def test_adds_static_blocks(self):
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         cm = _make_context_manager({"notes": "My notes"})
         blocks, cache = await _phase_persistent_blocks([], cm, _identity_resolve)
@@ -220,7 +220,7 @@ class TestPhasePersistentBlocks:
 
     @pytest.mark.asyncio
     async def test_adds_dynamic_blocks(self):
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         cm = _make_context_manager({"status": DynamicContext("self.get_status()")})
         blocks, cache = await _phase_persistent_blocks([], cm, _identity_resolve)
@@ -232,7 +232,7 @@ class TestPhasePersistentBlocks:
 
     @pytest.mark.asyncio
     async def test_pprints_non_string_values(self):
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         cm = _make_context_manager({"data": {"key": "value"}})
         blocks, cache = await _phase_persistent_blocks([], cm, _identity_resolve)
@@ -244,7 +244,7 @@ class TestPhasePersistentBlocks:
     @pytest.mark.asyncio
     async def test_empty_string_renders_as_block(self):
         """Empty strings are valid content — only None is skipped."""
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         cm = _make_context_manager({"empty": ""})
         blocks, cache = await _phase_persistent_blocks([], cm, _identity_resolve)
@@ -256,7 +256,7 @@ class TestPhasePersistentBlocks:
     @pytest.mark.asyncio
     async def test_none_dynamic_values_render_as_none(self):
         """DynamicContext expressions that resolve to None render as 'None' (not skipped)."""
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         async def resolve_to_none(key, value):
             return None
@@ -270,7 +270,7 @@ class TestPhasePersistentBlocks:
 
     @pytest.mark.asyncio
     async def test_resolved_cache_returned_separately(self):
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         cm = _make_context_manager({"a": "val_a", "b": "val_b"})
         blocks, cache = await _phase_persistent_blocks([], cm, _identity_resolve)
@@ -289,7 +289,7 @@ class TestPhasePersistentBlocks:
 class TestPhaseStrategyOverrides:
     @pytest.mark.asyncio
     async def test_no_strategy_returns_unchanged(self):
-        from agent006.runtime.context_builder import _phase_strategy_overrides
+        from nemo_oo_agents.runtime.context_builder import _phase_strategy_overrides
 
         blocks = [_block("a")]
         result = await _phase_strategy_overrides(blocks, None, _identity_resolve)
@@ -297,7 +297,7 @@ class TestPhaseStrategyOverrides:
 
     @pytest.mark.asyncio
     async def test_replaces_existing_block(self):
-        from agent006.runtime.context_builder import _phase_strategy_overrides
+        from nemo_oo_agents.runtime.context_builder import _phase_strategy_overrides
 
         blocks = [_block("prompt", "original")]
         strategy = MagicMock()
@@ -309,7 +309,7 @@ class TestPhaseStrategyOverrides:
 
     @pytest.mark.asyncio
     async def test_appends_new_block(self):
-        from agent006.runtime.context_builder import _phase_strategy_overrides
+        from nemo_oo_agents.runtime.context_builder import _phase_strategy_overrides
 
         blocks = [_block("a")]
         strategy = MagicMock()
@@ -321,7 +321,7 @@ class TestPhaseStrategyOverrides:
 
     @pytest.mark.asyncio
     async def test_none_removes_block(self):
-        from agent006.runtime.context_builder import _phase_strategy_overrides
+        from nemo_oo_agents.runtime.context_builder import _phase_strategy_overrides
 
         blocks = [_block("a"), _block("remove_me")]
         strategy = MagicMock()
@@ -334,7 +334,7 @@ class TestPhaseStrategyOverrides:
     @pytest.mark.asyncio
     async def test_dynamic_override_resolved(self):
         """Strategy overrides with DynamicContext values are resolved and get correct metadata."""
-        from agent006.runtime.context_builder import _phase_strategy_overrides
+        from nemo_oo_agents.runtime.context_builder import _phase_strategy_overrides
 
         blocks = [_block("prompt", "original")]
         strategy = MagicMock()
@@ -356,7 +356,7 @@ class TestPhaseStrategyOverrides:
 class TestPhaseDecoratorContext:
     @pytest.mark.asyncio
     async def test_no_decorator_context_returns_unchanged(self):
-        from agent006.runtime.context_builder import _phase_decorator_context
+        from nemo_oo_agents.runtime.context_builder import _phase_decorator_context
 
         blocks = [_block("a")]
         result = await _phase_decorator_context(blocks, None, _identity_resolve)
@@ -364,7 +364,7 @@ class TestPhaseDecoratorContext:
 
     @pytest.mark.asyncio
     async def test_applies_decorator_overrides(self):
-        from agent006.runtime.context_builder import _phase_decorator_context
+        from nemo_oo_agents.runtime.context_builder import _phase_decorator_context
 
         blocks = [_block("a")]
         result = await _phase_decorator_context(
@@ -376,7 +376,7 @@ class TestPhaseDecoratorContext:
 
     @pytest.mark.asyncio
     async def test_none_removes_block(self):
-        from agent006.runtime.context_builder import _phase_decorator_context
+        from nemo_oo_agents.runtime.context_builder import _phase_decorator_context
 
         blocks = [_block("a")]
         result = await _phase_decorator_context(blocks, {"a": None}, _identity_resolve)
@@ -385,7 +385,7 @@ class TestPhaseDecoratorContext:
     @pytest.mark.asyncio
     async def test_dynamic_values_resolved(self):
         """DynamicContext values in decorator context are resolved and get correct metadata."""
-        from agent006.runtime.context_builder import _phase_decorator_context
+        from nemo_oo_agents.runtime.context_builder import _phase_decorator_context
 
         blocks = [_block("a")]
         result = await _phase_decorator_context(
@@ -405,7 +405,7 @@ class TestPhaseDecoratorContext:
 class TestPhaseScopedBlocks:
     @pytest.mark.asyncio
     async def test_no_scoped_blocks_returns_unchanged(self):
-        from agent006.runtime.context_builder import _phase_scoped_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_scoped_blocks
 
         blocks = [_block("a")]
         result = await _phase_scoped_blocks(blocks, None, _identity_resolve)
@@ -413,7 +413,7 @@ class TestPhaseScopedBlocks:
 
     @pytest.mark.asyncio
     async def test_applies_scoped_overrides(self):
-        from agent006.runtime.context_builder import _phase_scoped_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_scoped_blocks
 
         blocks = [_block("a")]
         result = await _phase_scoped_blocks(blocks, {"focus": "perf testing"}, _identity_resolve)
@@ -423,7 +423,7 @@ class TestPhaseScopedBlocks:
 
     @pytest.mark.asyncio
     async def test_none_removes_block(self):
-        from agent006.runtime.context_builder import _phase_scoped_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_scoped_blocks
 
         blocks = [_block("a")]
         result = await _phase_scoped_blocks(blocks, {"a": None}, _identity_resolve)
@@ -437,14 +437,14 @@ class TestPhaseScopedBlocks:
 
 class TestPhaseEvents:
     def test_empty_events(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         em = _make_event_manager([])
         result = _phase_events([], em)
         assert result == []
 
     def test_user_event(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         event = UserEvent(content="Hello", tag="1")
         em = _make_event_manager([event])
@@ -457,7 +457,7 @@ class TestPhaseEvents:
         assert result[0].event is event  # raw event carried through
 
     def test_tool_call_event(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         event = ToolCallEvent(
             tool_call_id="tc_1",
@@ -479,7 +479,7 @@ class TestPhaseEvents:
         assert result[0].event.result.content == "found it"
 
     def test_tool_call_without_result(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         event = ToolCallEvent(
             tool_call_id="tc_1",
@@ -495,7 +495,7 @@ class TestPhaseEvents:
         assert result[0].event.result is None
 
     def test_does_not_mutate_input_blocks(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         original = [_block("existing")]
         original_copy = list(original)
@@ -508,7 +508,7 @@ class TestPhaseEvents:
         assert len(result) == 2
 
     def test_preserves_existing_blocks(self):
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         existing = [_block("system_prompt", "You are helpful.")]
         event = UserEvent(content="Hi", tag="1")
@@ -520,7 +520,7 @@ class TestPhaseEvents:
 
     def test_tag_none_falls_back_to_id(self):
         """When event.tag is None, event.id is used as the key suffix."""
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         event = UserEvent(content="Hello")
         event.tag = None
@@ -534,7 +534,7 @@ class TestPhaseEvents:
 
     def test_non_tool_event_carries_original_event(self):
         """Non-tool events also carry the original event on block.event."""
-        from agent006.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.context_builder import _phase_events
 
         event = UserEvent(content="Hello world", tag="1")
         em = _make_event_manager([event])
@@ -551,9 +551,9 @@ class TestPhaseEvents:
         _phase_events filters by current_call_id. The task (user message) for
         this call must be included so the prompt has at least system + task.
         """
-        from agent006.events import Task
-        from agent006.runtime.context_builder import _phase_events
-        from agent006.runtime.event_query import EventQuery
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.runtime.context_builder import _phase_events
+        from nemo_oo_agents.runtime.event_query import EventQuery
 
         current_id = "call-xyz-456"
         task = Task(prompt="Classify sentiment of: Great product!")
@@ -588,7 +588,7 @@ class TestPhasePersistentBlocksErrors:
         expression). The builder renders these as normal block content so the
         LLM can see and diagnose the problem.
         """
-        from agent006.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         async def error_showing_resolve(key: str, value: str | DynamicContext) -> str:
             if isinstance(value, DynamicContext):
@@ -612,7 +612,7 @@ class TestPhasePersistentBlocksErrors:
 class TestBuildContext:
     @pytest.mark.asyncio
     async def test_returns_build_result(self):
-        from agent006.runtime.context_builder import BuildResult, build_context
+        from nemo_oo_agents.runtime.context_builder import BuildResult, build_context
 
         cm = _make_context_manager({"notes": "My notes"})
         em = _make_event_manager([])
@@ -630,7 +630,7 @@ class TestBuildContext:
 
     @pytest.mark.asyncio
     async def test_includes_framework_and_persistent_blocks(self):
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "My notes"})
         em = _make_event_manager([])
@@ -650,7 +650,7 @@ class TestBuildContext:
     @pytest.mark.asyncio
     async def test_does_not_mutate_context_manager(self):
         """build_context must not call _update_resolved — that's the caller's job."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "My notes"})
         original_cache = dict(cm._dynamic_cache)
@@ -670,7 +670,7 @@ class TestBuildContext:
 
     @pytest.mark.asyncio
     async def test_strategy_overrides_applied(self):
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "original notes"})
         em = _make_event_manager([])
@@ -692,7 +692,7 @@ class TestBuildContext:
 
     @pytest.mark.asyncio
     async def test_events_included(self):
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager()
         event = UserEvent(content="Hello", tag="1")
@@ -713,7 +713,7 @@ class TestBuildContext:
     @pytest.mark.asyncio
     async def test_decorator_context_applied(self):
         """build_context applies decorator_context overrides."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "original"})
         em = _make_event_manager([])
@@ -738,7 +738,7 @@ class TestBuildContext:
 
         Verifies no duplicate keys: Phase 3 replaces the Phase 1 block in-place.
         """
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager()
         em = _make_event_manager([])
@@ -764,7 +764,7 @@ class TestBuildContext:
 
         Verifies no duplicate keys across phases.
         """
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "original"})
         em = _make_event_manager([])
@@ -784,7 +784,7 @@ class TestBuildContext:
     @pytest.mark.asyncio
     async def test_keyword_only_args(self):
         """build_context uses keyword-only args — positional call should fail."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         with pytest.raises(TypeError):
             await build_context(
@@ -824,7 +824,7 @@ class TestOverridePhaseInteractions:
         Framework blocks are protected — persistent blocks can't replace them.
         They can only add new keys or be replaced by later phases (3, 4, 5).
         """
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"custom_key": "custom value"})
         em = _make_event_manager([])
@@ -843,7 +843,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_strategy_overrides_persistent(self):
         """Strategy overrides (Phase 3) override persistent blocks (Phase 2)."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "persistent notes"})
         em = _make_event_manager([])
@@ -866,7 +866,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_decorator_overrides_strategy(self):
         """Decorator context (Phase 4) overrides strategy (Phase 3)."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager()
         em = _make_event_manager([])
@@ -890,7 +890,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_scoped_overrides_decorator(self):
         """Scoped blocks (Phase 5) override decorator context (Phase 4)."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager()
         em = _make_event_manager([])
@@ -919,7 +919,7 @@ class TestOverridePhaseInteractions:
         Phase 5: scoped overrides it
         Result: scoped wins
         """
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         # Mock framework blocks with a "focus" block
         async def resolve_with_focus(key: str, value: str | DynamicContext) -> str:
@@ -950,7 +950,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_remove_semantics_across_phases(self):
         """Setting a block to None removes it, even if defined in earlier phases."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"notes": "persistent notes", "task": "persistent task"})
         em = _make_event_manager([])
@@ -974,7 +974,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_multiple_independent_overrides(self):
         """Each phase can add new blocks that don't conflict."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"persistent_key": "persistent"})
         em = _make_event_manager([])
@@ -1001,7 +1001,7 @@ class TestOverridePhaseInteractions:
     @pytest.mark.asyncio
     async def test_dynamic_overrides_in_phases(self):
         """DynamicContext values work correctly across all phases."""
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         cm = _make_context_manager({"a": DynamicContext("self.dynamic_a()")})
         em = _make_event_manager([])

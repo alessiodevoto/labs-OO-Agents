@@ -8,7 +8,7 @@ TDD: These tests verify that HelperMethodManager:
 
 import pytest
 
-from agent006.strategies.generated_code import ExecutionNamespaceBuilder, HelperMethodManager
+from nemo_oo_agents.strategies.generated_code import ExecutionNamespaceBuilder, HelperMethodManager
 from unifiedllm import FakeLLMClient
 
 
@@ -17,7 +17,7 @@ class TestHelperMethodManagerGuard:
 
     def test_rejects_class_instead_of_instance(self):
         """HelperMethodManager should raise TypeError if passed a class."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -38,7 +38,7 @@ class TestHelperMethodManagerGuard:
 
     def test_accepts_instance(self):
         """HelperMethodManager should accept agent instances."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -64,7 +64,7 @@ class TestHelperMethodManagerGuard:
 
     def test_method_does_not_leak_to_class(self):
         """Helper methods bound to instance should not appear on other instances."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -93,7 +93,7 @@ class TestHelperMethodManagerGuard:
 
     def test_method_does_not_leak_to_class_definition(self):
         """Helper methods should not be added to the class __dict__."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -117,7 +117,7 @@ class TestHelperMethodManagerGuard:
 
     def test_async_helper_method_binding(self):
         """Async helper methods should be bound correctly."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -141,7 +141,7 @@ class TestHelperMethodManagerGuard:
 
     def test_rejects_method_with_same_name_as_target(self):
         """Helper method with same name as target method should be rejected."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -170,7 +170,7 @@ class TestHelperMethodManagerSessionLocals:
 
     def test_helper_added_to_session_locals(self):
         """Helper methods should be added to session_locals for reuse."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:
@@ -200,7 +200,7 @@ class TestHelperMethodManagerErrors:
 
     def test_records_decorator_validation_errors(self):
         """Errors from decorator validation should be recorded."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
             async def process(self) -> dict:

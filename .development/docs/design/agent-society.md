@@ -51,7 +51,7 @@ Key papers and systems to review for this experiment:
 
 Agent Society is a long-running experiment where a community of AI agents conducts scientific research around a configurable topic. Agents read PDFs from the internet, share findings, generate ideas, and the system monitors the "virality" of ideas as they spread through the community.
 
-This builds on concepts from the [Petri](~/petri) repository but uses the agent006 runtime for execution.
+This builds on concepts from the [Petri](~/petri) repository but uses the nemo_oo_agents runtime for execution.
 
 ## Research Questions
 
@@ -890,7 +890,7 @@ Real-time monitoring for long-running experiments:
 
 ## Agent006 Integration
 
-Uses agent006 runtime with:
+Uses nemo_oo_agents runtime with:
 - **UnifiedLLM**: For agent reasoning (NVIDIA NIM models)
 - **Tools**: PDFTool, WebSearchTool, custom IdeaPool tools
 - **Tracing**: OpenTelemetry traces for all agent actions
@@ -1259,7 +1259,7 @@ experiments/agent-society/
 
 | Aspect | Petri | Agent Society |
 |--------|-------|---------------|
-| Runtime | Custom simulation engine | agent006 runtime |
+| Runtime | Custom simulation engine | nemo_oo_agents runtime |
 | LLM | Multiple providers | UnifiedLLM (NVIDIA NIM) |
 | Tracing | Custom logging | OpenTelemetry |
 | Persistence | Text/JSON/Vector repos | JSON + Vector (embedded) |

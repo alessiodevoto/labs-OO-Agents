@@ -48,7 +48,7 @@ experiments/evaluation-ablations/
   generate_sft_minimax_agent009.sh            # Same for agent009
 
 sft_data/dabstep_agent009/
-  dabstep_sft_agent006_minimax_m2.5_20260303.jsonl.gz   # 22 SFT examples, opt63 agent
+  dabstep_sft_nemo_oo_agents_minimax_m2.5_20260303.jsonl.gz   # 22 SFT examples, opt63 agent
   dabstep_sft_agent009_minimax_m2.5_20260303.jsonl.gz   # 49 SFT examples, agent009
 
 docs/minimax-slurm-sft-plan.md                # End-to-end guide for reproducing

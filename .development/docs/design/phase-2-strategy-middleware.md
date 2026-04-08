@@ -429,7 +429,7 @@ class FeedbackEvent(EventBase):
     type: Literal["feedback"] = "feedback"
     data: ContentData
 
-# Extended union for agent006
+# Extended union for nemo_oo_agents
 Event = Annotated[
     Union[
         # From context-blocks
@@ -828,7 +828,7 @@ LAYOUT = {
 ## File Structure
 
 ```
-src/agent006/
+src/nemo_oo_agents/
   strategies/
     __init__.py          # Exports strategy classes
     base.py              # GenerationStrategy ABC
@@ -838,9 +838,9 @@ src/agent006/
 ```
 
 **Files to delete after migration:**
-- `src/agent006/runtime/executors/`
-- `src/agent006/runtime/errors/messages/`
-- `src/agent006/context/prompt_data/`
+- `src/nemo_oo_agents/runtime/executors/`
+- `src/nemo_oo_agents/runtime/errors/messages/`
+- `src/nemo_oo_agents/context/prompt_data/`
 
 ---
 

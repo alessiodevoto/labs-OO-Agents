@@ -18,9 +18,9 @@ from typing import Any
 
 import pytest
 
-from agent006 import Agent, strategy
-from agent006.config import CodeActConfig
-from agent006.strategies import CodeActStrategy, PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 from context_blocks import ScopedContext
 from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 

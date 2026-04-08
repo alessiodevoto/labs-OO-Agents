@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent006_cli.tui.commands import CommandHandler, CommandRegistry
+from nemo_oo_agents_cli.tui.commands import CommandHandler, CommandRegistry
 
 
 @pytest.fixture
@@ -332,7 +332,7 @@ async def test_mcp_command_invalid_subcommand_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_mcp_list_output(handler, mock_console):
     """Test /mcp list - lists servers."""
-    with patch("mcp_agent006.MCPManager") as mock_mcp:
+    with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
         mock_mcp.list_servers.return_value = ["server1", "server2"]
         result = await handler.handle("/mcp list")
 
@@ -353,7 +353,7 @@ async def test_mcp_connect_no_server_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_mcp_connect_not_found_output(handler, mock_console):
     """Test /mcp connect with non-existent server - shows error."""
-    with patch("mcp_agent006.MCPManager") as mock_mcp:
+    with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
         mock_mcp.list_servers.return_value = ["server1"]
         result = await handler.handle("/mcp connect nonexistent")
 
@@ -365,7 +365,7 @@ async def test_mcp_connect_not_found_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_mcp_connect_success_output(handler, mock_console, mock_agent):
     """Test /mcp connect with valid server - connects."""
-    with patch("mcp_agent006.MCPManager") as mock_mcp:
+    with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
         mock_mcp.list_servers.return_value = ["server1"]
         mock_mcp.create_from_server.return_value = MagicMock()
         result = await handler.handle("/mcp connect server1")
@@ -434,7 +434,7 @@ async def test_skills_command_invalid_subcommand_output(handler, mock_console):
 async def test_skills_list_no_dirs_output(handler, mock_console):
     """Test /skills list with no directories - shows info."""
     # Create handler with no skills dirs
-    from agent006_cli.tui.commands import CommandHandler, CommandRegistry
+    from nemo_oo_agents_cli.tui.commands import CommandHandler, CommandRegistry
 
     registry = CommandRegistry(
         console=mock_console,
@@ -455,7 +455,7 @@ async def test_skills_list_no_dirs_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_skills_list_empty_output(handler, mock_console):
     """Test /skills list with no skills - shows info."""
-    with patch("agent006.SkillManager") as mock_skill:
+    with patch("nemo_oo_agents.SkillManager") as mock_skill:
         mock_skill.discover.return_value = {}
         result = await handler.handle("/skills list")
 
@@ -467,7 +467,7 @@ async def test_skills_list_empty_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_skills_activate_not_found_output(handler, mock_console):
     """Test /skills activate with non-existent skill - shows error."""
-    with patch("agent006.SkillManager") as mock_skill:
+    with patch("nemo_oo_agents.SkillManager") as mock_skill:
         # Mock discover to return different skill
         mock_skill.discover.return_value = {"other-skill": MagicMock()}
         result = await handler.handle("/skills activate nonexistent")
@@ -482,7 +482,7 @@ async def test_skills_activate_not_found_output(handler, mock_console):
 @pytest.mark.asyncio
 async def test_skills_activate_already_active_output(handler, mock_console, mock_agent):
     """Test /skills activate with already active skill - shows error."""
-    with patch("agent006.SkillManager") as mock_skill:
+    with patch("nemo_oo_agents.SkillManager") as mock_skill:
         mock_skill.discover.return_value = {"test-skill": MagicMock()}
         mock_agent.test_skill = MagicMock()
         # Get the skills command instance and add test-skill to its active set
@@ -498,7 +498,7 @@ async def test_skills_activate_already_active_output(handler, mock_console, mock
 @pytest.mark.asyncio
 async def test_skills_activate_success_output(handler, mock_console, mock_agent):
     """Test /skills activate with valid skill - activates."""
-    with patch("agent006.SkillManager") as mock_skill:
+    with patch("nemo_oo_agents.SkillManager") as mock_skill:
         skill_obj = MagicMock()
         # Mock discover to return the skill
         mock_skill.discover.return_value = {"test-skill": skill_obj}

@@ -8,11 +8,11 @@ ContextApi wraps agent.context_manager (ContextManager) — the state always liv
 
 from typing import TYPE_CHECKING, Any
 
-from agent006.runtime.context_manager import ContextManager
-from agent006.skill import Skill
+from nemo_oo_agents.runtime.context_manager import ContextManager
+from nemo_oo_agents.skill import Skill
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 __all__ = ["ContextApi", "ContextManager"]
 

@@ -123,7 +123,7 @@ Design each agent phase to address a quantified failure mode. If you can't tie a
 
 ### What Happened
 
-BigCodeBench revealed that agent framework overhead can suppress model capability. Our agent006 config scored 47.1% while direct_llm scored 49.6% -- the framework was a net negative.
+BigCodeBench revealed that agent framework overhead can suppress model capability. Our nemo_oo_agents config scored 47.1% while direct_llm scored 49.6% -- the framework was a net negative.
 
 **Root Causes:**
 
@@ -368,8 +368,8 @@ The ~49% SOTA was achieved with Claude 3.7 Sonnet in Dec 2024. With Claude Sonne
 - Adapter: `evaluation/adapters/swebench.py`
 
 ### BigCodeBench
-- Agent: `experiments/evaluation-ablations/agents/agent006_tools.py`
-- Session summary: `docs/bigcodebench-agent006-session-summary.md`
+- Agent: `experiments/evaluation-ablations/agents/nemo_oo_agents_tools.py`
+- Session summary: `docs/bigcodebench-nemo_oo_agents-session-summary.md`
 - Adapter: `evaluation/adapters/bigcodebench.py`
 
 ### Tau-bench

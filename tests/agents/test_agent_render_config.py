@@ -10,7 +10,7 @@ def make_llm():
 
 
 def test_agent_accepts_render_config():
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     rc = RenderConfig(block_formatter=MarkdownBlockFormatter())
 
@@ -23,7 +23,7 @@ def test_agent_accepts_render_config():
 
 
 def test_agent_default_render_config():
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     class MyAgent(Agent, llm=make_llm()):
         pass

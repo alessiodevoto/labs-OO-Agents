@@ -21,16 +21,16 @@ from typing import TYPE_CHECKING, Any, Union, get_args, get_origin, get_type_hin
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from agent006.decorators import strategy
-from agent006.errors import GenerationError
-from agent006.events import Error, Task
-from agent006.strategies.base import GenerationStrategy, RuntimeServices
-from agent006.strategies.template import TemplateStrategy
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.errors import GenerationError
+from nemo_oo_agents.events import Error, Task
+from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
+from nemo_oo_agents.strategies.template import TemplateStrategy
 from agentdoc.visibility import is_hidden_field
 
 if TYPE_CHECKING:
-    from agent006.config.strategy_config import PredictConfig
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.config.strategy_config import PredictConfig
+    from nemo_oo_agents.strategies.current_call import CurrentCall
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class PredictStrategy(GenerationStrategy):
         Args:
             config: PredictConfig with retry limits and sampling params.
         """
-        from agent006.config.strategy_config import PredictConfig as _PC
+        from nemo_oo_agents.config.strategy_config import PredictConfig as _PC
 
         self.config = config or _PC()
 
@@ -163,8 +163,8 @@ class PredictStrategy(GenerationStrategy):
         response_model = self._create_response_model(return_type, call.method_name)
 
         # Collect Media params as multimodal content blocks for the task
-        from agent006.media import Media
-        from agent006.runtime.media_capture import media_to_content_block
+        from nemo_oo_agents.media import Media
+        from nemo_oo_agents.runtime.media_capture import media_to_content_block
 
         all_values = list(call.args) + list(call.kwargs.values())
         media_blocks = [media_to_content_block(v) for v in all_values if isinstance(v, Media)]

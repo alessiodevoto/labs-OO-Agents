@@ -12,7 +12,7 @@ Each test class has two sections:
 
 import pytest
 
-from agent006.runtime.code_validator import (
+from nemo_oo_agents.runtime.code_validator import (
     BlockingCallValidator,
     REPLPolicyValidator,
     SecurityValidator,
@@ -75,7 +75,7 @@ def agent_context():
     Returns a tuple of (context, TestAgent_class) for tests that need to
     reference the class name in generated code.
     """
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
     class TestAgent(Agent, llm=FakeLLMClient()):
         async def process(self) -> dict:
@@ -829,7 +829,7 @@ class TestREPLPolicyValidator:
         def test_reject_missing_await_on_async_method(self, full_validator: UnifiedCodeValidator):
             """Calling async method without await is an error."""
             # Create a mock agent class to test against
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def fetch_data(self):
@@ -922,7 +922,7 @@ result = helper(self, 5)
 
         def test_allow_await_on_async_method(self, full_validator: UnifiedCodeValidator):
             """Correctly awaited async method calls are allowed."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def fetch_data(self):
@@ -938,7 +938,7 @@ result = helper(self, 5)
 
         def test_allow_async_method_in_gather(self, full_validator: UnifiedCodeValidator):
             """Async methods in gather patterns don't need individual await."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def process(self, item):
@@ -958,7 +958,7 @@ results = await asyncio.gather(*tasks)
 
         def test_allow_async_method_in_generator(self, full_validator: UnifiedCodeValidator):
             """Async methods in generator expressions for gather are allowed."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def process(self, item):
@@ -1083,7 +1083,7 @@ while True:
 
     def test_warn_unnecessary_await_on_sync_method(self, full_validator: UnifiedCodeValidator):
         """Awaiting a sync method is unnecessary and wastes tokens."""
-        from agent006.agent import Agent
+        from nemo_oo_agents.agent import Agent
 
         class TestAgent(Agent, llm=FakeLLMClient()):
             def sync_method(self):
@@ -1284,7 +1284,7 @@ class TestClassAssignmentValidator:
 
         def test_reject_direct_class_assignment(self, validator: UnifiedCodeValidator):
             """Validator blocks: ClassName.method = value"""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def process(self) -> dict:
@@ -1301,7 +1301,7 @@ class TestClassAssignmentValidator:
 
         def test_reject_factory_pattern_class_assignment(self, validator: UnifiedCodeValidator):
             """Validator blocks factory function that assigns to class."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 async def process(self) -> dict:
@@ -1325,7 +1325,7 @@ TestAgent.process = _make_method()
 
         def test_reject_subagent_class_assignment(self, validator: UnifiedCodeValidator):
             """Validator blocks assignment to sub-agent classes."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class ChildAgent(Agent, llm=FakeLLMClient()):
                 async def work(self) -> str:
@@ -1350,7 +1350,7 @@ TestAgent.process = _make_method()
 
         def test_reject_augmented_class_assignment(self, validator: UnifiedCodeValidator):
             """Validator blocks augmented assignment to class attributes."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class TestAgent(Agent, llm=FakeLLMClient()):
                 counter = 0
@@ -1382,7 +1382,7 @@ TestAgent.process = _make_method()
 
         def test_reject_parent_class_assignment_via_mro(self, validator: UnifiedCodeValidator):
             """Validator blocks assignment to parent classes via MRO."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class BaseAgent(Agent, llm=FakeLLMClient()):
                 async def base_method(self) -> str:
@@ -1509,7 +1509,7 @@ result.value = 42
 
         def test_reject_setattr_to_subagent_class(self, validator: UnifiedCodeValidator):
             """setattr on sub-agent classes must also be rejected."""
-            from agent006.agent import Agent
+            from nemo_oo_agents.agent import Agent
 
             class ChildAgent(Agent, llm=FakeLLMClient()):
                 async def work(self) -> str: ...

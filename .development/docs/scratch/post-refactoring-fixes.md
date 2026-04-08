@@ -15,7 +15,7 @@ After Paul's massive refactoring (195 files changed, 17,742 insertions, 17,413 d
 ModuleNotFoundError: No module named 'context_blocks'
 ```
 
-**Location**: `/home/rcabral/agent006/src/agent006/__init__.py:11`
+**Location**: `/home/rcabral/nemo_oo_agents/src/nemo_oo_agents/__init__.py:11`
 ```python
 from context_blocks import Block  # This import failed
 ```
@@ -26,8 +26,8 @@ pip install -e packages/context-blocks/
 ```
 
 **Why It Broke the TPM Agent**:
-- The TPM agent imports from `agent006`
-- `agent006/__init__.py` imports from `context_blocks`
+- The TPM agent imports from `nemo_oo_agents`
+- `nemo_oo_agents/__init__.py` imports from `context_blocks`
 - The `context-blocks` package was created but not installed
 - This caused the TPM agent to crash on startup
 
@@ -72,17 +72,17 @@ To prevent similar breakage in the future, we need:
 
 ## Files Modified
 
-- `/home/rcabral/agent006/packages/context-blocks/` - Installed in editable mode
-- `/home/rcabral/agent006/.claude/settings.local.json` - Added timeout command to allowlist
+- `/home/rcabral/nemo_oo_agents/packages/context-blocks/` - Installed in editable mode
+- `/home/rcabral/nemo_oo_agents/.claude/settings.local.json` - Added timeout command to allowlist
 
 ## Refactoring Changes (Paul's Changes)
 
 Major architectural changes:
-- Deleted: `src/agent006/tracing/` module
-- Deleted: `src/agent006/runtime/executors/`
+- Deleted: `src/nemo_oo_agents/tracing/` module
+- Deleted: `src/nemo_oo_agents/runtime/executors/`
 - Created: `packages/context-blocks/` package
-- Created: `src/agent006/strategies/` (replaced executors)
-- Rewritten: `src/agent006/runtime/actor.py`
+- Created: `src/nemo_oo_agents/strategies/` (replaced executors)
+- Rewritten: `src/nemo_oo_agents/runtime/actor.py`
 
 ## Lessons Learned
 

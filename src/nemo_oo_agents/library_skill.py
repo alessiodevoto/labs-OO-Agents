@@ -7,7 +7,7 @@ import importlib
 import sys
 from pathlib import Path
 
-from agent006.skill import Skill
+from nemo_oo_agents.skill import Skill
 
 
 class LibrarySkill(Skill):

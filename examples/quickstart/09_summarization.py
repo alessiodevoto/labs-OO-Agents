@@ -4,9 +4,9 @@
 uv run python examples/quickstart/09_summarization.py
 """
 
-from agent006.agents import TokenBudgetSummarizer
-from agent006.config import TokenBudgetConfig
-from agent006.util.quickstart import *
+from nemo_oo_agents.agents import TokenBudgetSummarizer
+from nemo_oo_agents.config import TokenBudgetConfig
+from nemo_oo_agents.util.quickstart import *
 from agentdoc import spec
 
 

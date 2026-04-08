@@ -2,7 +2,7 @@
 
 ## Problem
 
-The agent006-src framework was hardcoded to only use NVIDIA's API, even when users specified OpenAI or Anthropic models. This caused 404 errors when trying to use models like `gpt-4o` because the system was sending the requests to NVIDIA's API endpoint instead of OpenAI's.
+The nemo_oo_agents-src framework was hardcoded to only use NVIDIA's API, even when users specified OpenAI or Anthropic models. This caused 404 errors when trying to use models like `gpt-4o` because the system was sending the requests to NVIDIA's API endpoint instead of OpenAI's.
 
 ## Root Cause
 
@@ -69,7 +69,7 @@ else:
 
 ### 1. Set up your `.env` file
 
-Create or update `/Users/rcabral/agent-proto-006/agent006-src/playground/.env`:
+Create or update `/Users/rcabral/agent-proto-006/nemo_oo_agents-src/playground/.env`:
 
 ```bash
 # Add whichever keys you have:
@@ -97,10 +97,10 @@ After changing the MODEL, re-run the setup cell. The framework will now:
 
 ## Files Changed
 
-- `/Users/rcabral/agent-proto-006/agent006-src/src/agent006/runtime/actor.py` - Lines 131-189 (auto-detect API in runtime)
-- `/Users/rcabral/agent-proto-006/agent006-src/src/agent006/llm/client.py` - Lines 39-63 (auto-detect API in client)
-- `/Users/rcabral/agent-proto-006/agent006-src/src/agent006/llm/model_tester.py` - Lines 10-89 (auto-detect API in test utility)
-- `/Users/rcabral/agent-proto-006/agent006-src/playground/agent_experiments.ipynb` - Cell 2 (API key verification)
+- `/Users/rcabral/agent-proto-006/nemo_oo_agents-src/src/nemo_oo_agents/runtime/actor.py` - Lines 131-189 (auto-detect API in runtime)
+- `/Users/rcabral/agent-proto-006/nemo_oo_agents-src/src/nemo_oo_agents/llm/client.py` - Lines 39-63 (auto-detect API in client)
+- `/Users/rcabral/agent-proto-006/nemo_oo_agents-src/src/nemo_oo_agents/llm/model_tester.py` - Lines 10-89 (auto-detect API in test utility)
+- `/Users/rcabral/agent-proto-006/nemo_oo_agents-src/playground/agent_experiments.ipynb` - Cell 2 (API key verification)
 
 ## Testing
 

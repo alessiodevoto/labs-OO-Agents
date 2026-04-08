@@ -356,7 +356,7 @@ Example: `traces/default_claude-haiku-4-5-v1_sentiment_classify_20251212_110500_
 
 **Enabling tracing:** Use `enable_tracing()` at startup, then `switch_file()` per sample:
 ```python
-from openinference_instrumentation_agent006 import enable_tracing, get_current_exporter
+from openinference_instrumentation_nemo_oo_agents import enable_tracing, get_current_exporter
 
 # At startup - enable global tracing
 enable_tracing(trace_dir="experiments/sentiment_YYYYMMDD/traces")

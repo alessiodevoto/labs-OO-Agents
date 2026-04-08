@@ -31,7 +31,7 @@ uv init my-agent-project
 cd my-agent-project
 
 # Add Agent006
-uv add git+https://gitlab-master.nvidia.com/interactive-agents/agent006.git --branch main
+uv add git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git --branch main
 ```
 
 ### API Keys
@@ -52,8 +52,8 @@ Best internal provider:
 If you want to contribute to Agent006 or change code of the library, use the following steps.
 
 ```bash
-git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/agent006.git
-cd agent006/
+git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nemo_oo_agents.git
+cd nemo_oo_agents/
 ./setup.sh  # Sets up venv, installs dependencies, copies .env template
 # Then create .env with your API key (see API Keys above)
 ```
@@ -66,14 +66,14 @@ cd agent006/
 
 Agent006's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
 
-> **Note**: The examples below use `from agent006.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
+> **Note**: The examples below use `from nemo_oo_agents.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
 
 ### Step 1: Your First Generation Method
 
 Methods with `...` bodies are called **generation methods** - they're implemented by agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
 
 ```python
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 from unifiedllm.registry import get_llm_client
 
 # Get a preconfigured LLM client (Inference Hub model)
@@ -121,7 +121,7 @@ Use any Pydantic model as a return type. Agent006 automatically validates output
 ```python
 from typing import Literal
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class FeedbackAnalysis(BaseModel):
@@ -164,7 +164,7 @@ In Agent006, you don't need a separate "tool" abstraction—**your regular Pytho
 ```python
 from typing import TypedDict
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class Result(TypedDict):
@@ -223,9 +223,9 @@ Use `@strategy` to control reasoning style (agentic strategy) per-method. You ca
 ```python
 from typing import Annotated
 
-from agent006.config import CodeActConfig
-from agent006.tools.web_search_tool import WebSearchTool
-from agent006.util.quickstart import *
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.tools.web_search_tool import WebSearchTool
+from nemo_oo_agents.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):
@@ -290,7 +290,7 @@ LLMs can use `doc()` to explore unknown objects. This is powerful when working w
 ```python
 from typing import Any
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 _WAREHOUSE = {
     "ART-001": Artwork("Starry Night Print", "Van Gogh Studio", appraised_value=15000.0),
@@ -348,12 +348,12 @@ uv run python examples/quickstart/05_progressive_disclosure.py
 Tracing is automatic. Start the development server and all agent method calls are traced — orchestrators, LLM methods, and private helpers — with parent-child relationships preserved:
 
 ```bash
-agent006 start-dev   # start trace viewer on http://localhost:5001
+nemo_oo_agents start-dev   # start trace viewer on http://localhost:5001
 ```
 
 ```python
-from agent006 import hidden
-from agent006.util.quickstart import *
+from nemo_oo_agents import hidden
+from nemo_oo_agents.util.quickstart import *
 
 
 class MathAgent(Agent, llm=llm):
@@ -402,7 +402,7 @@ uv run python examples/quickstart/06_tracing.py
 Use `{self.attribute}` in docstrings to inject specific runtime values in your prompts:
 
 ```python
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class TranslatorAgent(Agent, llm=llm):
@@ -464,7 +464,7 @@ uv run python examples/quickstart/07_dynamic_prompts.py
 Context blocks let you pin information directly into the LLM's system prompt—so it's always visible without re-passing it in every method call. Static blocks hold a fixed value; dynamic blocks re-evaluate an expression each turn so the LLM always sees live state:
 
 ```python
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 from agentdoc import spec
 
 
@@ -533,9 +533,9 @@ uv run python examples/quickstart/08_context_blocks.py
 Each exchange in a multi-turn conversation adds events to the agent's history. Left unchecked, this eventually fills the model's context window. `TokenBudgetSummarizer` compresses older turns automatically when a budget threshold is crossed—keeping history bounded so the conversation can run indefinitely.
 
 ```python
-from agent006.agents import TokenBudgetSummarizer
-from agent006.config import TokenBudgetConfig
-from agent006.util.quickstart import *
+from nemo_oo_agents.agents import TokenBudgetSummarizer
+from nemo_oo_agents.config import TokenBudgetConfig
+from nemo_oo_agents.util.quickstart import *
 from agentdoc import spec
 
 
@@ -587,7 +587,7 @@ async def main():
 For agents that process discrete batches rather than open-ended conversations, `MethodSummarizer` compresses each completed method call's history instead:
 
 ```python
-from agent006.agents import MethodSummarizer
+from nemo_oo_agents.agents import MethodSummarizer
 
 MethodSummarizer.install(agent)  # Compress after each method call completes
 ```
@@ -613,8 +613,8 @@ Attach a skill as an instance attribute—every instance automatically gets that
 ```python
 from pathlib import Path
 
-from agent006 import SkillManager, TextSkill
-from agent006.util.quickstart import *
+from nemo_oo_agents import SkillManager, TextSkill
+from nemo_oo_agents.util.quickstart import *
 
 ASSETS = Path("path/to/skills")  # directory containing skill folders
 
@@ -669,9 +669,9 @@ Declare your MCP servers in a `.mcp.json` file at your project root:
 Then reference the server by name in your agent:
 
 ```python
-from mcp_agent006 import MCPManager
+from mcp_nemo_oo_agents import MCPManager
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class ConfluenceAgent(Agent, llm=llm):
@@ -717,10 +717,10 @@ uv run python examples/quickstart/11_mcp.py
 Run agents in isolated, ephemeral compute environments. Install the optional `sandbox` extra first:
 
 ```bash
-uv add git+https://gitlab-master.nvidia.com/interactive-agents/agent006.git[sandbox] --branch main
+uv add git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git[sandbox] --branch main
 ```
 
-This installs `openshell` and the `agent006 sandbox` CLI wrapper. All sandbox infrastructure is handled automatically — credentials, policy, dependencies — so you can focus on your agent code.
+This installs `openshell` and the `nemo_oo_agents sandbox` CLI wrapper. All sandbox infrastructure is handled automatically — credentials, policy, dependencies — so you can focus on your agent code.
 
 To set up openshell:
 
@@ -733,15 +733,15 @@ Refer to the [openshell documentation](https://github.com/NVIDIA/OpenShell) for 
 **Usage:**
 
 ```bash
-agent006 sandbox -- python agent.py    # run a script
-agent006 sandbox -- agent006 tui       # launch the TUI
-agent006 sandbox -- bash               # open a shell
+nemo_oo_agents sandbox -- python agent.py    # run a script
+nemo_oo_agents sandbox -- nemo_oo_agents tui       # launch the TUI
+nemo_oo_agents sandbox -- bash               # open a shell
 ```
 
 Requires a `pyproject.toml` in the current directory. Before running your command, the sandbox always:
 
 1. Uploads the current directory
-2. Installs dependencies via `uv sync` (picks up the agent006 version pinned in your project)
+2. Installs dependencies via `uv sync` (picks up the nemo_oo_agents version pinned in your project)
 
 **Uploads:**
 
@@ -749,10 +749,10 @@ Control what gets uploaded with `--upload` (repeatable). Append `:ro` for read-o
 
 ```bash
 # upload specific paths instead of the full cwd
-agent006 sandbox --upload src --upload data -- python agent.py
+nemo_oo_agents sandbox --upload src --upload data -- python agent.py
 
 # make a directory read-only inside the sandbox
-agent006 sandbox --upload src:ro --upload data -- python agent.py
+nemo_oo_agents sandbox --upload src:ro --upload data -- python agent.py
 ```
 
 `pyproject.toml` is always included so `uv sync` can run.
@@ -762,8 +762,8 @@ agent006 sandbox --upload src:ro --upload data -- python agent.py
 Inject extra environment variables with `--env` (repeatable). A short-lived credential provider is created automatically and cleaned up after the sandbox exits:
 
 ```bash
-agent006 sandbox --env HF_TOKEN=abc123 -- python agent.py
-agent006 sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
+nemo_oo_agents sandbox --env HF_TOKEN=abc123 -- python agent.py
+nemo_oo_agents sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
 ```
 
 **Network:**
@@ -771,7 +771,7 @@ agent006 sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
 Allow additional outbound domains with `--allow-domain` (repeatable):
 
 ```bash
-agent006 sandbox --allow-domain api.myservice.com -- python agent.py
+nemo_oo_agents sandbox --allow-domain api.myservice.com -- python agent.py
 ```
 
 For advanced workflows (port forwarding, long-running tasks, connecting to existing sandboxes), use `openshell` directly.

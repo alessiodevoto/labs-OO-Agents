@@ -6,7 +6,7 @@ uv run python examples/quickstart/03_codeact_tools.py
 
 from typing import TypedDict
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class Result(TypedDict):

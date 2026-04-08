@@ -18,15 +18,15 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from agent006.decorators import strategy
-from agent006.errors import GenerationError
-from agent006.events import Feedback
-from agent006.strategies.base import GenerationStrategy, RuntimeServices
-from agent006.strategies.template import TemplateStrategy
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.errors import GenerationError
+from nemo_oo_agents.events import Feedback
+from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
+from nemo_oo_agents.strategies.template import TemplateStrategy
 
 if TYPE_CHECKING:
-    from agent006.config.strategy_config import ReflexionConfig
-    from agent006.strategies.current_call import CurrentCall
+    from nemo_oo_agents.config.strategy_config import ReflexionConfig
+    from nemo_oo_agents.strategies.current_call import CurrentCall
     from context_blocks import DynamicContext
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class ReflexionStrategy(GenerationStrategy):
         config: ReflexionConfig with max_iterations (default: 3)
 
     Example:
-        from agent006.config.strategy_config import ReflexionConfig
+        from nemo_oo_agents.config.strategy_config import ReflexionConfig
 
         @strategy(ReflexionStrategy(config=ReflexionConfig(max_iterations=2)))
         def analyze(self, data: str) -> dict:
@@ -93,10 +93,10 @@ class ReflexionStrategy(GenerationStrategy):
                   Defaults to PurePythonStrategy().
             config: ReflexionConfig with iteration limits and sampling params.
         """
-        from agent006.config.strategy_config import ReflexionConfig as _RC
+        from nemo_oo_agents.config.strategy_config import ReflexionConfig as _RC
 
         # Lazy import to avoid circular dependency
-        from agent006.strategies.pure_python import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         self.base = base if base is not None else PurePythonStrategy()
         self.config = config or _RC()

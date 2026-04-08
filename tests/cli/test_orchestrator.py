@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agent006_cli.tui.models import (
+from nemo_oo_agents_cli.tui.models import (
     BrainstormResult,
     DiagnosisResult,
     Intent,
@@ -44,7 +44,7 @@ class TestIntentRouting:
         mock_agent.classify_intent.return_value = Intent(
             task_type="question", summary="How does X work?"
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "How does X work?")
 
@@ -57,7 +57,7 @@ class TestIntentRouting:
         mock_agent.brainstorm.return_value = BrainstormResult(
             complete=False, summary="Exploring", pending_question="Which auth?"
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Add a login page")
 
@@ -75,7 +75,7 @@ class TestIntentRouting:
         mock_agent.verify_work.return_value = VerificationResult(
             tests_pass=True, test_output="OK", lint_clean=True, diff_summary="1 file"
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Login is broken")
 
@@ -100,7 +100,7 @@ class TestPhaseTracking:
             summary="OAuth plan",
             steps=[PlanStep(number=1, description="Setup", files=["auth.py"])],
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Use Google OAuth")
 
@@ -126,7 +126,7 @@ class TestPhaseTracking:
         mock_agent.review_changes.return_value = ReviewResult(
             complete=True, issues=[], summary="OK"
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "looks good, go ahead")
 
@@ -153,7 +153,7 @@ class TestPhaseTracking:
         mock_agent.review_changes.return_value = ReviewResult(
             complete=True, issues=[], summary="OK"
         )
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Refactor the auth module")
 
@@ -180,7 +180,7 @@ class TestFeatureWorkflow:
         )
         mock_agent.write_plan.return_value = plan
 
-        from agent006_cli.tui.agent import _orchestrate
+        from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Build feature X")
 

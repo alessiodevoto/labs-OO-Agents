@@ -181,7 +181,7 @@ async def process_sample(
 
     # Set session for this async context (supports concurrent samples)
     try:
-        from openinference_instrumentation_agent006 import set_session
+        from openinference_instrumentation_nemo_oo_agents import set_session
 
         config.trace_dir.mkdir(parents=True, exist_ok=True)
         set_session(session_id)
@@ -207,7 +207,7 @@ async def process_sample(
 
         _trace = None
         try:
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
         except ImportError:
@@ -246,7 +246,7 @@ async def process_sample(
     finally:
         if config.use_otlp:
             try:
-                from openinference_instrumentation_agent006 import set_session
+                from openinference_instrumentation_nemo_oo_agents import set_session
 
                 set_session(None)
             except ImportError:
@@ -263,7 +263,7 @@ async def process_sample(
         # JSONL-only mode: flush then confirm the file landed on disk.
         trace_file_str = str(trace_file)
         try:
-            from openinference_instrumentation_agent006 import flush_traces
+            from openinference_instrumentation_nemo_oo_agents import flush_traces
 
             flush_traces()
             await asyncio.sleep(0.1)

@@ -3,15 +3,15 @@
 
 This module is the entry point discovered by NAT via:
     [project.entry-points.'nat.components']
-    nat_agent006 = "nat.plugins.agent006.register"
+    nat_nemo_oo_agents = "nat.plugins.nemo_oo_agents.register"
 
 Importing this module triggers decorator-based registration of:
-- agent006_wrapper workflow type
-- agent006 LLM client wrappers (OpenAI, NIM, LiteLLM)
+- nemo_oo_agents_wrapper workflow type
+- nemo_oo_agents LLM client wrappers (OpenAI, NIM, LiteLLM)
 """
 
 # Import modules to trigger @register_function / @register_llm_client decorators
 from . import (
-    agent006_wrapper,  # noqa: F401
+    nemo_oo_agents_wrapper,  # noqa: F401
     llm,  # noqa: F401
 )

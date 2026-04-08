@@ -2,7 +2,7 @@
 
 import json
 
-from openinference_instrumentation_agent006._hooks_impl import OpenInferenceHooks
+from openinference_instrumentation_nemo_oo_agents._hooks_impl import OpenInferenceHooks
 
 
 class TestSafeSerializeSentinel:
@@ -13,7 +13,7 @@ class TestSafeSerializeSentinel:
 
     def test_sentinel_in_pydantic_model_becomes_null(self):
         """ExecutionResult with _NO_RETURN sentinel serializes returned_value as null."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(stdout="hello", stderr="")
         assert not result.has_return  # default is _NO_RETURN sentinel
@@ -26,7 +26,7 @@ class TestSafeSerializeSentinel:
 
     def test_real_return_value_preserved(self):
         """ExecutionResult with a real return value serializes correctly."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(stdout="", stderr="", returned_value=42)
         assert result.has_return
@@ -38,7 +38,7 @@ class TestSafeSerializeSentinel:
 
     def test_string_return_value_preserved(self):
         """String return values are not mistakenly filtered."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(stdout="", stderr="", returned_value="hello world")
         serialized = self.hooks._safe_serialize(result)
@@ -48,7 +48,7 @@ class TestSafeSerializeSentinel:
 
     def test_falsy_return_values_preserved(self):
         """Falsy values (False, 0, empty string) are not mistakenly filtered."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         for value in [False, 0, 0.0, ""]:
             result = ExecutionResult(stdout="", stderr="", returned_value=value)
@@ -58,7 +58,7 @@ class TestSafeSerializeSentinel:
 
     def test_none_return_excluded_by_model_dump(self):
         """returned_value=None is excluded by model_dump(exclude_none=True)."""
-        from agent006.events import ExecutionResult
+        from nemo_oo_agents.events import ExecutionResult
 
         result = ExecutionResult(stdout="", stderr="", returned_value=None)
         serialized = self.hooks._safe_serialize(result)

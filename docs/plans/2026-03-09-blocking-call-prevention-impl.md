@@ -15,14 +15,14 @@
 ### Task 1: Create restrictions.py with default blocked modules/calls
 
 **Files:**
-- Create: `src/agent006/runtime/restrictions.py`
+- Create: `src/nemo_oo_agents/runtime/restrictions.py`
 - Test: `tests/runtime/test_restrictions.py`
 
 **Step 1: Write the failing test**
 
 ```python
 # tests/runtime/test_restrictions.py
-from agent006.runtime.restrictions import (
+from nemo_oo_agents.runtime.restrictions import (
     DEFAULT_BLOCKED_CALLS,
     DEFAULT_BLOCKED_MODULES,
     RESTRICTED_MODULES,
@@ -56,7 +56,7 @@ Expected: FAIL with `ModuleNotFoundError` or `ImportError`
 **Step 3: Write the implementation**
 
 ```python
-# src/agent006/runtime/restrictions.py
+# src/nemo_oo_agents/runtime/restrictions.py
 """Unified module restrictions for agent code execution.
 
 Single source of truth for blocked modules, blocked calls, and restricted modules.
@@ -134,7 +134,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/runtime/restrictions.py tests/runtime/test_restrictions.py
+git add src/nemo_oo_agents/runtime/restrictions.py tests/runtime/test_restrictions.py
 git commit -m "feat: add unified restrictions.py with blocked modules/calls"
 ```
 
@@ -143,15 +143,15 @@ git commit -m "feat: add unified restrictions.py with blocked modules/calls"
 ### Task 2: Add blocked_modules and blocked_calls to CodeActConfig
 
 **Files:**
-- Modify: `src/agent006/config/strategy_config.py:6-26`
+- Modify: `src/nemo_oo_agents/config/strategy_config.py:6-26`
 - Test: `tests/config/test_strategy_config.py` (add tests)
 
 **Step 1: Write the failing test**
 
 ```python
 # Add to existing test file or create tests/config/test_blocked_config.py
-from agent006.config.strategy_config import CodeActConfig
-from agent006.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
+from nemo_oo_agents.config.strategy_config import CodeActConfig
+from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
 
 
 def test_codeact_config_has_blocked_modules():
@@ -187,10 +187,10 @@ Expected: FAIL — `blocked_modules` attribute doesn't exist
 
 **Step 3: Write the implementation**
 
-In `src/agent006/config/strategy_config.py`, add two fields to `CodeActConfig`:
+In `src/nemo_oo_agents/config/strategy_config.py`, add two fields to `CodeActConfig`:
 
 ```python
-from agent006.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
+from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
 
 class CodeActConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -214,7 +214,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/config/strategy_config.py tests/config/test_blocked_config.py
+git add src/nemo_oo_agents/config/strategy_config.py tests/config/test_blocked_config.py
 git commit -m "feat: add blocked_modules/blocked_calls to CodeActConfig"
 ```
 
@@ -223,14 +223,14 @@ git commit -m "feat: add blocked_modules/blocked_calls to CodeActConfig"
 ### Task 3: Add exec_globals field to ValidationContext
 
 **Files:**
-- Modify: `src/agent006/runtime/code_validator.py:62-71`
-- Modify: `src/agent006/runtime/actor.py:709-718`
+- Modify: `src/nemo_oo_agents/runtime/code_validator.py:62-71`
+- Modify: `src/nemo_oo_agents/runtime/actor.py:709-718`
 
 **Step 1: Write the failing test**
 
 ```python
 # tests/runtime/test_validation_context.py
-from agent006.runtime.code_validator import ValidationContext
+from nemo_oo_agents.runtime.code_validator import ValidationContext
 
 
 def test_validation_context_has_exec_globals():
@@ -251,7 +251,7 @@ Expected: FAIL — `exec_globals` not a field on ValidationContext
 
 **Step 3: Write the implementation**
 
-In `src/agent006/runtime/code_validator.py`, add field to `ValidationContext` (around line 71):
+In `src/nemo_oo_agents/runtime/code_validator.py`, add field to `ValidationContext` (around line 71):
 
 ```python
 @dataclass
@@ -268,7 +268,7 @@ class ValidationContext:
     exec_globals: dict[str, Any] = field(default_factory=dict)
 ```
 
-In `src/agent006/runtime/actor.py`, pass exec_globals when constructing ValidationContext (around line 709):
+In `src/nemo_oo_agents/runtime/actor.py`, pass exec_globals when constructing ValidationContext (around line 709):
 
 ```python
 context = ValidationContext(
@@ -296,7 +296,7 @@ Expected: All PASS
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/runtime/code_validator.py src/agent006/runtime/actor.py tests/runtime/test_validation_context.py
+git add src/nemo_oo_agents/runtime/code_validator.py src/nemo_oo_agents/runtime/actor.py tests/runtime/test_validation_context.py
 git commit -m "feat: add exec_globals to ValidationContext"
 ```
 
@@ -305,7 +305,7 @@ git commit -m "feat: add exec_globals to ValidationContext"
 ### Task 4: Implement BlockingCallValidator
 
 **Files:**
-- Modify: `src/agent006/runtime/code_validator.py` — add new class, replace AsyncSafetyValidator
+- Modify: `src/nemo_oo_agents/runtime/code_validator.py` — add new class, replace AsyncSafetyValidator
 - Test: `tests/runtime/test_blocking_call_validator.py`
 
 This is the largest task. Split into sub-steps.
@@ -321,13 +321,13 @@ import types
 
 import pytest
 
-from agent006.runtime.code_validator import (
+from nemo_oo_agents.runtime.code_validator import (
     BlockingCallValidator,
     ValidationContext,
     ValidationError,
     UnifiedCodeValidator,
 )
-from agent006.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
+from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
 
 
 def make_context(**kwargs):
@@ -520,7 +520,7 @@ Expected: FAIL — `BlockingCallValidator` doesn't exist
 
 **Step 3: Implement BlockingCallValidator**
 
-In `src/agent006/runtime/code_validator.py`, add the new class. Replace `AsyncSafetyValidator` in `UnifiedCodeValidator.__init__`.
+In `src/nemo_oo_agents/runtime/code_validator.py`, add the new class. Replace `AsyncSafetyValidator` in `UnifiedCodeValidator.__init__`.
 
 The implementation needs:
 
@@ -551,7 +551,7 @@ class BlockingCallValidator:
         blocked_modules: frozenset[str] | None = None,
         blocked_calls: dict[str, frozenset[str]] | None = None,
     ):
-        from agent006.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
+        from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_CALLS, DEFAULT_BLOCKED_MODULES
 
         self.blocked_modules = blocked_modules if blocked_modules is not None else DEFAULT_BLOCKED_MODULES
         self.blocked_calls = blocked_calls if blocked_calls is not None else DEFAULT_BLOCKED_CALLS
@@ -668,7 +668,7 @@ Expected: PASS
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/runtime/code_validator.py tests/runtime/test_blocking_call_validator.py
+git add src/nemo_oo_agents/runtime/code_validator.py tests/runtime/test_blocking_call_validator.py
 git commit -m "feat: add BlockingCallValidator with runtime-aware name resolution"
 ```
 
@@ -677,12 +677,12 @@ git commit -m "feat: add BlockingCallValidator with runtime-aware name resolutio
 ### Task 5: Wire config through to validator in actor.py
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:720-721`
-- Modify: `src/agent006/strategies/codeact.py` (where execute_code is called)
+- Modify: `src/nemo_oo_agents/runtime/actor.py:720-721`
+- Modify: `src/nemo_oo_agents/strategies/codeact.py` (where execute_code is called)
 
 **Step 1: Trace how cell_timeout flows from config to execute_code**
 
-Read `src/agent006/strategies/codeact.py:1666` to understand how `self.config.cell_timeout` is passed. Follow the same pattern for `blocked_modules`/`blocked_calls`.
+Read `src/nemo_oo_agents/strategies/codeact.py:1666` to understand how `self.config.cell_timeout` is passed. Follow the same pattern for `blocked_modules`/`blocked_calls`.
 
 The strategy calls `execute_code()` and passes `timeout=self.config.cell_timeout`. The validator is instantiated inside `execute_code()`. We need to either:
 - Pass `blocked_modules`/`blocked_calls` as parameters to `execute_code()`
@@ -699,8 +699,8 @@ import subprocess
 
 import pytest
 
-from agent006.runtime.actor import ActorRuntime
-from agent006.runtime.code_validator import UnifiedCodeValidator, ValidationContext, ValidationError
+from nemo_oo_agents.runtime.actor import ActorRuntime
+from nemo_oo_agents.runtime.code_validator import UnifiedCodeValidator, ValidationContext, ValidationError
 
 
 def test_validator_uses_config_blocked_modules():
@@ -756,7 +756,7 @@ Expected: PASS
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/runtime/actor.py src/agent006/strategies/codeact.py tests/runtime/test_config_wiring.py
+git add src/nemo_oo_agents/runtime/actor.py src/nemo_oo_agents/strategies/codeact.py tests/runtime/test_config_wiring.py
 git commit -m "feat: wire blocked_modules/blocked_calls config through to validator"
 ```
 
@@ -765,7 +765,7 @@ git commit -m "feat: wire blocked_modules/blocked_calls config through to valida
 ### Task 6: Implement exec_globals stripping
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:628-670` (exec_globals construction)
+- Modify: `src/nemo_oo_agents/runtime/actor.py:628-670` (exec_globals construction)
 - Test: `tests/runtime/test_exec_globals_stripping.py`
 
 **Step 1: Write the failing test**
@@ -782,7 +782,7 @@ def strip_blocked_from_exec_globals(
     blocked_modules: frozenset[str],
 ) -> dict:
     """Import the actual function from actor.py once implemented."""
-    from agent006.runtime.actor import _strip_blocked_modules
+    from nemo_oo_agents.runtime.actor import _strip_blocked_modules
     return _strip_blocked_modules(exec_globals, blocked_modules)
 
 
@@ -826,7 +826,7 @@ Expected: FAIL — `_strip_blocked_modules` doesn't exist
 
 **Step 3: Implement stripping**
 
-In `src/agent006/runtime/actor.py`, add a function and call it during exec_globals construction:
+In `src/nemo_oo_agents/runtime/actor.py`, add a function and call it during exec_globals construction:
 
 ```python
 def _strip_blocked_modules(
@@ -863,7 +863,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/runtime/actor.py tests/runtime/test_exec_globals_stripping.py
+git add src/nemo_oo_agents/runtime/actor.py tests/runtime/test_exec_globals_stripping.py
 git commit -m "feat: strip blocked modules from exec_globals before code execution"
 ```
 
@@ -872,7 +872,7 @@ git commit -m "feat: strip blocked modules from exec_globals before code executi
 ### Task 7: Remove AsyncSafetyValidator and update existing tests
 
 **Files:**
-- Modify: `src/agent006/runtime/code_validator.py` — remove `AsyncSafetyValidator` and `_AsyncSafetyVisitor`
+- Modify: `src/nemo_oo_agents/runtime/code_validator.py` — remove `AsyncSafetyValidator` and `_AsyncSafetyVisitor`
 - Modify: `tests/runtime/test_code_validator.py:563-875` — rewrite `TestAsyncSafetyValidator`
 - Modify: `tests/runtime/test_async_deadlock_prevention.py` — update integration tests
 
@@ -914,7 +914,7 @@ Expected: All PASS
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/runtime/code_validator.py tests/runtime/test_code_validator.py tests/runtime/test_async_deadlock_prevention.py
+git add src/nemo_oo_agents/runtime/code_validator.py tests/runtime/test_code_validator.py tests/runtime/test_async_deadlock_prevention.py
 git commit -m "refactor: remove AsyncSafetyValidator, replace with BlockingCallValidator"
 ```
 
@@ -950,7 +950,7 @@ git commit -m "fix: resolve test regressions from validator replacement"
 ### Task 9: Update exports and documentation
 
 **Files:**
-- Modify: `src/agent006/runtime/__init__.py` (if restrictions.py needs exporting)
+- Modify: `src/nemo_oo_agents/runtime/__init__.py` (if restrictions.py needs exporting)
 - Modify: `AGENTS.md` or other docs (if BlockingCallValidator needs documenting)
 
 **Step 1: Export restrictions constants if needed**

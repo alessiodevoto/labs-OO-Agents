@@ -3,7 +3,7 @@
 import pytest
 from pydantic import BaseModel
 
-from agent006 import Agent, PurePythonStrategy, strategy
+from nemo_oo_agents import Agent, PurePythonStrategy, strategy
 from unifiedllm import FakeLLMClient
 
 

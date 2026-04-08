@@ -26,7 +26,7 @@ The execution failed with `AttributeError: 'SummarizeBatchAgent' object has no a
 
 ### 1. Missing AsyncFunctionDef Support in Pre-Binding
 
-**File:** `src/agent006/strategies/pure_python.py:588`
+**File:** `src/nemo_oo_agents/strategies/pure_python.py:588`
 
 The `_extract_and_bind_methods` function only checked for `ast.FunctionDef`:
 
@@ -45,7 +45,7 @@ if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
 
 ### 2. StructuredOutput JSON Format for Basic Types
 
-**File:** `src/agent006/strategies/structured_output.py:329-336`
+**File:** `src/nemo_oo_agents/strategies/structured_output.py:329-336`
 
 For basic return types (str, int, etc.), `StructuredOutputStrategy` wraps them in a Pydantic model with a `value` field:
 
@@ -71,7 +71,7 @@ The `FakeLLMClient` test responses needed to match this format.
 
 ### 3. Missing Decorators in Method Globals
 
-**File:** `src/agent006/strategies/pure_python.py:602-612`
+**File:** `src/nemo_oo_agents/strategies/pure_python.py:602-612`
 
 When dynamically binding methods via `exec()`, the `plan` decorator and strategy classes weren't available in the execution namespace. This caused failures when the LLM used `@plan(strategy=StructuredOutputStrategy())`.
 
@@ -79,13 +79,13 @@ When dynamically binding methods via `exec()`, the `plan` decorator and strategy
 ```python
 method_globals = {
     "__builtins__": __builtins__,
-    "plan": __import__("agent006.decorators", fromlist=["plan"]).plan,
+    "plan": __import__("nemo_oo_agents.decorators", fromlist=["plan"]).plan,
     "PurePythonStrategy": type(self),
     "StructuredOutputStrategy": __import__(
-        "agent006.strategies.structured_output", fromlist=["StructuredOutputStrategy"]
+        "nemo_oo_agents.strategies.structured_output", fromlist=["StructuredOutputStrategy"]
     ).StructuredOutputStrategy,
     "ReflexionStrategy": __import__(
-        "agent006.strategies.reflexion", fromlist=["ReflexionStrategy"]
+        "nemo_oo_agents.strategies.reflexion", fromlist=["ReflexionStrategy"]
     ).ReflexionStrategy,
 }
 ```
@@ -127,8 +127,8 @@ INFO  [PURE_PYTHON] Task complete - validating and returning result
 
 ## Related Files Changed
 
-- `src/agent006/strategies/pure_python.py` - Fixed async function detection, added method_globals
-- `src/agent006/strategies/structured_output.py` - Added debug logging for JSON parsing
+- `src/nemo_oo_agents/strategies/pure_python.py` - Fixed async function detection, added method_globals
+- `src/nemo_oo_agents/strategies/structured_output.py` - Added debug logging for JSON parsing
 - `tests/strategies/test_pure_python_nested_structured_output.py` - New comprehensive tests
 - `tests/strategies/test_pure_python_class_definitions.py` - Tests for class definition rejection
 

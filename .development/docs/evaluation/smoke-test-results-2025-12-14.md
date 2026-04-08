@@ -8,7 +8,7 @@
 ## Executive Summary
 
 All smoke tests passed successfully, confirming that the evaluation framework is operational for both single-step and multi-step benchmarks. The framework correctly:
-- Executes all agent configurations (baseline_oneshot, baseline_react, agent006_bare)
+- Executes all agent configurations (baseline_oneshot, baseline_react, nemo_oo_agents_bare)
 - Handles both single-step (BFCL, LiveCodeBench) and multi-step (InterCode SQL, TAU-bench) benchmarks
 - Generates traces and results files
 - Reports metrics consistently
@@ -19,7 +19,7 @@ All smoke tests passed successfully, confirming that the evaluation framework is
 |--------|------|---------------|---------------|-----------|
 | baseline_oneshot | ✅ 0% | ✅ 100% | ✅ 0% ⚠️ | ✅ 0% ⚠️ |
 | baseline_react | ✅ 0% | ✅ 100% | ✅ 0% ⚠️ | ✅ 0% ⚠️ |
-| agent006_bare | ✅ 0% | ✅ 0% | ✅ 0% ⚠️ | ✅ 0% ⚠️ |
+| nemo_oo_agents_bare | ✅ 0% | ✅ 0% | ✅ 0% ⚠️ | ✅ 0% ⚠️ |
 
 Legend:
 - ✅ = Test executed successfully
@@ -35,7 +35,7 @@ Legend:
 - **Results:**
   - baseline_oneshot: 0/1 (0%), 1 LLM request, ~6.3s latency
   - baseline_react: 0/1 (0%), 3 LLM requests, ~2.8s avg latency
-  - agent006_bare: 0/1 (0%), 3 LLM requests, ~3.0s avg latency
+  - nemo_oo_agents_bare: 0/1 (0%), 3 LLM requests, ~3.0s avg latency
 - **Status:** ✅ Framework working correctly
 - **Notes:** Low pass rate expected for single task test; need larger sample
 
@@ -44,11 +44,11 @@ Legend:
 - **Results:**
   - baseline_oneshot: 1/1 (100%), 1 LLM request, ~3.8s latency
   - baseline_react: 1/1 (100%), 2 LLM requests, ~4.5s avg latency
-  - agent006_bare: 0/1 (0%), 2 LLM requests, ~7.2s avg latency
+  - nemo_oo_agents_bare: 0/1 (0%), 2 LLM requests, ~7.2s avg latency
 - **Status:** ✅ Framework working correctly
 - **Notes:**
   - Simple baselines succeed on this particular task
-  - agent006_bare failure interesting - may be prompt/formatting issue
+  - nemo_oo_agents_bare failure interesting - may be prompt/formatting issue
 
 ### Multi-Step Benchmarks
 
@@ -57,7 +57,7 @@ Legend:
 - **Results:**
   - baseline_oneshot: 0/1 (0%), 1 LLM request, ~4.4s latency
   - baseline_react: 0/1 (0%), 10 LLM requests, ~2.3s avg latency
-  - agent006_bare: 0/1 (0%), 1 LLM request, ~3.6s latency
+  - nemo_oo_agents_bare: 0/1 (0%), 1 LLM request, ~3.6s latency
 - **Status:** ✅ Framework working, ⚠️ Warnings issued
 - **Warnings:**
   ```
@@ -79,7 +79,7 @@ Legend:
 - **Results:**
   - baseline_oneshot: 0/1 (0%), 1 LLM request, ~4.6s latency
   - baseline_react: 0/1 (0%), 10 LLM requests, ~2.3s avg latency
-  - agent006_bare: 0/1 (0%), 2 LLM requests, ~6.1s avg latency
+  - nemo_oo_agents_bare: 0/1 (0%), 2 LLM requests, ~6.1s avg latency
 - **Status:** ✅ Framework working, ⚠️ Warnings issued
 - **Warnings:** Same as InterCode (agents don't support multi-step)
 - **Notes:**
@@ -111,9 +111,9 @@ None - all tests passed.
 
 ### 🟢 Minor Issues
 
-1. **agent006_bare Failed LiveCodeBench Task**
+1. **nemo_oo_agents_bare Failed LiveCodeBench Task**
    - baseline_oneshot and baseline_react both passed `abc374_c`
-   - agent006_bare failed the same task
+   - nemo_oo_agents_bare failed the same task
    - May indicate prompt differences or code generation issue
    - Needs investigation with larger sample size
 
@@ -122,7 +122,7 @@ None - all tests passed.
 ### LLM Request Counts
 - **baseline_oneshot:** 1 request per task (as expected)
 - **baseline_react:** 2-10 requests depending on benchmark (iterative reasoning)
-- **agent006_bare:** 1-3 requests (code generation + refinement)
+- **nemo_oo_agents_bare:** 1-3 requests (code generation + refinement)
 
 ### Latency
 - **Average latency:** 2-7 seconds per LLM request
@@ -190,7 +190,7 @@ None - all tests passed.
    - Unit test for ReActAgent with async tools
    - Integration test with InterCode environment
 
-3. **Investigate agent006_bare LiveCodeBench failure**
+3. **Investigate nemo_oo_agents_bare LiveCodeBench failure**
    - Run with more tasks to see if pattern holds
    - Compare generated code with baseline solutions
 
@@ -202,7 +202,7 @@ None - all tests passed.
 
 2. **Test all agent configurations**
    - Include refine variants (`baseline_react_refine`, etc.)
-   - Test with tools enabled (`agent006_tools`)
+   - Test with tools enabled (`nemo_oo_agents_tools`)
 
 3. **Test error scenarios**
    - Missing Docker

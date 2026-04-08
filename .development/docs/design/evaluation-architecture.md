@@ -60,7 +60,7 @@ The project has two evaluation frameworks:
 ### E2E-Optimization (File-Based)
 
 ```bash
-cd /Volumes/dev/dev/agent006
+cd /Volumes/dev/dev/nemo_oo_agents
 source .venv/bin/activate
 
 # Run capability tests with e2e-optimization CLI
@@ -73,7 +73,7 @@ python -m e2e_optimization.cli \
 ### Prompt-Opt Runner (A/B Testing)
 
 ```bash
-cd /Volumes/dev/dev/agent006
+cd /Volumes/dev/dev/nemo_oo_agents
 source .venv/bin/activate
 cd util/prompt-optimization
 

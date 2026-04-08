@@ -9,8 +9,8 @@
 ## Quick Start
 
 ```python
-from agent006 import Agent, agent, plan
-from agent006.strategies import PurePythonStrategy, PurePythonConfig
+from nemo_oo_agents import Agent, agent, plan
+from nemo_oo_agents.strategies import PurePythonStrategy, PurePythonConfig
 
 @agent(llm=llm)
 class MyAgent(Agent):

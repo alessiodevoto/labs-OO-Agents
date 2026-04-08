@@ -6,7 +6,7 @@
 
 **Architecture:** Single agent class, pure Python orchestrator routes to `@strategy` methods. Phase tracking via `self._phase` resumes workflows across REPL turns. All existing infrastructure (bash, files, mcp, skills, summarizer) preserved.
 
-**Tech Stack:** Python 3.12, agent006 framework, Pydantic v2 for return types, pytest for tests.
+**Tech Stack:** Python 3.12, nemo_oo_agents framework, Pydantic v2 for return types, pytest for tests.
 
 **Branch:** `feat/tui` (contains `allow_text_response` and all TUI infrastructure).
 
@@ -361,7 +361,7 @@ Expected: FAIL with `AttributeError: type object 'TUIAgent' has no attribute 'cl
 Add import at top of `tui/agent.py`:
 
 ```python
-from agent006.strategies import CodeActStrategy, StructuredOutputStrategy
+from nemo_oo_agents.strategies import CodeActStrategy, StructuredOutputStrategy
 from .models import (
     Intent, BrainstormResult, Plan, PlanStep,
     StepResult, DiagnosisResult, VerificationResult, ReviewResult,

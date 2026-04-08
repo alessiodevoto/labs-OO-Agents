@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent006.tools.bash_tool import BashResult
+from nemo_oo_agents.tools.bash_tool import BashResult
 
 
 @pytest.mark.asyncio
@@ -13,7 +13,7 @@ async def test_bang_prefix_runs_bash_directly():
     mock_bash = AsyncMock()
     mock_bash.run.return_value = BashResult(stdout="hello\n", stderr="", return_code=0)
 
-    from agent006_cli.tui.main import handle_bang_command
+    from nemo_oo_agents_cli.tui.main import handle_bang_command
 
     result = await handle_bang_command("!echo hello", mock_bash)
 
@@ -27,7 +27,7 @@ async def test_bang_prefix_strips_whitespace():
     mock_bash = AsyncMock()
     mock_bash.run.return_value = BashResult(stdout="", stderr="", return_code=0)
 
-    from agent006_cli.tui.main import handle_bang_command
+    from nemo_oo_agents_cli.tui.main import handle_bang_command
 
     await handle_bang_command("!  git status  ", mock_bash)
 
@@ -39,7 +39,7 @@ async def test_bang_prefix_empty_command_returns_none():
     """! with no command should return None without calling bash."""
     mock_bash = AsyncMock()
 
-    from agent006_cli.tui.main import handle_bang_command
+    from nemo_oo_agents_cli.tui.main import handle_bang_command
 
     result = await handle_bang_command("!", mock_bash)
 
@@ -52,7 +52,7 @@ async def test_bang_prefix_whitespace_only_returns_none():
     """! followed by only whitespace should return None."""
     mock_bash = AsyncMock()
 
-    from agent006_cli.tui.main import handle_bang_command
+    from nemo_oo_agents_cli.tui.main import handle_bang_command
 
     result = await handle_bang_command("!   ", mock_bash)
 

@@ -132,7 +132,7 @@ import pandas
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from agent006 import Agent, CodeActStrategy, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from unifiedllm import FakeLLMClient
 ```
 

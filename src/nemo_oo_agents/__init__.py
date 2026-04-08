@@ -1,5 +1,5 @@
 """
-agent006 - Code-Generating Agent Orchestration System
+nemo_oo_agents - Code-Generating Agent Orchestration System
 
 A minimal viable runtime for agent orchestration with event sourcing,
 serialized execution, and complete transparency.
@@ -9,7 +9,7 @@ __version__ = "0.1.0"
 
 # ---------------------------------------------------------------------------
 # Library logging: add NullHandler so applications that don't configure
-# logging never see "No handlers could be found for logger 'agent006'".
+# logging never see "No handlers could be found for logger 'nemo_oo_agents'".
 # This is the only handler a library should ever add (see Python docs).
 # ---------------------------------------------------------------------------
 import logging as _logging
@@ -19,15 +19,15 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 # Export core types
 # Export agent and decorators
 
-from agent006._logging import enable_logging  # noqa: E402
-from agent006._visible import visible  # noqa: E402
-from agent006.agent import Agent  # noqa: E402
-from agent006.decorators import strategy  # noqa: E402
+from nemo_oo_agents._logging import enable_logging  # noqa: E402
+from nemo_oo_agents._visible import visible  # noqa: E402
+from nemo_oo_agents.agent import Agent  # noqa: E402
+from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors
-from agent006.errors import (  # noqa: E402
-    Agent006Error,
-    Agent006RuntimeError,
+from nemo_oo_agents.errors import (  # noqa: E402
+    NemoOOAgentsError,
+    NemoOOAgentsRuntimeError,
     GenerationError,
     RestrictedCodeError,
     SerializationError,
@@ -35,29 +35,29 @@ from agent006.errors import (  # noqa: E402
     StorageNotConfiguredError,
     ValidationError,
 )
-from agent006.library_manager import LibraryManager  # noqa: E402
-from agent006.library_skill import LibrarySkill  # noqa: E402
-from agent006.media import Audio, File, Image, Media  # noqa: E402
-from agent006.metaclass import AgentMeta, no_trace  # noqa: E402
+from nemo_oo_agents.library_manager import LibraryManager  # noqa: E402
+from nemo_oo_agents.library_skill import LibrarySkill  # noqa: E402
+from nemo_oo_agents.media import Audio, File, Image, Media  # noqa: E402
+from nemo_oo_agents.metaclass import AgentMeta, no_trace  # noqa: E402
 
 # Export prompt inspection utilities
-from agent006.prompts import PromptData, build_prompt_data, print_prompt  # noqa: E402
+from nemo_oo_agents.prompts import PromptData, build_prompt_data, print_prompt  # noqa: E402
 
 # Export runtime API classes
-from agent006.runtime.context import ContextApi  # noqa: E402
-from agent006.runtime.context_manager import ContextManager  # noqa: E402
+from nemo_oo_agents.runtime.context import ContextApi  # noqa: E402
+from nemo_oo_agents.runtime.context_manager import ContextManager  # noqa: E402
 
 # Export event filtering
-from agent006.runtime.event_query import EventQuery  # noqa: E402
-from agent006.runtime.events import EventsApi  # noqa: E402
-from agent006.skill import Skill, TextSkill  # noqa: E402
-from agent006.skill_manager import SkillManager  # noqa: E402
+from nemo_oo_agents.runtime.event_query import EventQuery  # noqa: E402
+from nemo_oo_agents.runtime.events import EventsApi  # noqa: E402
+from nemo_oo_agents.skill import Skill, TextSkill  # noqa: E402
+from nemo_oo_agents.skill_manager import SkillManager  # noqa: E402
 
 # Export storage
-from agent006.storage import StorageManager  # noqa: E402
+from nemo_oo_agents.storage import StorageManager  # noqa: E402
 
 # Export strategy base class and implementations
-from agent006.strategies import (  # noqa: E402
+from nemo_oo_agents.strategies import (  # noqa: E402
     CodeActLiteStrategy,
     CodeActStrategy,
     GenerationStrategy,
@@ -117,11 +117,11 @@ __all__ = [
     "hidden",
     "visible",
     # Errors
-    "Agent006Error",
+    "NemoOOAgentsError",
     "GenerationError",
     "ValidationError",
     "RestrictedCodeError",
-    "Agent006RuntimeError",
+    "NemoOOAgentsRuntimeError",
     "SerializationError",
     "SnapshotNotFoundError",
     "StorageNotConfiguredError",
@@ -130,21 +130,21 @@ __all__ = [
 ]
 
 # Install debug handler by default (zero overhead until SIGUSR2 received)
-# Usage: kill -USR2 <pid> → dumps traceback + cell code to ~/.cache/agent006/
-from agent006.runtime.debug_handler import install_debug_handler  # noqa: E402
+# Usage: kill -USR2 <pid> → dumps traceback + cell code to ~/.cache/nemo_oo_agents/
+from nemo_oo_agents.runtime.debug_handler import install_debug_handler  # noqa: E402
 
 install_debug_handler()
 
 # Register agentdoc provider for Agent class
-# This is done here (at the end of agent006 import) rather than in agentdoc's
+# This is done here (at the end of nemo_oo_agents import) rather than in agentdoc's
 # auto-registration because of circular import issues: agentdoc is imported
-# during agent006 import (via actor.py), so agentdoc's _try_register_agent006()
+# during nemo_oo_agents import (via actor.py), so agentdoc's _try_register_nemo_oo_agents()
 # fails silently during the circular import.
 try:
-    from agentdoc.providers.agent006 import Agent006Provider  # type: ignore[import-untyped]
+    from agentdoc.providers.nemo_oo_agents import NemoOOAgentsProvider  # type: ignore[import-untyped]
 
     _register_provider = getattr(__import__("agentdoc"), "register_provider", None)
     if _register_provider is not None:
-        _register_provider(Agent, Agent006Provider())
+        _register_provider(Agent, NemoOOAgentsProvider())
 except (ImportError, AttributeError):
     pass  # agentdoc not installed or provider not available

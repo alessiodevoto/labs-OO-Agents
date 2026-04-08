@@ -13,7 +13,7 @@ import asyncio
 
 import pytest
 
-from agent006.agent import Agent
+from nemo_oo_agents.agent import Agent
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)

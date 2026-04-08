@@ -83,7 +83,7 @@ Enhanced `_parse_value()` function to handle Pydantic models:
 
 ### 5. PredictStrategy XML Wrapper Fix
 
-**File:** `src/agent006/strategies/predict.py`
+**File:** `src/nemo_oo_agents/strategies/predict.py`
 
 Fixed issue where LLM mimics context block XML format and wraps JSON output in tags:
 - Added `_strip_xml_wrapper()` method to detect and remove XML tags
@@ -99,7 +99,7 @@ Fixed issue where LLM mimics context block XML format and wraps JSON output in t
 
 ### 6. Reasoning Model Support
 
-**File:** `src/agent006/strategies/predict.py`
+**File:** `src/nemo_oo_agents/strategies/predict.py`
 
 Added support for reasoning models (o1, Nemotron, QwQ, etc.) that output structured data in the `reasoning` field:
 - Check `response.reasoning` first, then fall back to `response.content`
@@ -112,7 +112,7 @@ Added support for reasoning models (o1, Nemotron, QwQ, etc.) that output structu
 
 ### 7. Failed Output Capture for Debugging
 
-**File:** `src/agent006/strategies/predict.py`
+**File:** `src/nemo_oo_agents/strategies/predict.py`
 
 Enhanced error reporting to capture raw LLM output when validation fails:
 - Added `_extract_raw_from_llm_response()` to extract content even when parsing fails
@@ -150,7 +150,7 @@ The test validates:
 ## Running the Test
 
 ```bash
-cd /home/sklingler/projects/agent006
+cd /home/sklingler/projects/nemo_oo_agents
 uv run python -m eval_pipeline --config tests/capability/config.yaml --test structured_combined_extraction
 ```
 
@@ -184,5 +184,5 @@ This single comprehensive test is superior to multiple simple tests because it:
 - Config: `tests/capability/config.yaml` (search for "structured_combined_extraction")
 - Scorer enhancement: `util/eval_pipeline/src/eval_pipeline/scoring.py` (_parse_value function)
 - Unit tests: `tests/runtime/test_structured_output_executor.py`
-- Strategy implementation: `src/agent006/strategies/predict.py`
-- Backward-compatible alias: `src/agent006/strategies/structured_output.py`
+- Strategy implementation: `src/nemo_oo_agents/strategies/predict.py`
+- Backward-compatible alias: `src/nemo_oo_agents/strategies/structured_output.py`

@@ -45,7 +45,7 @@ MOCHA = {
 CATPPUCCIN_THEME = Theme(
     {
         # Agent006 branding
-        "agent006": f"bold {MOCHA['mauve']}",
+        "nemo_oo_agents": f"bold {MOCHA['mauve']}",
         "tagline": f"italic {MOCHA['pink']}",
         # User interface
         "user": f"bold {MOCHA['green']}",

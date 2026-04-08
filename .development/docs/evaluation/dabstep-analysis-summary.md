@@ -357,9 +357,9 @@ Checker:
 
 - **Dataset**: https://huggingface.co/datasets/adyen/DABstep
 - **Blog**: https://huggingface.co/blog/dabstep
-- **Adapter**: `/Users/rcabral/agent006/evaluation/adapters/dabstep.py`
+- **Adapter**: `/Users/rcabral/nemo_oo_agents/evaluation/adapters/dabstep.py`
 - **Data**: `/Users/rcabral/.cache/dabstep/data/context/`
-- **Analysis**: `/Users/rcabral/agent006/experiments/dabstep-analysis/`
+- **Analysis**: `/Users/rcabral/nemo_oo_agents/experiments/dabstep-analysis/`
 
 ---
 

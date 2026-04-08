@@ -37,7 +37,7 @@
 
 **Frontend:**
 - CLI with argparse
-- Config strings (`agent006`, `react_agent`, `direct_llm`)
+- Config strings (`nemo_oo_agents`, `react_agent`, `direct_llm`)
 - Extensive flags
 
 **Backend:**
@@ -302,7 +302,7 @@ class EvalAdapter(ABC):
      ```bash
      # Old way (still works)
      python -m evaluation.cli \
-       --config agent006 \
+       --config nemo_oo_agents \
        --benchmark bfcl \
        --limit 100
 
@@ -471,7 +471,7 @@ models:
 test_suite:
   - name: bfcl
     agent:
-      module: agents.agent006_tools
+      module: agents.nemo_oo_agents_tools
       class: ToolsAgent
     benchmark: bfcl  # Use benchmark adapter
     limit: 100
@@ -484,7 +484,7 @@ test_suite:
 
 ```bash
 python -m evaluation.cli \
-  --config agent006 \
+  --config nemo_oo_agents \
   --benchmark bfcl \
   --model gpt-4o-mini \
   --provider openai \
@@ -495,7 +495,7 @@ python -m evaluation.cli \
 
 ```bash
 # bfcl_config.yaml
-config_name: agent006
+config_name: nemo_oo_agents
 benchmark: bfcl
 model:
   name: gpt-4o-mini

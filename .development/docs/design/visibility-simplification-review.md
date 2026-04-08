@@ -39,8 +39,8 @@ Concretely:
 - **Safety:** Still enforced by:
   - `DEFAULT_BLOCKED_MODULES` and `_strip_blocked_modules(exec_globals)` (e.g. no `subprocess`, `socket` in exec_globals).
   - `BlockingCallValidator` (e.g. no `time.sleep`, `os.system` even if `time`/`os` are in globals).
-- **Opt-out at module level:** Use the **same single concept** — `agent006.hidden` — with the same three mechanisms we already have for the class, just applied at module scope:
-  - **Decorator:** `@hidden` on module-level functions (same `_agent006_hidden` attribute; filter them out when building exec_globals).
+- **Opt-out at module level:** Use the **same single concept** — `nemo_oo_agents.hidden` — with the same three mechanisms we already have for the class, just applied at module scope:
+  - **Decorator:** `@hidden` on module-level functions (same `_nemo_oo_agents_hidden` attribute; filter them out when building exec_globals).
   - **Annotated:** Module-level variables with `Annotated[T, hidden]` (e.g. `API_KEY: Annotated[str, hidden] = "..."`). Resolve via the module's `__annotations__` (same logic as `is_hidden_field` but for the module).
   - **Context manager:** `with hidden:` — on exit, names that appeared in the module during the block (same diff-on-exit as `with visible:`) are added to the module's hidden set and excluded from exec_globals. Covers unannotated constants and imports (e.g. `with hidden: import secrets`).
 
@@ -88,5 +88,5 @@ There is no case where "different surface → different module" fails: shared co
 ## References
 
 - MR 438: feat: blocking call prevention + unified visible/hidden visibility model (merged).
-- Current implementation: `src/agent006/visibility.py` (`_Visible`, `filter_module_globals`, `_agent006_visible_names`).
-- Safety layer: `src/agent006/runtime/restrictions.py` (`DEFAULT_BLOCKED_MODULES`, `DEFAULT_BLOCKED_CALLS`), `_strip_blocked_modules` and `BlockingCallValidator` in actor/code_validator.
+- Current implementation: `src/nemo_oo_agents/visibility.py` (`_Visible`, `filter_module_globals`, `_nemo_oo_agents_visible_names`).
+- Safety layer: `src/nemo_oo_agents/runtime/restrictions.py` (`DEFAULT_BLOCKED_MODULES`, `DEFAULT_BLOCKED_CALLS`), `_strip_blocked_modules` and `BlockingCallValidator` in actor/code_validator.

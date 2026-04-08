@@ -6,9 +6,9 @@
 ## Executive Summary
 
 The current Agent006 AST validation system is split across three modules with overlapping concerns:
-1. `src/agent006/runtime/validator.py` - Security/safety validation (291 lines)
-2. `src/agent006/runtime/async_safety.py` - Async deadlock prevention (492 lines)
-3. `src/agent006/strategies/generated_code.py` - REPL policy validation (689 lines, partial)
+1. `src/nemo_oo_agents/runtime/validator.py` - Security/safety validation (291 lines)
+2. `src/nemo_oo_agents/runtime/async_safety.py` - Async deadlock prevention (492 lines)
+3. `src/nemo_oo_agents/strategies/generated_code.py` - REPL policy validation (689 lines, partial)
 
 This proposal outlines enhancements to consolidate validation logic, improve error messages, add missing validations, and optimize performance.
 
@@ -116,7 +116,7 @@ execute_code()
 **Implementation**:
 
 ```python
-# src/agent006/runtime/code_validator.py (new unified module)
+# src/nemo_oo_agents/runtime/code_validator.py (new unified module)
 
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -575,7 +575,7 @@ Cell In[3], line 5
 [E201] Don't use asyncio.run() in async context - use 'await' directly
 
 Fix: result = await fetch_data()
-See: https://docs.agent006.dev/async-patterns
+See: https://docs.nemo_oo_agents.dev/async-patterns
 ```
 
 ---
@@ -616,7 +616,7 @@ class CombinedASTVisitor(ast.NodeVisitor):
 
 ### Phase 1: Consolidation (High Priority)
 
-- [ ] Create `src/agent006/runtime/code_validator.py` with unified architecture
+- [ ] Create `src/nemo_oo_agents/runtime/code_validator.py` with unified architecture
 - [ ] Migrate `SecurityValidator` from `validator.py`
 - [ ] Migrate `AsyncSafetyValidator` from `async_safety.py`
 - [ ] Migrate `REPLPolicyValidator` from `generated_code.py`
@@ -661,11 +661,11 @@ class CombinedASTVisitor(ast.NodeVisitor):
 
 | File | Change | Lines |
 |------|--------|-------|
-| `src/agent006/runtime/code_validator.py` | NEW | ~500 |
-| `src/agent006/runtime/validator.py` | DEPRECATE | -291 |
-| `src/agent006/runtime/async_safety.py` | DEPRECATE | -492 |
-| `src/agent006/strategies/generated_code.py` | MODIFY | -100 |
-| `src/agent006/runtime/actor.py` | MODIFY | -20 |
+| `src/nemo_oo_agents/runtime/code_validator.py` | NEW | ~500 |
+| `src/nemo_oo_agents/runtime/validator.py` | DEPRECATE | -291 |
+| `src/nemo_oo_agents/runtime/async_safety.py` | DEPRECATE | -492 |
+| `src/nemo_oo_agents/strategies/generated_code.py` | MODIFY | -100 |
+| `src/nemo_oo_agents/runtime/actor.py` | MODIFY | -20 |
 | `tests/test_code_validator.py` | NEW | ~400 |
 | `tests/test_sandbox.py` | MODIFY | ~50 |
 

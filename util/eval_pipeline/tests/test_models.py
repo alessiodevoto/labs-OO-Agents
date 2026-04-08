@@ -1,6 +1,6 @@
 """Test all models in models.yaml with agents.
 
-These tests verify that each model configuration works with agent006 agents.
+These tests verify that each model configuration works with nemo_oo_agents agents.
 Tests are skipped if the required API key is not set.
 
 SKIPPED BY DEFAULT: These tests make real API calls. Run explicitly:
@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from eval_pipeline.model_factory import client, get, list_models
 
 # Skip entire module by default - only run when explicitly requested

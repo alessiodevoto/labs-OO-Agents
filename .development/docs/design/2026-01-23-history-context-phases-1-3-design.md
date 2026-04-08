@@ -2,7 +2,7 @@
 
 **Goal:** Deliver phases 1–3 of history rendering: valid exprs, RenderSpec-driven rendering, and flattened event fields without touching history management/backends.
 
-**Scope:** Only rendering and event model shape changes across `packages/context-blocks/` and `src/agent006/`.
+**Scope:** Only rendering and event model shape changes across `packages/context-blocks/` and `src/nemo_oo_agents/`.
 
 ## Architecture Overview
 
@@ -33,7 +33,7 @@ ProviderFormatter -> provider messages
 ## Testing Strategy
 
 - Add/adjust unit tests in `context-blocks` to assert RenderSpec behaviors and expr outputs.
-- Update `agent006` tests to reflect flattened event fields.
+- Update `nemo_oo_agents` tests to reflect flattened event fields.
 - Focused suites for renderer/formatter and history APIs before widening to integration tests.
 
 ## Diagram (Event Rendering)

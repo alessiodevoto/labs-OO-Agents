@@ -3,11 +3,11 @@
 import pytest
 from pydantic import BaseModel
 
-from agent006 import strategy
-from agent006.agent import Agent
-from agent006.config.strategy_config import PredictConfig
-from agent006.errors import GenerationError
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents import strategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.config.strategy_config import PredictConfig
+from nemo_oo_agents.errors import GenerationError
+from nemo_oo_agents.strategies import PredictStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 # Module-level test LLM (can be overridden at instantiation)

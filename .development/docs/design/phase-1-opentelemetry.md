@@ -6,10 +6,10 @@
 
 ## Implementation Status
 
-- [x] Phase 1: Core Hook Infrastructure (`src/agent006/runtime/hooks.py`)
+- [x] Phase 1: Core Hook Infrastructure (`src/nemo_oo_agents/runtime/hooks.py`)
 - [x] Phase 2: Hook Call Sites (stub.py, actor.py, executor.py)
-- [x] Phase 3: Delete Old Tracing (removed `src/agent006/tracing/`)
-- [ ] Phase 4: Instrumentation Package (`util/openinference-instrumentation-agent006/`)
+- [x] Phase 3: Delete Old Tracing (removed `src/nemo_oo_agents/tracing/`)
+- [ ] Phase 4: Instrumentation Package (`util/openinference-instrumentation-nemo-oo-agents/`)
 - [ ] Phase 5: Integration Testing
 - [ ] Phase 6: Documentation
 
@@ -17,15 +17,15 @@
 
 ## Overview
 
-Redesign agent006's OpenTelemetry tracing following patterns from `openinference-instrumentation-openai` and `openinference-instrumentation-litellm`, adapted for agent006's unique architecture.
+Redesign nemo_oo_agents's OpenTelemetry tracing following patterns from `openinference-instrumentation-openai` and `openinference-instrumentation-litellm`, adapted for nemo_oo_agents's unique architecture.
 
-**Key Decision:** Use lightweight hooks instead of wrapt (incompatible with agent006's instance-level method wrapping and dynamic method replacement).
+**Key Decision:** Use lightweight hooks instead of wrapt (incompatible with nemo_oo_agents's instance-level method wrapping and dynamic method replacement).
 
 **Changes:**
 - Add `hooks.py` (~100 lines) - Optional callback protocol
 - Modify 3 execution points (~30 lines) - Hook call sites
-- Delete `src/agent006/tracing/` (~932 lines) - All existing tracing code
-- Create `util/openinference-instrumentation-agent006/` - Standard instrumentation package
+- Delete `src/nemo_oo_agents/tracing/` (~932 lines) - All existing tracing code
+- Create `util/openinference-instrumentation-nemo-oo-agents/` - Standard instrumentation package
 
 **Net:** -832 lines, <1% overhead when disabled, <5% when enabled
 
@@ -33,7 +33,7 @@ Redesign agent006's OpenTelemetry tracing following patterns from `openinference
 
 ## Why Hooks Instead of Wrapt?
 
-**Wrapt is incompatible** with agent006's architecture:
+**Wrapt is incompatible** with nemo_oo_agents's architecture:
 
 | Issue | Agent006 | Wrapt | Conflict |
 |-------|----------|-------|----------|
@@ -53,7 +53,7 @@ Redesign agent006's OpenTelemetry tracing following patterns from `openinference
 
 ### Core Changes
 
-**New file: `src/agent006/runtime/hooks.py`**
+**New file: `src/nemo_oo_agents/runtime/hooks.py`**
 
 ```python
 from typing import Any, Protocol
@@ -129,10 +129,10 @@ def get_hooks() -> InstrumentationHooks | None:
 
 ### Modified Files
 
-**1. `src/agent006/runtime/stub.py` - Agent call hooks**
+**1. `src/nemo_oo_agents/runtime/stub.py` - Agent call hooks**
 ```python
 # In _wrap_plan_method wrapper function:
-from agent006.runtime.hooks import get_hooks
+from nemo_oo_agents.runtime.hooks import get_hooks
 
 hooks = get_hooks()
 hook_context = None
@@ -155,7 +155,7 @@ finally:
             pass
 ```
 
-**2. `src/agent006/runtime/actor.py` - Generation hooks**
+**2. `src/nemo_oo_agents/runtime/actor.py` - Generation hooks**
 ```python
 # In _execute_with_generation:
 # Add instance variable in __init__:
@@ -191,7 +191,7 @@ finally:
             pass
 ```
 
-**3. `src/agent006/runtime/executor.py` - Code execution hooks**
+**3. `src/nemo_oo_agents/runtime/executor.py` - Code execution hooks**
 ```python
 # In execute_generated_code:
 hooks = get_hooks()
@@ -224,7 +224,7 @@ finally:
 
 ### Deleted Files
 
-Remove entire `src/agent006/tracing/` directory:
+Remove entire `src/nemo_oo_agents/tracing/` directory:
 - `otel.py`, `protocol.py`, `noop.py`, `ids.py`, `jsonl_exporter.py`
 - All tracing imports from runtime/executors
 - OpenTelemetry dependencies from `pyproject.toml`
@@ -236,14 +236,14 @@ Remove entire `src/agent006/tracing/` directory:
 
 ## Instrumentation Package
 
-**Location:** `util/openinference-instrumentation-agent006/`
+**Location:** `util/openinference-instrumentation-nemo-oo-agents/`
 
 **Structure:**
 ```
-util/openinference-instrumentation-agent006/
+util/openinference-instrumentation-nemo-oo-agents/
 ├── pyproject.toml
 ├── README.md
-└── src/openinference/instrumentation/agent006/
+└── src/openinference/instrumentation/nemo_oo_agents/
     ├── __init__.py          # Agent006Instrumentor(BaseInstrumentor)
     ├── _hooks_impl.py       # Implements InstrumentationHooks protocol
     ├── _with_span.py        # Span lifecycle helper (from openai instrumentor)
@@ -251,7 +251,7 @@ util/openinference-instrumentation-agent006/
 ```
 
 **Dependencies:**
-- `agent006>=0.1.0`
+- `nemo_oo_agents>=0.1.0`
 - `opentelemetry-api>=1.20.0`
 - `opentelemetry-sdk>=1.20.0`
 - `openinference-instrumentation>=0.1.42`
@@ -341,13 +341,13 @@ await agent.method()  # → agent_call_id only (no LLM call)
 ### Basic Setup
 ```python
 from opentelemetry.sdk.trace import TracerProvider
-from openinference.instrumentation.agent006 import Agent006Instrumentor
+from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor
 
 # Setup tracer provider
 provider = TracerProvider()
 trace.set_tracer_provider(provider)
 
-# Instrument agent006
+# Instrument nemo_oo_agents
 Agent006Instrumentor().instrument()
 
 # Now all agent operations are traced
@@ -389,7 +389,7 @@ Agent006Instrumentor().instrument()
 
 ### Phase 1: Core Hook Infrastructure
 **Tasks:**
-1. Create `src/agent006/runtime/hooks.py` with protocol
+1. Create `src/nemo_oo_agents/runtime/hooks.py` with protocol
 2. Add `set_hooks()` / `get_hooks()` functions
 3. Write unit tests
 4. Document hook contract
@@ -414,7 +414,7 @@ Agent006Instrumentor().instrument()
 
 ### Phase 3: Delete Old Tracing
 **Tasks:**
-1. Delete `src/agent006/tracing/` directory
+1. Delete `src/nemo_oo_agents/tracing/` directory
 2. Remove tracing imports from runtime/executors
 3. Remove OpenTelemetry dependencies from `pyproject.toml`
 4. Verify core tests pass without instrumentation
@@ -469,7 +469,7 @@ Agent006Instrumentor().instrument()
 All current tracing code is removed:
 ```python
 # ❌ Old API (deleted)
-from agent006.tracing import otel
+from nemo_oo_agents.tracing import otel
 with otel.agent_call_span(...):
     ...
 ```
@@ -477,13 +477,13 @@ with otel.agent_call_span(...):
 ### New API
 ```python
 # ✅ New API (standard OpenTelemetry)
-from openinference.instrumentation.agent006 import Agent006Instrumentor
+from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor
 
 Agent006Instrumentor().instrument()
 # Tracing now happens automatically via hooks
 ```
 
-**Migration:** Users must install `openinference-instrumentation-agent006` and update code to use standard OpenTelemetry setup.
+**Migration:** Users must install `openinference-instrumentation-nemo-oo-agents` and update code to use standard OpenTelemetry setup.
 
 ---
 

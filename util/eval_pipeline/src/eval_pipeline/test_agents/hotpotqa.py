@@ -4,7 +4,7 @@ This agent answers questions that require reasoning across multiple
 context paragraphs. Some paragraphs are relevant, others are distractors.
 """
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class HotpotQAAgent(Agent):

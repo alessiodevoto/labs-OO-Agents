@@ -18,10 +18,10 @@ Example in LLM-generated code:
 
 from typing import TYPE_CHECKING, Any
 
-from agent006.events import PythonOutput
+from nemo_oo_agents.events import PythonOutput
 
 if TYPE_CHECKING:
-    from agent006.runtime.event_manager import EventManager
+    from nemo_oo_agents.runtime.event_manager import EventManager
 
 
 class OutAccessor:

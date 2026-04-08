@@ -1,5 +1,5 @@
 [project]
-name = "openinference-instrumentation-agent006"
+name = "openinference-instrumentation-nemo-oo-agents"
 version = "0.1.0"
 description = "OpenInference instrumentation for Agent006"
 readme = "README.md"

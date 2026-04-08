@@ -26,9 +26,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from agent006.agent import Agent
-from agent006.events import ExecutionResult
-from agent006.runtime.actor import ActorRuntime
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.events import ExecutionResult
+from nemo_oo_agents.runtime.actor import ActorRuntime
 from unifiedllm import LLMResponse
 
 # Sentinel indicating that ``AgentCallContext.result`` has not been set yet.

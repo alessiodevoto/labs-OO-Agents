@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openinference_instrumentation_agent006._litellm_journal import (
+from openinference_instrumentation_nemo_oo_agents._litellm_journal import (
     MessageJournalCallback,
     _hash_msg,
 )
@@ -81,7 +81,7 @@ class TestMessageJournalCallbackDelta:
         ]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             hashes = cb._send_new_messages("sess1", msgs)
@@ -95,7 +95,7 @@ class TestMessageJournalCallbackDelta:
         msgs = [{"role": "user", "content": "hello"}]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
             cb._send_new_messages("sess1", msgs)
@@ -109,7 +109,7 @@ class TestMessageJournalCallbackDelta:
         new = {"role": "assistant", "content": "hi"}
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
             cb._send_new_messages("sess1", [old])
@@ -123,7 +123,7 @@ class TestMessageJournalCallbackDelta:
         msg = {"role": "user", "content": "hello"}
         posted: dict[str, list] = {"sess1": [], "sess2": []}
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: (
                 posted["sess1" if "sess1" in str(cb._sent) else "sess2"].append(payload) or True
             ),
@@ -133,7 +133,7 @@ class TestMessageJournalCallbackDelta:
             # same message to sess2 should also be sent (different session)
             p2 = []
             with patch(
-                "openinference_instrumentation_agent006._litellm_journal._post_json",
+                "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
                 side_effect=lambda url, payload, **kw: p2.append(payload) or True,
             ):
                 cb._send_new_messages("sess2", [msg])
@@ -146,7 +146,7 @@ class TestMessageJournalCallbackDelta:
         def send(i):
             try:
                 with patch(
-                    "openinference_instrumentation_agent006._litellm_journal._post_json",
+                    "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
                     return_value=True,
                 ):
                     cb._send_new_messages("sess", [{"role": "user", "content": f"msg{i}"}])
@@ -180,10 +180,10 @@ class TestContextBlockSideband:
         ]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
-            from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+            from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
 
             set_context_blocks(blocks)
             hashes = cb._send_new_messages(
@@ -223,8 +223,8 @@ class TestContextBlockSideband:
             posted.append(payload)
             return True
 
-        with patch("openinference_instrumentation_agent006._litellm_journal._post_json", side_effect=record):
-            from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+        with patch("openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json", side_effect=record):
+            from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
 
             # Turn 1: both blocks fresh
             set_context_blocks([block_a, block_b])
@@ -246,13 +246,13 @@ class TestContextBlockSideband:
 
     def test_no_sideband_falls_back_to_whole_message(self, cb):
         """Without ContextVar set, system message is hashed as a whole (old behavior)."""
-        from openinference_instrumentation_agent006._context_sideband import _current_blocks
+        from openinference_instrumentation_nemo_oo_agents._context_sideband import _current_blocks
 
         _current_blocks.set(None)  # explicit clear
         msgs = [{"role": "system", "content": "You are helpful."}, {"role": "user", "content": "hi"}]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
             hashes = cb._send_new_messages("sess3", msgs)
@@ -266,10 +266,10 @@ class TestContextBlockSideband:
         blocks = ["<a>\nfoo\n</a>", "<b>\nbar\n</b>"]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
-            from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+            from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
 
             set_context_blocks(blocks)
             cb._send_new_messages("sess4", [{"role": "system", "content": "\n\n".join(blocks)}])
@@ -284,7 +284,7 @@ class TestContextBlockSideband:
     def test_sideband_cleared_after_read_even_when_first_msg_not_system(self, cb):
         """Sideband is consumed on first system message; subsequent non-system
         first-message calls don't see stale sideband data."""
-        from openinference_instrumentation_agent006._context_sideband import (
+        from openinference_instrumentation_nemo_oo_agents._context_sideband import (
             get_context_blocks,
             set_context_blocks,
         )
@@ -294,12 +294,12 @@ class TestContextBlockSideband:
 
         # Call with user message first — no system message, sideband not consumed yet
         # (sideband only consumed when first msg is system)
-        with patch("openinference_instrumentation_agent006._litellm_journal._post_json", return_value=True):
+        with patch("openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json", return_value=True):
             cb._send_new_messages("sess5", [{"role": "user", "content": "hi"}])
 
         # Sideband NOT consumed because first message wasn't system — still set
         # Now simulate an actual system-first call that should consume it
-        with patch("openinference_instrumentation_agent006._litellm_journal._post_json", return_value=True):
+        with patch("openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json", return_value=True):
             cb._send_new_messages("sess5", [{"role": "system", "content": "sys"}])
 
         # After that call, sideband should be cleared
@@ -307,13 +307,13 @@ class TestContextBlockSideband:
 
     def test_empty_blocks_list_falls_back_to_whole_message(self, cb):
         """An empty list in the sideband is falsy — should fall back to whole-message hash."""
-        from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+        from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
 
         set_context_blocks([])  # empty list is falsy
         msgs = [{"role": "system", "content": "You are helpful."}, {"role": "user", "content": "hi"}]
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append(payload) or True,
         ):
             hashes = cb._send_new_messages("sess6", msgs)
@@ -332,7 +332,7 @@ class TestAsyncJournalCallbackHooks:
     @pytest.fixture
     def cb(self, monkeypatch):
         monkeypatch.setattr(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             lambda url, payload, **kw: True,
         )
         return MessageJournalCallback("http://localhost:5001")
@@ -364,7 +364,7 @@ class TestAsyncJournalCallbackHooks:
 
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             asyncio.run(
@@ -405,7 +405,7 @@ class TestSpanIdCapture:
         mock_span.get_span_context.return_value = mock_ctx
 
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal.otel_trace.get_current_span",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal.otel_trace.get_current_span",
             return_value=mock_span,
         ):
             span_id = cb._current_span_id()
@@ -420,7 +420,7 @@ class TestSpanIdCapture:
         mock_span.get_span_context.return_value = mock_ctx
 
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal.otel_trace.get_current_span",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal.otel_trace.get_current_span",
             return_value=mock_span,
         ):
             span_id = cb._current_span_id()
@@ -430,7 +430,7 @@ class TestSpanIdCapture:
     def test_span_id_none_on_exception(self):
         cb = MessageJournalCallback("http://localhost:5001")
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal.otel_trace.get_current_span",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal.otel_trace.get_current_span",
             side_effect=RuntimeError("no otel"),
         ):
             span_id = cb._current_span_id()
@@ -446,7 +446,7 @@ class TestJournalCallbackHooks:
     @pytest.fixture
     def cb(self, monkeypatch):
         monkeypatch.setattr(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             lambda url, payload, **kw: True,
         )
         cb = MessageJournalCallback("http://localhost:5001")
@@ -481,7 +481,7 @@ class TestJournalCallbackHooks:
 
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             import datetime
@@ -521,7 +521,7 @@ class TestJournalCallbackHooks:
 
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             cb.log_success_event(
@@ -559,7 +559,7 @@ class TestJournalCallbackHooks:
 
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             cb.log_success_event(
@@ -584,10 +584,10 @@ class TestJournalCallbackHooks:
         posted = []
         with (
             patch(
-                "openinference_instrumentation_agent006._litellm_journal._post_json",
+                "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
                 side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
             ),
-            patch("openinference_instrumentation_agent006._litellm_journal.log") as mock_log,
+            patch("openinference_instrumentation_nemo_oo_agents._litellm_journal.log") as mock_log,
         ):
             cb.log_success_event(
                 {"litellm_call_id": "orphan", "model": "gpt-4o"},
@@ -614,7 +614,7 @@ class TestJournalCallbackHooks:
 
         posted = []
         with patch(
-            "openinference_instrumentation_agent006._litellm_journal._post_json",
+            "openinference_instrumentation_nemo_oo_agents._litellm_journal._post_json",
             side_effect=lambda url, payload, **kw: posted.append((url, payload)) or True,
         ):
             cb.log_success_event(
@@ -652,8 +652,8 @@ class TestJournalUrlParsing:
             pass
 
     def test_standard_v1_path(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://localhost:5001/v1/traces")
         assert isinstance(exp, JournalExporter)
@@ -661,24 +661,24 @@ class TestJournalUrlParsing:
 
     def test_non_standard_path_no_v1(self):
         """Endpoints without /v1/ in the path should still extract the origin correctly."""
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://myhost:9000/traces")
         assert isinstance(exp, JournalExporter)
         assert exp._base_url == "http://myhost:9000"
 
     def test_custom_port_and_path(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://myhost:9000/otel/v1/traces")
         assert isinstance(exp, JournalExporter)
         assert exp._base_url == "http://myhost:9000"
 
     def test_bare_origin_no_path(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://myhost:9000")
         assert isinstance(exp, JournalExporter)
@@ -711,8 +711,8 @@ class TestJournalExporter:
     def test_installs_callback_on_construction(self):
         import litellm
 
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
-        from openinference_instrumentation_agent006._litellm_journal import MessageJournalCallback
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._litellm_journal import MessageJournalCallback
 
         JournalExporter("http://localhost:5001")
         assert any(isinstance(cb, MessageJournalCallback) for cb in litellm.callbacks)
@@ -720,8 +720,8 @@ class TestJournalExporter:
     def test_idempotent_install(self):
         import litellm
 
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
-        from openinference_instrumentation_agent006._litellm_journal import MessageJournalCallback
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._litellm_journal import MessageJournalCallback
 
         JournalExporter("http://localhost:5001")
         JournalExporter("http://localhost:5001")
@@ -731,8 +731,8 @@ class TestJournalExporter:
     def test_shutdown_removes_callback(self):
         import litellm
 
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
-        from openinference_instrumentation_agent006._litellm_journal import MessageJournalCallback
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._litellm_journal import MessageJournalCallback
 
         exp = JournalExporter("http://localhost:5001")
         exp.shutdown()
@@ -741,20 +741,20 @@ class TestJournalExporter:
     def test_export_is_noop_and_returns_success(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
 
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = JournalExporter("http://localhost:5001")
         result = exp.export([])
         assert result == SpanExportResult.SUCCESS
 
     def test_describe_includes_base_url(self):
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = JournalExporter("http://myhost:9999")
         assert "myhost:9999" in exp.describe()
 
     def test_force_flush_returns_true(self):
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = JournalExporter("http://localhost:5001")
         assert exp.force_flush() is True
@@ -783,23 +783,23 @@ class TestJournalFactory:
             pass
 
     def test_returns_journal_exporter(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://localhost:5001/v1/traces")
         assert isinstance(exp, JournalExporter)
 
     def test_strips_v1_path(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://localhost:5001/v1/traces")
         assert isinstance(exp, JournalExporter)
         assert exp._base_url == "http://localhost:5001"
 
     def test_custom_host(self):
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal("http://myhost:9999/v1/traces")
         assert isinstance(exp, JournalExporter)
@@ -807,8 +807,8 @@ class TestJournalFactory:
 
     def test_env_var_override(self, monkeypatch):
         monkeypatch.setenv("OTLP_ENDPOINT", "http://envhost:8888/v1/traces")
-        from openinference_instrumentation_agent006 import exporters
-        from openinference_instrumentation_agent006._journal_exporter import JournalExporter
+        from openinference_instrumentation_nemo_oo_agents import exporters
+        from openinference_instrumentation_nemo_oo_agents._journal_exporter import JournalExporter
 
         exp = exporters.journal()
         assert isinstance(exp, JournalExporter)
@@ -823,7 +823,7 @@ class TestJournalFactory:
 class TestSpanLimits:
     def test_tracer_provider_has_raised_span_attribute_limit(self):
         """enable_tracing() must create a TracerProvider with max_span_attributes=2048."""
-        import openinference_instrumentation_agent006 as pkg
+        import openinference_instrumentation_nemo_oo_agents as pkg
 
         # Reset global state — including OTel's global provider so a TracerProvider
         # set by a prior test doesn't get reused (which would skip SpanLimits init).
@@ -845,14 +845,14 @@ class TestSpanLimits:
 
         def _fake_instrument(**kwargs):
             """Simulate what real Agent006Instrumentor.instrument() does."""
-            from agent006.runtime.hooks import set_hooks
+            from nemo_oo_agents.runtime.hooks import set_hooks
 
             set_hooks(_mock_hooks)
 
         with (
-            patch("openinference_instrumentation_agent006.Agent006Instrumentor") as mock_cls,
-            patch("openinference_instrumentation_agent006._instrument_litellm"),
-            patch("openinference_instrumentation_agent006.trace.get_tracer_provider", return_value=None),
+            patch("openinference_instrumentation_nemo_oo_agents.Agent006Instrumentor") as mock_cls,
+            patch("openinference_instrumentation_nemo_oo_agents._instrument_litellm"),
+            patch("openinference_instrumentation_nemo_oo_agents.trace.get_tracer_provider", return_value=None),
         ):
             mock_cls.return_value.instrument.side_effect = _fake_instrument
             pkg.enable_tracing(exporters=[_FakeExporter()])
@@ -867,6 +867,6 @@ class TestSpanLimits:
         pkg._enabled = False
         pkg._provider = None
         pkg._hooks = None
-        from agent006.runtime.hooks import set_hooks
+        from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(None)

@@ -99,7 +99,7 @@ async def _ingest_worker() -> None:
 
 # Suppress all successful (2xx/3xx) access logs — they're noise during eval runs.
 # Errors (4xx/5xx) still appear.  Our own diagnostic log.info/warning messages
-# go through the "agent006_viewer" logger, not "uvicorn.access", so they're unaffected.
+# go through the "nemo_oo_agents_viewer" logger, not "uvicorn.access", so they're unaffected.
 
 
 class _QuietAccessFilter(logging.Filter):

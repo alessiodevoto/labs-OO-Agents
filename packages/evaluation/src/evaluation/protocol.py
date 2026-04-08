@@ -281,7 +281,7 @@ class BenchmarkEnvironment(ABC):
         Return tool classes that agents can use to interact with this environment.
 
         Tools should be classes that agents can instantiate and call methods on,
-        following the agent006 tool pattern. For example:
+        following the nemo_oo_agents tool pattern. For example:
 
             {"sql": SQLExecutor, "bash": BashExecutor}
 

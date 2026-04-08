@@ -13,8 +13,8 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel
 
-from agent006.errors.storage import SerializationError
-from agent006.storage.markers import is_nosnapshot_field
+from nemo_oo_agents.errors.storage import SerializationError
+from nemo_oo_agents.storage.markers import is_nosnapshot_field
 from context_blocks import DynamicContext
 
 SNAPSHOT_VERSION: Final = 1
@@ -152,7 +152,7 @@ class AgentSnapshot(BaseModel):
             # come from the same process (InMemoryStorageManager) but if snapshots
             # are ever persisted to disk or transferred over the network, the source
             # must be treated as untrusted and signed/validated before restore.
-            from agent006.strategies.generated_code import ExecutionNamespaceBuilder
+            from nemo_oo_agents.strategies.generated_code import ExecutionNamespaceBuilder
 
             namespace = ExecutionNamespaceBuilder.build(agent)
             for method_name, method_code in self.methods.items():

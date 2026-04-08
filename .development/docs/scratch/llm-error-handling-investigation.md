@@ -8,7 +8,7 @@
 
 ### 1. Pure Python Strategy → Runtime Generate
 
-In `src/agent006/strategies/pure_python.py` (line 201):
+In `src/nemo_oo_agents/strategies/pure_python.py` (line 201):
 ```python
 response, event_id = await runtime.generate(tools=[])
 ```
@@ -17,7 +17,7 @@ response, event_id = await runtime.generate(tools=[])
 
 ### 2. Runtime Generate → LLM Client
 
-In `src/agent006/runtime/actor.py` (lines 113-173):
+In `src/nemo_oo_agents/runtime/actor.py` (lines 113-173):
 ```python
 async def generate(
     self,
@@ -98,7 +98,7 @@ litellm.num_retries = 3     # Default retry count
 litellm.request_timeout = 600  # Timeout in seconds
 ```
 
-However, **we don't explicitly configure this** in agent006. LiteLLM uses its default configuration.
+However, **we don't explicitly configure this** in nemo_oo_agents. LiteLLM uses its default configuration.
 
 ### 3. Strategy-Level Error Loop Handles Execution Errors Only
 
@@ -293,7 +293,7 @@ litellm.drop_params = True  # Drop unsupported params instead of erroring
 When an LLM error occurs and is retried, add an event to history:
 
 ```python
-from agent006.events import ErrorEvent
+from nemo_oo_agents.events import ErrorEvent
 
 runtime.history.add(
     ErrorEvent(
@@ -343,7 +343,7 @@ class PurePythonStrategy(CompositeStrategy):
 Consider extracting `evaluation/llm/retry.py` into a shared module and using it in the main runtime:
 
 ```python
-from agent006.llm.retry import with_retry, RetryConfig
+from nemo_oo_agents.llm.retry import with_retry, RetryConfig
 
 response = await with_retry(
     llm_client.acall,

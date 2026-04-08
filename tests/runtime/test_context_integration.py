@@ -5,7 +5,7 @@ Tests the dict-like ContextApi API and integration with Agent.
 
 import pytest
 
-from agent006.agent import Agent
+from nemo_oo_agents.agent import Agent
 from context_blocks import DynamicContext
 from unifiedllm import FakeLLMClient
 
@@ -436,9 +436,9 @@ class TestAgentContextParam:
         agent = TestAgent()
         assert "status" in agent.context_manager
 
-    def test_dynamic_importable_from_agent006(self):
-        """DynamicContext is importable from agent006 top-level."""
-        from agent006 import DynamicContext as D
+    def test_dynamic_importable_from_nemo_oo_agents(self):
+        """DynamicContext is importable from nemo_oo_agents top-level."""
+        from nemo_oo_agents import DynamicContext as D
         from context_blocks import DynamicContext as OrigDynamicContext
 
         assert D is OrigDynamicContext
@@ -464,8 +464,8 @@ class TestScopedContextCurrentCallFiltering:
         """
         import json
 
-        from agent006 import EventQuery, strategy
-        from agent006.strategies.codeact import CodeActStrategy
+        from nemo_oo_agents import EventQuery, strategy
+        from nemo_oo_agents.strategies.codeact import CodeActStrategy
         from context_blocks import ScopedContext
         from unifiedllm import LLMResponse, ToolCall
 
@@ -524,7 +524,7 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_parameter_basic(self):
         """@strategy(context=ScopedContext(...)) basic usage works."""
-        from agent006 import strategy
+        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
@@ -547,7 +547,7 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_accepts_scopedcontext_only(self):
         """@strategy(context=...) only accepts ScopedContext, not dict."""
-        from agent006 import strategy
+        from nemo_oo_agents import strategy
 
         with pytest.raises(TypeError, match="must be ScopedContext"):
 
@@ -558,7 +558,7 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_events(self):
         """@strategy(context=ScopedContext(events={...})) sets decorator events."""
-        from agent006 import strategy
+        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
@@ -577,7 +577,7 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_both_context_and_events(self):
         """@strategy(context=ScopedContext(context={...}, events={...})) works."""
-        from agent006 import strategy
+        from nemo_oo_agents import strategy
         from context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
@@ -602,7 +602,7 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_none_is_valid(self):
         """@strategy(context=None) is valid - no context override."""
-        from agent006 import strategy
+        from nemo_oo_agents import strategy
 
         fake_llm = FakeLLMClient()
 

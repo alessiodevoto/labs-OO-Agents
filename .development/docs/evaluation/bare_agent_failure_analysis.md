@@ -13,10 +13,10 @@
 **Actual behavior**: **All 9 failed tasks made only 1 LLM call each!**
 
 ```
-$ wc -l agent006_bare_livecodebench.jsonl
-20 agent006_bare_livecodebench.jsonl  # 10 tasks × 2 spans = 20 lines
+$ wc -l nemo_oo_agents_bare_livecodebench.jsonl
+20 nemo_oo_agents_bare_livecodebench.jsonl  # 10 tasks × 2 spans = 20 lines
 
-$ grep -c '"name": "llm.completion"' agent006_bare_livecodebench.jsonl
+$ grep -c '"name": "llm.completion"' nemo_oo_agents_bare_livecodebench.jsonl
 10  # Only 1 LLM call per task!
 ```
 

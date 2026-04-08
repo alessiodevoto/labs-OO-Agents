@@ -102,7 +102,7 @@ def _format_error(self, error: Exception, traceback_str: str | None = None) -> s
 
 | File | Changes |
 |------|---------|
-| `src/agent006/strategies/pure_python.py` | Update `_format_error()` to include traceback |
+| `src/nemo_oo_agents/strategies/pure_python.py` | Update `_format_error()` to include traceback |
 
 ## Testing
 

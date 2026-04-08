@@ -1,4 +1,4 @@
-"""Auto-discovered command modules for the agent006 CLI.
+"""Auto-discovered command modules for the nemo_oo_agents CLI.
 
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                    HOW TO ADD A NEW COMMAND                         ║
@@ -17,7 +17,7 @@ Convention
 ----------
 
 Each Python file in this directory that does NOT start with ``_`` is
-auto-discovered and registered as a top-level subcommand of ``agent006``.
+auto-discovered and registered as a top-level subcommand of ``nemo_oo_agents``.
 
 A command module **must** export a module-level variable named ``command``
 that is a ``click.BaseCommand`` (either a ``@click.command()`` or a
@@ -28,8 +28,8 @@ Optionally, you can set:
 
 The file name (minus ``.py``) becomes the subcommand name by default::
 
-    commands/sandbox.py   →  agent006 sandbox ...
-    commands/start_dev.py →  agent006 start-dev ...
+    commands/sandbox.py   →  nemo_oo_agents sandbox ...
+    commands/start_dev.py →  nemo_oo_agents start-dev ...
 
 Files starting with ``_`` are ignored (private helpers, templates, etc.).
 

@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent006 import Agent
-from agent006.config.truncation_config import TruncationConfig
+from nemo_oo_agents import Agent
+from nemo_oo_agents.config.truncation_config import TruncationConfig
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM

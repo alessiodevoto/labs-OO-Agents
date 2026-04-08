@@ -15,7 +15,7 @@
 ### Task 1: Add `hidden` sentinel and detection helpers
 
 **Files:**
-- Modify: `src/agent006/visibility.py`
+- Modify: `src/nemo_oo_agents/visibility.py`
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write failing tests for `hidden` as decorator**
@@ -27,19 +27,19 @@ from typing import Annotated
 
 
 def test_hidden_decorator_marks_method():
-    """@hidden sets _agent006_hidden on the function."""
-    from agent006.visibility import hidden
+    """@hidden sets _nemo_oo_agents_hidden on the function."""
+    from nemo_oo_agents.visibility import hidden
 
     @hidden
     def my_method():
         pass
 
-    assert my_method._agent006_hidden is True
+    assert my_method._nemo_oo_agents_hidden is True
 
 
 def test_hidden_decorator_preserves_function():
     """@hidden returns the original function, not a wrapper."""
-    from agent006.visibility import hidden
+    from nemo_oo_agents.visibility import hidden
 
     def my_method():
         return 42
@@ -56,7 +56,7 @@ Expected: FAIL with `ImportError: cannot import name 'hidden'`
 
 **Step 3: Implement `hidden` sentinel**
 
-In `src/agent006/visibility.py`, add after the existing imports:
+In `src/nemo_oo_agents/visibility.py`, add after the existing imports:
 
 ```python
 class _Hidden:
@@ -69,7 +69,7 @@ class _Hidden:
 
     def __call__(self, func):
         """Use as @hidden decorator on methods."""
-        func._agent006_hidden = True
+        func._nemo_oo_agents_hidden = True
         return func
 
     def __repr__(self):
@@ -89,7 +89,7 @@ Add to `tests/test_visibility.py`:
 
 ```python
 def test_is_hidden_method_true():
-    from agent006.visibility import hidden, is_hidden_method
+    from nemo_oo_agents.visibility import hidden, is_hidden_method
 
     @hidden
     def secret():
@@ -99,7 +99,7 @@ def test_is_hidden_method_true():
 
 
 def test_is_hidden_method_false():
-    from agent006.visibility import is_hidden_method
+    from nemo_oo_agents.visibility import is_hidden_method
 
     def public():
         pass
@@ -108,7 +108,7 @@ def test_is_hidden_method_false():
 
 
 def test_is_hidden_field_with_annotated():
-    from agent006.visibility import hidden, is_hidden_field
+    from nemo_oo_agents.visibility import hidden, is_hidden_field
 
     class MyClass:
         secret: Annotated[str, hidden] = ""
@@ -119,7 +119,7 @@ def test_is_hidden_field_with_annotated():
 
 
 def test_is_hidden_field_missing_name():
-    from agent006.visibility import is_hidden_field
+    from nemo_oo_agents.visibility import is_hidden_field
 
     class MyClass:
         public: str = ""
@@ -129,7 +129,7 @@ def test_is_hidden_field_missing_name():
 
 def test_is_hidden_field_subclass_override():
     """Subclass re-declaring without hidden unhides the field."""
-    from agent006.visibility import hidden, is_hidden_field
+    from nemo_oo_agents.visibility import hidden, is_hidden_field
 
     class Base:
         secret: Annotated[str, hidden] = ""
@@ -148,7 +148,7 @@ Expected: FAIL with `ImportError: cannot import name 'is_hidden_method'`
 
 **Step 7: Implement detection helpers**
 
-In `src/agent006/visibility.py`, add after the `hidden` singleton:
+In `src/nemo_oo_agents/visibility.py`, add after the `hidden` singleton:
 
 ```python
 import typing
@@ -156,7 +156,7 @@ import typing
 
 def is_hidden_method(func) -> bool:
     """Check if a method is marked with @hidden."""
-    return getattr(func, "_agent006_hidden", False) is True
+    return getattr(func, "_nemo_oo_agents_hidden", False) is True
 
 
 def is_hidden_field(cls: type, name: str) -> bool:
@@ -188,7 +188,7 @@ Expected: ALL PASS
 **Step 9: Commit**
 
 ```bash
-git add tests/test_visibility.py src/agent006/visibility.py
+git add tests/test_visibility.py src/nemo_oo_agents/visibility.py
 git commit -m "feat: add hidden sentinel and is_hidden_method/is_hidden_field helpers"
 ```
 
@@ -197,13 +197,13 @@ git commit -m "feat: add hidden sentinel and is_hidden_method/is_hidden_field he
 ### Task 2: Rename `_VisibleToAgent` → `_Visible`, `visible_to_agent` → `visible`
 
 **Files:**
-- Modify: `src/agent006/visibility.py`
+- Modify: `src/nemo_oo_agents/visibility.py`
 - Modify: `tests/test_visibility.py`
 
 **Step 1: Update tests to use new names**
 
 In `tests/test_visibility.py`, update all three existing tests:
-- Change `from agent006.visibility import _VisibleToAgent` → `from agent006.visibility import _Visible`
+- Change `from nemo_oo_agents.visibility import _VisibleToAgent` → `from nemo_oo_agents.visibility import _Visible`
 - Change all `_VisibleToAgent()` → `_Visible()`
 - Change `vta` variable name → `vis` (cosmetic, optional)
 
@@ -211,7 +211,7 @@ Also add a test for the `visible` singleton name:
 
 ```python
 def test_visible_singleton_exists():
-    from agent006.visibility import visible
+    from nemo_oo_agents.visibility import visible
 
     assert isinstance(visible, _Visible)
 ```
@@ -223,7 +223,7 @@ Expected: FAIL with `ImportError: cannot import name '_Visible'`
 
 **Step 3: Rename in visibility.py**
 
-In `src/agent006/visibility.py`:
+In `src/nemo_oo_agents/visibility.py`:
 - Rename class `_VisibleToAgent` → `_Visible`
 - Rename singleton `visible_to_agent` → `visible`
 - Update docstrings to reference `visible` instead of `visible_to_agent`
@@ -236,7 +236,7 @@ Expected: ALL PASS
 **Step 5: Update all references across codebase**
 
 Search for `visible_to_agent` and `_VisibleToAgent` across the codebase and update:
-- `src/agent006/__init__.py` (if already exported)
+- `src/nemo_oo_agents/__init__.py` (if already exported)
 - Any docs referencing the old names
 - `docs/plans/2026-03-09-visible-to-agent-impl.md` (update references)
 
@@ -256,10 +256,10 @@ git commit -m "refactor: rename _VisibleToAgent/visible_to_agent to _Visible/vis
 
 ---
 
-### Task 3: Export `visible` and `hidden` from `agent006.__init__`
+### Task 3: Export `visible` and `hidden` from `nemo_oo_agents.__init__`
 
 **Files:**
-- Modify: `src/agent006/__init__.py`
+- Modify: `src/nemo_oo_agents/__init__.py`
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write failing test**
@@ -267,8 +267,8 @@ git commit -m "refactor: rename _VisibleToAgent/visible_to_agent to _Visible/vis
 Add to `tests/test_visibility.py`:
 
 ```python
-def test_visible_and_hidden_importable_from_agent006():
-    from agent006 import hidden, visible
+def test_visible_and_hidden_importable_from_nemo_oo_agents():
+    from nemo_oo_agents import hidden, visible
 
     assert callable(hidden)
     assert hasattr(visible, "__enter__")
@@ -276,15 +276,15 @@ def test_visible_and_hidden_importable_from_agent006():
 
 **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_visibility.py::test_visible_and_hidden_importable_from_agent006 -v`
+Run: `pytest tests/test_visibility.py::test_visible_and_hidden_importable_from_nemo_oo_agents -v`
 Expected: FAIL with `ImportError`
 
 **Step 3: Add exports to `__init__.py`**
 
-In `src/agent006/__init__.py`, add after the `no_trace` import (line 23):
+In `src/nemo_oo_agents/__init__.py`, add after the `no_trace` import (line 23):
 
 ```python
-from agent006.visibility import hidden, visible  # noqa: E402
+from nemo_oo_agents.visibility import hidden, visible  # noqa: E402
 ```
 
 Add to `__all__` list:
@@ -296,14 +296,14 @@ Add to `__all__` list:
 
 **Step 4: Run test to verify it passes**
 
-Run: `pytest tests/test_visibility.py::test_visible_and_hidden_importable_from_agent006 -v`
+Run: `pytest tests/test_visibility.py::test_visible_and_hidden_importable_from_nemo_oo_agents -v`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src/agent006/__init__.py tests/test_visibility.py
-git commit -m "feat: export visible and hidden from agent006"
+git add src/nemo_oo_agents/__init__.py tests/test_visibility.py
+git commit -m "feat: export visible and hidden from nemo_oo_agents"
 ```
 
 ---
@@ -311,7 +311,7 @@ git commit -m "feat: export visible and hidden from agent006"
 ### Task 4: Switch `__type_info__()` from underscore filtering to `@hidden`
 
 **Files:**
-- Modify: `src/agent006/agent.py:374-405`
+- Modify: `src/nemo_oo_agents/agent.py:374-405`
 - Test: `tests/utils/test_doc_utility.py`
 
 **Step 1: Write failing tests**
@@ -323,7 +323,7 @@ def test_hidden_method_excluded_from_type_info():
     """@hidden methods should not appear in __type_info__()."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent, hidden
+    from nemo_oo_agents import Agent, hidden
 
     llm = MagicMock()
     llm.model = "test"
@@ -348,7 +348,7 @@ def test_underscore_method_visible_without_hidden():
     """_private methods should now be VISIBLE (no underscore convention)."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     llm = MagicMock()
     llm.model = "test"
@@ -370,7 +370,7 @@ Expected: FAIL — `secret_method` is visible (no `@hidden` support yet), `_priv
 
 **Step 3: Update `__type_info__()` in `agent.py`**
 
-In `src/agent006/agent.py`, modify `__type_info__()` (lines 374-405):
+In `src/nemo_oo_agents/agent.py`, modify `__type_info__()` (lines 374-405):
 
 Replace:
 ```python
@@ -380,7 +380,7 @@ filtered_methods = [m for m in base_info.methods if not m.name.startswith("_")]
 
 With:
 ```python
-from agent006.visibility import is_hidden_method
+from nemo_oo_agents.visibility import is_hidden_method
 
 # Filter out @hidden methods
 filtered_methods = [
@@ -401,7 +401,7 @@ filtered_fields = [
 
 With:
 ```python
-from agent006.visibility import is_hidden_field
+from nemo_oo_agents.visibility import is_hidden_field
 
 # Filter out @hidden fields
 filtered_fields = [
@@ -435,7 +435,7 @@ Expected: Some failures related to framework attrs (fixed in Task 5)
 **Step 7: Commit**
 
 ```bash
-git add src/agent006/agent.py tests/utils/test_doc_utility.py
+git add src/nemo_oo_agents/agent.py tests/utils/test_doc_utility.py
 git commit -m "feat: switch __type_info__ from underscore filtering to @hidden"
 ```
 
@@ -444,7 +444,7 @@ git commit -m "feat: switch __type_info__ from underscore filtering to @hidden"
 ### Task 5: Switch `__instance_values__()` from underscore filtering to `hidden`
 
 **Files:**
-- Modify: `src/agent006/agent.py:407-462`
+- Modify: `src/nemo_oo_agents/agent.py:407-462`
 - Test: `tests/utils/test_doc_utility.py`
 
 **Step 1: Write failing test**
@@ -457,7 +457,7 @@ def test_hidden_field_excluded_from_instance_values():
     from typing import Annotated
     from unittest.mock import MagicMock
 
-    from agent006 import Agent, hidden
+    from nemo_oo_agents import Agent, hidden
 
     llm = MagicMock()
     llm.model = "test"
@@ -478,7 +478,7 @@ def test_underscore_field_visible_without_hidden():
     """_private fields should now be VISIBLE (no underscore convention)."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
     llm = MagicMock()
     llm.model = "test"
@@ -498,7 +498,7 @@ Expected: FAIL
 
 **Step 3: Update `__instance_values__()` in `agent.py`**
 
-In `src/agent006/agent.py`, modify `__instance_values__()` (lines 407-462):
+In `src/nemo_oo_agents/agent.py`, modify `__instance_values__()` (lines 407-462):
 
 Replace the `excluded = self._FRAMEWORK_ATTRS` and underscore checks.
 
@@ -510,7 +510,7 @@ if name.startswith("_") or name in excluded:
 
 With:
 ```python
-from agent006.visibility import is_hidden_field
+from nemo_oo_agents.visibility import is_hidden_field
 if is_hidden_field(type(self), name):
     continue
 ```
@@ -540,7 +540,7 @@ Fix any tests that relied on underscore or `_FRAMEWORK_ATTRS` filtering.
 **Step 6: Commit**
 
 ```bash
-git add src/agent006/agent.py tests/utils/test_doc_utility.py
+git add src/nemo_oo_agents/agent.py tests/utils/test_doc_utility.py
 git commit -m "feat: switch __instance_values__ from underscore filtering to hidden annotation"
 ```
 
@@ -549,7 +549,7 @@ git commit -m "feat: switch __instance_values__ from underscore filtering to hid
 ### Task 6: Migrate `_FRAMEWORK_ATTRS` to `Annotated[T, hidden]`
 
 **Files:**
-- Modify: `src/agent006/agent.py:66-82` (class declaration), `143-215` (init), `367-372` (delete `_FRAMEWORK_ATTRS`)
+- Modify: `src/nemo_oo_agents/agent.py:66-82` (class declaration), `143-215` (init), `367-372` (delete `_FRAMEWORK_ATTRS`)
 - Test: `tests/utils/test_doc_utility.py`
 
 **Step 1: Write failing test**
@@ -561,8 +561,8 @@ def test_framework_attrs_hidden_via_annotation():
     """runtime, event_manager, event_query, render_config should be hidden via Annotated[T, hidden]."""
     from unittest.mock import MagicMock
 
-    from agent006 import Agent, hidden
-    from agent006.visibility import is_hidden_field
+    from nemo_oo_agents import Agent, hidden
+    from nemo_oo_agents.visibility import is_hidden_field
 
     assert is_hidden_field(Agent, "runtime") is True
     assert is_hidden_field(Agent, "event_manager") is True
@@ -577,13 +577,13 @@ Expected: FAIL — no `Annotated[T, hidden]` annotations on Agent class yet
 
 **Step 3: Add annotations to Agent class**
 
-In `src/agent006/agent.py`, add to the Agent class body (around line 83, after the docstring):
+In `src/nemo_oo_agents/agent.py`, add to the Agent class body (around line 83, after the docstring):
 
 ```python
 from __future__ import annotations  # at top of file if not already there
 from typing import TYPE_CHECKING, Annotated, Any, NamedTuple
 
-from agent006.visibility import hidden
+from nemo_oo_agents.visibility import hidden
 
 # ... in the Agent class body:
 class Agent(metaclass=AgentMeta):
@@ -615,17 +615,17 @@ Expected: ALL PASS (or only pre-existing failures unrelated to visibility)
 **Step 7: Commit**
 
 ```bash
-git add src/agent006/agent.py tests/utils/test_doc_utility.py
+git add src/nemo_oo_agents/agent.py tests/utils/test_doc_utility.py
 git commit -m "refactor: replace _FRAMEWORK_ATTRS with Annotated[T, hidden] on Agent"
 ```
 
 ---
 
-### Task 7: Filter `exec_globals` by `_agent006_visible_names`
+### Task 7: Filter `exec_globals` by `_nemo_oo_agents_visible_names`
 
 **Files:**
-- Modify: `src/agent006/runtime/actor.py:648-649`
-- Modify: `src/agent006/strategies/generated_code.py:45-46`
+- Modify: `src/nemo_oo_agents/runtime/actor.py:648-649`
+- Modify: `src/nemo_oo_agents/strategies/generated_code.py:45-46`
 - Test: `tests/test_visibility.py`
 
 **Step 1: Write failing test**
@@ -634,8 +634,8 @@ Add to `tests/test_visibility.py`:
 
 ```python
 def test_filter_exec_globals_by_visible_names():
-    """Only _agent006_visible_names should survive module dict filtering."""
-    from agent006.visibility import filter_module_globals
+    """Only _nemo_oo_agents_visible_names should survive module dict filtering."""
+    from nemo_oo_agents.visibility import filter_module_globals
 
     import types
 
@@ -643,7 +643,7 @@ def test_filter_exec_globals_by_visible_names():
     mod.public_import = "json"
     mod.visible_const = 42
     mod.private_import = "os"
-    mod._agent006_visible_names = {"visible_const"}
+    mod._nemo_oo_agents_visible_names = {"visible_const"}
 
     filtered = filter_module_globals(mod)
     assert "visible_const" in filtered
@@ -652,8 +652,8 @@ def test_filter_exec_globals_by_visible_names():
 
 
 def test_filter_exec_globals_no_visible_names_passes_all():
-    """If _agent006_visible_names is not set, pass through all names (backwards compat)."""
-    from agent006.visibility import filter_module_globals
+    """If _nemo_oo_agents_visible_names is not set, pass through all names (backwards compat)."""
+    from nemo_oo_agents.visibility import filter_module_globals
 
     import types
 
@@ -673,19 +673,19 @@ Expected: FAIL with `ImportError: cannot import name 'filter_module_globals'`
 
 **Step 3: Implement `filter_module_globals`**
 
-In `src/agent006/visibility.py`, add:
+In `src/nemo_oo_agents/visibility.py`, add:
 
 ```python
 def filter_module_globals(module: types.ModuleType) -> dict[str, Any]:
     """Filter module dict to only visible names.
 
-    If the module has _agent006_visible_names (set by `with visible:` blocks),
+    If the module has _nemo_oo_agents_visible_names (set by `with visible:` blocks),
     only those names are included. Otherwise, all names pass through (backwards compat).
 
     Returns:
         Filtered dict of module globals.
     """
-    visible_names = getattr(module, "_agent006_visible_names", None)
+    visible_names = getattr(module, "_nemo_oo_agents_visible_names", None)
     if visible_names is None:
         return dict(module.__dict__)
     return {k: v for k, v in module.__dict__.items() if k in visible_names}
@@ -700,7 +700,7 @@ Expected: PASS
 
 **Step 5: Wire into `actor.py`**
 
-In `src/agent006/runtime/actor.py`, replace lines 648-649:
+In `src/nemo_oo_agents/runtime/actor.py`, replace lines 648-649:
 
 ```python
 agent_module = inspect.getmodule(type(self.agent))
@@ -710,7 +710,7 @@ exec_globals = dict(agent_module.__dict__) if agent_module else {}
 With:
 
 ```python
-from agent006.visibility import filter_module_globals
+from nemo_oo_agents.visibility import filter_module_globals
 
 agent_module = inspect.getmodule(type(self.agent))
 exec_globals = filter_module_globals(agent_module) if agent_module else {}
@@ -718,7 +718,7 @@ exec_globals = filter_module_globals(agent_module) if agent_module else {}
 
 **Step 6: Wire into `generated_code.py`**
 
-In `src/agent006/strategies/generated_code.py`, replace lines 45-46:
+In `src/nemo_oo_agents/strategies/generated_code.py`, replace lines 45-46:
 
 ```python
 agent_module = inspect.getmodule(type(agent))
@@ -728,7 +728,7 @@ namespace: dict[str, Any] = dict(agent_module.__dict__) if agent_module else {}
 With:
 
 ```python
-from agent006.visibility import filter_module_globals
+from nemo_oo_agents.visibility import filter_module_globals
 
 agent_module = inspect.getmodule(type(agent))
 namespace: dict[str, Any] = filter_module_globals(agent_module) if agent_module else {}
@@ -742,8 +742,8 @@ Expected: ALL PASS
 **Step 8: Commit**
 
 ```bash
-git add src/agent006/visibility.py src/agent006/runtime/actor.py src/agent006/strategies/generated_code.py tests/test_visibility.py
-git commit -m "feat: filter exec_globals by _agent006_visible_names from visible blocks"
+git add src/nemo_oo_agents/visibility.py src/nemo_oo_agents/runtime/actor.py src/nemo_oo_agents/strategies/generated_code.py tests/test_visibility.py
+git commit -m "feat: filter exec_globals by _nemo_oo_agents_visible_names from visible blocks"
 ```
 
 ---
@@ -751,12 +751,12 @@ git commit -m "feat: filter exec_globals by _agent006_visible_names from visible
 ### Task 8: Update `_extract_module_context` in codeact.py
 
 **Files:**
-- Modify: `src/agent006/strategies/codeact.py:1696-1750`
+- Modify: `src/nemo_oo_agents/strategies/codeact.py:1696-1750`
 - Test: existing codeact tests
 
 **Step 1: Update `_extract_module_context` to use `filter_module_globals`**
 
-In `src/agent006/strategies/codeact.py`, modify `_extract_module_context()` (lines 1696-1750).
+In `src/nemo_oo_agents/strategies/codeact.py`, modify `_extract_module_context()` (lines 1696-1750).
 
 Replace the two loops that iterate `agent_module.__dict__` with underscore checks:
 
@@ -770,7 +770,7 @@ for name, obj in agent_module.__dict__.items():
 With:
 
 ```python
-from agent006.visibility import filter_module_globals
+from nemo_oo_agents.visibility import filter_module_globals
 
 filtered = filter_module_globals(agent_module)
 for name, obj in filtered.items():
@@ -806,7 +806,7 @@ Expected: ALL PASS
 **Step 4: Commit**
 
 ```bash
-git add src/agent006/strategies/codeact.py
+git add src/nemo_oo_agents/strategies/codeact.py
 git commit -m "refactor: use filter_module_globals in _extract_module_context"
 ```
 
@@ -876,7 +876,7 @@ Two concepts control what the LLM can see: `visible` and `hidden`.
 | Class fields | VISIBLE | (already visible) | `Annotated[T, hidden]` |
 
 ```python
-from agent006 import Agent, hidden, visible
+from nemo_oo_agents import Agent, hidden, visible
 
 with visible:
     from pathlib import Path
@@ -920,17 +920,17 @@ Expected: ALL PASS
 
 **Step 2: Run ruff lint**
 
-Run: `ruff check src/agent006/visibility.py src/agent006/agent.py src/agent006/runtime/actor.py src/agent006/strategies/generated_code.py src/agent006/strategies/codeact.py`
+Run: `ruff check src/nemo_oo_agents/visibility.py src/nemo_oo_agents/agent.py src/nemo_oo_agents/runtime/actor.py src/nemo_oo_agents/strategies/generated_code.py src/nemo_oo_agents/strategies/codeact.py`
 Expected: No errors
 
 **Step 3: Run ruff format**
 
-Run: `ruff format --check src/agent006/ tests/`
+Run: `ruff format --check src/nemo_oo_agents/ tests/`
 Expected: No formatting issues
 
 **Step 4: Verify exports**
 
-Run: `python -c "from agent006 import visible, hidden; print(visible, hidden)"`
+Run: `python -c "from nemo_oo_agents import visible, hidden; print(visible, hidden)"`
 Expected: prints the singleton objects
 
 **Step 5: Commit any remaining fixes**

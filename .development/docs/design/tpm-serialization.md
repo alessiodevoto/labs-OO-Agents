@@ -2,7 +2,7 @@
 
 ## Files to change
 
-### 1. `src/agent006/storage/sqlite.py`
+### 1. `src/nemo_oo_agents/storage/sqlite.py`
 Add three methods to `SQLiteStorageManager`:
 - `get_latest_snapshot_id() -> str | None`
   Query: `SELECT snapshot_id FROM snapshots ORDER BY created_at DESC LIMIT 1`
@@ -17,7 +17,7 @@ Add three methods to `SQLiteStorageManager`:
 **Imports to add:**
 ```python
 from typing import Annotated
-from agent006.storage.markers import nosnapshot
+from nemo_oo_agents.storage.markers import nosnapshot
 ```
 
 **Class-level field annotations** — replace bare annotations with `nosnapshot`:
@@ -85,12 +85,12 @@ Wrap entire method in try/except — errors during reconcile must not crash the 
 **`__init__` changes:**
 - Replace `state_file: str | None = None` parameter with `db_file: str = "agent_state.db"`
 - Replace `self.state_file = state_file` with `self.db_file = db_file`
-- Add `self._storage: SQLiteStorageManager | None = None` (import from agent006.storage)
+- Add `self._storage: SQLiteStorageManager | None = None` (import from nemo_oo_agents.storage)
 
 **Make `create_agent` async:**
 ```python
 async def create_agent(self) -> TPMAgent:
-    from agent006.storage import SQLiteStorageManager
+    from nemo_oo_agents.storage import SQLiteStorageManager
     self._storage = SQLiteStorageManager(self.db_file)
     agent = TPMAgent(
         channel_id=self.channel_id,

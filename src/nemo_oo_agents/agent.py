@@ -4,22 +4,22 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any, NamedTuple
 from uuid import uuid4
 
-from agent006.metaclass import AgentMeta
-from agent006.runtime.context_vars import _parent_agent_var
-from agent006.storage.markers import nosnapshot
+from nemo_oo_agents.metaclass import AgentMeta
+from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from nemo_oo_agents.storage.markers import nosnapshot
 from agentdoc import hidden
 from context_blocks import DynamicContext
 
 if TYPE_CHECKING:
-    from agent006.config.execution_config import ExecutionConfig
-    from agent006.config.truncation_config import TruncationConfig
-    from agent006.runtime.actor import ActorRuntime
-    from agent006.runtime.context import ContextApi
-    from agent006.runtime.context_manager import ContextManager
-    from agent006.runtime.event_manager import EventManager
-    from agent006.runtime.event_query import EventQuery
-    from agent006.runtime.events import EventsApi
-    from agent006.storage.manager import StorageManager
+    from nemo_oo_agents.config.execution_config import ExecutionConfig
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.runtime.actor import ActorRuntime
+    from nemo_oo_agents.runtime.context import ContextApi
+    from nemo_oo_agents.runtime.context_manager import ContextManager
+    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nemo_oo_agents.runtime.events import EventsApi
+    from nemo_oo_agents.storage.manager import StorageManager
     from agentdoc.ext import TypeInfo
     from context_blocks.render_config import RenderConfig
     from unifiedllm import UnifiedLLM
@@ -36,7 +36,7 @@ def _try_auto_enable_tracing() -> None:
         return
     _auto_tracing_attempted = True
     try:
-        from openinference_instrumentation_agent006 import enable_tracing
+        from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
         enable_tracing()
     except ImportError:
@@ -170,7 +170,7 @@ class Agent(metaclass=AgentMeta):
         if event_query is not None:
             cls._agent_event_query = event_query
 
-        from agent006.config.execution_config import ExecutionConfig as _EC
+        from nemo_oo_agents.config.execution_config import ExecutionConfig as _EC
 
         cls._execution_config = execution or _EC()
 
@@ -213,9 +213,9 @@ class Agent(metaclass=AgentMeta):
 
         # Deferred imports — these live here (not at module top) to break
         # circular dependencies between agent.py and the runtime package.
-        from agent006.runtime.actor import ActorRuntime
-        from agent006.runtime.context_manager import ContextManager
-        from agent006.storage import InMemoryStorageManager
+        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.context_manager import ContextManager
+        from nemo_oo_agents.storage import InMemoryStorageManager
 
         # Generate agent ID
         self._agent_id = str(uuid4())
@@ -255,8 +255,8 @@ class Agent(metaclass=AgentMeta):
 
         # Create ContextApi and EventsApi wrappers (always present, hidden from LLM by default).
         # Subclasses opt in per-instance: spec(self, "context", hidden=False) in __init__.
-        from agent006.runtime.context import ContextApi
-        from agent006.runtime.events import EventsApi
+        from nemo_oo_agents.runtime.context import ContextApi
+        from nemo_oo_agents.runtime.events import EventsApi
 
         self.context = ContextApi(self)
         self.events = EventsApi(self)
@@ -350,7 +350,7 @@ class Agent(metaclass=AgentMeta):
             Resolved TruncationConfig after merging all levels
         """
         # Import at runtime to avoid circular dependency
-        from agent006.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
         # Start with default config
         config = DEFAULT_TRUNCATION_CONFIG

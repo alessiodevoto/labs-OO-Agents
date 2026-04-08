@@ -4,11 +4,11 @@ version = "0.3.0"
 description = "Benchmark-agnostic evaluation framework for agent self-improvement"
 requires-python = ">=3.12"
 dependencies = [
-    "agent006",
+    "nemo_oo_agents",
 ]
 
 [tool.uv.sources]
-agent006 = { workspace = true }
+nemo_oo_agents = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.11,<0.10.0"]

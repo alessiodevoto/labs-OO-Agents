@@ -18,7 +18,7 @@ See `docs/tui-agent-superpowers-gap-analysis.md` for the full gap analysis.
 
 ## Design Constraints
 
-- **Target users**: External developers using agent006 as a library
+- **Target users**: External developers using nemo_oo_agents as a library
 - **Enforcement**: Full workflow — the agent always follows the process (brainstorm → plan → TDD → verify → review)
 - **Architecture**: Single agent, multi-method (see best practices doc for rationale: conversation continuity, simplicity, history summarizer handles context bloat)
 

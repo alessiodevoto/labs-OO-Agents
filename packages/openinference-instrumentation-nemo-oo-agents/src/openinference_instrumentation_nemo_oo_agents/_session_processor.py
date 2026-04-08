@@ -7,7 +7,7 @@ is present when exporters see the span.
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 
-from openinference_instrumentation_agent006._session import _current_session
+from openinference_instrumentation_nemo_oo_agents._session import _current_session
 
 
 class SessionSpanProcessor(SpanProcessor):

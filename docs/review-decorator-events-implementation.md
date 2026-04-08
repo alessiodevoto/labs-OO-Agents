@@ -125,7 +125,7 @@ This demonstrates thoughtful test design that validates the complete pipeline.
 - Validation prevents mixing old and new API
 - Clear error messages guide migration
 
-**File**: `src/agent006/decorators.py:62-66`
+**File**: `src/nemo_oo_agents/decorators.py:62-66`
 ```python
 if scoped_context is not None and context is not None:
     raise ValueError(
@@ -206,7 +206,7 @@ This powerful pattern (showing method-scoped event history) is mentioned in the 
 
 #### 2. Potential Confusion: Decorator Events Don't Support Removal
 
-**File**: `src/agent006/runtime/context_builder.py:378-426`
+**File**: `src/nemo_oo_agents/runtime/context_builder.py:378-426`
 **Issue**: In `_phase_decorator_events()`, the code skips `None` values:
 
 ```python
@@ -236,7 +236,7 @@ Option B: Implement removal by tracking decorator event keys and filtering out `
 
 #### 1. Type Annotation Inconsistency in Contextvars
 
-**File**: `src/agent006/runtime/actor.py:110-117`
+**File**: `src/nemo_oo_agents/runtime/actor.py:110-117`
 **Issue**: The contextvar definitions use `dict[str, Any]` but the actual content is more specific:
 
 ```python
@@ -256,7 +256,7 @@ But the values are actually `dict[str, str | DynamicContext | None]` (matching S
 
 #### 2. Missing Docstring on `_decorator_events_var`
 
-**File**: `src/agent006/runtime/actor.py:110-117`
+**File**: `src/nemo_oo_agents/runtime/actor.py:110-117`
 **Issue**: `_decorator_context_var` has a helpful comment but `_decorator_events_var` is less detailed:
 
 ```python
@@ -279,7 +279,7 @@ This is good but could mention:
 
 #### 3. Hardcoded Key Prefix in `_phase_decorator_events`
 
-**File**: `src/agent006/runtime/context_builder.py:419`
+**File**: `src/nemo_oo_agents/runtime/context_builder.py:419`
 **Issue**: The key is hardcoded as `f"decorator_event_{key}"`:
 
 ```python

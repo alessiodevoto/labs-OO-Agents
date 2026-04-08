@@ -104,7 +104,7 @@ trace-explorer path/to/trace.006trace.jsonl --session abc123
 
 ### 1. HelperMethodManager (binds helper methods)
 
-**File**: `src/agent006/strategies/generated_code.py`
+**File**: `src/nemo_oo_agents/strategies/generated_code.py`
 
 ```python
 class HelperMethodManager:
@@ -121,7 +121,7 @@ class HelperMethodManager:
 
 ### 2. Where HelperMethodManager is called
 
-**File**: `src/agent006/strategies/codeact.py` (line 1330)
+**File**: `src/nemo_oo_agents/strategies/codeact.py` (line 1330)
 ```python
 helper_result = helper_manager.apply(
     code,
@@ -132,7 +132,7 @@ helper_result = helper_manager.apply(
 )
 ```
 
-**File**: `src/agent006/strategies/pure_python.py` (line 624)
+**File**: `src/nemo_oo_agents/strategies/pure_python.py` (line 624)
 ```python
 helper_result = helper_manager.apply(
     code,
@@ -143,9 +143,9 @@ helper_result = helper_manager.apply(
 )
 ```
 
-### 3. Agent006Provider (generates doc(self) output)
+### 3. NemoOOAgentsProvider (generates doc(self) output)
 
-**File**: `packages/agentdoc/src/agentdoc/providers/agent006.py`
+**File**: `packages/agentdoc/src/agentdoc/providers/nemo_oo_agents.py`
 
 ```python
 def __doc_full__(self, obj: Any) -> str:
@@ -219,7 +219,7 @@ def test_helper_methods_do_not_persist_across_instances():
 ### Step 2: Run the Test
 
 ```bash
-cd /Volumes/dev/dev/agent006
+cd /Volumes/dev/dev/nemo_oo_agents
 source .venv/bin/activate
 pytest tests/capability/test_helper_method_isolation.py -v
 ```
@@ -294,5 +294,5 @@ if hasattr(type(agent), method_name):
 
 - Full comparison analysis: `docs/scratch/capability-branch-comparison.md`
 - Trace explorer package: `packages/trace_explorer/`
-- HelperMethodManager: `src/agent006/strategies/generated_code.py`
-- Agent006Provider: `packages/agentdoc/src/agentdoc/providers/agent006.py`
+- HelperMethodManager: `src/nemo_oo_agents/strategies/generated_code.py`
+- NemoOOAgentsProvider: `packages/agentdoc/src/agentdoc/providers/nemo_oo_agents.py`

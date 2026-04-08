@@ -1,7 +1,7 @@
 ---
 description: Coding standards for the React viewer frontend
 globs:
-  - packages/agent006-viewer/frontend-react/**
+  - packages/nemo-oo-agents-viewer/frontend-react/**
 alwaysApply: false
 ---
 
@@ -21,13 +21,13 @@ The `dist/` directory is committed to git so that installing from the git repo w
 **Important:** CI uses `node:22-slim`. If your local Node version differs (check with `node --version`), the minified bundle output will differ and CI will fail. Always use the Docker method to build for commits:
 
 ```bash
-docker run --rm -v "$PWD/packages/agent006-viewer/frontend-react:/app" -w /app node:22-slim sh -c "npm ci --ignore-scripts && npm run build && chown -R $(id -u):$(id -g) dist/"
+docker run --rm -v "$PWD/packages/nemo-oo-agents-viewer/frontend-react:/app" -w /app node:22-slim sh -c "npm ci --ignore-scripts && npm run build && chown -R $(id -u):$(id -g) dist/"
 ```
 
 For local dev iteration (not committing dist), you can use your local Node:
 
 ```bash
-cd packages/agent006-viewer/frontend-react
+cd packages/nemo-oo-agents-viewer/frontend-react
 npm run build
 ```
 

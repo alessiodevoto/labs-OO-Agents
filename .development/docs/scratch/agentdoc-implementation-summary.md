@@ -54,7 +54,7 @@ Successfully implemented and integrated the `agentdoc` package - a standalone Py
 - All tests passing
 - Coverage: core functions, protocols, config, edge cases
 
-### Phase 2: agent006 Integration (Completed)
+### Phase 2: nemo_oo_agents Integration (Completed)
 
 ✅ **Agent base class updates:**
 - Removed `self.doc = Doc(self)` from `Agent.__init__` (lines 119-121 deleted)
@@ -76,8 +76,8 @@ Successfully implemented and integrated the `agentdoc` package - a standalone Py
 - Changed comment from `{self.doc.show()}` to `{doc(self)}`
 
 ✅ **Cleanup:**
-- Deleted `src/agent006/util/doc.py` (595 lines removed!)
-- Updated `src/agent006/util/__init__.py` to remove doc import
+- Deleted `src/nemo_oo_agents/util/doc.py` (595 lines removed!)
+- Updated `src/nemo_oo_agents/util/__init__.py` to remove doc import
 
 ✅ **Tests rewritten:**
 - Rewrote `tests/utils/test_doc_utility.py` with 21 new tests
@@ -87,15 +87,15 @@ Successfully implemented and integrated the `agentdoc` package - a standalone Py
 ## Code Reduction
 
 **Before:**
-- `src/agent006/util/doc.py`: 595 lines
+- `src/nemo_oo_agents/util/doc.py`: 595 lines
 - Stateful Doc class with expand/collapse state
-- agent006-specific implementation
+- nemo_oo_agents-specific implementation
 
 **After:**
 - `packages/agentdoc/`: ~400 lines (reusable library)
-- `src/agent006/agent.py`: +90 lines (protocol implementation)
-- `src/agent006/runtime/actor.py`: +8 lines (namespace integration)
-- **Net reduction in agent006:** ~497 lines
+- `src/nemo_oo_agents/agent.py`: +90 lines (protocol implementation)
+- `src/nemo_oo_agents/runtime/actor.py`: +8 lines (namespace integration)
+- **Net reduction in nemo_oo_agents:** ~497 lines
 
 ## API Changes
 
@@ -147,7 +147,7 @@ expr="doc(self)"
 - 43 tests, all passing
 - Test coverage: core, protocols, config, edge cases
 
-**agent006 integration:**
+**nemo_oo_agents integration:**
 - 515 tests passing, 3 skipped
 - No regressions
 - New tests for: protocol, child agents, tools, expressions
@@ -160,15 +160,15 @@ expr="doc(self)"
 - `docs/scratch/agentdoc-implementation-summary.md` (this file)
 
 ### Modified
-- `src/agent006/agent.py` - Protocol implementation, removed Doc init
-- `src/agent006/runtime/actor.py` - Namespace integration
-- `src/agent006/strategies/pure_python.py` - Template update
-- `src/agent006/util/__init__.py` - Removed doc import
+- `src/nemo_oo_agents/agent.py` - Protocol implementation, removed Doc init
+- `src/nemo_oo_agents/runtime/actor.py` - Namespace integration
+- `src/nemo_oo_agents/strategies/pure_python.py` - Template update
+- `src/nemo_oo_agents/util/__init__.py` - Removed doc import
 - `tests/utils/test_doc_utility.py` - Complete rewrite
 - `tests/strategies/test_python_task_strategy.py` - Updated expectation
 
 ### Deleted
-- `src/agent006/util/doc.py` - 595 lines removed
+- `src/nemo_oo_agents/util/doc.py` - 595 lines removed
 
 ## Next Steps (Optional)
 
@@ -184,9 +184,9 @@ expr="doc(self)"
 
 ✅ **Implementation complete and verified**
 - Zero-dependency agentdoc package created
-- Full agent006 integration working
+- Full nemo_oo_agents integration working
 - All 518 tests passing
-- 595 lines removed from agent006
+- 595 lines removed from nemo_oo_agents
 - Clean, composable, reusable design
 
 The migration from stateful `Doc` class to stateless agentdoc functions is complete and successful.

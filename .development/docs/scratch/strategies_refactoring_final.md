@@ -160,7 +160,7 @@ def plan(
 
             # For Agent methods: use existing flow
             if hasattr(self, 'runtime'):
-                from agent006.runtime.actor import _in_generation_session
+                from nemo_oo_agents.runtime.actor import _in_generation_session
 
                 call_id = str(uuid4())
                 parent_call_id = runtime._agent_call_id
@@ -513,7 +513,7 @@ class ReflexionStrategy(CompositeStrategy):
     ):
         # Lazy import to avoid circular dependency
         if base is None:
-            from agent006.strategies.pure_python import PurePythonStrategy
+            from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
             base = PurePythonStrategy()
 
         self.base = base
@@ -630,13 +630,13 @@ class ReflexionStrategy(CompositeStrategy):
 **Tasks**:
 
 1. **Implement TemplateStrategy**
-   - Create `src/agent006/strategies/template.py`
+   - Create `src/nemo_oo_agents/strategies/template.py`
    - Use `runtime.expand_variables()` for rendering
    - Set `requires_lock = False`
    - Add comprehensive docstring with examples
 
 2. **Extend @plan Decorator**
-   - Update `src/agent006/decorators.py`
+   - Update `src/nemo_oo_agents/decorators.py`
    - Add Agent vs Strategy detection logic
    - Handle RuntimeServices as first parameter
    - Preserve all existing behavior for Agents
@@ -674,7 +674,7 @@ class ReflexionStrategy(CompositeStrategy):
    ```
 
 4. **Update Exports**
-   - Add to `src/agent006/strategies/__init__.py`
+   - Add to `src/nemo_oo_agents/strategies/__init__.py`
 
 **Validation**:
 - ✅ All existing tests pass (no regression)
@@ -1045,7 +1045,7 @@ def plan(...):
                 strat = strategy
             else:
                 # Lazy import
-                from agent006.strategies import PurePythonStrategy
+                from nemo_oo_agents.strategies import PurePythonStrategy
                 strat = PurePythonStrategy()
         ...
 ```
@@ -1091,7 +1091,7 @@ Track these to validate the refactoring:
 ### Before (Config-Based Prompts)
 
 ```python
-from agent006.strategies import PurePythonStrategy, PurePythonConfig
+from nemo_oo_agents.strategies import PurePythonStrategy, PurePythonConfig
 
 config = PurePythonConfig(
     max_iterations=5,
@@ -1109,7 +1109,7 @@ class MyAgent(Agent):
 ### After (Method-Based Prompts)
 
 ```python
-from agent006.strategies import PurePythonStrategy, TemplateStrategy
+from nemo_oo_agents.strategies import PurePythonStrategy, TemplateStrategy
 
 class CustomPurePython(PurePythonStrategy):
     @plan(strategy=TemplateStrategy())

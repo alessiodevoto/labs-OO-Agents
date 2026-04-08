@@ -188,5 +188,5 @@ The fix should either restore the semantic prefix or enhance the structured form
 ## Appendix: Trace Locations
 
 - Main traces: `/Volumes/dev/dev/viewer/results/capability_optimization_20260127_142631/traces/`
-- Branch traces: `/Volumes/dev/dev/agent006/results/capability_optimization_20260127_142636/traces/`
+- Branch traces: `/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_142636/traces/`
 - Filter pattern: `ReplExplorationTestAgent_*_repl_exploration_*.006trace.jsonl`

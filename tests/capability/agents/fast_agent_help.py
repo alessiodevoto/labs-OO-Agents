@@ -6,9 +6,9 @@ agent has a deterministic call_for_help() method that MUST be invoked via
 execute_python("result = self.call_for_help(request)").
 """
 
-from agent006 import Agent, strategy
-from agent006.config import CodeActConfig
-from agent006.strategies.codeact import CodeActStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies.codeact import CodeActStrategy
 
 
 class FastHelpAgent(Agent):

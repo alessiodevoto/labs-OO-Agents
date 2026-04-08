@@ -269,7 +269,7 @@ class Agent006Adapter:
             Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
 
             try:
-                from openinference_instrumentation_agent006 import get_session, set_session
+                from openinference_instrumentation_nemo_oo_agents import get_session, set_session
 
                 prev_session = get_session()
                 tp = Path(trace_path)
@@ -296,7 +296,7 @@ class Agent006Adapter:
         finally:
             # Restore previous session (or clear if there was none)
             try:
-                from openinference_instrumentation_agent006 import set_session
+                from openinference_instrumentation_nemo_oo_agents import set_session
 
                 set_session(prev_session)
             except ImportError:

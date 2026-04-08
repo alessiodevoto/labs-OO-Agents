@@ -7,7 +7,7 @@ import contextvars
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 # Context variable for LLM inheritance from parent agent
 # When a subagent is instantiated within generated code, it can inherit the parent's LLM

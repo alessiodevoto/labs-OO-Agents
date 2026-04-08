@@ -15,15 +15,15 @@ and have been in place long enough — now remove them entirely.
 
 | File | Change |
 |------|--------|
-| `src/agent006/strategies/structured_output.py` | **DELETE** (entire compat shim file) |
-| `src/agent006/strategies/__init__.py` | Remove `StructuredOutputStrategy` import + `__all__` entry |
-| `src/agent006/__init__.py` | Remove `StructuredOutputStrategy` import + `__all__` entry |
-| `src/agent006/config/strategy_config.py` | Remove `StructuredOutputConfig` function |
-| `src/agent006/config/__init__.py` | Remove `StructuredOutputConfig` import + `__all__` entry |
-| `src/agent006/runtime/actor.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from exec_globals dict |
-| `src/agent006/strategies/codeact.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from strategy_extras dict |
-| `src/agent006/strategies/pure_python.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from strategy_extras dict |
-| `src/agent006/tools/method_writing_lib.py` | Replace `StructuredOutputStrategy()` with `PredictStrategy()` in docstring examples |
+| `src/nemo_oo_agents/strategies/structured_output.py` | **DELETE** (entire compat shim file) |
+| `src/nemo_oo_agents/strategies/__init__.py` | Remove `StructuredOutputStrategy` import + `__all__` entry |
+| `src/nemo_oo_agents/__init__.py` | Remove `StructuredOutputStrategy` import + `__all__` entry |
+| `src/nemo_oo_agents/config/strategy_config.py` | Remove `StructuredOutputConfig` function |
+| `src/nemo_oo_agents/config/__init__.py` | Remove `StructuredOutputConfig` import + `__all__` entry |
+| `src/nemo_oo_agents/runtime/actor.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from exec_globals dict |
+| `src/nemo_oo_agents/strategies/codeact.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from strategy_extras dict |
+| `src/nemo_oo_agents/strategies/pure_python.py` | Remove `"StructuredOutputStrategy": PredictStrategy` from strategy_extras dict |
+| `src/nemo_oo_agents/tools/method_writing_lib.py` | Replace `StructuredOutputStrategy()` with `PredictStrategy()` in docstring examples |
 
 ### Tests (update)
 

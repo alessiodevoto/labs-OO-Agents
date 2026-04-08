@@ -9,10 +9,10 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from otlp_test_helpers import read_otlp_jsonl_spans
 
-from openinference_instrumentation_agent006._metadata import get_all_metadata
-from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
-from openinference_instrumentation_agent006._session import set_session
-from openinference_instrumentation_agent006._session_processor import SessionSpanProcessor
+from openinference_instrumentation_nemo_oo_agents._metadata import get_all_metadata
+from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
+from openinference_instrumentation_nemo_oo_agents._session import set_session
+from openinference_instrumentation_nemo_oo_agents._session_processor import SessionSpanProcessor
 
 
 class TestTracingIntegration:
@@ -55,7 +55,7 @@ class TestTracingIntegration:
 
             # Environment metadata should be in resource attributes
             resource_attrs = span_data["resource_attributes"]
-            assert "agent006.version" in resource_attrs
+            assert "nemo_oo_agents.version" in resource_attrs
             assert "python.version" in resource_attrs
             assert "hostname" in resource_attrs
 

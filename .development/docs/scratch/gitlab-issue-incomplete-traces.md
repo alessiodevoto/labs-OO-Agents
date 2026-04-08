@@ -198,7 +198,7 @@ Ensure spans are exported before timeout exception propagates:
 # In runner.py timeout handler
 except TimeoutError:
     # Force immediate span export
-    from openinference_instrumentation_agent006 import get_current_exporter
+    from openinference_instrumentation_nemo_oo_agents import get_current_exporter
     exporter = get_current_exporter()
     if exporter:
         exporter.force_flush()  # Ensure spans are written
@@ -335,10 +335,10 @@ async def acompletion_with_timeout_detection(self, timeout: int, **kwargs):
    - Add `timeout` field to model definitions
    - Set appropriate defaults (qwen3-next-80b: 120, o1: 180)
 
-4. **`packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_jsonl_exporter.py`**
+4. **`packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_jsonl_exporter.py`**
    - Add `force_flush()` method
 
-5. **`packages/openinference-instrumentation-agent006/src/openinference_instrumentation_agent006/_hooks_impl.py`**
+5. **`packages/openinference-instrumentation-nemo-oo-agents/src/openinference_instrumentation_nemo_oo_agents/_hooks_impl.py`**
    - Add span events for LLM request/response milestones
 
 ### Testing Strategy

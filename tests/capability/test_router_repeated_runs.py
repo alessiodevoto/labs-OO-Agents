@@ -40,7 +40,7 @@ from typing import TypedDict
 
 import pytest
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class SimpleResult(TypedDict):

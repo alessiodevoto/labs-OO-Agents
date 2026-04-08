@@ -6,7 +6,7 @@ from agentdoc import doc
 
 # Try to import Agent006 if available
 try:
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
     from unifiedllm import FakeLLMClient
 
     class TestAgent(Agent, llm=FakeLLMClient()):
@@ -43,7 +43,7 @@ try:
         print("\nLooking for 'Already Imported' or '# Already Imported:' in output")
 
 except ImportError:
-    print("agent006 not available - skipping Agent test")
+    print("nemo_oo_agents not available - skipping Agent test")
     print("Testing with regular class instead...")
 
     class RegularClass:

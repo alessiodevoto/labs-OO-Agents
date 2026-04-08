@@ -41,7 +41,7 @@ Starting from opt3's 50% baseline, we created 8 additional variants (opt4-opt11)
 
 ### 1. Ellipsis Detection Constraint (opt6/7 Failure)
 
-**File**: `/Users/rcabral/agent006/src/agent006/decorators.py` lines 64-79
+**File**: `/Users/rcabral/nemo_oo_agents/src/nemo_oo_agents/decorators.py` lines 64-79
 
 **Discovery**: `CodeActStrategy.is_ellipsis_body()` requires:
 ```python

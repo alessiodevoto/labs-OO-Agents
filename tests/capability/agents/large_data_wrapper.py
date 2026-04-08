@@ -1,6 +1,6 @@
 """Large data test wrapper - generates test data on-the-fly."""
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class LargeDataTestWrapper(Agent):

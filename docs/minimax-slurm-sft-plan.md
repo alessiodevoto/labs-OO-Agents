@@ -6,7 +6,7 @@ Generate NeMo RL SFT training data from DABStep evaluations using **MiniMax M2.5
 the LLM backend, self-hosted on CW Slurm via vLLM.
 
 Two agent varieties → two JSONL files:
-- `dabstep_sft_agent006_minimax_m2.5_YYYYMMDD.jsonl` — opt63 (agent006 variety)
+- `dabstep_sft_nemo_oo_agents_minimax_m2.5_YYYYMMDD.jsonl` — opt63 (nemo_oo_agents variety)
 - `dabstep_sft_agent009_minimax_m2.5_YYYYMMDD.jsonl` — agent009 (skill-accumulating solver)
 
 ---
@@ -56,7 +56,7 @@ curl http://127.0.0.1:18000/v1/models
 
 Both scripts verify the endpoint before starting and write traces for SFT conversion.
 
-### opt63 (agent006 variety)
+### opt63 (nemo_oo_agents variety)
 
 ```bash
 cd experiments/evaluation-ablations
@@ -86,7 +86,7 @@ Results: `experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009
 # opt63 progress
 python3 -c "
 import json
-f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_opt63_$(date +%Y%m%d)/agent006_dabstep_full.006eval.jsonl'
+f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_opt63_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.006eval.jsonl'
 results = [json.loads(l) for l in open(f) if json.loads(l).get('_type')=='result']
 print(f'opt63 progress: {len(results)}/450')
 "
@@ -94,7 +94,7 @@ print(f'opt63 progress: {len(results)}/450')
 # agent009 progress
 python3 -c "
 import json
-f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009_$(date +%Y%m%d)/agent006_dabstep_full.006eval.jsonl'
+f='experiments/evaluation-ablations/results/dabstep/minimax_m2.5_agent009_$(date +%Y%m%d)/nemo_oo_agents_dabstep_full.006eval.jsonl'
 results = [json.loads(l) for l in open(f) if json.loads(l).get('_type')=='result']
 print(f'agent009 progress: {len(results)}/450')
 "
@@ -111,7 +111,7 @@ cd experiments/evaluation-ablations
 
 # opt63 SFT data
 bash generate_sft_minimax_opt63.sh
-# Output: sft_data/dabstep_agent009/dabstep_sft_agent006_minimax_m2.5_YYYYMMDD.jsonl(.gz)
+# Output: sft_data/dabstep_agent009/dabstep_sft_nemo_oo_agents_minimax_m2.5_YYYYMMDD.jsonl(.gz)
 
 # agent009 SFT data
 bash generate_sft_minimax_agent009.sh

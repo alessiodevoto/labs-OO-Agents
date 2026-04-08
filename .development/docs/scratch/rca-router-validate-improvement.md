@@ -172,4 +172,4 @@ The router_validate improvement is caused by **cleaner history context API** in 
 ## Appendix: Trace Paths
 
 - **Main (Failing)**: `/Volumes/dev/dev/viewer/results/capability_optimization_20260127_124609/traces/RouterTestWrapper_gpt-oss-120b_process_router_validate_20260127_124609_01_000000_gpt-oss-120b.006trace.jsonl`
-- **Branch (Passing)**: `/Volumes/dev/dev/agent006/results/capability_optimization_20260127_124617/traces/RouterTestWrapper_gpt-oss-120b_process_router_validate_20260127_124617_01_000000_gpt-oss-120b.006trace.jsonl`
+- **Branch (Passing)**: `/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_124617/traces/RouterTestWrapper_gpt-oss-120b_process_router_validate_20260127_124617_01_000000_gpt-oss-120b.006trace.jsonl`

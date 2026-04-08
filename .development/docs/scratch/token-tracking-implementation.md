@@ -132,7 +132,7 @@ The implementation sums token counts across all LLM spans in the trace, capturin
 ### Automatic Population
 
 Token data is automatically extracted and included in results when:
-1. Tracing is enabled (via `openinference_instrumentation_agent006`)
+1. Tracing is enabled (via `openinference_instrumentation_nemo_oo_agents`)
 2. The LLM client populates token usage in trace spans
 3. The trace file exists and is readable
 

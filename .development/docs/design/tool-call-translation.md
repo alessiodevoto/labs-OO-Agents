@@ -16,7 +16,7 @@ In `_process_tool_calls()`, when we encounter an unknown tool name that matches 
 ### Files Changed
 
 1. `packages/unifiedllm/src/unifiedllm/registry.py` — added `nvidia/nvidia/nemotron-nano-12b-v2-vl` model
-2. `src/agent006/strategies/codeact.py` — added `_translate_tool_call_to_code()` method + modified `_process_tool_calls()` else branch
+2. `src/nemo_oo_agents/strategies/codeact.py` — added `_translate_tool_call_to_code()` method + modified `_process_tool_calls()` else branch
 3. `tests/strategies/test_codeact_strategy.py` — added `TestToolCallTranslation` class with 3 tests
 4. `tests/capability/config.yaml` — added model to agent_models
 

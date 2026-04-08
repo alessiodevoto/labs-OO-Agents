@@ -13,9 +13,9 @@ Run with:
     uv run python examples/advanced/codeact_event_sequence.py
 """
 
-from agent006 import Agent, CodeActStrategy, strategy
-from agent006.config import CodeActConfig
-from agent006.util.quickstart import autorun, llm
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.util.quickstart import autorun, llm
 
 
 class SimpleAgent(Agent, llm=llm):

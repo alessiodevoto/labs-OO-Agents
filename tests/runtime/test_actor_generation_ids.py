@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent006.runtime.actor import (
+from nemo_oo_agents.runtime.actor import (
     ActorRuntime,
     _generation_id_stack_var,
     _pop_generation_id,

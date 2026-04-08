@@ -6,7 +6,7 @@ the ContextVar and stamps it on every span as a span attribute.
 
 from contextvars import ContextVar
 
-_current_session: ContextVar[str | None] = ContextVar("agent006_session", default=None)
+_current_session: ContextVar[str | None] = ContextVar("nemo_oo_agents_session", default=None)
 
 
 def set_session(session_id: str | None) -> None:

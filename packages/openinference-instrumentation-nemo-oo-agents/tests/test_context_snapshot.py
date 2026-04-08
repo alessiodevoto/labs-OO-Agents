@@ -11,15 +11,15 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from openinference_instrumentation_agent006._hooks_impl import OpenInferenceHooks
-from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
+from openinference_instrumentation_nemo_oo_agents._hooks_impl import OpenInferenceHooks
+from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
 
 
 class TestOnMessagesBuiltProtocol:
     """Test that InstrumentationHooks protocol includes on_messages_built."""
 
     def test_protocol_has_on_messages_built(self):
-        from agent006.runtime.hooks import InstrumentationHooks
+        from nemo_oo_agents.runtime.hooks import InstrumentationHooks
 
         assert hasattr(InstrumentationHooks, "on_messages_built")
 
@@ -94,9 +94,9 @@ class TestContextSnapshotSpan:
             assert len(snapshot_spans) == 1
 
             attrs = snapshot_spans[0]["attributes"]
-            assert attrs["agent006.system_message"] == "You are a helpful assistant."
-            assert attrs["agent006.system_message.is_diff"] is False
-            assert attrs["agent006.system_message.turn_index"] == 0
+            assert attrs["nemo_oo_agents.system_message"] == "You are a helpful assistant."
+            assert attrs["nemo_oo_agents.system_message.is_diff"] is False
+            assert attrs["nemo_oo_agents.system_message.turn_index"] == 0
 
     def test_unchanged_system_message_skips_span(self):
         """Second call with same system message should not emit a span."""
@@ -199,14 +199,14 @@ class TestContextSnapshotSpan:
             assert len(snapshot_spans) == 2
 
             # First is full snapshot
-            assert snapshot_spans[0]["attributes"]["agent006.system_message.is_diff"] is False
-            assert snapshot_spans[0]["attributes"]["agent006.system_message.turn_index"] == 0
+            assert snapshot_spans[0]["attributes"]["nemo_oo_agents.system_message.is_diff"] is False
+            assert snapshot_spans[0]["attributes"]["nemo_oo_agents.system_message.turn_index"] == 0
 
             # Second is unified diff
             diff_span = snapshot_spans[1]
-            assert diff_span["attributes"]["agent006.system_message.is_diff"] is True
-            assert diff_span["attributes"]["agent006.system_message.turn_index"] == 1
-            diff_text = diff_span["attributes"]["agent006.system_message"]
+            assert diff_span["attributes"]["nemo_oo_agents.system_message.is_diff"] is True
+            assert diff_span["attributes"]["nemo_oo_agents.system_message.turn_index"] == 1
+            diff_text = diff_span["attributes"]["nemo_oo_agents.system_message"]
             assert "-Be concise." in diff_text
             assert "+Be verbose." in diff_text
 
@@ -273,7 +273,7 @@ class TestContextSnapshotSpan:
             spans = self._read_spans(tmpdir)
             snapshot_spans = [s for s in spans if s["name"] == "context_snapshot"]
             assert len(snapshot_spans) == 2
-            assert all(s["attributes"]["agent006.system_message.is_diff"] is False for s in snapshot_spans)
+            assert all(s["attributes"]["nemo_oo_agents.system_message.is_diff"] is False for s in snapshot_spans)
 
     def test_no_system_message_skips_span(self):
         """If messages[0] is not a system message, skip the span."""
@@ -322,7 +322,7 @@ class TestActorHookCallSite:
         """Verify call_before_hook('on_messages_built', ...) appears in actor.generate()."""
         import inspect
 
-        from agent006.runtime.actor import ActorRuntime
+        from nemo_oo_agents.runtime.actor import ActorRuntime
 
         source = inspect.getsource(ActorRuntime.generate)
         assert "on_messages_built" in source, "actor.generate() must call on_messages_built hook"

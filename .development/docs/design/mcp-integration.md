@@ -8,7 +8,7 @@ Add a reusable way for agents to use MCP (Model Context Protocol) tools. From an
 
 ### MCPTool: Base Class for Tool Instances
 
-The `MCPTool` class (`packages/mcp-agent006/src/mcp_agent006/tool.py`) is the base class for MCP tool instances:
+The `MCPTool` class (`packages/mcp-nemo-oo-agents/src/mcp_nemo_oo_agents/tool.py`) is the base class for MCP tool instances:
 
 **Instance Management:**
 - Each `MCPTool` instance manages its own MCP connection (1-1 mapping between tool and client)
@@ -39,7 +39,7 @@ The `MCPTool` class (`packages/mcp-agent006/src/mcp_agent006/tool.py`) is the ba
 
 ### MCPManager: Manager for Tool Creation
 
-The `MCPManager` class (`packages/mcp-agent006/src/mcp_agent006/tool.py`) handles connection and tool creation:
+The `MCPManager` class (`packages/mcp-nemo-oo-agents/src/mcp_nemo_oo_agents/tool.py`) handles connection and tool creation:
 
 **Connection Lifecycle:**
 - **Configuration**: Servers can be configured via `.mcp.json` file or passed directly to `create_from_server()`
@@ -69,7 +69,7 @@ The `MCPManager` class (`packages/mcp-agent006/src/mcp_agent006/tool.py`) handle
 ### Basic Usage
 
 ```python
-from mcp_agent006 import MCPManager
+from mcp_nemo_oo_agents import MCPManager
 
 # List available servers from .mcp.json
 servers = MCPManager.list_servers()

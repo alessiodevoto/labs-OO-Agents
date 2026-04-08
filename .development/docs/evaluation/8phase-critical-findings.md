@@ -473,4 +473,4 @@ The term "applicable" might mean:
 - OR: Fees from a different fee matching algorithm
 - OR: Different version of fees.json
 
-**Trace file**: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260119_083118_bedrock-claude-sonnet-4-5-v1_aca272/traces/dabstep_1681_hard_0fc05562.006trace.jsonl` (5.7MB)
+**Trace file**: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260119_083118_bedrock-claude-sonnet-4-5-v1_aca272/traces/dabstep_1681_hard_0fc05562.006trace.jsonl` (5.7MB)

@@ -1,11 +1,11 @@
 # OpenInference Instrumentation for Agent006
 
-OpenTelemetry instrumentation for [Agent006](https://github.com/agent006), following OpenInference semantic conventions.
+OpenTelemetry instrumentation for [Agent006](https://github.com/nemo_oo_agents), following OpenInference semantic conventions.
 
 ## Installation
 
 ```bash
-pip install openinference-instrumentation-agent006
+pip install openinference-instrumentation-nemo-oo-agents
 ```
 
 ## Quick Start
@@ -13,19 +13,19 @@ pip install openinference-instrumentation-agent006
 ```python
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry import trace
-from openinference.instrumentation.agent006 import Agent006Instrumentor
+from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor
 from openinference.instrumentation.litellm import LiteLLMInstrumentor
 
 # Setup tracer provider
 provider = TracerProvider()
 trace.set_tracer_provider(provider)
 
-# Instrument agent006 and litellm
+# Instrument nemo_oo_agents and litellm
 Agent006Instrumentor().instrument()
 LiteLLMInstrumentor().instrument()
 
 # Now all agent operations and LLM calls are traced
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 class MyAgent(Agent, llm=my_llm):
     async def my_method(self):
@@ -44,7 +44,7 @@ Send traces to multiple destinations simultaneously:
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from openinference.instrumentation.agent006 import Agent006Instrumentor, JSONLSpanExporter
+from openinference.instrumentation.nemo_oo_agents import Agent006Instrumentor, JSONLSpanExporter
 
 provider = TracerProvider()
 
@@ -70,7 +70,7 @@ LiteLLMInstrumentor().instrument()
 For quick setup with JSONL traces:
 
 ```python
-from openinference.instrumentation.agent006 import enable_tracing
+from openinference.instrumentation.nemo_oo_agents import enable_tracing
 
 # Auto-configures tracer provider with JSONL export
 exporter = enable_tracing()  # Uses util/trace-viewer/traces/ if available

@@ -7,7 +7,7 @@ Agent006 currently supports **two** ways to specify strategies in the `@plan` de
 1. **String-based** (legacy): `@plan(strategy="PURE_PYTHON")`
 2. **Instance-based** (current): `@plan(strategy=PurePythonStrategy())`
 
-The string-based approach is a backwards-compatibility layer that converts strings to strategy instances via the `_resolve_strategy()` function in [decorators.py:240](../src/agent006/decorators.py#L240).
+The string-based approach is a backwards-compatibility layer that converts strings to strategy instances via the `_resolve_strategy()` function in [decorators.py:240](../src/nemo_oo_agents/decorators.py#L240).
 
 ### Usage Statistics
 
@@ -83,7 +83,7 @@ def _resolve_strategy(strategy: GenerationStrategyABC | str | None) -> Generatio
 2. **Requires Import**
    ```python
    # Must import the strategy class
-   from agent006.strategies import PurePythonStrategy
+   from nemo_oo_agents.strategies import PurePythonStrategy
    ```
 
 3. **Breaking Change for External Code**
@@ -143,7 +143,7 @@ def _resolve_strategy(strategy: GenerationStrategyABC | str | None) -> Generatio
 3. **Add Import Statements**
    ```python
    # Add to top of each migrated file
-   from agent006.strategies import PurePythonStrategy
+   from nemo_oo_agents.strategies import PurePythonStrategy
    ```
 
 ### Phase 3: Remove String Support (BREAKING CHANGE)
@@ -242,10 +242,10 @@ for file in $FILES; do
     echo "Migrating $file..."
 
     # Add import if not present
-    if ! grep -q "from agent006.strategies import PurePythonStrategy" "$file"; then
-        # Add after other agent006 imports or at top
-        sed -i '' '/from agent006/a\
-from agent006.strategies import PurePythonStrategy
+    if ! grep -q "from nemo_oo_agents.strategies import PurePythonStrategy" "$file"; then
+        # Add after other nemo_oo_agents imports or at top
+        sed -i '' '/from nemo_oo_agents/a\
+from nemo_oo_agents.strategies import PurePythonStrategy
 ' "$file"
     fi
 
@@ -335,7 +335,7 @@ This gives external users one major version to migrate their code.
 
 ## References
 
-- Current implementation: [decorators.py:240](../src/agent006/decorators.py#L240)
-- Strategy base class: [strategies/base.py](../src/agent006/strategies/base.py)
-- PurePython implementation: [strategies/pure_python.py](../src/agent006/strategies/pure_python.py)
+- Current implementation: [decorators.py:240](../src/nemo_oo_agents/decorators.py#L240)
+- Strategy base class: [strategies/base.py](../src/nemo_oo_agents/strategies/base.py)
+- PurePython implementation: [strategies/pure_python.py](../src/nemo_oo_agents/strategies/pure_python.py)
 - Backwards compat tests: [test_decorator_strategy.py](../tests/test_decorator_strategy.py)

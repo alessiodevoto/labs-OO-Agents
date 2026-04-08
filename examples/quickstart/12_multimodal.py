@@ -20,9 +20,9 @@ warnings.filterwarnings(
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from agent006 import Agent, strategy
-from agent006.media import Image
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.media import Image
+from nemo_oo_agents.strategies import PredictStrategy
 from unifiedllm.registry import get_llm_client
 
 load_dotenv(override=True)

@@ -3,6 +3,6 @@
 # Logger is available in generated code
 # Context and events are accessed via self.context and self.events
 
-from agent006.util import logger
+from nemo_oo_agents.util import logger
 
 __all__ = ["logger"]

@@ -4,8 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from agent006 import Agent, strategy
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import PredictStrategy
 
 
 class UserInfo(BaseModel):

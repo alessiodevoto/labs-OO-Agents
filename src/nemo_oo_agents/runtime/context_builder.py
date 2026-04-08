@@ -26,10 +26,10 @@ from context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
 from context_blocks.utils import safe_pformat
 
 if TYPE_CHECKING:
-    from agent006.agent import FrameworkBlock
-    from agent006.runtime.context_manager import ContextManager
-    from agent006.runtime.event_query import EventQuery
-    from agent006.strategies.base import GenerationStrategy
+    from nemo_oo_agents.agent import FrameworkBlock
+    from nemo_oo_agents.runtime.context_manager import ContextManager
+    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nemo_oo_agents.strategies.base import GenerationStrategy
 
 logger = logging.getLogger(__name__)
 

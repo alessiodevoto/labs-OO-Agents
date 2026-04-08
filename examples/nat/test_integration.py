@@ -8,7 +8,7 @@ Usage:
 
 Requires:
     - NAT installed (nvidia-nat-core)
-    - nvidia-nat-agent006 plugin installed (pip install -e ../../packages/nvidia_nat_agent006)
+    - nvidia-nat-nemo_oo_agents plugin installed (pip install -e ../../packages/nvidia_nat_nemo_oo_agents)
     - Agent006 importable (../../src on PYTHONPATH or installed)
     - unifiedllm importable (../../packages/unifiedllm on PYTHONPATH or installed)
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Ensure agent006 and unifiedllm are importable
+# Ensure nemo_oo_agents and unifiedllm are importable
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "packages" / "unifiedllm" / "src"))
 
@@ -89,7 +89,7 @@ def run_test(test_fn):
 def _import_tool_bridge():
     """Import tool_bridge module, adding path if needed."""
     plugin_src = str(
-        Path(__file__).parent.parent.parent / "packages" / "nvidia_nat_agent006" / "src"
+        Path(__file__).parent.parent.parent / "packages" / "nvidia_nat_nemo_oo_agents" / "src"
     )
     if plugin_src not in sys.path:
         sys.path.insert(0, plugin_src)
@@ -100,11 +100,11 @@ def _import_tool_bridge():
         "tool_bridge",
         Path(__file__).parent.parent.parent
         / "packages"
-        / "nvidia_nat_agent006"
+        / "nvidia_nat_nemo_oo_agents"
         / "src"
         / "nat"
         / "plugins"
-        / "agent006"
+        / "nemo_oo_agents"
         / "tool_bridge.py",
     )
     module = importlib.util.module_from_spec(spec)
@@ -120,11 +120,11 @@ def _import_otel_bridge():
         "otel_bridge",
         Path(__file__).parent.parent.parent
         / "packages"
-        / "nvidia_nat_agent006"
+        / "nvidia_nat_nemo_oo_agents"
         / "src"
         / "nat"
         / "plugins"
-        / "agent006"
+        / "nemo_oo_agents"
         / "otel_bridge.py",
     )
     module = importlib.util.module_from_spec(spec)

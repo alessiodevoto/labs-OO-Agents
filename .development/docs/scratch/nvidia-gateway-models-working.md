@@ -68,7 +68,7 @@ OAuth authentication to internal NVIDIA Gateway is now **fully functional**!
 - Features: Chat, Assistants API
 - Best for: High-volume, fast responses
 
-## Using Gateway Models with agent006
+## Using Gateway Models with nemo_oo_agents
 
 ### Current Implementation Status
 
@@ -90,8 +90,8 @@ Currently, `ActorRuntime._create_default_llm_client()` hardcodes:
 You can manually create the client for testing:
 
 ```python
-from agent006.llm.client import LiteLLMClient
-from agent006.types import LLMConfig
+from nemo_oo_agents.llm.client import LiteLLMClient
+from nemo_oo_agents.types import LLMConfig
 import os
 
 # Create config with gateway URL + OAuth
@@ -118,8 +118,8 @@ Update `ActorRuntime._create_default_llm_client()` to detect gateway models:
 def _create_default_llm_client(self):
     """Create default LLM client with OAuth support."""
     import os
-    from agent006.llm.client import LiteLLMClient
-    from agent006.types import LLMConfig
+    from nemo_oo_agents.llm.client import LiteLLMClient
+    from nemo_oo_agents.types import LLMConfig
 
     # Get model from decorator
     agent_cls = self.agent.__class__
@@ -188,10 +188,10 @@ def _create_default_llm_client(self):
 
 ## Testing Gateway Access
 
-Test script saved at: `agent006-src/list_gateway_models_working.py`
+Test script saved at: `nemo_oo_agents-src/list_gateway_models_working.py`
 
 ```bash
-cd agent006-src
+cd nemo_oo_agents-src
 python list_gateway_models_working.py
 ```
 

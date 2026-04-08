@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from openinference_instrumentation_agent006 import exporters
-from openinference_instrumentation_agent006._otlp_file_exporter import OtlpJsonFileExporter
+from openinference_instrumentation_nemo_oo_agents import exporters
+from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import OtlpJsonFileExporter
 
 
 class TestJsonlFactory:
@@ -56,21 +56,21 @@ class TestLangfuseFactory:
 
 class TestLocalOtlpFactory:
     def test_creates_otlp_json_http_exporter(self):
-        from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+        from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
         exp = exporters.local_otlp()
         assert isinstance(exp, OtlpJsonHttpExporter)
         assert exp._endpoint == "http://localhost:5001/v1/traces"
 
     def test_custom_endpoint(self):
-        from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+        from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
         exp = exporters.local_otlp(endpoint="http://custom:9999/v1/traces")
         assert isinstance(exp, OtlpJsonHttpExporter)
         assert exp._endpoint == "http://custom:9999/v1/traces"
 
     def test_env_var_override(self, monkeypatch):
-        from openinference_instrumentation_agent006._otlp_http_exporter import OtlpJsonHttpExporter
+        from openinference_instrumentation_nemo_oo_agents._otlp_http_exporter import OtlpJsonHttpExporter
 
         monkeypatch.setenv("OTLP_ENDPOINT", "http://env-host:8080/v1/traces")
         exp = exporters.local_otlp()

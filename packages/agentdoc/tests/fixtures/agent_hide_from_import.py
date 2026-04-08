@@ -4,7 +4,7 @@ import math  # noqa: F401
 from collections import Counter  # noqa: F401
 from datetime import datetime  # agentdoc: hide  # noqa: F401
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

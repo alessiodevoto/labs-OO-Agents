@@ -86,7 +86,7 @@ sequenceDiagram
 Hard character limit per `execute_python()` call. Applies to both stdout and stderr.
 
 ```python
-# src/agent006/runtime/truncating_stream.py
+# src/nemo_oo_agents/runtime/truncating_stream.py
 
 import io
 
@@ -189,7 +189,7 @@ def pprint(
 **Implementation:**
 
 ```python
-# src/agent006/runtime/pprint.py
+# src/nemo_oo_agents/runtime/pprint.py
 
 from typing import Any
 
@@ -597,7 +597,7 @@ def format(self, blocks: dict[str, str], block_metadata: dict[str, dict] | None 
 Truncation settings configurable at class, instance, and method level (like LLM configuration):
 
 ```python
-# src/agent006/runtime/truncation_config.py
+# src/nemo_oo_agents/runtime/truncation_config.py
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -642,8 +642,8 @@ DEFAULT_TRUNCATION_CONFIG = TruncationConfig()
 **Usage in agent definition:**
 
 ```python
-from agent006 import Agent
-from agent006.runtime import TruncationConfig
+from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime import TruncationConfig
 
 # Class-level config (via __init_subclass__)
 class DataAnalysisAgent(Agent, llm=my_llm, truncation=TruncationConfig(stdout_limit=100_000)):
@@ -690,7 +690,7 @@ def _format_tool_result(self, result: Any, *, execution_count: int = 0) -> str:
             parts.append(f"\n{output_text}")
 
         if result.has_return:
-            from agent006.runtime.pprint import _pformat
+            from nemo_oo_agents.runtime.pprint import _pformat
 
             config = self._get_truncation_config()
 
@@ -808,7 +808,7 @@ class InspectInputsPrefill:
 ```python
 # In ExecutionNamespaceBuilder.build()
 
-from agent006.runtime.pprint import pprint
+from nemo_oo_agents.runtime.pprint import pprint
 
 namespace.update({
     # ... existing items ...
@@ -1043,11 +1043,11 @@ Safety net truncation may break output structure (e.g., mid-JSON). This is accep
 ## Implementation Plan
 
 ### Phase 1: Core
-1. Create `src/agent006/runtime/truncating_stream.py`
-2. Create `src/agent006/runtime/pprint.py` (Rich-compatible API, no dependency)
+1. Create `src/nemo_oo_agents/runtime/truncating_stream.py`
+2. Create `src/nemo_oo_agents/runtime/pprint.py` (Rich-compatible API, no dependency)
    - Public: `pprint()`
    - Internal: `_pformat()` (used by return value formatting)
-3. Create `src/agent006/runtime/truncation_config.py`
+3. Create `src/nemo_oo_agents/runtime/truncation_config.py`
 4. Add unit tests
 
 ### Phase 2: Integration
@@ -1083,7 +1083,7 @@ Safety net truncation may break output structure (e.g., mid-JSON). This is accep
 17. Update `MarkdownBlockFormatter.format()`:
     - Handle `truncation` metadata in inline metadata dict
     - Generate plain text truncation notice before content
-18. Pass `TruncationConfig.context_block_limit` from agent006 to BlockRenderer
+18. Pass `TruncationConfig.context_block_limit` from nemo_oo_agents to BlockRenderer
 19. Add unit tests for context block truncation
 
 ## References

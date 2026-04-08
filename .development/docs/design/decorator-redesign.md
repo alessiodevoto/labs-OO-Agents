@@ -85,12 +85,12 @@ Resolution order: instance param → class `_agent_llm` → parent inheritance
 
 ## Implementation Steps
 
-### Step 1: Create Metaclass (`src/agent006/metaclass.py`)
+### Step 1: Create Metaclass (`src/nemo_oo_agents/metaclass.py`)
 
 **New file (~150 lines):**
 
 ```python
-from agent006.decorators import is_ellipsis_body
+from nemo_oo_agents.decorators import is_ellipsis_body
 import inspect
 from functools import wraps
 
@@ -144,7 +144,7 @@ class AgentMeta(type):
         """Get strategy from @strategy decorator or default."""
         if hasattr(method_obj, '_strategy_override'):
             return method_obj._strategy_override
-        from agent006.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies import PurePythonStrategy
         return PurePythonStrategy()
 
     @staticmethod
@@ -210,12 +210,12 @@ def no_trace(func):
 - Duck-types to detect Agent vs Strategy context
 - Attaches metadata for introspection/compatibility
 
-### Step 2: Update `Agent` Base Class (`src/agent006/agent.py`)
+### Step 2: Update `Agent` Base Class (`src/nemo_oo_agents/agent.py`)
 
 **Add metaclass + `__init_subclass__` (~25 lines):**
 
 ```python
-from agent006.metaclass import AgentMeta
+from nemo_oo_agents.metaclass import AgentMeta
 
 class Agent(metaclass=AgentMeta):
     """Base class for all agents with automatic method wrapping."""
@@ -255,12 +255,12 @@ class Agent(metaclass=AgentMeta):
 
 **Critical:** NO changes to `Agent.__init__()` or `_resolve_llm()` - existing LLM resolution logic preserved.
 
-### Step 3: Update `GenerationStrategy` Base Class (`src/agent006/strategies/base.py`)
+### Step 3: Update `GenerationStrategy` Base Class (`src/nemo_oo_agents/strategies/base.py`)
 
 **Add same metaclass (~5 lines):**
 
 ```python
-from agent006.metaclass import AgentMeta
+from nemo_oo_agents.metaclass import AgentMeta
 
 class GenerationStrategy(ABC, metaclass=AgentMeta):
     """Base class for generation strategies with automatic method wrapping.
@@ -273,7 +273,7 @@ class GenerationStrategy(ABC, metaclass=AgentMeta):
 
 **Result:** Unified pattern - both Agent and Strategy use same metaclass, same `@strategy` decorator.
 
-### Step 4: Add `@strategy` Decorator (`src/agent006/decorators.py`)
+### Step 4: Add `@strategy` Decorator (`src/nemo_oo_agents/decorators.py`)
 
 **Add new decorator (~30 lines):**
 
@@ -320,11 +320,11 @@ def strategy(
 
 Net change: **-245 lines removed, +30 lines added = -215 lines**
 
-### Step 5: Update Exports (`src/agent006/__init__.py`)
+### Step 5: Update Exports (`src/nemo_oo_agents/__init__.py`)
 
 ```python
-from agent006.decorators import strategy  # REMOVED: agent, plan
-from agent006.metaclass import AgentMeta, no_trace
+from nemo_oo_agents.decorators import strategy  # REMOVED: agent, plan
+from nemo_oo_agents.metaclass import AgentMeta, no_trace
 
 __all__ = [
     # ... existing exports
@@ -343,10 +343,10 @@ __all__ = [
 """Tests for AgentMeta metaclass and auto-wrapping."""
 
 import pytest
-from agent006.agent import Agent
-from agent006.metaclass import AgentMeta, no_trace
-from agent006.decorators import strategy
-from agent006.strategies import PurePythonStrategy, ReflexionStrategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.metaclass import AgentMeta, no_trace
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.strategies import PurePythonStrategy, ReflexionStrategy
 from unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
@@ -450,7 +450,7 @@ def test_method_inheritance():
 
 def test_strategy_class_autowrap():
     """GenerationStrategy methods also auto-wrap."""
-    from agent006.strategies.base import GenerationStrategy
+    from nemo_oo_agents.strategies.base import GenerationStrategy
 
     class CustomStrategy(GenerationStrategy):
         async def generate(self, runtime): ...
@@ -539,14 +539,14 @@ def migrate_file(file_path: Path) -> bool:
     # Step 3: Update imports
     if '@strategy' in content:
         content = re.sub(
-            r'from agent006 import (.*\b)(agent|plan)(\b.*)',
-            r'from agent006 import \1strategy\3',
+            r'from nemo_oo_agents import (.*\b)(agent|plan)(\b.*)',
+            r'from nemo_oo_agents import \1strategy\3',
             content
         )
     else:
         content = re.sub(
-            r'from agent006 import (.*\b)(agent|plan)(,\s*|\b)',
-            r'from agent006 import \1',
+            r'from nemo_oo_agents import (.*\b)(agent|plan)(,\s*|\b)',
+            r'from nemo_oo_agents import \1',
             content
         )
 
@@ -591,7 +591,7 @@ python scripts/migrate_decorators.py
 - `examples/*.py` - 7 files
 - `agents/*/` - 3 agent implementations
 - `tests/external/test_decorators.py` - Decorator-specific tests (needs rewrite)
-- `src/agent006/strategies/*.py` - 6 strategy files
+- `src/nemo_oo_agents/strategies/*.py` - 6 strategy files
 
 **Migration strategy:**
 1. Run automated script
@@ -643,7 +643,7 @@ python scripts/migrate_decorators.py
 ## Implementation Order
 
 ### Phase 1: Foundation (Keep Old Decorators)
-1. Create `src/agent006/metaclass.py`
+1. Create `src/nemo_oo_agents/metaclass.py`
 2. Add `@strategy` decorator to `decorators.py` (keep `@agent` and `@plan` temporarily)
 3. Apply metaclass to `Agent` and `GenerationStrategy`
 4. Add `__init_subclass__` to `Agent`
@@ -668,21 +668,21 @@ python scripts/migrate_decorators.py
 ## Critical Files
 
 ### Files to Create
-- `/home/cschueller/code/agent006/src/agent006/metaclass.py` (~150 lines)
-- `/home/cschueller/code/agent006/tests/test_metaclass.py` (~300 lines)
-- `/home/cschueller/code/agent006/scripts/migrate_decorators.py` (~120 lines)
+- `/home/cschueller/code/nemo_oo_agents/src/nemo_oo_agents/metaclass.py` (~150 lines)
+- `/home/cschueller/code/nemo_oo_agents/tests/test_metaclass.py` (~300 lines)
+- `/home/cschueller/code/nemo_oo_agents/scripts/migrate_decorators.py` (~120 lines)
 
 ### Files to Modify
-- `/home/cschueller/code/agent006/src/agent006/agent.py` (+25 lines: metaclass + `__init_subclass__`)
-- `/home/cschueller/code/agent006/src/agent006/strategies/base.py` (+5 lines: metaclass)
-- `/home/cschueller/code/agent006/src/agent006/decorators.py` (-215 lines net: remove agent+plan, add strategy)
-- `/home/cschueller/code/agent006/src/agent006/__init__.py` (update exports)
+- `/home/cschueller/code/nemo_oo_agents/src/nemo_oo_agents/agent.py` (+25 lines: metaclass + `__init_subclass__`)
+- `/home/cschueller/code/nemo_oo_agents/src/nemo_oo_agents/strategies/base.py` (+5 lines: metaclass)
+- `/home/cschueller/code/nemo_oo_agents/src/nemo_oo_agents/decorators.py` (-215 lines net: remove agent+plan, add strategy)
+- `/home/cschueller/code/nemo_oo_agents/src/nemo_oo_agents/__init__.py` (update exports)
 
 ### Files Requiring Manual Attention
-- `/home/cschueller/code/agent006/tests/external/test_decorators.py` - Rewrite decorator tests
-- `/home/cschueller/code/agent006/agents/tpm-agent/tpm_agent.py` - 11 `@plan` usages
-- `/home/cschueller/code/agent006/agents/librarian-agent/librarian_agent.py` - 4 `@plan` usages
-- `/home/cschueller/code/agent006/docs/guides/writing-generation-methods.md` - Update guide
+- `/home/cschueller/code/nemo_oo_agents/tests/external/test_decorators.py` - Rewrite decorator tests
+- `/home/cschueller/code/nemo_oo_agents/agents/tpm-agent/tpm_agent.py` - 11 `@plan` usages
+- `/home/cschueller/code/nemo_oo_agents/agents/librarian-agent/librarian_agent.py` - 4 `@plan` usages
+- `/home/cschueller/code/nemo_oo_agents/docs/guides/writing-generation-methods.md` - Update guide
 
 ## Usage Examples
 

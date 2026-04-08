@@ -9,7 +9,7 @@ Usage in generated code (utilities are pre-imported):
 import logging
 from typing import Any
 
-from agent006.util._context import _current_agent
+from nemo_oo_agents.util._context import _current_agent
 
 
 def debug(message: str, **kwargs: Any) -> None:

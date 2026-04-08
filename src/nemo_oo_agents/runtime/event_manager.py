@@ -15,18 +15,18 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from agent006.events import (
+from nemo_oo_agents.events import (
     EventBase,
     Summary,
 )
-from agent006.runtime.context_vars import _get_agent_call_stack
-from agent006.runtime.event_backend import EventBackend, InMemoryBackend
+from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack
+from nemo_oo_agents.runtime.event_backend import EventBackend, InMemoryBackend
 from context_blocks import EventStatus
 from context_blocks.models import Role
 
 if TYPE_CHECKING:
-    from agent006.runtime.event_query import EventQuery
-    from agent006.runtime.middleware import (
+    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nemo_oo_agents.runtime.middleware import (
         AgentCallContext,
         AgentCallMiddleware,
         AgentCallNext,
@@ -213,7 +213,7 @@ class EventManager:
             query: EventQuery to use for filtering, or None to clear.
 
         Example:
-            from agent006 import EventQuery
+            from nemo_oo_agents import EventQuery
 
             # Show only errors temporarily
             agent.event_manager.set_event_query(EventQuery.by_type("Error"))

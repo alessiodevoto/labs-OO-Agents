@@ -6,9 +6,9 @@ Example: error on user line 30 was showing as line 17.
 
 import pytest
 
-from agent006 import Agent
-from agent006.config import CodeActConfig
-from agent006.errors.formatting import format_error_for_llm
+from nemo_oo_agents import Agent
+from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.errors.formatting import format_error_for_llm
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM
@@ -159,7 +159,7 @@ if True
 
         assert result.error is not None
         # Syntax errors become RestrictedCodeError after validation
-        from agent006.errors import RestrictedCodeError
+        from nemo_oo_agents.errors import RestrictedCodeError
 
         assert isinstance(result.error, (SyntaxError, RestrictedCodeError))
 
@@ -504,7 +504,7 @@ class TestCodeActStrategyErrorFormatting:
     @pytest.mark.asyncio
     async def test_codeact_error_line_numbers(self, test_agent):
         """Test that CodeActStrategy formats errors with correct line numbers."""
-        from agent006.strategies.codeact import CodeActStrategy
+        from nemo_oo_agents.strategies.codeact import CodeActStrategy
 
         # Create strategy instance directly
         strat = CodeActStrategy(config=CodeActConfig())
@@ -639,7 +639,7 @@ class TestFormatterDirectly:
 
     def test_adjust_line_numbers_subtracts_offset(self):
         """_adjust_line_numbers should subtract the offset."""
-        from agent006.errors.formatting import _adjust_line_numbers
+        from nemo_oo_agents.errors.formatting import _adjust_line_numbers
 
         text = "Cell In[1], line 33, in <module>"
         result = _adjust_line_numbers(text, offset=3)
@@ -647,7 +647,7 @@ class TestFormatterDirectly:
 
     def test_adjust_line_numbers_never_below_1(self):
         """Line numbers should never go below 1."""
-        from agent006.errors.formatting import _adjust_line_numbers
+        from nemo_oo_agents.errors.formatting import _adjust_line_numbers
 
         text = "Cell In[1], line 2, in <module>"
         result = _adjust_line_numbers(text, offset=5)
@@ -655,7 +655,7 @@ class TestFormatterDirectly:
 
     def test_wrapper_names_replaced(self):
         """__repl_wrapper__ should be replaced with <module>."""
-        from agent006.errors.formatting import _replace_wrapper_names
+        from nemo_oo_agents.errors.formatting import _replace_wrapper_names
 
         text = "Cell In[1], line 5, in __repl_wrapper__"
         result = _replace_wrapper_names(text)

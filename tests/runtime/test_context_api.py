@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent006 import Agent
-from agent006.runtime.context import ContextApi
+from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime.context import ContextApi
 from context_blocks import DynamicContext
 from context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 from unifiedllm import FakeLLMClient

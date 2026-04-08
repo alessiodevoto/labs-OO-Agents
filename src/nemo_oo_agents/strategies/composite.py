@@ -4,7 +4,7 @@ Composite strategies use @strategy methods to delegate to simpler strategies,
 enabling natural composition and hierarchical strategy design.
 """
 
-from agent006.strategies.base import GenerationStrategy
+from nemo_oo_agents.strategies.base import GenerationStrategy
 
 
 class CompositeStrategy(GenerationStrategy):

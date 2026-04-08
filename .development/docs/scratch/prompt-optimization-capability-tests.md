@@ -271,9 +271,9 @@ Fix any test-specific failures until all 13 pass.
 
 ### 1.6 Note: Runner as Agent006 Agent
 
-**Consider replacing the runner with an agent006-based implementation:**
+**Consider replacing the runner with an nemo_oo_agents-based implementation:**
 
-The current `runner.py` is imperative Python code. Several components could be replaced with agent006 patterns:
+The current `runner.py` is imperative Python code. Several components could be replaced with nemo_oo_agents patterns:
 
 | Current Component | Agent006 Replacement |
 |-------------------|---------------------|
@@ -311,7 +311,7 @@ class TestRunner:
         ...
 ```
 
-**Benefits of agent006 runner:**
+**Benefits of nemo_oo_agents runner:**
 - Unified tracing across runner + test agents
 - Consistent retry/error handling
 - LLM-assisted result analysis
@@ -388,7 +388,7 @@ Since Phase 0 made prompts customizable via dataclass, just create variant insta
 
 ```python
 # In test runner or test config
-from agent006.strategies.pure_python import PurePythonStrategy, PurePythonConfig
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy, PurePythonConfig
 
 # Variant 1: Original (default)
 original = PurePythonStrategy()
@@ -436,7 +436,7 @@ python runner.py config/capabilities.yaml \
 
 ### 3.6 Prompt Optimization Agent
 
-Build an agent006-based agent that analyzes traces and proposes prompt improvements:
+Build an nemo_oo_agents-based agent that analyzes traces and proposes prompt improvements:
 
 ```python
 @agent
@@ -511,7 +511,7 @@ class PromptOptimizer:
 3. [x] Run all 14 tests, fix failures (11/14 passing)
 4. [ ] Create capability renderer for viewer
 5. [ ] Verify viewer displays all results correctly
-6. [ ] (Optional) Evaluate agent006-based runner for Phase 2+
+6. [ ] (Optional) Evaluate nemo_oo_agents-based runner for Phase 2+
 
 ### Phase 2: Scale Up
 
@@ -537,11 +537,11 @@ class PromptOptimizer:
 
 | File | Changes |
 |------|---------|
-| `src/agent006/strategies/pure_python.py` | `PurePythonConfig` dataclass, `runtime.expand_variables()` for templates |
-| `src/agent006/strategies/__init__.py` | Export `PurePythonConfig` |
-| `src/agent006/strategies/python_task.py` | DELETED |
-| `src/agent006/decorators.py` | Updated docstring examples |
-| `src/agent006/strategies/reflexion.py` | Updated docstring examples |
+| `src/nemo_oo_agents/strategies/pure_python.py` | `PurePythonConfig` dataclass, `runtime.expand_variables()` for templates |
+| `src/nemo_oo_agents/strategies/__init__.py` | Export `PurePythonConfig` |
+| `src/nemo_oo_agents/strategies/python_task.py` | DELETED |
+| `src/nemo_oo_agents/decorators.py` | Updated docstring examples |
+| `src/nemo_oo_agents/strategies/reflexion.py` | Updated docstring examples |
 | `tests/strategies/test_pure_python_strategy.py` | Updated for config-based API |
 | `tests/strategies/test_python_task_strategy.py` | Tests `task_message_mode=True` behavior |
 | `tests/strategies/test_reflexion_strategy.py` | Updated for config-based API |

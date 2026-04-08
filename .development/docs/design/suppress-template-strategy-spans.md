@@ -13,7 +13,7 @@ Add a `traceable` property to `GenerationStrategy` (default `True`), override to
 
 ## Changes
 
-### 1. `src/agent006/strategies/base.py` — Add `traceable` property to `GenerationStrategy`
+### 1. `src/nemo_oo_agents/strategies/base.py` — Add `traceable` property to `GenerationStrategy`
 
 ```python
 @property
@@ -26,7 +26,7 @@ def traceable(self) -> bool:
     return True
 ```
 
-### 2. `src/agent006/strategies/template.py` — Override `traceable` to `False`
+### 2. `src/nemo_oo_agents/strategies/template.py` — Override `traceable` to `False`
 
 ```python
 @property
@@ -35,7 +35,7 @@ def traceable(self) -> bool:
     return False
 ```
 
-### 3. `src/agent006/runtime/actor.py` — Guard hook calls in both `execute_nested` (~line 1146) and `_execute_task` (~line 1766)
+### 3. `src/nemo_oo_agents/runtime/actor.py` — Guard hook calls in both `execute_nested` (~line 1146) and `_execute_task` (~line 1766)
 
 Both sites have the same pattern. Use a `should_trace` boolean to guard both before and after hooks:
 
@@ -66,8 +66,8 @@ if should_trace:
 
 ## Files touched
 
-1. `src/agent006/strategies/base.py` — add `traceable` property
-2. `src/agent006/strategies/template.py` — override `traceable`
-3. `src/agent006/runtime/actor.py` — guard hook calls (2 sites)
+1. `src/nemo_oo_agents/strategies/base.py` — add `traceable` property
+2. `src/nemo_oo_agents/strategies/template.py` — override `traceable`
+3. `src/nemo_oo_agents/runtime/actor.py` — guard hook calls (2 sites)
 4. `tests/strategies/test_template_strategy.py` — test `traceable` is `False`
 5. `tests/strategies/test_generation_strategy.py` — test `traceable` default is `True`

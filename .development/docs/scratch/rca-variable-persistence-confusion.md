@@ -23,7 +23,7 @@ __getitem__(3) returns: IndexError! (only 3 items in list, indices 0-2)
 
 ### Where Events Get Removed
 
-In `src/agent006/strategies/codeact.py`:
+In `src/nemo_oo_agents/strategies/codeact.py`:
 - **Line 468**: Remove empty AssistantEvent, replace with ToolCallEvent
 - **Line 569**: Remove assistant event when no tool calls made
 - **Line 586**: Remove empty assistant event when API rejects empty content
@@ -33,7 +33,7 @@ In `src/agent006/strategies/codeact.py`:
 Change `__getitem__` to use `get_by_seq_id()`:
 
 ```python
-# In src/agent006/runtime/history.py line 367-369
+# In src/nemo_oo_agents/runtime/history.py line 367-369
 def __getitem__(self, key: int) -> EventBase:
     """Access events by seq_id (for consistency with prompt expr attributes)."""
     event = self.get_by_seq_id(key)
@@ -260,10 +260,10 @@ Re-run capability tests and check:
 
 | File | Purpose |
 |------|---------|
-| `src/agent006/strategies/codeact.py` | Strategy instructions, context blocks |
+| `src/nemo_oo_agents/strategies/codeact.py` | Strategy instructions, context blocks |
 | `packages/context-blocks/src/context_blocks/formatter.py` | How history is rendered |
 | `packages/context-blocks/src/context_blocks/renderer.py` | Block rendering |
-| `src/agent006/runtime/history.py` | History event structure |
+| `src/nemo_oo_agents/runtime/history.py` | History event structure |
 
 ---
 

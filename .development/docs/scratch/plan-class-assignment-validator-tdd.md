@@ -2,7 +2,7 @@
 
 **Date**: 2026-01-27
 **Priority**: Critical
-**Source**: `/Volumes/dev/dev/agent006/docs/scratch/fix-plan-class-method-replacement.md`
+**Source**: `/Volumes/dev/dev/nemo_oo_agents/docs/scratch/fix-plan-class-method-replacement.md`
 
 ---
 
@@ -58,7 +58,7 @@ Add new test class `TestClassAssignmentValidator` with:
 
 #### 2.1 Add ClassAssignmentValidator
 
-**File**: `src/agent006/runtime/code_validator.py`
+**File**: `src/nemo_oo_agents/runtime/code_validator.py`
 
 ```python
 class ClassAssignmentValidator:
@@ -135,7 +135,7 @@ else:
 
 #### 2.2 Add HelperMethodManager Guard
 
-**File**: `src/agent006/strategies/generated_code.py`
+**File**: `src/nemo_oo_agents/strategies/generated_code.py`
 
 Add guard at line ~236 in `HelperMethodManager.apply()`:
 
@@ -178,8 +178,8 @@ pytest tests/ -v --tb=short
 |-------|------|--------|
 | 1 | `tests/runtime/test_code_validator.py` | Add `TestClassAssignmentValidator` class |
 | 2 | `tests/strategies/test_helper_method_manager.py` | Create new test file |
-| 3 | `src/agent006/runtime/code_validator.py` | Add `ClassAssignmentValidator` |
-| 4 | `src/agent006/strategies/generated_code.py` | Add guard to `HelperMethodManager.apply()` |
+| 3 | `src/nemo_oo_agents/runtime/code_validator.py` | Add `ClassAssignmentValidator` |
+| 4 | `src/nemo_oo_agents/strategies/generated_code.py` | Add guard to `HelperMethodManager.apply()` |
 
 ---
 
@@ -190,7 +190,7 @@ pytest tests/ -v --tb=short
 ```python
 def test_reject_direct_class_assignment(self, validator, default_context):
     """Validator blocks: ClassName.method = value"""
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
     from unifiedllm import FakeLLMClient
 
     class SubAgent(Agent, llm=FakeLLMClient()):
@@ -216,7 +216,7 @@ def test_reject_direct_class_assignment(self, validator, default_context):
 ```python
 def test_allow_self_assignment(self, validator, default_context):
     """self.attr = value is allowed (instance assignment)."""
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
     from unifiedllm import FakeLLMClient
 
     class TestAgent(Agent, llm=FakeLLMClient()):
@@ -235,7 +235,7 @@ def test_allow_self_assignment(self, validator, default_context):
 ```python
 def test_allow_non_class_attribute_assignment(self, validator, default_context):
     """obj.attr = value is allowed when obj is not a known class."""
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
     from unifiedllm import FakeLLMClient
 
     class TestAgent(Agent, llm=FakeLLMClient()):

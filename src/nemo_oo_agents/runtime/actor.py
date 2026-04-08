@@ -18,16 +18,16 @@ from uuid import uuid4
 from agentdoc.introspect import methods, variables
 
 if TYPE_CHECKING:
-    from agent006.events import ExecutionResult
-    from agent006.runtime.event_query import EventQuery
-    from agent006.runtime.restrictions import RestrictionsConfig
+    from nemo_oo_agents.events import ExecutionResult
+    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
 from pydantic import BaseModel
 
-from agent006.events import ExecutionSignal, LLMOutput
-from agent006.runtime.context_vars import _parent_agent_var
-from agent006.runtime.hooks import call_after_hook, call_before_hook
-from agent006.runtime.truncating_stream import TruncatingStringIO
+from nemo_oo_agents.events import ExecutionSignal, LLMOutput
+from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
+from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 from context_blocks import (
     DynamicContext,
     ResolvedBlock,
@@ -53,7 +53,7 @@ def _strip_blocked_modules(
     blocked_modules: frozenset[str],
 ) -> dict[str, Any]:
     """Remove blocked modules and their members from exec_globals."""
-    from agent006.runtime.restrictions import is_from_blocked_module
+    from nemo_oo_agents.runtime.restrictions import is_from_blocked_module
 
     if not blocked_modules:
         return exec_globals
@@ -123,8 +123,8 @@ _block_stdin_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 # Re-export image buffer ContextVar so it's set alongside stdout/stderr
 # Agent call stack - defined in context_vars.py to avoid circular imports.
-from agent006.runtime.context_vars import _get_agent_call_stack  # noqa: E402
-from agent006.runtime.media_capture import _media_buffer_var  # noqa: E402
+from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack  # noqa: E402
+from nemo_oo_agents.runtime.media_capture import _media_buffer_var  # noqa: E402
 
 # Task-local stack for generation ID tracking.
 # Uses immutable tuples for parallel task isolation (same pattern as agent call stack).
@@ -587,7 +587,7 @@ class ActorRuntime:
         has_mw = bool(em._middleware.get("llm_call"))
 
         if has_mw:
-            from agent006.runtime.middleware import LLMCallContext
+            from nemo_oo_agents.runtime.middleware import LLMCallContext
 
             params: dict[str, Any] = {**kwargs, "tools": tools or []}
             if output_model is not None:
@@ -689,7 +689,7 @@ class ActorRuntime:
         in_reentry = mid in _in_exec_middleware.get()
 
         if em._middleware.get("execute_python") and not in_reentry:
-            from agent006.runtime.middleware import ExecutePythonContext
+            from nemo_oo_agents.runtime.middleware import ExecutePythonContext
 
             ep_params: dict[str, Any] = {
                 "builtins": builtins,
@@ -736,7 +736,7 @@ class ActorRuntime:
         if in_reentry:
             _in_exec_middleware.set(_in_exec_middleware.get() - {mid})
 
-        from agent006.events import _NO_RETURN, ExecutionResult
+        from nemo_oo_agents.events import _NO_RETURN, ExecutionResult
 
         # Generate execution ID and call hooks
         execution_id = str(uuid4())
@@ -771,11 +771,11 @@ class ActorRuntime:
             # installed below.
             import typing as _typing
 
-            from agent006.decorators import strategy
-            from agent006.media import Audio, File, Image, Media
-            from agent006.runtime.media_capture import show
-            from agent006.runtime.pprint import pprint
-            from agent006.strategies import (
+            from nemo_oo_agents.decorators import strategy
+            from nemo_oo_agents.media import Audio, File, Image, Media
+            from nemo_oo_agents.runtime.media_capture import show
+            from nemo_oo_agents.runtime.pprint import pprint
+            from nemo_oo_agents.strategies import (
                 CodeActStrategy,
                 CompositeStrategy,
                 PredictStrategy,
@@ -827,7 +827,7 @@ class ActorRuntime:
             # Strip blocked modules and their members from exec_globals.
             # Default to RestrictionsConfig() so stripping and validation
             # agree when caller omits the parameter.
-            from agent006.runtime.restrictions import RestrictionsConfig
+            from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
             effective_restrictions = restrictions or RestrictionsConfig()
             exec_globals = _strip_blocked_modules(
@@ -838,7 +838,7 @@ class ActorRuntime:
             # LLMs habitually write ``from typing import Literal`` etc. even
             # when those names are already pre-loaded in exec_globals.
             try:
-                from agent006.runtime.code_validator import strip_redundant_imports
+                from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
 
                 code = strip_redundant_imports(code, set(exec_globals.keys()))
             except ImportError:
@@ -847,7 +847,7 @@ class ActorRuntime:
             # Validate code if requested (unified validator handles all checks)
             if validate:
                 try:
-                    from agent006.runtime.code_validator import (
+                    from nemo_oo_agents.runtime.code_validator import (
                         UnifiedCodeValidator,
                         ValidationContext,
                     )
@@ -1037,7 +1037,7 @@ class ActorRuntime:
 
                     exec(compile(wrapper, cell_filename, "exec"), exec_globals)
                     # Execute with async safety (blocks Future.result() etc from event loop)
-                    from agent006.runtime.async_safety import agent_async_safety_context
+                    from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
 
                     coro = exec_globals["__repl_wrapper__"]()
                     with agent_async_safety_context():
@@ -1118,7 +1118,7 @@ class ActorRuntime:
                             )
                             exec(compile(wrapper, cell_filename, "exec"), exec_globals)
                             # Execute with async safety (blocks Future.result() etc)
-                            from agent006.runtime.async_safety import agent_async_safety_context
+                            from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
 
                             coro = exec_globals["__wrapper__"]()
                             with agent_async_safety_context():
@@ -1134,7 +1134,7 @@ class ActorRuntime:
                                     await coro
                         else:
                             # Sync code execution - enable async safety for Future.result() etc
-                            from agent006.runtime.async_safety import agent_async_safety_context
+                            from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
 
                             with agent_async_safety_context():
                                 exec(compile(other_tree, cell_filename, "exec"), exec_globals)
@@ -1797,8 +1797,8 @@ class ActorRuntime:
                 return await self._execute_with_generation(method, args, kwargs, method_name)
             else:
                 # Get strategy to check requires_lock
-                from agent006.strategies import GenerationStrategy as GenerationStrategyABC
-                from agent006.strategies import get_default_strategy
+                from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC
+                from nemo_oo_agents.strategies import get_default_strategy
 
                 call_strategy = kwargs.get("_strategy")
                 decorator_strategy = getattr(base_method, "_plan_strategy", None)
@@ -1816,7 +1816,7 @@ class ActorRuntime:
         else:
             # Method has implementation - call directly with context vars set
             # This enables utility modules (context, logger, message) to work
-            from agent006.util._context import _current_agent_var, _current_runtime_var
+            from nemo_oo_agents.util._context import _current_agent_var, _current_runtime_var
 
             agent_token = _current_agent_var.set(self.agent)
             runtime_token = _current_runtime_var.set(self)
@@ -1857,8 +1857,8 @@ class ActorRuntime:
 
         # Two-level priority: call override > decorator > default fallback
         # Strategy can be: GenerationStrategy instance (new), enum (old), or None
-        from agent006.strategies import GenerationStrategy as GenerationStrategyABC
-        from agent006.strategies import get_default_strategy
+        from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC
+        from nemo_oo_agents.strategies import get_default_strategy
 
         strategy = call_strategy or decorator_strategy or get_default_strategy()
 
@@ -1933,7 +1933,7 @@ class ActorRuntime:
             # Strategy must be a GenerationStrategy instance
             if isinstance(strategy, GenerationStrategyABC):
                 # Use strategy's execute() method directly
-                from agent006.strategies.current_call import CurrentCall
+                from nemo_oo_agents.strategies.current_call import CurrentCall
 
                 # Expand {placeholders} in method docstring using call arguments
                 raw_docstring = getattr(method, "__doc__", None)
@@ -1972,7 +1972,7 @@ class ActorRuntime:
 
                 # Extract pre-ellipsis code (setup code before ... marker)
                 # Use _original if method was wrapped by metaclass
-                from agent006.ellipsis_detection import get_pre_ellipsis_code
+                from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code
 
                 original_method = getattr(method, "_original", method)
                 pre_ellipsis_code = get_pre_ellipsis_code(original_method)
@@ -2112,7 +2112,7 @@ class ActorRuntime:
             )
         """
         # Resolve strategy to instance (defaults to get_default_strategy())
-        from agent006.strategies import get_default_strategy
+        from nemo_oo_agents.strategies import get_default_strategy
 
         strat = strategy if strategy is not None else get_default_strategy()
 
@@ -2229,7 +2229,7 @@ async def {name}({params_str}) -> {return_type}:
         Returns:
             Ordered list of ResolvedBlock ready for render_context()
         """
-        from agent006.runtime.context_builder import build_context
+        from nemo_oo_agents.runtime.context_builder import build_context
 
         tc = self.agent._truncation
         call_kwargs = call_kwargs or {}
@@ -2318,7 +2318,7 @@ async def {name}({params_str}) -> {return_type}:
         llm_client = _current_llm_var.get()
         count_tokens = getattr(llm_client, "count_tokens", None)
         try:
-            from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+            from openinference_instrumentation_nemo_oo_agents._context_sideband import set_context_blocks
 
             block_formatter = self.agent.render_config.block_formatter
             rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]

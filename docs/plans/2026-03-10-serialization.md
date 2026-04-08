@@ -66,7 +66,7 @@ The big challenge in serializing Agent006 agents is the mixture of metaprogrammi
 There's a few methods of serialization that could work:
 
 - *Swappable backends.* This is what EventManager already implements. An InMemoryBackend already encapsulates Events. We can supply new implementations to connect to Redis, SQL, etc. Users then specify which backends to use. This is effectively a dependency injection based approach.
-- *Pickle-ish.*  Serialize agents as a single blob of data, and then users are responsible for storing/retrieving as needed. This is what https://gitlab-master.nvidia.com/interactive-agents/agent006/-/merge_requests/367 implements, a single Pydantic created JSON can be generated at will. This is a manual checkpoint/deserialization approach.
+- *Pickle-ish.*  Serialize agents as a single blob of data, and then users are responsible for storing/retrieving as needed. This is what https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/merge_requests/367 implements, a single Pydantic created JSON can be generated at will. This is a manual checkpoint/deserialization approach.
 - *Agent as Pydantic model.* Make the Agent class itself a Pydantic `BaseModel`, getting serialization for free via `model_dump()` / `model_validate()`. This doesn't work in practice: Agent uses a custom metaclass (`AgentMeta`) that conflicts with Pydantic's `ModelMetaclass`, the constructor holds non-serializable runtime objects (`UnifiedLLM` client, `ActorRuntime` with circular references), and LLM-defined methods and attributes are dynamically bound callables that aren't Pydantic fields.
 
 Our proposal: a single `StorageManager` interface that unifies event streaming and state snapshotting behind one object. Internally, the implementation decides how to persist each kind of state — streaming events to a database, writing snapshots to files or Redis, etc. — but the user sees one interface.
@@ -76,7 +76,7 @@ Our proposal: a single `StorageManager` interface that unifies event streaming a
 `StorageManager` is passed to the agent at construction time. It owns the `EventBackend` (for streaming events) and provides `save_snapshot()` / `load_snapshot()` (for everything else). The agent delegates all persistence through this single object.
 
 ```python
-from agent006 import StorageManager
+from nemo_oo_agents import StorageManager
 
 storage = PostgresStorageManager(connection_string="postgresql://...")
 agent = MyAgent(storage=storage)
@@ -110,8 +110,8 @@ Users pass a `StorageManager` to the agent. Events stream automatically. Snapsho
 Each request uses the same storage to stream events and load/save snapshots:
 
 ```python
-from agent006 import Agent
-from agent006_persistence import PostgresStorageManager
+from nemo_oo_agents import Agent
+from nemo_oo_agents_persistence import PostgresStorageManager
 
 storage = PostgresStorageManager("postgresql://...")
 
@@ -186,7 +186,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from agent006 import Agent
+    from nemo_oo_agents import Agent
 
 @runtime_checkable
 class StorageManager(Protocol):
@@ -603,7 +603,7 @@ The LLM can set attributes directly on the agent instance (`self.results = [1, 2
 Developers use a type annotation to opt out of snapshotting for attributes that can't or shouldn't be serialized:
 
 ```python
-from agent006 import transient
+from nemo_oo_agents import transient
 
 class MyAgent(Agent):
     db_conn: transient

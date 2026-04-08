@@ -31,8 +31,8 @@ The history phase changes modify how trace events are rendered into prompt block
 - Reduced recovery loops in multi-turn tool use (fast_food_order).
 
 ## Likely code locations
-- `src/agent006/runtime/history.py` (rendering expressions and indexing semantics)
-- `src/agent006/events.py` (`TaskEvent.render_spec()` and field selection)
+- `src/nemo_oo_agents/runtime/history.py` (rendering expressions and indexing semantics)
+- `src/nemo_oo_agents/events.py` (`TaskEvent.render_spec()` and field selection)
 - `packages/context-blocks/src/context_blocks/formatter.py` (XML block rendering)
 
 ## Recommended checks

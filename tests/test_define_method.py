@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
@@ -37,7 +37,7 @@ async def test_define_method_basic():
     method = agent_instance.get_greeting
 
     # Check metadata
-    from agent006.strategies import CodeActStrategy
+    from nemo_oo_agents.strategies import CodeActStrategy
 
     assert hasattr(method, "_agent_decorator")
     assert method._agent_decorator == "plan"

@@ -5,8 +5,8 @@ Summarizers are proper agents that subscribe to a parent's event manager and use
 LLM-generated code to produce summaries.
 
 Example:
-    from agent006 import Agent
-    from agent006.agents import TokenBudgetSummarizer
+    from nemo_oo_agents import Agent
+    from nemo_oo_agents.agents import TokenBudgetSummarizer
 
     class MyAgent(Agent, llm=my_llm):
         async def chat(self, message: str) -> str:
@@ -15,7 +15,7 @@ Example:
 
     # Create agent and install summarizer
     agent = MyAgent()
-    from agent006.config.summarizer_config import TokenBudgetConfig
+    from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
     TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=80_000))
 """
 
@@ -26,17 +26,17 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated, Any
 
-from agent006.agent import Agent
-from agent006.decorators import strategy
-from agent006.strategies import PredictStrategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.strategies import PredictStrategy
 from agentdoc import hidden
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent006.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
-    from agent006.events import AfterTurn, EventBase
-    from agent006.runtime.event_manager import EventManager
+    from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+    from nemo_oo_agents.events import AfterTurn, EventBase
+    from nemo_oo_agents.runtime.event_manager import EventManager
 
 
 class SummarizationAgent(Agent):
@@ -91,7 +91,7 @@ class SummarizationAgent(Agent):
             The installed summarizer (usually not needed)
 
         Example:
-            from agent006.config.summarizer_config import TokenBudgetConfig
+            from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
             agent = MyAgent(llm=my_llm)
             TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=80_000))
         """
@@ -182,7 +182,7 @@ class SummarizationAgent(Agent):
         2. If still over budget after applying, schedule another round
         3. Only skip if summarization is still actively running
         """
-        from agent006.events import AfterTurn as _AfterTurn
+        from nemo_oo_agents.events import AfterTurn as _AfterTurn
 
         # Apply any completed summary first
         self._apply_pending_summary()
@@ -466,7 +466,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
     Action: Summarize oldest events, preserve N most recent
 
     Example:
-        from agent006.config.summarizer_config import TokenBudgetConfig
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
         # Absolute limit
         TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=80_000))
 
@@ -494,7 +494,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
         return super().install(agent, config=config, **kwargs)
 
     def __init__(self, agent: Agent, **kwargs):
-        from agent006.config.summarizer_config import TokenBudgetConfig as _TBC
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig as _TBC
 
         config = kwargs.pop("config", None)
         self.config = config or _TBC()
@@ -528,7 +528,7 @@ class MethodSummarizer(SummarizationAgent):
     Action: Summarize all events from that method's generation_id
 
     Example:
-        from agent006.config.summarizer_config import MethodSummarizerConfig
+        from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig
         agent = MyAgent(llm=my_llm)
         MethodSummarizer.install(agent, config=MethodSummarizerConfig(min_events=5))
     """
@@ -553,7 +553,7 @@ class MethodSummarizer(SummarizationAgent):
         return super().install(agent, config=config, **kwargs)
 
     def __init__(self, agent: Agent, **kwargs):
-        from agent006.config.summarizer_config import MethodSummarizerConfig as _MSC
+        from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig as _MSC
 
         config = kwargs.pop("config", None)
         self.config = config or _MSC()

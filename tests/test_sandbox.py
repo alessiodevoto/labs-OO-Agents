@@ -4,9 +4,9 @@ import json  # noqa: F401 — used by test_sandbox_has_agent_module_imports (vis
 
 import pytest
 
-from agent006.agent import Agent
-from agent006.runtime.actor import ActorRuntime
-from agent006.runtime.code_validator import ValidationError, validate_code
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.runtime.actor import ActorRuntime
+from nemo_oo_agents.runtime.code_validator import ValidationError, validate_code
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-| Aspect | GEPA | Agent0 | Our Plan (agent006) |
+| Aspect | GEPA | Agent0 | Our Plan (nemo_oo_agents) |
 |--------|------|--------|---------------------|
 | **Core Approach** | Prompt evolution via reflection | Co-evolution with curriculum learning | Prompt evolution (GEPA-inspired) |
 | **What Gets Optimized** | Text components (prompts, code) | Model weights via RL | Strategy templates (prompts) |
@@ -305,7 +305,7 @@ CurriculumEvolution
 
 ```python
 class Agent006Adapter(GEPAAdapter):
-    """Adapter connecting agent006 to GEPA-style optimization."""
+    """Adapter connecting nemo_oo_agents to GEPA-style optimization."""
 
     def evaluate(self, batch, candidate, capture_traces=False):
         # Apply candidate (strategy variant) to agent
@@ -381,7 +381,7 @@ def propose_merge(parent_a: Strategy, parent_b: Strategy, ancestor: Strategy) ->
 
 ```python
 def build_reflective_dataset(trace: EvalTrace, result: EvalResult) -> dict:
-    """Build GEPA-style reflective dataset from agent006 trace."""
+    """Build GEPA-style reflective dataset from nemo_oo_agents trace."""
     return {
         "Inputs": {
             "task": result.input,
@@ -493,4 +493,4 @@ Based on GEPA and Agent0 insights, here's the revised optimization loop:
 - Tool usage rewards
 - Self-consistency for test selection
 
-**Our unique advantage** is the agent006 tracing infrastructure—we have rich OpenInference traces that GEPA's adapter pattern can leverage for high-quality reflection.
+**Our unique advantage** is the nemo_oo_agents tracing infrastructure—we have rich OpenInference traces that GEPA's adapter pattern can leverage for high-quality reflection.

@@ -165,7 +165,7 @@ def _extract_code(self, output: Any) -> str | None:
 ---
 
 ### 4. metaclass.py (AgentMeta)
-**Location:** `src/agent006/metaclass.py`
+**Location:** `src/nemo_oo_agents/metaclass.py`
 **Lines:** 143-149
 
 #### Extraction Method

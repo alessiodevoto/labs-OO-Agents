@@ -1,9 +1,9 @@
-"""Shared pprint formatting for agent006 and agentdoc.
+"""Shared pprint formatting for nemo_oo_agents and agentdoc.
 
 This module defines the canonical ``_pformat`` implementation used by:
 
 - ``packages/agentdoc/src/agentdoc/format.py`` for value summaries
-- ``src/agent006/runtime/pprint.py`` for the public ``pprint`` API
+- ``src/nemo_oo_agents/runtime/pprint.py`` for the public ``pprint`` API
 
 The unified pformat() function handles:
 - Regular values (list, dict, str, etc.) with truncation

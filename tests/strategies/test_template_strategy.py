@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from agent006 import strategy
-from agent006.strategies import CurrentCall, TemplateStrategy
+from nemo_oo_agents import strategy
+from nemo_oo_agents.strategies import CurrentCall, TemplateStrategy
 
 
 class MockAgent:
@@ -97,7 +97,7 @@ class TestTemplateStrategy:
 
     def test_is_generation_strategy(self):
         """TemplateStrategy should inherit from GenerationStrategy."""
-        from agent006.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
 
         strategy = TemplateStrategy()
         assert isinstance(strategy, GenerationStrategy)
@@ -284,7 +284,7 @@ class TestPlanDecoratorOnStrategies:
     @pytest.mark.asyncio
     async def test_plan_on_strategy_method(self):
         """Test @strategy decorator on strategy method."""
-        from agent006.strategies import CompositeStrategy
+        from nemo_oo_agents.strategies import CompositeStrategy
 
         class TestStrategy(CompositeStrategy):
             @strategy(TemplateStrategy())
@@ -306,7 +306,7 @@ class TestPlanDecoratorOnStrategies:
     @pytest.mark.asyncio
     async def test_plan_requires_explicit_strategy(self):
         """Test that @strategy with ellipsis on strategy should specify strategy explicitly."""
-        from agent006.strategies import CompositeStrategy
+        from nemo_oo_agents.strategies import CompositeStrategy
 
         # When @strategy() has ellipsis but no strategy, it defaults to PurePythonStrategy
         # This is OK for now, but ideally we'd want explicit strategy on strategies
@@ -331,7 +331,7 @@ class TestPlanDecoratorOnStrategies:
     @pytest.mark.asyncio
     async def test_multiple_plan_methods_on_strategy(self):
         """Test multiple @strategy methods on same strategy."""
-        from agent006.strategies import CompositeStrategy
+        from nemo_oo_agents.strategies import CompositeStrategy
 
         class TestStrategy(CompositeStrategy):
             @strategy(TemplateStrategy())
@@ -360,7 +360,7 @@ class TestPlanDecoratorOnStrategies:
     @pytest.mark.asyncio
     async def test_plan_with_multiple_kwargs(self):
         """Test @strategy method with multiple keyword arguments."""
-        from agent006.strategies import CompositeStrategy
+        from nemo_oo_agents.strategies import CompositeStrategy
 
         class TestStrategy(CompositeStrategy):
             @strategy(TemplateStrategy())
@@ -386,7 +386,7 @@ class TestPlanDecoratorOnStrategies:
         This tests the pattern used in PurePythonStrategy._build_task_message where
         we pass a CurrentCall object and want to access its attributes in the template.
         """
-        from agent006.strategies import CompositeStrategy
+        from nemo_oo_agents.strategies import CompositeStrategy
 
         class TestStrategy(CompositeStrategy):
             @strategy(TemplateStrategy())

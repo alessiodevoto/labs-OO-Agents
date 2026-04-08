@@ -44,10 +44,10 @@ class SpanKind:
 class OpenInferenceHooks:
     """OpenTelemetry-based instrumentation hooks with OpenInference conventions.
 
-    Implements the agent006 InstrumentationHooks protocol.
+    Implements the nemo_oo_agents InstrumentationHooks protocol.
     """
 
-    def __init__(self, tracer: trace.Tracer, service_name: str = "agent006"):
+    def __init__(self, tracer: trace.Tracer, service_name: str = "nemo_oo_agents"):
         """Initialize OTel hooks.
 
         Args:
@@ -671,9 +671,9 @@ class OpenInferenceHooks:
             start_time=time.time_ns(),
         )
         span.set_attribute("openinference.span.kind", SpanKind.CHAIN)
-        span.set_attribute("agent006.system_message", content)
-        span.set_attribute("agent006.system_message.is_diff", is_diff)
-        span.set_attribute("agent006.system_message.turn_index", turn_index)
+        span.set_attribute("nemo_oo_agents.system_message", content)
+        span.set_attribute("nemo_oo_agents.system_message.is_diff", is_diff)
+        span.set_attribute("nemo_oo_agents.system_message.turn_index", turn_index)
         span.end(end_time=time.time_ns())
 
     def _find_current_call_id(self) -> str | None:

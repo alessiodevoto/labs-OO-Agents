@@ -6,10 +6,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agent006.skill import Skill, TextSkill
+from nemo_oo_agents.skill import Skill, TextSkill
 
 if TYPE_CHECKING:
-    from agent006.agent import Agent
+    from nemo_oo_agents.agent import Agent
 
 logger = logging.getLogger(__name__)
 

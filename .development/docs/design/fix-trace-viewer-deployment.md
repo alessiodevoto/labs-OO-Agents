@@ -8,10 +8,10 @@ the trace viewer Docker image built by CI (`util/trace-viewer/Dockerfile`) is st
 - `--group trace-viewer` dep group (old approach)
 - CMD: `python -m uvicorn backend.main:app ...`
 
-The new viewer is the `agent006-viewer` package at `packages/agent006-viewer/`, which:
+The new viewer is the `nemo-oo-agents-viewer` package at `packages/nemo-oo-agents-viewer/`, which:
 - Accepts traces via OTLP HTTP at `/v1/traces`
 - Stores traces in SQLite (`TRACE_STORE_DB` env var, defaults to `traces.db` in cwd)
-- Is started with `agent006 start-dev` (CLI) or `python -m agent006_viewer`
+- Is started with `nemo_oo_agents start-dev` (CLI) or `python -m nemo_oo_agents_viewer`
 - Defaults to port 5001 (configurable via `TRACE_VIEWER_PORT` or `VIEWER_PORT` env var)
 - Still exposes `/api/version` (health check endpoint unchanged)
 
@@ -24,15 +24,15 @@ OTLP is added for live viewing in the trace-viewer's SQLite store.
 
 ### 1. `util/trace-viewer/Dockerfile`
 
-Rewrite to use `agent006-viewer` package instead of old trace-viewer code:
+Rewrite to use `nemo-oo-agents-viewer` package instead of old trace-viewer code:
 
 **Stage 1a** (PyPI deps only — no workspace packages):
 ```dockerfile
 uv sync --frozen --no-default-groups --extra viewer --no-install-workspace
 ```
 (was: `--group trace-viewer`)
-- `--extra viewer` installs the `agent006-viewer` transitive PyPI deps only (fastapi, uvicorn, etc.)
-- `--no-install-workspace` skips workspace packages (agent006-viewer itself, viewer_utils) — they're installed in Stage 1c
+- `--extra viewer` installs the `nemo-oo-agents-viewer` transitive PyPI deps only (fastapi, uvicorn, etc.)
+- `--no-install-workspace` skips workspace packages (nemo-oo-agents-viewer itself, viewer_utils) — they're installed in Stage 1c
 
 **Stage 1c** (workspace packages + root project):
 ```dockerfile
@@ -41,7 +41,7 @@ uv sync --locked --no-editable --no-default-groups --extra viewer
 
 **Remove COPY statements** for old files:
 - `util/trace-viewer/backend/` — installed as package
-- `util/trace-viewer/frontend/` — bundled in `agent006-viewer` wheel
+- `util/trace-viewer/frontend/` — bundled in `nemo-oo-agents-viewer` wheel
 - `util/trace-viewer/trace_viewer_config.json` — not used
 - `util/viewer_utils/` — installed as workspace package, no manual copy needed
 
@@ -54,7 +54,7 @@ uv sync --locked --no-editable --no-default-groups --extra viewer
 **Remove** `WORKDIR /app/util/trace-viewer` — CMD no longer requires specific cwd
 
 **Keep** `ENV AGENT006_PROJECT_ROOT=/app`:
-- `viewer_utils` (runtime dependency of `agent006-viewer`) has `paths.py` which uses this env var
+- `viewer_utils` (runtime dependency of `nemo-oo-agents-viewer`) has `paths.py` which uses this env var
 - Keep it set to `/app` as before
 
 **Update env vars**:
@@ -64,7 +64,7 @@ uv sync --locked --no-editable --no-default-groups --extra viewer
 
 **Update CMD**:
 ```dockerfile
-CMD ["python", "-m", "agent006_viewer"]
+CMD ["python", "-m", "nemo_oo_agents_viewer"]
 ```
 (was: `["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8001"]`)
 

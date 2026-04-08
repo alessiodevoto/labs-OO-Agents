@@ -2,11 +2,11 @@
 
 **Date**: 2026-01-17
 **Model**: Claude Sonnet 4.5 (aws/anthropic/bedrock-claude-sonnet-4-5-v1)
-**Baseline**: agent006 with PurePythonStrategy - 10% pass rate (1/10 tasks)
+**Baseline**: nemo_oo_agents with PurePythonStrategy - 10% pass rate (1/10 tasks)
 
 ## Problem Analysis
 
-Analyzed 88 code execution errors across 11 DABStep trace files. Claude Sonnet was failing to generate valid Python code for agent006's PurePythonStrategy.
+Analyzed 88 code execution errors across 11 DABStep trace files. Claude Sonnet was failing to generate valid Python code for nemo_oo_agents's PurePythonStrategy.
 
 ### Top 5 Failure Patterns
 
@@ -51,7 +51,7 @@ df = pd.read_csv("/path/to/data.csv")
 
 ## Solution Implemented
 
-Created `agent006_claude_optimized.py` with:
+Created `nemo_oo_agents_claude_optimized.py` with:
 
 ### 1. Code Cleaning Function
 
@@ -129,14 +129,14 @@ Based on the failure analysis:
 
 ## Testing
 
-### Baseline (agent006)
-- Config: `agent006` with PurePythonStrategy
+### Baseline (nemo_oo_agents)
+- Config: `nemo_oo_agents` with PurePythonStrategy
 - Model: Claude Sonnet 4.5
 - Result: **10% pass rate (1/10)**
 - Primary failure: 8/10 tasks failed with "Unable to generate valid code"
 
-### Optimized (agent006_claude_opt)
-- Config: `agent006_claude_opt` with cleaned code
+### Optimized (nemo_oo_agents_claude_opt)
+- Config: `nemo_oo_agents_claude_opt` with cleaned code
 - Model: Claude Sonnet 4.5
 - Status: **Running...**
 
@@ -147,7 +147,7 @@ python run_ablation.py \\
   --provider nvidia_internal \\
   --model aws/anthropic/bedrock-claude-sonnet-4-5-v1 \\
   --benchmark dabstep \\
-  --config agent006_claude_opt \\
+  --config nemo_oo_agents_claude_opt \\
   --limit 10
 ```
 
@@ -164,5 +164,5 @@ If this approach works:
 ## References
 
 - Trace analysis agent ID: `a826280`
-- Baseline results: `/Users/rcabral/agent006/experiments/evaluation-ablations/results/20260116_104108_bedrock-claude-sonnet-4-5-v1_2d807c/`
-- Implementation: `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/agent006_claude_optimized.py`
+- Baseline results: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/results/20260116_104108_bedrock-claude-sonnet-4-5-v1_2d807c/`
+- Implementation: `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/nemo_oo_agents_claude_optimized.py`

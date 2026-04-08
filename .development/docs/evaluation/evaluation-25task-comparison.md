@@ -1,15 +1,15 @@
-# 25-Task Evaluation Comparison: baseline_react vs agent006
+# 25-Task Evaluation Comparison: baseline_react vs nemo_oo_agents
 
 **Date**: 2025-12-07
 **Model**: qwen/qwen3-next-80b-a3b-instruct (NVIDIA NIM)
 **Tasks per benchmark**: 25
-**Configurations tested**: baseline_react, agent006_bare, agent006_tools
+**Configurations tested**: baseline_react, nemo_oo_agents_bare, nemo_oo_agents_tools
 
 ## Executive Summary
 
 All three agent configurations were evaluated on 25 tasks each across BFCL, InterCode SQL, and TAU-Bench benchmarks. The results reveal critical issues with both approaches:
 
-1. **baseline_react DOMINATES on BFCL** (48% vs 0% for both agent006 variants)
+1. **baseline_react DOMINATES on BFCL** (48% vs 0% for both nemo_oo_agents variants)
 2. **All agents fail on InterCode SQL** (0% across the board)
 3. **All agents struggle equally on TAU-Bench** (4% across the board)
 
@@ -18,8 +18,8 @@ All three agent configurations were evaluated on 25 tasks each across BFCL, Inte
 | Config | BFCL | InterCode SQL | TAU-Bench |
 |--------|------|---------------|-----------|
 | **baseline_react** | **48.0%** (12/25) | 0.0% (0/25) | 4.0% (1/25) |
-| **agent006_bare** | 0.0% (0/25) | 0.0% (0/25) | 4.0% (1/25) |
-| **agent006_tools** | 0.0% (0/25) | 0.0% (0/25) | 4.0% (1/25) |
+| **nemo_oo_agents_bare** | 0.0% (0/25) | 0.0% (0/25) | 4.0% (1/25) |
+| **nemo_oo_agents_tools** | 0.0% (0/25) | 0.0% (0/25) | 4.0% (1/25) |
 
 ### Result Files
 
@@ -28,12 +28,12 @@ All three agent configurations were evaluated on 25 tasks each across BFCL, Inte
   - InterCode SQL: `results/20251207_232756/`
   - TAU-Bench: `results/20251207_234509/`
 
-- **agent006_bare**:
+- **nemo_oo_agents_bare**:
   - BFCL: `results/20251207_235901/`
   - InterCode SQL: `results/20251207_235959/`
   - TAU-Bench: `results/20251208_103905/`
 
-- **agent006_tools**:
+- **nemo_oo_agents_tools**:
   - BFCL: `results/20251208_104233/`
   - InterCode SQL: `results/20251208_104451/`
   - TAU-Bench: `results/20251208_105433/`
@@ -44,27 +44,27 @@ All three agent configurations were evaluated on 25 tasks each across BFCL, Inte
 
 **Performance**:
 - baseline_react: 48% (12/25) ✓
-- agent006_bare: 0% (0/25) ✗✗✗
-- agent006_tools: 0% (0/25) ✗✗✗
+- nemo_oo_agents_bare: 0% (0/25) ✗✗✗
+- nemo_oo_agents_tools: 0% (0/25) ✗✗✗
 
-**Key Finding**: baseline_react's regex fix (`[\w\.]+` to support dotted names like `math.factorial`) worked perfectly, improving from the baseline ~20% to 48%. However, agent006's code-generation approach completely fails on function calling tasks.
+**Key Finding**: baseline_react's regex fix (`[\w\.]+` to support dotted names like `math.factorial`) worked perfectly, improving from the baseline ~20% to 48%. However, nemo_oo_agents's code-generation approach completely fails on function calling tasks.
 
-**Root Cause - agent006 failure**:
+**Root Cause - nemo_oo_agents failure**:
 - Error: "No function calls made, but calls were expected"
 - Example: Task `bfcl_simple_python_0` asked to "Find the area of a triangle with base 10 and height 5"
 - Expected: Call `calculate_triangle_area(base=10, height=5, unit="units")`
-- Actual: agent006 made NO function calls at all
+- Actual: nemo_oo_agents made NO function calls at all
 
-**Hypothesis**: agent006's code-generation architecture doesn't properly translate the function calling requirement into executable Python code. The LLM may be generating explanatory text instead of actual function invocations.
+**Hypothesis**: nemo_oo_agents's code-generation architecture doesn't properly translate the function calling requirement into executable Python code. The LLM may be generating explanatory text instead of actual function invocations.
 
-**Impact**: This is a **CRITICAL BLOCKER** for agent006. Function calling is a fundamental capability required for tool use, and complete failure (0%) is unacceptable.
+**Impact**: This is a **CRITICAL BLOCKER** for nemo_oo_agents. Function calling is a fundamental capability required for tool use, and complete failure (0%) is unacceptable.
 
 ### 2. InterCode SQL
 
 **Performance**:
 - baseline_react: 0% (0/25) ✗
-- agent006_bare: 0% (0/25) ✗
-- agent006_tools: 0% (0/25) ✗
+- nemo_oo_agents_bare: 0% (0/25) ✗
+- nemo_oo_agents_tools: 0% (0/25) ✗
 
 **Key Finding**: The "CRITICAL OUTPUT FORMAT" prompt fix added to prevent Python generation did NOT work for ANY agent. All three configurations still failed completely.
 
@@ -87,8 +87,8 @@ Agents are likely still:
 
 **Performance**:
 - baseline_react: 4% (1/25)
-- agent006_bare: 4% (1/25)
-- agent006_tools: 4% (1/25)
+- nemo_oo_agents_bare: 4% (1/25)
+- nemo_oo_agents_tools: 4% (1/25)
 
 **Key Finding**: All agents perform equally poorly (4% = 1 task out of 25). The "CRITICAL INTERACTION PROTOCOL" prompt fix didn't help.
 
@@ -111,21 +111,21 @@ Agents are likely still:
 
 ## Critical Issues Identified
 
-### Issue #1: agent006 BFCL Catastrophic Failure (Priority: P0)
+### Issue #1: nemo_oo_agents BFCL Catastrophic Failure (Priority: P0)
 
 **Severity**: CRITICAL
-**Impact**: agent006 cannot perform basic function calling (0% vs baseline_react's 48%)
+**Impact**: nemo_oo_agents cannot perform basic function calling (0% vs baseline_react's 48%)
 **Status**: Needs immediate investigation
 
 **Observations**:
-- agent006 agents make ZERO function calls on BFCL tasks
+- nemo_oo_agents agents make ZERO function calls on BFCL tasks
 - This affects both bare and tools variants equally
 - baseline_react with simple ReAct prompting performs 12x better
 
 **Next Steps**:
-1. Examine agent006 execution traces to see what code is being generated
-2. Check if BFCL adapter properly formats function specs for agent006
-3. Investigate if agent006's code generation is producing explanatory text instead of function calls
+1. Examine nemo_oo_agents execution traces to see what code is being generated
+2. Check if BFCL adapter properly formats function specs for nemo_oo_agents
+3. Investigate if nemo_oo_agents's code generation is producing explanatory text instead of function calls
 4. Consider adding explicit "you must call functions as Python code" instructions
 
 ### Issue #2: InterCode SQL Format Enforcement Failure (Priority: P1)
@@ -162,17 +162,17 @@ Agents are likely still:
 3. May need to break down confirmation into simpler steps
 4. Evaluate if few-shot examples would help
 
-## Comparative Analysis: baseline_react vs agent006
+## Comparative Analysis: baseline_react vs nemo_oo_agents
 
 ### What baseline_react does better:
 1. **Function calling**: 48% vs 0% on BFCL (huge gap!)
 2. **Simple tool use**: ReAct text parsing works for straightforward cases
 3. **Benefit from fixes**: Regex fix improved BFCL from ~20% to 48%
 
-### What agent006 does equally (or poorly):
+### What nemo_oo_agents does equally (or poorly):
 1. **InterCode SQL**: Both fail at 0% (neither can constrain to SQL-only)
 2. **TAU-Bench**: Both struggle at 4% (multi-turn is hard for both)
-3. **No advantage observed**: agent006's code-generation doesn't help on these tasks
+3. **No advantage observed**: nemo_oo_agents's code-generation doesn't help on these tasks
 
 ### Architectural Differences:
 - **baseline_react**: Text-based ReAct loop (Thought/Action/Observation)
@@ -180,7 +180,7 @@ Agents are likely still:
   - Simple and interpretable
   - Works well for function calling when regex is correct
 
-- **agent006**: Code-generation approach
+- **nemo_oo_agents**: Code-generation approach
   - Generates executable Python code
   - More powerful in theory (can do complex logic)
   - **BUT**: Completely fails to generate function calls on BFCL
@@ -189,10 +189,10 @@ Agents are likely still:
 
 ### Immediate Actions (P0):
 
-1. **Fix agent006 BFCL failure**:
-   - This is a blocker for agent006's viability
+1. **Fix nemo_oo_agents BFCL failure**:
+   - This is a blocker for nemo_oo_agents's viability
    - Investigate why no function calls are being generated
-   - May need to revise how BFCL adapter provides function specs to agent006
+   - May need to revise how BFCL adapter provides function specs to nemo_oo_agents
 
 2. **Examine failure traces**:
    - Look at actual agent outputs for failed tasks
@@ -215,7 +215,7 @@ Agents are likely still:
 
 5. **Evaluate agent architectures**:
    - baseline_react is simpler and works better on BFCL
-   - agent006's code-generation advantage not realized
+   - nemo_oo_agents's code-generation advantage not realized
    - May need hybrid approach
 
 6. **Benchmark adapter improvements**:
@@ -231,7 +231,7 @@ The 25-task evaluation reveals that:
 2. **Both approaches fail on InterCode SQL** (all 0%)
 3. **Both struggle equally on TAU-Bench** (all 4%)
 
-The most critical finding is agent006's complete failure on BFCL (0%). This is unexpected since function calling should be straightforward for a code-generation agent. The root cause must be identified and fixed before agent006 can be considered viable.
+The most critical finding is nemo_oo_agents's complete failure on BFCL (0%). This is unexpected since function calling should be straightforward for a code-generation agent. The root cause must be identified and fixed before nemo_oo_agents can be considered viable.
 
 The InterCode SQL failures (0% across all agents) indicate that prompt-based format enforcement is insufficient. A more robust solution (parsing, validation, or architectural changes) is needed.
 

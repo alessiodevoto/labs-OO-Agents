@@ -33,7 +33,7 @@ The actual implementation differs from the original plan below. Instead of addin
 
 ### Key Changes
 
-**File**: `src/agent006/decorators.py`
+**File**: `src/nemo_oo_agents/decorators.py`
 
 Added `scoped_context` parameter that accepts a `ScopedContext` instance:
 
@@ -76,7 +76,7 @@ class ScopedContext:
 
 ### 1. Update `@strategy` Decorator Signature
 
-**File**: `src/agent006/decorators.py`
+**File**: `src/nemo_oo_agents/decorators.py`
 
 Add `events=` parameter:
 
@@ -98,7 +98,7 @@ func._strategy_events = events  # NEW
 
 ### 2. Add Contextvar for Decorator Events
 
-**File**: `src/agent006/runtime/actor.py`
+**File**: `src/nemo_oo_agents/runtime/actor.py`
 
 Add new contextvar after `_decorator_context_var`:
 
@@ -110,7 +110,7 @@ _decorator_events_var: contextvars.ContextVar[dict[str, Any] | None] = contextva
 
 ### 3. Merge and Propagate Decorator Events
 
-**File**: `src/agent006/runtime/actor.py` (in `_execute_with_generation`)
+**File**: `src/nemo_oo_agents/runtime/actor.py` (in `_execute_with_generation`)
 
 Around line 1725, add event merging alongside context merging:
 
@@ -148,7 +148,7 @@ _decorator_events_var.reset(decorator_evt_token)  # NEW
 
 ### 4. Pass to build_context()
 
-**File**: `src/agent006/runtime/actor.py` (in `_prepare_context`)
+**File**: `src/nemo_oo_agents/runtime/actor.py` (in `_prepare_context`)
 
 Around line 1986, add parameter:
 
@@ -167,7 +167,7 @@ result = await build_context(
 
 ### 5. Add build_context() Parameter
 
-**File**: `src/agent006/runtime/context_builder.py`
+**File**: `src/nemo_oo_agents/runtime/context_builder.py`
 
 Add parameter to `build_context()`:
 
@@ -194,7 +194,7 @@ Update docstring:
 
 ### 6. Add Phase for Decorator Events
 
-**File**: `src/agent006/runtime/context_builder.py`
+**File**: `src/nemo_oo_agents/runtime/context_builder.py`
 
 Add new phase AFTER _phase_events but BEFORE _phase_scoped_events:
 

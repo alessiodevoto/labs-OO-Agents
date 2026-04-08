@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-import agent006_viewer.otlp_store as store
+import nemo_oo_agents_viewer.otlp_store as store
 
 # ---------------------------------------------------------------------------
 # Fixture: isolated database per test

@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent006.library_manager import LibraryManager
-from agent006.library_skill import LibrarySkill
-from agent006.tools.library_writing_lib import LibraryWriting, LintReport
+from nemo_oo_agents.library_manager import LibraryManager
+from nemo_oo_agents.library_skill import LibrarySkill
+from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
 
 # ---------------------------------------------------------------------------
 # Helpers

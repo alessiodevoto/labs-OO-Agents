@@ -8,7 +8,7 @@ import asyncio
 
 import pytest
 
-from openinference_instrumentation_agent006._session import get_session, set_session
+from openinference_instrumentation_nemo_oo_agents._session import get_session, set_session
 
 
 class TestSessionIsolation:

@@ -32,7 +32,7 @@ Two related problems:
 
 ### Change 2: Move non-maintained strategies to `strategies/experimental/`
 
-Strategies moved to `src/agent006/strategies/experimental/`:
+Strategies moved to `src/nemo_oo_agents/strategies/experimental/`:
 
 | Strategy | Reason |
 |----------|--------|
@@ -52,8 +52,8 @@ Strategies that stay in core (NOT moved):
 ### Experimental mechanics
 
 - Experimental strategies emit `FutureWarning` on instantiation
-- Removed from `agent006` top-level public API
-- Still importable via `from agent006.strategies.experimental import PurePythonStrategy`
+- Removed from `nemo_oo_agents` top-level public API
+- Still importable via `from nemo_oo_agents.strategies.experimental import PurePythonStrategy`
 - Kept as silent aliases in `actor.py` exec_globals (no warning in generated code context)
 - `ReflexionConfig` moved to `experimental/reflexion.py`; backward-compat re-export in `config/__init__.py`
 
@@ -75,21 +75,21 @@ Strategies that stay in core (NOT moved):
 ## Files Changed
 
 ### New files
-- `src/agent006/strategies/predict.py` — `PredictStrategy` class
-- `src/agent006/strategies/experimental/__init__.py` — experimental package with FutureWarning wrappers
-- `src/agent006/strategies/experimental/pure_python.py`
-- `src/agent006/strategies/experimental/codeact_lite.py`
-- `src/agent006/strategies/experimental/reflexion.py`
+- `src/nemo_oo_agents/strategies/predict.py` — `PredictStrategy` class
+- `src/nemo_oo_agents/strategies/experimental/__init__.py` — experimental package with FutureWarning wrappers
+- `src/nemo_oo_agents/strategies/experimental/pure_python.py`
+- `src/nemo_oo_agents/strategies/experimental/codeact_lite.py`
+- `src/nemo_oo_agents/strategies/experimental/reflexion.py`
 
 ### Modified: core strategies
-- `src/agent006/strategies/structured_output.py` — thin alias with FutureWarning
-- `src/agent006/strategies/__init__.py` — exports updated
-- `src/agent006/__init__.py` — public API updated
-- `src/agent006/config/strategy_config.py` — `PredictConfig` + aliases
-- `src/agent006/config/__init__.py` — updated exports
-- `src/agent006/runtime/actor.py` — exec_globals updated
-- `src/agent006/strategies/codeact.py` — prompt strings + secondary injection
-- `src/agent006/strategies/composite.py` — docstring references
+- `src/nemo_oo_agents/strategies/structured_output.py` — thin alias with FutureWarning
+- `src/nemo_oo_agents/strategies/__init__.py` — exports updated
+- `src/nemo_oo_agents/__init__.py` — public API updated
+- `src/nemo_oo_agents/config/strategy_config.py` — `PredictConfig` + aliases
+- `src/nemo_oo_agents/config/__init__.py` — updated exports
+- `src/nemo_oo_agents/runtime/actor.py` — exec_globals updated
+- `src/nemo_oo_agents/strategies/codeact.py` — prompt strings + secondary injection
+- `src/nemo_oo_agents/strategies/composite.py` — docstring references
 
 ### Modified: documentation
 - `AGENTS.md`
@@ -105,9 +105,9 @@ Strategies that stay in core (NOT moved):
 ### Modified: production agents
 - `agents/dabstep-solver/dabstep_solver.py`
 - `agents/librarian-agent/librarian_agent.py`
-- `src/agent006_cli/tui/agent.py`
-- `src/agent006/agents/summarization.py`
-- `src/agent006/util/quickstart.py`
+- `src/nemo_oo_agents_cli/tui/agent.py`
+- `src/nemo_oo_agents/agents/summarization.py`
+- `src/nemo_oo_agents/util/quickstart.py`
 
 ### Modified: util packages
 - `util/e2e_optimization/src/e2e_optimization/scorers/llm_judge.py`
@@ -123,13 +123,13 @@ Strategies that stay in core (NOT moved):
 - `tests/integration/test_codeact_nested_structured_output.py`
 - `tests/capability/agents/structured_output.py`
 - Various strategy and edge-case tests
-- `pyproject.toml` — added `filterwarnings = ["ignore::FutureWarning:agent006.strategies"]`
+- `pyproject.toml` — added `filterwarnings = ["ignore::FutureWarning:nemo_oo_agents.strategies"]`
 
 ## Usage After Refactor
 
 ```python
 # Primary API (recommended)
-from agent006 import PredictStrategy, CodeActStrategy
+from nemo_oo_agents import PredictStrategy, CodeActStrategy
 
 class MyAgent(Agent, llm=llm):
     @strategy(PredictStrategy())
@@ -138,8 +138,8 @@ class MyAgent(Agent, llm=llm):
         ...
 
 # Backward-compat (emits FutureWarning)
-from agent006 import StructuredOutputStrategy  # FutureWarning on instantiation
+from nemo_oo_agents import StructuredOutputStrategy  # FutureWarning on instantiation
 
 # Experimental (import explicitly)
-from agent006.strategies.experimental import PurePythonStrategy  # FutureWarning on instantiation
+from nemo_oo_agents.strategies.experimental import PurePythonStrategy  # FutureWarning on instantiation
 ```

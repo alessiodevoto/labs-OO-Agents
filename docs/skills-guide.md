@@ -21,7 +21,7 @@ Don't turn every method into a skill. Regular agent methods (with type annotatio
 ### 1. Python subclass — custom capability with a written guide
 
 ```python
-from agent006 import Skill
+from nemo_oo_agents import Skill
 
 class GitWorkflow(Skill):
     """Git workflow helpers for branching, committing, and reviewing.
@@ -98,7 +98,7 @@ Textual skills live in directories containing a `SKILL.md` file. Load a single s
 
 ```python
 from pathlib import Path
-from agent006 import TextSkill, SkillManager
+from nemo_oo_agents import TextSkill, SkillManager
 
 class MyAgent(Agent, llm=llm):
     def __init__(self):
@@ -202,7 +202,7 @@ Annotate with `Annotated[T, hidden]` to prevent a skill from appearing in `doc(s
 
 ```python
 from typing import Annotated
-from agent006 import Skill, hidden
+from nemo_oo_agents import Skill, hidden
 
 class MyAgent(Agent, llm=llm):
     internal_tool: Annotated[MySkill, hidden]  # hidden from LLM

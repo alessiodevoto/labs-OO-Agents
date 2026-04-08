@@ -289,6 +289,6 @@ async def phase_7_compute(...) -> Phase7Output:
 
 ## Files
 
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt18.py` - Working fix
-- `/Users/rcabral/agent006/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt19.py` - Failed due to iteration limits
-- `/Users/rcabral/agent006/docs/8phase-opt19-unexpected-failure.md` - This document
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt18.py` - Working fix
+- `/Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations/agents/rsc_dab_agent_hard_opt19.py` - Failed due to iteration limits
+- `/Users/rcabral/nemo_oo_agents/docs/8phase-opt19-unexpected-failure.md` - This document

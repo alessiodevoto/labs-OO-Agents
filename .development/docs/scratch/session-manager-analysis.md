@@ -241,12 +241,12 @@ async with session_manager.session(user_id="user123") as session:
 - `Runner` - NAT's execution runtime
 - `ContextState` - NAT's context management
 
-**To integrate agent006**:
+**To integrate nemo_oo_agents**:
 
 ```python
-# We'd need to wrap agent006 as a NAT workflow
+# We'd need to wrap nemo_oo_agents as a NAT workflow
 class Agent006Workflow:
-    """Wrapper to make agent006 look like a NAT workflow"""
+    """Wrapper to make nemo_oo_agents look like a NAT workflow"""
 
     def __init__(self, agent_factory):
         self.agent_factory = agent_factory
@@ -478,10 +478,10 @@ with open(output_dir / "usage_stats.json", "w") as f:
 
 **We already have OTel tracing!** We don't need NAT's ExporterManager.
 
-**Current**: `openinference_instrumentation_agent006`
+**Current**: `openinference_instrumentation_nemo_oo_agents`
 
 ```python
-from openinference_instrumentation_agent006 import enable_tracing
+from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
 exporter = enable_tracing(trace_dir="traces/eval")
 # Auto-instruments LiteLLM, captures spans
@@ -604,7 +604,7 @@ class Agent006Adapter:
 ### 🎯 Best of Both Worlds
 
 **What we get**:
-- ✅ Clean 5-layer architecture (no agent006 leakage)
+- ✅ Clean 5-layer architecture (no nemo_oo_agents leakage)
 - ✅ Flexible adapter pattern (works with diverse benchmarks)
 - ✅ Rich usage statistics (inspired by NAT)
 - ✅ Existing OTel tracing (already working)

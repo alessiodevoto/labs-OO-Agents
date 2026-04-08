@@ -22,7 +22,7 @@ Replaced dict-based event injection with type-safe `EventQuery` for filtering ev
 ## Key Changes
 
 ### 1. EventQuery Class
-- **File**: `src/agent006/runtime/event_query.py`
+- **File**: `src/nemo_oo_agents/runtime/event_query.py`
 - **Purpose**: Type-safe event filtering configuration
 - **API**: Mirrors `event_manager.filter()` parameters
   - `type`: Filter by event type
@@ -42,7 +42,7 @@ Replaced dict-based event injection with type-safe `EventQuery` for filtering ev
 - **Semantics**: Child EventQuery **replaces** parent (not merged)
 
 ### 3. Context Builder Refactored
-- **File**: `src/agent006/runtime/context_builder.py`
+- **File**: `src/nemo_oo_agents/runtime/context_builder.py`
 - **Removed**: Phase 7 (decorator events injection) and Phase 8 (scoped events injection)
 - **Updated**: Phase 6 (Events) now uses EventQuery with 4-level priority
 
@@ -54,13 +54,13 @@ Replaced dict-based event injection with type-safe `EventQuery` for filtering ev
 5. **No filter** (show all events) - Default
 
 ### 4. Actor Runtime Updated
-- **File**: `src/agent006/runtime/actor.py`
+- **File**: `src/nemo_oo_agents/runtime/actor.py`
 - **Changed**: `_decorator_events_var` type from `dict` to `EventQuery`
 - **Updated**: Event query merging logic (child replaces parent)
 - **Added**: Passes `current_call_id` to context builder for "current" resolution
 
 ### 5. Exports
-- `EventQuery` available from `agent006` and `agent006.runtime`
+- `EventQuery` available from `nemo_oo_agents` and `nemo_oo_agents.runtime`
 - Updated decorator examples to show EventQuery usage
 
 ## Architecture
@@ -92,7 +92,7 @@ Replaced dict-based event injection with type-safe `EventQuery` for filtering ev
 
 ### Method-Scoped Event Filtering
 ```python
-from agent006 import Agent, strategy, EventQuery
+from nemo_oo_agents import Agent, strategy, EventQuery
 from context_blocks import ScopedContext
 
 class MyAgent(Agent, llm=llm):
@@ -227,15 +227,15 @@ This matches the mental model of increasing specificity, with runtime providing 
 
 ## Files Modified
 
-1. `src/agent006/runtime/event_query.py` - New file
+1. `src/nemo_oo_agents/runtime/event_query.py` - New file
 2. `packages/context-blocks/src/context_blocks/scoped.py` - Updated
-3. `src/agent006/runtime/context_builder.py` - Major refactor
-4. `src/agent006/runtime/actor.py` - Updated
-5. `src/agent006/runtime/event_manager.py` - Added set_event_query() and get_event_query()
-6. `src/agent006/agent.py` - Added event_query parameter to Agent class
-7. `src/agent006/decorators.py` - Updated examples
-8. `src/agent006/__init__.py` - Export EventQuery
-9. `src/agent006/runtime/__init__.py` - Export EventQuery
+3. `src/nemo_oo_agents/runtime/context_builder.py` - Major refactor
+4. `src/nemo_oo_agents/runtime/actor.py` - Updated
+5. `src/nemo_oo_agents/runtime/event_manager.py` - Added set_event_query() and get_event_query()
+6. `src/nemo_oo_agents/agent.py` - Added event_query parameter to Agent class
+7. `src/nemo_oo_agents/decorators.py` - Updated examples
+8. `src/nemo_oo_agents/__init__.py` - Export EventQuery
+9. `src/nemo_oo_agents/runtime/__init__.py` - Export EventQuery
 
 ## Breaking Changes
 

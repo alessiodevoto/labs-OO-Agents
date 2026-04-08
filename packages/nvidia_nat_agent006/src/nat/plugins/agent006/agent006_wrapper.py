@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, DirectoryPath, Field, FilePath
 logger = logging.getLogger(__name__)
 
 # Framework identifier for LLM client registry
-AGENT006_FRAMEWORK = "agent006"
+NEMO_OO_AGENTS_FRAMEWORK = "nemo_oo_agents"
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +48,13 @@ class Agent006WrapperOutput(BaseModel):
     content: str
 
 
-class Agent006WrapperConfig(FunctionBaseConfig, name="agent006_wrapper"):
+class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper"):
     """Configuration model for the Agent006 wrapper.
 
     Example YAML::
 
         workflow:
-          _type: agent006_wrapper
+          _type: nemo_oo_agents_wrapper
           agent: path/to/module.py:ClassName
           method: chat
           dependencies:
@@ -106,7 +106,7 @@ class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006W
     def __init__(
         self,
         *,
-        config: Agent006WrapperConfig,
+        config: NemoOOAgentsWrapperConfig,
         description: str | None = None,
         agent: Any,
         method_name: str,
@@ -181,8 +181,8 @@ class Agent006WrapperFunction(Function[Agent006WrapperInput, NoneType, Agent006W
 # ---------------------------------------------------------------------------
 
 
-@register_function(config_type=Agent006WrapperConfig)
-async def register(config: Agent006WrapperConfig, b: Builder):
+@register_function(config_type=NemoOOAgentsWrapperConfig)
+async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
     """Register an Agent006 agent as a NAT workflow function.
 
     This function:
@@ -225,7 +225,7 @@ async def register(config: Agent006WrapperConfig, b: Builder):
             # Enable Agent006's own tracing first -- this creates the TracerProvider
             # with full resource metadata (including tags) attached.
             try:
-                from openinference_instrumentation_agent006 import enable_tracing
+                from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
                 enable_tracing(
                     extra_resource_attrs={"tags": ["nat_integration"]},
@@ -249,7 +249,7 @@ async def register(config: Agent006WrapperConfig, b: Builder):
             )
 
         module_path, class_name = config.agent.rsplit(":", 1)
-        unique_module_name = f"agent006_wrapper_{uuid.uuid4().hex[:8]}"
+        unique_module_name = f"nemo_oo_agents_wrapper_{uuid.uuid4().hex[:8]}"
 
         spec = importlib.util.spec_from_file_location(unique_module_name, module_path)
         if spec is None:
@@ -274,7 +274,7 @@ async def register(config: Agent006WrapperConfig, b: Builder):
         llm = None
         if config.llm_name:
             try:
-                llm = await b.get_llm(config.llm_name, wrapper_type=AGENT006_FRAMEWORK)
+                llm = await b.get_llm(config.llm_name, wrapper_type=NEMO_OO_AGENTS_FRAMEWORK)
                 logger.info(
                     "Using NAT-configured LLM '%s' for Agent006 agent",
                     config.llm_name,

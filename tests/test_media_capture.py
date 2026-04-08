@@ -4,8 +4,8 @@ import base64
 
 import pytest
 
-from agent006.media import Audio, File, Image, Media
-from agent006.runtime.media_capture import (
+from nemo_oo_agents.media import Audio, File, Image, Media
+from nemo_oo_agents.runtime.media_capture import (
     MAX_ATTACHMENTS_PER_EXECUTION,
     _media_buffer_var,
     _try_auto_convert,

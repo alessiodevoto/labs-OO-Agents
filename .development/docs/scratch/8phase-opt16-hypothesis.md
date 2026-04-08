@@ -178,7 +178,7 @@ Let's see what opt16 returns!
 ## Test Command
 
 ```bash
-cd /Users/rcabral/agent006/experiments/evaluation-ablations
+cd /Users/rcabral/nemo_oo_agents/experiments/evaluation-ablations
 source ../../.venv/bin/activate
 python run_ablation.py \
   --config rsc_dab_hard_opt16 \

@@ -296,11 +296,11 @@ Implement explicit phase methods with Pydantic output models (e.g., `phase_1_und
 ## Files Created
 
 ### Agent Implementations
-- [`agents/agent006_claude_iter2.py`](../experiments/evaluation-ablations/agents/agent006_claude_iter2.py) - Null semantics (40%)
-- [`agents/agent006_claude_iter3.py`](../experiments/evaluation-ablations/agents/agent006_claude_iter3.py) - Over-engineering (30%)
-- [`agents/agent006_claude_iter4.py`](../experiments/evaluation-ablations/agents/agent006_claude_iter4.py) - **Best result (50%)**
-- [`agents/agent006_claude_iter5.py`](../experiments/evaluation-ablations/agents/agent006_claude_iter5.py) - Business rules (50%)
-- [`agents/agent006_claude_iter6.py`](../experiments/evaluation-ablations/agents/agent006_claude_iter6.py) - Conditional logic (40%)
+- [`agents/nemo_oo_agents_claude_iter2.py`](../experiments/evaluation-ablations/agents/nemo_oo_agents_claude_iter2.py) - Null semantics (40%)
+- [`agents/nemo_oo_agents_claude_iter3.py`](../experiments/evaluation-ablations/agents/nemo_oo_agents_claude_iter3.py) - Over-engineering (30%)
+- [`agents/nemo_oo_agents_claude_iter4.py`](../experiments/evaluation-ablations/agents/nemo_oo_agents_claude_iter4.py) - **Best result (50%)**
+- [`agents/nemo_oo_agents_claude_iter5.py`](../experiments/evaluation-ablations/agents/nemo_oo_agents_claude_iter5.py) - Business rules (50%)
+- [`agents/nemo_oo_agents_claude_iter6.py`](../experiments/evaluation-ablations/agents/nemo_oo_agents_claude_iter6.py) - Conditional logic (40%)
 
 ### Documentation
 - [`docs/claude-sonnet-plateau-analysis.md`](claude-sonnet-plateau-analysis.md) - Detailed plateau analysis
@@ -394,12 +394,12 @@ Apply these 3 critical changes:
 # Run baseline (iter0)
 python run_ablation.py --provider nvidia_internal \
   --model aws/anthropic/bedrock-claude-sonnet-4-5-v1 \
-  --benchmark dabstep --limit 10 --config agent006_baseline
+  --benchmark dabstep --limit 10 --config nemo_oo_agents_baseline
 
 # Run best iteration (iter4)
 python run_ablation.py --provider nvidia_internal \
   --model aws/anthropic/bedrock-claude-sonnet-4-5-v1 \
-  --benchmark dabstep --limit 10 --config agent006_claude_iter4
+  --benchmark dabstep --limit 10 --config nemo_oo_agents_claude_iter4
 
 # Run Qwen validation
 bash run_qwen_validation.sh

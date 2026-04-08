@@ -26,8 +26,8 @@ from typing import TypedDict
 
 import pytest
 
-from agent006 import Agent
-from agent006.agent import _parent_agent_var
+from nemo_oo_agents import Agent
+from nemo_oo_agents.agent import _parent_agent_var
 from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 

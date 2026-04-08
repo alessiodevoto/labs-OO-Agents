@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent006.storage.snapshot import AgentSnapshot
+from nemo_oo_agents.storage.snapshot import AgentSnapshot
 
 
 def snapshot_to_dict(snapshot: AgentSnapshot) -> dict[str, Any]:

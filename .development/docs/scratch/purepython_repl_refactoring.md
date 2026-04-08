@@ -38,7 +38,7 @@ todos:
 
 ## Executive Summary
 
-Refactor [`src/agent006/strategies/pure_python.py`](src/agent006/strategies/pure_python.py) from a "define method then call it" pattern to a **true REPL flow** where the LLM's code executes directly as part of the method's execution context, using return statements to complete the task.
+Refactor [`src/nemo_oo_agents/strategies/pure_python.py`](src/nemo_oo_agents/strategies/pure_python.py) from a "define method then call it" pattern to a **true REPL flow** where the LLM's code executes directly as part of the method's execution context, using return statements to complete the task.
 
 ## Current State Analysis
 
@@ -47,7 +47,7 @@ Refactor [`src/agent006/strategies/pure_python.py`](src/agent006/strategies/pure
 **Current Flow:**
 
 1. LLM generates Python code (entire response is code)
-2. Runtime executes code via [`execute_code()`](src/agent006/runtime/actor.py)
+2. Runtime executes code via [`execute_code()`](src/nemo_oo_agents/runtime/actor.py)
 3. Runtime checks if `target_method_name` was defined in `result.defined_methods`
 4. If found → call method, return result (session complete)
 5. If not found → add feedback to history, continue loop (max 10 iterations)
@@ -324,9 +324,9 @@ for func_name, func_obj in result.defined_methods.items():
 
 Primary:
 
-- [`src/agent006/strategies/pure_python.py`](src/agent006/strategies/pure_python.py) - Core refactoring (~300 lines modified)
-- [`src/agent006/events.py`](src/agent006/events.py) - Add `returned_value` to ExecutionResult
-- [`src/agent006/runtime/actor.py`](src/agent006/runtime/actor.py) - Update `execute_code()` to handle wrapping
+- [`src/nemo_oo_agents/strategies/pure_python.py`](src/nemo_oo_agents/strategies/pure_python.py) - Core refactoring (~300 lines modified)
+- [`src/nemo_oo_agents/events.py`](src/nemo_oo_agents/events.py) - Add `returned_value` to ExecutionResult
+- [`src/nemo_oo_agents/runtime/actor.py`](src/nemo_oo_agents/runtime/actor.py) - Update `execute_code()` to handle wrapping
 
 Secondary (tests):
 

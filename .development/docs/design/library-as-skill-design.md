@@ -9,7 +9,7 @@
 
 Skills are composable capabilities that agents opt into. An agent sees a skill as a single attribute — a brief one-liner in `doc(self)` — and can call `doc(self.<skill>)` to read the full usage guide.
 
-There are three ways to create a skill. All three produce objects that are `isinstance` of `agent006.Skill`, so the runtime discovers and renders them uniformly.
+There are three ways to create a skill. All three produce objects that are `isinstance` of `nemo_oo_agents.Skill`, so the runtime discovers and renders them uniformly.
 
 ---
 
@@ -17,10 +17,10 @@ There are three ways to create a skill. All three produce objects that are `isin
 
 ### 1. Python subclass — custom capabilities
 
-Subclass `Skill` from `agent006`. Write the docstring for the agent, not for developers.
+Subclass `Skill` from `nemo_oo_agents`. Write the docstring for the agent, not for developers.
 
 ```python
-from agent006 import Skill
+from nemo_oo_agents import Skill
 
 class MethodWriting(Skill):
     """Define persistent helper methods on the agent.
@@ -52,7 +52,7 @@ Wrap any Python object to surface it as a skill. The wrapped object's `__doc__` 
 
 ```python
 import pandas as pd
-from agent006 import Skill
+from nemo_oo_agents import Skill
 
 class MyAgent(Agent, llm=llm):
     def __init__(self, **kwargs):
@@ -76,10 +76,10 @@ class PandasLib(Skill):
 
 ### 3. Text skills from SKILL.md files
 
-`TextSkill` and `SkillManager` are part of `agent006` and support loading skills from directories.
+`TextSkill` and `SkillManager` are part of `nemo_oo_agents` and support loading skills from directories.
 
 ```python
-from agent006 import TextSkill, SkillManager
+from nemo_oo_agents import TextSkill, SkillManager
 ```
 
 **Load a single skill by path:**
@@ -171,11 +171,11 @@ dir(self.pd)                # list all attributes on the wrapped object
 
 ---
 
-### Where does `Skill` live inside `agent006`?
+### Where does `Skill` live inside `nemo_oo_agents`?
 
-`Skill` is defined in `agent006/skill.py` and exported from `agent006.__init__` — the same level as `Agent`, `hidden`, and `visible`. This placement reflects its role as a first-class public API type rather than an internal detail.
+`Skill` is defined in `nemo_oo_agents/skill.py` and exported from `nemo_oo_agents.__init__` — the same level as `Agent`, `hidden`, and `visible`. This placement reflects its role as a first-class public API type rather than an internal detail.
 
-The reasoning: `ContextApi` and `EventsApi` are runtime objects that inherit from `Skill`. This means `Skill` must be defined *below* the runtime layer so runtime modules can import it without circularity. Placing it in `agent006/skill.py` (no dependencies on the rest of the framework) satisfies this: `runtime/context.py` and `runtime/events.py` import `from agent006.skill import Skill` cleanly.
+The reasoning: `ContextApi` and `EventsApi` are runtime objects that inherit from `Skill`. This means `Skill` must be defined *below* the runtime layer so runtime modules can import it without circularity. Placing it in `nemo_oo_agents/skill.py` (no dependencies on the rest of the framework) satisfies this: `runtime/context.py` and `runtime/events.py` import `from nemo_oo_agents.skill import Skill` cleanly.
 
 ### Generation Methods on Skills
 

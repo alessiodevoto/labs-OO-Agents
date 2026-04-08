@@ -1,4 +1,4 @@
-"""Tests for mcp_agent006 module."""
+"""Tests for mcp_nemo_oo_agents module."""
 
 from datetime import timedelta
 from typing import Literal
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_agent006.client import (
+from mcp_nemo_oo_agents.client import (
     MCPBaseClient,
     MCPSSEClient,
     MCPStdioClient,
@@ -290,8 +290,8 @@ def test_tool_call_timeout_default(client_class: type[MCPBaseClient], client_kwa
 @pytest.mark.parametrize(
     "client_fixture, transport_patch",
     [
-        ("stdio_client", "mcp_agent006.client.stdio_client"),
-        ("sse_client", "mcp_agent006.client.sse_client"),
+        ("stdio_client", "mcp_nemo_oo_agents.client.stdio_client"),
+        ("sse_client", "mcp_nemo_oo_agents.client.sse_client"),
     ],
 )
 async def test_connect_context_manager(
@@ -311,7 +311,7 @@ async def test_connect_context_manager(
             mock_write,
         )
 
-        with patch("mcp_agent006.client.ClientSession") as mock_session_class:
+        with patch("mcp_nemo_oo_agents.client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_client_session
 
             async with client.connect_to_server() as session:
@@ -329,14 +329,14 @@ async def test_streamable_http_connect_context_manager(
     mock_write = MagicMock()
     mock_get_session_id = MagicMock(return_value="session-123")
 
-    with patch("mcp_agent006.client.streamable_http_client") as mock_http:
+    with patch("mcp_nemo_oo_agents.client.streamable_http_client") as mock_http:
         mock_http.return_value.__aenter__.return_value = (
             mock_read,
             mock_write,
             mock_get_session_id,
         )
 
-        with patch("mcp_agent006.client.ClientSession") as mock_session_class:
+        with patch("mcp_nemo_oo_agents.client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_client_session
 
             # Before connection, mcp_session_id should be None
@@ -368,11 +368,11 @@ async def test_streamable_http_headers_passed_to_httpx_client(
     """StreamableHTTPClient passes headers correctly to httpx.AsyncClient."""
     client: MCPStreamableHTTPClient = request.getfixturevalue(client_fixture)
 
-    with patch("mcp_agent006.client.httpx.AsyncClient") as mock_httpx_client:
+    with patch("mcp_nemo_oo_agents.client.httpx.AsyncClient") as mock_httpx_client:
         mock_client_instance = AsyncMock()
         mock_httpx_client.return_value.__aenter__.return_value = mock_client_instance
 
-        with patch("mcp_agent006.client.streamable_http_client") as mock_http:
+        with patch("mcp_nemo_oo_agents.client.streamable_http_client") as mock_http:
             mock_read = MagicMock()
             mock_write = MagicMock()
             mock_get_session_id = MagicMock(return_value=None)
@@ -382,7 +382,7 @@ async def test_streamable_http_headers_passed_to_httpx_client(
                 mock_get_session_id,
             )
 
-            with patch("mcp_agent006.client.ClientSession"):
+            with patch("mcp_nemo_oo_agents.client.ClientSession"):
                 async with client.connect_to_server():
                     pass
 

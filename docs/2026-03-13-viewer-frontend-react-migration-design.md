@@ -1,7 +1,7 @@
 # Viewer Frontend Migration: Vanilla JS → React
 
 **Date:** 2026-03-13
-**Scope:** `packages/agent006-viewer/frontend/`
+**Scope:** `packages/nemo-oo-agents-viewer/frontend/`
 
 ## Problem
 
@@ -17,7 +17,7 @@ The package viewer frontend is built with vanilla JS, plain HTML, and raw CSS �
 
 1. Migrate to a modern SPA stack while preserving all functional features.
 2. Keep the same FastAPI backend — only change how it serves the frontend.
-3. Maintain the `agent006 start-dev` / `agent006 viewers start` workflow unchanged.
+3. Maintain the `nemo_oo_agents start-dev` / `nemo_oo_agents viewers start` workflow unchanged.
 4. Enable component reuse (e.g. a shared trace table used in both `/traces` and eval summary).
 5. Remove dead code (Langfuse upload, eval-set management).
 
@@ -41,10 +41,10 @@ The package viewer frontend is built with vanilla JS, plain HTML, and raw CSS �
 
 ## Project Layout
 
-New source lives in `packages/agent006-viewer/frontend-react/`. The existing `frontend/` directory is left untouched until migration is complete and verified.
+New source lives in `packages/nemo-oo-agents-viewer/frontend-react/`. The existing `frontend/` directory is left untouched until migration is complete and verified.
 
 ```
-packages/agent006-viewer/frontend-react/
+packages/nemo-oo-agents-viewer/frontend-react/
   package.json
   vite.config.ts
   tsconfig.json
@@ -211,7 +211,7 @@ All API routes (`/api/*`, `/v1/traces`) remain unchanged.
 
 ### CLI Impact
 
-`agent006 start-dev` and `agent006 viewers start` continue to work identically — they import `agent006_viewer.main:app` and run it with uvicorn. The only difference is which static files the app serves.
+`nemo_oo_agents start-dev` and `nemo_oo_agents viewers start` continue to work identically — they import `nemo_oo_agents_viewer.main:app` and run it with uvicorn. The only difference is which static files the app serves.
 
 During development, the Vite dev server runs separately on its own port and proxies API requests to the FastAPI backend:
 
@@ -324,7 +324,7 @@ The fixture OTLP payloads live in `frontend-react/e2e/fixtures/` as JSON files. 
 ### Running Tests
 
 ```bash
-cd packages/agent006-viewer/frontend-react
+cd packages/nemo-oo-agents-viewer/frontend-react
 npx playwright test              # headless
 npx playwright test --ui         # interactive UI mode
 npx playwright test --headed     # visible browser

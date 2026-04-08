@@ -12,9 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from starlette.testclient import TestClient
 
-from agent006_viewer import main as main_module
-from agent006_viewer import otlp_store
-from agent006_viewer.main import app
+from nemo_oo_agents_viewer import main as main_module
+from nemo_oo_agents_viewer import otlp_store
+from nemo_oo_agents_viewer.main import app
 
 # ---------------------------------------------------------------------------
 # Helpers

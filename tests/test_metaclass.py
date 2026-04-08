@@ -2,11 +2,11 @@
 
 import pytest
 
-from agent006.agent import Agent
-from agent006.config.strategy_config import ReflexionConfig
-from agent006.decorators import strategy
-from agent006.metaclass import no_trace
-from agent006.strategies import PurePythonStrategy, ReflexionStrategy
+from nemo_oo_agents.agent import Agent
+from nemo_oo_agents.config.strategy_config import ReflexionConfig
+from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.metaclass import no_trace
+from nemo_oo_agents.strategies import PurePythonStrategy, ReflexionStrategy
 from unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
@@ -209,7 +209,7 @@ def test_multiple_inheritance_support():
 
 def test_strategy_class_autowrap():
     """GenerationStrategy methods also auto-wrap."""
-    from agent006.strategies.base import GenerationStrategy
+    from nemo_oo_agents.strategies.base import GenerationStrategy
 
     class CustomStrategy(GenerationStrategy):
         async def generate_code(self, runtime): ...
@@ -221,7 +221,7 @@ def test_strategy_class_autowrap():
 
 def test_strategy_methods_not_traced():
     """Strategy methods are never traced (only Agent methods)."""
-    from agent006.strategies.base import GenerationStrategy
+    from nemo_oo_agents.strategies.base import GenerationStrategy
 
     class CustomStrategy(GenerationStrategy):
         async def public_method(self): ...
@@ -339,7 +339,7 @@ async def test_metaclass_wrapper_calls_hooks():
     """
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -390,7 +390,7 @@ async def test_private_methods_call_hooks():
     """
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -437,7 +437,7 @@ async def test_strategy_decorator_calls_hooks():
     """@strategy decorator calls instrumentation hooks for AGENT spans."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -528,7 +528,7 @@ async def test_auto_wrapped_and_decorated_both_call_hooks_same_way():
     """
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Agent with explicit @strategy decorator
     class DecoratedAgent(Agent, llm=_TEST_LLM):
@@ -603,7 +603,7 @@ async def test_regular_python_methods_are_traced_when_enable_tracing():
     """Regular Python methods (non-ellipsis) should be traced when _enable_tracing = True."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -650,7 +650,7 @@ async def test_private_methods_are_traced_when_enable_tracing():
     """Private methods should be traced when _enable_tracing = True."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -693,7 +693,7 @@ async def test_no_trace_decorator_works_on_regular_methods():
     """@no_trace should prevent tracing on regular Python methods."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -730,7 +730,7 @@ async def test_parent_child_relationship_regular_calls_ellipsis():
     """Regular method calling ellipsis method should create parent-child span relationship."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Track all hook calls
     hook_calls = []
@@ -794,7 +794,7 @@ async def test_regular_methods_capture_source_code():
     """Regular Python methods should capture their source code in traces."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     # Create mock hooks
     mock_hooks = MagicMock(spec=InstrumentationHooks)
@@ -895,7 +895,7 @@ async def test_no_trace_outer_strategy_inner_ordering_also_suppresses_hooks():
     """
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
     from unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
@@ -933,7 +933,7 @@ async def test_no_trace_decorator_suppresses_hooks_on_generation_method():
     """@no_trace on a generation method (ellipsis body) must suppress before/after_agent_call hooks."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
     from unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
@@ -971,7 +971,7 @@ async def test_no_trace_on_generation_method_in_enable_tracing_class_suppresses_
     """@no_trace on a generation method in an _enable_tracing class suppresses hooks."""
     from unittest.mock import MagicMock
 
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
     from unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
@@ -1032,8 +1032,8 @@ async def test_no_trace_plain_ellipsis_without_strategy_decorator_suppresses_hoo
     """
     from unittest.mock import MagicMock
 
-    from agent006.errors import GenerationError
-    from agent006.runtime.hooks import InstrumentationHooks, set_hooks
+    from nemo_oo_agents.errors import GenerationError
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
 
     mock_hooks = MagicMock(spec=InstrumentationHooks)
 

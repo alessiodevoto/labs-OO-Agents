@@ -10,7 +10,7 @@ Usage:
         result = await agent.analyze(data)  # sees the "focus" block
 
     # As a decorator parameter (for ellipsis methods):
-    from agent006.runtime import EventQuery
+    from nemo_oo_agents.runtime import EventQuery
     @strategy(CodeActStrategy(), ScopedContext(events=EventQuery.current_call()))
     async def my_method(self):
         ...  # Cannot use 'with' statement in ellipsis body
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from context_blocks.models import DynamicContext
 
 if TYPE_CHECKING:
-    from agent006.runtime.event_query import EventQuery
+    from nemo_oo_agents.runtime.event_query import EventQuery
 
 # Context variable for scoped block overrides (inherits to nested calls).
 # Structure: {key: str | DynamicContext | None, ...} or None
@@ -57,7 +57,7 @@ class ScopedContext:
             See EventQuery for filtering options (by call_id, type, limit, etc.)
 
     Example:
-        from agent006.runtime import EventQuery
+        from nemo_oo_agents.runtime import EventQuery
 
         # As context manager - show only current method's events:
         with ScopedContext(events=EventQuery.current_call()):

@@ -1,7 +1,7 @@
 """REPL Exploration Test Agent. Uses REPL exploration to find a secret message."""
 
-from agent006 import Agent, CodeActStrategy, strategy
-from agent006.config import CodeActConfig
+from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents.config import CodeActConfig
 
 
 class ReplExplorationTestAgent(Agent):

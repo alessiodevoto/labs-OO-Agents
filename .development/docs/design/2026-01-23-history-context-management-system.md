@@ -575,7 +575,7 @@ class ContextBudget:
 
 **Architecture:** Add `HistoryManager.__getitem__` for position-based access, fix formatter expr paths, then introduce `RenderSpec` to decouple render structure from formatter internals. Finally, flatten event models (remove `.data` wrappers) and update rendering + tests to use direct fields.
 
-**Tech Stack:** Python 3.12, Pydantic, `context_blocks`, `agent006` runtime, pytest
+**Tech Stack:** Python 3.12, Pydantic, `context_blocks`, `nemo_oo_agents` runtime, pytest
 
 ---
 
@@ -586,7 +586,7 @@ class ContextBudget:
 - Test: `packages/context-blocks/tests/test_formatters.py`, `tests/test_history_manager.py`
 
 **Step 1: Create a worktree**
-Run: `git worktree add ../agent006-history-phases-1-3 -b history-phases-1-3`
+Run: `git worktree add ../nemo_oo_agents-history-phases-1-3 -b history-phases-1-3`
 
 **Step 2: Activate venv**
 Run: `source .venv/bin/activate`
@@ -600,7 +600,7 @@ Expected: PASS (or note any pre-existing failures)
 ### Task 1: Phase 1 — Add `HistoryManager.__getitem__`
 
 **Files:**
-- Modify: `src/agent006/runtime/history.py`
+- Modify: `src/nemo_oo_agents/runtime/history.py`
 - Test: `tests/test_history_manager.py`
 
 **Step 1: Write the failing test**
@@ -620,7 +620,7 @@ Run: `pytest tests/test_history_manager.py::test_getitem_by_position -v`
 Expected: FAIL with `TypeError: 'HistoryManager' object is not subscriptable`
 
 **Step 3: Write minimal implementation**
-Update `src/agent006/runtime/history.py`:
+Update `src/nemo_oo_agents/runtime/history.py`:
 ```python
 def __getitem__(self, key: int) -> EventBase:
     return self._events[key]
@@ -632,7 +632,7 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add tests/test_history_manager.py src/agent006/runtime/history.py
+git add tests/test_history_manager.py src/nemo_oo_agents/runtime/history.py
 git commit -m "feat: add HistoryManager indexing"
 ```
 
@@ -826,16 +826,16 @@ git commit -m "feat: render events via RenderSpec"
 
 ---
 
-### Task 6: Phase 2 — Add `render_spec()` to agent006 events
+### Task 6: Phase 2 — Add `render_spec()` to nemo_oo_agents events
 
 **Files:**
-- Modify: `src/agent006/events.py`
+- Modify: `src/nemo_oo_agents/events.py`
 - Test: `tests/test_events.py`
 
 **Step 1: Write failing tests**
 Add to `tests/test_events.py`:
 ```python
-from agent006.events import TaskEvent
+from nemo_oo_agents.events import TaskEvent
 
 def test_agent_event_render_spec():
     event = TaskEvent(content="do it")
@@ -849,7 +849,7 @@ Run: `pytest tests/test_events.py::test_agent_event_render_spec -v`
 Expected: FAIL with `AttributeError: 'TaskEvent' object has no attribute 'render_spec'`
 
 **Step 3: Write minimal implementation**
-In `src/agent006/events.py`, implement `render_spec()` for each event type, mirroring context-blocks:
+In `src/nemo_oo_agents/events.py`, implement `render_spec()` for each event type, mirroring context-blocks:
 ```python
 def render_spec(self) -> RenderSpec:
     return RenderSpec(tag=self.type, attrs=[], content=["content"])
@@ -862,8 +862,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add src/agent006/events.py tests/test_events.py
-git commit -m "feat: add render_spec to agent006 events"
+git add src/nemo_oo_agents/events.py tests/test_events.py
+git commit -m "feat: add render_spec to nemo_oo_agents events"
 ```
 
 ---
@@ -914,12 +914,12 @@ git commit -m "refactor: flatten context-blocks event fields"
 
 ---
 
-### Task 8: Phase 3 — Flatten agent006 events + history usage
+### Task 8: Phase 3 — Flatten nemo_oo_agents events + history usage
 
 **Files:**
-- Modify: `src/agent006/events.py`
-- Modify: `src/agent006/runtime/history.py`
-- Modify: `src/agent006/runtime/out_accessor.py`
+- Modify: `src/nemo_oo_agents/events.py`
+- Modify: `src/nemo_oo_agents/runtime/history.py`
+- Modify: `src/nemo_oo_agents/runtime/out_accessor.py`
 - Test: `tests/test_history_manager.py`, `tests/test_events.py`, `tests/runtime/test_out_accessor.py`
 
 **Step 1: Update tests to use flat fields**
@@ -929,12 +929,12 @@ Replace `.data.content` with `.content`, and update event construction to pass `
 Run: `pytest tests/test_history_manager.py tests/test_events.py tests/runtime/test_out_accessor.py -v`
 Expected: FAIL with `AttributeError: '...Event' object has no attribute 'data'`
 
-**Step 3: Flatten agent006 event models**
-Update `src/agent006/events.py` to mirror context-blocks (flat fields).
+**Step 3: Flatten nemo_oo_agents event models**
+Update `src/nemo_oo_agents/events.py` to mirror context-blocks (flat fields).
 Update `render_spec()` to use direct fields (no `data.` prefixes).
 
 **Step 4: Update HistoryManager and helpers**
-Update history search and recent logic in `src/agent006/runtime/history.py` to use flat fields
+Update history search and recent logic in `src/nemo_oo_agents/runtime/history.py` to use flat fields
 (e.g., `event.content`, `event.tool_call_id`, `event.arguments`).
 
 **Step 5: Run tests to verify they pass**
@@ -943,10 +943,10 @@ Expected: PASS
 
 **Step 6: Commit**
 ```bash
-git add src/agent006/events.py src/agent006/runtime/history.py \
-  src/agent006/runtime/out_accessor.py tests/test_history_manager.py \
+git add src/nemo_oo_agents/events.py src/nemo_oo_agents/runtime/history.py \
+  src/nemo_oo_agents/runtime/out_accessor.py tests/test_history_manager.py \
   tests/test_events.py tests/runtime/test_out_accessor.py
-git commit -m "refactor: flatten agent006 event fields"
+git commit -m "refactor: flatten nemo_oo_agents event fields"
 ```
 
 ---
@@ -955,7 +955,7 @@ git commit -m "refactor: flatten agent006 event fields"
 
 **Files:**
 - Modify: `tests/` (any remaining `.data.` references)
-- Modify: `src/agent006/` and `packages/context-blocks/` usages
+- Modify: `src/nemo_oo_agents/` and `packages/context-blocks/` usages
 
 **Step 1: Update remaining references**
 Search for `.data.` in affected packages and update to flat fields.
@@ -966,7 +966,7 @@ Expected: PASS
 
 **Step 3: Commit**
 ```bash
-git add src/agent006 packages/context-blocks tests
+git add src/nemo_oo_agents packages/context-blocks tests
 git commit -m "chore: update remaining event field references"
 ```
 

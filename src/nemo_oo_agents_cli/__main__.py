@@ -1,4 +1,4 @@
-"""Enable running as: python -m agent006_cli"""
+"""Enable running as: python -m nemo_oo_agents_cli"""
 
 from . import main
 

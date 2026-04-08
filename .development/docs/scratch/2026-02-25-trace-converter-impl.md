@@ -4,7 +4,7 @@
 
 **Goal:** Convert `.006trace.jsonl` OTel trace files into NeMo RL JSONL format for SFT training, using pure post-processing (no Harbor modifications).
 
-**Architecture:** Two functions in one library module: `extract_conversation()` reads a trace file, filters to agent006 spans (have `llm.model_name`), extracts OpenAI-format messages + tools + context diffs from the last span with the most messages. `to_nemo_rl()` takes that conversation dict and produces a NeMo RL record by injecting context diffs and ensuring the last message is assistant. A thin CLI wraps them for batch processing.
+**Architecture:** Two functions in one library module: `extract_conversation()` reads a trace file, filters to nemo_oo_agents spans (have `llm.model_name`), extracts OpenAI-format messages + tools + context diffs from the last span with the most messages. `to_nemo_rl()` takes that conversation dict and produces a NeMo RL record by injecting context diffs and ensuring the last message is assistant. A thin CLI wraps them for batch processing.
 
 **Tech Stack:** Python 3.11+, pytest, json, re, pathlib. Reuses `_format_context_update()` and `inject_context_updates()` from `sft_datagen/nemo_converter.py`.
 
@@ -106,7 +106,7 @@ from typing import Any
 
 
 def load_agent_spans(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Filter spans to agent006-instrumented acompletion spans.
+    """Filter spans to nemo_oo_agents-instrumented acompletion spans.
 
     Agent006 spans have `llm.model_name` set. LiteLLM auto-instrumented
     spans do not — skip those.
@@ -598,7 +598,7 @@ from sft_datagen.trace_converter import extract_conversation
 
 def _make_agent_span(model: str, input_msgs: dict, output_msgs: dict = None,
                      invocation_params: dict = None) -> dict:
-    """Build a realistic agent006 acompletion span."""
+    """Build a realistic nemo_oo_agents acompletion span."""
     attrs = {"llm.model_name": model}
     attrs.update(input_msgs)
     if output_msgs:
@@ -679,7 +679,7 @@ class TestExtractConversation:
         trace_file = tmp_path / "empty.006trace.jsonl"
         trace_file.write_text(json.dumps(litellm_span))
 
-        with pytest.raises(ValueError, match="No agent006-instrumented spans"):
+        with pytest.raises(ValueError, match="No nemo_oo_agents-instrumented spans"):
             extract_conversation(trace_file)
 ```
 
@@ -707,7 +707,7 @@ def _count_input_messages(attrs: dict[str, Any]) -> int:
 def extract_conversation(trace_path: str | Path) -> dict[str, Any]:
     """Extract a conversation from a .006trace.jsonl file.
 
-    Loads all spans, filters to agent006-instrumented acompletion spans,
+    Loads all spans, filters to nemo_oo_agents-instrumented acompletion spans,
     selects the one with the most input messages, and extracts the full
     OpenAI-format conversation.
 
@@ -725,7 +725,7 @@ def extract_conversation(trace_path: str | Path) -> dict[str, Any]:
         }
 
     Raises:
-        ValueError: If no agent006-instrumented spans found.
+        ValueError: If no nemo_oo_agents-instrumented spans found.
     """
     trace_path = Path(trace_path)
 
@@ -737,10 +737,10 @@ def extract_conversation(trace_path: str | Path) -> dict[str, Any]:
             if line:
                 all_spans.append(json.loads(line))
 
-    # Filter to agent006 spans
+    # Filter to nemo_oo_agents spans
     agent_spans = load_agent_spans(all_spans)
     if not agent_spans:
-        raise ValueError(f"No agent006-instrumented spans found in {trace_path}")
+        raise ValueError(f"No nemo_oo_agents-instrumented spans found in {trace_path}")
 
     # Count messages per span, find the one with the most
     message_counts = [_count_input_messages(s["attributes"]) for s in agent_spans]

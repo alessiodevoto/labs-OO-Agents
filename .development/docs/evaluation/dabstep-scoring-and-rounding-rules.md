@@ -9,7 +9,7 @@
 
 ### DABStep Official Scoring (Binary)
 
-From `/Users/rcabral/agent006/evaluation/adapters/dabstep.py`:
+From `/Users/rcabral/nemo_oo_agents/evaluation/adapters/dabstep.py`:
 
 **The official DABStep scorer is BINARY**: Either 1.0 (pass) or 0.0 (fail). **NO partial credit.**
 

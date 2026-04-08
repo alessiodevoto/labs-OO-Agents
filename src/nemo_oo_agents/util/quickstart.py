@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from agent006 import Agent, strategy
-from agent006.strategies import CodeActStrategy, PredictStrategy
+from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 from unifiedllm.registry import get_llm_client
 
 # Load environment variables

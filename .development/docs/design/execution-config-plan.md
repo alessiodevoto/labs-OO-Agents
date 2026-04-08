@@ -35,7 +35,7 @@ There is no way to configure how many iterations a PURE_PYTHON method gets, or h
 ### ExecutionConfig
 
 ```python
-# src/agent006/types.py
+# src/nemo_oo_agents/types.py
 
 @dataclass
 class ExecutionConfig:
@@ -68,7 +68,7 @@ class ExecutionConfig:
 ### LLMConfig
 
 ```python
-# src/agent006/types.py
+# src/nemo_oo_agents/types.py
 
 @dataclass
 class LLMConfig:
@@ -202,13 +202,13 @@ def _resolve_llm_config(self, method) -> LLMConfig:
 
 | File | Changes |
 |------|---------|
-| `src/agent006/types.py` | Add `ExecutionConfig` and `LLMConfig` dataclasses |
-| `src/agent006/decorators.py` | Add `execution` and `llm` params to `@agent` and `@plan`, remove `model`/`temperature`/`max_tokens` |
-| `src/agent006/agent.py` | Add `execution` and `llm` params to `__init__`, store resolved configs |
-| `src/agent006/runtime/actor.py` | Add `_resolve_execution_config()` and `_resolve_llm_config()`, pass to executors, handle `_execution`/`_llm` kwargs |
-| `src/agent006/runtime/executors/pure_python.py` | Accept configs, use `execution_config.max_iterations` and `llm_config` for generation |
-| `src/agent006/runtime/executors/structured_output.py` | Accept configs, use `execution_config.max_validation_retries` and `llm_config` for generation |
-| `src/agent006/runtime/executors/base.py` | Add `execution_config` and `llm_config` to `__init__` signature |
+| `src/nemo_oo_agents/types.py` | Add `ExecutionConfig` and `LLMConfig` dataclasses |
+| `src/nemo_oo_agents/decorators.py` | Add `execution` and `llm` params to `@agent` and `@plan`, remove `model`/`temperature`/`max_tokens` |
+| `src/nemo_oo_agents/agent.py` | Add `execution` and `llm` params to `__init__`, store resolved configs |
+| `src/nemo_oo_agents/runtime/actor.py` | Add `_resolve_execution_config()` and `_resolve_llm_config()`, pass to executors, handle `_execution`/`_llm` kwargs |
+| `src/nemo_oo_agents/runtime/executors/pure_python.py` | Accept configs, use `execution_config.max_iterations` and `llm_config` for generation |
+| `src/nemo_oo_agents/runtime/executors/structured_output.py` | Accept configs, use `execution_config.max_validation_retries` and `llm_config` for generation |
+| `src/nemo_oo_agents/runtime/executors/base.py` | Add `execution_config` and `llm_config` to `__init__` signature |
 
 ## Implementation Steps
 
@@ -250,7 +250,7 @@ def _resolve_llm_config(self, method) -> LLMConfig:
 ## Example Usage
 
 ```python
-from agent006 import Agent, agent, plan, ExecutionConfig, LLMConfig
+from nemo_oo_agents import Agent, agent, plan, ExecutionConfig, LLMConfig
 
 # Agent with custom defaults
 @agent(

@@ -60,7 +60,7 @@ async def task(self) -> str:
 
 After:
 ```python
-from agent006.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies import PurePythonStrategy
 
 @plan(strategy=PurePythonStrategy())
 async def task(self) -> str:

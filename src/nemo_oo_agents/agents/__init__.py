@@ -1,6 +1,6 @@
 """Reusable agent patterns for Agent006."""
 
-from agent006.agents.summarization import (
+from nemo_oo_agents.agents.summarization import (
     MethodSummarizer,
     SummarizationAgent,
     TokenBudgetSummarizer,

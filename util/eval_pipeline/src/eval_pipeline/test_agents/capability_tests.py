@@ -3,7 +3,7 @@
 These agents are used to test model capabilities via the evaluation pipeline.
 """
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 
 class SentimentAgent(Agent):

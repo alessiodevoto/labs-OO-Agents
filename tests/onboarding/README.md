@@ -42,10 +42,10 @@ pytest tests/onboarding/
 pytest tests/onboarding/test_code_generation.py
 
 # Run with coverage
-pytest tests/onboarding/ --cov=agent006
+pytest tests/onboarding/ --cov=nemo_oo_agents
 
 # Generate capability scorecard
-python -m agent006.onboarding.evaluator --output report.html
+python -m nemo_oo_agents.onboarding.evaluator --output report.html
 ```
 
 ## Test Data Format

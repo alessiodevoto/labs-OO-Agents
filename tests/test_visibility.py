@@ -82,9 +82,9 @@ def test_is_hidden_field_subclass_override():
     assert is_hidden_field(Child, "secret") is False
 
 
-def test_hidden_importable_from_agent006():
+def test_hidden_importable_from_nemo_oo_agents():
     """hidden is importable from the top-level package."""
-    from agent006 import hidden
+    from nemo_oo_agents import hidden
 
     assert callable(hidden)
     assert hasattr(hidden, "__enter__")  # with hidden: context manager

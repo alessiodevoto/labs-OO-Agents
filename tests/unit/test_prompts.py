@@ -1,17 +1,17 @@
-"""Tests for agent006.prompts — print_prompt() runtime API and rendering helpers."""
+"""Tests for nemo_oo_agents.prompts — print_prompt() runtime API and rendering helpers."""
 
 import pytest
 
-import agent006
-from agent006 import Agent, CodeActStrategy, PromptData, PurePythonStrategy, strategy
-from agent006.prompts import (
+import nemo_oo_agents
+from nemo_oo_agents import Agent, CodeActStrategy, PromptData, PurePythonStrategy, strategy
+from nemo_oo_agents.prompts import (
     _get_prefill,
     _get_task_prompt,
     build_prompt_data,
     print_prompt,
     render_prompt_data,
 )
-from agent006.strategies.current_call import CurrentCall
+from nemo_oo_agents.strategies.current_call import CurrentCall
 from unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
@@ -141,7 +141,7 @@ class TestGetPrefill:
 
     def test_other_strategy_no_inspect_prefill(self):
         """Unknown strategy produces no inspect_prefill but preserves pre_ellipsis."""
-        from agent006 import PredictStrategy
+        from nemo_oo_agents import PredictStrategy
 
         strategy_obj = PredictStrategy()
         call = CurrentCall(id="c10", method_name="classify", decorator="plan", kwargs={"x": 1})
@@ -318,11 +318,11 @@ class TestPrintPromptRuntime:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_exported_from_agent006(self):
-        """print_prompt is available as agent006.print_prompt."""
-        assert hasattr(agent006, "print_prompt")
-        assert agent006.print_prompt is print_prompt
+    async def test_exported_from_nemo_oo_agents(self):
+        """print_prompt is available as nemo_oo_agents.print_prompt."""
+        assert hasattr(nemo_oo_agents, "print_prompt")
+        assert nemo_oo_agents.print_prompt is print_prompt
 
-    def test_prompt_data_exported_from_agent006(self):
-        """PromptData is importable from the top-level agent006 namespace."""
-        assert agent006.PromptData is PromptData
+    def test_prompt_data_exported_from_nemo_oo_agents(self):
+        """PromptData is importable from the top-level nemo_oo_agents namespace."""
+        assert nemo_oo_agents.PromptData is PromptData

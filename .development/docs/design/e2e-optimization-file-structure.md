@@ -9,7 +9,7 @@ Restructure the e2e optimization system to be config-driven with explicit target
 ```
 Scorer (protocol)
 ├── ExactMatchScorer           # String comparison
-├── LLMJudgeScorer            # agent006 agent that evaluates using LLM
+├── LLMJudgeScorer            # nemo_oo_agents agent that evaluates using LLM
 └── Custom scorers             # User-defined
 ```
 
@@ -68,7 +68,7 @@ scorer:
 class LLMJudgeScorer(Scorer):
     """Scorer that uses LLM-as-judge pattern.
 
-    This is itself an agent006 agent, so it:
+    This is itself an nemo_oo_agents agent, so it:
     - Gets traced like any other agent
     - Can use the same strategies (PURE_PYTHON, STRUCTURED_OUTPUT)
     - Benefits from the same prompt optimization
@@ -117,8 +117,8 @@ description: Sentiment classification optimization
 
 # Files to optimize (can be anywhere in the codebase)
 target_files:
-  - src/agent006/strategies/pure_python.py    # Shared strategy prompts
-  - src/agent006/strategies/base.py           # Optional: base strategy
+  - src/nemo_oo_agents/strategies/pure_python.py    # Shared strategy prompts
+  - src/nemo_oo_agents/strategies/base.py           # Optional: base strategy
 
 # Test suite: multiple agents/entry points
 # Each test specifies scorers (can be single or list)

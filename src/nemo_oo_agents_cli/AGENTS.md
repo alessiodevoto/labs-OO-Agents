@@ -1,19 +1,19 @@
-# agent006 CLI — Adding New Commands
+# nemo_oo_agents CLI — Adding New Commands
 
 ## Quick Start
 
 ```bash
-cd src/agent006_cli/commands/
+cd src/nemo_oo_agents_cli/commands/
 cp _template.py mycommand.py    # copy the template
 # edit mycommand.py              # add your logic
-agent006 mycommand              # it just works
+nemo_oo_agents mycommand              # it just works
 ```
 
 That's it. No registration, no config files, no editing other files.
 
 ## How It Works
 
-The CLI auto-discovers every `.py` file in `src/agent006_cli/commands/` at startup.
+The CLI auto-discovers every `.py` file in `src/nemo_oo_agents_cli/commands/` at startup.
 Files starting with `_` are ignored (private helpers, templates).
 
 ### The Contract
@@ -28,18 +28,18 @@ import click
 @click.command()
 @click.argument("name")
 def command(name: str):
-    """One-line description shown in `agent006 --help`."""
+    """One-line description shown in `nemo_oo_agents --help`."""
     click.echo(f"Hello, {name}!")
 ```
 
-The filename becomes the subcommand name: `mycommand.py` → `agent006 mycommand`.
+The filename becomes the subcommand name: `mycommand.py` → `nemo_oo_agents mycommand`.
 
 ### Override the Name
 
 Add `NAME` at module level if the filename doesn't match what you want:
 
 ```python
-NAME = "my-command"  # agent006 my-command (instead of agent006 mycommand)
+NAME = "my-command"  # nemo_oo_agents my-command (instead of nemo_oo_agents mycommand)
 ```
 
 ## Patterns
@@ -59,7 +59,7 @@ def command(target: str, verbose: bool):
 
 ### Group with Subcommands
 
-For `agent006 things list` / `agent006 things create`:
+For `nemo_oo_agents things list` / `nemo_oo_agents things create`:
 
 ```python
 import click
@@ -103,10 +103,10 @@ def command(args: tuple[str, ...]):
 
 ## Shared Utilities
 
-Common helpers live in `src/agent006_cli/_common.py`:
+Common helpers live in `src/nemo_oo_agents_cli/_common.py`:
 
 ```python
-from agent006_cli._common import find_project_root, format_size, load_dotenv_into
+from nemo_oo_agents_cli._common import find_project_root, format_size, load_dotenv_into
 
 root = find_project_root()           # Path to project root (where pyproject.toml is)
 format_size(1_500_000)               # "1.4 MB"
@@ -116,7 +116,7 @@ load_dotenv_into(root / ".env", env) # Parse .env into a dict
 ## Performance Rule
 
 **Keep imports lazy.** The CLI starts in ~0.3s because it doesn't import the
-heavy `agent006` framework at module level. Only import heavy dependencies
+heavy `nemo_oo_agents` framework at module level. Only import heavy dependencies
 inside your command handler function:
 
 ```python
@@ -124,27 +124,27 @@ inside your command handler function:
 def command():
     """Do something that needs the framework."""
     # These imports happen only when the command actually runs,
-    # not when `agent006 --help` loads the CLI.
-    from agent006 import Agent
+    # not when `nemo_oo_agents --help` loads the CLI.
+    from nemo_oo_agents import Agent
     import pandas as pd
 ```
 
 ## File Layout
 
 ```
-src/agent006_cli/
+src/nemo_oo_agents_cli/
 ├── __init__.py              # Root CLI group + auto-discovery wiring
-├── __main__.py              # python -m agent006_cli
+├── __main__.py              # python -m nemo_oo_agents_cli
 ├── _common.py               # Shared utilities
 ├── completion.py            # Shell completion (bash/zsh/fish)
 ├── AGENTS.md                # ← You are here
 └── commands/
     ├── __init__.py          # Auto-discovery engine
     ├── _template.py         # Copy-paste starter for new commands
-    ├── eval.py              # agent006 eval ...
-    ├── sandbox.py           # agent006 sandbox ...
-    ├── traces.py            # agent006 traces cleanup/list/stats
-    └── start_dev.py         # agent006 start-dev
+    ├── eval.py              # nemo_oo_agents eval ...
+    ├── sandbox.py           # nemo_oo_agents sandbox ...
+    ├── traces.py            # nemo_oo_agents traces cleanup/list/stats
+    └── start_dev.py         # nemo_oo_agents start-dev
 ```
 
 ## Shell Completion
@@ -152,9 +152,9 @@ src/agent006_cli/
 New commands get tab-completion automatically. To enable it:
 
 ```bash
-agent006 completion install   # auto-detects your shell
+nemo_oo_agents completion install   # auto-detects your shell
 
 # Or manually:
-eval "$(_AGENT006_COMPLETE=zsh_source agent006)"   # zsh
-eval "$(_AGENT006_COMPLETE=bash_source agent006)"  # bash
+eval "$(_NEMO_OO_AGENTS_COMPLETE=zsh_source nemo_oo_agents)"   # zsh
+eval "$(_NEMO_OO_AGENTS_COMPLETE=bash_source nemo_oo_agents)"  # bash
 ```

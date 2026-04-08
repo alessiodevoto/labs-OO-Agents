@@ -204,7 +204,7 @@ JsonQAAgent_qwen3-80b_answer_question_json_qa_20260127_084243_01_000003_qwen3-80
 
 **Failing Trace (Diff)**:
 ```
-/Volumes/dev/dev/agent006/results/capability_optimization_20260127_084247/traces/
+/Volumes/dev/dev/nemo_oo_agents/results/capability_optimization_20260127_084247/traces/
 JsonQAAgent_qwen3-80b_answer_question_json_qa_20260127_084247_01_000003_qwen3-80b.006trace.jsonl
 ```
 

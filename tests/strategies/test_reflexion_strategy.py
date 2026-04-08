@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agent006.config.strategy_config import ReflexionConfig
+from nemo_oo_agents.config.strategy_config import ReflexionConfig
 
 
 def make_smart_execute_nested(mock_runtime, base_results):
@@ -17,7 +17,7 @@ def make_smart_execute_nested(mock_runtime, base_results):
         mock_runtime: The mock runtime fixture
         base_results: List of results or exceptions to return for non-Template strategies
     """
-    from agent006.strategies.template import TemplateStrategy
+    from nemo_oo_agents.strategies.template import TemplateStrategy
 
     base_iter = iter(base_results)
     original_execute_nested = mock_runtime.execute_nested
@@ -41,7 +41,7 @@ class TestReflexionStrategyProperties:
 
     def test_name_includes_base_strategy(self):
         """ReflexionStrategy.name should include base strategy name."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         assert "REFLEXION" in strategy.name
@@ -49,8 +49,8 @@ class TestReflexionStrategyProperties:
 
     def test_name_with_custom_base(self):
         """ReflexionStrategy.name should reflect custom base strategy."""
-        from agent006.strategies.pure_python import PurePythonStrategy
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         base = PurePythonStrategy()
         strategy = ReflexionStrategy(base=base)
@@ -58,8 +58,8 @@ class TestReflexionStrategyProperties:
 
     def test_block_overrides_delegates_to_base(self):
         """ReflexionStrategy.get_block_overrides should delegate to base strategy."""
-        from agent006.strategies.pure_python import PurePythonStrategy
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         base = PurePythonStrategy()
         strategy = ReflexionStrategy(base=base)
@@ -67,7 +67,7 @@ class TestReflexionStrategyProperties:
 
     def test_requires_lock_delegates_to_base(self):
         """ReflexionStrategy.requires_lock should inherit from base."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         # Default PurePythonStrategy requires lock
@@ -79,38 +79,38 @@ class TestReflexionStrategyConfig:
 
     def test_default_max_reflections(self):
         """Default max_iterations should be 3."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         assert strategy.config.max_iterations == 3
 
     def test_custom_max_reflections(self):
         """Should accept custom max_iterations via config."""
-        from agent006.config.strategy_config import ReflexionConfig
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.config.strategy_config import ReflexionConfig
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy(config=ReflexionConfig(max_iterations=5))
         assert strategy.config.max_iterations == 5
 
     def test_rejects_old_max_reflections_kwarg(self):
         """Should reject old max_reflections kwarg."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         with pytest.raises(TypeError):
             ReflexionStrategy(max_reflections=5)  # old API — must fail
 
     def test_default_base_is_pure_python(self):
         """Default base strategy should be PurePythonStrategy."""
-        from agent006.strategies.pure_python import PurePythonStrategy
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         assert isinstance(strategy.base, PurePythonStrategy)
 
     def test_custom_base_strategy(self):
         """Should accept custom base strategy."""
-        from agent006.strategies.pure_python import PurePythonStrategy
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         base = PurePythonStrategy(max_iterations=5)
         strategy = ReflexionStrategy(base=base)
@@ -123,15 +123,15 @@ class TestReflexionStrategyInheritance:
 
     def test_is_generation_strategy(self):
         """ReflexionStrategy should inherit from GenerationStrategy."""
-        from agent006.strategies.base import GenerationStrategy
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         assert isinstance(strategy, GenerationStrategy)
 
     def test_has_execute_method(self):
         """ReflexionStrategy should implement execute()."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         assert hasattr(strategy, "execute")
@@ -143,7 +143,7 @@ class TestReflectionOutput:
 
     def test_reflection_output_fields(self):
         """ReflectionOutput should have expected fields."""
-        from agent006.strategies.reflexion import ReflectionOutput
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput
 
         output = ReflectionOutput(
             is_satisfactory=True,
@@ -158,7 +158,7 @@ class TestReflectionOutput:
 
     def test_reflection_output_defaults(self):
         """ReflectionOutput should have sensible defaults."""
-        from agent006.strategies.reflexion import ReflectionOutput
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput
 
         output = ReflectionOutput(is_satisfactory=True)
         assert output.issues == []
@@ -172,8 +172,8 @@ class TestReflexionStrategyExecute:
     @pytest.mark.asyncio
     async def test_execute_returns_on_satisfactory(self, mock_runtime):
         """execute() should return immediately when reflection is satisfactory."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Setup: mock execute_nested using helper
         mock_runtime.execute_nested = AsyncMock(
@@ -206,8 +206,8 @@ class TestReflexionStrategyExecute:
     @pytest.mark.asyncio
     async def test_execute_retries_on_unsatisfactory(self, mock_runtime):
         """execute() should retry when reflection says not satisfactory."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Setup: first call unsatisfactory, second call satisfactory
         mock_runtime.execute_nested = AsyncMock(
@@ -253,8 +253,8 @@ class TestReflexionStrategyExecute:
     @pytest.mark.asyncio
     async def test_execute_respects_max_reflections(self, mock_runtime):
         """execute() should stop after max_reflections even if unsatisfactory."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Setup: always unsatisfactory, provide enough results for max_reflections
         mock_runtime.execute_nested = AsyncMock(
@@ -291,9 +291,9 @@ class TestReflexionStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_execute_handles_base_strategy_error(self, mock_runtime):
         """execute() should handle errors from base strategy and retry."""
-        from agent006.errors import GenerationError
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.errors import GenerationError
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Setup: first call fails, second succeeds
         mock_runtime.execute_nested = AsyncMock(
@@ -324,9 +324,9 @@ class TestReflexionStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_execute_raises_after_all_attempts_fail(self, mock_runtime):
         """execute() should raise GenerationError if all attempts fail."""
-        from agent006.errors import GenerationError
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.errors import GenerationError
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         # Setup: all calls fail (provide enough for max_reflections=2)
         error = GenerationError("Always fails")
@@ -349,9 +349,9 @@ class TestReflexionStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_execute_adds_feedback_on_error(self, mock_runtime):
         """execute() should add feedback event when base strategy fails."""
-        from agent006.errors import GenerationError
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.errors import GenerationError
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Setup: first call fails, second succeeds
         mock_runtime.execute_nested = AsyncMock(
@@ -391,8 +391,8 @@ class TestReflexionStrategyReflectionParsing:
     @pytest.mark.asyncio
     async def test_execute_handles_dict_response(self, mock_runtime):
         """execute() should handle dict response from generate()."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         # Setup: reflection returns dict instead of ReflectionOutput
         mock_runtime.execute_nested = AsyncMock(
@@ -425,8 +425,8 @@ class TestReflexionStrategyReflectionParsing:
     @pytest.mark.asyncio
     async def test_execute_handles_unparseable_response(self, mock_runtime):
         """execute() should retry when response can't be parsed (assumes not satisfactory)."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         # Setup: reflection returns something unparseable every time.
         # With is_satisfactory=False fallback, the strategy retries up to max_iterations.
@@ -459,8 +459,8 @@ class TestReflexionStrategyFeedbackFormatting:
 
     def test_format_reflection_feedback_with_issues(self):
         """_format_reflection_feedback should include issues."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         strategy = ReflexionStrategy()
         reflection = ReflectionOutput(
@@ -484,8 +484,8 @@ class TestReflexionStrategyFeedbackFormatting:
 
     def test_format_reflection_feedback_with_suggestions(self):
         """_format_reflection_feedback should include suggestions."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         strategy = ReflexionStrategy()
         reflection = ReflectionOutput(
@@ -511,7 +511,7 @@ class TestReflexionStrategyResultFormatting:
 
     def test_format_result_simple_value(self):
         """_format_result_for_reflection should handle simple values."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
 
@@ -521,7 +521,7 @@ class TestReflexionStrategyResultFormatting:
 
     def test_format_result_none(self):
         """_format_result_for_reflection should handle None."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         result = strategy._format_result_for_reflection(None)
@@ -530,7 +530,7 @@ class TestReflexionStrategyResultFormatting:
 
     def test_format_result_truncates_long_output(self):
         """_format_result_for_reflection should truncate very long results."""
-        from agent006.strategies.reflexion import ReflexionStrategy
+        from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
         long_result = "x" * 3000
@@ -546,8 +546,8 @@ class TestReflexionStrategyHistoryInteraction:
     @pytest.mark.asyncio
     async def test_execute_adds_feedback_between_iterations(self, mock_runtime):
         """execute() should add feedback events between iterations."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         # Track events.add calls
         add_calls = []
@@ -595,8 +595,8 @@ class TestReflexionStrategyHistoryInteraction:
     @pytest.mark.asyncio
     async def test_execute_with_complex_result(self, mock_runtime):
         """execute() should handle complex dict results."""
-        from agent006.strategies.current_call import CurrentCall
-        from agent006.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
         complex_result = {
             "analysis": {"score": 0.95, "confidence": "high"},
@@ -659,13 +659,13 @@ def mock_runtime():
             return response, "event_123"
 
         async def execute_code(self, code, *, builtins=None, validate=True):
-            from agent006.events import ExecutionResult
+            from nemo_oo_agents.events import ExecutionResult
 
             return ExecutionResult(stdout="", error=None, defined_methods={})
 
         async def execute_nested(self, strategy, call):
             # Let TemplateStrategy actually execute (needed for @strategy methods)
-            from agent006.strategies.template import TemplateStrategy
+            from nemo_oo_agents.strategies.template import TemplateStrategy
 
             if isinstance(strategy, TemplateStrategy):
                 return await strategy.execute(self, call)

@@ -43,8 +43,8 @@ import types
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from agent006.errors import RestrictedCodeError as ValidationError
-from agent006.runtime.restrictions import (
+from nemo_oo_agents.errors import RestrictedCodeError as ValidationError
+from nemo_oo_agents.runtime.restrictions import (
     RestrictionsConfig,
     match_blocked_module,
 )

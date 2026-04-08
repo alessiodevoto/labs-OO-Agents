@@ -4,7 +4,7 @@ from contextvars import ContextVar
 
 from requests.models import Response
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 
 # Task-scoped call counter: each asyncio.Task gets its own copy, so parallel
 # eval runs are isolated while instances within the same run share state.

@@ -5,14 +5,14 @@ in plain_formatter.py — both must be bounded to prevent OOM when agent code
 returns a huge object.
 """
 
-from agent006.events import PythonOutput
+from nemo_oo_agents.events import PythonOutput
 
 
 class TestPlainEventContentBounded:
     """plain_event_content must bound the Out[n] value representation."""
 
     def _make_output(self, value, execution_count=1):
-        from agent006.events import ResultStatus
+        from nemo_oo_agents.events import ResultStatus
 
         return PythonOutput(
             tool_call_id="test_tc",
@@ -25,7 +25,7 @@ class TestPlainEventContentBounded:
 
     def test_large_list_value_is_bounded(self):
         """Out[n] with a 1 M-element list must be bounded."""
-        from agent006.strategies.codeact_lite import plain_event_content
+        from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = self._make_output(list(range(1_000_000)))
         result = plain_event_content(event)
@@ -34,7 +34,7 @@ class TestPlainEventContentBounded:
 
     def test_large_string_value_is_bounded(self):
         """Out[n] with a 2 MB string must be bounded."""
-        from agent006.strategies.codeact_lite import plain_event_content
+        from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = self._make_output("y" * 2_000_000)
         result = plain_event_content(event)
@@ -43,7 +43,7 @@ class TestPlainEventContentBounded:
 
     def test_small_value_preserved(self):
         """Normal small values are not affected."""
-        from agent006.strategies.codeact_lite import plain_event_content
+        from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = self._make_output({"answer": 42})
         result = plain_event_content(event)
@@ -53,8 +53,8 @@ class TestPlainEventContentBounded:
 
     def test_none_value_not_shown(self):
         """None value produces no Out[n] line."""
-        from agent006.events import ResultStatus
-        from agent006.strategies.codeact_lite import plain_event_content
+        from nemo_oo_agents.events import ResultStatus
+        from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = PythonOutput(
             tool_call_id="tc",
@@ -73,8 +73,8 @@ class TestPlainBlockFormatterBounded:
 
     def test_large_non_string_value_is_bounded(self):
         """A PythonOutput whose value is a huge list must produce bounded output."""
-        from agent006.events import PythonOutput, ResultStatus
-        from agent006.plain_formatter import PlainBlockFormatter
+        from nemo_oo_agents.events import PythonOutput, ResultStatus
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         fmt = PlainBlockFormatter()
         event = PythonOutput(

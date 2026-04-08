@@ -18,7 +18,7 @@
 
 **Step 1: Check unifiedllm is in dependencies**
 
-Run: `cd /localhome/local-rcabral/agent006/util/e2e_optimization && grep -r "unifiedllm" pyproject.toml`
+Run: `cd /localhome/local-rcabral/nemo_oo_agents/util/e2e_optimization && grep -r "unifiedllm" pyproject.toml`
 
 Expected: Should find unifiedllm in dependencies or workspace references
 
@@ -38,7 +38,7 @@ unifiedllm = { workspace = true }
 
 **Step 3: Sync dependencies**
 
-Run: `cd /localhome/local-rcabral/agent006/util/e2e_optimization && uv sync`
+Run: `cd /localhome/local-rcabral/nemo_oo_agents/util/e2e_optimization && uv sync`
 
 Expected: Dependencies installed successfully
 
@@ -346,7 +346,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 Run a 1-iteration optimization with 3 test cases to verify it works:
 
 ```bash
-cd /localhome/local-rcabral/agent006/util/e2e_optimization
+cd /localhome/local-rcabral/nemo_oo_agents/util/e2e_optimization
 source ../../.venv/bin/activate
 python -m e2e_optimization.examples.dabstep.run_optimization \
   --max-iterations 1 \
@@ -385,7 +385,7 @@ echo "Test run on $(date): 1-iteration optimization completed successfully with 
 **Step 1: Resume optimization from iteration 3**
 
 ```bash
-cd /localhome/local-rcabral/agent006/util/e2e_optimization
+cd /localhome/local-rcabral/nemo_oo_agents/util/e2e_optimization
 source ../../.venv/bin/activate
 
 # Resume from last completed iteration

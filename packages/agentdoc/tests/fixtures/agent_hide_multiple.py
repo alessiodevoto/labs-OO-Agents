@@ -7,7 +7,7 @@ import math  # noqa: F401
 import os  # noqa: F401
 import sys  # agentdoc: hide  # noqa: F401
 
-from agent006 import Agent
+from nemo_oo_agents import Agent
 from unifiedllm import FakeLLMClient
 
 

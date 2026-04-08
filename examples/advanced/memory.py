@@ -1,6 +1,6 @@
 # ruff: noqa: F403,F405
 
-from agent006.util.quickstart import *
+from nemo_oo_agents.util.quickstart import *
 
 
 class ConversationAgent(Agent, llm=llm):

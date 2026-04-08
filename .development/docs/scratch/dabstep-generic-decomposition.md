@@ -608,7 +608,7 @@ The key insight is that **all data analysis tasks are fundamentally the same**: 
 ## Appendix B: File Locations
 
 - Full dataset: `/Users/rcabral/.cache/dabstep/data/context/`
-- Analysis results: `/Users/rcabral/agent006/experiments/dabstep-analysis/`
+- Analysis results: `/Users/rcabral/nemo_oo_agents/experiments/dabstep-analysis/`
   - `dabstep_full_450_tasks.json` - All 450 task details
   - `dabstep_statistics.json` - Statistical summary
-- Adapter implementation: `/Users/rcabral/agent006/evaluation/adapters/dabstep.py`
+- Adapter implementation: `/Users/rcabral/nemo_oo_agents/evaluation/adapters/dabstep.py`

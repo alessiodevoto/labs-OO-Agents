@@ -40,12 +40,12 @@ This doesn't support runtime injection of configs into subagents.
 Use Python's `contextvars` to propagate prompt config through the call stack. Any agent created within the context automatically inherits the config.
 
 ```python
-# In agent006/runtime/config.py
+# In nemo_oo_agents/runtime/config.py
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Optional
 
-from agent006.strategies.pure_python import PurePythonConfig
+from nemo_oo_agents.strategies.pure_python import PurePythonConfig
 
 @dataclass
 class RuntimeConfig:
@@ -76,8 +76,8 @@ def config_context(config: RuntimeConfig):
 ### Usage in Test Runner
 
 ```python
-from agent006.runtime.config import config_context, RuntimeConfig
-from agent006.strategies.pure_python import PurePythonConfig
+from nemo_oo_agents.runtime.config import config_context, RuntimeConfig
+from nemo_oo_agents.strategies.pure_python import PurePythonConfig
 
 # Define prompt variant
 minimal_config = PurePythonConfig(
@@ -145,7 +145,7 @@ def create_router_agents(config: PurePythonConfig):
 ### Option B: Global Config (Rejected)
 
 ```python
-agent006.set_global_config(minimal_config)
+nemo_oo_agents.set_global_config(minimal_config)
 # All agents use this config
 ```
 
@@ -171,7 +171,7 @@ agent = MyAgent(config=minimal_config)
 
 ### Phase 1: Core Infrastructure
 
-1. Add `agent006/runtime/config.py` with:
+1. Add `nemo_oo_agents/runtime/config.py` with:
    - `RuntimeConfig` dataclass
    - `config_context()` context manager
    - `get_current_config()` function
@@ -254,9 +254,9 @@ def load_prompt_variant(name: str) -> RuntimeConfig:
 
 | File | Changes |
 |------|---------|
-| `src/agent006/runtime/config.py` | NEW: RuntimeConfig, config_context |
-| `src/agent006/strategies/pure_python.py` | Check runtime config in strategy |
-| `src/agent006/runtime/__init__.py` | Export config functions |
+| `src/nemo_oo_agents/runtime/config.py` | NEW: RuntimeConfig, config_context |
+| `src/nemo_oo_agents/strategies/pure_python.py` | Check runtime config in strategy |
+| `src/nemo_oo_agents/runtime/__init__.py` | Export config functions |
 | `util/prompt-optimization/runner.py` | Add --prompt-version flag |
 | `util/prompt-optimization/config/prompt_variants.yaml` | NEW: variant definitions |
 | `tests/runtime/test_config_propagation.py` | NEW: tests for propagation |

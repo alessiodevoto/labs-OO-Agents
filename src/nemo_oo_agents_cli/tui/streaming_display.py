@@ -22,7 +22,7 @@ from context_blocks import ResultStatus
 from .theme import COLORS
 
 try:
-    from agent006.events import _NO_RETURN as _NO_RETURN_SENTINEL
+    from nemo_oo_agents.events import _NO_RETURN as _NO_RETURN_SENTINEL
 except ImportError:
     _NO_RETURN_SENTINEL = None
 
