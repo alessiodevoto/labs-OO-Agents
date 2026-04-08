@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """CurrentCall dataclass - represents a method invocation being generated.
 
 Captures all context needed by strategies to generate code for a method call.

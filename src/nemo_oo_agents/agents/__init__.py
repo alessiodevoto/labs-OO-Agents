@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Reusable agent patterns for NeMo OO Agents."""
 
 from nemo_oo_agents.agents.summarization import (

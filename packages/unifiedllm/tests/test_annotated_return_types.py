@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test how Annotated return types are handled in tool specifications.
 
 This test verifies the current behavior: plain Annotated metadata is NOT

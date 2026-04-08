@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Agent snapshot — intermediate representation of serializable agent state.
 
 ``AgentSnapshot`` captures everything needed to save/restore an agent.

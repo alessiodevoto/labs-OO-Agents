@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Catppuccin Mocha theme for NeMo OO Agents TUI.
 
 Color palette from https://catppuccin.com/palette/

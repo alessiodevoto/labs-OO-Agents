@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for doc(instance) on real Agent subclasses from tests/capability/agents/.
 
 These tests guard against regressions in instance rendering — specifically:

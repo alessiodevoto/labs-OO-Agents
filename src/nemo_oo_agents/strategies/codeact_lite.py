@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """CodeActLite strategy - simplified CodeAct with clean message rendering.
 
 A variant of CodeActStrategy that removes three sources of LLM confusion:

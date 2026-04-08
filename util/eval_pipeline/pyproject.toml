@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "eval_pipeline"
 version = "0.2.0"
 description = "Evaluation pipeline for agent testing"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.12"
 dependencies = [
     "pyyaml>=6.0",

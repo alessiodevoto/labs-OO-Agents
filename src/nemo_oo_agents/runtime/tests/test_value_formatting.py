@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for bounded value rendering in plain_event_content and PlainBlockFormatter.
 
 These cover the Out[n] code path in codeact_lite.py and the field renderer

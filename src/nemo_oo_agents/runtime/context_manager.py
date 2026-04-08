@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Dict-like context manager for agent context blocks.
 
 Provides a simple dict-like API for LLM-generated code to manage

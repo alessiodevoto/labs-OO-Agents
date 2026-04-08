@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """spec() — step 1: specify how a type renders.
 
 Use ``spec`` to attach visibility rules, descriptions, and rendering hints

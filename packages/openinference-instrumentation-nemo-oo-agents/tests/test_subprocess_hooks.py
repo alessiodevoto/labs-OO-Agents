@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression test: hooks must be registered in every run_until_complete Task.
 
 The eval pipeline's persistent subprocess worker runs one asyncio Task per

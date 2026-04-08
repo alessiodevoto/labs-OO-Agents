@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Slack integration tool for nemo_oo_agents.
 
 Provides async Slack API operations for sending messages, reading threads, and managing channels.

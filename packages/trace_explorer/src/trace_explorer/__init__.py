@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """trace_explorer - Programmatic interface for exploring .jsonl files.
 
 Designed for agent-driven trace analysis.

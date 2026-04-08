@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Shared pprint formatting for nemo_oo_agents and agentdoc.
 
 This module defines the canonical ``_pformat`` implementation used by:

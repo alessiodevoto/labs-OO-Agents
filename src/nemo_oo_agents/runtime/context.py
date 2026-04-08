@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """ContextApi — LLM-facing Skill wrapper for agent context blocks.
 
 ContextApi is always present on every Agent as self.context, but hidden from the LLM

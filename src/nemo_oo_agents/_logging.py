@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Convenience helpers for configuring nemo_oo_agents logging.
 
 Library code uses ``logging.getLogger(__name__)`` throughout, producing a

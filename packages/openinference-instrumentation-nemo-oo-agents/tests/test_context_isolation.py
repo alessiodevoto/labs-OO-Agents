@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for async context isolation in OpenInferenceHooks.
 
 These tests verify that span tracking is isolated between concurrent async contexts,

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Runtime components: actor loop, prompts, PLAN, REPL, context.
 
 Core runtime contains NO OpenTelemetry code - only the hooks protocol.

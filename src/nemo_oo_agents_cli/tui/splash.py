@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Splash screen with ASCII art for NeMo OO Agents TUI.
 
 Uses Catppuccin Mocha theme from https://catppuccin.com/palette/

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for mcp_nemo_oo_agents.tool.MCPTool interface.
 
 Contract-focused: assert public interface (construction, factory method,

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """OTLP trace storage and retrieval backed by SQLite.
 
 Receives OTLP JSON ExportTraceServiceRequest payloads, stores individual

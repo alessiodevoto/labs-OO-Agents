@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for empty content retry and reasoning fallback in CompletionClient."""
 
 from unittest.mock import AsyncMock, patch

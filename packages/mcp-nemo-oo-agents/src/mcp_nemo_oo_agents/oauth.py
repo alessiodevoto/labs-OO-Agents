@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # OAuth 2.0 implementation following RFC 8252 "OAuth 2.0 for Native Apps":
 #   https://datatracker.ietf.org/doc/html/rfc8252
 #

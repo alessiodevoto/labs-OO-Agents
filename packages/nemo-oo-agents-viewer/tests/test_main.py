@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """HTTP-layer tests for the journal endpoints in main.py.
 
 Uses Starlette TestClient to exercise the full FastAPI request/response cycle,

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Rich console wrapper with spinners and styled output.
 
 Uses Catppuccin Mocha theme from https://catppuccin.com/palette/

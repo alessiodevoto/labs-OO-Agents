@@ -2,6 +2,7 @@
 name = "nemo-oo-agents-viewer"
 version = "0.1.0"
 description = "Unified trace and evaluation viewer for nemo_oo_agents"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.100.0",

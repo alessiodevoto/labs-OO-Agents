@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """NAT Nexus integration via the ``intercept()`` middleware API.
 
 When ``nat_nexus`` is installed, this module provides two middleware functions

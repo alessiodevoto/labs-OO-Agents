@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Configuration loading for NeMo OO Agents TUI.
 
 Hydra-like config: structured dataclass with Config.load(**overrides).

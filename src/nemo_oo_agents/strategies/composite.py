@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """CompositeStrategy - Base class for strategies that compose other strategies.
 
 Composite strategies use @strategy methods to delegate to simpler strategies,

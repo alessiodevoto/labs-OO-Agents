@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """PlainBlockFormatter — renders conversation messages as plain text.
 
 Strips XML wrapping and renders events as clean, human-readable text.

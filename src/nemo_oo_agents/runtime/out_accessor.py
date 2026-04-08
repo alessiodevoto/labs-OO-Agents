@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """OutAccessor: Jupyter-style access to execution outputs.
 
 Provides `Out[n]` syntax for accessing previous execution results:

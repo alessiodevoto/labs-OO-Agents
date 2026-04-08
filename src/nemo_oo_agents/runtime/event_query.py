@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """EventQuery - type-safe event filtering configuration.
 
 EventQuery provides a declarative way to specify event filtering that mirrors

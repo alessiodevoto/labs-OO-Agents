@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Combined Trace + Evaluation Viewer backend.
 
 Single FastAPI app serving both trace viewer and evaluation viewer APIs.

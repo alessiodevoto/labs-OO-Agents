@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for otlp_store — OTLP parsing and SQLite storage.
 
 Tests are isolated via tmp_path: each test gets its own SQLite file so

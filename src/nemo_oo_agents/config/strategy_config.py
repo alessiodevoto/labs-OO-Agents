@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Strategy configuration for CodeAct, Predict, and Reflexion strategies."""
 
 from pydantic import BaseModel, ConfigDict

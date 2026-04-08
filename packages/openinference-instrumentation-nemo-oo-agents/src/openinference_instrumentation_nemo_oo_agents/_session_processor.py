@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Lightweight SpanProcessor that stamps session.id on every span.
 
 Must be added to TracerProvider **before** export processors so the attribute

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Unified module restrictions for agent code execution.
 
 Single source of truth for blocked modules, blocked calls, and restricted modules.

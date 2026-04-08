@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for the OTLP ingest endpoint and write-queue worker.
 
 httpx's ASGITransport only handles HTTP — it does not trigger the FastAPI
