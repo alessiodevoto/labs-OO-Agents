@@ -81,6 +81,15 @@ class TUIConfig:
     # Trace output directory (None = OTLP auto-probe only; set via --trace for file output)
     trace_dir: Path | None = None
 
+    # Vi keybindings in prompt_toolkit input
+    vi_mode: bool = False
+
+    # Custom agent spec: "module.path:ClassName" or "./file.py:ClassName"
+    agent_spec: str | None = None
+
+    # Show agent Python code execution panels (off by default)
+    show_python: bool = False
+
 
 @dataclass
 class Config:
@@ -111,10 +120,13 @@ class Config:
         "working_dir": "agent.working_dir",
         "no_splash": "no_splash",
         "no_trace": "no_trace",
+        "vi": "tui.vi_mode",
+        "agent": "tui.agent_spec",
+        "python": "tui.show_python",
     }
 
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)
-    _STORE_TRUE_FLAGS: ClassVar[set[str]] = {"no_splash", "no_trace"}
+    _STORE_TRUE_FLAGS: ClassVar[set[str]] = {"no_splash", "no_trace", "vi", "python"}
 
     # ── Environment variable mapping ──────────────────────────────────
     _ENV: ClassVar[dict] = {
@@ -213,3 +225,76 @@ def list_models() -> list[str]:
     from unifiedllm import MODELS
 
     return sorted(MODELS.keys())
+
+
+def load_agent_class(spec: str) -> type:
+    """Load an agent class from a 'module:ClassName' or './file.py:ClassName' spec.
+
+    Args:
+        spec: Agent spec in the form ``module.path:ClassName`` or
+              ``./path/to/file.py:ClassName`` (absolute paths also work).
+
+    Returns:
+        The agent class (uninstantiated).
+
+    Raises:
+        ValueError: If the spec format is invalid or the class is not an Agent subclass.
+        FileNotFoundError: If a file-path spec points to a missing file.
+        ImportError: If the module cannot be imported.
+        AttributeError: If the class name is not found in the module.
+    """
+    import importlib
+    import importlib.util
+    import sys
+
+    if ":" not in spec:
+        raise ValueError(
+            f"Invalid agent spec '{spec}'. "
+            "Expected 'module.path:ClassName' or './path/to/file.py:ClassName'."
+        )
+
+    module_part, class_name = spec.rsplit(":", 1)
+    class_name = class_name.strip()
+
+    # File path: ends in .py OR contains a path separator OR starts with . / ~
+    is_file = module_part.endswith(".py") or "/" in module_part or module_part.startswith(".")
+    if is_file:
+        file_path = Path(module_part).expanduser().resolve()
+        if not file_path.exists():
+            raise FileNotFoundError(f"Agent module file not found: {file_path}")
+
+        parent_str = str(file_path.parent)
+        inserted = False
+        if parent_str not in sys.path:
+            sys.path.insert(0, parent_str)
+            inserted = True
+
+        try:
+            mod_spec = importlib.util.spec_from_file_location("_tui_custom_agent", file_path)
+            if mod_spec is None or mod_spec.loader is None:
+                raise ImportError(f"Cannot load module from {file_path}")
+            module = importlib.util.module_from_spec(mod_spec)
+            mod_spec.loader.exec_module(module)  # type: ignore[union-attr]
+        finally:
+            if inserted:
+                sys.path.remove(parent_str)
+    else:
+        module = importlib.import_module(module_part)
+
+    cls = getattr(module, class_name, None)
+    if cls is None:
+        raise AttributeError(f"Class '{class_name}' not found in '{module_part}'.")
+
+    # Validate it's an Agent subclass
+    try:
+        from nemo_oo_agents import Agent
+
+        if not (isinstance(cls, type) and issubclass(cls, Agent)):
+            raise ValueError(
+                f"'{class_name}' is not a subclass of NeMo OO Agents Agent. "
+                "Make sure your class inherits from Agent."
+            )
+    except ImportError:
+        pass  # Can't validate without nemo_oo_agents; proceed anyway
+
+    return cls

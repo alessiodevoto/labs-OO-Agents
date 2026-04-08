@@ -7,11 +7,13 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated
 
 from nemo_oo_agents import Agent, hidden, strategy
 from nemo_oo_agents.agents import TokenBudgetSummarizer
 from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from unifiedllm import FakeLLMClient
@@ -160,11 +162,19 @@ async def _verify_and_complete(agent: TUIAgent, plan: Plan | None = None) -> Non
 
 
 class TUIAgent(Agent, llm=_DEFAULT_LLM):
-    """NeMo OO Agents TUI agent."""
+    """NeMo OO Agents TUI agent.
 
-    _config: Annotated[AgentConfig, hidden]
+    Call return_result() to yield back to the user.
+    """
+
+    _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]
     _workflow_state: Annotated[dict, hidden]
+    _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
+    bash: Annotated[BashTool, nosnapshot]
+    files: Annotated[FileTool, nosnapshot]
+    libs: Annotated[LibraryWriting, nosnapshot]
+    _summarizers: Annotated[list, hidden, nosnapshot]
 
     def __init__(
         self,
@@ -185,6 +195,7 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
 
         # Store config for later access
         self._config = config
+        self._render_message = None
         # Phase tracking for multi-turn workflows
         self._phase: str = "idle"
         self._workflow_state: dict = {}
@@ -229,6 +240,20 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
             "preserve_recent": preserve_recent,
         }
 
+    def message(self, text: str) -> None:
+        """Send a Markdown message to the user."""
+        from .tui_events import TUIAgentMessage
+
+        self.event_manager.add(TUIAgentMessage(content=str(text)))
+        if self._render_message is not None:
+            self._render_message(text)
+
+    @hidden
+    @strategy(PredictStrategy())
+    async def name_session(self, user_message: str) -> str:
+        """Generate an ultra-short 2-5 word session title (no punctuation, no quotes) for a conversation that starts with: {user_message}"""
+        ...
+
     @hidden
     def _system_prompt(self) -> str:
         """System prompt for TUI agent. Phase-specific instructions are in method docstrings."""
@@ -239,9 +264,13 @@ You have access to these tools via self:
 - self.files — Read/write files (.read(), .write(), .str_replace(), .list(), .find(), .grep())
 
 Communication:
-- Use message("text") to send formatted Markdown to the user
+- Use self.message("text") to send formatted Markdown to the user during your turn
 - Use reasoning("text") to log internal thinking (not shown to user)
-- Use return_result(...) to return structured results when done
+- Use return_result() to end your turn — the user will then reply and you'll be called again
+
+This is a multi-turn conversation. return_result() is like pressing Send: it ends your current
+response and hands control back to the user. If you need more information, ask via self.message()
+then call return_result() to wait for their reply.
 
 Workflow:
 - Execute ONE thing at a time, then observe results
@@ -270,7 +299,7 @@ Workflow:
         User message: {user_message}
 
         Use tools to gather information.
-        Use message() to respond to the user with a clear, helpful answer.
+        Use self.message() torespond to the user with a clear, helpful answer.
         Use Markdown formatting for readability.
         """
         ...
@@ -287,7 +316,7 @@ Workflow:
         - Location: Where should this code live? What existing patterns to follow?
         - Interface: What should the API/interface look like?
 
-        Use message() to ask each question.
+        Use self.message() toask each question.
         Use tools to explore the codebase for context.
 
         When you have enough understanding, call return_result() with complete=True
@@ -311,7 +340,7 @@ Workflow:
         - Specific about which files to create/modify
 
         Use tools to check the existing codebase for patterns.
-        Present the plan to the user via message() before returning it."""
+        Present the plan to the user via self.message() before returning it."""
         ...
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50)))
@@ -383,6 +412,8 @@ Workflow:
     async def respond(self, user_message: str) -> None:
         """Respond to the user's message.
 
+        Call return_result() to yield back to the user.
+
         When orchestrator mode is enabled (config.orchestrator=True), routes
         through workflow phases. Otherwise uses a single CodeAct strategy.
         """
@@ -399,7 +430,8 @@ Workflow:
         Message: {user_message}
 
         Use tools to help the user.
-        Use message() to respond with formatted Markdown.
+        Use self.message() to respond with formatted Markdown.
+        Call return_result() when done — this ends your turn and the user can reply.
         Execute ONE thing at a time, then observe results.
         """
         ...

@@ -22,6 +22,17 @@ import click
     help="LLM model to use (overrides config default)",
 )
 @click.option(
+    "--agent",
+    "agent_spec",
+    default=None,
+    metavar="MODULE:CLASS",
+    help=(
+        "Custom agent class instead of TUIAgent. "
+        "Format: 'module.path:ClassName' or './file.py:ClassName'. "
+        "Instantiated with llm=<configured llm>."
+    ),
+)
+@click.option(
     "--working-dir",
     "-w",
     "-d",
@@ -61,8 +72,26 @@ import click
     is_flag=True,
     help="Disable tracing",
 )
+@click.option(
+    "--vi",
+    is_flag=True,
+    help="Enable vi keybindings in the input prompt",
+)
+@click.option(
+    "--python",
+    is_flag=True,
+    help="Show agent Python code execution panels",
+)
+@click.option(
+    "--continue",
+    "-c",
+    "continue_last",
+    is_flag=True,
+    help="Resume the most recent session",
+)
 def command(
     model: str | None,
+    agent_spec: str | None,
     working_dir: str,
     mcp_file: str | None,
     no_splash: bool,
@@ -70,6 +99,9 @@ def command(
     context_limit: int | None,
     orchestrator: bool,
     no_trace: bool,
+    vi: bool,
+    python: bool,
+    continue_last: bool,
 ):
     """Launch the NeMo OO Agents TUI (Text User Interface).
 
@@ -81,12 +113,15 @@ def command(
         nemo_oo_agents tui --model gpt-4o
         nemo_oo_agents tui --working-dir /path/to/project
         nemo_oo_agents tui --mcp-file .mcp.json
+        nemo_oo_agents tui --agent ./my_agent.py:MyAgent
+        nemo_oo_agents tui --vi
     """
     from nemo_oo_agents_cli.tui.config import Config
     from nemo_oo_agents_cli.tui.main import main as tui_main
 
     config = Config.load(
         model=model,
+        agent=agent_spec,
         working_dir=working_dir,
         mcp_file=Path(mcp_file) if mcp_file else None,
         no_splash=no_splash,
@@ -94,9 +129,11 @@ def command(
         context_limit=context_limit,
         orchestrator=orchestrator,
         no_trace=no_trace,
+        vi=vi,
+        python=python,
     )
 
     try:
-        asyncio.run(tui_main(config=config))
+        asyncio.run(tui_main(config=config, continue_last=continue_last))
     except KeyboardInterrupt:
         sys.exit(0)
