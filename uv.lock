@@ -14,19 +14,19 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-01T07:32:12.169800323Z"
+exclude-newer = "2026-04-01T11:13:40.349246249Z"
 exclude-newer-span = "P7D"
 
 [manifest]
 members = [
-    "agent006",
-    "agent006-viewer",
     "agentdoc",
     "context-blocks",
     "eval-pipeline",
     "evaluation",
-    "mcp-agent006",
-    "openinference-instrumentation-agent006",
+    "mcp-nemo-oo-agents",
+    "nemo-oo-agents",
+    "nemo-oo-agents-viewer",
+    "openinference-instrumentation-nemo-oo-agents",
     "trace-explorer",
     "unifiedllm",
 ]
@@ -39,276 +39,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/64/c7/8de93764ad66968d1
 wheels = [
     { url = "https://files.pythonhosted.org/packages/18/a6/907a406bb7d359e6a63f99c313846d9eec4f7e6f7437809e03aa00fa3074/absl_py-2.4.0-py3-none-any.whl", hash = "sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d", size = 135750, upload-time = "2026-01-28T10:17:04.19Z" },
 ]
-
-[[package]]
-name = "agent006"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "agentdoc" },
-    { name = "click" },
-    { name = "context-blocks" },
-    { name = "prompt-toolkit" },
-    { name = "pydantic" },
-    { name = "rich" },
-    { name = "unifiedllm" },
-]
-
-[package.optional-dependencies]
-bigcodebench = [
-    { name = "beautifulsoup4" },
-    { name = "blake3" },
-    { name = "chardet" },
-    { name = "cryptography" },
-    { name = "django" },
-    { name = "faker" },
-    { name = "flask" },
-    { name = "flask-login" },
-    { name = "flask-mail" },
-    { name = "flask-restful" },
-    { name = "flask-wtf" },
-    { name = "folium" },
-    { name = "gensim" },
-    { name = "geopandas" },
-    { name = "geopy" },
-    { name = "holidays" },
-    { name = "keras" },
-    { name = "librosa" },
-    { name = "llvmlite" },
-    { name = "lxml" },
-    { name = "matplotlib" },
-    { name = "mechanize" },
-    { name = "natsort" },
-    { name = "nltk" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "openpyxl" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "prettytable" },
-    { name = "psutil" },
-    { name = "pycryptodome" },
-    { name = "pyquery" },
-    { name = "pytesseract" },
-    { name = "python-dateutil" },
-    { name = "python-docx" },
-    { name = "python-levenshtein" },
-    { name = "pytz" },
-    { name = "pyyaml" },
-    { name = "regex" },
-    { name = "requests" },
-    { name = "rsa" },
-    { name = "scikit-image" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
-    { name = "seaborn" },
-    { name = "sendgrid" },
-    { name = "shapely" },
-    { name = "soundfile" },
-    { name = "statsmodels" },
-    { name = "sympy" },
-    { name = "tensorflow" },
-    { name = "textblob" },
-    { name = "texttable" },
-    { name = "werkzeug" },
-    { name = "wikipedia" },
-    { name = "wordcloud" },
-    { name = "wordninja" },
-    { name = "wtforms" },
-    { name = "xlwt" },
-    { name = "xmltodict" },
-]
-mcp = [
-    { name = "mcp-agent006" },
-]
-nexus = [
-    { name = "nvidia-nat-nexus" },
-]
-sandbox = [
-    { name = "openshell" },
-]
-trace-explorer = [
-    { name = "trace-explorer" },
-]
-tracing = [
-    { name = "openinference-instrumentation-agent006" },
-]
-viewer = [
-    { name = "agent006-viewer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "agent006-viewer" },
-    { name = "eval-pipeline" },
-    { name = "evaluation" },
-    { name = "fastapi" },
-    { name = "httpx", extra = ["socks"] },
-    { name = "mcp-agent006" },
-    { name = "mypy" },
-    { name = "openinference-instrumentation-agent006" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-    { name = "trace-explorer" },
-    { name = "uvicorn" },
-    { name = "watchfiles" },
-]
-trace-viewer = [
-    { name = "fastapi" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "uvicorn" },
-    { name = "watchfiles" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent006-viewer", marker = "extra == 'viewer'", editable = "packages/agent006-viewer" },
-    { name = "agentdoc", editable = "packages/agentdoc" },
-    { name = "beautifulsoup4", marker = "extra == 'bigcodebench'", specifier = ">=4.12.0" },
-    { name = "blake3", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
-    { name = "chardet", marker = "extra == 'bigcodebench'", specifier = ">=5.0.0" },
-    { name = "click", specifier = ">=8.1.0" },
-    { name = "context-blocks", editable = "packages/context-blocks" },
-    { name = "cryptography", marker = "extra == 'bigcodebench'", specifier = ">=41.0.0" },
-    { name = "django", marker = "extra == 'bigcodebench'", specifier = ">=4.2.0" },
-    { name = "faker", marker = "extra == 'bigcodebench'", specifier = ">=22.0.0" },
-    { name = "flask", marker = "extra == 'bigcodebench'", specifier = ">=2.3.0" },
-    { name = "flask-login", marker = "extra == 'bigcodebench'", specifier = ">=0.6.3" },
-    { name = "flask-mail", marker = "extra == 'bigcodebench'", specifier = ">=0.10.0" },
-    { name = "flask-restful", marker = "extra == 'bigcodebench'", specifier = ">=0.3.10" },
-    { name = "flask-wtf", marker = "extra == 'bigcodebench'", specifier = ">=1.2.0" },
-    { name = "folium", marker = "extra == 'bigcodebench'", specifier = ">=0.15.0" },
-    { name = "gensim", marker = "extra == 'bigcodebench'", specifier = ">=4.3.0" },
-    { name = "geopandas", marker = "extra == 'bigcodebench'", specifier = ">=0.14.0" },
-    { name = "geopy", marker = "extra == 'bigcodebench'", specifier = ">=2.4.0" },
-    { name = "holidays", marker = "extra == 'bigcodebench'", specifier = ">=0.40" },
-    { name = "keras", marker = "extra == 'bigcodebench'", specifier = ">=3.0.0" },
-    { name = "librosa", marker = "extra == 'bigcodebench'", specifier = ">=0.10.0" },
-    { name = "llvmlite", marker = "extra == 'bigcodebench'", specifier = ">=0.46.0" },
-    { name = "lxml", marker = "extra == 'bigcodebench'", specifier = ">=4.9.0" },
-    { name = "matplotlib", marker = "extra == 'bigcodebench'", specifier = ">=3.5.0" },
-    { name = "mcp-agent006", marker = "extra == 'mcp'", editable = "packages/mcp-agent006" },
-    { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
-    { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
-    { name = "nltk", marker = "extra == 'bigcodebench'", specifier = ">=3.8.0" },
-    { name = "numpy", marker = "extra == 'bigcodebench'", specifier = ">=1.24.0" },
-    { name = "nvidia-nat-nexus", marker = "extra == 'nexus'", git = "https://gitlab-master.nvidia.com/nemo-agent-toolkit/dev/Project-NAT-Nexus.git" },
-    { name = "opencv-python", marker = "extra == 'bigcodebench'", specifier = ">=4.8.0" },
-    { name = "openinference-instrumentation-agent006", marker = "extra == 'tracing'", editable = "packages/openinference-instrumentation-agent006" },
-    { name = "openpyxl", marker = "extra == 'bigcodebench'", specifier = ">=3.1.0" },
-    { name = "openshell", marker = "extra == 'sandbox'" },
-    { name = "pandas", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
-    { name = "pillow", marker = "extra == 'bigcodebench'", specifier = ">=10.0.0" },
-    { name = "prettytable", marker = "extra == 'bigcodebench'", specifier = ">=3.10.0" },
-    { name = "prompt-toolkit", specifier = ">=3.0.0" },
-    { name = "psutil", marker = "extra == 'bigcodebench'", specifier = ">=5.9.0" },
-    { name = "pycryptodome", marker = "extra == 'bigcodebench'", specifier = ">=3.20.0" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "pyquery", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
-    { name = "pytesseract", marker = "extra == 'bigcodebench'", specifier = ">=0.3.10" },
-    { name = "python-dateutil", marker = "extra == 'bigcodebench'", specifier = ">=2.8.0" },
-    { name = "python-docx", marker = "extra == 'bigcodebench'", specifier = ">=1.1.0" },
-    { name = "python-levenshtein", marker = "extra == 'bigcodebench'", specifier = ">=0.25.0" },
-    { name = "pytz", marker = "extra == 'bigcodebench'", specifier = ">=2023.3" },
-    { name = "pyyaml", marker = "extra == 'bigcodebench'", specifier = ">=6.0.0" },
-    { name = "regex", marker = "extra == 'bigcodebench'", specifier = ">=2023.0.0" },
-    { name = "requests", marker = "extra == 'bigcodebench'", specifier = ">=2.31.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "rsa", marker = "extra == 'bigcodebench'", specifier = ">=4.9" },
-    { name = "scikit-image", marker = "extra == 'bigcodebench'", specifier = ">=0.22.0" },
-    { name = "scikit-learn", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
-    { name = "scipy", marker = "extra == 'bigcodebench'", specifier = ">=1.10.0" },
-    { name = "seaborn", marker = "extra == 'bigcodebench'", specifier = ">=0.12.0" },
-    { name = "sendgrid", marker = "extra == 'bigcodebench'", specifier = ">=6.11.0" },
-    { name = "shapely", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
-    { name = "soundfile", marker = "extra == 'bigcodebench'", specifier = ">=0.12.0" },
-    { name = "statsmodels", marker = "extra == 'bigcodebench'", specifier = ">=0.14.0" },
-    { name = "sympy", marker = "extra == 'bigcodebench'", specifier = ">=1.12.0" },
-    { name = "tensorflow", marker = "extra == 'bigcodebench'", specifier = ">=2.15.0" },
-    { name = "textblob", marker = "extra == 'bigcodebench'", specifier = ">=0.18.0" },
-    { name = "texttable", marker = "extra == 'bigcodebench'", specifier = ">=1.7.0" },
-    { name = "trace-explorer", marker = "extra == 'trace-explorer'", editable = "packages/trace_explorer" },
-    { name = "unifiedllm", editable = "packages/unifiedllm" },
-    { name = "werkzeug", marker = "extra == 'bigcodebench'", specifier = ">=3.0.0" },
-    { name = "wikipedia", marker = "extra == 'bigcodebench'", specifier = ">=1.4.0" },
-    { name = "wordcloud", marker = "extra == 'bigcodebench'", specifier = ">=1.9.0" },
-    { name = "wordninja", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
-    { name = "wtforms", marker = "extra == 'bigcodebench'", specifier = ">=3.1.0" },
-    { name = "xlwt", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
-    { name = "xmltodict", marker = "extra == 'bigcodebench'", specifier = ">=0.13.0" },
-]
-provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "nexus", "bigcodebench"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "agent006-viewer", editable = "packages/agent006-viewer" },
-    { name = "eval-pipeline", editable = "util/eval_pipeline" },
-    { name = "evaluation", editable = "packages/evaluation" },
-    { name = "fastapi", specifier = ">=0.123.4" },
-    { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "mcp-agent006", editable = "packages/mcp-agent006" },
-    { name = "mypy", specifier = ">=1.7.0" },
-    { name = "openinference-instrumentation-agent006", editable = "packages/openinference-instrumentation-agent006" },
-    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.39.1" },
-    { name = "pre-commit", specifier = ">=4.5.0" },
-    { name = "pyright", specifier = ">=1.1.408" },
-    { name = "pytest", specifier = ">=7.4.0" },
-    { name = "pytest-asyncio", specifier = ">=0.21.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "ruff", specifier = ">=0.14.14" },
-    { name = "trace-explorer", editable = "packages/trace_explorer" },
-    { name = "uvicorn", specifier = ">=0.38.0" },
-    { name = "watchfiles", specifier = ">=1.0.0" },
-]
-trace-viewer = [
-    { name = "fastapi", specifier = ">=0.123.4" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "uvicorn", specifier = ">=0.38.0" },
-    { name = "watchfiles", specifier = ">=1.0.0" },
-]
-
-[[package]]
-name = "agent006-viewer"
-version = "0.1.0"
-source = { editable = "packages/agent006-viewer" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "python-multipart", specifier = ">=0.0.5" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.20.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "agentdoc"
@@ -1064,7 +794,11 @@ name = "eval-pipeline"
 version = "0.2.0"
 source = { editable = "util/eval_pipeline" }
 dependencies = [
+    { name = "fastapi" },
+    { name = "nemo-oo-agents-viewer" },
     { name = "pyyaml" },
+    { name = "trace-explorer" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
@@ -1074,8 +808,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.109.1" },
+    { name = "nemo-oo-agents-viewer", editable = "packages/nemo-oo-agents-viewer" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "trace-explorer", editable = "packages/trace_explorer" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.20.0" },
 ]
 provides-extras = ["dev"]
 
@@ -1084,11 +822,11 @@ name = "evaluation"
 version = "0.3.0"
 source = { editable = "packages/evaluation" }
 dependencies = [
-    { name = "agent006" },
+    { name = "nemo-oo-agents" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "agent006", editable = "." }]
+requires-dist = [{ name = "nemo-oo-agents", editable = "." }]
 
 [[package]]
 name = "faker"
@@ -2506,9 +2244,9 @@ wheels = [
 ]
 
 [[package]]
-name = "mcp-agent006"
+name = "mcp-nemo-oo-agents"
 version = "0.1.0"
-source = { editable = "packages/mcp-agent006" }
+source = { editable = "packages/mcp-nemo-oo-agents" }
 dependencies = [
     { name = "httpx" },
     { name = "mcp" },
@@ -2799,6 +2537,272 @@ wheels = [
 ]
 
 [[package]]
+name = "nemo-oo-agents"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "agentdoc" },
+    { name = "click" },
+    { name = "context-blocks" },
+    { name = "prompt-toolkit" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "unifiedllm" },
+]
+
+[package.optional-dependencies]
+bigcodebench = [
+    { name = "beautifulsoup4" },
+    { name = "blake3" },
+    { name = "chardet" },
+    { name = "cryptography" },
+    { name = "django" },
+    { name = "faker" },
+    { name = "flask" },
+    { name = "flask-login" },
+    { name = "flask-mail" },
+    { name = "flask-restful" },
+    { name = "flask-wtf" },
+    { name = "folium" },
+    { name = "gensim" },
+    { name = "geopandas" },
+    { name = "geopy" },
+    { name = "holidays" },
+    { name = "keras" },
+    { name = "librosa" },
+    { name = "llvmlite" },
+    { name = "lxml" },
+    { name = "matplotlib" },
+    { name = "mechanize" },
+    { name = "natsort" },
+    { name = "nltk" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "openpyxl" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "prettytable" },
+    { name = "psutil" },
+    { name = "pycryptodome" },
+    { name = "pyquery" },
+    { name = "pytesseract" },
+    { name = "python-dateutil" },
+    { name = "python-docx" },
+    { name = "python-levenshtein" },
+    { name = "pytz" },
+    { name = "pyyaml" },
+    { name = "regex" },
+    { name = "requests" },
+    { name = "rsa" },
+    { name = "scikit-image" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "seaborn" },
+    { name = "sendgrid" },
+    { name = "shapely" },
+    { name = "soundfile" },
+    { name = "statsmodels" },
+    { name = "sympy" },
+    { name = "tensorflow" },
+    { name = "textblob" },
+    { name = "texttable" },
+    { name = "werkzeug" },
+    { name = "wikipedia" },
+    { name = "wordcloud" },
+    { name = "wordninja" },
+    { name = "wtforms" },
+    { name = "xlwt" },
+    { name = "xmltodict" },
+]
+mcp = [
+    { name = "mcp-nemo-oo-agents" },
+]
+sandbox = [
+    { name = "openshell" },
+]
+trace-explorer = [
+    { name = "trace-explorer" },
+]
+tracing = [
+    { name = "openinference-instrumentation-nemo-oo-agents" },
+]
+viewer = [
+    { name = "nemo-oo-agents-viewer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "eval-pipeline" },
+    { name = "evaluation" },
+    { name = "fastapi" },
+    { name = "httpx", extra = ["socks"] },
+    { name = "mcp-nemo-oo-agents" },
+    { name = "mypy" },
+    { name = "nemo-oo-agents-viewer" },
+    { name = "openinference-instrumentation-nemo-oo-agents" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "ruff" },
+    { name = "trace-explorer" },
+    { name = "uvicorn" },
+    { name = "watchfiles" },
+]
+trace-viewer = [
+    { name = "fastapi" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
+    { name = "watchfiles" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agentdoc", editable = "packages/agentdoc" },
+    { name = "beautifulsoup4", marker = "extra == 'bigcodebench'", specifier = ">=4.12.0" },
+    { name = "blake3", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
+    { name = "chardet", marker = "extra == 'bigcodebench'", specifier = ">=5.0.0" },
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "context-blocks", editable = "packages/context-blocks" },
+    { name = "cryptography", marker = "extra == 'bigcodebench'", specifier = ">=41.0.0" },
+    { name = "django", marker = "extra == 'bigcodebench'", specifier = ">=4.2.0" },
+    { name = "faker", marker = "extra == 'bigcodebench'", specifier = ">=22.0.0" },
+    { name = "flask", marker = "extra == 'bigcodebench'", specifier = ">=2.3.0" },
+    { name = "flask-login", marker = "extra == 'bigcodebench'", specifier = ">=0.6.3" },
+    { name = "flask-mail", marker = "extra == 'bigcodebench'", specifier = ">=0.10.0" },
+    { name = "flask-restful", marker = "extra == 'bigcodebench'", specifier = ">=0.3.10" },
+    { name = "flask-wtf", marker = "extra == 'bigcodebench'", specifier = ">=1.2.0" },
+    { name = "folium", marker = "extra == 'bigcodebench'", specifier = ">=0.15.0" },
+    { name = "gensim", marker = "extra == 'bigcodebench'", specifier = ">=4.3.0" },
+    { name = "geopandas", marker = "extra == 'bigcodebench'", specifier = ">=0.14.0" },
+    { name = "geopy", marker = "extra == 'bigcodebench'", specifier = ">=2.4.0" },
+    { name = "holidays", marker = "extra == 'bigcodebench'", specifier = ">=0.40" },
+    { name = "keras", marker = "extra == 'bigcodebench'", specifier = ">=3.0.0" },
+    { name = "librosa", marker = "extra == 'bigcodebench'", specifier = ">=0.10.0" },
+    { name = "llvmlite", marker = "extra == 'bigcodebench'", specifier = ">=0.46.0" },
+    { name = "lxml", marker = "extra == 'bigcodebench'", specifier = ">=4.9.0" },
+    { name = "matplotlib", marker = "extra == 'bigcodebench'", specifier = ">=3.5.0" },
+    { name = "mcp-nemo-oo-agents", marker = "extra == 'mcp'", editable = "packages/mcp-nemo-oo-agents" },
+    { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
+    { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
+    { name = "nemo-oo-agents-viewer", marker = "extra == 'viewer'", editable = "packages/nemo-oo-agents-viewer" },
+    { name = "nltk", marker = "extra == 'bigcodebench'", specifier = ">=3.8.0" },
+    { name = "numpy", marker = "extra == 'bigcodebench'", specifier = ">=1.24.0" },
+    { name = "opencv-python", marker = "extra == 'bigcodebench'", specifier = ">=4.8.0" },
+    { name = "openinference-instrumentation-nemo-oo-agents", marker = "extra == 'tracing'", editable = "packages/openinference-instrumentation-nemo-oo-agents" },
+    { name = "openpyxl", marker = "extra == 'bigcodebench'", specifier = ">=3.1.0" },
+    { name = "openshell", marker = "extra == 'sandbox'" },
+    { name = "pandas", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
+    { name = "pillow", marker = "extra == 'bigcodebench'", specifier = ">=10.0.0" },
+    { name = "prettytable", marker = "extra == 'bigcodebench'", specifier = ">=3.10.0" },
+    { name = "prompt-toolkit", specifier = ">=3.0.0" },
+    { name = "psutil", marker = "extra == 'bigcodebench'", specifier = ">=5.9.0" },
+    { name = "pycryptodome", marker = "extra == 'bigcodebench'", specifier = ">=3.20.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pyquery", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
+    { name = "pytesseract", marker = "extra == 'bigcodebench'", specifier = ">=0.3.10" },
+    { name = "python-dateutil", marker = "extra == 'bigcodebench'", specifier = ">=2.8.0" },
+    { name = "python-docx", marker = "extra == 'bigcodebench'", specifier = ">=1.1.0" },
+    { name = "python-levenshtein", marker = "extra == 'bigcodebench'", specifier = ">=0.25.0" },
+    { name = "pytz", marker = "extra == 'bigcodebench'", specifier = ">=2023.3" },
+    { name = "pyyaml", marker = "extra == 'bigcodebench'", specifier = ">=6.0.0" },
+    { name = "regex", marker = "extra == 'bigcodebench'", specifier = ">=2023.0.0" },
+    { name = "requests", marker = "extra == 'bigcodebench'", specifier = ">=2.31.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "rsa", marker = "extra == 'bigcodebench'", specifier = ">=4.9" },
+    { name = "scikit-image", marker = "extra == 'bigcodebench'", specifier = ">=0.22.0" },
+    { name = "scikit-learn", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
+    { name = "scipy", marker = "extra == 'bigcodebench'", specifier = ">=1.10.0" },
+    { name = "seaborn", marker = "extra == 'bigcodebench'", specifier = ">=0.12.0" },
+    { name = "sendgrid", marker = "extra == 'bigcodebench'", specifier = ">=6.11.0" },
+    { name = "shapely", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
+    { name = "soundfile", marker = "extra == 'bigcodebench'", specifier = ">=0.12.0" },
+    { name = "statsmodels", marker = "extra == 'bigcodebench'", specifier = ">=0.14.0" },
+    { name = "sympy", marker = "extra == 'bigcodebench'", specifier = ">=1.12.0" },
+    { name = "tensorflow", marker = "extra == 'bigcodebench'", specifier = ">=2.15.0" },
+    { name = "textblob", marker = "extra == 'bigcodebench'", specifier = ">=0.18.0" },
+    { name = "texttable", marker = "extra == 'bigcodebench'", specifier = ">=1.7.0" },
+    { name = "trace-explorer", marker = "extra == 'trace-explorer'", editable = "packages/trace_explorer" },
+    { name = "unifiedllm", editable = "packages/unifiedllm" },
+    { name = "werkzeug", marker = "extra == 'bigcodebench'", specifier = ">=3.0.0" },
+    { name = "wikipedia", marker = "extra == 'bigcodebench'", specifier = ">=1.4.0" },
+    { name = "wordcloud", marker = "extra == 'bigcodebench'", specifier = ">=1.9.0" },
+    { name = "wordninja", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
+    { name = "wtforms", marker = "extra == 'bigcodebench'", specifier = ">=3.1.0" },
+    { name = "xlwt", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
+    { name = "xmltodict", marker = "extra == 'bigcodebench'", specifier = ">=0.13.0" },
+]
+provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "bigcodebench"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "eval-pipeline", editable = "util/eval_pipeline" },
+    { name = "evaluation", editable = "packages/evaluation" },
+    { name = "fastapi", specifier = ">=0.123.4" },
+    { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
+    { name = "mcp-nemo-oo-agents", editable = "packages/mcp-nemo-oo-agents" },
+    { name = "mypy", specifier = ">=1.7.0" },
+    { name = "nemo-oo-agents-viewer", editable = "packages/nemo-oo-agents-viewer" },
+    { name = "openinference-instrumentation-nemo-oo-agents", editable = "packages/openinference-instrumentation-nemo-oo-agents" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.39.1" },
+    { name = "pre-commit", specifier = ">=4.5.0" },
+    { name = "pyright", specifier = ">=1.1.408" },
+    { name = "pytest", specifier = ">=7.4.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
+    { name = "ruff", specifier = ">=0.14.14" },
+    { name = "trace-explorer", editable = "packages/trace_explorer" },
+    { name = "uvicorn", specifier = ">=0.38.0" },
+    { name = "watchfiles", specifier = ">=1.0.0" },
+]
+trace-viewer = [
+    { name = "fastapi", specifier = ">=0.123.4" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
+    { name = "uvicorn", specifier = ">=0.38.0" },
+    { name = "watchfiles", specifier = ">=1.0.0" },
+]
+
+[[package]]
+name = "nemo-oo-agents-viewer"
+version = "0.1.0"
+source = { editable = "packages/nemo-oo-agents-viewer" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-multipart", specifier = ">=0.0.5" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.20.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2917,11 +2921,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nvidia-nat-nexus"
-version = "0.1.0"
-source = { git = "https://gitlab-master.nvidia.com/nemo-agent-toolkit/dev/Project-NAT-Nexus.git#0d312794178dbba7692d91fc46cc9b454b01c1ea" }
-
-[[package]]
 name = "openai"
 version = "2.24.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2974,9 +2973,27 @@ wheels = [
 ]
 
 [[package]]
-name = "openinference-instrumentation-agent006"
+name = "openinference-instrumentation-litellm"
+version = "0.1.29"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-sdk" },
+    { name = "setuptools" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/36/ca32f80bdcd341af2cd037f175a1bd664dcd732b180137eaae576293f512/openinference_instrumentation_litellm-0.1.29.tar.gz", hash = "sha256:a8f0c0db05c60feca680f2417fede88479e1eb3d26b22693b53c851bf7bdef7d", size = 74146, upload-time = "2026-01-08T20:57:06.917Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/02/ac08e08d417e772f2b10cc1ff04dbb7f5bada2d5aa96034b2217bd633b51/openinference_instrumentation_litellm-0.1.29-py3-none-any.whl", hash = "sha256:4ad3b77fc5a44a2db26c16cdc45e9b2b5095a41339cd2fe53cc146dfb028622a", size = 16834, upload-time = "2026-01-08T20:57:05.299Z" },
+]
+
+[[package]]
+name = "openinference-instrumentation-nemo-oo-agents"
 version = "0.1.0"
-source = { editable = "packages/openinference-instrumentation-agent006" }
+source = { editable = "packages/openinference-instrumentation-nemo-oo-agents" }
 dependencies = [
     { name = "openinference-instrumentation" },
     { name = "openinference-instrumentation-litellm" },
@@ -3010,24 +3027,6 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["litellm", "otlp", "dev"]
-
-[[package]]
-name = "openinference-instrumentation-litellm"
-version = "0.1.29"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "opentelemetry-sdk" },
-    { name = "setuptools" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/36/ca32f80bdcd341af2cd037f175a1bd664dcd732b180137eaae576293f512/openinference_instrumentation_litellm-0.1.29.tar.gz", hash = "sha256:a8f0c0db05c60feca680f2417fede88479e1eb3d26b22693b53c851bf7bdef7d", size = 74146, upload-time = "2026-01-08T20:57:06.917Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/02/ac08e08d417e772f2b10cc1ff04dbb7f5bada2d5aa96034b2217bd633b51/openinference_instrumentation_litellm-0.1.29-py3-none-any.whl", hash = "sha256:4ad3b77fc5a44a2db26c16cdc45e9b2b5095a41339cd2fe53cc146dfb028622a", size = 16834, upload-time = "2026-01-08T20:57:05.299Z" },
-]
 
 [[package]]
 name = "openinference-semantic-conventions"
