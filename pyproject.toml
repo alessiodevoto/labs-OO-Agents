@@ -68,9 +68,9 @@ sandbox = [
 mcp = [
     "mcp-nemo-oo-agents",
 ]
-nexus = [
-    "nvidia-nat-nexus @ git+https://gitlab-master.nvidia.com/nemo-agent-toolkit/dev/Project-NAT-Nexus.git",
-]
+# nexus = [
+#     "nvidia-nat-nexus",  # TODO: update once published to PyPI
+# ]
 # BigCodeBench dependencies (libraries used across 1140 benchmark tasks)
 bigcodebench = [
     "llvmlite>=0.46.0",

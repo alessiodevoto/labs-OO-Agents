@@ -45,15 +45,11 @@ class BashResult:
 DEFAULT_SRT_SETTINGS = {
     "network": {
         "allowedDomains": [
-            "gitlab.com",
-            "*.gitlab.com",
-            "gitlab-master.nvidia.com",
             "github.com",
             "*.github.com",
             "api.openai.com",
-            "integrate.api.nvidia.com",
-            "inference-api.nvidia.com",
             "api.anthropic.com",
+            "generativelanguage.googleapis.com",
         ],
         "deniedDomains": [],
     },
