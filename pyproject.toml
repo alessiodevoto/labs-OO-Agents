@@ -34,9 +34,8 @@ trace_explorer = { workspace = true }
 
 [tool.uv]
 # Extra index URLs to search for packages (in addition to PyPI)
-# TODO gl-154: remove before OSS release
 # Ignore packages uploaded less than 7 days ago to mitigate supply-chain attacks
-exclude-newer = "7 days"
+exclude-newer = "2026-04-01T00:00:00Z"
 
 [tool.uv.workspace]
 members = [
