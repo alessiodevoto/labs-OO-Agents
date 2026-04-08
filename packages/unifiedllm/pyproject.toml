@@ -1,0 +1,46 @@
+[project]
+name = "unifiedllm"
+version = "0.1.0"
+description = "A minimalistic wrapper around LLM libraries (litellm, OpenAI) providing a unified interface"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "litellm>=1.79.1,<=1.80.11",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+openai = [
+    "openai>=1.0.0",
+]
+http-logging = [
+    "httpx>=0.24.0",
+]
+all = [
+    "openai>=1.0.0",
+    "httpx>=0.24.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "UP",
+    "B",
+    "SIM",
+    "I"
+]

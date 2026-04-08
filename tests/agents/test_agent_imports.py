@@ -1,0 +1,64 @@
+"""Smoke tests to ensure agents can import successfully.
+
+These tests verify that the agents and their dependencies are correctly installed
+and can be imported without errors. They don't test functionality, just basic
+import/initialization capability.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+
+def test_nemo_oo_agents_runtime_imports():
+    """Test that nemo_oo_agents runtime with agentdoc dependency works."""
+    from openinference_instrumentation_nemo_oo_agents import enable_tracing
+
+    from nemo_oo_agents.runtime.actor import ActorRuntime
+
+    assert enable_tracing is not None
+    assert ActorRuntime is not None
+
+
+def test_agentdoc_imports():
+    """Test that agentdoc package is installed and importable."""
+    from agentdoc import doc
+    from agentdoc.introspect import methods, variables
+
+    assert doc is not None
+    assert methods is not None
+    assert variables is not None
+
+
+@pytest.mark.skipif(
+    not os.getenv("SLACK_BOT_TOKEN"),
+    reason="SLACK_BOT_TOKEN not set - required for LibrarianAgent initialization",
+)
+def test_librarian_agent_imports():
+    """Test that LibrarianAgent can be imported."""
+    # Add agents directory to path
+    agents_path = Path(__file__).parent.parent.parent / "agents" / "librarian-agent"
+    sys.path.insert(0, str(agents_path))
+
+    from librarian_agent import LibrarianAgent, generate_trace_id, get_trace_link
+
+    assert LibrarianAgent is not None
+    assert generate_trace_id is not None
+    assert get_trace_link is not None
+
+
+@pytest.mark.skipif(
+    not os.getenv("SLACK_BOT_TOKEN"),
+    reason="SLACK_BOT_TOKEN not set - required for TPMAgent initialization",
+)
+def test_tpm_agent_imports():
+    """Test that TPM agent can be imported."""
+    # Add agents directory to path
+    agents_path = Path(__file__).parent.parent.parent / "agents" / "tpm-agent"
+    sys.path.insert(0, str(agents_path))
+
+    from runner import TPMAgentRunner
+
+    assert TPMAgentRunner is not None

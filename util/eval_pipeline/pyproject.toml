@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "eval_pipeline"
+version = "0.2.0"
+description = "Evaluation pipeline for agent testing"
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0",
+    "nemo-oo-agents-viewer",
+    "trace-explorer",
+    "uvicorn[standard]>=0.20.0",
+    "fastapi>=0.109.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+# Standard src layout
+[tool.hatch.build.targets.wheel]
+packages = ["src/eval_pipeline"]
+
+# Include yaml config files in package
+[tool.hatch.build.targets.wheel.force-include]
+"src/eval_pipeline/models.yaml" = "eval_pipeline/models.yaml"
+"src/eval_pipeline/config.yaml" = "eval_pipeline/config.yaml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,402 @@
+variables:
+  UV_VERSION: "0.7"
+  PYTHON_VERSION: "3.12"
+  BASE_LAYER: bookworm-slim
+  # Map CI API key to the env var name the unifiedllm registry expects
+  NVIDIA_INTERNAL_API_KEY: $NVIDIA_INFERENCE_API_KEY
+  # GitLab CI creates a separate mountpoint for the build directory,
+  # so we need to copy instead of using hard links.
+  UV_LINK_MODE: copy
+  # Cache directory for uv
+  UV_CACHE_DIR: .uv-cache
+  # Don't remove ignored files during git clean (preserves .uv-cache)
+  GIT_CLEAN_FLAGS: -ffd
+  # Use frozen lockfile — skip re-resolution (git deps fail without git in CI image)
+  UV_FROZEN: "1"
+  # Tier thresholds for capability tests
+  STABLE_THRESHOLD: 60  # Stable tier must pass at 60%+ to block merge
+  FRONTIER_THRESHOLD: 60  # Frontier tier is informational, no blocking
+  HORIZON_THRESHOLD: 0  # Horizon tier is aspirational, no blocking
+
+stages:
+  - lint
+  - test
+  - capability  # Optional LLM capability testing
+  - build
+  - publish
+  - deploy  # Docker image build and deployment
+
+lint:
+  stage: lint
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+  before_script:
+    # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
+    - uv sync --all-extras --no-extra sandbox
+  script:
+    - echo "Running ruff linting..."
+    - uv run ruff check .
+    - echo "Running ruff format check..."
+    - uv run ruff format --check .
+    - uv cache prune --ci
+  only:
+    - merge_requests
+    - main
+
+check-frontend-build:
+  stage: lint
+  image: node:22-slim
+  tags:
+    - os/linux
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+  script:
+    - cd packages/nemo-oo-agents-viewer/frontend-react
+    - npm ci --ignore-scripts
+    - npm run build
+    - |
+      if ! git diff --quiet dist/; then
+        echo "ERROR: frontend-react/dist/ is stale. Run 'npm run build' and commit dist/."
+        git diff --stat dist/
+        exit 1
+      fi
+  only:
+    - merge_requests
+    - main
+
+test:
+  stage: test
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  # Use cache for both uv deps AND to pass test results to upload job
+  cache:
+    - key:
+        files:
+          - uv.lock
+      paths:
+        - $UV_CACHE_DIR
+    - policy: push
+      key: test-results-$CI_PIPELINE_ID
+      paths:
+        - test-results.xml
+  before_script:
+    # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
+    - uv sync --all-extras --no-extra sandbox
+  script:
+    # Run all tests (root + packages) - testpaths configured in pyproject.toml
+    # Integration tests excluded by default via addopts
+    - uv run pytest --junitxml=test-results.xml
+    - uv cache prune --ci
+  only:
+    - merge_requests
+    - main
+
+# Upload junit report - separate job so artifact upload failures don't block MR
+# GitLab's artifact API can return 500 errors intermittently
+upload-test-report:
+  stage: test
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  needs:
+    - job: test
+      artifacts: false
+  cache:
+    policy: pull
+    key: test-results-$CI_PIPELINE_ID
+    paths:
+      - test-results.xml
+  script:
+    - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
+  artifacts:
+    reports:
+      junit: test-results.xml
+    expire_in: 7 days
+    when: always
+  allow_failure: true  # Don't block MR if artifact upload fails
+  only:
+    - merge_requests
+    - main
+
+# Capability testing - runs nemo_oo_agents against LLM test suite
+# Requires NVIDIA_INFERENCE_API_KEY environment variable to be set
+# Runs automatically on all MRs and main commits
+# Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
+capability-test:
+  stage: capability
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+  before_script:
+    # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
+    - uv sync --all-extras --no-extra sandbox
+  script:
+    - rm -rf results/ci/ capability-results.zip
+    # Uses unified config.yaml with single model for CI
+    - echo "Running capability tests with NVIDIA models..."
+    - |
+      uv run python -m eval_pipeline \
+        --config tests/capability/config.yaml \
+        --models aws/anthropic/claude-haiku-4-5-v1 \
+        --output-dir results/ci \
+        --default_strategy codeact \
+        --runs 3 \
+        --parallel 40 \
+        --timeout 300
+    # Parse results and generate metrics report
+    - uv run python util/ci/parse_capability_results.py results/ci/ --output metrics.txt
+    # Post formatted comment to MR (updates existing comment if present)
+    # Uses GITLAB_TOKEN for API access - set this as a CI/CD variable with api scope
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ]; then
+        echo "Posting capability results to MR #$CI_MERGE_REQUEST_IID..."
+        uv run python util/ci/post_mr_comment.py \
+          results/ci/ \
+          --compare-branch "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      else
+        echo "Not an MR pipeline, skipping comment"
+      fi
+    - uv run python -c "import shutil; shutil.make_archive('capability-results', 'zip', 'results', 'ci')"
+    # Check for tier promotions - TEMPORARILY DISABLED
+    # - |
+    #   BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}}"
+    #   echo "Detected branch: $BRANCH"
+    #   if [ "$BRANCH" = "main" ]; then
+    #     echo "Checking for tier promotion candidates..."
+    #     uv run python util/ci/tier_promotions.py results/ci/ --create-mr || echo "No promotions or MR creation failed"
+    #   else
+    #     echo "Running tier promotion dry-run..."
+    #     uv run python util/ci/tier_promotions.py results/ci/ --create-mr --dry-run || echo "Dry-run complete"
+    #   fi
+    - uv cache prune --ci
+    # Check tier thresholds and block merge if stable tier fails
+    - |
+      if [ -z "$CI_MERGE_REQUEST_IID" ]; then
+        echo "Skipping threshold check (not a merge request)"
+        exit 0
+      fi
+
+      # Extract tier success rates (as floats)
+      STABLE_RATE=$(grep 'capability_success_rate_percent{tier="stable"}' metrics.txt | awk '{print $2}')
+      FRONTIER_RATE=$(grep 'capability_success_rate_percent{tier="frontier"}' metrics.txt | awk '{print $2}')
+      HORIZON_RATE=$(grep 'capability_success_rate_percent{tier="horizon"}' metrics.txt | awk '{print $2}')
+
+      echo "Tier Results:"
+      echo "  Stable: ${STABLE_RATE}% (threshold: ${STABLE_THRESHOLD}%, blocks merge)"
+      echo "  Frontier: ${FRONTIER_RATE}% (threshold: ${FRONTIER_THRESHOLD}%, non-blocking)"
+
+      if [ -n "$HORIZON_RATE" ]; then
+        HORIZON_PASS=$(awk -v rate="$HORIZON_RATE" -v thresh="$HORIZON_THRESHOLD" 'BEGIN {print (rate > thresh) ? "1" : "0"}')
+        if [ "$HORIZON_PASS" = "0" ]; then
+          echo "HORIZON TIER FAILED: ${HORIZON_RATE}% < ${HORIZON_THRESHOLD}% - non-blocking"
+        else
+          echo "Horizon tier passed: ${HORIZON_RATE}% >= ${HORIZON_THRESHOLD}%"
+        fi
+      fi
+
+      # Only stable tier blocks merge (use awk for float comparison)
+      if [ -n "$STABLE_RATE" ]; then
+        STABLE_PASS=$(awk -v rate="$STABLE_RATE" -v thresh="$STABLE_THRESHOLD" 'BEGIN {print (rate >= thresh) ? "1" : "0"}')
+        if [ "$STABLE_PASS" = "0" ]; then
+          echo "STABLE TIER FAILED: ${STABLE_RATE}% < ${STABLE_THRESHOLD}% - blocking merge"
+          exit 1
+        else
+          echo "Stable tier passed: ${STABLE_RATE}% >= ${STABLE_THRESHOLD}%"
+        fi
+      else
+        echo "No stable tier tests found"
+      fi
+  artifacts:
+    reports:
+      metrics: metrics.txt  # GitLab metrics (kept for historical tracking)
+    paths:
+      - capability-results.zip
+      - metrics.txt
+    expire_in: 7 days
+    when: always
+  allow_failure: false  # Block merge if stable tier fails
+  only:
+    - merge_requests
+    - main
+
+# Build package on tags
+build-package:
+  stage: build
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+  before_script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        VERSION="${CI_COMMIT_TAG#v}"
+        # Validate version format (semver)
+        if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9]+)*$'; then
+          # Backup and modify pyproject.toml
+          cp pyproject.toml pyproject.toml.bak
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          # Verify the modification was successful
+          if ! grep -q "^version = \"$VERSION\"" pyproject.toml; then
+            echo "Error: Failed to update version in pyproject.toml"
+            cp pyproject.toml.bak pyproject.toml
+            exit 1
+          fi
+        else
+          echo "Error: Invalid version format: $VERSION (expected semver format: X.Y.Z)"
+          exit 1
+        fi
+      fi
+  script:
+    - uv build
+    - uv cache prune --ci
+  artifacts:
+    paths:
+      - dist/*.whl
+      - dist/*.tar.gz
+    expire_in: 1 hour
+  only:
+    - tags
+
+# Publish to GitLab package registry on tags
+publish-package:
+  stage: publish
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  variables:
+    UV_PUBLISH_USERNAME: gitlab-ci-token
+    UV_PUBLISH_PASSWORD: $CI_JOB_TOKEN
+  script:
+    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+  dependencies:
+    - build-package
+  only:
+    - tags
+
+# =============================================================================
+# Docker Image Build and Deploy (main branch and MRs)
+# Uses Docker-in-Docker - requires runner with privileged = true
+# See: https://docs.gitlab.com/ci/docker/using_docker_build/
+# =============================================================================
+
+build-docker-images:
+  stage: deploy
+  image:
+    name: docker:24.0.5
+    pull_policy: if-not-present
+  services:
+    - name: docker:24.0.5-dind
+      pull_policy: if-not-present
+  tags:
+    - os/linux
+    - docker-build
+    - interactive-agents
+  variables:
+    # TLS certificates directory for secure Docker daemon communication
+    DOCKER_TLS_CERTDIR: "/certs"
+    # Use overlay2 for better performance
+    DOCKER_DRIVER: overlay2
+  before_script:
+    - docker info
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Create Docker context for current TLS environment (required for buildx with dind)
+    # See: https://github.com/docker/buildx/issues/413
+    - docker context create tls-environment
+    # Create buildx builder using the TLS context
+    - docker buildx create tls-environment --name ci-builder --driver docker-container --use
+    - docker buildx inspect ci-builder --bootstrap
+  script:
+    # Build TPM Agent image with registry cache
+    - echo "Building TPM Agent image..."
+    - |
+      docker buildx build \
+          --file agents/tpm-agent/Dockerfile \
+          --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/tpm-agent:cache \
+          --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/tpm-agent:cache,mode=max \
+          --tag $CI_REGISTRY_IMAGE/tpm-agent:$CI_COMMIT_SHORT_SHA \
+          --tag $CI_REGISTRY_IMAGE/tpm-agent:latest \
+          --push \
+          .
+
+  after_script:
+    # Cleanup builder
+    - docker buildx rm ci-builder || true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always  # Auto-deploy on every push to main
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual  # Allow manual trigger on MRs for testing
+  allow_failure: true  # Don't block pipeline/auto-merge when not triggered
+
+# Deploy to staging server via SSH
+deploy-staging:
+  stage: deploy
+  needs: [build-docker-images]  # Wait for images to be built
+  image:
+    name: debian:latest
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+    - docker-build
+    - interactive-agents
+  before_script:
+    - command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+    - chmod 700 ~/.ssh
+  script:
+    # Copy docker-compose.yml to server
+    - scp deploy/docker-compose.yml ${DEPLOY_USER}@${DEPLOY_SERVER}:~/tpm-agent/docker-compose.yml
+    # Pull new images and restart containers
+    - ssh ${DEPLOY_USER}@${DEPLOY_SERVER} "
+        cd ~/tpm-agent &&
+        export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE &&
+        export TAG=latest &&
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker compose pull &&
+        docker compose up -d &&
+        docker compose ps
+      "
+  environment:
+    name: staging
+    url: http://$DEPLOY_SERVER:8001
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always  # Auto-deploy on every push to main
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual  # Allow manual trigger on MRs for testing
+  allow_failure: true  # Don't block pipeline if deploy fails

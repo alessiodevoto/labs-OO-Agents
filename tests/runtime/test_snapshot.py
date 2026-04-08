@@ -1,0 +1,254 @@
+"""Tests for agent snapshot serialization."""
+
+from typing import Annotated
+
+import pytest
+
+from nemo_oo_agents import Agent
+from nemo_oo_agents.errors.storage import SerializationError
+from nemo_oo_agents.storage.json_snapshot import (
+    snapshot_from_dict,
+    snapshot_from_json,
+    snapshot_to_dict,
+    snapshot_to_json,
+)
+from nemo_oo_agents.storage.markers import nosnapshot
+from nemo_oo_agents.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
+from unifiedllm import FakeLLMClient
+
+fake_llm = FakeLLMClient()
+
+
+class SimpleAgent(Agent, llm=fake_llm):
+    pass
+
+
+@pytest.fixture
+def agent():
+    """Create a fresh SimpleAgent for each test."""
+    return SimpleAgent()
+
+
+class TestSnapshotRoundtrip:
+    """Tests for snapshot_to_json and snapshot_from_json roundtripping."""
+
+    def test_static_context_roundtrip(self, agent):
+        """Static context blocks survive a snapshot roundtrip."""
+        agent.context_manager["notes"] = "some notes"
+        agent.context_manager["count"] = 42
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert agent2.context_manager["notes"] == "some notes"
+        assert agent2.context_manager["count"] == 42
+
+    def test_dynamic_context_roundtrip(self, agent):
+        """Dynamic context blocks are stored as DynamicContext markers, not resolved values."""
+        agent.context_manager.set_dynamic("status", "self.__class__.__name__")
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        from context_blocks import DynamicContext
+
+        raw = dict(agent2.context_manager._raw_items())
+        assert isinstance(raw["status"], DynamicContext)
+        assert raw["status"].expr == "self.__class__.__name__"
+
+    def test_event_manager_tag_num_preserved(self, agent):
+        """Event manager's _next_tag_num counter survives a snapshot roundtrip."""
+        agent.event_manager._next_tag_num = 42
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert agent2.event_manager._next_tag_num == 42
+
+    def test_user_attributes_roundtrip(self, agent):
+        """Public, JSON-serializable user attributes survive a snapshot roundtrip."""
+        agent.score = 99
+        agent.name = "test"
+        agent.data = [1, 2, 3]
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert agent2.score == 99
+        assert agent2.name == "test"
+        assert agent2.data == [1, 2, 3]
+
+    def test_nosnapshot_attrs_skipped(self):
+        """Fields annotated with nosnapshot are excluded from the snapshot."""
+
+        class AgentWithTransient(Agent, llm=fake_llm):
+            cache: Annotated[dict, nosnapshot]
+
+        agent = AgentWithTransient()
+        agent.cache = {"big": "data"}
+        agent.score = 42
+
+        snap = snapshot_to_json(agent)
+        assert "score" in snap["attributes"]
+        assert "cache" not in snap["attributes"]
+
+    def test_non_serializable_attr_raises(self, agent):
+        """Non-JSON-serializable user attributes raise SerializationError."""
+        agent.bad = object()
+
+        with pytest.raises(SerializationError, match="not JSON-serializable"):
+            snapshot_to_json(agent)
+
+    def test_non_serializable_context_raises(self, agent):
+        """Non-JSON-serializable static context values raise SerializationError."""
+        agent.context_manager["bad"] = object()
+
+        with pytest.raises(SerializationError, match="not JSON-serializable"):
+            snapshot_to_json(agent)
+
+    def test_methods_roundtrip(self, agent):
+        """LLM-defined methods are recompiled and callable after restore."""
+        method_code = "def greet(self, name):\n    return f'hello {name}'"
+        agent._defined_methods_registry["greet"] = method_code
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert hasattr(agent2, "greet")
+        assert agent2.greet("world") == "hello world"
+        assert agent2._defined_methods_registry["greet"] == method_code
+
+    def test_version_mismatch_raises(self, agent):
+        """Restoring a snapshot with a mismatched version raises SerializationError."""
+        snap = snapshot_to_json(agent)
+        snap["version"] = 999
+
+        agent2 = SimpleAgent()
+        with pytest.raises(SerializationError, match="version mismatch"):
+            snapshot_from_json(snap, agent2)
+
+    def test_snapshot_has_version(self, agent):
+        """Snapshot dict includes the current SNAPSHOT_VERSION."""
+        snap = snapshot_to_json(agent)
+        assert snap["version"] == SNAPSHOT_VERSION
+
+    def test_empty_agent_roundtrip(self, agent):
+        """An agent with no user state should roundtrip cleanly."""
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert snap["version"] == SNAPSHOT_VERSION
+        assert snap["attributes"] == {}
+        assert snap["methods"] == {}
+
+
+class TestAgentSnapshot:
+    """Tests for the AgentSnapshot intermediate representation."""
+
+    def test_from_agent_produces_model(self, agent):
+        """from_agent returns an AgentSnapshot with correct version and typed context."""
+        agent.context_manager["key"] = "value"
+        snap = AgentSnapshot.from_agent(agent)
+
+        assert isinstance(snap, AgentSnapshot)
+        assert snap.version == SNAPSHOT_VERSION
+        assert len(snap.context) == 1
+        assert isinstance(snap.context[0], StaticContextBlock)
+        assert snap.context[0].key == "key"
+        assert snap.context[0].value == "value"
+
+    def test_model_dump_roundtrip(self, agent):
+        """AgentSnapshot survives a model_dump/model_validate roundtrip."""
+        agent.context_manager["notes"] = "hello"
+        agent.context_manager.set_dynamic("status", "self.__class__.__name__")
+        agent.score = 42
+        agent.event_manager._next_tag_num = 10
+
+        original = AgentSnapshot.from_agent(agent)
+        data = snapshot_to_dict(original)
+        restored = snapshot_from_dict(data)
+
+        assert restored.version == original.version
+        assert len(restored.context) == len(original.context)
+        assert restored.event_manager.next_tag_num == 10
+        assert restored.attributes == {"score": 42}
+
+    def test_restore_via_model(self, agent):
+        """AgentSnapshot.restore mutates agent correctly."""
+        agent.context_manager["key"] = "value"
+        agent.event_manager._next_tag_num = 7
+
+        snap = AgentSnapshot.from_agent(agent)
+        agent2 = SimpleAgent()
+        snap.restore(agent2)
+
+        assert agent2.context_manager["key"] == "value"
+        assert agent2.event_manager._next_tag_num == 7
+
+    def test_restore_version_mismatch(self):
+        """restore raises if snapshot version was tampered with."""
+        snap = AgentSnapshot(version=999)
+        agent = SimpleAgent()
+        with pytest.raises(SerializationError, match="version mismatch"):
+            snap.restore(agent)
+
+    def test_restore_is_additive(self, agent):
+        """Restoring onto an agent with existing state doesn't clear pre-existing entries."""
+        agent.context_manager["existing"] = "stays"
+        agent.existing_attr = "also stays"
+
+        # Snapshot a different agent with different state
+        other = SimpleAgent()
+        other.context_manager["new"] = "added"
+        other.new_attr = "also added"
+        snap = AgentSnapshot.from_agent(other)
+
+        snap.restore(agent)
+
+        # Snapshot state was applied
+        assert agent.context_manager["new"] == "added"
+        assert agent.new_attr == "also added"
+        # Pre-existing state survives (additive, not replacement)
+        assert agent.context_manager["existing"] == "stays"
+        assert agent.existing_attr == "also stays"
+
+    def test_restored_method_accesses_self(self, agent):
+        """A restored method can access attributes set during the same restore."""
+        agent.greeting = "hello"
+        method_code = "def greet(self):\n    return self.greeting"
+        agent._defined_methods_registry["greet"] = method_code
+
+        snap = snapshot_to_json(agent)
+        agent2 = SimpleAgent()
+        snapshot_from_json(snap, agent2)
+
+        assert agent2.greet() == "hello"
+
+    def test_sequential_snapshots_are_independent(self, agent):
+        """Multiple snapshots capture state at their point in time, independently."""
+        agent.score = 1
+        snap1 = snapshot_to_json(agent)
+
+        agent.score = 2
+        agent.context_manager["added_later"] = "yes"
+        snap2 = snapshot_to_json(agent)
+
+        # snap1 should reflect original state
+        assert snap1["attributes"] == {"score": 1}
+        assert len(snap1["context"]) == 0
+
+        # snap2 should reflect modified state
+        assert snap2["attributes"] == {"score": 2}
+        assert len(snap2["context"]) == 1
+
+        # Restoring snap1 gives original state
+        agent3 = SimpleAgent()
+        snapshot_from_json(snap1, agent3)
+        assert agent3.score == 1
+        assert "added_later" not in agent3.context_manager

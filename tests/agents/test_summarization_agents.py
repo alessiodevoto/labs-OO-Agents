@@ -1,0 +1,713 @@
+"""Tests for summarization agents.
+
+Tests the SummarizationAgent base class and its implementations:
+- TokenBudgetSummarizer
+- MethodSummarizer
+"""
+
+import asyncio
+from unittest.mock import AsyncMock
+
+import pytest
+
+from nemo_oo_agents import Agent
+from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
+from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nemo_oo_agents.events import AfterTurn, Message
+from unifiedllm import FakeLLMClient, LLMResponse
+
+
+def _resp(content: str) -> LLMResponse:
+    """Create a test LLM response with the given content."""
+    return LLMResponse(
+        raw_response=None,
+        content=content,
+        tool_calls=[],
+        finish_reason="stop",
+        assistant_message={"role": "assistant", "content": content},
+    )
+
+
+# =============================================================================
+# Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def fake_llm():
+    """Create a fake LLM for testing."""
+    return FakeLLMClient()
+
+
+@pytest.fixture
+def test_agent(fake_llm):
+    """Create a simple test agent for summarizer attachment."""
+
+    class SimpleAgent(Agent, llm=fake_llm):
+        pass
+
+    return SimpleAgent()
+
+
+# =============================================================================
+# SummarizationAgent Base Class Tests
+# =============================================================================
+
+
+class TestSummarizationAgentBase:
+    """Tests for SummarizationAgent base class."""
+
+    def test_init_attaches_to_agent(self, test_agent):
+        """Summarizer attaches to agent's history and inherits LLM."""
+        summarizer = SummarizationAgent(test_agent)
+
+        assert summarizer.target_event_manager is test_agent.event_manager
+        assert summarizer._llm is test_agent._llm
+        assert summarizer._pending_task is None
+        assert summarizer._pending_summary is None
+
+    def test_init_subscribes_to_events(self, test_agent):
+        """Summarizer subscribes to before_turn and after_turn on init."""
+        summarizer = SummarizationAgent(test_agent)
+
+        # Verify subscriptions exist
+        assert summarizer._unsub_before is not None
+        assert summarizer._unsub_after is not None
+
+    def test_uninstall_clears_subscriptions(self, test_agent):
+        """_uninstall() clears subscriptions and cancels pending tasks."""
+        summarizer = SummarizationAgent(test_agent)
+        summarizer._uninstall()
+
+        assert summarizer._unsub_before is None
+        assert summarizer._unsub_after is None
+
+    def test_default_should_summarize_returns_false(self, test_agent):
+        """Base class _should_summarize returns False."""
+        summarizer = SummarizationAgent(test_agent)
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
+
+    def test_default_compute_range_returns_none(self, test_agent):
+        """Base class _compute_range returns None."""
+        summarizer = SummarizationAgent(test_agent)
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._compute_range(event) is None
+
+    def test_get_events_in_range(self, test_agent):
+        """_get_events_in_range returns events within range."""
+        # Add some events to agent's history
+        test_agent.event_manager.add(Message(content="Message 1"))
+        test_agent.event_manager.add(Message(content="Message 2"))
+        test_agent.event_manager.add(Message(content="Message 3"))
+
+        summarizer = SummarizationAgent(test_agent)
+        events = summarizer._get_events_in_range("1", "3")
+
+        # Should return 3 events
+        assert len(events) == 3
+        assert events[0][0] == "1"
+        assert events[-1][0] == "3"
+
+    def test_estimate_tokens_with_real_history(self, test_agent):
+        """_estimate_tokens calculates based on rendered history."""
+        # Add events with known content
+        for _ in range(5):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        summarizer = SummarizationAgent(test_agent)
+        tokens = summarizer._estimate_tokens()
+
+        # 5 events * ~100 chars each, plus markdown overhead
+        # chars/4 heuristic should give roughly 125-200 tokens
+        assert tokens > 0
+
+
+# =============================================================================
+# TokenBudgetSummarizer Tests
+# =============================================================================
+
+
+class TestTokenBudgetSummarizer:
+    """Tests for TokenBudgetSummarizer."""
+
+    def test_default_config(self, test_agent):
+        """Default configuration values."""
+        summarizer = TokenBudgetSummarizer(test_agent)
+        assert summarizer.config.max_tokens == 100_000
+        assert summarizer.config.preserve_recent == 10
+
+    def test_custom_config(self, test_agent):
+        """Custom configuration via config object."""
+        summarizer = TokenBudgetSummarizer(
+            test_agent, config=TokenBudgetConfig(max_tokens=50_000, preserve_recent=5)
+        )
+        assert summarizer.config.max_tokens == 50_000
+        assert summarizer.config.preserve_recent == 5
+
+    def test_should_summarize_under_budget(self, test_agent):
+        """Should not summarize when under budget."""
+        # Add a few small events (well under 100k tokens)
+        for i in range(5):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent)  # Default 100k budget
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
+
+    def test_should_summarize_over_budget(self, test_agent):
+        """Should summarize when over budget."""
+        # Add events with enough content to exceed a low budget
+        for _ in range(10):
+            test_agent.event_manager.add(Message(content="x" * 200))
+
+        # Set very low budget to trigger summarization
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=100))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is True
+
+    def test_compute_range_preserves_recent(self, test_agent):
+        """Compute range preserves recent events."""
+        # Add 5 events: tags will be "1", "2", "3", "4", "5"
+        for i in range(5):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(preserve_recent=2))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        result = summarizer._compute_range(event)
+
+        # With 5 tags and preserve_recent=2, should summarize "1" to "3"
+        # (preserve "4" and "5")
+        assert result == ("1", "3")
+
+    def test_compute_range_returns_none_when_too_few_events(self, test_agent):
+        """Returns None when not enough events to summarize."""
+        # Add only 2 events
+        test_agent.event_manager.add(Message(content="Message 1"))
+        test_agent.event_manager.add(Message(content="Message 2"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(preserve_recent=5))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        result = summarizer._compute_range(event)
+        assert result is None
+
+
+# =============================================================================
+# MethodSummarizer Tests
+# =============================================================================
+
+
+class TestMethodSummarizer:
+    """Tests for MethodSummarizer."""
+
+    def test_default_config(self, test_agent):
+        """Default configuration values."""
+        summarizer = MethodSummarizer(test_agent)
+        assert summarizer.config.min_events == 3
+        assert summarizer.config.exclude_root is True
+
+    def test_custom_config(self, test_agent):
+        """Custom configuration via config object."""
+        summarizer = MethodSummarizer(
+            test_agent, config=MethodSummarizerConfig(min_events=5, exclude_root=False)
+        )
+        assert summarizer.config.min_events == 5
+        assert summarizer.config.exclude_root is False
+
+    def test_should_summarize_on_final(self, test_agent):
+        """Should summarize when is_final=True (non-root)."""
+        summarizer = MethodSummarizer(test_agent)
+
+        # Non-root call (turn_number > 1 or not final earlier)
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id="parent-gen",
+            turn_number=2,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is True
+
+    def test_should_not_summarize_non_final(self, test_agent):
+        """Should not summarize when is_final=False."""
+        summarizer = MethodSummarizer(test_agent)
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=False,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
+
+    def test_should_not_summarize_root_by_default(self, test_agent):
+        """Should not summarize root calls by default (exclude_root=True)."""
+        summarizer = MethodSummarizer(test_agent)
+
+        # Root call: turn_number=1 and is_final=True
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
+
+    def test_should_summarize_root_when_allowed(self, test_agent):
+        """Should summarize root calls when exclude_root=False."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(exclude_root=False))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is True
+
+    def test_compute_range_returns_none_when_too_few_events(self, test_agent):
+        """Returns None when fewer events than min_events."""
+        # Add only 2 events (less than default min_events=3)
+        test_agent.event_manager.add(Message(content="Message 1"))
+        test_agent.event_manager.add(Message(content="Message 2"))
+
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=10))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        result = summarizer._compute_range(event)
+        assert result is None
+
+
+# =============================================================================
+# Agent Integration Tests
+# =============================================================================
+
+
+class TestAgentSummarizerIntegration:
+    """Tests for Agent + Summarizer integration."""
+
+    def test_summarizer_attaches_to_agent(self, test_agent):
+        """Summarizer attaches to agent via constructor."""
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Summarizer should be wired up
+        assert summarizer.target_event_manager is test_agent.event_manager
+        assert summarizer._llm is test_agent._llm
+
+    def test_summarizer_inherits_llm_from_agent(self, test_agent, fake_llm):
+        """Summarizer inherits LLM from agent if not explicitly set."""
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Summarizer should inherit agent's LLM
+        assert summarizer._llm is fake_llm
+
+    def test_summarizer_uses_own_llm(self, test_agent, fake_llm):
+        """Summarizer uses its own LLM if explicitly set."""
+        summarizer_llm = FakeLLMClient()
+
+        summarizer = TokenBudgetSummarizer(
+            test_agent, llm=summarizer_llm, config=TokenBudgetConfig(max_tokens=50_000)
+        )
+
+        # Summarizer should keep its own LLM
+        assert summarizer._llm is summarizer_llm
+        assert summarizer._llm is not fake_llm
+
+    def test_agent_standalone_without_summarizer(self, fake_llm):
+        """Agent works fine without summarizer - they're decoupled."""
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        # No _summarizers attribute on agent - they're decoupled
+        assert not hasattr(agent, "_summarizers")
+
+    def test_install_class_method_stores_on_agent(self, test_agent):
+        """install() class method stores summarizer on agent for lifetime management."""
+        # Use install() instead of constructor
+        summarizer = TokenBudgetSummarizer.install(
+            test_agent, config=TokenBudgetConfig(max_tokens=50_000)
+        )
+
+        # Summarizer should be wired up
+        assert summarizer.target_event_manager is test_agent.event_manager
+        assert summarizer._llm is test_agent._llm
+
+        # Summarizer should be stored on agent (no need to keep reference)
+        assert hasattr(test_agent, "_summarizers")
+        assert summarizer in test_agent._summarizers
+
+    def test_install_can_be_fire_and_forget(self, test_agent):
+        """install() doesn't require keeping a reference - stored on agent."""
+        # Fire and forget - don't capture return value
+        TokenBudgetSummarizer.install(test_agent, config=TokenBudgetConfig(max_tokens=80_000))
+
+        # Agent should have the summarizer attached
+        assert hasattr(test_agent, "_summarizers")
+        assert len(test_agent._summarizers) == 1
+        assert isinstance(test_agent._summarizers[0], TokenBudgetSummarizer)
+        assert test_agent._summarizers[0].config.max_tokens == 80_000
+
+    def test_token_budget_install_with_config(self, test_agent):
+        """install() accepts config= keyword argument."""
+        s = TokenBudgetSummarizer.install(test_agent, config=TokenBudgetConfig(max_tokens=80_000))
+        assert s.config.max_tokens == 80_000
+
+    def test_token_budget_install_rejects_flat_kwargs(self, test_agent):
+        """install() raises TypeError on flat config kwargs."""
+        with pytest.raises(TypeError):
+            TokenBudgetSummarizer.install(test_agent, max_tokens=80_000)
+
+    def test_method_summarizer_install_with_config(self, test_agent):
+        """MethodSummarizer.install() accepts config= keyword argument."""
+        s = MethodSummarizer.install(test_agent, config=MethodSummarizerConfig(min_events=5))
+        assert s.config.min_events == 5
+
+    def test_method_summarizer_install_rejects_flat_kwargs(self, test_agent):
+        """MethodSummarizer.install() raises TypeError on flat config kwargs."""
+        with pytest.raises(TypeError):
+            MethodSummarizer.install(test_agent, min_events=5)
+
+
+# =============================================================================
+# Async Integration Tests
+# =============================================================================
+
+
+class TestSummarizationAsyncIntegration:
+    """Async integration tests for the full summarization flow."""
+
+    @pytest.mark.asyncio
+    async def test_schedule_summarization_creates_background_task(self, test_agent):
+        """_schedule_summarization creates a background task."""
+        # Add events to summarize
+        for i in range(5):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Mock the summarize method to return a fixed summary
+        summarizer.summarize = AsyncMock(return_value="Mocked summary of messages 1-3")
+
+        # Manually trigger scheduling
+        summarizer._schedule_summarization("1", "3")
+
+        # Task should be created
+        assert summarizer._pending_task is not None
+        assert summarizer._pending_range == ("1", "3")
+
+        # Wait for task to complete
+        await summarizer._pending_task
+
+        # Summary should be pending application
+        assert summarizer._pending_summary is not None
+        assert summarizer._pending_summary == "Mocked summary of messages 1-3"
+
+    @pytest.mark.asyncio
+    async def test_apply_pending_summary_collapses_history(self, test_agent):
+        """_apply_pending_summary collapses events in target history."""
+        # Add events to summarize
+        for i in range(10):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        # Create summarizer that will produce a mock summary
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Manually set pending state (simulating completed background task)
+        summarizer._pending_range = ("1", "5")
+        summarizer._pending_summary = "Summary of messages 1-5"
+        summarizer._pending_task = asyncio.create_task(asyncio.sleep(0))  # Completed task
+        await summarizer._pending_task
+
+        # Apply the summary
+        summarizer._apply_pending_summary()
+
+        # History should have a collapsed range
+        active_tags = test_agent.event_manager.keys()
+        assert "1..5" in active_tags
+        # Original individual tags should be gone from active list
+        assert "1" not in active_tags
+        assert "2" not in active_tags
+        assert "5" not in active_tags
+        # But later events should remain
+        assert "6" in active_tags
+
+    @pytest.mark.asyncio
+    async def test_after_turn_triggers_summarization_when_over_budget(self, test_agent):
+        """_handle_after_turn schedules summarization when over token budget."""
+        # Add enough events to exceed a low budget
+        for _ in range(20):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        # Very low budget to trigger summarization
+        summarizer = TokenBudgetSummarizer(
+            test_agent, config=TokenBudgetConfig(max_tokens=50, preserve_recent=5)
+        )
+
+        # Mock the summarize method
+        summarizer.summarize = AsyncMock(return_value="Summary")
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+
+        # Trigger after_turn handler
+        summarizer._handle_after_turn(event)
+
+        # Should have scheduled summarization
+        assert summarizer._pending_task is not None
+        assert summarizer._pending_range is not None
+
+        # Wait for task
+        await summarizer._pending_task
+
+    @pytest.mark.asyncio
+    async def test_before_turn_applies_pending_summary(self, test_agent):
+        """_handle_before_turn applies any pending summary."""
+        # Add events
+        for i in range(10):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Set up pending state
+        summarizer._pending_range = ("1", "5")
+        summarizer._pending_summary = "Summary text"
+        summarizer._pending_task = asyncio.create_task(asyncio.sleep(0))
+        await summarizer._pending_task
+
+        # Create before_turn event
+        from nemo_oo_agents.events import BeforeTurn
+
+        event = BeforeTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=2,
+        )
+
+        # Trigger before_turn handler
+        summarizer._handle_before_turn(event)
+
+        # Summary should have been applied
+        assert summarizer._pending_task is None
+        assert summarizer._pending_summary is None
+        assert "1..5" in test_agent.event_manager.keys()
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_summarization_flow(self, fake_llm):
+        """Full flow: add events → trigger summarization → verify collapse."""
+
+        # Create agent with events
+        class SimpleAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = SimpleAgent()
+
+        # Add 20 events with substantial content
+        for i in range(20):
+            agent.event_manager.add(Message(content=f"Message {i}: " + "x" * 50))
+
+        initial_tag_count = len(agent.event_manager.keys())
+        assert initial_tag_count == 20
+
+        # Create summarizer with low threshold to trigger
+        summarizer = TokenBudgetSummarizer(
+            agent, config=TokenBudgetConfig(max_tokens=100, preserve_recent=5)
+        )
+
+        # Mock the summarize method to return a fixed summary
+        summarizer.summarize = AsyncMock(return_value="Summary of old messages")
+
+        # Simulate after_turn event
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+
+        # This should trigger background summarization
+        summarizer._handle_after_turn(event)
+
+        # Wait for background task
+        if summarizer._pending_task:
+            await summarizer._pending_task
+
+        # Apply pending summary (normally happens on next before_turn)
+        summarizer._apply_pending_summary()
+
+        # Verify history was collapsed
+        final_tags = agent.event_manager.keys()
+        assert len(final_tags) < initial_tag_count
+
+        # Should have a summary tag
+        summary_tags = [t for t in final_tags if ".." in t]
+        assert len(summary_tags) >= 1
+
+        # Recent events should be preserved
+        assert str(initial_tag_count) in final_tags  # Last event "20"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_summarization_requests_are_deduplicated(self, test_agent):
+        """Multiple after_turn events don't create multiple tasks."""
+        # Add events
+        for _ in range(20):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        summarizer = TokenBudgetSummarizer(
+            test_agent, config=TokenBudgetConfig(max_tokens=50, preserve_recent=5)
+        )
+
+        # Mock the summarize method
+        summarizer.summarize = AsyncMock(return_value="Summary")
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+
+        # Trigger multiple times
+        summarizer._handle_after_turn(event)
+        first_task = summarizer._pending_task
+
+        summarizer._handle_after_turn(event)
+        second_task = summarizer._pending_task
+
+        # Should be the same task (not a new one)
+        assert first_task is second_task
+
+        # Clean up
+        if first_task:
+            await first_task
+
+    @pytest.mark.asyncio
+    async def test_summarizer_clears_own_history_after_summarization(self, test_agent):
+        """Summarizer's own history is cleared after each summarize() call."""
+        for i in range(10):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Mock the summarize method
+        summarizer.summarize = AsyncMock(return_value="Summary")
+
+        # Add something to summarizer's history
+        summarizer.event_manager.add(Message(content="Internal"))
+        assert len(summarizer.event_manager.values()) == 1
+
+        # Run summarization
+        summarizer._schedule_summarization("1", "5")
+        await summarizer._pending_task
+
+        # Summarizer's history should be cleared
+        assert len(summarizer.event_manager.values()) == 0
+
+    @pytest.mark.asyncio
+    async def test_uninstall_cancels_pending_task(self, test_agent):
+        """_uninstall() cancels any pending summarization task."""
+        for i in range(10):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=50_000))
+
+        # Start a summarization
+        summarizer._schedule_summarization("1", "5")
+        task = summarizer._pending_task
+        assert task is not None
+
+        # Uninstall should cancel
+        summarizer._uninstall()
+
+        # Task should be cancelled
+        assert summarizer._pending_task is None
+        # Give a moment for cancellation to propagate
+        await asyncio.sleep(0.01)
+        assert task.cancelled() or task.done()

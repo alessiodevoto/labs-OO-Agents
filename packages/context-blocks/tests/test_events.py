@@ -1,0 +1,324 @@
+"""Tests for context_blocks event types.
+
+Tests the new simplified event model where:
+- Private fields (_field) are excluded from repr/pformat
+- event_type and _role are class-level attributes for rendering
+- tag property returns event position (set by EventManager)
+- No render_spec() method
+"""
+
+from datetime import datetime
+
+
+class TestEventBase:
+    """Tests for EventBase model."""
+
+    def test_timestamp_has_default(self):
+        """EventBase should auto-generate timestamp."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="test")
+        assert event.timestamp is not None
+        assert isinstance(event.timestamp, datetime)
+
+    def test_metadata_defaults_to_empty_dict(self):
+        """EventBase.metadata should default to empty dict."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="test")
+        assert event.metadata == {}
+
+    def test_metadata_can_be_updated(self):
+        """EventBase.metadata should be mutable after construction."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="test")
+        event.metadata["custom_key"] = "value"
+        event.metadata["number"] = 42
+        assert event.metadata["custom_key"] == "value"
+        assert event.metadata["number"] == 42
+
+    def test_tag_defaults_to_none(self):
+        """EventBase tag should default to None (unassigned).
+
+        tag is set by EventManager.add() when the event is
+        added to the event manager, not at creation time.
+        """
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="test")
+        assert event.tag is None  # Unassigned until added to event manager
+
+    def test_tag_can_be_set(self):
+        """EventBase tag should be settable via property."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="test")
+        event.tag = "42"
+        assert event.tag == "42"
+
+    def test_tag_on_typed_events(self):
+        """All typed events should have tag attribute (defaulting to None)."""
+        from context_blocks.events import (
+            AssistantEvent,
+            ToolCallEvent,
+            UserEvent,
+        )
+
+        user = UserEvent(content="Hello")
+        assistant = AssistantEvent(content="Hi")
+        tool_call = ToolCallEvent(tool_call_id="tc1", name="test", arguments={})
+
+        # All events should have tag (defaulting to None)
+        assert user.tag is None
+        assert assistant.tag is None
+        assert tool_call.tag is None
+
+    def test_event_type_and_role(self):
+        """Events should have event_type field and _role class attribute."""
+        from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+        from context_blocks.models import Role
+
+        # event_type is the discriminator field
+        assert UserEvent(content="test").event_type == "user_message"
+        assert AssistantEvent(content="test").event_type == "assistant_message"
+        assert ToolCallEvent(tool_call_id="tc1", name="test", arguments={}).event_type == "tool_call"
+
+        # _role is a ClassVar
+        assert UserEvent._role == Role.USER
+        assert AssistantEvent._role == Role.ASSISTANT
+        assert ToolCallEvent._role == Role.ASSISTANT
+
+    def test_tag_property_returns_event_position(self):
+        """Events should have tag property returning event position."""
+        from context_blocks.events import UserEvent
+
+        # Unassigned events have tag=None
+        event = UserEvent(content="test")
+        assert event.tag is None
+
+        # After setting tag, it returns the value
+        event.tag = "5"
+        assert event.tag == "5"
+
+
+class TestUserEvent:
+    """Tests for UserEvent."""
+
+    def test_user_event_type(self):
+        """UserEvent should have event_type='user_message'."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="Hello")
+        assert event.event_type == "user_message"
+
+    def test_user_event_with_content(self):
+        """UserEvent should hold content."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="What's the weather?")
+        assert event.content == "What's the weather?"
+
+
+class TestAssistantEvent:
+    """Tests for AssistantEvent."""
+
+    def test_assistant_event_type(self):
+        """AssistantEvent should have event_type='assistant_message'."""
+        from context_blocks.events import AssistantEvent
+
+        event = AssistantEvent(content="I can help with that.")
+        assert event.event_type == "assistant_message"
+
+    def test_assistant_event_with_content(self):
+        """AssistantEvent should hold content."""
+        from context_blocks.events import AssistantEvent
+
+        event = AssistantEvent(content="The weather is sunny.")
+        assert event.content == "The weather is sunny."
+
+
+class TestToolCallEvent:
+    """Tests for ToolCallEvent."""
+
+    def test_tool_call_event_type(self):
+        """ToolCallEvent should have event_type='tool_call'."""
+        from context_blocks.events import ToolCallEvent
+
+        event = ToolCallEvent(tool_call_id="tc_1", name="search", arguments={})
+        assert event.event_type == "tool_call"
+
+    def test_tool_call_event_with_data(self):
+        """ToolCallEvent should hold tool call fields."""
+        from context_blocks.events import ToolCallEvent
+
+        event = ToolCallEvent(tool_call_id="call_123", name="get_weather", arguments={"location": "NYC"})
+        assert event.tool_call_id == "call_123"
+        assert event.name == "get_weather"
+        assert event.arguments["location"] == "NYC"
+
+
+class TestToolResult:
+    """Tests for ToolResult (nested in ToolCallEvent)."""
+
+    def test_tool_result_fields(self):
+        """ToolResult should hold result data."""
+        from context_blocks.events import ToolResult
+
+        result = ToolResult(tool_call_id="call_123", content="Sunny, 72°F")
+        assert result.tool_call_id == "call_123"
+        assert result.content == "Sunny, 72°F"
+        assert result.result_status == "complete"  # default
+
+    def test_tool_result_error_status(self):
+        """ToolResult should support error status."""
+        from context_blocks.events import ResultStatus, ToolResult
+
+        result = ToolResult(tool_call_id="call_123", content="Error occurred", result_status=ResultStatus.ERROR)
+        assert result.result_status == "error"
+
+
+class TestEventRendering:
+    """Tests for event rendering via pformat."""
+
+    def test_private_fields_excluded_from_repr(self):
+        """Private fields should not appear in repr/pformat."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="Hello")
+        repr_str = repr(event)
+
+        # Public field should be in repr
+        assert "content=" in repr_str
+        assert "Hello" in repr_str
+
+        # Private fields should NOT be in repr
+        assert "_id=" not in repr_str
+        assert "tag=" not in repr_str
+        assert "timestamp=" not in repr_str
+        assert "_metadata=" not in repr_str
+
+    def test_pformat_shows_public_fields_only(self):
+        """pformat should show class name and public fields."""
+        from pprint import pformat
+
+        from context_blocks.events import ToolCallEvent
+
+        event = ToolCallEvent(tool_call_id="tc_1", name="search", arguments={"q": "test"})
+        formatted = pformat(event)
+
+        assert "ToolCallEvent" in formatted
+        assert "tool_call_id=" in formatted
+        assert "name=" in formatted
+        assert "arguments=" in formatted
+
+
+class TestEventSerialization:
+    """Tests for Event serialization/deserialization."""
+
+    def test_user_event_to_json_and_back(self):
+        """UserEvent should serialize to JSON and deserialize correctly."""
+        from context_blocks.events import UserEvent
+
+        event = UserEvent(content="Test message")
+        json_str = event.model_dump_json()
+        restored = UserEvent.model_validate_json(json_str)
+
+        assert restored.event_type == "user_message"
+        assert restored.content == "Test message"
+
+    def test_tool_call_event_to_json_and_back(self):
+        """ToolCallEvent should serialize to JSON and deserialize correctly."""
+        from context_blocks.events import ToolCallEvent
+
+        event = ToolCallEvent(tool_call_id="call_abc", name="get_data", arguments={"key": "value"})
+        json_str = event.model_dump_json()
+        restored = ToolCallEvent.model_validate_json(json_str)
+
+        assert restored.event_type == "tool_call"
+        assert restored.tool_call_id == "call_abc"
+        assert restored.name == "get_data"
+        assert restored.arguments["key"] == "value"
+
+    def test_event_list_serialization(self):
+        """List of Event should serialize and deserialize correctly."""
+        from pydantic import TypeAdapter
+
+        from context_blocks.events import (
+            AssistantEvent,
+            Event,
+            UserEvent,
+        )
+
+        events: list[Event] = [
+            UserEvent(content="Question"),
+            AssistantEvent(content="Answer"),
+        ]
+
+        adapter = TypeAdapter(list[Event])
+        json_str = adapter.dump_json(events)
+        restored = adapter.validate_json(json_str)
+
+        assert len(restored) == 2
+        assert restored[0].event_type == "user_message"
+        assert restored[1].event_type == "assistant_message"
+
+
+class TestNestedToolResult:
+    """Tests for nested ToolResult pattern in ToolCallEvent."""
+
+    def test_tool_call_with_nested_result(self):
+        """ToolCallEvent should hold nested ToolResult."""
+        from context_blocks.events import ToolCallEvent, ToolResult
+
+        call_event = ToolCallEvent(
+            tool_call_id="call_weather_123",
+            name="get_weather",
+            arguments={"location": "SF"},
+            result=ToolResult(
+                tool_call_id="call_weather_123",
+                content="Sunny, 72°F",
+            ),
+        )
+
+        assert call_event.result is not None
+        assert call_event.result.tool_call_id == call_event.tool_call_id
+        assert call_event.result.content == "Sunny, 72°F"
+
+    def test_tool_call_without_result(self):
+        """ToolCallEvent.result should default to None."""
+        from context_blocks.events import ToolCallEvent
+
+        call_event = ToolCallEvent(
+            tool_call_id="tc_1",
+            name="get_weather",
+            arguments={"loc": "SF"},
+        )
+
+        assert call_event.result is None
+
+    def test_access_result_via_event(self):
+        """Should access result directly via ToolCallEvent.result."""
+        from context_blocks.events import (
+            AssistantEvent,
+            Event,
+            ToolCallEvent,
+            ToolResult,
+            UserEvent,
+        )
+
+        events: list[Event] = [
+            UserEvent(content="What's the weather?"),
+            ToolCallEvent(
+                tool_call_id="tc_1",
+                name="get_weather",
+                arguments={"loc": "SF"},
+                result=ToolResult(tool_call_id="tc_1", content="Sunny"),
+            ),
+            AssistantEvent(content="It's sunny in SF."),
+        ]
+
+        # Find the tool call and access its nested result
+        tool_call = next(e for e in events if e.event_type == "tool_call")
+        assert tool_call.result is not None
+        assert tool_call.result.content == "Sunny"

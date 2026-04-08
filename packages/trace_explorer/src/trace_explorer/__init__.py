@@ -1,0 +1,61 @@
+"""trace_explorer - Programmatic interface for exploring .jsonl files.
+
+Designed for agent-driven trace analysis.
+
+Usage:
+    from trace_explorer import TraceExplorer
+
+    trace = TraceExplorer.from_file("path/to/trace.jsonl")
+    print(trace.help())
+    print(trace.get_overview())
+"""
+
+from trace_explorer.explorer import (
+    AgentSession,
+    EvalContextData,
+    ExecutionTurn,
+    LLMMessage,
+    LLMTurn,
+    OverviewData,
+    OverviewStats,
+    RootSessionInfo,
+    ScoreDetail,
+    SearchMatches,
+    SearchResult,
+    SessionData,
+    SessionSummary,
+    TimelineData,
+    TimelineEvent,
+    ToolCall,
+    ToolDefinition,
+    TraceExplorer,
+    TurnInfo,
+    get_quiet_mode,
+    main,
+    set_quiet_mode,
+)
+
+__all__ = [
+    "TraceExplorer",
+    "AgentSession",
+    "LLMTurn",
+    "ExecutionTurn",
+    "LLMMessage",
+    "ToolCall",
+    "ToolDefinition",
+    "TurnInfo",
+    "SessionData",
+    "SessionSummary",
+    "EvalContextData",
+    "ScoreDetail",
+    "SearchMatches",
+    "SearchResult",
+    "TimelineData",
+    "TimelineEvent",
+    "OverviewData",
+    "OverviewStats",
+    "RootSessionInfo",
+    "main",
+    "set_quiet_mode",
+    "get_quiet_mode",
+]

@@ -1,0 +1,40 @@
+[project]
+name = "trace_explorer"
+version = "0.1.0"
+description = "Programmatic interface for exploring .jsonl files - designed for agent-driven trace analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agentdoc",  # For _pformat
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+trace-explorer = "trace_explorer:main"
+
+[tool.uv.sources]
+agentdoc = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "UP",
+    "B",
+    "I"
+]
+# Skip SIM rules - the code was copied from a file without these enabled

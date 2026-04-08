@@ -1,0 +1,282 @@
+[project]
+name = "nemo-oo-agents"
+version = "0.1.0"
+description = "Code-generating agent orchestration system with event sourcing and serialized execution"
+readme = "README.md"
+authors = [
+    {name = "NVIDIA NeMo Team"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.0",
+    "pydantic>=2.5.0",
+    "prompt-toolkit>=3.0.0",
+    "rich>=13.0.0",
+    "unifiedllm",
+    "agentdoc",
+    "context-blocks",
+]
+
+[project.scripts]
+nemo = "nemo_oo_agents_cli:main"
+
+[tool.uv.sources]
+unifiedllm = { workspace = true }
+agentdoc = { workspace = true }
+context-blocks = { workspace = true }
+openinference-instrumentation-nemo-oo-agents = { workspace = true }
+nemo-oo-agents-viewer = { workspace = true }
+mcp-nemo-oo-agents = { workspace = true }
+eval_pipeline = { workspace = true }
+evaluation = { workspace = true }
+trace_explorer = { workspace = true }
+# nvidia-nat-nemo-oo-agents: external plugin, not in workspace
+
+[tool.uv]
+# Extra index URLs to search for packages (in addition to PyPI)
+# Ignore packages uploaded less than 7 days ago to mitigate supply-chain attacks
+exclude-newer = "2026-04-01T00:00:00Z"
+
+[tool.uv.workspace]
+members = [
+    "packages/unifiedllm",
+    "packages/agentdoc",
+    "packages/context-blocks",
+    "packages/openinference-instrumentation-nemo-oo-agents",
+    "packages/nemo-oo-agents-viewer",
+    "packages/mcp-nemo-oo-agents",
+    "packages/trace_explorer",
+    "util/eval_pipeline",
+    "packages/evaluation",
+]
+
+
+[project.optional-dependencies]
+tracing = [
+    "openinference_instrumentation_nemo_oo_agents",
+]
+viewer = [
+    "nemo-oo-agents-viewer",
+]
+trace-explorer = [
+    "trace_explorer",
+]
+sandbox = [
+    "openshell",
+]
+mcp = [
+    "mcp-nemo-oo-agents",
+]
+# nexus = [
+#     "nvidia-nat-nexus",  # TODO: update once published to PyPI
+# ]
+# BigCodeBench dependencies (libraries used across 1140 benchmark tasks)
+bigcodebench = [
+    "llvmlite>=0.46.0",
+    # Core scientific computing (334+ tasks)
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    # Visualization (314+ tasks)
+    "matplotlib>=3.5.0",
+    "seaborn>=0.12.0",
+    # ML/Statistics (182+ tasks)
+    "scikit-learn>=1.3.0",
+    "scipy>=1.10.0",
+    "statsmodels>=0.14.0",
+    # NLP (31+ tasks)
+    "nltk>=3.8.0",
+    "wordcloud>=1.9.0",
+    # Web/HTTP (40+ tasks)
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    # Date/Time (16+ tasks)
+    "pytz>=2023.3",
+    "python-dateutil>=2.8.0",
+    # Image processing (10+ tasks)
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    # Crypto (7+ tasks)
+    "cryptography>=41.0.0",
+    "rsa>=4.9",
+    # Flask ecosystem (5+ tasks)
+    "flask>=2.3.0",
+    "flask-restful>=0.3.10",
+    "flask-login>=0.6.3",
+    "flask-mail>=0.10.0",
+    # Django (4+ tasks)
+    "django>=4.2.0",
+    # Wikipedia API (1+ tasks)
+    "wikipedia>=1.4.0",
+    # Document processing (6+ tasks)
+    "python-docx>=1.1.0",  # docx
+    "openpyxl>=3.1.0",
+    "xlwt>=1.3.0",
+    # Mapping/Geo (6+ tasks)
+    "folium>=0.15.0",
+    "geopy>=2.4.0",
+    "geopandas>=0.14.0",
+    "shapely>=2.0.0",
+    # ML/Deep Learning (6+ tasks)
+    "keras>=3.0.0",
+    "tensorflow>=2.15.0",
+    # NLP additional (5+ tasks)
+    "textblob>=0.18.0",
+    "gensim>=4.3.0",
+    # Data utilities (4+ tasks)
+    "faker>=22.0.0",
+    "texttable>=1.7.0",
+    "xmltodict>=0.13.0",
+    # Math/Science (3+ tasks)
+    "sympy>=1.12.0",
+    # Audio (2+ tasks)
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
+    # Web scraping (2+ tasks)
+    "mechanize>=0.4.0",
+    # Flask forms (2+ tasks)
+    "flask-wtf>=1.2.0",
+    "wtforms>=3.1.0",
+    "werkzeug>=3.0.0",
+    # Misc (1-2 tasks each)
+    "pycryptodome>=3.20.0",  # Crypto
+    "python-Levenshtein>=0.25.0",
+    "blake3>=0.4.0",
+    "natsort>=8.4.0",
+    "prettytable>=3.10.0",
+    "pyquery>=2.0.0",
+    "pytesseract>=0.3.10",
+    "sendgrid>=6.11.0",
+    "scikit-image>=0.22.0",  # skimage
+    "wordninja>=2.0.0",
+    "holidays>=0.40",
+    # Other common (various tasks)
+    "regex>=2023.0.0",
+    "psutil>=5.9.0",
+    "lxml>=4.9.0",
+    "pyyaml>=6.0.0",
+    "chardet>=5.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["nemo_oo_agents", "nemo_oo_agents_cli"]
+
+[dependency-groups]
+trace-viewer = [
+    "uvicorn>=0.38.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.123.4",
+    "pyyaml>=6.0.0",
+    "watchfiles>=1.0.0",
+    "python-multipart>=0.0.20",
+]
+dev = [
+    {include-group = "trace-viewer"},
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.7.0",
+    "ruff>=0.14.14",
+    "httpx[socks]>=0.28.1",
+    "opentelemetry-exporter-otlp-proto-http>=1.39.1",
+    "openinference-instrumentation-nemo-oo-agents",
+    "nemo-oo-agents-viewer",
+    "trace-explorer",
+    "eval_pipeline",
+    "evaluation",
+    "trace_explorer",
+    "mcp-nemo-oo-agents",
+    "pre-commit>=4.5.0",
+    "pyright>=1.1.408",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = [
+    "tests",
+    "packages/agentdoc/tests",
+    "packages/nemo-oo-agents-viewer/tests",
+    "packages/context-blocks/tests",
+    "packages/unifiedllm/tests",
+    "packages/openinference-instrumentation-nemo-oo-agents/tests",
+    "packages/mcp-nemo-oo-agents/tests",
+]
+pythonpath = [
+    "src",
+    "packages/agentdoc/src",
+    "packages/agentdoc/tests",
+    "packages/nemo-oo-agents-viewer/src",
+    "packages/context-blocks/src",
+    "packages/unifiedllm/src",
+    "packages/openinference-instrumentation-nemo-oo-agents/src",
+    "packages/mcp-nemo-oo-agents/src",
+]
+addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
+markers = [
+    "integration: marks tests as integration tests that make real API calls (run with '-m integration')",
+    "stress: marks tests as stress/load tests that simulate high concurrency (run with '-m stress')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:litellm.*",
+    "ignore::DeprecationWarning:aiohttp.*",
+    "ignore:coroutine.*was never awaited:RuntimeWarning",
+    "ignore:Pydantic serializer warnings:UserWarning",
+    "ignore::FutureWarning:nemo_oo_agents.strategies",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_no_return = true
+warn_unreachable = true
+# Disable call-arg errors for __init_subclass__ (PEP 487 keyword arguments)
+# return and body errors for ellipsis methods
+disable_error_code = ["empty-body", "return", "call-arg"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["worktrees", ".vscode-server"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E402"]  # Notebooks often have config before imports
+# Agent files need module-level imports for LLM-generated code (via ExecutionNamespaceBuilder)
+"experiments/evaluation-ablations/agents/*.py" = ["F401", "RUF100"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nemo_oo_agents", "nemo_oo_agents_viewer", "eval_pipeline", "evaluation", "unifiedllm", "agentdoc", "context_blocks"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+# Resolve workspace packages when IDE uses project root (same as pytest pythonpath)
+extraPaths = [
+    "src",
+    "packages/unifiedllm/src",
+    "packages/agentdoc/src",
+    "packages/context-blocks/src",
+]
+include = [
+    "src",
+    "packages"
+]
+exclude = []
+# Pydantic discriminated unions require narrowing event_type in subclasses
+reportIncompatibleVariableOverride = false
