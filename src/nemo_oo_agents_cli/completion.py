@@ -1,10 +1,10 @@
-"""nemo-oo completion — Generate shell completion scripts.
+"""nemo oo completion — Generate shell completion scripts.
 
 Usage:
-    nemo-oo completion bash     # Print bash completion script
-    nemo-oo completion zsh      # Print zsh completion script
-    nemo-oo completion fish     # Print fish completion script
-    nemo-oo completion install  # Auto-install for current shell
+    nemo oo completion bash     # Print bash completion script
+    nemo oo completion zsh      # Print zsh completion script
+    nemo oo completion fish     # Print fish completion script
+    nemo oo completion install  # Auto-install for current shell
 """
 
 import os
@@ -80,9 +80,9 @@ complete -c %(prog_name)s -f -a "(env %(complete_var)s=fish_complete COMP_WORDS=
 def _render_script(template: str) -> str:
     """Render a completion script template with nemo_oo_agents-specific values."""
     return template % {
-        "complete_func": "_nemo_oo_agents_completion",
-        "complete_var": "_NEMO_OO_AGENTS_COMPLETE",
-        "prog_name": "nemo-oo",
+        "complete_func": "_nemo_completion",
+        "complete_var": "_NEMO_COMPLETE",
+        "prog_name": "nemo",
     }
 
 
@@ -94,13 +94,13 @@ def completion():
     Quick setup (add to your shell profile):
 
         # bash (~/.bashrc)
-        eval "$(_NEMO_OO_AGENTS_COMPLETE=bash_source nemo-oo)"
+        eval "$(_NEMO_COMPLETE=bash_source nemo-oo)"
 
         # zsh (~/.zshrc)
-        eval "$(_NEMO_OO_AGENTS_COMPLETE=zsh_source nemo-oo)"
+        eval "$(_NEMO_COMPLETE=zsh_source nemo-oo)"
 
         # fish (~/.config/fish/config.fish)
-        _NEMO_OO_AGENTS_COMPLETE=fish_source nemo-oo | source
+        _NEMO_COMPLETE=fish_source nemo-oo | source
     """
 
 
@@ -110,9 +110,9 @@ def bash():
 
     \b
     Usage:
-        eval "$(nemo-oo completion bash)"
+        eval "$(nemo oo completion bash)"
         # Or append to profile:
-        nemo-oo completion bash >> ~/.bashrc
+        nemo oo completion bash >> ~/.bashrc
     """
     click.echo(_render_script(_BASH_SCRIPT))
 
@@ -123,9 +123,9 @@ def zsh():
 
     \b
     Usage:
-        eval "$(nemo-oo completion zsh)"
+        eval "$(nemo oo completion zsh)"
         # Or append to profile:
-        nemo-oo completion zsh >> ~/.zshrc
+        nemo oo completion zsh >> ~/.zshrc
     """
     click.echo(_render_script(_ZSH_SCRIPT))
 
@@ -136,7 +136,7 @@ def fish():
 
     \b
     Usage:
-        nemo-oo completion fish > ~/.config/fish/completions/nemo-oo.fish
+        nemo oo completion fish > ~/.config/fish/completions/nemo.fish
     """
     click.echo(_render_script(_FISH_SCRIPT))
 
@@ -151,21 +151,21 @@ def install():
     shell = _detect_shell()
     if not shell:
         click.secho("Could not detect your shell. Use one of:", fg="red")
-        click.echo("  nemo-oo completion bash")
-        click.echo("  nemo-oo completion zsh")
-        click.echo("  nemo-oo completion fish")
+        click.echo("  nemo oo completion bash")
+        click.echo("  nemo oo completion zsh")
+        click.echo("  nemo oo completion fish")
         raise SystemExit(1)
 
     click.echo(f"Detected shell: {shell}")
 
     if shell == "bash":
         profile = Path.home() / ".bashrc"
-        line = 'eval "$(_NEMO_OO_AGENTS_COMPLETE=bash_source nemo-oo)"'
+        line = 'eval "$(_NEMO_COMPLETE=bash_source nemo-oo)"'
     elif shell == "zsh":
         profile = Path.home() / ".zshrc"
-        line = 'eval "$(_NEMO_OO_AGENTS_COMPLETE=zsh_source nemo-oo)"'
+        line = 'eval "$(_NEMO_COMPLETE=zsh_source nemo-oo)"'
     elif shell == "fish":
-        profile = Path.home() / ".config" / "fish" / "completions" / "nemo-oo.fish"
+        profile = Path.home() / ".config" / "fish" / "completions" / "nemo.fish"
         line = None  # Fish uses a completions file with the script directly
     else:
         click.secho(f"Unsupported shell: {shell}", fg="red")
@@ -174,7 +174,7 @@ def install():
     # Check if already installed
     if profile.exists():
         existing = profile.read_text()
-        if "_NEMO_OO_AGENTS_COMPLETE" in existing:
+        if "_NEMO_COMPLETE" in existing:
             click.secho(f"Completions already installed in {profile}", fg="green")
             return
 
@@ -187,7 +187,7 @@ def install():
     else:
         # Bash/zsh: append eval one-liner to profile
         with open(profile, "a") as f:
-            f.write(f"\n# nemo-oo shell completions\n{line}\n")
+            f.write(f"\n# nemo shell completions\n{line}\n")
         click.secho(f"Completions added to {profile}", fg="green")
         click.echo(f"Run: source {profile}")
 

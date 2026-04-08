@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-nemo-oo = "nemo_oo_agents_cli:main"
+nemo = "nemo_oo_agents_cli:main"
 
 [tool.uv.sources]
 unifiedllm = { workspace = true }
