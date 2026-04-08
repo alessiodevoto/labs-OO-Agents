@@ -30,7 +30,7 @@ mcp-nemo-oo-agents = { workspace = true }
 eval_pipeline = { workspace = true }
 evaluation = { workspace = true }
 trace_explorer = { workspace = true }
-nvidia-nat-nemo_oo_agents = { workspace = true }
+# nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
 # Extra index URLs to search for packages (in addition to PyPI)
