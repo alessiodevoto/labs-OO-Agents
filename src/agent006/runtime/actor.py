@@ -1,0 +1,2338 @@
+"""Actor runtime: serialized execution with signal queue."""
+
+import ast
+import asyncio
+import contextvars
+import inspect
+import io
+import linecache
+import logging
+import tokenize
+import types
+import warnings
+from collections.abc import Callable
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, get_type_hints
+from uuid import uuid4
+
+from agentdoc.introspect import methods, variables
+
+if TYPE_CHECKING:
+    from agent006.events import ExecutionResult
+    from agent006.runtime.event_query import EventQuery
+    from agent006.runtime.restrictions import RestrictionsConfig
+
+from pydantic import BaseModel
+
+from agent006.events import ExecutionSignal, LLMOutput
+from agent006.runtime.context_vars import _parent_agent_var
+from agent006.runtime.hooks import call_after_hook, call_before_hook
+from agent006.runtime.truncating_stream import TruncatingStringIO
+from context_blocks import (
+    DynamicContext,
+    ResolvedBlock,
+    render_context,
+)
+from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+
+logger = logging.getLogger(__name__)
+
+# Suppress SyntaxWarning for invalid escape sequences (e.g. '\s' instead of r'\s')
+# in LLM-generated code.  The string value is identical either way, so the warning
+# is pure noise — and showing it to the LLM just wastes a turn trying to "fix" it.
+# Other warnings (RuntimeWarning, DeprecationWarning, …) are unaffected.
+warnings.filterwarnings(
+    "ignore",
+    message=r"invalid escape sequence",
+    category=SyntaxWarning,
+)
+
+
+def _strip_blocked_modules(
+    exec_globals: dict[str, Any],
+    blocked_modules: frozenset[str],
+) -> dict[str, Any]:
+    """Remove blocked modules and their members from exec_globals."""
+    from agent006.runtime.restrictions import is_from_blocked_module
+
+    if not blocked_modules:
+        return exec_globals
+    return {
+        name: obj
+        for name, obj in exec_globals.items()
+        if not is_from_blocked_module(obj, blocked_modules)
+    }
+
+
+# Context variable to detect when we're inside a generation session
+# This prevents deadlocks when generated code calls other ellipsis methods
+_in_generation_session = contextvars.ContextVar("in_generation_session", default=False)
+
+# Context variable tracking which EventManager._middleware_id values are currently
+# inside an execute_python middleware chain.  This prevents infinite recursion when
+# middleware-injected code triggers another execute_code() on the same agent.
+_in_exec_middleware: contextvars.ContextVar[frozenset[int]] = contextvars.ContextVar(
+    "in_exec_middleware", default=frozenset()
+)
+
+# Context variables for current generation context (per-task, not per-runtime)
+# This allows parallel nested calls via asyncio.gather to work correctly
+_current_call_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "current_call", default=None
+)
+_current_method_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "current_method", default=None
+)
+_current_llm_var: contextvars.ContextVar[Any] = contextvars.ContextVar("current_llm", default=None)
+
+# Context variable for current strategy being executed
+_current_strategy_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "current_strategy", default=None
+)
+
+# Context variable for inherited decorator context.
+# Set by _execute_with_generation() so that @strategy(context={...})
+# blocks propagate to nested method calls on the same agent.
+# Read by _prepare_context() and passed explicitly to build_context().
+_decorator_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "decorator_context", default=None
+)
+
+# Context variable for inherited decorator event query.
+# Set by _execute_with_generation() so that @strategy(ScopedContext(events=...))
+# event filtering propagates to nested method calls on the same agent.
+# Read by _prepare_context() and passed explicitly to build_context().
+_decorator_events_var: contextvars.ContextVar["EventQuery | None"] = contextvars.ContextVar(
+    "decorator_events", default=None
+)
+
+# Task-local stdout/stderr buffers for async-safe capture
+# Contextvars are per-task, so parallel async executions get isolated buffers
+_stdout_buffer_var: contextvars.ContextVar[io.StringIO | TruncatingStringIO | None] = (
+    contextvars.ContextVar("stdout_buffer", default=None)
+)
+_stderr_buffer_var: contextvars.ContextVar[io.StringIO | TruncatingStringIO | None] = (
+    contextvars.ContextVar("stderr_buffer", default=None)
+)
+
+# Task-local flag to block stdin reads (prevents hangs from input(), sys.stdin.read(), etc.)
+# When True for the current async task, any stdin read raises RuntimeError
+_block_stdin_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "block_stdin", default=False
+)
+
+# Re-export image buffer ContextVar so it's set alongside stdout/stderr
+# Agent call stack - defined in context_vars.py to avoid circular imports.
+from agent006.runtime.context_vars import _get_agent_call_stack  # noqa: E402
+from agent006.runtime.media_capture import _media_buffer_var  # noqa: E402
+
+# Task-local stack for generation ID tracking.
+# Uses immutable tuples for parallel task isolation (same pattern as agent call stack).
+_generation_id_stack_var: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
+    "generation_id_stack", default=()
+)
+
+
+def _get_generation_id_stack() -> tuple[str, ...]:
+    """Get the generation ID stack for the current async context.
+
+    Returns an immutable tuple - use _push_generation_id() and _pop_generation_id()
+    for stack operations.
+    """
+    return _generation_id_stack_var.get()
+
+
+def _push_generation_id(generation_id: str) -> None:
+    """Push a generation_id to the stack.
+
+    Creates a new immutable tuple with the added value. This ensures parallel
+    tasks (via asyncio.gather) each have their own isolated stack - pushing
+    in one task doesn't affect sibling tasks.
+    """
+    current = _generation_id_stack_var.get()
+    _generation_id_stack_var.set((*current, generation_id))
+
+
+def _pop_generation_id() -> str | None:
+    """Pop from the generation ID stack.
+
+    Creates a new immutable tuple without the last element.
+    Returns the popped value or None if stack is empty.
+    """
+    current = _generation_id_stack_var.get()
+    if not current:
+        return None
+    popped = current[-1]
+    _generation_id_stack_var.set(current[:-1])
+    return popped
+
+
+def _extract_captured_locals(exec_globals: dict[str, Any]) -> dict[str, Any]:
+    """Extract captured locals from __repl_captured_locals__, filtering non-data types.
+
+    The wrapper's finally block captures locals into exec_globals["__repl_captured_locals__"].
+    This function extracts them, filtering out bound methods and modules.
+
+    Args:
+        exec_globals: The globals dict from code execution
+
+    Returns:
+        Dict of captured local variables (filtered)
+    """
+    captured: dict[str, Any] = {}
+    raw_captured = exec_globals.get("__repl_captured_locals__", {})
+    for k, v in raw_captured.items():
+        # Skip callables that are helper methods (they're handled separately)
+        if callable(v) and hasattr(v, "__self__"):
+            continue  # Skip bound methods
+        # Skip modules and other non-data types
+        if isinstance(v, types.ModuleType):
+            continue
+        captured[k] = v
+    return captured
+
+
+# Import sys for stream wrapping
+
+
+class ContextVarStream:
+    """Stream wrapper that redirects writes to a contextvar buffer when set.
+
+    This provides async-safe output capture: each asyncio task can set its own
+    buffer via the contextvar, and writes go to that buffer. When no buffer is
+    set, writes go to the original stream.
+
+    This captures ALL output including:
+    - print() calls
+    - sys.stdout.write() / sys.stderr.write()
+    - logging handlers that write to stderr
+    - SyntaxWarning / RuntimeWarning (Python 3.12+ writes these via sys.stderr)
+    """
+
+    def __init__(
+        self,
+        original: io.TextIOBase | Any,
+        buffer_var: contextvars.ContextVar[io.StringIO | None],
+        name: str = "stdout",
+    ):
+        self._original = original
+        self._buffer_var = buffer_var
+        self._name = name
+        # Preserve original stream attributes for compatibility
+        self.encoding = getattr(original, "encoding", "utf-8")
+        self.errors = getattr(original, "errors", "strict")
+        self.newlines = getattr(original, "newlines", None)
+        self.mode = getattr(original, "mode", "w")
+
+    def write(self, data: str) -> int:
+        """Write to contextvar buffer if set, otherwise to original stream."""
+        buffer = self._buffer_var.get()
+        if buffer is not None:
+            return buffer.write(data)
+        return self._original.write(data)
+
+    def writelines(self, lines: list[str]) -> None:
+        """Write multiple lines."""
+        buffer = self._buffer_var.get()
+        if buffer is not None:
+            buffer.writelines(lines)
+        else:
+            self._original.writelines(lines)
+
+    def flush(self) -> None:
+        """Flush both buffer and original stream."""
+        buffer = self._buffer_var.get()
+        if buffer is not None:
+            buffer.flush()
+        self._original.flush()
+
+    def fileno(self) -> int:
+        """Return file descriptor of original stream (for subprocess compatibility)."""
+        return self._original.fileno()
+
+    def isatty(self) -> bool:
+        """Check if original stream is a TTY."""
+        return self._original.isatty()
+
+    def readable(self) -> bool:
+        """Streams are not readable."""
+        return False
+
+    def writable(self) -> bool:
+        """Streams are writable."""
+        return True
+
+    def seekable(self) -> bool:
+        """Streams are not seekable."""
+        return False
+
+    def close(self) -> None:
+        """Don't actually close - we're wrapping shared streams."""
+        pass
+
+    @property
+    def closed(self) -> bool:
+        """Check if original stream is closed."""
+        return getattr(self._original, "closed", False)
+
+    def __repr__(self) -> str:
+        return f"<ContextVarStream({self._name}) wrapping {self._original!r}>"
+
+    def __getattr__(self, name: str) -> Any:
+        """Pass through any other attribute accesses to the original stream.
+
+        This ensures compatibility with code that accesses less common stream
+        attributes like 'buffer', 'line_buffering', 'name', etc.
+        """
+        return getattr(self._original, name)
+
+
+class BlockedStdinWrapper:
+    """Stdin wrapper that blocks reads when _block_stdin_var is True.
+
+    This provides async-safe stdin blocking: each asyncio task can enable
+    blocking via the contextvar. When blocking is enabled, any read operation
+    raises RuntimeError instead of hanging on stdin.
+
+    This catches ALL stdin reads including:
+    - input() builtin
+    - sys.stdin.read() / readline() / readlines()
+    - getpass.getpass()
+    - Any library that reads from stdin
+    """
+
+    def __init__(self, original: io.TextIOBase | Any):
+        self._original = original
+        # Preserve original stream attributes for compatibility
+        self.encoding = getattr(original, "encoding", "utf-8")
+        self.errors = getattr(original, "errors", "strict")
+        self.newlines = getattr(original, "newlines", None)
+        self.mode = getattr(original, "mode", "r")
+
+    def _check_blocked(self) -> None:
+        """Raise if stdin reads are blocked for the current async task."""
+        if _block_stdin_var.get():
+            raise RuntimeError(
+                "Reading from stdin is forbidden in agent-generated code. "
+                "Use function parameters or return values instead of interactive input."
+            )
+
+    def read(self, size: int = -1) -> str:
+        """Read from stdin (blocked when in agent code execution)."""
+        self._check_blocked()
+        return self._original.read(size)
+
+    def readline(self, size: int = -1) -> str:
+        """Read a line from stdin (blocked when in agent code execution)."""
+        self._check_blocked()
+        return self._original.readline(size)
+
+    def readlines(self, hint: int = -1) -> list[str]:
+        """Read all lines from stdin (blocked when in agent code execution)."""
+        self._check_blocked()
+        return self._original.readlines(hint)
+
+    def __iter__(self):
+        """Iterate over stdin lines (blocked when in agent code execution)."""
+        self._check_blocked()
+        return iter(self._original)
+
+    def __next__(self) -> str:
+        """Get next line from stdin (blocked when in agent code execution)."""
+        self._check_blocked()
+        return next(self._original)
+
+    # Pass-through methods that don't read data
+    def fileno(self) -> int:
+        """Return file descriptor (for compatibility checks)."""
+        return self._original.fileno()
+
+    def isatty(self) -> bool:
+        """Check if stdin is a TTY."""
+        return self._original.isatty()
+
+    def readable(self) -> bool:
+        """Check if stream is readable."""
+        return self._original.readable()
+
+    def writable(self) -> bool:
+        """Stdin is not writable."""
+        return False
+
+    def seekable(self) -> bool:
+        """Stdin is not seekable."""
+        return False
+
+    def close(self) -> None:
+        """Don't actually close - we're wrapping shared streams."""
+        pass
+
+    @property
+    def closed(self) -> bool:
+        """Check if original stream is closed."""
+        return getattr(self._original, "closed", False)
+
+    def __repr__(self) -> str:
+        blocked = _block_stdin_var.get()
+        status = "BLOCKED" if blocked else "open"
+        return f"<BlockedStdinWrapper({status}) wrapping {self._original!r}>"
+
+    def __getattr__(self, name: str) -> Any:
+        """Pass through any other attribute accesses to the original stream."""
+        return getattr(self._original, name)
+
+
+class _TopLevelReturnFinder(ast.NodeVisitor):
+    """Find return statements at the top level, not inside nested functions/classes.
+
+    This avoids false positives where a return inside a nested function definition
+    would incorrectly prevent implicit return transformation at the top level.
+    """
+
+    def __init__(self) -> None:
+        self.found = False
+
+    def visit_Return(self, node: ast.Return) -> None:
+        self.found = True
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        # Do not recurse into nested function definitions
+        pass
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        # Do not recurse into nested async function definitions
+        pass
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        # Do not recurse into class definitions
+        pass
+
+
+def _has_top_level_return(tree: ast.Module) -> bool:
+    """Check if the AST has any explicit return statements at the top level.
+
+    Does not recurse into nested function/class definitions, only checks
+    top-level statements and their non-function/class children.
+
+    Args:
+        tree: Parsed AST module
+
+    Returns:
+        True if there's an explicit return at the top level
+    """
+    finder = _TopLevelReturnFinder()
+    for node in tree.body:
+        finder.visit(node)
+        if finder.found:
+            return True
+    return False
+
+
+class ActorRuntime:
+    """
+    Actor runtime for serialized execution.
+
+    Features:
+    - One generation session at a time per agent (serialized)
+    - Task introspection
+
+    Usage:
+        agent = MyAgent(llm=client)
+        # Runtime is automatically created as agent.runtime
+    """
+
+    def __init__(self, agent: Any):
+        """
+        Initialize actor runtime for an agent.
+
+        Args:
+            agent: Agent instance to manage
+
+        For callbacks on LLM output, use:
+            agent.event_manager.on("message", handler)
+            agent.event_manager.on("reasoning", handler)
+        """
+        # Agent instance
+        self.agent: Any = agent
+
+        # Lock for generation serialization (only one LLM generation session at a time)
+        self._generation_lock = asyncio.Lock()
+
+        # NOTE: Current generation context uses context variables (not instance attributes)
+        # to support parallel nested calls via asyncio.gather.
+        # See: _current_call_var, _current_method_var
+
+        # NOTE: Agent call stack and generation ID stack are now tracked via context
+        # variables (_get_agent_call_stack(), _get_generation_id_stack()) to prevent
+        # context leakage during parallel async execution.
+
+        # render_context for prompt generation (dead simple: takes pre-resolved blocks)
+
+    @property
+    def _agent_call_stack(self) -> tuple[str, ...]:
+        """Agent call stack for method call tracking (per async context).
+
+        Returns an immutable tuple. Use _push_agent_call_id() and
+        _pop_agent_call_id() for stack operations.
+        """
+        return _get_agent_call_stack()
+
+    @property
+    def _generation_id_stack(self) -> tuple[str, ...]:
+        """Generation ID stack for nested generation tracking (per async context).
+
+        Returns an immutable tuple. Use _push_generation_id() and
+        _pop_generation_id() for stack operations.
+        """
+        return _get_generation_id_stack()
+
+    @property
+    def _agent_call_id(self) -> str | None:
+        """
+        Current agent call ID (method invocation ID).
+
+        Returns top of agent_call_stack if method is active, otherwise None.
+        This ID is unique per method invocation.
+        """
+        stack = _get_agent_call_stack()
+        return stack[-1] if stack else None
+
+    @property
+    def _current_call(self) -> Any:
+        """Current call context (from context variable for concurrent task support)."""
+        return _current_call_var.get()
+
+    @property
+    def current_call(self) -> Any:
+        """Current call context.
+
+        Provides access to the current method invocation's call object, which contains
+        call_id, arguments, and other execution metadata. Useful for filtering events,
+        tracking execution, or accessing call-specific information.
+
+        Example:
+            # In DynamicContext expressions
+            @strategy(
+                CodeActStrategy(),
+                ScopedContext(events={
+                    "history": DynamicContext(
+                        "self.runtime.event_manager.filter(call_id=self.runtime.current_call.call_id)"
+                    )
+                })
+            )
+            async def my_method(self):
+                ...  # Only sees events from this method's call
+
+            # Or directly in code
+            current_id = self.runtime.current_call.call_id
+        """
+        return _current_call_var.get()
+
+    @property
+    def _current_method(self) -> Any:
+        """Current method being generated (from context variable for concurrent task support)."""
+        return _current_method_var.get()
+
+    # --- RuntimeServices Protocol Implementation ---
+
+    @property
+    def event_manager(self) -> Any:
+        """Event manager for conversation management (RuntimeServices protocol)."""
+        return self.agent.event_manager
+
+    async def generate(
+        self,
+        *,
+        tools: list[dict] | None = None,
+        output_model: type | None = None,
+        **kwargs: Any,
+    ) -> tuple[Any, str]:
+        """Build messages from context + events, call LLM (RuntimeServices protocol).
+
+        Builds messages using prompt builder from:
+        - System message: context blocks + strategy.strategy_prompt
+        - Events: conversation events
+
+        Creates an LLMOutput event and adds it to event manager.
+
+        Args:
+            tools: Optional list of tool definitions.
+            output_model: Optional Pydantic model for structured output.
+            **kwargs: Additional LLM options.
+
+        Returns:
+            Tuple of (LLMResponse, event_id) where:
+            - LLMResponse from unifiedllm with content, reasoning, usage
+            - event_id can be used for event_manager.update() or event_manager.get()
+        """
+        if self._current_method is None:
+            raise RuntimeError("generate() called with no current method context")
+
+        # Build messages from context + events
+        messages = await self._build_messages(
+            self._current_method,
+            call_args=self._current_call.args if self._current_call else (),
+            call_kwargs=self._current_call.kwargs if self._current_call else {},
+        )
+
+        # Get LLM client from context var (set by _execute_with_generation)
+        llm_client = _current_llm_var.get()
+        if llm_client is None:
+            raise RuntimeError("generate() called with no LLM client in context")
+
+        current_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
+
+        # --- Middleware: llm_call -------------------------------------------
+        em = self.event_manager
+        has_mw = bool(em._middleware.get("llm_call"))
+
+        if has_mw:
+            from agent006.runtime.middleware import LLMCallContext
+
+            params: dict[str, Any] = {**kwargs, "tools": tools or []}
+            if output_model is not None:
+                params["output_model"] = output_model
+            ctx = LLMCallContext(
+                messages=messages,
+                params=params,
+                agent=self.agent,
+                runtime=self,
+            )
+
+            async def _core_llm(ctx: LLMCallContext) -> LLMCallContext:
+                # Tracing hook fires AFTER middleware pre-processing,
+                # so it sees the final (possibly modified) messages.
+                call_before_hook(
+                    "on_messages_built",
+                    agent=self.agent,
+                    method_name=self._current_method.__name__,
+                    messages=ctx.messages,
+                    generation_id=current_generation_id or "",
+                )
+                om = ctx.params.get("output_model", None)
+                call_params = {k: v for k, v in ctx.params.items() if k != "output_model"}
+                ctx.response = await llm_client.acall(
+                    ctx.messages,
+                    output_model=om,
+                    **call_params,
+                )
+                return ctx
+
+            ctx = await em.run_middleware("llm_call", ctx, _core_llm)
+            response = ctx.response
+            if response is None:
+                raise RuntimeError(
+                    "llm_call middleware returned without setting ctx.response. "
+                    "Short-circuiting middleware must set ctx.response before returning."
+                )
+        else:
+            # Fast path — no middleware registered
+            call_before_hook(
+                "on_messages_built",
+                agent=self.agent,
+                method_name=self._current_method.__name__,
+                messages=messages,
+                generation_id=current_generation_id or "",
+            )
+            response = await llm_client.acall(
+                messages,
+                tools=tools or [],
+                output_model=output_model,
+                **kwargs,
+            )
+
+        # Create and record LLMOutput
+        # Serialize Pydantic models to JSON for proper event storage
+        content = response.content or ""
+        if isinstance(content, BaseModel):
+            # Pydantic model - serialize to JSON string
+            content = content.model_dump_json()
+        elif not isinstance(content, str):
+            # Other non-string types - convert to string representation
+            content = str(content)
+        event = LLMOutput(content=content)
+        event_id = self.event_manager.add(event)
+
+        return response, event_id
+
+    async def execute_code(
+        self,
+        code: str,
+        *,
+        builtins: dict[str, Any] | None = None,
+        validate: bool = True,
+        wrap_in_function: bool = False,
+        timeout: float | None = 90.0,
+        tool_call_id: str | None = None,
+        execution_count: int = 1,
+        restrictions: "RestrictionsConfig | None" = None,
+    ) -> "ExecutionResult":
+        """Execute Python code with namespace + strategy builtins (RuntimeServices protocol).
+
+        Args:
+            code: Python code to execute.
+            builtins: Strategy-provided functions (reasoning, message, method args, etc.)
+            validate: Run planning language validation first.
+            wrap_in_function: If True, wrap code in async function and capture return value.
+            timeout: Maximum execution time in seconds (default 30s). None to disable.
+            tool_call_id: LLM's tool call ID for trace correlation (OpenAI format).
+            execution_count: Execution number for Jupyter-style "Cell In[N]" filename.
+            restrictions: Code execution restrictions (blocked modules/calls).
+                None uses defaults from RestrictionsConfig().
+
+        Returns:
+            ExecutionResult with stdout, error, defined_methods, and optionally returned_value.
+        """
+        # --- Middleware: execute_python --------------------------------------
+        em = self.event_manager
+        mid = em._middleware_id
+        in_reentry = mid in _in_exec_middleware.get()
+
+        if em._middleware.get("execute_python") and not in_reentry:
+            from agent006.runtime.middleware import ExecutePythonContext
+
+            ep_params: dict[str, Any] = {
+                "builtins": builtins,
+                "validate": validate,
+                "wrap_in_function": wrap_in_function,
+                "timeout": timeout,
+                "tool_call_id": tool_call_id,
+                "execution_count": execution_count,
+                "restrictions": restrictions,
+            }
+            ep_ctx = ExecutePythonContext(
+                code=code,
+                params=ep_params,
+                agent=self.agent,
+                runtime=self,
+            )
+
+            async def _core_exec(ctx: ExecutePythonContext) -> ExecutePythonContext:
+                # Add our id to the re-entry guard so recursive calls skip middleware.
+                token = _in_exec_middleware.set(_in_exec_middleware.get() | {mid})
+                try:
+                    ctx.result = await self.execute_code(
+                        ctx.code,
+                        **ctx.params,
+                    )
+                finally:
+                    _in_exec_middleware.reset(token)
+                return ctx
+
+            ep_ctx = await em.run_middleware("execute_python", ep_ctx, _core_exec)
+            if ep_ctx.result is None:
+                raise RuntimeError(
+                    "execute_python middleware returned without setting ctx.result. "
+                    "Short-circuiting middleware must set ctx.result before returning."
+                )
+            return ep_ctx.result
+
+        # If we are in re-entry (recursive call from _core_exec above), clear
+        # our id from the guard so that nested generation methods called during
+        # code execution (e.g. code does `await self.other_method()`) can
+        # re-enter the middleware pipeline for their own execute_code() calls.
+        # The _core_exec finally-block will restore the authoritative state
+        # via its own token.
+        if in_reentry:
+            _in_exec_middleware.set(_in_exec_middleware.get() - {mid})
+
+        from agent006.events import _NO_RETURN, ExecutionResult
+
+        # Generate execution ID and call hooks
+        execution_id = str(uuid4())
+        # Get current generation_id for correlation (if in a generation session)
+        current_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
+        hook_context = call_before_hook(
+            "before_code_execution",
+            agent=self.agent,
+            code=code,
+            execution_id=execution_id,
+            generation_id=current_generation_id,
+            tool_call_id=tool_call_id,  # LLM's tool call ID for trace correlation
+        )
+
+        result: ExecutionResult | None = None
+        stdout_token: contextvars.Token | None = None  # Track for cleanup in finally
+        stderr_token: contextvars.Token | None = None
+        stdin_token: contextvars.Token | None = None
+        media_token: contextvars.Token | None = None
+        # Set parent agent context for LLM inheritance by subagents
+        parent_token = _parent_agent_var.set(self.agent)
+        try:
+            # Build execution globals first (needed for validation error messages)
+            from agentdoc.visibility import filter_module_globals
+
+            agent_module = inspect.getmodule(type(self.agent))
+            exec_globals = filter_module_globals(agent_module) if agent_module else {}
+
+            # Import agentdoc functions for use in generated code
+            # Import decorators and strategies for use in generated code
+            # NOTE: stdout/stderr capture is handled by ContextVarStream wrappers
+            # installed below.
+            import typing as _typing
+
+            from agent006.decorators import strategy
+            from agent006.media import Audio, File, Image, Media
+            from agent006.runtime.media_capture import show
+            from agent006.runtime.pprint import pprint
+            from agent006.strategies import (
+                CodeActStrategy,
+                CompositeStrategy,
+                PredictStrategy,
+                PurePythonStrategy,
+                ReflexionStrategy,
+                TemplateStrategy,
+            )
+            from agentdoc import doc
+
+            exec_globals.update(
+                {
+                    "self": self.agent,
+                    "asyncio": asyncio,
+                    "typing": _typing,
+                    # Common typing constructs — LLMs use these constantly
+                    "Annotated": _typing.Annotated,
+                    "Any": _typing.Any,
+                    "Literal": _typing.Literal,
+                    "Optional": _typing.Optional,
+                    "Union": _typing.Union,
+                    # agentdoc introspection (doc respects agentscope hidden fields)
+                    "doc": doc,
+                    "methods": methods,
+                    "variables": variables,
+                    "help": doc,  # Shadow built-in help() to prevent blocking on stdin
+                    # Pretty printing with Rich-compatible API
+                    "pprint": pprint,
+                    # Media display for multimodal models
+                    "show": show,
+                    "Media": Media,
+                    "Image": Image,
+                    "Audio": Audio,
+                    "File": File,
+                    # decorators and strategies for LLM-generated methods
+                    "strategy": strategy,
+                    "PurePythonStrategy": PurePythonStrategy,
+                    "CodeActStrategy": CodeActStrategy,
+                    "ReflexionStrategy": ReflexionStrategy,
+                    "PredictStrategy": PredictStrategy,
+                    "TemplateStrategy": TemplateStrategy,
+                    "CompositeStrategy": CompositeStrategy,
+                }
+            )
+
+            # Add strategy builtins (includes reasoning, message, method args)
+            if builtins:
+                exec_globals.update(builtins)
+
+            # Strip blocked modules and their members from exec_globals.
+            # Default to RestrictionsConfig() so stripping and validation
+            # agree when caller omits the parameter.
+            from agent006.runtime.restrictions import RestrictionsConfig
+
+            effective_restrictions = restrictions or RestrictionsConfig()
+            exec_globals = _strip_blocked_modules(
+                exec_globals, effective_restrictions.blocked_modules
+            )
+
+            # Strip redundant imports before validation and execution.
+            # LLMs habitually write ``from typing import Literal`` etc. even
+            # when those names are already pre-loaded in exec_globals.
+            try:
+                from agent006.runtime.code_validator import strip_redundant_imports
+
+                code = strip_redundant_imports(code, set(exec_globals.keys()))
+            except ImportError:
+                pass
+
+            # Validate code if requested (unified validator handles all checks)
+            if validate:
+                try:
+                    from agent006.runtime.code_validator import (
+                        UnifiedCodeValidator,
+                        ValidationContext,
+                    )
+
+                    # Prevent recursive calls to the method currently being generated
+                    forbidden_self_calls: set[str] = set()
+                    current_call = self._current_call
+                    if current_call and hasattr(current_call, "method_name"):
+                        forbidden_self_calls = {current_call.method_name}
+
+                    # Build importable_modules from actual module names (not aliases)
+                    # e.g., 'import pandas as pd' means 'pandas' is importable, not 'os'
+                    importable_modules: set[str] = set()
+                    for obj in exec_globals.values():
+                        if isinstance(obj, types.ModuleType):
+                            actual_name = getattr(obj, "__name__", None)
+                            if actual_name:
+                                importable_modules.add(actual_name)
+
+                    # Create validation context
+                    context = ValidationContext(
+                        code=code,
+                        agent_class=type(self.agent),
+                        available_names=set(exec_globals.keys()),
+                        importable_modules=importable_modules,
+                        forbidden_self_calls=forbidden_self_calls,
+                        execution_count=execution_count,
+                        agent=self.agent,
+                        exec_globals=exec_globals,
+                    )
+
+                    # Run unified validation (security, blocking calls, REPL policy)
+                    validator = UnifiedCodeValidator(
+                        restrictions=effective_restrictions,
+                    )
+                    validator.validate(code, context)
+                except ImportError:
+                    # Validator module not available, skip validation
+                    pass
+                except Exception as e:
+                    result = ExecutionResult(stdout="", error=e, defined_methods={})
+                    return result
+
+            # Set up stdout/stderr capture BEFORE ast.parse/compile so that
+            # SyntaxWarnings (e.g. invalid escape sequences in LLM-generated code)
+            # and RuntimeWarnings are captured into the execution result instead of
+            # leaking to the terminal as "<unknown>:N: SyntaxWarning: ..."
+            #
+            # Each async task gets its own buffers via contextvars, so parallel
+            # executions are isolated. TruncatingStringIO prevents LLMs from
+            # filling the context window.
+            truncation_config = self.agent._truncation
+            stdout_buffer = TruncatingStringIO(
+                limit=truncation_config.max_stdout_chars,
+                tail_chars=truncation_config.stdout_tail_chars,
+            )
+            stderr_buffer = TruncatingStringIO(
+                limit=truncation_config.max_stderr_chars,
+                tail_chars=truncation_config.stdout_tail_chars,
+            )
+            stdout_token = _stdout_buffer_var.set(stdout_buffer)
+            stderr_token = _stderr_buffer_var.set(stderr_buffer)
+            # Block stdin reads for this async task (prevents hangs from input(), etc.)
+            stdin_token = _block_stdin_var.set(True)
+            # Media capture buffer for show() calls (images, audio, files)
+            media_buffer: list[dict] = []
+            media_token = _media_buffer_var.set(media_buffer)
+
+            # Install stream wrappers around the CURRENT sys.stdout/sys.stderr/sys.stdin
+            # (which may have been replaced by pytest or other tools)
+            # We only wrap if not already wrapped, and we NEVER restore - the wrappers
+            # are transparent (fall through to original when no buffer/block is set) and
+            # must persist for parallel async executions to work correctly.
+            import sys
+
+            if not isinstance(sys.stdout, ContextVarStream):
+                sys.stdout = ContextVarStream(sys.stdout, _stdout_buffer_var, "stdout")
+            if not isinstance(sys.stderr, ContextVarStream):
+                sys.stderr = ContextVarStream(sys.stderr, _stderr_buffer_var, "stderr")
+            if not isinstance(sys.stdin, BlockedStdinWrapper):
+                sys.stdin = BlockedStdinWrapper(sys.stdin)
+
+            # Parse AST to find method definitions
+            try:
+                tree = ast.parse(code)
+            except SyntaxError as e:
+                result = ExecutionResult(stdout="", error=e, defined_methods={})
+                return result
+
+            # Extract method sources (functions with self as first param)
+            method_sources: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    if node.args.args and node.args.args[0].arg == "self":
+                        method_code = ast.get_source_segment(code, node)
+                        if method_code:
+                            method_sources[node.name] = method_code
+
+            # Check for explicit return BEFORE any transformation
+            # Use a NodeVisitor that doesn't recurse into nested functions/classes
+            # to avoid false positives from returns in nested definitions
+            has_explicit_return = _has_top_level_return(tree)
+
+            # Transform last expression to implicit return (REPL/Jupyter style)
+            # This allows `doc(self)` or `result` at the end to return their values
+            # IMPORTANT: We modify the code TEXT directly instead of using ast.unparse()
+            # because ast.unparse() removes comments and changes line numbers, which
+            # breaks error line number reporting for users.
+            implicit_return_added = False
+            if wrap_in_function and tree.body and not has_explicit_return:
+                last_stmt = tree.body[-1]
+                if isinstance(last_stmt, ast.Expr):
+                    # Get the line number of the last expression
+                    last_line_no = last_stmt.lineno
+                    code_lines = code.split("\n")
+                    if 1 <= last_line_no <= len(code_lines):
+                        # Prepend 'return ' to the last expression line
+                        # This preserves comments and line structure
+                        original_line = code_lines[last_line_no - 1]
+                        # Find the first non-whitespace position
+                        stripped = original_line.lstrip()
+                        indent = original_line[: len(original_line) - len(stripped)]
+                        code_lines[last_line_no - 1] = f"{indent}return {stripped}"
+                        code = "\n".join(code_lines)
+                        implicit_return_added = True
+
+            returned_value = _NO_RETURN
+            captured_locals: dict[str, Any] = {}
+            wrapper_line_offset = 0  # Lines of wrapper before user code (for error adjustment)
+
+            # Use Jupyter-style "Cell In[N]" as filename for better error messages
+            cell_filename = f"Cell In[{execution_count}]"
+            try:
+                if wrap_in_function:
+                    # REPL mode: wrap entire code in async function to capture return
+                    # Use try/finally to capture locals regardless of how function exits
+                    indented = self._indent_code(code, "        ")
+                    # Initialize the captured locals dict in exec_globals
+                    exec_globals["__repl_captured_locals__"] = {}
+
+                    # Build global declarations for session variables (REPL persistence)
+                    # This allows code like `x = x + 5` to work when x was defined in a prior call
+                    # Without this, Python sees `x = ...` and marks x as local, failing on the RHS
+                    # We need to declare as global any variable that was passed in builtins
+                    global_vars = [
+                        name
+                        for name, val in (builtins or {}).items()
+                        if (
+                            not name.startswith("_")
+                            and name not in ("self", "asyncio", "__builtins__")
+                            and not callable(val)
+                            and not isinstance(val, types.ModuleType)
+                        )
+                    ]
+                    global_decl = f"    global {', '.join(global_vars)}\n" if global_vars else ""
+
+                    # Build the set of global var names for the finally block
+                    global_var_set = set(global_vars)
+
+                    # Calculate wrapper header line count for error line adjustment
+                    # User code starts after: "async def __repl_wrapper__():\n" + global_decl + "    try:\n"
+                    wrapper_header = f"async def __repl_wrapper__():\n{global_decl}    try:\n"
+                    wrapper_line_offset = wrapper_header.count("\n")
+
+                    wrapper = f"""async def __repl_wrapper__():
+{global_decl}    try:
+{indented}
+    finally:
+        # Capture locals for REPL persistence (exclude internals and builtins)
+        # Also capture updated global variables that were declared global
+        __repl_captured_locals__.update({{
+            k: v for k, v in locals().items()
+            if not k.startswith('_') and k not in ('self', 'asyncio')
+        }})
+        # Capture updated values of global variables we declared
+        for _gvar in {repr(global_var_set)}:
+            if _gvar in globals():
+                __repl_captured_locals__[_gvar] = globals()[_gvar]
+"""
+                    # Register wrapper with linecache so traceback can show source lines
+                    linecache.cache[cell_filename] = (
+                        len(wrapper),
+                        None,
+                        wrapper.splitlines(keepends=True),
+                        cell_filename,
+                    )
+
+                    exec(compile(wrapper, cell_filename, "exec"), exec_globals)
+                    # Execute with async safety (blocks Future.result() etc from event loop)
+                    from agent006.runtime.async_safety import agent_async_safety_context
+
+                    coro = exec_globals["__repl_wrapper__"]()
+                    with agent_async_safety_context():
+                        if timeout is not None:
+                            try:
+                                result_value = await asyncio.wait_for(coro, timeout=timeout)
+                            except TimeoutError:
+                                raise TimeoutError(
+                                    f"Code execution timed out after {timeout} seconds. "
+                                    "Check for infinite loops or blocking operations."
+                                ) from None
+                        else:
+                            result_value = await coro
+
+                    # Extract captured locals (filter out non-serializable/internal items)
+                    captured_locals = _extract_captured_locals(exec_globals)
+
+                    # Capture return value based on return type:
+                    # - Explicit return: always capture (even None)
+                    # - Implicit return: only capture non-None (like IPython)
+                    if has_explicit_return:
+                        returned_value = result_value
+                    elif implicit_return_added and result_value is not None:
+                        # Suppress None from implicit returns (matches IPython behavior)
+                        returned_value = result_value
+
+                    # Still extract method definitions for helper functions
+                    # Re-execute just the function defs to bind them
+                    func_defs: list[ast.stmt] = [
+                        n
+                        for n in tree.body
+                        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+                    ]
+                    if func_defs:
+                        func_tree = ast.Module(body=func_defs, type_ignores=[])
+                        exec(compile(func_tree, cell_filename, "exec"), exec_globals)
+
+                    # Attach source code to defined functions for has_ellipsis_body() detection
+                    for method_name, method_code in method_sources.items():
+                        if method_name in exec_globals and callable(exec_globals[method_name]):
+                            try:
+                                exec_globals[method_name]._generated_source = method_code
+                            except (AttributeError, TypeError):
+                                # Some built-in functions don't allow attribute assignment
+                                pass
+                else:
+                    # Original mode: separate function defs from other statements
+                    func_defs: list[ast.stmt] = [
+                        n
+                        for n in tree.body
+                        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+                    ]
+                    other_stmts: list[ast.stmt] = [
+                        n
+                        for n in tree.body
+                        if not isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+                    ]
+
+                    # Execute function definitions
+                    if func_defs:
+                        func_tree = ast.Module(body=func_defs, type_ignores=[])
+                        exec(compile(func_tree, cell_filename, "exec"), exec_globals)
+
+                    # Execute other statements
+                    if other_stmts:
+                        other_tree = ast.Module(body=other_stmts, type_ignores=[])
+                        has_await = any(isinstance(n, ast.Await) for n in ast.walk(other_tree))
+                        if has_await:
+                            other_code = ast.unparse(other_tree)
+                            indented = "\n".join("    " + line for line in other_code.split("\n"))
+                            wrapper = f"async def __wrapper__():\n{indented}"
+                            # Register wrapper with linecache so traceback can show source lines
+                            linecache.cache[cell_filename] = (
+                                len(wrapper),
+                                None,
+                                wrapper.splitlines(keepends=True),
+                                cell_filename,
+                            )
+                            exec(compile(wrapper, cell_filename, "exec"), exec_globals)
+                            # Execute with async safety (blocks Future.result() etc)
+                            from agent006.runtime.async_safety import agent_async_safety_context
+
+                            coro = exec_globals["__wrapper__"]()
+                            with agent_async_safety_context():
+                                if timeout is not None:
+                                    try:
+                                        await asyncio.wait_for(coro, timeout=timeout)
+                                    except TimeoutError:
+                                        raise TimeoutError(
+                                            f"Code execution timed out after {timeout} seconds. "
+                                            "Check for infinite loops or blocking operations."
+                                        ) from None
+                                else:
+                                    await coro
+                        else:
+                            # Sync code execution - enable async safety for Future.result() etc
+                            from agent006.runtime.async_safety import agent_async_safety_context
+
+                            with agent_async_safety_context():
+                                exec(compile(other_tree, cell_filename, "exec"), exec_globals)
+
+                # Attach source code to defined functions for has_ellipsis_body() detection
+                for method_name, method_code in method_sources.items():
+                    if method_name in exec_globals and callable(exec_globals[method_name]):
+                        try:
+                            exec_globals[method_name]._generated_source = method_code
+                        except (AttributeError, TypeError):
+                            # Some built-in functions don't allow attribute assignment
+                            pass
+
+                # Bind methods to agent
+                defined_methods: dict[str, Any] = {}
+                for method_name, method_code in method_sources.items():
+                    if method_name in exec_globals and callable(exec_globals[method_name]):
+                        func = exec_globals[method_name]
+                        bound = types.MethodType(func, self.agent)
+                        defined_methods[method_name] = bound
+                        if hasattr(self.agent, "_defined_methods_registry"):
+                            self.agent._defined_methods_registry[method_name] = method_code
+
+                result = ExecutionResult(
+                    stdout=stdout_buffer.getvalue(),
+                    stderr=stderr_buffer.getvalue(),
+                    error=None,
+                    defined_methods=defined_methods,
+                    returned_value=returned_value,
+                    explicit_return=has_explicit_return,
+                    captured_locals=captured_locals,
+                    wrapper_line_offset=wrapper_line_offset,
+                    images=media_buffer,
+                )
+                return result
+
+            except ExecutionSignal as sig:
+                # Extract captured locals even on signal (IPython behavior).
+                # The wrapper function's finally block still runs before this handler,
+                # populating exec_globals["__repl_captured_locals__"] with all variables
+                # that were defined before the signal was raised.
+                captured_locals = _extract_captured_locals(exec_globals)
+
+                result = ExecutionResult(
+                    stdout=stdout_buffer.getvalue(),
+                    stderr=stderr_buffer.getvalue(),
+                    error=None,  # NOT an error
+                    signal=sig,  # Store signal separately
+                    defined_methods={},
+                    returned_value=_NO_RETURN,
+                    explicit_return=False,
+                    captured_locals=captured_locals,
+                    wrapper_line_offset=wrapper_line_offset,
+                    images=media_buffer,
+                )
+                return result
+
+            except Exception as e:
+                # Extract captured locals even on error (IPython behavior).
+                # The wrapper function's finally block still runs before this handler,
+                # populating exec_globals["__repl_captured_locals__"] with all variables
+                # that were defined before the exception was raised.
+                captured_locals = _extract_captured_locals(exec_globals)
+
+                result = ExecutionResult(
+                    stdout=stdout_buffer.getvalue(),
+                    stderr=stderr_buffer.getvalue(),
+                    error=e,
+                    defined_methods={},
+                    returned_value=_NO_RETURN,
+                    explicit_return=False,
+                    captured_locals=captured_locals,
+                    wrapper_line_offset=wrapper_line_offset,
+                    images=media_buffer,
+                )
+                return result
+
+        finally:
+            # NOTE: We do NOT restore sys.stdout/sys.stderr here.
+            # The ContextVarStream wrappers are transparent (fall through to original
+            # when no buffer is set) and must persist for parallel async executions.
+
+            # Reset task-local stdout/stderr buffers and stdin blocking (only if they were set)
+            if stdout_token is not None:
+                _stdout_buffer_var.reset(stdout_token)
+            if stderr_token is not None:
+                _stderr_buffer_var.reset(stderr_token)
+            if stdin_token is not None:
+                _block_stdin_var.reset(stdin_token)
+            if media_token is not None:
+                _media_buffer_var.reset(media_token)
+            # Reset parent agent context
+            _parent_agent_var.reset(parent_token)
+            # Call after_code_execution hook
+            call_after_hook(
+                "after_code_execution",
+                hook_context,
+                agent=self.agent,
+                code=code,
+                result=result,
+                exception=result.error if result else None,
+                execution_id=execution_id,
+                tool_call_id=tool_call_id,  # LLM's tool call ID for trace correlation
+            )
+
+    async def execute_nested(
+        self,
+        strategy: Any,
+        call: Any,
+    ) -> Any:
+        """Execute nested strategy within current generation session (RuntimeServices protocol).
+
+        Use for composite strategies (Reflexion, PlanExecute) that wrap
+        other strategies. Runs within the current session:
+        - Inherits lock (won't deadlock)
+        - Proper hook instrumentation
+        - Events are shared
+
+        Args:
+            strategy: The nested GenerationStrategy to execute.
+            call: The CurrentCall context.
+
+        Returns:
+            Result from the nested strategy.
+        """
+        from uuid import uuid4
+
+        # Generate generation_id for nested strategy
+        generation_id = str(uuid4())
+        parent_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
+        # Push using copy-on-write semantics for parallel task safety
+        _push_generation_id(generation_id)
+
+        # Get strategy name for hooks
+        strategy_name = getattr(strategy, "name", type(strategy).__name__)
+
+        # Extract strategy config for tracing
+        # Works for CodeActStrategy, PurePythonStrategy, PredictStrategy, ReflexionStrategy
+        strategy_kwargs = {}
+        if hasattr(strategy, "max_iterations"):
+            strategy_kwargs["max_iterations"] = getattr(strategy, "max_iterations")  # noqa: B009
+        if hasattr(strategy, "max_retries"):
+            strategy_kwargs["max_retries"] = getattr(strategy, "max_retries")  # noqa: B009
+        if hasattr(strategy, "max_reflections"):
+            strategy_kwargs["max_reflections"] = getattr(strategy, "max_reflections")  # noqa: B009
+        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009
+            strategy_kwargs["has_prefill"] = True
+
+        # Call generation hooks (skip for non-traceable strategies like TemplateStrategy)
+        should_trace = strategy.traceable
+        hook_context = None
+        if should_trace:
+            hook_context = call_before_hook(
+                "before_generation",
+                agent=self.agent,
+                method_name=call.method_name,
+                strategy=strategy_name,
+                generation_id=generation_id,
+                parent_generation_id=parent_generation_id,
+                agent_call_id=self._agent_call_id,
+                **strategy_kwargs,  # Add strategy config parameters
+            )
+
+        result = None
+        exception_caught = None
+
+        try:
+            # Execute nested strategy directly (we're already in a generation session)
+            result = await strategy.execute(self, call)
+            return result
+        except Exception as e:
+            exception_caught = e
+            raise
+        finally:
+            # Pop generation_id from stack using copy-on-write semantics
+            _pop_generation_id()
+
+            # Call after generation hook
+            if should_trace:
+                call_after_hook(
+                    "after_generation",
+                    hook_context,
+                    agent=self.agent,
+                    method_name=call.method_name,
+                    result=result,
+                    exception=exception_caught,
+                    generation_id=generation_id,
+                )
+
+    def get_generation_id(self) -> str | None:
+        """Get the current generation session ID (RuntimeServices protocol).
+
+        Returns the innermost generation_id from the stack, or None if
+        not in a generation session. Used for correlating events with
+        their generation context.
+
+        Returns:
+            Current generation ID or None if not in a generation session.
+
+        Note:
+            Never raises exceptions - returns None for empty stack.
+        """
+        stack = self._generation_id_stack
+        return stack[-1] if stack else None
+
+    def get_parent_generation_id(self) -> str | None:
+        """Get the parent generation session ID (RuntimeServices protocol).
+
+        Returns the second-to-last generation_id from the stack, or None
+        if this is the root generation or not in a generation session.
+
+        Returns:
+            Parent generation ID or None if root or not in a session.
+
+        Note:
+            Never raises exceptions - returns None for stack with <2 entries.
+        """
+        stack = self._generation_id_stack
+        return stack[-2] if len(stack) > 1 else None
+
+    # --- End RuntimeServices Protocol ---
+    # Note: Nested ellipsis method calls work implicitly via _call_plan() + _in_generation_session.
+    # execute_nested() is for composite strategies (Reflexion, PlanExecute) to run sub-strategies.
+
+    def get_code(self, method_name: str) -> str | None:
+        """
+        Get code for a method.
+
+        Returns the original method definition with ... body.
+
+        Args:
+            method_name: Name of the method to inspect
+
+        Returns:
+            Code as string, or None if method doesn't exist
+
+        Example:
+            agent = MyAgent()
+            code = agent.runtime.get_code("my_method")
+            print(code)  # Shows: async def my_method(self): ... with docstring
+        """
+        import inspect
+
+        # Return original definition with ... body
+        original = getattr(type(self.agent), method_name, None)
+        if original is None:
+            return None
+
+        # Build original definition
+        sig = inspect.signature(original)
+        doc = inspect.getdoc(original) or ""
+        is_async = inspect.iscoroutinefunction(original)
+
+        lines = []
+        async_str = "async " if is_async else ""
+        lines.append(f"{async_str}def {method_name}{sig}:")
+
+        if doc:
+            lines.append('    """')
+            for line in doc.split("\n"):
+                lines.append(f"    {line}")
+            lines.append('    """')
+
+        lines.append("    ...")
+
+        return "\n".join(lines)
+
+    async def evaluate_expression(
+        self,
+        expr: str,
+        extra_context: dict[str, Any] | None = None,
+        error_mode: str = "show",
+    ) -> Any:
+        """
+        Evaluate a Python expression with full runtime context.
+
+        Can handle both sync and async expressions (automatically awaits coroutines).
+
+        The runtime has access to all state needed for evaluation:
+        - Agent instance (self)
+        - REPL state (if available)
+        - Execution results
+        - Standard Python builtins
+        - Extra context (e.g., method arguments)
+
+        Args:
+            expr: Python expression to evaluate
+            extra_context: Additional variables to include in namespace
+            error_mode: How to handle errors:
+                - "show": Return error as string (default)
+                - "silent": Return None on error
+                - "raise": Raise the exception
+
+        Returns:
+            Evaluation result, or error representation based on error_mode
+
+        Example:
+            >>> await runtime.evaluate_expression("len(self.tools)")
+            3
+            >>> await runtime.evaluate_expression("strategy.method(runtime)")
+            "Result..."
+        """
+
+        # Build evaluation namespace with all runtime context
+        from agentdoc import doc
+
+        namespace = {
+            "self": self.agent,
+            # agentdoc introspection (doc respects agentscope hidden fields)
+            "doc": doc,
+            "methods": methods,
+            "variables": variables,
+            **(extra_context or {}),
+        }
+
+        # Include REPL locals if available
+        try:
+            repl = getattr(self.agent, "repl", None)
+            if repl:
+                repl_locals = getattr(repl, "_data", None)
+                if isinstance(repl_locals, dict):
+                    namespace.update(repl_locals)
+        except Exception:
+            pass
+
+        # Include execution result if available
+        if hasattr(self.agent, "_last_execution_result"):
+            namespace["result"] = self.agent._last_execution_result
+
+        # Evaluate the expression
+        try:
+            # Compile as async expression
+            code = compile(f"async def __eval_expr(): return {expr}", "<string>", "exec")
+            # exec needs namespace as globals so the function can access variables
+            exec(code, namespace)
+            result = await namespace["__eval_expr"]()
+
+            # If result is still a coroutine, await it
+            if inspect.iscoroutine(result):
+                result = await result
+
+            # Handle subprocess.CompletedProcess - extract useful output
+            import subprocess
+
+            if isinstance(result, subprocess.CompletedProcess):
+                if isinstance(result.stdout, str) and result.stdout:
+                    return result.stdout
+                elif isinstance(result.stderr, str) and result.stderr:
+                    return result.stderr
+                elif result.returncode is not None:
+                    return f"[exit code: {result.returncode}]"
+                else:
+                    return "[command completed]"
+
+            return result
+
+        except Exception as e:
+            if error_mode == "raise":
+                raise
+            elif error_mode == "show":
+                return f"{{ERROR: {e}}}"
+            else:  # silent
+                return None
+
+    async def expand_variables(
+        self,
+        text: str,
+        extra_context: dict[str, Any] | None = None,
+        error_mode: str = "show",
+    ) -> str:
+        """
+        Expand {expression} placeholders in text using runtime context.
+
+        Args:
+            text: Text with {expression} placeholders
+            extra_context: Additional variables for evaluation
+            error_mode: How to handle errors ("show", "silent", "raise")
+
+        Returns:
+            Text with expressions evaluated and substituted
+
+        Example:
+            >>> await runtime.expand_variables("Found {len(self.tools)} tools")
+            "Found 3 tools"
+            >>> await runtime.expand_variables("Result: {result.stdout}")
+            "Result: output text"
+        """
+        import string
+
+        if not text or "{" not in text:
+            return text
+
+        # Use Python's built-in formatter to parse the template
+        # This handles format specs, conversions (!r, !s, !a), and escaped braces
+        formatter = string.Formatter()
+        result_parts = []
+
+        for literal_text, field_name, format_spec, conversion in formatter.parse(text):
+            # Add literal text (includes escaped {{ as {)
+            result_parts.append(literal_text)
+
+            # If there's a field to replace
+            if field_name is not None:
+                # Evaluate the expression
+                value = await self.evaluate_expression(field_name, extra_context, error_mode)
+
+                # Handle silent mode errors
+                if error_mode == "silent" and value is None:
+                    # Keep original placeholder
+                    placeholder = f"{{{field_name}"
+                    if conversion:
+                        placeholder += f"!{conversion}"
+                    if format_spec:
+                        placeholder += f":{format_spec}"
+                    placeholder += "}"
+                    result_parts.append(placeholder)
+                    continue
+
+                # Apply conversion (!r, !s, !a)
+                if conversion == "r":
+                    value = repr(value)
+                elif conversion == "s":
+                    value = str(value)
+                elif conversion == "a":
+                    value = ascii(value)
+
+                # Apply format spec
+                if format_spec:
+                    try:
+                        result_parts.append(format(value, format_spec))
+                    except Exception:
+                        if error_mode == "silent":
+                            # Keep original placeholder on format error
+                            placeholder = f"{{{field_name}"
+                            if conversion:
+                                placeholder += f"!{conversion}"
+                            placeholder += f":{format_spec}}}"
+                            result_parts.append(placeholder)
+                        else:
+                            result_parts.append(f"{{{field_name}:{format_spec} | FORMAT ERROR}}")
+                else:
+                    result_parts.append(str(value))
+
+        return "".join(result_parts)
+
+    def list_methods(self) -> dict[str, dict[str, Any]]:
+        """
+        Get a complete listing of all methods on the agent.
+
+        Returns a dict mapping method names to their metadata:
+        - 'type': 'generator' | 'implemented' | 'generated'
+        - 'ellipsis': True if ellipsis method | False otherwise
+        - 'signature': Full signature string
+        - 'docstring': First line of docstring
+        - 'is_async': True if async method
+        - 'strategy': GenerationStrategy if applicable
+        - 'has_code': True if generated code is available
+
+        Example:
+            agent = MyAgent()
+            methods = agent.runtime.list_methods()
+
+            for name, info in methods.items():
+                print(f"{name}: {info['type']} ({info['decorator']})")
+        """
+        import inspect
+
+        methods_info = {}
+
+        from agentdoc.visibility import is_hidden_method
+
+        # Get all methods from the class
+        for name in dir(type(self.agent)):
+            if name.startswith("__"):
+                continue
+
+            attr = getattr(type(self.agent), name, None)
+            if not callable(attr):
+                continue
+
+            # Skip properties and other descriptors
+            if isinstance(attr, property):
+                continue
+
+            # Skip hidden methods
+            if is_hidden_method(attr):
+                continue
+
+            # Determine method type
+            method_type = "implemented"
+            decorator_type = None
+            has_generated_code = False
+
+            # Check if it's a generator method (has ... body)
+            if hasattr(attr, "_needs_generation") and getattr(attr, "_needs_generation"):  # noqa: B009
+                method_type = "generator"
+
+            # Get decorator info
+            if hasattr(attr, "_agent_decorator"):
+                decorator_type = f"@{getattr(attr, '_agent_decorator')}"  # noqa: B009
+
+            # Get signature
+            try:
+                sig = inspect.signature(attr)
+                signature_str = f"{name}{sig}"
+            except (ValueError, TypeError):
+                signature_str = f"{name}(...)"
+
+            # Get docstring (first line)
+            doc = inspect.getdoc(attr) or ""
+            doc_first_line = doc.split("\n")[0] if doc else ""
+
+            # Get strategy
+            strategy = getattr(attr, "_plan_strategy", None) or getattr(
+                attr, "_signal_strategy", None
+            )
+
+            # Is async?
+            is_async = inspect.iscoroutinefunction(attr)
+
+            methods_info[name] = {
+                "type": method_type,
+                "decorator": decorator_type,
+                "signature": signature_str,
+                "docstring": doc_first_line,
+                "is_async": is_async,
+                "strategy": strategy,
+                "has_code": has_generated_code,
+            }
+
+        return methods_info
+
+    def print_methods(self) -> None:
+        """
+        Print a formatted listing of all agent methods.
+
+        Groups methods by type and shows key information.
+        Uses trace-view style formatting with │ for indentation.
+
+        Example:
+            agent = MyAgent()
+            agent.runtime.print_methods()
+        """
+        methods = self.list_methods()
+
+        # Group by type
+        generators = {k: v for k, v in methods.items() if v["type"] == "generator"}
+        implemented = {k: v for k, v in methods.items() if v["type"] == "implemented"}
+
+        print(f"\n🎭 Agent Methods: {type(self.agent).__name__}")
+
+        if generators:
+            print("│ 🔮 Generator Methods")
+            for _name, info in sorted(generators.items()):
+                decorator = info["decorator"] or ""
+                strategy = f"strategy={info['strategy'].name}" if info["strategy"] else ""
+                if strategy:
+                    decorator = f"{decorator}({strategy})"
+
+                async_marker = "async " if info["is_async"] else ""
+                signature = f"{async_marker}{info['signature']}"
+
+                # Print with prefix (each line if multiline)
+                for line in decorator.rstrip().split("\n"):
+                    print(f"│ {line}")
+                for line in signature.rstrip().split("\n"):
+                    print(f"│ {line}")
+
+                if info["docstring"]:
+                    # Wrap long docstrings
+                    doc = info["docstring"]
+                    if len(doc) > 70:
+                        doc = doc[:67] + "..."
+                    print(f"│   → {doc}")
+
+        if implemented:
+            if generators:
+                print("│")
+            print("│ 📝 Implemented Methods")
+            for _name, info in sorted(implemented.items()):
+                decorator = info["decorator"] or ""
+                if decorator:
+                    for line in decorator.rstrip().split("\n"):
+                        print(f"│ {line}")
+
+                async_marker = "async " if info["is_async"] else ""
+                signature = f"{async_marker}{info['signature']}"
+
+                # Print with prefix (each line if multiline)
+                for line in signature.rstrip().split("\n"):
+                    print(f"│ {line}")
+
+                if info["docstring"]:
+                    # Wrap long docstrings
+                    doc = info["docstring"]
+                    if len(doc) > 70:
+                        doc = doc[:67] + "..."
+                    print(f"│   → {doc}")
+
+        print(f"\nTotal: {len(generators)} generator, {len(implemented)} implemented\n")
+
+    def _call_plan(
+        self,
+        method: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> "asyncio.Task[Any]":
+        """
+        Internal: Call an ellipsis method (returns immediately with asyncio.Task).
+
+        Args:
+            method: Method to call
+            args: Positional arguments
+            kwargs: Keyword arguments
+
+        Returns:
+            asyncio.Task that will resolve to the method result
+        """
+        method_name = method.__name__
+        task_name = f"{self.agent.__class__.__name__}.{method_name}"
+
+        # NOTE: agent_call_id is pushed/popped by the decorator (decorators.py/metaclass.py)
+        # before/after calling _call_plan. The ContextVar is inherited by the task.
+        async def _execute_with_event():
+            return await self._execute_task(method, args, kwargs)
+
+        # Return asyncio.Task directly (caller decides when to await)
+        return asyncio.create_task(_execute_with_event(), name=task_name)
+
+    async def _execute_task(
+        self,
+        method: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """
+        Execute a method call.
+
+        Args:
+            method: Method to call
+            args: Positional arguments
+            kwargs: Keyword arguments
+
+        Returns:
+            Method result
+        """
+        method_name = method.__name__
+
+        # Check if method needs LLM generation
+        base_method = getattr(method, "__func__", method)
+        needs_generation = getattr(base_method, "_needs_generation", False)
+
+        if needs_generation:
+            # Check if we're already in a generation session (nested call)
+            in_session = _in_generation_session.get()
+
+            if in_session:
+                # We're inside a generation session - execute inline without acquiring lock
+                # This prevents deadlock when generated code calls other @strategy methods
+                return await self._execute_with_generation(method, args, kwargs, method_name)
+            else:
+                # Get strategy to check requires_lock
+                from agent006.strategies import GenerationStrategy as GenerationStrategyABC
+                from agent006.strategies import get_default_strategy
+
+                call_strategy = kwargs.get("_strategy")
+                decorator_strategy = getattr(base_method, "_plan_strategy", None)
+                strategy = call_strategy or decorator_strategy or get_default_strategy()
+
+                # Only acquire lock if strategy requires it
+                if isinstance(strategy, GenerationStrategyABC) and strategy.requires_lock:
+                    async with self._generation_lock:
+                        return await self._execute_with_generation(
+                            method, args, kwargs, method_name
+                        )
+                else:
+                    # Lock-free execution (Methodic-style concurrent strategies)
+                    return await self._execute_with_generation(method, args, kwargs, method_name)
+        else:
+            # Method has implementation - call directly with context vars set
+            # This enables utility modules (context, logger, message) to work
+            from agent006.util._context import _current_agent_var, _current_runtime_var
+
+            agent_token = _current_agent_var.set(self.agent)
+            runtime_token = _current_runtime_var.set(self)
+
+            try:
+                # method is the unwrapped function f (decorator always passes f, not wrapper)
+                return await method(self.agent, *args, **kwargs)
+            finally:
+                _current_agent_var.reset(agent_token)
+                _current_runtime_var.reset(runtime_token)
+
+    async def _execute_with_generation(
+        self,
+        method: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        method_name: str,
+    ) -> Any:
+        """Execute a method that needs LLM generation."""
+        # Extract framework parameters (don't pass to generated method)
+        call_strategy = kwargs.pop("_strategy", None)
+        call_llm = kwargs.pop("llm", None)
+
+        # Get strategy with priority: call-level > decorator > default
+        base_method = getattr(method, "__func__", method)
+        decorator_strategy = getattr(base_method, "_plan_strategy", None)
+
+        # DEBUG: Log strategy retrieval for nested method debugging
+        if logger.isEnabledFor(logging.DEBUG):
+            has_plan_strategy = hasattr(base_method, "_plan_strategy")
+            strategy_type = type(decorator_strategy).__name__ if decorator_strategy else "None"
+            logger.debug(
+                "[ACTOR] Strategy retrieval for %s: has_attr=%s, strategy=%s",
+                method_name,
+                has_plan_strategy,
+                strategy_type,
+            )
+
+        # Two-level priority: call override > decorator > default fallback
+        # Strategy can be: GenerationStrategy instance (new), enum (old), or None
+        from agent006.strategies import GenerationStrategy as GenerationStrategyABC
+        from agent006.strategies import get_default_strategy
+
+        strategy = call_strategy or decorator_strategy or get_default_strategy()
+
+        # Resolve LLM client with priority: call-level > @strategy decorator > agent's default
+        plan_llm = getattr(base_method, "_plan_llm", None)
+        llm_client = call_llm or plan_llm or getattr(self.agent, "_llm", None)
+        if llm_client is None:
+            raise RuntimeError(f"No LLM client available for {method_name}")
+
+        # Fail early if token limits are configured but the LLM cannot count tokens.
+        # Check here (before strategy execution) so the error propagates directly
+        # rather than being caught and retried by the strategy's error handler.
+        tc = self.agent._truncation
+        if tc.max_context_tokens is not None or tc.max_event_tokens is not None:
+            if not callable(getattr(llm_client, "count_tokens", None)):
+                raise RuntimeError(
+                    f"TruncationConfig sets token limits (max_context_tokens or max_event_tokens) "
+                    f"but the LLM client ({type(llm_client).__name__}) does not implement "
+                    f"count_tokens(). Either remove the token limits from TruncationConfig or "
+                    f"use an LLM that supports count_tokens()."
+                )
+
+        # Mark that we're in a generation session
+        # This allows nested ellipsis method calls to execute inline without deadlocking
+        prev_in_session = _in_generation_session.get()
+        _in_generation_session.set(True)
+
+        # Generate generation_id for this session
+        generation_id = str(uuid4())
+        parent_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
+        # Push using copy-on-write semantics for parallel task safety
+        _push_generation_id(generation_id)
+
+        # Get strategy name for hooks
+        strategy_name = getattr(strategy, "name", type(strategy).__name__)
+
+        # Extract strategy config for tracing
+        # Works for CodeActStrategy, PurePythonStrategy, PredictStrategy, ReflexionStrategy
+        strategy_kwargs = {}
+        if hasattr(strategy, "max_iterations"):
+            strategy_kwargs["max_iterations"] = getattr(strategy, "max_iterations")  # noqa: B009
+        if hasattr(strategy, "max_retries"):
+            strategy_kwargs["max_retries"] = getattr(strategy, "max_retries")  # noqa: B009
+        if hasattr(strategy, "max_reflections"):
+            strategy_kwargs["max_reflections"] = getattr(strategy, "max_reflections")  # noqa: B009
+        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009
+            strategy_kwargs["has_prefill"] = True
+
+        # Call generation hooks (skip for non-traceable strategies like TemplateStrategy)
+        should_trace = strategy.traceable if isinstance(strategy, GenerationStrategyABC) else True
+        hook_context = None
+        if should_trace:
+            hook_context = call_before_hook(
+                "before_generation",
+                agent=self.agent,
+                method_name=method_name,
+                strategy=strategy_name,
+                generation_id=generation_id,
+                parent_generation_id=parent_generation_id,
+                agent_call_id=self._agent_call_id,
+                **strategy_kwargs,  # Add strategy config parameters
+            )
+
+        result = None
+        exception_caught = None
+
+        # Dispatch to appropriate executor based on strategy
+        try:
+            # NOTE: agent_call_id is pushed by the decorator (decorators.py/metaclass.py)
+            # before calling _call_plan or _execute_task. We don't push here anymore.
+
+            # Strategy must be a GenerationStrategy instance
+            if isinstance(strategy, GenerationStrategyABC):
+                # Use strategy's execute() method directly
+                from agent006.strategies.current_call import CurrentCall
+
+                # Expand {placeholders} in method docstring using call arguments
+                raw_docstring = getattr(method, "__doc__", None)
+                expanded_docstring = None
+                if raw_docstring:
+                    # Build context: map parameter names to argument values
+                    sig = inspect.signature(method)
+                    param_names = list(sig.parameters.keys())[1:]  # Skip 'self'
+                    arg_context = dict(zip(param_names, args, strict=False))
+                    arg_context.update(kwargs)
+                    expanded_docstring = await self.expand_variables(
+                        raw_docstring, extra_context=arg_context, error_mode="silent"
+                    )
+
+                # Build CurrentCall for the strategy
+                # Map positional args to parameter names for kwargs (like from_method does)
+                sig = inspect.signature(method)
+                param_names = [p for p in sig.parameters.keys() if p != "self"]
+                merged_kwargs = dict(kwargs)
+                for i, value in enumerate(args):
+                    if i < len(param_names):
+                        param_name = param_names[i]
+                        if param_name not in merged_kwargs:
+                            merged_kwargs[param_name] = value
+
+                # Extract return type annotation — use get_type_hints to
+                # resolve PEP 563 stringified annotations.
+                return_type = None
+                try:
+                    hints = get_type_hints(method, include_extras=True)
+                    return_annotation = hints.get("return", inspect.Signature.empty)
+                except (NameError, TypeError, AttributeError):
+                    return_annotation = sig.return_annotation
+                if return_annotation is not inspect.Signature.empty:
+                    return_type = return_annotation
+
+                # Extract pre-ellipsis code (setup code before ... marker)
+                # Use _original if method was wrapped by metaclass
+                from agent006.ellipsis_detection import get_pre_ellipsis_code
+
+                original_method = getattr(method, "_original", method)
+                pre_ellipsis_code = get_pre_ellipsis_code(original_method)
+
+                # Use the call_id already pushed by the wrapper so events added
+                # during this call have metadata["call_id"] matching the agent
+                # call stack.  NOTE: strategies may later mutate call.id (e.g.
+                # CodeActStrategy sets it to the task event tag), so
+                # _prepare_context uses _agent_call_id (the stack value) for
+                # EventQuery.current_call() filtering, not current_call.id.
+                call_id = self._agent_call_id or str(uuid4())
+                call = CurrentCall(
+                    id=call_id,
+                    method_name=method_name,
+                    decorator="plan",
+                    signature=str(sig),
+                    docstring=expanded_docstring,
+                    args=args,
+                    kwargs=merged_kwargs,
+                    parent_id=self._agent_call_stack[-2]
+                    if len(self._agent_call_stack) >= 2
+                    else None,
+                    is_async=inspect.iscoroutinefunction(method),
+                    return_type=return_type,
+                    pre_ellipsis_code=pre_ellipsis_code,
+                )
+
+                # Store current call context in context vars for RuntimeServices.generate()
+                # Using context vars (not instance attrs) allows parallel nested calls
+                call_token = _current_call_var.set(call)
+                method_token = _current_method_var.set(method)
+                llm_token = _current_llm_var.set(llm_client)
+
+                # Propagate decorator context to nested calls:
+                # merge parent's inherited context with this method's @strategy(context={...})
+                parent_ctx = _decorator_context_var.get()
+                own_ctx = getattr(getattr(method, "__func__", method), "_strategy_context", None)
+                merged_ctx: dict[str, Any] | None = None
+                if parent_ctx or own_ctx:
+                    merged_ctx = {}
+                    if parent_ctx:
+                        merged_ctx.update(parent_ctx)
+                    if own_ctx:
+                        merged_ctx.update(own_ctx)
+                decorator_ctx_token = _decorator_context_var.set(merged_ctx)
+
+                # Propagate decorator events to nested calls:
+                # Use this method's EventQuery if present, otherwise inherit parent's
+                parent_evt = _decorator_events_var.get()
+                own_evt = getattr(getattr(method, "__func__", method), "_strategy_events", None)
+                # EventQuery: child overrides parent (not merged like context dicts)
+                active_evt = own_evt if own_evt is not None else parent_evt
+                decorator_evt_token = _decorator_events_var.set(active_evt)
+
+                try:
+                    # Set current strategy context var (_prepare_context reads it)
+                    strategy_token = _current_strategy_var.set(strategy)
+
+                    try:
+                        result = await strategy.execute(self, call)
+                        return result
+                    finally:
+                        _current_strategy_var.reset(strategy_token)
+                finally:
+                    # Restore previous context var values
+                    _current_call_var.reset(call_token)
+                    _current_method_var.reset(method_token)
+                    _current_llm_var.reset(llm_token)
+                    _decorator_context_var.reset(decorator_ctx_token)
+                    _decorator_events_var.reset(decorator_evt_token)
+            else:
+                raise TypeError(f"Expected GenerationStrategy instance, got {type(strategy)}")
+        except Exception as e:
+            exception_caught = e
+            raise
+        finally:
+            # NOTE: agent_call_id is popped by the decorator (decorators.py/metaclass.py)
+            # after _call_plan or _execute_task returns. We don't pop here anymore.
+
+            # Pop generation_id from stack using copy-on-write semantics
+            _pop_generation_id()
+
+            # Call after generation hook
+            if should_trace:
+                call_after_hook(
+                    "after_generation",
+                    hook_context,
+                    agent=self.agent,
+                    method_name=method_name,
+                    result=result,
+                    exception=exception_caught,
+                    generation_id=generation_id,
+                )
+
+            # Restore previous context variable value
+            # (handles nested generation sessions correctly)
+            _in_generation_session.set(prev_in_session)
+
+    async def define_method(
+        self,
+        name: str,
+        params: list[str],
+        return_type: str = "None",
+        docstring: str = "",
+        strategy: Any = None,
+        body: str | None = None,
+    ) -> None:
+        """
+        Define a new @strategy method on the agent dynamically.
+
+        This is a runtime tool that allows generated code to define new methods.
+
+        Args:
+            name: Method name
+            params: List of parameter signatures (e.g., ["item: dict", "count: int"])
+            return_type: Return type annotation
+            docstring: Method docstring (used as prompt for generation)
+            strategy: Strategy instance (e.g., PurePythonStrategy()). Defaults to PurePythonStrategy()
+            body: Optional implementation code. If None, method has ellipsis body (triggers generation)
+
+        Example with body:
+            await runtime.define_method(
+                name="validate_item",
+                params=["item: dict"],
+                return_type="bool",
+                docstring="Validate a single item",
+                body="return len(item) > 0 and 'name' in item"
+            )
+
+        Example without body (needs generation):
+            await runtime.define_method(
+                name="complex_task",
+                params=["data: list"],
+                return_type="dict",
+                docstring="Process complex data",
+                # No body - will trigger generation when called
+            )
+        """
+        # Resolve strategy to instance (defaults to get_default_strategy())
+        from agent006.strategies import get_default_strategy
+
+        strat = strategy if strategy is not None else get_default_strategy()
+
+        # Build parameter list
+        params_str = ", ".join(["self"] + params) if params else "self"
+
+        # Create the function body
+        if body is None:
+            # No implementation - use ellipsis (will trigger generation)
+            method_body = "    ..."
+            needs_generation = True
+        else:
+            # Has implementation - use provided code
+            method_body = self._indent_code(body, "    ")
+            needs_generation = False
+
+        # Create the function dynamically
+        func_code = f"""
+
+
+async def {name}({params_str}) -> {return_type}:
+    '''{docstring}'''
+{method_body}
+"""
+
+        # Execute to create the function
+        namespace: dict[str, Any] = {}
+        exec(func_code, namespace)
+        func = namespace[name]
+
+        # Apply @strategy decorator metadata manually
+        func._agent_decorator = "plan"
+        func._plan_strategy = strat
+        func._needs_generation = needs_generation
+        # Attach generated source for later retrieval
+        try:
+            func._generated_source = func_code
+        except Exception:
+            pass
+
+        # Bind to agent instance
+        bound_method = types.MethodType(func, self.agent)
+
+        # Set on agent
+        setattr(self.agent, name, bound_method)
+        # Only register fully-realized methods (not ellipsis-body plan methods
+        # that still need LLM generation — those carry _needs_generation metadata
+        # that can't survive a simple source-code roundtrip).
+        if not needs_generation and hasattr(self.agent, "_defined_methods_registry"):
+            self.agent._defined_methods_registry[name] = func_code
+
+    def _indent_code(self, code: str, indent: str) -> str:
+        """Indent each line of code, preserving multiline string indentation."""
+        lines = code.split("\n")
+        try:
+            # Tokenize to find string literals
+            tokens = list(tokenize.generate_tokens(io.StringIO(code).readline))
+
+            # Track which lines are continuation lines of multiline strings
+            # Uses 0-indexed line numbers to match enumerate(lines)
+            string_ranges = set()
+            fstring_middle_type = getattr(tokenize, "FSTRING_MIDDLE", None)
+
+            for token in tokens:
+                # Check for STRING tokens or FSTRING_MIDDLE (Python 3.12+)
+                if token.type == tokenize.STRING or (
+                    fstring_middle_type and token.type == fstring_middle_type
+                ):
+                    # Convert 1-based tokenizer positions to 0-indexed
+                    start_line = token.start[0] - 1
+                    end_line = token.end[0] - 1
+
+                    # Check if this token spans multiple lines
+                    if end_line > start_line:
+                        # Mark continuation lines (not the first line, but include the last)
+                        for line_idx in range(start_line + 1, end_line + 1):
+                            string_ranges.add(line_idx)
+
+            # Indent normal lines, preserve string continuation lines
+            result_lines = []
+            for idx, line in enumerate(lines):
+                if idx in string_ranges:
+                    # String continuation - keep as-is
+                    result_lines.append(line)
+                else:
+                    # Normal code - add indent
+                    result_lines.append(indent + line)
+
+            return "\n".join(result_lines)
+        except (tokenize.TokenError, IndentationError):
+            # Fallback to simple indentation if tokenization fails
+            return "\n".join(indent + line for line in lines)
+
+    async def _prepare_context(
+        self,
+        method: Any,
+        call_args: tuple = (),
+        call_kwargs: dict | None = None,
+    ) -> list[ResolvedBlock]:
+        """Gather all blocks, resolve DynamicContext values, return list[ResolvedBlock].
+
+        Thin wrapper around context_builder.build_context() that constructs
+        the resolve function and strategy from the current runtime state.
+
+        DynamicContext expression errors are displayed inline in the block content
+        (not raised), so a single broken expression doesn't crash the whole
+        context build.
+
+        Args:
+            method: Method being generated
+            call_args: Current call positional arguments
+            call_kwargs: Current call keyword arguments
+
+        Returns:
+            Ordered list of ResolvedBlock ready for render_context()
+        """
+        from agent006.runtime.context_builder import build_context
+
+        tc = self.agent._truncation
+        call_kwargs = call_kwargs or {}
+
+        # Get current strategy
+        strategy = getattr(method, "_plan_strategy", None)
+        if strategy is None:
+            strategy = _current_strategy_var.get()
+
+        # Build evaluation context for DynamicContext expressions
+        extra_context = {
+            "method": method,
+            "call_args": call_args,
+            "call_kwargs": call_kwargs,
+            "strategy": strategy,
+            "datetime": datetime,
+            "runtime": self,
+        }
+
+        async def _resolve_value(key: str, value: str | DynamicContext) -> str:
+            """Resolve a value (static str or DynamicContext) to a string.
+
+            Errors are displayed inline as "ExceptionType: message" so the
+            LLM can see and fix the problem. Unlike codeact errors (which
+            include full tracebacks), context block errors omit tracebacks
+            because the source is a short expression, not user-written code.
+            """
+            if isinstance(value, DynamicContext):
+                try:
+                    result = await self.evaluate_expression(
+                        value.expr, extra_context=extra_context, error_mode="raise"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "DynamicContext block %r failed to resolve: %s: %s (expr: %s)",
+                        key,
+                        type(e).__name__,
+                        e,
+                        value.expr,
+                    )
+                    return f"{type(e).__name__}: {e}"
+                if result is None:
+                    return "None"
+                if isinstance(result, str):
+                    return result
+                from context_blocks.utils import safe_pformat
+
+                return safe_pformat(result, max_chars=tc.max_pre_format_chars)
+            return value
+
+        build_result = await build_context(
+            framework_blocks=self.agent._framework_blocks,
+            context_manager=self.agent.context_manager,
+            event_manager=self.agent.event_manager,
+            strategy=strategy,
+            resolve_fn=_resolve_value,
+            decorator_context=_decorator_context_var.get(),
+            scoped_context=_scoped_blocks_var.get(),
+            runtime_event_query=self.agent.event_manager.get_event_query(),
+            decorator_event_query=_decorator_events_var.get(),
+            scoped_event_query=_scoped_events_var.get(),
+            agent_event_query=getattr(self.agent, "event_query", None),
+            current_call_id=self._agent_call_id,
+            pre_format_chars=tc.max_pre_format_chars,
+        )
+
+        # Apply the resolved cache (the only side effect)
+        self.agent.context_manager._update_resolved(build_result.resolved_cache)
+
+        return build_result.blocks
+
+    async def _build_messages(
+        self,
+        method: Any,
+        call_args: tuple = (),
+        call_kwargs: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build messages for LLM API.
+
+        Calls _prepare_context() to gather and resolve all blocks,
+        then render_context() to format them using the agent's configured
+        block and provider formatters.
+        """
+        blocks = await self._prepare_context(method, call_args, call_kwargs)
+        tc = self.agent._truncation
+        llm_client = _current_llm_var.get()
+        count_tokens = getattr(llm_client, "count_tokens", None)
+        try:
+            from openinference_instrumentation_agent006._context_sideband import set_context_blocks
+
+            block_formatter = self.agent.render_config.block_formatter
+            rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
+            if rendered:
+                set_context_blocks(rendered)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed to set context blocks for journal: %s", exc)
+        return render_context(
+            blocks,
+            block_formatter=self.agent.render_config.block_formatter,
+            provider_formatter=self.agent.render_config.provider_formatter,
+            block_limit=tc.max_block_chars,
+            context_limit=tc.max_context_tokens,
+            event_limit=tc.max_event_tokens,
+            count_tokens=count_tokens,
+            pre_format_limit=tc.max_pre_format_chars,
+        )

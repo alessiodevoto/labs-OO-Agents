@@ -1,0 +1,182 @@
+"""Tests for ContextApi — dict-like Skill wrapping agent.context_manager."""
+
+import pytest
+
+from agent006 import Agent
+from agent006.runtime.context import ContextApi
+from context_blocks import DynamicContext
+from context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
+from unifiedllm import FakeLLMClient
+
+_llm = FakeLLMClient()
+
+
+class _TestAgent(Agent, llm=_llm):
+    pass
+
+
+def _ctx() -> ContextApi:
+    return _TestAgent().context
+
+
+# ── setitem ────────────────────────────────────────────────────────────────────
+
+
+def test_setitem_and_getitem():
+    ctx = _ctx()
+    ctx["key"] = "value"
+    assert ctx["key"] == "value"
+
+
+def test_setitem_raises_on_protected_key():
+    ctx = _ctx()
+    with pytest.raises(ProtectedBlockError):
+        ctx["system_prompt"] = "overwrite"
+
+
+def test_setitem_raises_for_dynamic_context_value():
+    ctx = _ctx()
+    with pytest.raises(TypeError, match="set_dynamic"):
+        ctx["bad"] = DynamicContext("'expr'")
+
+
+# ── getitem ────────────────────────────────────────────────────────────────────
+
+
+def test_getitem_raises_for_missing_key():
+    ctx = _ctx()
+    with pytest.raises(KeyError):
+        _ = ctx["missing"]
+
+
+def test_getitem_dynamic_raises_before_resolve():
+    ctx = _ctx()
+    ctx.set_dynamic("dyn", "'hello'")
+    with pytest.raises(DynamicNotResolvedError):
+        _ = ctx["dyn"]
+
+
+def test_getitem_dynamic_returns_after_resolve():
+    ctx = _ctx()
+    ctx.set_dynamic("dyn", "'hello'")
+    ctx._context._update_resolved({"dyn": "hello"})
+    assert ctx["dyn"] == "hello"
+
+
+# ── set_dynamic ────────────────────────────────────────────────────────────────
+
+
+def test_set_dynamic_raises_on_protected_key():
+    ctx = _ctx()
+    with pytest.raises(ProtectedBlockError):
+        ctx.set_dynamic("system_prompt", "'expr'")
+
+
+# ── delitem ────────────────────────────────────────────────────────────────────
+
+
+def test_delitem():
+    ctx = _ctx()
+    ctx["key"] = "value"
+    del ctx["key"]
+    assert "key" not in ctx
+
+
+def test_delitem_raises_for_missing_key():
+    ctx = _ctx()
+    with pytest.raises(KeyError):
+        del ctx["missing"]
+
+
+def test_delitem_raises_for_protected_key():
+    ctx = _ctx()
+    ctx._context._blocks["guarded"] = "value"
+    ctx._context._protected_keys.add("guarded")
+    with pytest.raises(ProtectedBlockError):
+        del ctx["guarded"]
+
+
+# ── contains / len / iter / repr ───────────────────────────────────────────────
+
+
+def test_contains():
+    ctx = _ctx()
+    ctx["a"] = 1
+    assert "a" in ctx
+    assert "b" not in ctx
+
+
+def test_len_and_iter():
+    ctx = _ctx()
+    ctx["a"] = 1
+    ctx["b"] = 2
+    assert len(ctx) == 2
+    assert set(ctx) == {"a", "b"}
+
+
+def test_repr():
+    ctx = _ctx()
+    ctx["x"] = 1
+    assert "1 block" in repr(ctx)
+
+
+# ── keys / _raw_items ──────────────────────────────────────────────────────────
+
+
+def test_keys():
+    ctx = _ctx()
+    ctx["a"] = 1
+    ctx["b"] = 2
+    assert set(ctx.keys()) == {"a", "b"}
+
+
+# ── get ────────────────────────────────────────────────────────────────────────
+
+
+def test_get_returns_value():
+    ctx = _ctx()
+    ctx["key"] = "value"
+    assert ctx.get("key") == "value"
+
+
+def test_get_returns_default_for_missing():
+    ctx = _ctx()
+    assert ctx.get("missing", "default") == "default"
+    assert ctx.get("missing") is None
+
+
+# ── pop ────────────────────────────────────────────────────────────────────────
+
+
+def test_pop_static_block():
+    ctx = _ctx()
+    ctx["key"] = "value"
+    assert ctx.pop("key") == "value"
+    assert "key" not in ctx
+
+
+def test_pop_dynamic_block():
+    ctx = _ctx()
+    ctx._context._blocks["dyn"] = DynamicContext("'hello'")
+    ctx._context._dynamic_cache["dyn"] = "hello"
+    assert ctx.pop("dyn") == "hello"
+    assert "dyn" not in ctx
+
+
+def test_pop_returns_default_for_missing():
+    ctx = _ctx()
+    assert ctx.pop("missing", "default") == "default"
+
+
+def test_pop_raises_for_missing_without_default():
+    ctx = _ctx()
+    with pytest.raises(KeyError):
+        ctx.pop("missing")
+
+
+def test_pop_raises_for_protected_key():
+    ctx = _ctx()
+    ctx._context._blocks["guarded"] = "value"
+    ctx._context._protected_keys.add("guarded")
+    with pytest.raises(ProtectedBlockError):
+        ctx.pop("guarded")

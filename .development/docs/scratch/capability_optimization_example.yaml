@@ -1,0 +1,103 @@
+# Example: Capability Tests Optimization Config
+# This config uses the default CapabilityContextProvider
+
+name: capability
+description: Agent006 capability tests - optimize strategy prompts
+
+# Optimization settings
+optimization:
+  n_runs: 3                # Run each test 3 times for consistency
+  n_samples: 3             # Sample 3 frontier failures for reflection
+  compact_traces: true     # Use compact trace rendering
+  max_trace_lines: 1000    # Truncate traces to prevent context overflow
+
+  # Reflection settings
+  reflect_model: openai/aws/anthropic/claude-opus-4-5
+  reflect_temperature: 0.7
+  reflect_api_base: https://inference-api.nvidia.com/v1
+  reflect_api_key_env: NVIDIA_INFERENCE_API_KEY
+  reflect_max_tokens: 8000
+
+  # Optional: Use custom prompt template (includes {benchmark_context} placeholder)
+  # prompt_template: reflection_prompt.md.template
+
+# What files to optimize
+target_files:
+  - agents/strategy.py
+
+# Output directory
+output_dir: results
+
+# Pass threshold for accept/reject (80%)
+pass_threshold: 0.8
+
+# Agent models to test
+agent_models:
+  - gpt-oss-120b
+  - qwen3-80b
+  - claude-haiku
+
+# Model configurations
+models:
+  gpt-oss-120b:
+    model_name: openai/nvidia/openai/gpt-oss-120b
+    endpoint: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INFERENCE_API_KEY
+    max_tokens: 16384
+    max_thinking_tokens: 4096
+    reasoning_effort: medium
+
+  qwen3-80b:
+    model_name: openai/qwen/qwen3-next-80b-a3b-instruct
+    endpoint: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    max_tokens: 16384
+
+  claude-haiku:
+    model_name: openai/aws/anthropic/claude-haiku-4-5-v1
+    endpoint: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INFERENCE_API_KEY
+    max_tokens: 8192
+
+# Test suite (abbreviated - see experiments/capability_eval/ for full suite)
+test_suite:
+  - name: sentiment_single
+    description: Single sentiment classification - should answer directly
+    agent:
+      module: agents.sentiment_single
+      class: SentimentSingleAgent
+    method: classify
+    data_file: experiments/capability_eval/data/sentiment_single.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 0.5
+      - name: method_judge
+        class: LLMJudgeScorer
+        model: nemotron3-nano-30b
+        weight: 0.5
+        rubric: |
+          Evaluate if this solution uses a DIRECT approach (returning the answer immediately)
+          or an INDIRECT approach (using loops, complex logic, or unnecessary computation).
+
+          For single-item classification, the model should answer DIRECTLY without writing code.
+
+          Generated code:
+          ```python
+          {code}
+          ```
+
+          Return passed=true if the solution returns the answer without unnecessary code.
+          Return passed=false if it writes loops, functions, or complex logic.
+
+  - name: calculate_single
+    description: Single natural language calculation - interpret and compute
+    agent:
+      module: agents.calculate_single
+      class: CalculateSingleAgent
+    method: calculate
+    data_file: experiments/capability_eval/data/calculate_single.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0

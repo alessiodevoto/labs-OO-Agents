@@ -1,0 +1,26 @@
+# ruff: noqa: F403,F405
+"""Quickstart 01: First generation method — the simplest possible agent.
+
+uv run python examples/quickstart/01_first_generation_method.py
+"""
+
+from agent006.util.quickstart import *
+from unifiedllm.registry import get_llm_client
+
+# Get a preconfigured LLM client (Inference Hub model)
+llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")
+
+
+class FeedbackAgent(Agent, llm=llm):
+    """You are an agent specializing in analyzing customer feedback."""
+
+    async def analyze_feedback(self, text: str) -> str:
+        """Analyze customer feedback for sentiment and key topics in one sentence."""
+        ...  # Generation method - LLM implements based on docstring
+
+
+@autorun
+async def main():
+    agent = FeedbackAgent()
+    result = await agent.analyze_feedback("Great product, but shipping was slow")
+    print(result)

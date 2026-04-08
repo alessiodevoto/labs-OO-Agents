@@ -1,0 +1,18 @@
+"""Test agent with multiple hide patterns."""
+
+import json  # noqa: F401
+import math  # noqa: F401
+
+# agentdoc: hide
+import os  # noqa: F401
+import sys  # agentdoc: hide  # noqa: F401
+
+from agent006 import Agent
+from unifiedllm import FakeLLMClient
+
+
+class AgentHideMultiple(Agent, llm=FakeLLMClient()):
+    """Agent with multiple hide patterns."""
+
+    def run(self):
+        return math.sqrt(16) + len(json.dumps({}))

@@ -1,0 +1,17 @@
+# Minimal Agent006 + NAT config.
+# Agent uses its own LLM, no NAT tools.
+#
+# Usage:
+#   nat run --config_file examples/nat/config_standalone.yml --input "Hello!"
+
+workflow:
+  _type: agent006_wrapper
+  dependencies:
+    - ../../src
+    - ../../packages/unifiedllm/src
+    - ../../packages/agentdoc/src
+    - ../../packages/context-blocks/src
+  agent: example_agent_standalone.py:StandaloneAgent
+  method: chat
+  env: ../../.env
+  description: "Standalone Agent006 agent with its own LLM"

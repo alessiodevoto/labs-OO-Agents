@@ -1,0 +1,30 @@
+# Full Agent006 + NAT integration config.
+# Exercises all bridges: LLM, tools, OTel, and method routing.
+#
+# Usage:
+#   cd examples/nat
+#   nat run --config_file config_full.yml --input "What time is it right now?"
+
+llms:
+  agent:
+    _type: nim
+    model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+
+functions:
+  current_datetime:
+    _type: current_datetime
+
+workflow:
+  _type: agent006_wrapper
+  dependencies:
+    - ../../src
+    - ../../packages/unifiedllm/src
+    - ../../packages/agentdoc/src
+    - ../../packages/context-blocks/src
+  agent: example_agent.py:DemoAgent
+  method: chat
+  llm_name: agent
+  tools:
+    - current_datetime
+  env: ../../.env
+  description: "Agent006 demo agent with NAT LLM and tools"

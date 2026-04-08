@@ -1,0 +1,14 @@
+"""Allow running the viewer with `python -m agent006_viewer`."""
+
+import logging
+import os
+
+import uvicorn
+
+from .main import app
+
+log = logging.getLogger(__name__)
+
+port = int(os.environ.get("VIEWER_PORT", os.environ.get("TRACE_VIEWER_PORT", "5001")))
+log.info("Starting viewer on port %d", port)
+uvicorn.run(app, host="0.0.0.0", port=port)

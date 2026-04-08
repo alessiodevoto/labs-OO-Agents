@@ -1,0 +1,31 @@
+[project]
+name = "agent006-viewer"
+version = "0.1.0"
+description = "Unified trace and evaluation viewer for agent006"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.5",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent006_viewer"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"frontend-react/dist" = "agent006_viewer/frontend"

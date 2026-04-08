@@ -1,0 +1,26 @@
+[project]
+name = "nvidia-nat-agent006"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Agent006 integration plugin for NVIDIA NeMo Agent Toolkit"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "nvidia-nat-core",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[project.entry-points.'nat.components']
+nat_agent006 = "nat.plugins.agent006.register"
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nat.plugins.agent006"

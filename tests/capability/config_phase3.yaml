@@ -1,0 +1,101 @@
+# Phase 3: Advanced Capability Tests — Decomposition, Refinement, Subagent Chaining
+#
+# Tests: task_decomposition, refinement, employee_lookup
+#
+# Run:
+#   agent006 eval --config tests/capability/config_phase3.yaml --runs 3
+#
+# Single model:
+#   agent006 eval --config tests/capability/config_phase3.yaml --models claude-haiku
+#
+# Debug single test:
+#   agent006 eval --config tests/capability/config_phase3.yaml --test refinement --limit 1
+
+name: capability-phase3
+no_cache: true
+description: "Phase 3 advanced capability tests — helper reuse, iterative refinement, subagent chaining"
+
+# =============================================================================
+# MODELS — resolved from unifiedllm registry (endpoint/api_key automatic)
+# =============================================================================
+
+agent_models:
+  - nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+  - azure/openai/gpt-5.2
+  - aws/anthropic/claude-haiku-4-5-v1
+
+output_dir: results/phase3
+pass_threshold: 0.8
+
+# =============================================================================
+# TEST SUITE — Phase 3: decomposition, refinement, subagent chaining
+# =============================================================================
+
+test_suite:
+  # ===========================================================================
+  # TASK DECOMPOSITION — Helper method reuse
+  # ===========================================================================
+
+  - name: task_decomposition
+    description: "Task Decomposition - should use task decomposition and reuse helper methods"
+    tier: stable
+    agent:
+      module: tests.capability.agents.task_decomposition
+      class: TaskDecompositionTestAgent
+    method: parse_normalize_and_validate_records
+    data_file: tests/capability/data/task_decomposition.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 0.5
+      - name: methodology
+        class: LLMMethodologyScorer
+        weight: 0.5
+        rubric: |
+          Evaluate if the agent uses helper methods and reuses them for various tasks.
+
+          Task: {input}
+
+          Code Executions:
+          {executions}
+
+          Return passed=true if:
+          1. The agent uses helper methods
+          2. The agent uses the same helper method for parsing user.created, product.created and equipment.bought or has general helper function for processing all records
+          3. The agent uses the same helper method for normalizing product.description and equipment.description or has general helper function for processing all records
+
+        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+
+  # ===========================================================================
+  # REFINEMENT — Iterative refinement
+  # ===========================================================================
+
+  - name: refinement
+    description: "Refinement - should use refinement to get the ingredients for a recipe"
+    tier: frontier
+    agent:
+      module: tests.capability.agents.refinement
+      class: RefinementTestAgent
+    method: _order_recipe_ingredients_with_result_parsing
+    data_file: tests/capability/data/refinement.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ===========================================================================
+  # EMPLOYEE LOOKUP — Multi-step subagent chaining
+  # ===========================================================================
+
+  - name: employee_lookup
+    description: "Employee salary lookup - requires chaining subagents with data dependency (name → employee_id → salary)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.employee_lookup
+      class: EmployeeSalaryAgent
+    method: get_employee_salary
+    data_file: tests/capability/data/employee_lookup.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
