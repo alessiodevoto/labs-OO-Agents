@@ -677,7 +677,9 @@ class SelfImprovementRunner:
         """Save combined report across all benchmarks (summary file, not for viewer)."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Use .noo-summary.json (not .006eval.json) - this is a summary, not evaluation results
-        report_path = Path(self.config.results_dir) / f"combined_report_{timestamp}.noo-summary.json"
+        report_path = (
+            Path(self.config.results_dir) / f"combined_report_{timestamp}.noo-summary.json"
+        )
 
         data = {
             "timestamp": timestamp,
