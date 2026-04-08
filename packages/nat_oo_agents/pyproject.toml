@@ -1,8 +1,8 @@
 [project]
-name = "nvidia-nat-nemo_oo_agents"
+name = "nat-oo-agents"
 version = "0.1.0"
 requires-python = ">=3.11"
-description = "Agent006 integration plugin for NVIDIA NeMo Agent Toolkit"
+description = "NeMo OO Agents integration plugin for NVIDIA NeMo Agent Toolkit"
 license = {text = "Apache-2.0"}
 dependencies = [
     "nvidia-nat-core",
