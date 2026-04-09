@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Shared test fixtures for the test suite."""
+"""Root-level pytest fixtures shared across all test directories."""
 
 import sqlite3
 
