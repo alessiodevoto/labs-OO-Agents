@@ -148,7 +148,7 @@ class AgentSnapshot(BaseModel):
 
         # Use the higher of the snapshot value and the backend's actual max tag,
         # because events may have been added after the snapshot was saved (e.g.
-        # TUI session metadata events written during session close).
+        # session metadata events written during session close).
         agent.event_manager._next_tag_num = max(
             self.event_manager.next_tag_num,
             agent.event_manager._next_tag_num,

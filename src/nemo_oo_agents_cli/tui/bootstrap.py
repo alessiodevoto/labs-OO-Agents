@@ -8,10 +8,11 @@ This makes it structurally impossible for a feature to exist in one frontend
 but not the other: if it's in bootstrap, both get it.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from .output import Output
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from .commands import CommandRegistry
     from .config import Config
     from .frontend import Frontend
-    from .output import Output
     from .session import Session
     from .session_manager import SessionManager
 
@@ -28,9 +28,9 @@ if TYPE_CHECKING:
 class BootstrapResult:
     """Everything produced by bootstrap — ready to wire to any frontend."""
 
-    config: Config
-    agent: Agent
-    session_manager: SessionManager | None
+    config: 'Config'
+    agent: "Agent"
+    session_manager: "SessionManager | None"
     tracing_enabled: bool
     resumed: bool
     session_id: str | None
@@ -40,11 +40,11 @@ class BootstrapResult:
 
 
 async def bootstrap(
-    config: Config,
+    config: 'Config',
     *,
     continue_last: bool = False,
     resume_session_id: str | None = None,
-    agent: Agent | None = None,
+    agent: "Agent | None" = None,
 ) -> BootstrapResult:
     """Create agent, storage, session manager, and tracing.
 
@@ -121,6 +121,7 @@ async def bootstrap(
     import uuid as _uuid
 
     from nemo_oo_agents.storage import SQLiteStorageManager
+    from nemo_oo_agents.storage.sqlite import SessionAlreadyActiveError
 
     from .session_manager import SESSIONS_DIR, SessionManager
 
@@ -128,7 +129,7 @@ async def bootstrap(
 
     # Resolve which session to open
     if resume_session_id is not None:
-        # Explicit session ID (from web client or /session resume)
+        # Explicit session ID
         matches = SessionManager.find_by_prefix(resume_session_id)
         if matches:
             _session_id = matches[0]
@@ -152,6 +153,18 @@ async def bootstrap(
     agent_db = SESSIONS_DIR / f"{_session_id}.db"
 
     try:
+        agent_storage = SQLiteStorageManager(agent_db)
+    except SessionAlreadyActiveError:
+        # Another process owns this session — start a fresh one instead.
+        messages.append(
+            TextOutput(
+                f"Session {_session_id[:8]!r} is already active in another process, starting new.",
+                "warning",
+            )
+        )
+        _session_id = str(_uuid.uuid4())
+        _resumed = False
+        agent_db = SESSIONS_DIR / f"{_session_id}.db"
         agent_storage = SQLiteStorageManager(agent_db)
     except Exception as e:
         messages.append(TextOutput(f"Agent storage unavailable: {e}", "warning"))
@@ -200,9 +213,28 @@ async def bootstrap(
             messages.append(TextOutput(f"Could not restore agent state: {e}", "warning"))
 
     # ------------------------------------------------------------------
+    # Rich content replay (nemo oo term, session resume only)
+    # ------------------------------------------------------------------
+    # When resuming inside a web terminal, replay stored RichOutput events
+    # so the browser panel is restored.  Uses the public event_manager.filter()
+    # interface — no direct storage access needed.
+    import os as _os
+    if _resumed and _os.environ.get("NEMO_RICH_URL"):
+        try:
+            from nemo_oo_agents.tools.web_publisher import RichOutput, WebPublisher as _WP
+            agent.event_manager.register_event_type(RichOutput)
+            _rich_events = agent.event_manager.filter(type="rich_output")
+            if _rich_events:
+                _replay_wp = _WP()  # no event_manager — replay only, don't re-store
+                for _ev in _rich_events:
+                    _replay_wp._post(_ev.payload)
+        except Exception as _e:
+            messages.append(TextOutput(f"Could not replay rich content: {_e}", "warning"))
+
+    # ------------------------------------------------------------------
     # Session manager
     # ------------------------------------------------------------------
-    session_manager: SessionManager | None = None
+    session_manager: "SessionManager | None" = None
     if agent_storage is not None:
         try:
             session_manager = SessionManager(
@@ -223,11 +255,12 @@ async def bootstrap(
         tracing_enabled=tracing_enabled,
         resumed=_resumed,
         session_id=_session_id,
+
         messages=messages,
     )
 
 
-def build_startup_info(result: BootstrapResult) -> Output:
+def build_startup_info(result: BootstrapResult) -> "Output":
     """Build the StartupInfo output from bootstrap results."""
     from .agent import TUIAgent
     from .output import StartupInfo
@@ -272,8 +305,8 @@ def build_startup_info(result: BootstrapResult) -> Output:
 
 def build_registry(
     result: BootstrapResult,
-    frontend: Frontend,
-) -> CommandRegistry:
+    frontend: "Frontend",
+) -> "CommandRegistry":
     """Build the CommandRegistry from bootstrap results + frontend."""
     from .commands import CommandRegistry
 
@@ -289,9 +322,9 @@ def build_registry(
 
 def build_session(
     result: BootstrapResult,
-    frontend: Frontend,
-    registry: CommandRegistry,
-) -> Session:
+    frontend: "Frontend",
+    registry: "CommandRegistry",
+) -> "Session":
     """Build the Session from bootstrap results + frontend + registry."""
     from .session import Session
 
