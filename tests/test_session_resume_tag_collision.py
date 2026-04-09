@@ -9,9 +9,12 @@ with those later events.
 
 from __future__ import annotations
 
+import sqlite3
+
 from nemo_oo_agents import Agent
 from nemo_oo_agents.events import EventBase
 from nemo_oo_agents.storage import SQLiteStorageManager
+from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
 from unifiedllm import CompletionClient
 
 _LLM = CompletionClient(model="openai/gpt-4o-mini", api_key="test")
@@ -94,3 +97,47 @@ def test_next_tag_num_correct_after_resume_with_range_tags(tmp_path):
     )
 
     storage2.close()
+
+
+def _make_sqlite_backend() -> SQLiteEventBackend:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE events (tag TEXT PRIMARY KEY, event_type TEXT, data TEXT, "
+        "status TEXT DEFAULT 'active', insertion_order INTEGER)"
+    )
+    conn.execute("CREATE TABLE active_tags (tag TEXT PRIMARY KEY, position INTEGER)")
+    return SQLiteEventBackend(conn)
+
+
+def _insert_raw_tag(backend: SQLiteEventBackend, tag: str) -> None:
+    """Insert a bare tag row directly — bypasses EventManager for unit-testing max_tag_num."""
+    backend._conn.execute(
+        "INSERT INTO events (tag, event_type, data, insertion_order) VALUES (?, 'test', '{}', 0)",
+        (tag,),
+    )
+
+
+def test_sqlite_max_tag_num_multi_digit_range_tags():
+    """SQLiteEventBackend.max_tag_num() must correctly parse multi-digit range tags.
+
+    The SQL uses instr(tag, '..') + 2 to skip past '..'. Verify this is correct
+    for tags where both sides are multiple digits (e.g. "12..234", "233..293432").
+    """
+    backend = _make_sqlite_backend()
+    _insert_raw_tag(backend, "12..234")
+    _insert_raw_tag(backend, "233..293432")
+    _insert_raw_tag(backend, "500")
+    assert backend.max_tag_num() == 293432
+
+
+def test_sqlite_max_tag_num_empty():
+    backend = _make_sqlite_backend()
+    assert backend.max_tag_num() == 0
+
+
+def test_sqlite_max_tag_num_simple_tags():
+    backend = _make_sqlite_backend()
+    _insert_raw_tag(backend, "1")
+    _insert_raw_tag(backend, "99")
+    _insert_raw_tag(backend, "42")
+    assert backend.max_tag_num() == 99
