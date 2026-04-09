@@ -14,10 +14,8 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 from unifiedllm import FakeLLMClient
 
-_LLM = FakeLLMClient()
 
-
-class _SimpleAgent(Agent, llm=_LLM):
+class _SimpleAgent(Agent, llm=FakeLLMClient()):
     value: int = 0
 
 

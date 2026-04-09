@@ -52,3 +52,13 @@ class TestWebSearchConfig:
         merged = base.merge_with(override)
         assert merged.request_timeout == 30.0
         assert merged.default_num_results == 5
+
+
+class TestWebSearchConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = WebSearchConfig()
+        other = WebSearchConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)

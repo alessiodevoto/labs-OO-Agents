@@ -8,6 +8,7 @@ Covers:
 - Image._base64_data() when data_url does NOT start with 'data:' (line 88)
 """
 
+import base64
 from pathlib import Path
 
 from nemo_oo_agents.media import Image
@@ -77,8 +78,6 @@ class TestBaseBase64Data:
         # Should not contain the data URL prefix
         assert not b64.startswith("data:")
         # Verify it is pure base64
-        import base64
-
         decoded = base64.b64decode(b64)
         assert decoded == b"hello"
 
