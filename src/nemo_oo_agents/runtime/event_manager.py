@@ -102,8 +102,8 @@ class EventManager:
         self._backend: EventBackend = backend if backend is not None else InMemoryBackend()
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
 
-        # Tag counter (events are stored in the backend, recalled by tag or uuid)
-        self._next_tag_num: int = 1  # Next tag number to assign ("1", "2", ...)
+        # Tag counter — synced from backend so resumed sessions don't collide.
+        self._next_tag_num: int = self._backend.max_tag_num() + 1
 
         # Runtime event query override (set via set_event_query())
         self._event_query: EventQuery | None = None

@@ -265,6 +265,20 @@ class SQLiteEventBackend:
             self._conn.execute("DELETE FROM active_tags")
         self._insertion_counter = 0
 
+    def max_tag_num(self) -> int:
+        rows = self._conn.execute("SELECT tag FROM events").fetchall()
+        result = 0
+        for (tag,) in rows:
+            try:
+                if ".." in tag:
+                    n = int(tag.split("..")[1])
+                else:
+                    n = int(tag)
+                result = max(result, n)
+            except ValueError:
+                pass
+        return result
+
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
         return row[0]

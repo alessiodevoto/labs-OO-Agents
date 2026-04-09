@@ -182,6 +182,17 @@ class EventBackend(Protocol):
         """Remove all events and reset state."""
         ...
 
+    def max_tag_num(self) -> int:
+        """Return the highest numeric tag value across all stored events.
+
+        For simple tags like ``"5"``, the value is 5.
+        For range tags like ``"2..40"``, the value is 40.
+
+        Returns:
+            The highest tag number, or 0 if no events are stored.
+        """
+        ...
+
     def __len__(self) -> int:
         """Return total number of stored events (active + archived)."""
         ...
@@ -282,6 +293,21 @@ class InMemoryBackend:
         self._events.clear()
         self._tag_to_event.clear()
         self._active_tags.clear()
+
+    def max_tag_num(self) -> int:
+        if not self._tag_to_event:
+            return 0
+        result = 0
+        for tag in self._tag_to_event:
+            try:
+                if ".." in tag:
+                    n = int(tag.split("..")[1])
+                else:
+                    n = int(tag)
+                result = max(result, n)
+            except ValueError:
+                pass
+        return result
 
     def __len__(self) -> int:
         return len(self._events)
