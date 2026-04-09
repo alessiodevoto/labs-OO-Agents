@@ -69,12 +69,6 @@ def _validate_llm_param(llm: object, class_name: str) -> None:
             "To use an explicit LLM, pass llm=my_llm."
         )
 
-    if isinstance(llm, _InheritSentinel) and llm is not INHERIT:
-        raise ValueError(
-            f"{class_name}: llm=INHERIT is not allowed (INHERIT is internal only). "
-            "To enable cascading, omit the llm parameter."
-        )
-
 
 class FrameworkBlock(NamedTuple):
     """A framework context block definition.

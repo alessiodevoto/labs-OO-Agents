@@ -97,6 +97,7 @@ dev = [
     {include-group = "trace-viewer"},
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
     "mypy>=1.7.0",
     "ruff>=0.14.14",
     "httpx[socks]>=0.28.1",
@@ -145,6 +146,30 @@ filterwarnings = [
     "ignore:Pydantic serializer warnings:UserWarning",
     "ignore::FutureWarning:nemo_oo_agents.strategies",
 ]
+
+[tool.coverage.run]
+source = ["src/nemo_oo_agents", "src/nemo_oo_agents_cli"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "if __name__ == .__main__.:",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.mypy]
 python_version = "3.12"

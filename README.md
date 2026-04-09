@@ -224,14 +224,14 @@ Use `@strategy` to control reasoning style (agentic strategy) per-method. You ca
 from typing import Annotated
 
 from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.tools.web_search_tool import WebSearchTool
+from nemo_oo_agents.tools.bash_tool import BashTool
 from nemo_oo_agents.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):
     """Agent demonstrating different strategy options."""
 
-    web_search_tool = WebSearchTool()  # External tool - LLM can call this too
+    bash = BashTool()  # External tool - LLM can call this too
 
     @strategy(PredictStrategy())
     async def classify_sentiment(self, text: str) -> str:
@@ -259,7 +259,7 @@ async def main():
     # CodeActStrategy (can execute Python code, call methods, iterate)
     requests = [
         "What is the current working directory?",
-        "What does the web know about DGX Spark in one sentence?",
+        "List the files in the current directory.",
     ]
     for request in requests:
         response = await agent.perform_task(request=request)

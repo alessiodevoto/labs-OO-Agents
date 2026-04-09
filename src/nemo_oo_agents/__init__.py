@@ -136,19 +136,3 @@ __all__ = [
 from nemo_oo_agents.runtime.debug_handler import install_debug_handler  # noqa: E402
 
 install_debug_handler()
-
-# Register agentdoc provider for Agent class
-# This is done here (at the end of nemo_oo_agents import) rather than in agentdoc's
-# auto-registration because of circular import issues: agentdoc is imported
-# during nemo_oo_agents import (via actor.py), so agentdoc's _try_register_nemo_oo_agents()
-# fails silently during the circular import.
-try:
-    from agentdoc.providers.nemo_oo_agents import (
-        NemoOOAgentsProvider,  # type: ignore[import-untyped]
-    )
-
-    _register_provider = getattr(__import__("agentdoc"), "register_provider", None)
-    if _register_provider is not None:
-        _register_provider(Agent, NemoOOAgentsProvider())
-except (ImportError, AttributeError):
-    pass  # agentdoc not installed or provider not available
