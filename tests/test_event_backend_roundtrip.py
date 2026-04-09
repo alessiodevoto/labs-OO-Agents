@@ -19,8 +19,6 @@ the LLM never sees the code it wrote.
 
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
 from context_blocks import ToolCallEvent
@@ -47,29 +45,12 @@ from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
 
 
 @pytest.fixture(params=["memory", "sqlite"])
-def backend(request):
+def backend(request, sqlite_conn):
     """Parametrized fixture: yields either InMemoryBackend or SQLiteEventBackend."""
     if request.param == "memory":
-        yield InMemoryBackend()
+        return InMemoryBackend()
     else:
-        conn = sqlite3.connect(":memory:")
-        # Create the events table the backend needs
-        conn.executescript("""\
-            CREATE TABLE IF NOT EXISTS events (
-                tag TEXT PRIMARY KEY,
-                event_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'active',
-                data TEXT NOT NULL,
-                insertion_order INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS active_tags (
-                position INTEGER NOT NULL,
-                tag TEXT NOT NULL UNIQUE
-            );
-        """)
-        yield SQLiteEventBackend(conn)
-        conn.close()
+        return SQLiteEventBackend(sqlite_conn)
 
 
 # ---------------------------------------------------------------------------
