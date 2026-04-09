@@ -42,3 +42,23 @@ class TestMethodSummarizerConfig:
         merged = base.merge_with(override)
         assert merged.min_events == 5
         assert merged.exclude_root is True
+
+
+class TestTokenBudgetConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = TokenBudgetConfig()
+        other = TokenBudgetConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)
+
+
+class TestMethodSummarizerConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = MethodSummarizerConfig()
+        other = MethodSummarizerConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)

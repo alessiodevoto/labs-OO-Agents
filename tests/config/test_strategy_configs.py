@@ -64,6 +64,36 @@ class TestReflexionConfig:
         assert merged.max_iterations == 5
 
 
+class TestCodeActConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = CodeActConfig()
+        other = CodeActConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)
+
+
+class TestPredictConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = PredictConfig()
+        other = PredictConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)
+
+
+class TestReflexionConfigMergeError:
+    def test_merge_with_empty_model_fields_set_raises(self):
+        base = ReflexionConfig()
+        other = ReflexionConfig.model_validate({})
+        with pytest.raises(
+            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+        ):
+            base.merge_with(other)
+
+
 class TestStrategyWiring:
     """Tests that strategies accept config objects."""
 

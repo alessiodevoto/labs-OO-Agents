@@ -111,6 +111,7 @@ dev = [
     "mcp-nemo-oo-agents",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
