@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """TUI Agent extending NeMo OO Agents with Bash tools and summarization.
 
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.

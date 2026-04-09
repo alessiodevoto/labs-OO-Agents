@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Agent persistence — StorageManager protocol and implementations."""
 
 from nemo_oo_agents.storage.in_memory import InMemoryStorageManager

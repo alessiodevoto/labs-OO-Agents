@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Lightweight OTLP JSON HTTP span exporter.
 
 Sends spans to an OTLP HTTP endpoint as JSON (not protobuf),

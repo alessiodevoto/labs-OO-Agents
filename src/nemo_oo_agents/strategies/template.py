@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """TemplateStrategy - String templating without LLM calls.
 
 This is the foundational strategy that all other strategies build upon.

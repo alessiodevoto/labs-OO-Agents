@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """agentdoc.adapters — doc() adapters for third-party libraries.
 
 Each module adapts a popular library's documentation to agentdoc's

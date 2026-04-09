@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for stack isolation between concurrent async contexts.
 
 These tests verify that _agent_call_stack and _generation_id_stack are isolated

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Runtime async safety patches for agent-generated code.
 
 Prevents deadlocks when code runs inside an async context by patching

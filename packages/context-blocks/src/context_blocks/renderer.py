@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Render pre-resolved context blocks into provider-specific output.
 
 Dead simple: takes a list of ResolvedBlocks, partitions by role,

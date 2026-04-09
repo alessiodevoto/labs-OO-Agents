@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Unified structured type extraction for agentdoc.
 
 Extracts a common representation from Pydantic, dataclass, NamedTuple,

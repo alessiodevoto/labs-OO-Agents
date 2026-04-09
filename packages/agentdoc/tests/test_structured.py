@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for TypeInfo extraction."""
 
 # Path must be set before other imports so "from fixtures.init_field_classes import ..." works

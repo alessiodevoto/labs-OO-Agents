@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for enable_tracing() idempotency.
 
 Verifies that enable_tracing() is idempotent — multiple calls are no-ops

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Type-based extractor registry for agentdoc.
 
 Allows libraries to register custom TypeInfo extractors for types you don't control,

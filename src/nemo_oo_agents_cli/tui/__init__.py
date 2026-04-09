@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """NeMo OO Agents TUI - A beautiful terminal interface for NeMo OO Agents.
 
 Licensed to vibe.

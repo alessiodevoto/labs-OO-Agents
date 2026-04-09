@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Pytest configuration and shared fixtures for tracing tests.
 
 Ensures proper isolation between tests by resetting module-level state.

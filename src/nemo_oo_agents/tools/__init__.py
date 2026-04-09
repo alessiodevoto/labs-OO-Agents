@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 from .arxiv_tool import ArxivTool
 from .bash_tool import BashResult, BashTool, FileResult, FileTool
 from .gitlab_tool import GitLabTool

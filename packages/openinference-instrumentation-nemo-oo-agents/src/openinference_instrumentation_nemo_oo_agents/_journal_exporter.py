@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """JournalExporter: spans (sans messages) + content-addressed message sideband.
 
 Combines two responsibilities into a single exporter:

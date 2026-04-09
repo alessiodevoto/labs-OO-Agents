@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """agentdoc.visibility — inspect visibility decisions for framework authors.
 
 When building a framework on top of agentdoc, use these helpers to mirror the

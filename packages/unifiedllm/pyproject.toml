@@ -2,6 +2,7 @@
 name = "unifiedllm"
 version = "0.1.0"
 description = "A minimalistic wrapper around LLM libraries (litellm, OpenAI) providing a unified interface"
+license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

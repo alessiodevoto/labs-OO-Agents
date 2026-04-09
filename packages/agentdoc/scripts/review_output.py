@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Streamlined review of pprint() and doc() output for nemo_oo_agents types.
 
 This script generates markdown output showing how agentdoc handles the most

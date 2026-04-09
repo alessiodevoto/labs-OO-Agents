@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Import NeMo OO Agents OTLP traces from a Harbor job directory into the viewer.
 
 Walks a Harbor job directory (or any directory containing one), finds all

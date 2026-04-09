@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Error formatting helpers for CodeAct strategy.
 
 Pure functions that format validation errors into actionable LLM feedback.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """
 Provides some quickstart settings to get you started with some reasonable defaults and to make the quickstart examples in the README.md more concise.
 """

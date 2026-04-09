@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """ArXiv API tool for paper search and download.
 
 This tool provides stateless access to the arXiv API. Rate limiting state

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for Anthropic prompt caching support in CompletionClient.
 
 Tests the cache_control injection and the litellm patch that prevents

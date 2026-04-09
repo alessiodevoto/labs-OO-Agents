@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """ContextVar sideband for passing rendered context block strings to the journal callback.
 
 The nemo_oo_agents runtime sets this before each litellm call so that

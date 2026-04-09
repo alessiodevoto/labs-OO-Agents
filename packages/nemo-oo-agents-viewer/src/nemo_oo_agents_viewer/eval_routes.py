@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Evaluation viewer API routes -- backed by otlp_store.
 
 All evaluation data is stored as OTLP traces with eval.* attributes.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests verifying format_event never produces unbounded output.
 
 The base BlockFormatter.format_event() previously used sys.maxsize for all

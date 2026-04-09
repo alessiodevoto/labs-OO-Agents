@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """ContextVar-based session management for exporter-agnostic session routing.
 
 All exporters see the same session.id via the SessionSpanProcessor, which reads

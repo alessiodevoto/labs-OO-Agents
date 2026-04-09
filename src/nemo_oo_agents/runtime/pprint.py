@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Rich-compatible pretty printing for agent code execution.
 
 Provides pprint() with Rich-compatible API but no Rich dependency.

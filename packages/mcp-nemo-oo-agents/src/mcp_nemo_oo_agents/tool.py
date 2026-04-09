@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Agent-facing MCP per-server tool base and factory.
 
 Dynamic per-server tool classes inherit from MCPTool. Each instance manages

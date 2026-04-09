@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Visibility control for agent namespace (exec_globals).
 
 Moved from agentscope into agentdoc so that agentdoc is self-contained.

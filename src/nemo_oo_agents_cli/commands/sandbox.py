@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Sandbox command for nemo_oo_agents CLI.
 
 ``nemo_oo_agents sandbox`` is an opinionated zero-config wrapper around

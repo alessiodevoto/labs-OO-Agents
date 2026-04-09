@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Middleware engine for intercepting LLM calls and code execution.
 
 Register middleware via ``event_manager.intercept()``::

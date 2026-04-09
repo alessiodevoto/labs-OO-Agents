@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Fixture classes for testing __init__ field extraction.
 
 These classes are in a real file because inspect.getsource() doesn't work

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Hook-based instrumentation for nemo_oo_agents.
 
 Provides optional callbacks at key execution points, enabling external

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """SQLite-backed StorageManager and EventBackend.
 
 Provides persistent storage using stdlib sqlite3 — no new dependencies.

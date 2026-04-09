@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Slash command parser and handlers for NeMo OO Agents TUI.
 
 Uses Catppuccin Mocha theme from https://catppuccin.com/palette/

@@ -89,3 +89,10 @@ repos:
         entry: .venv/bin/python scripts/hooks/check_merge_conflict.py
         language: system
         types: [text]
+
+      - id: check-spdx
+        name: check-spdx
+        entry: .venv/bin/python scripts/hooks/check_spdx.py
+        language: system
+        types: [python]
+        files: ^(src|packages)/

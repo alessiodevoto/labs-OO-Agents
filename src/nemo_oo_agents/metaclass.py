@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Generic metaclass for automatic method wrapping with ellipsis bodies.
 
 This module provides the AgentMeta metaclass that automatically wraps async methods

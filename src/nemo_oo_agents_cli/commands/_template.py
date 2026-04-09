@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """<One-line description of what this command does.>
 
 Copy this file as a starting point for a new nemo_oo_agents CLI command.

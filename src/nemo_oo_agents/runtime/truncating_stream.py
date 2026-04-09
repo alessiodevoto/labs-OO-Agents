@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """StringIO with hard character limit and truncation notices.
 
 Used for stdout/stderr capture during code execution to prevent LLMs from

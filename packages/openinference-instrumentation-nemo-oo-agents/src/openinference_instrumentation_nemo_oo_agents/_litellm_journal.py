@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """LiteLLM CustomLogger that maintains a content-addressed message journal.
 
 Intercepts the message list *before* each LLM call and posts only messages

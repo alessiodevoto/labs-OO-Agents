@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Shared utilities for validating and managing LLM-generated Python code.
 
 This module is intentionally strategy-agnostic: it contains no event management logic

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Media capture for CodeAct execution via show().
 
 Uses a ContextVar-based collector (same pattern as stdout/stderr capture)
