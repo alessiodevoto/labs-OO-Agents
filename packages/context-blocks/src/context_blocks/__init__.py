@@ -9,13 +9,13 @@ Features:
 """
 
 from context_blocks.events import (
+    STORABLE_EVENT_TYPES,
     AssistantEvent,
     Event,
     EventBase,
     EventStatus,
     Metadata,
     ResultStatus,
-    STORABLE_EVENT_TYPES,
     ToolCallEvent,
     ToolResult,
     UserEvent,

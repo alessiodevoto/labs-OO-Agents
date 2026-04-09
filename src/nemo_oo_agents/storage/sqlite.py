@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from context_blocks import EventBase, EventStatus, Metadata, STORABLE_EVENT_TYPES
+from context_blocks import STORABLE_EVENT_TYPES, EventBase, EventStatus, Metadata
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -41,23 +41,29 @@ if TYPE_CHECKING:
 # maintained alongside the Event union in context_blocks/events.py.
 # nemo_oo_agents types are listed explicitly here.
 # If you add a new EventBase subclass in either package, add it to the
-# appropriate list; the test in test_event_backend_roundtrip.py will catch omissions.
-_CORE_TYPES: dict[str, type[EventBase]] = {
-    cls.model_fields["event_type"].default: cls  # type: ignore[index]
-    for cls in (
-        *STORABLE_EVENT_TYPES,  # UserEvent, AssistantEvent, ToolCallEvent
-        Task,
-        Message,
-        Reasoning,
-        Error,
-        Feedback,
-        LLMOutput,
-        PythonOutput,
-        Summary,
-        BeforeTurn,
-        AfterTurn,
-    )
-}
+# appropriate list; the test in test_event_backend_protocol.py will catch omissions.
+_CORE_TYPES: dict[str, type[EventBase]] = {}
+for _cls in (
+    *STORABLE_EVENT_TYPES,  # UserEvent, AssistantEvent, ToolCallEvent
+    Task,
+    Message,
+    Reasoning,
+    Error,
+    Feedback,
+    LLMOutput,
+    PythonOutput,
+    Summary,
+    BeforeTurn,
+    AfterTurn,
+):
+    _key: str = _cls.model_fields["event_type"].default  # type: ignore[assignment]
+    if _key in _CORE_TYPES:
+        raise AssertionError(
+            f"Duplicate event_type key {_key!r} in _CORE_TYPES: "
+            f"{_CORE_TYPES[_key].__name__} vs {_cls.__name__}. "
+            "Each event class must have a unique event_type default."
+        )
+    _CORE_TYPES[_key] = _cls
 
 _SCHEMA_VERSION = 1
 

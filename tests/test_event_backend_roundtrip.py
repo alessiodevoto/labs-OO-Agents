@@ -190,8 +190,9 @@ _ALL_EVENTS = [
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("tag,event,expected_type,expected_role", _ALL_EVENTS,
-                         ids=[e[0] for e in _ALL_EVENTS])
+@pytest.mark.parametrize(
+    "tag,event,expected_type,expected_role", _ALL_EVENTS, ids=[e[0] for e in _ALL_EVENTS]
+)
 def test_event_roundtrip_type_preserved(backend, tag, event, expected_type, expected_role):
     """store() then get() returns the correct concrete type, not Metadata."""
     backend.store(tag, event)
@@ -204,8 +205,9 @@ def test_event_roundtrip_type_preserved(backend, tag, event, expected_type, expe
     )
 
 
-@pytest.mark.parametrize("tag,event,expected_type,expected_role", _ALL_EVENTS,
-                         ids=[e[0] for e in _ALL_EVENTS])
+@pytest.mark.parametrize(
+    "tag,event,expected_type,expected_role", _ALL_EVENTS, ids=[e[0] for e in _ALL_EVENTS]
+)
 def test_event_roundtrip_role_preserved(backend, tag, event, expected_type, expected_role):
     """store() then get() returns an event whose _role ClassVar is correct.
 
@@ -224,8 +226,9 @@ def test_event_roundtrip_role_preserved(backend, tag, event, expected_type, expe
     )
 
 
-@pytest.mark.parametrize("tag,event,expected_type,expected_role", _ALL_EVENTS,
-                         ids=[e[0] for e in _ALL_EVENTS])
+@pytest.mark.parametrize(
+    "tag,event,expected_type,expected_role", _ALL_EVENTS, ids=[e[0] for e in _ALL_EVENTS]
+)
 def test_event_roundtrip_via_all_events(backend, tag, event, expected_type, expected_role):
     """all_events() (used by EventManager.filter()) also returns correct types.
 

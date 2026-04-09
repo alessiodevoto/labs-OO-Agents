@@ -132,7 +132,8 @@ class TestCrossSessionEventVisibility:
 
         # Verify it appears specifically as a tool_use (assistant role), not just in user content
         assistant_tool_uses = [
-            m for m in fake_llm.last_messages
+            m
+            for m in fake_llm.last_messages
             if m.get("role") == "assistant" and m.get("tool_calls")
         ]
         execute_python_calls = [
