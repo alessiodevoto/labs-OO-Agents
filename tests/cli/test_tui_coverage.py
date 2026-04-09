@@ -862,10 +862,9 @@ class TestSkillsCommandExecute:
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
         with patch.dict("sys.modules", {"nemo_oo_agents": None}):
             # Can't easily remove SkillManager, use importlib approach
-            pass
-        # Skip this test if nemo_oo_agents has SkillManager - we test the ImportError path differently
-        await cmd.execute(["list"])
-        # No assertion needed — just checks it doesn't crash
+            # Skip this test if nemo_oo_agents has SkillManager - we test the ImportError path differently
+            await cmd.execute(["list"])
+            # No assertion needed — just checks it doesn't crash
 
     async def test_list_no_skills_dirs(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=None)
