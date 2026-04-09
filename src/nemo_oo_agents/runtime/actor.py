@@ -839,12 +839,9 @@ class ActorRuntime:
             # Strip redundant imports before validation and execution.
             # LLMs habitually write ``from typing import Literal`` etc. even
             # when those names are already pre-loaded in exec_globals.
-            try:
-                from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
+            from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
 
-                code = strip_redundant_imports(code, set(exec_globals.keys()))
-            except ImportError:
-                pass
+            code = strip_redundant_imports(code, set(exec_globals.keys()))
 
             # Validate code if requested (unified validator handles all checks)
             if validate:
@@ -886,9 +883,6 @@ class ActorRuntime:
                         restrictions=effective_restrictions,
                     )
                     validator.validate(code, context)
-                except ImportError:
-                    # Validator module not available, skip validation
-                    pass
                 except Exception as e:
                     result = ExecutionResult(stdout="", error=e, defined_methods={})
                     return result
@@ -2332,8 +2326,8 @@ async def {name}({params_str}) -> {return_type}:
             rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
             if rendered:
                 set_context_blocks(rendered)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to set context blocks for journal: %s", exc)
+        except ImportError:
+            pass  # openinference instrumentation is an optional extra
         return render_context(
             blocks,
             block_formatter=self.agent.render_config.block_formatter,
