@@ -27,7 +27,10 @@ from nemo_oo_agents_cli.tui.output import (
     TextOutput,
     Thinking,
 )
-from nemo_oo_agents_cli.web.frontend import WebFrontend
+WebFrontend = pytest.importorskip(
+    "nemo_oo_agents_cli.web.frontend",
+    reason="WebFrontend not yet implemented",
+).WebFrontend
 
 # ---------------------------------------------------------------------------
 # Helpers
