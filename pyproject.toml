@@ -111,6 +111,7 @@ dev = [
     "mcp-nemo-oo-agents",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
@@ -203,6 +204,9 @@ ignore = [
 "*.ipynb" = ["E402"]  # Notebooks often have config before imports
 # Agent files need module-level imports for LLM-generated code (via ExecutionNamespaceBuilder)
 "experiments/evaluation-ablations/agents/*.py" = ["F401", "RUF100"]
+# Tests intentionally use legacy typing syntax (Optional[X], Union[X,Y], Generic[T])
+# to verify that _get_complex_type() handles those annotation forms correctly.
+"tests/test_pure_functions_gl105.py" = ["UP007", "UP045", "UP046"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nemo_oo_agents", "nemo_oo_agents_viewer", "eval_pipeline", "evaluation", "unifiedllm", "agentdoc", "context_blocks"]
