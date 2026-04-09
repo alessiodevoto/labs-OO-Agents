@@ -216,8 +216,9 @@ def test_instance_values_swallows_unexpected_exception():
     # doc() calls __instance_values__ internally; must not raise
     result = doc(agent)
     assert isinstance(result, str)
-    # The broken property should not appear in the output
-    assert "broken" not in result or "RuntimeError" not in result
+    # The broken property should not appear in the output at all
+    assert "broken" not in result
+    assert "RuntimeError" not in result
 
 
 def test_instance_values_directly_does_not_propagate_exception():
