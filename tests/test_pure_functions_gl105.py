@@ -243,14 +243,14 @@ def test_instance_values_directly_does_not_propagate_exception():
 
 
 class _MyModel:
-    pass
+    """Minimal concrete class for _get_complex_type branch tests."""
 
 
 T = typing.TypeVar("T")
 
 
 class _MyGeneric(typing.Generic[T]):  # noqa: UP046
-    pass
+    """Minimal generic class for _get_complex_type generic-origin branch tests."""
 
 
 def test_get_complex_type_unwraps_optional():
@@ -383,64 +383,48 @@ class _EvalAgent(Agent, llm=_TEST_LLM):
 
 
 @pytest.mark.asyncio
-async def test_evaluate_expression_subprocess_stdout():
-    """evaluate_expression extracts stdout from CompletedProcess."""
+@pytest.mark.parametrize(
+    "proc,expected",
+    [
+        pytest.param(
+            subprocess.CompletedProcess(
+                args=["echo", "hi"], returncode=0, stdout="hello world\n", stderr=""
+            ),
+            "hello world\n",
+            id="stdout",
+        ),
+        pytest.param(
+            subprocess.CompletedProcess(args=["cmd"], returncode=1, stdout="", stderr="error text"),
+            "error text",
+            id="stderr_fallback",
+        ),
+        pytest.param(
+            subprocess.CompletedProcess(args=["cmd"], returncode=2, stdout="", stderr=""),
+            "[exit code: 2]",
+            id="returncode_fallback",
+        ),
+    ],
+)
+async def test_evaluate_expression_subprocess(proc, expected):
+    """evaluate_expression extracts the right field from CompletedProcess (stdout, stderr, exit-code fallback)."""
     agent = _EvalAgent()
-    proc = subprocess.CompletedProcess(
-        args=["echo", "hi"], returncode=0, stdout="hello world\n", stderr=""
-    )
     agent._last_execution_result = proc
     result = await agent.runtime.evaluate_expression("result")
-    assert result == "hello world\n"
+    assert result == expected
 
 
 @pytest.mark.asyncio
-async def test_evaluate_expression_subprocess_stderr_fallback():
-    """evaluate_expression falls back to stderr when stdout is empty."""
+@pytest.mark.parametrize(
+    "template,value,expected",
+    [
+        pytest.param("{value!r}", "hi\n", repr("hi\n"), id="repr_conversion"),
+        pytest.param("{value!s}", 42, "42", id="str_conversion"),
+        pytest.param("{value!a}", "café", ascii("café"), id="ascii_conversion"),
+        pytest.param("{value:.2f}", 3.14159, "3.14", id="format_spec"),
+    ],
+)
+async def test_expand_variables_conversions(template, value, expected):
+    """expand_variables correctly applies !r/!s/!a conversions and format specs."""
     agent = _EvalAgent()
-    proc = subprocess.CompletedProcess(args=["cmd"], returncode=1, stdout="", stderr="error text")
-    agent._last_execution_result = proc
-    result = await agent.runtime.evaluate_expression("result")
-    assert result == "error text"
-
-
-@pytest.mark.asyncio
-async def test_evaluate_expression_subprocess_returncode_fallback():
-    """evaluate_expression falls back to exit code string when stdout/stderr empty."""
-    agent = _EvalAgent()
-    proc = subprocess.CompletedProcess(args=["cmd"], returncode=2, stdout="", stderr="")
-    agent._last_execution_result = proc
-    result = await agent.runtime.evaluate_expression("result")
-    assert result == "[exit code: 2]"
-
-
-@pytest.mark.asyncio
-async def test_expand_variables_repr_conversion():
-    """expand_variables handles !r conversion."""
-    agent = _EvalAgent()
-    result = await agent.runtime.expand_variables("{value!r}", extra_context={"value": "hi\n"})
-    assert result == repr("hi\n")
-
-
-@pytest.mark.asyncio
-async def test_expand_variables_str_conversion():
-    """expand_variables handles !s conversion."""
-    agent = _EvalAgent()
-    result = await agent.runtime.expand_variables("{value!s}", extra_context={"value": 42})
-    assert result == "42"
-
-
-@pytest.mark.asyncio
-async def test_expand_variables_ascii_conversion():
-    """expand_variables handles !a conversion."""
-    agent = _EvalAgent()
-    result = await agent.runtime.expand_variables("{value!a}", extra_context={"value": "caf\u00e9"})
-    assert result == ascii("café")
-
-
-@pytest.mark.asyncio
-async def test_expand_variables_format_spec():
-    """expand_variables handles :.2f format spec."""
-    agent = _EvalAgent()
-    result = await agent.runtime.expand_variables("{value:.2f}", extra_context={"value": 3.14159})
-    assert result == "3.14"
+    result = await agent.runtime.expand_variables(template, extra_context={"value": value})
+    assert result == expected
