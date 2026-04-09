@@ -35,6 +35,8 @@ def make_stream(name="stdout"):
 
 
 class TestContextVarStreamWrite:
+    """Tests for ContextVarStream.write() routing."""
+
     def test_write_to_buffer_when_set(self):
         stream, buf_var, original = make_stream()
         buf = io.StringIO()
@@ -68,6 +70,8 @@ class TestContextVarStreamWrite:
 
 
 class TestContextVarStreamWritelines:
+    """Tests for ContextVarStream.writelines() routing."""
+
     def test_writelines_to_buffer_when_set(self):
         stream, buf_var, original = make_stream()
         buf = io.StringIO()
@@ -86,6 +90,8 @@ class TestContextVarStreamWritelines:
 
 
 class TestContextVarStreamFlush:
+    """Tests for ContextVarStream.flush() behavior with and without a buffer."""
+
     def test_flush_with_buffer_flushes_both(self):
         """flush() should flush the contextvar buffer AND the original stream."""
         buf_var: contextvars.ContextVar[io.StringIO | None] = contextvars.ContextVar(
@@ -114,6 +120,8 @@ class TestContextVarStreamFlush:
 
 
 class TestContextVarStreamFileno:
+    """Tests for ContextVarStream.fileno() delegation to the original stream."""
+
     def test_fileno_delegates_to_original(self):
         buf_var: contextvars.ContextVar[io.StringIO | None] = contextvars.ContextVar(
             "test_fileno_buf", default=None
@@ -127,12 +135,16 @@ class TestContextVarStreamFileno:
 
 
 class TestContextVarStreamIsatty:
+    """Tests for ContextVarStream.isatty() delegation to the original stream."""
+
     def test_isatty_delegates_to_original(self):
         stream, buf_var, original = make_stream()
         assert stream.isatty() == original.isatty()
 
 
 class TestContextVarStreamReadableWritableSeekable:
+    """Tests for ContextVarStream readable/writable/seekable capability flags."""
+
     def test_readable_always_false(self):
         stream, _, _ = make_stream()
         assert stream.readable() is False
@@ -147,6 +159,8 @@ class TestContextVarStreamReadableWritableSeekable:
 
 
 class TestContextVarStreamClose:
+    """Tests for ContextVarStream.close() no-op behavior."""
+
     def test_close_is_noop_does_not_close_original(self):
         stream, buf_var, original = make_stream()
         stream.close()
@@ -159,6 +173,8 @@ class TestContextVarStreamClose:
 
 
 class TestContextVarStreamClosed:
+    """Tests for ContextVarStream.closed property delegation to the original stream."""
+
     def test_closed_delegates_to_original_open(self):
         stream, _, original = make_stream()
         assert stream.closed is False
@@ -174,6 +190,8 @@ class TestContextVarStreamClosed:
 
 
 class TestContextVarStreamRepr:
+    """Tests for ContextVarStream.__repr__() output format."""
+
     def test_repr_contains_stream_name(self):
         stream, _, _ = make_stream("mystdout")
         r = repr(stream)
@@ -185,6 +203,8 @@ class TestContextVarStreamRepr:
 
 
 class TestContextVarStreamGetattr:
+    """Tests for ContextVarStream.__getattr__() pass-through to the original stream."""
+
     def test_getattr_passes_through_to_original(self):
         stream, buf_var, original = make_stream()
         # StringIO has a 'name' attribute via getattr fallback on some versions;
@@ -210,15 +230,59 @@ def make_stdin_wrapper(content="line1\nline2\n"):
     return wrapper, original
 
 
+# ---------------------------------------------------------------------------
+# Parametrized "raises when blocked" tests
+# ---------------------------------------------------------------------------
+
+
+def _do_read(wrapper):
+    wrapper.read()
+
+
+def _do_readline(wrapper):
+    wrapper.readline()
+
+
+def _do_readlines(wrapper):
+    wrapper.readlines()
+
+
+def _do_iter(wrapper):
+    iter(wrapper)
+
+
+def _do_next(wrapper):
+    next(wrapper)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        pytest.param(_do_read, id="read"),
+        pytest.param(_do_readline, id="readline"),
+        pytest.param(_do_readlines, id="readlines"),
+        pytest.param(_do_iter, id="iter"),
+        pytest.param(_do_next, id="next"),
+    ],
+)
+def test_blocked_stdin_raises_when_blocked(action):
+    """Each read method raises RuntimeError when stdin is blocked."""
+    wrapper, _ = make_stdin_wrapper()
+    token = _block_stdin_var.set(True)
+    try:
+        with pytest.raises(RuntimeError, match="stdin is forbidden"):
+            action(wrapper)
+    finally:
+        _block_stdin_var.reset(token)
+
+
+# ---------------------------------------------------------------------------
+# Per-method pass-through tests (kept in their own classes)
+# ---------------------------------------------------------------------------
+
+
 class TestBlockedStdinRead:
-    def test_read_raises_when_blocked(self):
-        wrapper, _ = make_stdin_wrapper()
-        token = _block_stdin_var.set(True)
-        try:
-            with pytest.raises(RuntimeError, match="stdin is forbidden"):
-                wrapper.read()
-        finally:
-            _block_stdin_var.reset(token)
+    """Tests for BlockedStdinWrapper.read() pass-through when not blocked."""
 
     def test_read_passes_through_when_not_blocked(self):
         wrapper, original = make_stdin_wrapper("hello")
@@ -231,14 +295,7 @@ class TestBlockedStdinRead:
 
 
 class TestBlockedStdinReadline:
-    def test_readline_raises_when_blocked(self):
-        wrapper, _ = make_stdin_wrapper()
-        token = _block_stdin_var.set(True)
-        try:
-            with pytest.raises(RuntimeError, match="stdin is forbidden"):
-                wrapper.readline()
-        finally:
-            _block_stdin_var.reset(token)
+    """Tests for BlockedStdinWrapper.readline() pass-through when not blocked."""
 
     def test_readline_passes_through_when_not_blocked(self):
         wrapper, _ = make_stdin_wrapper("line1\nline2\n")
@@ -246,14 +303,7 @@ class TestBlockedStdinReadline:
 
 
 class TestBlockedStdinReadlines:
-    def test_readlines_raises_when_blocked(self):
-        wrapper, _ = make_stdin_wrapper()
-        token = _block_stdin_var.set(True)
-        try:
-            with pytest.raises(RuntimeError, match="stdin is forbidden"):
-                wrapper.readlines()
-        finally:
-            _block_stdin_var.reset(token)
+    """Tests for BlockedStdinWrapper.readlines() pass-through when not blocked."""
 
     def test_readlines_passes_through_when_not_blocked(self):
         wrapper, _ = make_stdin_wrapper("a\nb\n")
@@ -261,14 +311,7 @@ class TestBlockedStdinReadlines:
 
 
 class TestBlockedStdinIter:
-    def test_iter_raises_when_blocked(self):
-        wrapper, _ = make_stdin_wrapper()
-        token = _block_stdin_var.set(True)
-        try:
-            with pytest.raises(RuntimeError, match="stdin is forbidden"):
-                iter(wrapper)
-        finally:
-            _block_stdin_var.reset(token)
+    """Tests for BlockedStdinWrapper.__iter__() pass-through when not blocked."""
 
     def test_iter_passes_through_when_not_blocked(self):
         wrapper, _ = make_stdin_wrapper("x\ny\n")
@@ -277,14 +320,7 @@ class TestBlockedStdinIter:
 
 
 class TestBlockedStdinNext:
-    def test_next_raises_when_blocked(self):
-        wrapper, _ = make_stdin_wrapper()
-        token = _block_stdin_var.set(True)
-        try:
-            with pytest.raises(RuntimeError, match="stdin is forbidden"):
-                next(wrapper)
-        finally:
-            _block_stdin_var.reset(token)
+    """Tests for BlockedStdinWrapper.__next__() pass-through when not blocked."""
 
     def test_next_passes_through_when_not_blocked(self):
         wrapper, _ = make_stdin_wrapper("line1\nline2\n")
@@ -292,6 +328,8 @@ class TestBlockedStdinNext:
 
 
 class TestBlockedStdinFileno:
+    """Tests for BlockedStdinWrapper.fileno() delegation to the original stream."""
+
     def test_fileno_delegates_to_original(self):
         import tempfile
 
@@ -301,30 +339,40 @@ class TestBlockedStdinFileno:
 
 
 class TestBlockedStdinIsatty:
+    """Tests for BlockedStdinWrapper.isatty() delegation to the original stream."""
+
     def test_isatty_delegates_to_original(self):
         wrapper, original = make_stdin_wrapper()
         assert wrapper.isatty() == original.isatty()
 
 
 class TestBlockedStdinReadable:
+    """Tests for BlockedStdinWrapper.readable() delegation to the original stream."""
+
     def test_readable_delegates_to_original(self):
         wrapper, original = make_stdin_wrapper()
         assert wrapper.readable() == original.readable()
 
 
 class TestBlockedStdinWritable:
+    """Tests for BlockedStdinWrapper.writable() always returning False."""
+
     def test_writable_always_false(self):
         wrapper, _ = make_stdin_wrapper()
         assert wrapper.writable() is False
 
 
 class TestBlockedStdinSeekable:
+    """Tests for BlockedStdinWrapper.seekable() always returning False."""
+
     def test_seekable_always_false(self):
         wrapper, _ = make_stdin_wrapper()
         assert wrapper.seekable() is False
 
 
 class TestBlockedStdinClose:
+    """Tests for BlockedStdinWrapper.close() no-op behavior."""
+
     def test_close_is_noop(self):
         wrapper, original = make_stdin_wrapper()
         wrapper.close()
@@ -337,6 +385,8 @@ class TestBlockedStdinClose:
 
 
 class TestBlockedStdinClosed:
+    """Tests for BlockedStdinWrapper.closed property delegation to the original stream."""
+
     def test_closed_false_when_open(self):
         wrapper, _ = make_stdin_wrapper()
         assert wrapper.closed is False
@@ -349,6 +399,8 @@ class TestBlockedStdinClosed:
 
 
 class TestBlockedStdinRepr:
+    """Tests for BlockedStdinWrapper.__repr__() output format."""
+
     def test_repr_contains_blocked_when_blocked(self):
         wrapper, _ = make_stdin_wrapper()
         token = _block_stdin_var.set(True)
@@ -369,6 +421,8 @@ class TestBlockedStdinRepr:
 
 
 class TestBlockedStdinGetattr:
+    """Tests for BlockedStdinWrapper.__getattr__() pass-through to the original stream."""
+
     def test_getattr_passes_through_to_original(self):
         original = io.StringIO("data")
         wrapper = BlockedStdinWrapper(original)
