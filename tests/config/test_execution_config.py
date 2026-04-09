@@ -32,7 +32,9 @@ def test_merge_with_rejects_empty_fields_set():
     base = ExecutionConfig()
     no_overrides = ExecutionConfig()
     assert not no_overrides.model_fields_set
-    with pytest.raises(ValueError, match="merge_with"):
+    with pytest.raises(
+        ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+    ):
         base.merge_with(no_overrides)
 
 

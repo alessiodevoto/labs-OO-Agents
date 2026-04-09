@@ -5,6 +5,8 @@ from nemo_oo_agents.config import CodeActConfig, PredictConfig, ReflexionConfig
 
 
 class TestCodeActConfig:
+    """Tests for CodeActConfig defaults, immutability, and merging."""
+
     def test_is_pydantic_model(self):
         assert issubclass(CodeActConfig, BaseModel)
 
@@ -33,6 +35,8 @@ class TestCodeActConfig:
 
 
 class TestPredictConfig:
+    """Tests for PredictConfig defaults and merging."""
+
     def test_defaults(self):
         c = PredictConfig()
         assert c.max_retries == 10
@@ -50,6 +54,8 @@ class TestPredictConfig:
 
 
 class TestReflexionConfig:
+    """Tests for ReflexionConfig defaults and merging."""
+
     def test_defaults(self):
         c = ReflexionConfig()
         assert c.max_iterations == 3
@@ -62,6 +68,17 @@ class TestReflexionConfig:
         override = ReflexionConfig(max_iterations=5)
         merged = base.merge_with(override)
         assert merged.max_iterations == 5
+
+
+@pytest.mark.parametrize("config_cls", [CodeActConfig, PredictConfig, ReflexionConfig])
+def test_merge_with_empty_model_fields_set_raises(config_cls):
+    """merge_with() raises ValueError when the override has no fields explicitly set."""
+    base = config_cls()
+    other = config_cls.model_validate({})
+    with pytest.raises(
+        ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+    ):
+        base.merge_with(other)
 
 
 class TestStrategyWiring:
