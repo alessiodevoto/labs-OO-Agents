@@ -1341,7 +1341,7 @@ class TestBashToolInit:
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
-        assert tool.working_dir.exists() or True  # resolved
+        assert tool.working_dir.exists()
 
     def test_srt_path_with_tilde(self):
         """When srt_executable contains ~, it is expanded."""
@@ -1836,13 +1836,12 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_try_pil_to_content_block_with_pil_image(self):
         """When PIL is available and obj is a PIL Image, returns image_url block."""
+        import importlib
 
-        # Create a mock PIL Image that passes isinstance check
-        mock_pil_module = MagicMock()
-        MagicMock()
-        mock_pil_module.Image.Image = type("Image", (), {})
-        # Make obj an instance of mock PIL Image class
-        pil_cls = mock_pil_module.Image.Image
+        import nemo_oo_agents.runtime.media_capture as mc
+
+        # Create a mock PIL Image class and instance
+        pil_cls = type("Image", (), {})
         obj = pil_cls()
 
         buf_content = b"PNG_DATA"
@@ -1852,14 +1851,17 @@ class TestMediaCapturePILAndMatplotlib:
 
         obj.save = save_side_effect
 
-        with patch.dict(sys.modules, {"PIL": mock_pil_module, "PIL.Image": mock_pil_module.Image}):
-            with patch("nemo_oo_agents.runtime.media_capture._try_pil_to_content_block") as mock_fn:
-                mock_fn.return_value = {
-                    "type": "image_url",
-                    "image_url": {"url": "data:image/png;base64,...", "format": "image/png"},
-                }
-                result = mock_fn(obj)
+        mock_pil_module = MagicMock()
+        mock_pil_module.Image.Image = pil_cls
 
+        with patch.dict(sys.modules, {"PIL": mock_pil_module, "PIL.Image": mock_pil_module.Image}):
+            importlib.reload(mc)
+            result = mc._try_pil_to_content_block(obj)
+
+        # Reload to restore unpatched module state
+        importlib.reload(mc)
+
+        assert result is not None
         assert result["type"] == "image_url"
 
     def test_try_matplotlib_returns_none_for_non_figure(self):

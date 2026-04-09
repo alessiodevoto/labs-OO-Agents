@@ -1002,8 +1002,7 @@ class TestBlockSyntaxErrorHandling:
 
     @pytest.mark.asyncio
     async def test_block_syntax_error_adds_feedback_and_continues(self):
-        """BlockSyntaxError should add feedback and continue loop (lines 630-664)."""
-        from context_blocks.exceptions import BlockSyntaxError
+        """CodeActStrategy happy path with scripted LLM response (lines 630-664)."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5, max_retries=3)))
@@ -1011,34 +1010,13 @@ class TestBlockSyntaxErrorHandling:
                 """Compute."""
                 ...
 
-        # We need to simulate generate() raising BlockSyntaxError on first call
-        call_count = 0
-
-        async def generate_with_block_error(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise BlockSyntaxError(
-                    key="my_block",
-                    expr="invalid python!!!",
-                    original_error=SyntaxError("invalid syntax"),
-                )
-            # Return success on subsequent calls
-            return (
-                _resp("", tool_calls=[_return_result(result=42)]),
-                "evt1",
-            )
-
-        TestAgent(llm=_TEST_LLM)
-
-        # We need to patch the runtime's generate method - use integration approach
         fake_llm = FakeLLMClient(
             scripted_responses=[
                 _resp("", tool_calls=[_return_result(result=42)]),
             ]
         )
-        agent2 = TestAgent(llm=fake_llm)
-        result = await agent2.compute()
+        agent = TestAgent(llm=fake_llm)
+        result = await agent.compute()
         assert result == 42
 
 
@@ -3280,8 +3258,7 @@ class TestCodeActBlockSyntaxError:
 
     @pytest.mark.asyncio
     async def test_block_syntax_error_adds_error_feedback_and_continues(self):
-        """BlockSyntaxError should add feedback and continue without counting as retry (630-664)."""
-        from context_blocks.exceptions import BlockSyntaxError
+        """CodeActStrategy happy path with scripted LLM response (630-664)."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10, max_retries=3)))
@@ -3289,29 +3266,6 @@ class TestCodeActBlockSyntaxError:
                 """Compute."""
                 ...
 
-        # Patch generate on the agent's runtime to raise BlockSyntaxError on first call
-        # then return a valid response
-
-        class BlockErrorLLMClient:
-            """Custom LLM client that raises BlockSyntaxError on first call."""
-
-            scripted_responses = [_resp("", tool_calls=[_return_result(result=42)])]
-            _call_count = 0
-
-            async def generate(self, *args, **kwargs):
-                self._call_count += 1
-                if self._call_count == 1:
-                    raise BlockSyntaxError(
-                        key="bad_block",
-                        expr="invalid!!!",
-                        original_error=SyntaxError("bad syntax"),
-                    )
-                resp = self.scripted_responses[0]
-                return resp
-
-        # We can't easily inject this into Agent; let's use the approach of patching
-        # the agent's generate call. Since we can't easily patch via runtime, just verify
-        # the happy path works correctly.
         fake_llm = FakeLLMClient(
             scripted_responses=[
                 _resp("", tool_calls=[_return_result(result=42)]),
@@ -3362,8 +3316,7 @@ class TestPurePythonHelperErrors:
 
     @pytest.mark.asyncio
     async def test_helper_method_binding_error_records_error_and_continues(self):
-        """Helper method binding error should record error and allow retry."""
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
+        """PurePythonStrategy happy path with scripted LLM response."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=5, max_retries=3))
@@ -3373,30 +3326,10 @@ class TestPurePythonHelperErrors:
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp("return 42"),  # First attempt
+                _resp("return 42"),
             ]
         )
         agent = TestAgent(llm=fake_llm)
-
-        # Patch HelperMethodManager.apply to return errors on first call
-        original_apply = HelperMethodManager.apply
-        call_count_helper = 0
-
-        def patched_apply(self_mgr, code, agent_arg, session_locals, namespace, target_method_name):
-            nonlocal call_count_helper
-            call_count_helper += 1
-            if call_count_helper == 1:
-                return HelperApplyResult(installed=[], rejected=[], errors=["bind error"])
-            return original_apply(
-                self_mgr,
-                code,
-                agent_arg,
-                session_locals,
-                namespace=namespace,
-                target_method_name=target_method_name,
-            )
-
-        # Just run normally to cover the path
         result = await agent.compute()
         assert result == 42
 
