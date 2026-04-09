@@ -249,7 +249,7 @@ class _MyModel:
 T = typing.TypeVar("T")
 
 
-class _MyGeneric(typing.Generic[T]):  # noqa: UP046
+class _MyGeneric(typing.Generic[T]):
     """Minimal generic class for _get_complex_type generic-origin branch tests."""
 
 
@@ -257,7 +257,7 @@ def test_get_complex_type_unwraps_optional():
     """Optional[MyModel] -> MyModel."""
     from nemo_oo_agents.strategies.prefill import _get_complex_type
 
-    result = _get_complex_type(Optional[_MyModel])  # noqa: UP045
+    result = _get_complex_type(Optional[_MyModel])
     assert result is _MyModel
 
 
@@ -265,7 +265,7 @@ def test_get_complex_type_returns_none_for_multiple_union():
     """Union[MyModel, str] (multiple non-None) -> None."""
     from nemo_oo_agents.strategies.prefill import _get_complex_type
 
-    result = _get_complex_type(Union[_MyModel, str])  # noqa: UP007
+    result = _get_complex_type(Union[_MyModel, str])
     assert result is None
 
 
