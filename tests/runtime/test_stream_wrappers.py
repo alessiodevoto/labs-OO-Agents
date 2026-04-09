@@ -235,7 +235,7 @@ class TestBlockedStdinReadline:
         wrapper, _ = make_stdin_wrapper()
         token = _block_stdin_var.set(True)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="stdin is forbidden"):
                 wrapper.readline()
         finally:
             _block_stdin_var.reset(token)
@@ -250,7 +250,7 @@ class TestBlockedStdinReadlines:
         wrapper, _ = make_stdin_wrapper()
         token = _block_stdin_var.set(True)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="stdin is forbidden"):
                 wrapper.readlines()
         finally:
             _block_stdin_var.reset(token)
@@ -265,7 +265,7 @@ class TestBlockedStdinIter:
         wrapper, _ = make_stdin_wrapper()
         token = _block_stdin_var.set(True)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="stdin is forbidden"):
                 iter(wrapper)
         finally:
             _block_stdin_var.reset(token)
@@ -281,7 +281,7 @@ class TestBlockedStdinNext:
         wrapper, _ = make_stdin_wrapper()
         token = _block_stdin_var.set(True)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match="stdin is forbidden"):
                 next(wrapper)
         finally:
             _block_stdin_var.reset(token)
