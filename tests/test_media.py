@@ -15,6 +15,8 @@ from nemo_oo_agents.media import Image
 
 
 class TestImageFromFile:
+    """Tests for Image.from_file() class method."""
+
     def test_from_file_reads_bytes_and_returns_image(self, tmp_path: Path):
         """Image.from_file() loads a file and returns an Image instance."""
         png_file = tmp_path / "test.png"
@@ -40,6 +42,8 @@ class TestImageFromFile:
 
 
 class TestImageFromUrl:
+    """Tests for Image.from_url() class method."""
+
     def test_from_url_with_empty_media_type(self):
         """Image.from_url() accepts an empty string as media_type."""
         url = "https://example.com/photo.jpg"
@@ -57,6 +61,8 @@ class TestImageFromUrl:
 
 
 class TestMediaFromUrl:
+    """Tests for the base Media.from_url() class method."""
+
     def test_base_media_from_url_stores_url_and_media_type(self):
         """Media.from_url() stores the URL and media type without downloading."""
         from nemo_oo_agents.media import Media
@@ -70,6 +76,8 @@ class TestMediaFromUrl:
 
 
 class TestBaseBase64Data:
+    """Tests for the _base64_data() method on media objects."""
+
     def test_data_url_starting_with_data_colon_extracts_base64(self):
         """_base64_data() strips the data URL prefix and returns the base64 portion."""
         img = Image.from_bytes(b"hello", media_type="image/png")
