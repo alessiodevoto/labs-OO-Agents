@@ -17,6 +17,21 @@ from typing import Protocol, runtime_checkable
 from context_blocks import EventBase, EventStatus
 
 
+def _tag_max_num(tag: str) -> int:
+    """Return the highest numeric value encoded in a tag.
+
+    For simple tags like ``"5"``, returns 5.
+    For range tags like ``"2..40"``, returns 40 (the end of the range).
+    Returns 0 for tags that cannot be parsed as a number.
+    """
+    try:
+        if ".." in tag:
+            return int(tag.split("..")[1])
+        return int(tag)
+    except ValueError:
+        return 0
+
+
 @runtime_checkable
 class EventBackend(Protocol):
     """Protocol for event storage backends.
@@ -297,17 +312,7 @@ class InMemoryBackend:
     def max_tag_num(self) -> int:
         if not self._tag_to_event:
             return 0
-        result = 0
-        for tag in self._tag_to_event:
-            try:
-                if ".." in tag:
-                    n = int(tag.split("..")[1])
-                else:
-                    n = int(tag)
-                result = max(result, n)
-            except ValueError:
-                pass
-        return result
+        return max(_tag_max_num(tag) for tag in self._tag_to_event)
 
     def __len__(self) -> int:
         return len(self._events)
