@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from context_blocks import EventBase, EventStatus, Metadata
+from context_blocks import EventBase, EventStatus, Metadata, STORABLE_EVENT_TYPES
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -36,10 +36,16 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
-# Core event types pre-registered for deserialization.
+# All event types pre-registered for deserialization.
+# context_blocks types come from STORABLE_EVENT_TYPES — the canonical list
+# maintained alongside the Event union in context_blocks/events.py.
+# nemo_oo_agents types are listed explicitly here.
+# If you add a new EventBase subclass in either package, add it to the
+# appropriate list; the test in test_event_backend_roundtrip.py will catch omissions.
 _CORE_TYPES: dict[str, type[EventBase]] = {
     cls.model_fields["event_type"].default: cls  # type: ignore[index]
     for cls in (
+        *STORABLE_EVENT_TYPES,  # UserEvent, AssistantEvent, ToolCallEvent
         Task,
         Message,
         Reasoning,

@@ -15,6 +15,7 @@ from context_blocks.events import (
     EventStatus,
     Metadata,
     ResultStatus,
+    STORABLE_EVENT_TYPES,
     ToolCallEvent,
     ToolResult,
     UserEvent,
@@ -79,6 +80,8 @@ __all__ = [
     "AssistantEvent",
     "ToolCallEvent",
     "ToolResult",
+    # Storage registration helper
+    "STORABLE_EVENT_TYPES",
     # Render config
     "RenderConfig",
     # Scoped overrides

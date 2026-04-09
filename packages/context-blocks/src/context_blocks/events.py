@@ -170,3 +170,9 @@ Event = Annotated[
     UserEvent | AssistantEvent | ToolCallEvent,
     Field(discriminator="event_type"),
 ]
+
+# Canonical list of all context_blocks event types that should be registered
+# in any persistent storage backend. Storage implementations (e.g. SQLiteEventBackend)
+# must register these so they deserialize as the correct concrete type, not as Metadata.
+# If you add a new EventBase subclass to the Event union above, add it here too.
+STORABLE_EVENT_TYPES: tuple[type[EventBase], ...] = (UserEvent, AssistantEvent, ToolCallEvent)
