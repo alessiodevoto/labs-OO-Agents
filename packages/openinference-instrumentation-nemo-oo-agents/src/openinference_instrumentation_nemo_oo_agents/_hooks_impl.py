@@ -43,6 +43,25 @@ class SpanKind:
     EVALUATOR = "EVALUATOR"
 
 
+# Viewer plugin hint attribute — tells the trace viewer which rendering plugin to use.
+# The attribute name is an arbitrary convention; see docs/trace-plugin-convention.md.
+VIEWER_PLUGIN_ATTR = "nemo_oo_agents.viewer.plugin"
+
+
+class ViewerPlugin:
+    """Valid values for the nemo_oo_agents.viewer.plugin span attribute.
+
+    Each value corresponds to a rendering plugin in the trace viewer.
+    When set on a span, the viewer uses this value (instead of the span name)
+    to select the plugin that renders the span.
+    """
+
+    METHOD = "method"
+    GENERATION = "generation"
+    CODE_EXECUTION = "code_execution"
+    TOOL_EXECUTION = "tool_execution"
+
+
 class OpenInferenceHooks:
     """OpenTelemetry-based instrumentation hooks with OpenInference conventions.
 
@@ -94,6 +113,7 @@ class OpenInferenceHooks:
 
         # Set OpenInference attributes
         span.set_attribute("openinference.span.kind", SpanKind.AGENT)
+        span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.METHOD)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("agent.method", method_name)
         span.set_attribute("agent.call_id", call_id)
@@ -224,6 +244,7 @@ class OpenInferenceHooks:
 
         # Set OpenInference attributes
         span.set_attribute("openinference.span.kind", SpanKind.LLM)
+        span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.GENERATION)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("agent.method", method_name)
         span.set_attribute("generation.strategy", strategy)
@@ -335,6 +356,7 @@ class OpenInferenceHooks:
 
         # Set OpenInference attributes
         span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.CODE_EXECUTION)
         span.set_attribute("tool.name", "python_executor")
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("code", code[:10000])  # Limit code length
@@ -434,6 +456,7 @@ class OpenInferenceHooks:
 
         # Set OpenInference attributes
         span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.METHOD)
         span.set_attribute("tool.name", f"generated_method:{method_name}")
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("method.name", method_name)
@@ -537,6 +560,7 @@ class OpenInferenceHooks:
 
         # Set OpenInference attributes
         span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.TOOL_EXECUTION)
         span.set_attribute("tool.name", tool_name)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("execution.id", execution_id)

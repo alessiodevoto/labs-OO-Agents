@@ -387,7 +387,7 @@ async def main():
     print(f"Result: {result}")
 ```
 
-Traces capture every LLM call, code execution, and tool invocation, with spans nested by call hierarchy. If the viewer is not running, tracing is silently disabled. Set `OTLP_ENDPOINT` to send traces to a viewer on a different host or port.
+Traces capture every LLM call, code execution, and tool invocation, with spans nested by call hierarchy. If the viewer is not running, tracing is silently disabled. Set `OTLP_ENDPOINT` to send traces to a viewer on a different host or port. See the [viewer README](packages/nemo-oo-agents-viewer/README.md) for more on the viewer API, trace import/export, and the trace format convention.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>

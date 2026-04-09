@@ -86,11 +86,27 @@ The instrumentor creates spans with OpenInference semantic conventions:
 - **TOOL** spans - Code execution and method calls
 - **LLM** spans - LiteLLM calls (via LiteLLMInstrumentor)
 
+## Viewer Plugin Hint
+
+Each span includes a `nemo_oo_agents.viewer.plugin` attribute that tells the [trace viewer](../nemo-oo-agents-viewer/) which rendering plugin to use. Valid values:
+
+| Value | Span Type | Viewer Plugin |
+|-------|-----------|---------------|
+| `method` | Agent method calls | MethodPlugin |
+| `generation` | LLM generation sessions | GenerationPlugin |
+| `code_execution` | Code execution | CodeExecutionPlugin |
+| `tool_execution` | Tool invocations | ToolExecutionPlugin |
+| `llm_call` | Raw LLM API calls | LLMCallPlugin |
+| `eval` | Evaluation spans | EvalPlugin |
+
+If you write custom instrumentation, set this attribute so the viewer renders your spans correctly. See [`nemo-oo-agents-viewer/docs/trace-plugin-convention.md`](../nemo-oo-agents-viewer/docs/trace-plugin-convention.md) for the full specification.
+
 ## Attributes
 
 Following [OpenInference semantic conventions](https://github.com/Arize-ai/openinference):
 
 - `openinference.span.kind` - Span type (AGENT, LLM, TOOL)
+- `nemo_oo_agents.viewer.plugin` - Viewer rendering plugin hint (see above)
 - `agent.name` - Agent class name
 - `agent.method` - Method being executed
 - `generation.strategy` - Strategy used (PURE_PYTHON, STRUCTURED_OUTPUT, etc.)

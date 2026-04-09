@@ -109,7 +109,7 @@ export function convertOtlpSpansToEvents(spans: OtlpSpan[]): TraceEvent[] {
     else if (statusCode === 2) statusStr = 'ERROR';
 
     events.push({
-      type: `span.${span.name || 'unknown'}`,
+      type: `span.${(flatAttrs['nemo_oo_agents.viewer.plugin'] as string) || span.name || 'unknown'}`,
       timestamp: startTimestamp,
       ids: {
         span_id: span.spanId,
