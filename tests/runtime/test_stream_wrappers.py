@@ -4,6 +4,7 @@
 
 import contextvars
 import io
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -86,19 +87,30 @@ class TestContextVarStreamWritelines:
 
 class TestContextVarStreamFlush:
     def test_flush_with_buffer_flushes_both(self):
-        """flush() should flush the buffer (no error) and also flush original."""
-        stream, buf_var, original = make_stream()
-        buf = io.StringIO()
-        token = buf_var.set(buf)
+        """flush() should flush the contextvar buffer AND the original stream."""
+        buf_var: contextvars.ContextVar[io.StringIO | None] = contextvars.ContextVar(
+            "test_flush_buf", default=None
+        )
+        mock_original = MagicMock()
+        mock_buf = MagicMock()
+        stream = ContextVarStream(mock_original, buf_var, "stdout")
+        token = buf_var.set(mock_buf)
         try:
-            stream.write("data")
-            stream.flush()  # should not raise
+            stream.flush()
+            mock_buf.flush.assert_called_once()
+            mock_original.flush.assert_called_once()
         finally:
             buf_var.reset(token)
 
     def test_flush_without_buffer_flushes_original(self):
-        stream, buf_var, original = make_stream()
-        stream.flush()  # should not raise
+        """flush() with no buffer set should flush only the original stream."""
+        buf_var: contextvars.ContextVar[io.StringIO | None] = contextvars.ContextVar(
+            "test_flush_no_buf", default=None
+        )
+        mock_original = MagicMock()
+        stream = ContextVarStream(mock_original, buf_var, "stdout")
+        stream.flush()
+        mock_original.flush.assert_called_once()
 
 
 class TestContextVarStreamFileno:
