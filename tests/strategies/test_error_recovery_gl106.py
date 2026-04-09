@@ -134,8 +134,8 @@ class TestCodeActLLMApiErrorExhaustion:
             await agent.compute(5)
 
         err = str(exc_info.value)
-        # Should mention retries exhausted
-        assert "2" in err or "retries" in err.lower() or "api error" in err.lower()
+        # Must mention "LLM API error after 2 retries" — the exact phrase from codeact.py line 697
+        assert "LLM API error after 2 retries" in err
 
     @pytest.mark.asyncio
     async def test_llm_api_error_after_max_retries_raises_generation_error(self):
@@ -650,7 +650,8 @@ class TestPredictValidationRetry:
             await agent.classify("test text")
 
         err = str(exc_info.value).lower()
-        assert "validation" in err or "2" in err or "attempts" in err
+        # Must mention "structured output validation failed after" — the exact phrase from predict.py line 263
+        assert "structured output validation failed after" in err
 
 
 # ---------------------------------------------------------------------------
