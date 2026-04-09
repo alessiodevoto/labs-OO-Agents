@@ -9,6 +9,8 @@ from nemo_oo_agents.storage.in_memory import InMemoryStorageManager
 
 
 class TestInMemoryStorageManager:
+    """Tests for InMemoryStorageManager save/restore error paths."""
+
     def test_save_snapshot_raises_storage_not_configured_error(self):
         mgr = InMemoryStorageManager()
         with pytest.raises(StorageNotConfiguredError, match="does not support persistence"):

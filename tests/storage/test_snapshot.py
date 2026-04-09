@@ -20,6 +20,8 @@ class _SimpleAgent(Agent, llm=FakeLLMClient()):
 
 
 class TestAgentSnapshotFromAgent:
+    """Tests for AgentSnapshot.from_agent() field filtering."""
+
     def test_agentdoc_prefix_fields_are_skipped(self):
         """from_agent() skips attributes whose name starts with '_agentdoc_' (line 101)."""
         agent = _SimpleAgent()
@@ -44,6 +46,8 @@ class TestAgentSnapshotFromAgent:
 
 
 class TestAgentSnapshotRestore:
+    """Tests for AgentSnapshot.restore() warning and non-callable handling."""
+
     def test_restore_warns_when_method_code_does_not_define_callable(self, caplog):
         """restore() emits a warning when exec'd code doesn't define the expected name (line 168)."""
         agent = _SimpleAgent()

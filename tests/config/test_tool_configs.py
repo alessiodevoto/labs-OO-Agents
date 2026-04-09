@@ -5,6 +5,8 @@ from nemo_oo_agents.config.tool_configs import BashConfig
 
 
 class TestBashConfig:
+    """Tests for BashConfig defaults, immutability, and merging."""
+
     def test_defaults(self):
         c = BashConfig()
         assert c.default_timeout == 30.0
@@ -25,17 +27,9 @@ class TestBashConfig:
         assert merged.use_sandbox is False
 
 
-class TestBashConfigMergeError:
-    def test_merge_with_empty_model_fields_set_raises(self):
-        base = BashConfig()
-        other = BashConfig.model_validate({})
-        with pytest.raises(
-            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
-        ):
-            base.merge_with(other)
-
-
 class TestWebSearchConfig:
+    """Tests for WebSearchConfig defaults, immutability, and merging."""
+
     def test_defaults(self):
         c = WebSearchConfig()
         assert c.default_num_results == 5
@@ -54,11 +48,12 @@ class TestWebSearchConfig:
         assert merged.default_num_results == 5
 
 
-class TestWebSearchConfigMergeError:
-    def test_merge_with_empty_model_fields_set_raises(self):
-        base = WebSearchConfig()
-        other = WebSearchConfig.model_validate({})
-        with pytest.raises(
-            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
-        ):
-            base.merge_with(other)
+@pytest.mark.parametrize("config_cls", [BashConfig, WebSearchConfig])
+def test_merge_with_empty_model_fields_set_raises(config_cls):
+    """merge_with() raises ValueError when the override has no fields explicitly set."""
+    base = config_cls()
+    other = config_cls.model_validate({})
+    with pytest.raises(
+        ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+    ):
+        base.merge_with(other)

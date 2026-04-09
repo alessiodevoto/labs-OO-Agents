@@ -5,6 +5,8 @@ from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, Toke
 
 
 class TestTokenBudgetConfig:
+    """Tests for TokenBudgetConfig defaults, immutability, and merging."""
+
     def test_defaults(self):
         c = TokenBudgetConfig()
         assert c.max_tokens == 100_000
@@ -25,6 +27,8 @@ class TestTokenBudgetConfig:
 
 
 class TestMethodSummarizerConfig:
+    """Tests for MethodSummarizerConfig defaults, immutability, and merging."""
+
     def test_defaults(self):
         c = MethodSummarizerConfig()
         assert c.min_events == 3
@@ -44,21 +48,12 @@ class TestMethodSummarizerConfig:
         assert merged.exclude_root is True
 
 
-class TestTokenBudgetConfigMergeError:
-    def test_merge_with_empty_model_fields_set_raises(self):
-        base = TokenBudgetConfig()
-        other = TokenBudgetConfig.model_validate({})
-        with pytest.raises(
-            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
-        ):
-            base.merge_with(other)
-
-
-class TestMethodSummarizerConfigMergeError:
-    def test_merge_with_empty_model_fields_set_raises(self):
-        base = MethodSummarizerConfig()
-        other = MethodSummarizerConfig.model_validate({})
-        with pytest.raises(
-            ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
-        ):
-            base.merge_with(other)
+@pytest.mark.parametrize("config_cls", [TokenBudgetConfig, MethodSummarizerConfig])
+def test_merge_with_empty_model_fields_set_raises(config_cls):
+    """merge_with() raises ValueError when the override has no fields explicitly set."""
+    base = config_cls()
+    other = config_cls.model_validate({})
+    with pytest.raises(
+        ValueError, match="merge_with\\(\\) received a config with no model_fields_set"
+    ):
+        base.merge_with(other)

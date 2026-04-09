@@ -11,6 +11,8 @@ from nemo_oo_agents.storage.markers import _resolve_single, is_nosnapshot_field
 
 
 class TestResolveSingle:
+    """Tests for _resolve_single() annotation resolution."""
+
     def test_eval_failure_returns_none(self):
         """_resolve_single returns None when the annotation string cannot be eval'd."""
 
@@ -41,7 +43,9 @@ class TestResolveSingle:
         assert result is None
 
 
-class TestIsNosnaphotField:
+class TestIsNosnapshotField:
+    """Tests for is_nosnapshot_field() edge cases."""
+
     def test_returns_false_when_type_hints_fail_and_resolve_single_returns_none(self):
         """Covers the return False on line 54: hint is None after fallback."""
 
