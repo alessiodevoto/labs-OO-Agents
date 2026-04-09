@@ -59,3 +59,38 @@ def test_next_tag_num_does_not_collide_after_resume(tmp_path):
     )
 
     storage2.close()
+
+
+def test_next_tag_num_correct_after_resume_with_range_tags(tmp_path):
+    """Resume must not collide when the backend contains collapsed range tags."""
+    db = tmp_path / "session.db"
+
+    # --- first session: add events then collapse to create a range tag ---
+    storage = SQLiteStorageManager(db)
+    agent = _SimpleAgent(storage=storage)
+
+    agent.event_manager.add(EventBase())  # tag "1"
+    agent.event_manager.add(EventBase())  # tag "2"
+    agent.event_manager.add(EventBase())  # tag "3"
+    # collapse "1".."3" → creates range tag "1..3"; next_tag_num stays at 4
+    agent.event_manager.collapse("1", "3")
+
+    storage.save_snapshot(agent)  # snapshot records next_tag_num=4
+
+    # Events added after snapshot — these are what the fix must account for
+    agent.event_manager.add(EventBase())  # tag "4"
+    storage.close()
+
+    # --- resumed session ---
+    storage2 = SQLiteStorageManager(db)
+    agent2 = _SimpleAgent(storage=storage2)
+    storage2.restore_latest_snapshot(agent2)
+
+    # Backend has tags "1..3" (range end=3) and "4"; max is 4, so next must be ≥ 5
+    existing_tags = {e.tag for e in agent2.event_manager._backend.all_events()}
+    new_tag = agent2.event_manager.add(EventBase())
+    assert new_tag not in existing_tags, (
+        f"new event assigned tag {new_tag!r} which already exists in the backend"
+    )
+
+    storage2.close()

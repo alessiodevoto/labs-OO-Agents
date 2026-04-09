@@ -3,6 +3,7 @@
 import pytest
 
 from nemo_oo_agents.events import Error, Feedback, LLMOutput, Task
+from nemo_oo_agents.runtime.event_backend import InMemoryBackend, _tag_max_num
 from nemo_oo_agents.runtime.event_manager import EventManager
 
 
@@ -185,13 +186,80 @@ def test_getitem_by_tag_after_remove():
 
 
 def test_clear():
-    """Test clear() removes all events."""
+    """Test clear() removes all events and resets the tag counter."""
     hm = EventManager()
     hm.add(Task(prompt="Test"))
     assert len(hm) == 1
 
     hm.clear()
     assert len(hm) == 0
+    # Tag counter must restart from 1 after clear
+    assert hm._next_tag_num == 1
+    tag = hm.add(Task(prompt="After clear"))
+    assert tag == "1"
+
+
+# === _tag_max_num and max_tag_num tests ===
+
+
+@pytest.mark.parametrize(
+    "tag, expected",
+    [
+        ("1", 1),
+        ("42", 42),
+        ("2..40", 40),
+        ("1..1", 1),
+        ("notanumber", 0),
+        ("abc..def", 0),
+    ],
+)
+def test_tag_max_num(tag, expected):
+    assert _tag_max_num(tag) == expected
+
+
+def test_in_memory_backend_max_tag_num_empty():
+    backend = InMemoryBackend()
+    assert backend.max_tag_num() == 0
+
+
+def test_in_memory_backend_max_tag_num_simple_tags():
+    from nemo_oo_agents.events import EventBase
+
+    backend = InMemoryBackend()
+    backend.store("1", EventBase())
+    backend.store("5", EventBase())
+    backend.store("3", EventBase())
+    assert backend.max_tag_num() == 5
+
+
+def test_in_memory_backend_max_tag_num_with_range_tag():
+    from nemo_oo_agents.events import EventBase
+
+    backend = InMemoryBackend()
+    backend.store("1", EventBase())
+    backend.store("2..40", EventBase())  # range tag — end value is 40
+    backend.store("41", EventBase())
+    assert backend.max_tag_num() == 41
+
+
+def test_event_manager_init_syncs_from_prepopulated_backend():
+    """EventManager started with an existing backend must sync _next_tag_num."""
+    from nemo_oo_agents.events import EventBase
+
+    backend = InMemoryBackend()
+    backend.store("1", EventBase())
+    backend.store("2", EventBase())
+    backend.store("3", EventBase())
+
+    em = EventManager(backend=backend)
+    assert em._next_tag_num == 4  # max(3) + 1
+
+
+def test_event_manager_init_empty_backend_starts_at_one():
+    em = EventManager()
+    assert em._next_tag_num == 1
+    tag = em.add(Task(prompt="first"))
+    assert tag == "1"
 
 
 def test_format_events_last_n():
