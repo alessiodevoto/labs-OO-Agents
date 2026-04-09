@@ -80,18 +80,12 @@ test:
     pull_policy: if-not-present
   tags:
     - os/linux
-  # Use cache for both uv deps AND to pass test results to upload job
   cache:
-    - key:
-        files:
-          - uv.lock
-      paths:
-        - $UV_CACHE_DIR
-    - policy: push
-      key: test-results-$CI_PIPELINE_ID
-      paths:
-        - test-results.xml
-        - coverage.xml
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
     - uv sync --all-extras --no-extra sandbox
@@ -102,6 +96,12 @@ test:
     - uv cache prune --ci
   # Parse total coverage % from "TOTAL ... 87%" line in terminal output
   coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%/'
+  artifacts:
+    paths:
+      - test-results.xml
+      - coverage.xml
+    expire_in: 1 day
+    when: always
   only:
     - merge_requests
     - main
@@ -117,13 +117,7 @@ upload-test-report:
     - os/linux
   needs:
     - job: test
-      artifacts: false
-  cache:
-    policy: pull
-    key: test-results-$CI_PIPELINE_ID
-    paths:
-      - test-results.xml
-      - coverage.xml
+      artifacts: true
   script:
     - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
     - test -f coverage.xml && echo "Found coverage.xml" || echo "No coverage.xml found"
