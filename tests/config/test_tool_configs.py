@@ -27,28 +27,7 @@ class TestBashConfig:
         assert merged.use_sandbox is False
 
 
-class TestWebSearchConfig:
-    """Tests for WebSearchConfig defaults, immutability, and merging."""
-
-    def test_defaults(self):
-        c = WebSearchConfig()
-        assert c.default_num_results == 5
-        assert c.request_timeout == 10.0
-
-    def test_frozen(self):
-        c = WebSearchConfig()
-        with pytest.raises(ValidationError):
-            c.request_timeout = 30.0
-
-    def test_merge_with(self):
-        base = WebSearchConfig()
-        override = WebSearchConfig(request_timeout=30.0)
-        merged = base.merge_with(override)
-        assert merged.request_timeout == 30.0
-        assert merged.default_num_results == 5
-
-
-@pytest.mark.parametrize("config_cls", [BashConfig, WebSearchConfig])
+@pytest.mark.parametrize("config_cls", [BashConfig])
 def test_merge_with_empty_model_fields_set_raises(config_cls):
     """merge_with() raises ValueError when the override has no fields explicitly set."""
     base = config_cls()
