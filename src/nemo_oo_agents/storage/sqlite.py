@@ -265,6 +265,26 @@ class SQLiteEventBackend:
             self._conn.execute("DELETE FROM active_tags")
         self._insertion_counter = 0
 
+    def max_tag_num(self) -> int:
+        # Extract the trailing number from each tag in SQL:
+        #   - simple tags ("5")      → CAST("5" AS INTEGER) = 5
+        #   - range tags ("2..40")   → substr after ".." → CAST("40" AS INTEGER) = 40
+        # COALESCE handles the empty-table case where MAX returns NULL.
+        row = self._conn.execute(
+            """
+            SELECT COALESCE(MAX(
+                CAST(
+                    CASE WHEN instr(tag, '..') > 0
+                         THEN substr(tag, instr(tag, '..') + 2)
+                         ELSE tag
+                    END AS INTEGER
+                )
+            ), 0)
+            FROM events
+            """
+        ).fetchone()
+        return row[0]
+
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
         return row[0]

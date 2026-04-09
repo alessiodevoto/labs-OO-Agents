@@ -146,7 +146,13 @@ class AgentSnapshot(BaseModel):
             else:
                 agent.context_manager[block.key] = block.value
 
-        agent.event_manager._next_tag_num = self.event_manager.next_tag_num
+        # Use the higher of the snapshot value and the backend's actual max tag,
+        # because events may have been added after the snapshot was saved (e.g.
+        # session metadata events written during session close).
+        agent.event_manager._next_tag_num = max(
+            self.event_manager.next_tag_num,
+            agent.event_manager._next_tag_num,
+        )
 
         if self.methods:
             # SECURITY: exec() of stored source code means loading a snapshot is
