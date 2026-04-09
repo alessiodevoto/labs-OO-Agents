@@ -137,37 +137,6 @@ class TestCodeActLLMApiErrorExhaustion:
         # Must mention "LLM API error after 2 retries" — the exact phrase from codeact.py line 697
         assert "LLM API error after 2 retries" in err
 
-    @pytest.mark.asyncio
-    async def test_llm_api_error_after_max_retries_raises_generation_error(self):
-        """CodeActStrategy: after max_retries LLM API errors, must raise GenerationError.
-
-        This hits codeact.py lines 668-699:
-          except Exception as e:
-              session.record_error()
-              ...
-              if session.is_exhausted():
-                  raise GenerationError(...)
-        """
-
-        class TestAgent(Agent, llm=_DUMMY_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=2, max_iterations=20)))
-            async def fetch_data(self) -> str:
-                """Fetch some data."""
-                ...
-
-        # All calls raise RuntimeError → exhausts max_retries=2
-        fake_llm = ErrorAfterNFakeLLM(
-            scripted_responses=[],
-            error_message="Network timeout",
-        )
-        agent = TestAgent(llm=fake_llm)
-        with pytest.raises(GenerationError) as exc_info:
-            await agent.fetch_data()
-
-        # Error message should reference LLM API error and the original exception type
-        err = str(exc_info.value).lower()
-        assert "api error" in err or "retries" in err or "runtimeerror" in err
-
 
 # ---------------------------------------------------------------------------
 # CodeActStrategy — max_iterations exceeded  (codeact.py: loop exhaust path)
@@ -209,7 +178,8 @@ class TestCodeActMaxIterationsExceeded:
             await agent.never_finishes()
 
         err = str(exc_info.value).lower()
-        assert "iterations" in err or "exhausted" in err or "never_finishes" in err
+        # codeact.py build_failure_error: "Generation failed after {n} iterations (max_iterations=...)"
+        assert "generation failed after" in err and "iterations" in err
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +330,7 @@ class TestCodeActNamespaceInjection:
 
 
 # ---------------------------------------------------------------------------
-# PurePythonStrategy — validation error exhaustion  (pure_python.py 306-325)
+# PurePythonStrategy — validation error exhaustion  (pure_python.py 367-373)
 # ---------------------------------------------------------------------------
 
 
@@ -456,7 +426,8 @@ class TestPurePythonLLMApiError:
             await agent.analyze("test data")
 
         err = str(exc_info.value).lower()
-        assert "api error" in err or "retries" in err or "runtimeerror" in err
+        # pure_python.py line 343: "LLM API error after {max_retries} retries."
+        assert "llm api error after 2 retries" in err
 
 
 # ---------------------------------------------------------------------------
