@@ -287,11 +287,11 @@ class TestValidatorShouldPreventClassMutation:
         Pattern to detect:
             RouterTestWrapper.process = _make_process_method()
         """
+        from nemo_oo_agents.errors import RestrictedCodeError
         from nemo_oo_agents.runtime.code_validator import (
             UnifiedCodeValidator,
             ValidationContext,
         )
-        from nemo_oo_agents.errors import RestrictedCodeError
 
         code = """
 def _make_process_method():

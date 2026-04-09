@@ -8,10 +8,9 @@ Targets:
 - current_call.py
 """
 
-import inspect
 import json
-from typing import Any, Optional
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -23,10 +22,8 @@ from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import (
     Error,
     Feedback,
-    LLMOutput,
     Message,
     PythonOutput,
-    Reasoning,
     ResultStatus,
     Task,
 )
@@ -35,12 +32,10 @@ from nemo_oo_agents.strategies.codeact_errors import (
     _format_actual_value,
     _format_error_path,
     _format_expected_schema,
-    _format_got_line,
     _format_missing_fields_error,
     _format_pydantic_error,
     _format_single_error,
     _format_value_brief,
-    _format_value_for_error,
     format_validation_error,
     get_type_example,
     get_type_hint_str,
@@ -770,9 +765,7 @@ class TestCallWithInstrumentation:
         async def raising_fn():
             raise TypeError("test error")
 
-        with patch(
-            "nemo_oo_agents.runtime.hooks.call_after_hook"
-        ) as mock_after:
+        with patch("nemo_oo_agents.runtime.hooks.call_after_hook") as mock_after:
             with pytest.raises(TypeError):
                 await strat.call_with_instrumentation(
                     raising_fn, (), {}, runtime=runtime, method_name="test"
@@ -814,9 +807,7 @@ class TestCurrentCallFormatParametersAsCode:
 
     def test_no_signature_no_kwargs(self):
         """No signature, no kwargs returns empty string."""
-        call = CurrentCall(
-            id="x", method_name="m", decorator="plan", signature=None, kwargs={}
-        )
+        call = CurrentCall(id="x", method_name="m", decorator="plan", signature=None, kwargs={})
         assert call.format_parameters_as_code() == ""
 
     def test_no_signature_with_kwargs(self):
@@ -1031,9 +1022,7 @@ class TestPredictStrategyStringReturn:
                 """Classify the text."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"value": "positive"}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": "positive"}))])
         agent = StringAgent(llm=fake_llm)
         result = await agent.classify("hello")
         assert result == "positive"
@@ -1046,9 +1035,7 @@ class TestPredictStrategyStringReturn:
                 """Count something."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"value": 42}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": 42}))])
         agent = IntAgent(llm=fake_llm)
         result = await agent.count()
         assert result == 42
@@ -1061,9 +1048,7 @@ class TestPredictStrategyStringReturn:
                 """Check something."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"value": True}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": True}))])
         agent = BoolAgent(llm=fake_llm)
         result = await agent.check()
         assert result is True
@@ -1080,9 +1065,7 @@ class TestPredictStrategyDictListReturn:
                 """Return info dict."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"key": "value"}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"key": "value"}))])
         agent = DictAgent(llm=fake_llm)
         result = await agent.info()
         assert result == {"key": "value"}
@@ -1183,13 +1166,11 @@ class TestPredictStrategyPydanticReturn:
     async def test_returns_optional_str(self):
         class OptAgent(Agent, llm=_TEST_LLM):
             @strategy(PredictStrategy(config=PredictConfig(max_retries=2)))
-            async def maybe(self) -> Optional[str]:
+            async def maybe(self) -> str | None:
                 """Maybe return string."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"value": "found"}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": "found"}))])
         agent = OptAgent(llm=fake_llm)
         result = await agent.maybe()
         assert result == "found"
@@ -1443,7 +1424,7 @@ class TestPredictStrategyCreateResponseModel:
 
     def test_optional_unwraps_inner(self):
         s = PredictStrategy()
-        model = s._create_response_model(Optional[str], "test")
+        model = s._create_response_model(str | None, "test")
         # Should create a wrapped model for str
         assert hasattr(model, "model_fields")
 
@@ -1539,7 +1520,14 @@ class TestPredictStrategyAddFailedAttemptsToSpan:
         with patch.dict("sys.modules", {"opentelemetry": None, "opentelemetry.trace": None}):
             # Should not raise
             s._add_all_failed_attempts_to_span(
-                [{"attempt": 1, "raw_output": "x", "error_type": "ValueError", "error_message": "bad"}]
+                [
+                    {
+                        "attempt": 1,
+                        "raw_output": "x",
+                        "error_type": "ValueError",
+                        "error_message": "bad",
+                    }
+                ]
             )
 
     def test_with_recording_span(self):
@@ -1555,11 +1543,20 @@ class TestPredictStrategyAddFailedAttemptsToSpan:
         mock_trace = MagicMock()
         mock_trace.get_current_span.return_value = mock_span
 
-        with patch.dict("sys.modules", {"opentelemetry": MagicMock(), "opentelemetry.trace": mock_trace}):
+        with patch.dict(
+            "sys.modules", {"opentelemetry": MagicMock(), "opentelemetry.trace": mock_trace}
+        ):
             with patch("opentelemetry.trace", mock_trace):
                 # Just ensure no crash; actual span setting depends on real OTel
                 s._add_all_failed_attempts_to_span(
-                    [{"attempt": 1, "raw_output": "x" * 3000, "error_type": "ValueError", "error_message": "bad"}]
+                    [
+                        {
+                            "attempt": 1,
+                            "raw_output": "x" * 3000,
+                            "error_type": "ValueError",
+                            "error_message": "bad",
+                        }
+                    ]
                 )
 
 
@@ -1591,11 +1588,8 @@ class TestFormatMissingFieldsWithIntLoc:
     def test_loc_with_result_prefix_and_int_index(self):
         """When loc = ('result', 0), field is formatted as [0]."""
         # This tests line 82: _format_error_path(tuple(loc_list[1:]))
-        from nemo_oo_agents.strategies.codeact_errors import _format_missing_fields_error
 
-        missing_errors = [
-            {"loc": ("result", 0), "msg": "missing", "type": "missing", "url": ""}
-        ]
+        missing_errors = [{"loc": ("result", 0), "msg": "missing", "type": "missing", "url": ""}]
         result = _format_missing_fields_error(missing_errors, missing_errors, int, None)
         assert "return_result() failed" in result
         # The [0] index should appear in the Missing line
@@ -1740,7 +1734,7 @@ class TestPlainProviderFormatterFormat:
 
     def test_tool_call_with_python_output_uses_plain_content(self):
         """ToolCallEvent with PythonOutput uses plain_event_content (lines 163-165)."""
-        from context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
+        from context_blocks import ResolvedBlock, ToolCallEvent
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
@@ -1795,13 +1789,13 @@ class TestPredictStrategyGetTypeHintsError:
                 """Typed method."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[_llm_resp(json.dumps({"value": "ok"}))]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": "ok"}))])
         agent = GoodAgent(llm=fake_llm)
 
         # Patch get_type_hints to raise NameError to force the fallback path
-        with patch("nemo_oo_agents.strategies.predict.get_type_hints", side_effect=NameError("bad")):
+        with patch(
+            "nemo_oo_agents.strategies.predict.get_type_hints", side_effect=NameError("bad")
+        ):
             result = await agent.typed()
         assert result == "ok"
 

@@ -9,8 +9,6 @@ Targets:
 - commands/start_dev.py
 """
 
-import io
-import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -75,14 +73,14 @@ def make_mock_agent():
 # tui/config.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.config import (
-    Config,
-    TUIConfig,
+from nemo_oo_agents_cli.tui.config import (  # noqa: E402
+    DEFAULT_MODEL,
     AgentConfig,
+    Config,
     SummarizationConfig,
+    TUIConfig,
     _set_nested,
     _unpack_target,
-    DEFAULT_MODEL,
 )
 
 
@@ -248,8 +246,8 @@ class TestSummarizationConfig:
 
 class TestGetLlm:
     def test_get_llm_known_model(self):
-        from nemo_oo_agents_cli.tui.config import get_llm
         import unifiedllm
+        from nemo_oo_agents_cli.tui.config import get_llm
 
         real_models = unifiedllm.MODELS
         tui = TUIConfig()
@@ -257,17 +255,17 @@ class TestGetLlm:
         if real_models:
             tui.default_model = next(iter(real_models))
             with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()) as mock_get:
-                result = get_llm(tui)
+                get_llm(tui)
                 mock_get.assert_called_once()
         else:
             # No models registered - just test CompletionClient path
             tui.default_model = "unknown/model"
-            with patch.object(unifiedllm, "CompletionClient", return_value=MagicMock()) as mock_c:
-                result = get_llm(tui)
+            with patch.object(unifiedllm, "CompletionClient", return_value=MagicMock()):
+                get_llm(tui)
 
     def test_get_llm_unknown_model(self):
-        from nemo_oo_agents_cli.tui.config import get_llm
         import unifiedllm
+        from nemo_oo_agents_cli.tui.config import get_llm
 
         tui = TUIConfig()
         tui.default_model = "definitely-not-a-real-model/xyz"
@@ -277,14 +275,14 @@ class TestGetLlm:
             original_models = unifiedllm.MODELS
             unifiedllm.MODELS = {}
             try:
-                result = get_llm(tui)
+                get_llm(tui)
                 mock_c.assert_called_once_with(model="definitely-not-a-real-model/xyz")
             finally:
                 unifiedllm.MODELS = original_models
 
     def test_get_llm_from_full_config(self):
-        from nemo_oo_agents_cli.tui.config import get_llm
         import unifiedllm
+        from nemo_oo_agents_cli.tui.config import get_llm
 
         cfg = Config()
         # Patch MODELS to include the default model
@@ -292,7 +290,7 @@ class TestGetLlm:
         unifiedllm.MODELS = {cfg.tui.default_model: None}
         try:
             with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()) as mock_get:
-                result = get_llm(cfg)
+                get_llm(cfg)
             mock_get.assert_called_once()
         finally:
             unifiedllm.MODELS = original_models
@@ -300,8 +298,8 @@ class TestGetLlm:
 
 class TestListModels:
     def test_list_models_sorted(self):
-        from nemo_oo_agents_cli.tui.config import list_models
         import unifiedllm
+        from nemo_oo_agents_cli.tui.config import list_models
 
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"z/model": None, "a/model": None}
@@ -322,22 +320,21 @@ class TestListModels:
 # tui/commands.py  — additional coverage
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.commands import (
-    Command,
-    CommandRegistry,
-    CommandHandler,
-    CommandResult,
-    HelpCommand,
-    ExitCommand,
+from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     ClearCommand,
-    ModelCommand,
-    ModelsCommand,
-    SwitchCommand,
+    CommandHandler,
+    CommandRegistry,
+    CommandResult,
+    ExitCommand,
+    HelpCommand,
     HistoryCommand,
     MCPCommand,
-    SkillsCommand,
-    SandboxCommand,
+    ModelCommand,
+    ModelsCommand,
     PythonCommand,
+    SandboxCommand,
+    SkillsCommand,
+    SwitchCommand,
     _to_attr_name,
 )
 
@@ -469,7 +466,7 @@ class TestClearCommand:
         mock_console.console.clear.assert_called_once()
 
     async def test_no_event_manager(self, mock_console, mock_config):
-        agent = MagicMock(spec=[])  # no event_manager attribute
+        MagicMock(spec=[])  # no event_manager attribute
         agent_with_bash = MagicMock()
         agent_with_bash.bash = MagicMock()
         # Use an agent with no event_manager
@@ -506,6 +503,7 @@ class TestModelCommand:
 class TestModelsCommand:
     async def test_lists_models_by_provider(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         mock_config.default_model = "provider1/model1"
         cmd = ModelsCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
@@ -519,6 +517,7 @@ class TestModelsCommand:
 
     async def test_current_model_marked(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         mock_config.default_model = "prov/mymodel"
         cmd = ModelsCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
@@ -536,6 +535,7 @@ class TestSwitchCommand:
 
     async def test_keyboard_interrupt_cancelled(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
@@ -552,6 +552,7 @@ class TestSwitchCommand:
 
     async def test_empty_selection(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
@@ -568,6 +569,7 @@ class TestSwitchCommand:
 
     async def test_model_not_in_registry(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
@@ -584,6 +586,7 @@ class TestSwitchCommand:
 
     async def test_successful_switch(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
@@ -601,6 +604,7 @@ class TestSwitchCommand:
 
     async def test_llm_switch_failure(self, mock_console, mock_config, mock_agent):
         import unifiedllm
+
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
@@ -860,7 +864,7 @@ class TestSkillsCommandExecute:
             # Can't easily remove SkillManager, use importlib approach
             pass
         # Skip this test if nemo_oo_agents has SkillManager - we test the ImportError path differently
-        result = await cmd.execute(["list"])
+        await cmd.execute(["list"])
         # No assertion needed — just checks it doesn't crash
 
     async def test_list_no_skills_dirs(self, mock_console, mock_config, mock_agent):
@@ -1108,9 +1112,7 @@ class TestPythonCommand:
 
 class TestCommandRegistry:
     def test_registers_basic_commands(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         assert reg.get_command("help") is not None
         assert reg.get_command("exit") is not None
         assert reg.get_command("quit") is not None
@@ -1119,24 +1121,18 @@ class TestCommandRegistry:
 
     def test_filters_by_required_capabilities(self, mock_console, mock_config):
         agent = MagicMock(spec=[])  # no attributes at all
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=agent)
         # bash not available → switch/sandbox/mcp/skills should not be registered
         assert reg.get_command("switch") is None
         assert reg.get_command("sandbox") is None
 
     def test_get_command_case_insensitive(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         assert reg.get_command("HELP") is not None
         assert reg.get_command("Help") is not None
 
     def test_get_command_unknown_returns_none(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         assert reg.get_command("nonexistent") is None
 
     def test_get_all_command_classes(self):
@@ -1152,17 +1148,13 @@ class TestCommandRegistry:
         assert "/exit" in help_dict
 
     def test_get_active_help(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         active = reg.get_active_help()
         assert isinstance(active, dict)
         assert "/help" in active
 
     def test_get_completions(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         completions = reg.get_completions()
         assert isinstance(completions, dict)
         assert all("/" in k for k in completions)
@@ -1171,9 +1163,7 @@ class TestCommandRegistry:
         assert keys == sorted(keys)
 
     def test_get_completions_strips_arg_placeholders(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=mock_agent
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
         completions = reg.get_completions()
         # No angle brackets in keys
         assert all("<" not in k for k in completions)
@@ -1199,9 +1189,7 @@ class TestCommandHandler:
     async def test_unavailable_command(self, mock_console, mock_config):
         """Command in registry but not available for this agent."""
         agent_no_caps = MagicMock(spec=[])  # no bash, no get_summarization_status
-        reg = CommandRegistry(
-            console=mock_console, config=mock_config, agent=agent_no_caps
-        )
+        reg = CommandRegistry(console=mock_console, config=mock_config, agent=agent_no_caps)
         h = CommandHandler(registry=reg, console=mock_console)
         result = await h.handle("/switch")
         assert result.success is False
@@ -1235,7 +1223,7 @@ class TestCommandHandler:
 # tui/console.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.console import TUIConsole
+from nemo_oo_agents_cli.tui.console import TUIConsole  # noqa: E402
 
 
 class TestTUIConsoleInit:
@@ -1384,6 +1372,7 @@ class TestTUIConsoleGetInput:
             MockHandler.return_value = MagicMock()
             # Also patch the import in the method's local scope
             import nemo_oo_agents_cli.tui.input_handler as ih_mod
+
             original_cls = getattr(ih_mod, "TUIInputHandler", None)
             ih_mod.TUIInputHandler = MockHandler
             try:
@@ -1398,7 +1387,7 @@ class TestTUIConsoleGetInput:
 # tui/splash.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.splash import show_splash, AGENT006_ASCII
+from nemo_oo_agents_cli.tui.splash import AGENT006_ASCII, show_splash  # noqa: E402
 
 
 class TestShowSplash:
@@ -1430,17 +1419,15 @@ class TestShowSplash:
 # tui/agent.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.agent import (
-    install_summarizer,
-    _orchestrate,
-    _continue_brainstorm,
-    _proceed_to_plan,
-    _handle_plan_approval,
-    _execute_plan,
-    _verify_and_complete,
+from nemo_oo_agents_cli.tui.agent import (  # noqa: E402
     TUIAgent,
+    _continue_brainstorm,
+    _execute_plan,
+    _handle_plan_approval,
+    _orchestrate,
+    _verify_and_complete,
+    install_summarizer,
 )
-from nemo_oo_agents_cli.tui.config import AgentConfig, SummarizationConfig
 
 
 class TestInstallSummarizer:
@@ -1453,9 +1440,7 @@ class TestInstallSummarizer:
     def test_token_budget_installs_summarizer(self):
         config = SummarizationConfig(policy="token_budget", max_tokens=50_000, preserve_recent=5)
         agent = MagicMock()
-        with patch(
-            "nemo_oo_agents_cli.tui.agent.TokenBudgetSummarizer"
-        ) as MockSummarizer:
+        with patch("nemo_oo_agents_cli.tui.agent.TokenBudgetSummarizer") as MockSummarizer:
             install_summarizer(config, agent)
             MockSummarizer.install.assert_called_once()
 
@@ -1547,9 +1532,7 @@ class TestOrchestrateFunctions:
         agent.review_changes = AsyncMock()
         # _execute_plan sets phase to "implementing" then "verifying" then "idle"
         # Use a mock to capture what _execute_plan is called with
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock
-        ) as mock_ep:
+        with patch("nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock) as mock_ep:
             await _orchestrate(agent, "refactor foo")
             mock_ep.assert_called_once_with(agent, plan)
         # Phase was set to "planning" before _execute_plan
@@ -1587,9 +1570,7 @@ class TestOrchestrateFunctions:
         agent.implement_step = AsyncMock()
         agent.verify_work = AsyncMock()
         agent.review_changes = AsyncMock()
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock
-        ) as mock_ep:
+        with patch("nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock) as mock_ep:
             await _handle_plan_approval(agent, "yes")
             mock_ep.assert_called_once_with(agent, plan)
 
@@ -1642,10 +1623,10 @@ class TestOrchestrateFunctions:
 
 class TestTUIAgentInit:
     def test_init_with_defaults(self):
-        with patch("nemo_oo_agents_cli.tui.agent.BashTool") as MockBash:
+        with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
             with patch("nemo_oo_agents_cli.tui.agent.FileTool"):
                 with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
-                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
+                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         assert agent._phase == "idle"
         assert agent._workflow_state == {}
@@ -1656,10 +1637,8 @@ class TestTUIAgentInit:
         with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
             with patch("nemo_oo_agents_cli.tui.agent.FileTool"):
                 with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
-                    with patch(
-                        "nemo_oo_agents_cli.tui.agent.install_summarizer"
-                    ) as mock_install:
-                        agent = TUIAgent(llm=MagicMock(), config=config)
+                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
+                        TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_not_called()
 
     def test_init_installs_summarizer_for_token_budget(self):
@@ -1668,10 +1647,8 @@ class TestTUIAgentInit:
         with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
             with patch("nemo_oo_agents_cli.tui.agent.FileTool"):
                 with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
-                    with patch(
-                        "nemo_oo_agents_cli.tui.agent.install_summarizer"
-                    ) as mock_install:
-                        agent = TUIAgent(llm=MagicMock(), config=config)
+                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
+                        TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_called_once()
 
     def test_get_summarization_status_no_summarizers(self):
@@ -1684,7 +1661,9 @@ class TestTUIAgentInit:
         # event_manager is a property; patch it via property mock
         mock_em = MagicMock()
         mock_em.keys.return_value = []
-        with patch.object(type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)):
+        with patch.object(
+            type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)
+        ):
             status = agent.get_summarization_status()
         assert "active_events" in status
         assert status["has_summarizer"] is False
@@ -1702,7 +1681,9 @@ class TestTUIAgentInit:
         agent._summarizers = [mock_summarizer]
         mock_em = MagicMock()
         mock_em.keys.return_value = ["t1", "t1..t2"]
-        with patch.object(type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)):
+        with patch.object(
+            type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)
+        ):
             status = agent.get_summarization_status()
         assert status["has_summarizer"] is True
         assert status["current_tokens"] == 5000
@@ -1739,8 +1720,10 @@ class TestTUIAgentInit:
 # commands/start_dev.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.commands.start_dev import command as start_dev_command, _AccessLogFilter
-import logging
+import logging  # noqa: E402
+
+from nemo_oo_agents_cli.commands.start_dev import _AccessLogFilter  # noqa: E402
+from nemo_oo_agents_cli.commands.start_dev import command as start_dev_command  # noqa: E402
 
 
 class TestAccessLogFilter:
@@ -1802,7 +1785,9 @@ class TestStartDevCommand:
         self.runner = CliRunner()
 
     def test_import_error_shows_message(self):
-        with patch.dict("sys.modules", {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}):
+        with patch.dict(
+            "sys.modules", {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}
+        ):
             result = self.runner.invoke(start_dev_command, [])
         assert result.exit_code != 0
         # The error message should be in output
@@ -1810,7 +1795,10 @@ class TestStartDevCommand:
 
     def test_import_error_exits_1(self):
         import sys
-        with patch.dict(sys.modules, {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}):
+
+        with patch.dict(
+            sys.modules, {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}
+        ):
             result = self.runner.invoke(start_dev_command, ["--port", "5002"])
         assert result.exit_code == 1
 
@@ -1819,10 +1807,14 @@ class TestStartDevCommand:
         mock_viewer = MagicMock()
         mock_viewer.main.app = mock_app
         import sys
-        with patch.dict(sys.modules, {
-            "nemo_oo_agents_viewer": mock_viewer,
-            "nemo_oo_agents_viewer.main": mock_viewer.main,
-        }):
+
+        with patch.dict(
+            sys.modules,
+            {
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer.main,
+            },
+        ):
             with patch("uvicorn.run") as mock_run:
                 result = self.runner.invoke(start_dev_command, ["--port", "5001"])
         # Either success or the uvicorn mock was called
@@ -1835,14 +1827,16 @@ class TestStartDevCommand:
         mock_viewer = MagicMock()
         mock_viewer.main = mock_viewer_main
         import sys
-        with patch.dict(sys.modules, {
-            "nemo_oo_agents_viewer": mock_viewer,
-            "nemo_oo_agents_viewer.main": mock_viewer_main,
-        }):
+
+        with patch.dict(
+            sys.modules,
+            {
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer_main,
+            },
+        ):
             with patch("uvicorn.run") as mock_run:
-                result = self.runner.invoke(
-                    start_dev_command, ["--port", "8080", "--host", "127.0.0.1"]
-                )
+                self.runner.invoke(start_dev_command, ["--port", "8080", "--host", "127.0.0.1"])
         if mock_run.called:
             call_kwargs = mock_run.call_args
             assert call_kwargs[1].get("port") == 8080 or call_kwargs[0][2] == 8080
@@ -1854,10 +1848,14 @@ class TestStartDevCommand:
         mock_viewer = MagicMock()
         mock_viewer.main = mock_viewer_main
         import sys
-        with patch.dict(sys.modules, {
-            "nemo_oo_agents_viewer": mock_viewer,
-            "nemo_oo_agents_viewer.main": mock_viewer_main,
-        }):
+
+        with patch.dict(
+            sys.modules,
+            {
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer_main,
+            },
+        ):
             with patch("uvicorn.run"):
                 result = self.runner.invoke(start_dev_command, ["--port", "5001"])
         if result.exit_code == 0:

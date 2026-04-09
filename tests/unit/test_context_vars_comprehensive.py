@@ -35,7 +35,6 @@ from nemo_oo_agents.runtime.context_vars import (
 )
 from unifiedllm import FakeLLMClient
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -298,7 +297,7 @@ await task
 
         # Set to agent_a, create task (context copied now)
         token_a = _parent_agent_var.set(agent_a)
-        task = asyncio.create_task(background())
+        asyncio.create_task(background())
 
         # Change to agent_b AFTER task creation
         _parent_agent_var.reset(token_a)
@@ -529,9 +528,7 @@ class TestInGenerationSessionVar:
 
         await asyncio.gather(task_a(), task_b())
 
-        assert b_saw[0] is False, (
-            "task_b saw task_a's _in_generation_session=True — context leaked"
-        )
+        assert b_saw[0] is False, "task_b saw task_a's _in_generation_session=True — context leaked"
 
 
 # ---------------------------------------------------------------------------
@@ -544,7 +541,11 @@ class TestDefaultStrategyVarGlobalPattern:
 
     def test_default_is_codeact_strategy(self):
         """By default (var=None), get_default_strategy() returns a CodeActStrategy."""
-        from nemo_oo_agents.strategies import CodeActStrategy, get_default_strategy, set_default_strategy
+        from nemo_oo_agents.strategies import (
+            CodeActStrategy,
+            get_default_strategy,
+            set_default_strategy,
+        )
 
         set_default_strategy(None)  # Ensure var is None
         strategy = get_default_strategy()
@@ -833,7 +834,7 @@ class TestContextVarPythonSemantics:
         token2 = var.set(2)  # captures: "before=1"
 
         # Out-of-order: reset token1 first (the "older" token)
-        var.reset(token1)   # restores var to 0 (what it was before token1.set)
+        var.reset(token1)  # restores var to 0 (what it was before token1.set)
         assert var.get() == 0  # No error, but we've "lost" token2's state
 
         # Now token2's reset also works (restores to 1, what it was before token2.set)

@@ -183,8 +183,8 @@ class TestLogger:
             mock_error.assert_called_once_with("no extras", extra={})
 
     def test_logger_raises_when_no_agent(self):
-        from nemo_oo_agents.util._context import _current_agent_var
         from nemo_oo_agents.util import logger
+        from nemo_oo_agents.util._context import _current_agent_var
 
         _current_agent_var.set(None)
         with pytest.raises(RuntimeError, match="No agent in context"):
@@ -274,10 +274,8 @@ class TestPreview:
     def test_json_serialization_failure_falls_back_to_str(self):
         """When json.dumps fails, falls back to str()."""
         # json is imported locally inside preview(), so we patch the json module itself
-        import json
-        from nemo_oo_agents.util.prompt import preview
 
-        original_dumps = json.dumps
+        from nemo_oo_agents.util.prompt import preview
 
         def failing_dumps(*args, **kwargs):
             raise ValueError("forced failure")
@@ -313,6 +311,7 @@ class TestTake:
 
     def test_generator_stops_early(self):
         """Generator returns first n items correctly."""
+
         def gen():
             yield from range(10)
 
@@ -476,11 +475,12 @@ class TestAutorun:
                 return 42
 
             with patch("asyncio.run") as mock_run, patch("builtins.print"):
-                result = quickstart.autorun(my_func)
+                quickstart.autorun(my_func)
                 assert mock_run.call_count == 1
                 # The argument is a coroutine from calling my_func()
                 call_arg = mock_run.call_args[0][0]
                 import inspect
+
                 assert inspect.iscoroutine(call_arg)
                 call_arg.close()  # clean up the coroutine
 
@@ -531,9 +531,7 @@ class TestEnsureSchema:
         _ensure_schema(conn)
         tables = {
             r[0]
-            for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "events" in tables
         assert "active_tags" in tables
@@ -541,7 +539,7 @@ class TestEnsureSchema:
         assert "schema_version" in tables
 
     def test_inserts_schema_version(self):
-        from nemo_oo_agents.storage.sqlite import _ensure_schema, _SCHEMA_VERSION
+        from nemo_oo_agents.storage.sqlite import _SCHEMA_VERSION, _ensure_schema
 
         conn = sqlite3.connect(":memory:")
         _ensure_schema(conn)
@@ -549,7 +547,7 @@ class TestEnsureSchema:
         assert row[0] == _SCHEMA_VERSION
 
     def test_schema_version_mismatch_raises(self):
-        from nemo_oo_agents.storage.sqlite import _ensure_schema, _SCHEMA_VERSION
+        from nemo_oo_agents.storage.sqlite import _SCHEMA_VERSION, _ensure_schema
 
         conn = sqlite3.connect(":memory:")
         _ensure_schema(conn)
@@ -699,8 +697,8 @@ class TestSQLiteEventBackendSetStatus:
     """Tests for SQLiteEventBackend.set_status."""
 
     def test_set_status_to_archived(self):
-        from nemo_oo_agents.events import Message
         from context_blocks import EventStatus
+        from nemo_oo_agents.events import Message
 
         backend, _ = _make_backend()
         msg = Message(content="test")
@@ -838,7 +836,9 @@ class TestSQLiteEventBackendDeserialization:
         backend, _ = _make_backend()
         import json
 
-        raw = json.dumps({"event_type": "message", "id": "test-id", "status": "active", "content": "hi"})
+        raw = json.dumps(
+            {"event_type": "message", "id": "test-id", "status": "active", "content": "hi"}
+        )
         event = backend._deserialize(raw)
         assert isinstance(event, Message)
         assert event.content == "hi"
@@ -871,7 +871,6 @@ class TestSQLiteEventBackendRegisterEventType:
     def test_register_different_class_same_key_warns(self, caplog):
         """Registering a different class for an existing key should warn."""
         from context_blocks import EventBase
-        from nemo_oo_agents.events import Message
 
         backend, _ = _make_backend()
 
@@ -925,8 +924,8 @@ class TestSQLiteStorageManager:
         sm.close()
 
     def test_event_manager_property(self):
-        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
         from nemo_oo_agents.runtime.event_manager import EventManager
+        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         sm = SQLiteStorageManager(":memory:")
         assert isinstance(sm.event_manager, EventManager)
@@ -934,8 +933,8 @@ class TestSQLiteStorageManager:
 
     def test_backend_uses_insertion_counter(self):
         """Insertion counter increments with each stored event."""
-        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager, SQLiteEventBackend
         from nemo_oo_agents.events import Message
+        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         sm = SQLiteStorageManager(":memory:")
         backend = sm._backend
@@ -947,8 +946,8 @@ class TestSQLiteStorageManager:
         sm.close()
 
     def test_restore_snapshot_not_found_raises(self):
-        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
         from nemo_oo_agents.errors.storage import SnapshotNotFoundError
+        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         sm = SQLiteStorageManager(":memory:")
         mock_agent = MagicMock()

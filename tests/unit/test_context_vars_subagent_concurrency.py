@@ -34,7 +34,6 @@ from nemo_oo_agents.agent import _parent_agent_var
 from nemo_oo_agents.strategies import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -61,6 +60,7 @@ def _llm(*responses: str) -> FakeLLMClient:
 
 class WorkerAgent(Agent):
     """Sub-agent used to verify LLM inheritance."""
+
     pass
 
 
@@ -651,11 +651,17 @@ class TestScopedBlocksIsolation:
 
         def _tool_call(code: str) -> ToolCall:
             import json
-            return ToolCall(id="call_1", name="execute_python", arguments=json.dumps({"code": code}))
+
+            return ToolCall(
+                id="call_1", name="execute_python", arguments=json.dumps({"code": code})
+            )
 
         def _return(val) -> ToolCall:
             import json
-            return ToolCall(id="call_r", name="return_result", arguments=json.dumps({"result": val}))
+
+            return ToolCall(
+                id="call_r", name="return_result", arguments=json.dumps({"result": val})
+            )
 
         def _codeact_resp(code: str) -> LLMResponse:
             return LLMResponse(
@@ -677,6 +683,7 @@ class TestScopedBlocksIsolation:
 
         class _InnerAgent(Agent):
             """Uses PurePythonStrategy — different from outer."""
+
             @strategy(PurePythonStrategy())
             async def compute(self) -> int:
                 """Return 42."""
@@ -692,14 +699,16 @@ class TestScopedBlocksIsolation:
 
         # Response ordering matters: inner.compute() is called DURING execute_code,
         # so its PurePythonStrategy LLM call happens between the two CodeAct calls.
-        llm = FakeLLMClient([
-            # 1. Outer's CodeActStrategy: execute this code block
-            _codeact_resp("inner = self.Inner()\nresult = await inner.compute()"),
-            # 2. Inner's PurePythonStrategy: consumed DURING execute_code of step 1
-            _resp("return 42"),
-            # 3. Outer's CodeActStrategy: return_result (after code block completes)
-            _codeact_return(42),
-        ])
+        llm = FakeLLMClient(
+            [
+                # 1. Outer's CodeActStrategy: execute this code block
+                _codeact_resp("inner = self.Inner()\nresult = await inner.compute()"),
+                # 2. Inner's PurePythonStrategy: consumed DURING execute_code of step 1
+                _resp("return 42"),
+                # 3. Outer's CodeActStrategy: return_result (after code block completes)
+                _codeact_return(42),
+            ]
+        )
 
         outer = Outer(llm=llm)
         result = await outer.run()

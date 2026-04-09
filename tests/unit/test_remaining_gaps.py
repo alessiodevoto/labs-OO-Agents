@@ -12,17 +12,14 @@ Targets:
 
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import importlib
 import sys
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # Helpers shared across nexus tests
@@ -64,7 +61,6 @@ async def _invoke_wrapper_for_tools(tool_name, args, wrapper):
 @contextmanager
 def _nexus_patched():
     """Patch sys.modules with a fake nat_nexus, reload nexus_middleware, yield (module, fake)."""
-    import nemo_oo_agents.nexus_middleware  # ensure it's in sys.modules first
 
     fake_nexus, fake_handle = _make_fake_nexus()
 
@@ -123,7 +119,7 @@ class TestNexusLLMMiddleware:
 
     async def test_llm_middleware_calls_nexus_execute(self):
         with _nexus_patched() as (nm, fake_nexus, _):
-            result_ctx = await self._run_llm_middleware(fake_nexus, nm)
+            await self._run_llm_middleware(fake_nexus, nm)
             fake_nexus.llm.execute.assert_called_once()
 
     async def test_llm_middleware_strips_sensitive_keys(self):
@@ -227,6 +223,7 @@ class TestNexusLLMMiddleware:
     async def test_llm_middleware_response_with_raw_model_dump(self):
         """When response has raw_response with model_dump, it is used."""
         with _nexus_patched() as (nm, fake_nexus, _):
+
             async def execute_and_capture(*args, **kwargs):
                 wrapper = args[2]
                 request = args[1]
@@ -311,7 +308,10 @@ class TestNexusLLMMiddleware:
     async def test_llm_middleware_request_intercept_propagates_messages(self):
         """When nexus request intercept modifies messages, they propagate to ctx."""
         with _nexus_patched() as (nm, fake_nexus, _):
-            new_messages = [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "hi"}]
+            new_messages = [
+                {"role": "system", "content": "You are helpful"},
+                {"role": "user", "content": "hi"},
+            ]
 
             async def intercepting_execute(*args, **kwargs):
                 request = args[1]
@@ -337,6 +337,7 @@ class TestNexusLLMMiddleware:
     async def test_llm_middleware_request_intercept_propagates_params(self):
         """When nexus request intercept modifies temperature, it propagates."""
         with _nexus_patched() as (nm, fake_nexus, _):
+
             async def intercepting_execute(*args, **kwargs):
                 request = args[1]
                 wrapper = args[2]
@@ -395,6 +396,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_guardrail_blocks_raises(self):
         """When nexus.tools.execute() never invokes _wrapper, raise RuntimeError."""
         with _nexus_patched() as (nm, fake_nexus, _):
+
             async def blocking_execute(tool_name, args, wrapper):
                 pass  # don't call wrapper
 
@@ -424,7 +426,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_result_with_returned_value(self):
         """When result.returned_value is set, it is passed to codec."""
         with _nexus_patched() as (nm, fake_nexus, _):
-            from nemo_oo_agents.events import ExecutionResult, _NO_RETURN
+            from nemo_oo_agents.events import ExecutionResult
 
             exec_result = ExecutionResult(stdout="", returned_value=42)
             ctx, inner = await self._make_exec_ctx(result=exec_result)
@@ -439,7 +441,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_result_with_no_return_uses_stdout(self):
         """When result has _NO_RETURN and no signal, stdout is used."""
         with _nexus_patched() as (nm, fake_nexus, _):
-            from nemo_oo_agents.events import ExecutionResult, _NO_RETURN
+            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult
 
             exec_result = ExecutionResult(stdout="some output", signal=None)
             # Force returned_value to be _NO_RETURN sentinel
@@ -456,7 +458,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_result_signal_with_result_key(self):
         """When result has a signal with 'result' key, that is used."""
         with _nexus_patched() as (nm, fake_nexus, _):
-            from nemo_oo_agents.events import ExecutionResult, ExecutionSignal, _NO_RETURN
+            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult, ExecutionSignal
 
             class TestSignal(ExecutionSignal):
                 pass
@@ -478,6 +480,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_code_propagation_from_intercept(self):
         """Nexus intercept can rewrite code; it propagates to ctx."""
         with _nexus_patched() as (nm, fake_nexus, _):
+
             async def intercepting_execute(tool_name, args, wrapper):
                 modified_args = {"code": "print('intercepted')", "timeout": 5}
                 await wrapper(modified_args)
@@ -500,7 +503,7 @@ class TestNexusToolMiddleware:
     async def test_tool_middleware_result_signal_without_result_key(self):
         """When signal.result is not a dict with 'result', rv is None."""
         with _nexus_patched() as (nm, fake_nexus, _):
-            from nemo_oo_agents.events import ExecutionResult, ExecutionSignal, _NO_RETURN
+            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult, ExecutionSignal
 
             class TestSignal(ExecutionSignal):
                 pass
@@ -698,19 +701,25 @@ class TestTruncationConfigValidators:
     def test_stdout_tail_chars_equal_to_max_stdout_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
-        with pytest.raises(Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"):
+        with pytest.raises(
+            Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"
+        ):
             TruncationConfig(max_stdout_chars=1000, stdout_tail_chars=1000)
 
     def test_stdout_tail_chars_greater_than_max_stdout_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
-        with pytest.raises(Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"):
+        with pytest.raises(
+            Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"
+        ):
             TruncationConfig(max_stdout_chars=1000, stdout_tail_chars=1500)
 
     def test_stdout_tail_chars_equal_to_max_stderr_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
-        with pytest.raises(Exception, match="stdout_tail_chars.*must be less than.*max_stderr_chars"):
+        with pytest.raises(
+            Exception, match="stdout_tail_chars.*must be less than.*max_stderr_chars"
+        ):
             TruncationConfig(
                 max_stdout_chars=50_000,
                 max_stderr_chars=1000,
@@ -850,7 +859,9 @@ class TestAsyncSafety:
         future.set_result(42)
 
         with agent_async_safety_context():
-            with pytest.raises(RuntimeError, match="concurrent.futures.as_completed\\(\\).*deadlock"):
+            with pytest.raises(
+                RuntimeError, match="concurrent.futures.as_completed\\(\\).*deadlock"
+            ):
                 concurrent.futures.as_completed([future])
 
     def test_future_result_works_outside_agent_context(self):
@@ -1173,7 +1184,10 @@ class TestMediaCapture:
 
     def test_image_alias(self):
         """image_to_content_block is an alias for media_to_content_block."""
-        from nemo_oo_agents.runtime.media_capture import image_to_content_block, media_to_content_block
+        from nemo_oo_agents.runtime.media_capture import (
+            image_to_content_block,
+            media_to_content_block,
+        )
 
         assert image_to_content_block is media_to_content_block
 
@@ -1199,7 +1213,9 @@ class TestLibrarySkillASTFallback:
         """
         lib_dir = tmp_path / "mylib"
         lib_dir.mkdir()
-        (lib_dir / "__init__.py").write_text('"""My library description"""\n\ndef foo():\n    pass\n')
+        (lib_dir / "__init__.py").write_text(
+            '"""My library description"""\n\ndef foo():\n    pass\n'
+        )
 
         fake_pkg = MagicMock()
         fake_pkg.__doc__ = None  # forces the AST fallback
@@ -1363,7 +1379,7 @@ class TestBashToolInit:
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.tools.bash_tool"):
-                tool = BashTool(config=cfg)
+                BashTool(config=cfg)
         assert "SRT is not available" in caplog.text
 
     def test_repr_sandbox_enabled(self):
@@ -1390,7 +1406,9 @@ class TestBashToolCheckSrtAvailable:
         from nemo_oo_agents.tools.bash_tool import BashTool
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="--settings available", stderr="", returncode=0)
+            mock_run.return_value = MagicMock(
+                stdout="--settings available", stderr="", returncode=0
+            )
             tool = BashTool.__new__(BashTool)
             tool._srt_path = "srt"
             result = BashTool._check_srt_available(tool)
@@ -1543,7 +1561,7 @@ class TestGetSrtSettingsPath:
             mock_settings.write_text = MagicMock()
             mock_settings.resolve.return_value = settings
             MockPath.return_value = mock_settings
-            result = _get_srt_settings_path()
+            _get_srt_settings_path()
             mock_settings.write_text.assert_called_once()
 
     def test_returns_existing_path_without_writing(self, tmp_path):
@@ -1557,7 +1575,7 @@ class TestGetSrtSettingsPath:
             mock_settings.exists.return_value = True
             mock_settings.resolve.return_value = existing
             MockPath.return_value = mock_settings
-            result = _get_srt_settings_path()
+            _get_srt_settings_path()
             mock_settings.write_text.assert_not_called()
 
 
@@ -1595,7 +1613,9 @@ class TestFileResult:
             bash = BashTool()
         files = FileTool(bash)
 
-        bash.run = AsyncMock(return_value=BashResult(stdout="", stderr="no such dir", return_code=2))
+        bash.run = AsyncMock(
+            return_value=BashResult(stdout="", stderr="no such dir", return_code=2)
+        )
 
         with pytest.raises(FileNotFoundError, match="Failed to list"):
             await files.list("/nonexistent/")
@@ -1607,7 +1627,9 @@ class TestFileResult:
             bash = BashTool()
         files = FileTool(bash)
 
-        bash.run = AsyncMock(return_value=BashResult(stdout="", stderr="permission denied", return_code=1))
+        bash.run = AsyncMock(
+            return_value=BashResult(stdout="", stderr="permission denied", return_code=1)
+        )
 
         with pytest.raises(OSError, match="Failed to write"):
             await files.write("/readonly/file.txt", "content")
@@ -1649,7 +1671,9 @@ class TestFileToolReadLines:
             bash = BashTool()
         files = FileTool(bash)
 
-        bash.run = AsyncMock(return_value=BashResult(stdout="line2\nline3", stderr="", return_code=0))
+        bash.run = AsyncMock(
+            return_value=BashResult(stdout="line2\nline3", stderr="", return_code=0)
+        )
         result = await files.read("file.txt", start_line=2, end_line=3)
         assert result.stdout == "line2\nline3"
         # Verify sed command was used
@@ -1664,7 +1688,9 @@ class TestFileToolReadLines:
             bash = BashTool()
         files = FileTool(bash)
 
-        bash.run = AsyncMock(return_value=BashResult(stdout="line5 onwards", stderr="", return_code=0))
+        bash.run = AsyncMock(
+            return_value=BashResult(stdout="line5 onwards", stderr="", return_code=0)
+        )
         result = await files.read("file.txt", start_line=5)
         assert result.stdout == "line5 onwards"
         bash.run.assert_called_once()
@@ -1810,18 +1836,16 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_try_pil_to_content_block_with_pil_image(self):
         """When PIL is available and obj is a PIL Image, returns image_url block."""
-        from nemo_oo_agents.runtime.media_capture import _try_pil_to_content_block
 
         # Create a mock PIL Image that passes isinstance check
         mock_pil_module = MagicMock()
-        mock_pil_image = MagicMock()
+        MagicMock()
         mock_pil_module.Image.Image = type("Image", (), {})
         # Make obj an instance of mock PIL Image class
         pil_cls = mock_pil_module.Image.Image
         obj = pil_cls()
 
         buf_content = b"PNG_DATA"
-        import io as _io
 
         def save_side_effect(buf, format):
             buf.write(buf_content)

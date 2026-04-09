@@ -13,11 +13,10 @@ from __future__ import annotations
 import importlib
 import sys
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-
 
 # ---------------------------------------------------------------------------
 # nemo_oo_agents.strategies.experimental
@@ -246,7 +245,6 @@ def _make_fake_nexus():
 @contextmanager
 def _nexus_patched():
     """Patch sys.modules with a fake nat_nexus, reload nexus_middleware, yield module."""
-    import nemo_oo_agents.nexus_middleware  # ensure it's in sys.modules first
 
     fake_nexus, _ = _make_fake_nexus()
     fake_llm_request = MagicMock()
@@ -328,7 +326,7 @@ class TestNexusMiddlewareWithFakeNatNexus:
             unsub = MagicMock()
             event_manager.intercept.return_value = unsub
 
-            async with nm.nexus_scope(agent, "test-scope") as handle:
+            async with nm.nexus_scope(agent, "test-scope"):
                 # We're inside the scope; intercepts should be installed
                 assert event_manager.intercept.call_count == 3
 

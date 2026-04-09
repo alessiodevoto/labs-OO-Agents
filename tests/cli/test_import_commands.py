@@ -6,13 +6,10 @@ Uses Click's CliRunner with mocked network helpers so tests run offline.
 from __future__ import annotations
 
 import json
-import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -84,7 +81,7 @@ class TestFindTraceFiles:
         from nemo_oo_agents_cli.commands.import_traces import _find_trace_files
 
         result = _find_trace_files(tmp_path)
-        assert len(result) == len(set(r.resolve() for r in result))
+        assert len(result) == len({r.resolve() for r in result})
 
 
 class TestDetectFormat:

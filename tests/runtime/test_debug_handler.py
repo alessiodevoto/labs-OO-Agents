@@ -18,12 +18,9 @@ import os
 import signal
 import sys
 import threading
-import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,7 +55,7 @@ class TestRegisterUnregisterLlmCall:
         assert call_id.startswith("llm_")
 
     def test_register_increments_counter(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         id1 = register_llm_call("gpt-4")
         id2 = register_llm_call("claude-3")
@@ -66,7 +63,7 @@ class TestRegisterUnregisterLlmCall:
         assert len(_pending_llm_calls) == 2
 
     def test_register_stores_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", prompt_tokens=1500, endpoint="https://api.openai.com")
         info = _pending_llm_calls[call_id]
@@ -78,7 +75,7 @@ class TestRegisterUnregisterLlmCall:
         assert "thread" in info
 
     def test_register_stores_extra_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", custom_key="custom_value")
         info = _pending_llm_calls[call_id]
@@ -86,9 +83,9 @@ class TestRegisterUnregisterLlmCall:
 
     def test_unregister_removes_call(self):
         from nemo_oo_agents.runtime.debug_handler import (
+            _pending_llm_calls,
             register_llm_call,
             unregister_llm_call,
-            _pending_llm_calls,
         )
 
         call_id = register_llm_call("gpt-4")
@@ -103,7 +100,7 @@ class TestRegisterUnregisterLlmCall:
         unregister_llm_call("nonexistent_id")
 
     def test_register_optional_fields_none(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4")
         info = _pending_llm_calls[call_id]
@@ -111,14 +108,14 @@ class TestRegisterUnregisterLlmCall:
         assert info["endpoint"] is None
 
     def test_thread_name_recorded(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4")
         info = _pending_llm_calls[call_id]
         assert info["thread"] == threading.current_thread().name
 
     def test_concurrent_register_unique_ids(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, unregister_llm_call
+        from nemo_oo_agents.runtime.debug_handler import register_llm_call
 
         ids = []
         errors = []
@@ -153,7 +150,7 @@ class TestLlmCallContext:
         _reset_module_state()
 
     def test_registers_and_unregisters(self):
-        from nemo_oo_agents.runtime.debug_handler import llm_call_context, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
         with llm_call_context(model="gpt-4") as call_id:
             assert call_id in _pending_llm_calls
@@ -166,7 +163,7 @@ class TestLlmCallContext:
             assert call_id.startswith("llm_")
 
     def test_unregisters_on_exception(self):
-        from nemo_oo_agents.runtime.debug_handler import llm_call_context, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
         call_id_holder = []
         with pytest.raises(ValueError):
@@ -177,9 +174,11 @@ class TestLlmCallContext:
         assert call_id_holder[0] not in _pending_llm_calls
 
     def test_passes_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import llm_call_context, _pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
-        with llm_call_context(model="claude-3", prompt_tokens=500, endpoint="https://api.anthropic.com") as call_id:
+        with llm_call_context(
+            model="claude-3", prompt_tokens=500, endpoint="https://api.anthropic.com"
+        ) as call_id:
             info = _pending_llm_calls[call_id]
             assert info["model"] == "claude-3"
             assert info["prompt_tokens"] == 500
@@ -213,7 +212,7 @@ class TestDumpPendingLlmCalls:
         assert "PENDING LLM CALLS" in captured.err
 
     def test_shows_call_info(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _dump_pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", prompt_tokens=1000, endpoint="https://api.openai.com")
         out = io.StringIO()
@@ -225,7 +224,7 @@ class TestDumpPendingLlmCalls:
         assert call_id in content
 
     def test_shows_elapsed_time(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _dump_pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")
         out = io.StringIO()
@@ -233,7 +232,7 @@ class TestDumpPendingLlmCalls:
         assert "Waiting:" in out.getvalue()
 
     def test_no_tokens_line_when_none(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _dump_pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")  # No prompt_tokens
         out = io.StringIO()
@@ -241,7 +240,7 @@ class TestDumpPendingLlmCalls:
         assert "Prompt tokens" not in out.getvalue()
 
     def test_no_endpoint_line_when_none(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _dump_pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")  # No endpoint
         out = io.StringIO()
@@ -249,7 +248,7 @@ class TestDumpPendingLlmCalls:
         assert "Endpoint:" not in out.getvalue()
 
     def test_multiple_calls(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call, _dump_pending_llm_calls
+        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")
         register_llm_call("claude-3")
@@ -599,7 +598,6 @@ class TestInstallDebugHandler:
             mock_signal.assert_not_called()
 
     def test_install_enables_faulthandler(self):
-        import faulthandler
 
         import nemo_oo_agents.runtime.debug_handler as dh
 

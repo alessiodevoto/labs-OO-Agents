@@ -12,8 +12,6 @@ pure_python.py missing: 59-61, 105-106, 147, 236-238, 243, 274-288, 304-340, 467
   896-897, 995-1000, 1023-1026, 1068-1088
 """
 
-import asyncio
-import inspect
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,14 +22,11 @@ from pydantic import BaseModel, ValidationError
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.errors import GenerationError, XMLFormatError
-from nemo_oo_agents.events import Error, PythonOutput, Reasoning, ResultStatus
 from nemo_oo_agents.strategies.codeact import (
     CodeActSession,
     CodeActStrategy,
-    _ReturnResultSignal,
-    _ToolCallsResult,
-    _TurnState,
     _iter_agent_attrs,
+    _ReturnResultSignal,
 )
 from nemo_oo_agents.strategies.pure_python import (
     GenerationSession,
@@ -335,7 +330,7 @@ class TestCodeActLLMAPIError:
                 """Always fails."""
                 ...
 
-        agent = TestAgent(llm=_TEST_LLM)
+        TestAgent(llm=_TEST_LLM)
 
         # Simulate the strategy raising GenerationError - test by exceeding iterations
         fake_llm = FakeLLMClient(
@@ -419,7 +414,9 @@ class TestTranslateToolCall:
         strat = CodeActStrategy()
         session = self._make_session()
         rt = self._make_runtime(FakeAgent())
-        code = strat._translate_tool_call_to_code("my_func", {"x": 1}, {"my_func": my_func}, session, rt)
+        code = strat._translate_tool_call_to_code(
+            "my_func", {"x": 1}, {"my_func": my_func}, session, rt
+        )
         assert code is not None
         assert "my_func" in code
 
@@ -503,7 +500,9 @@ class TestUnknownToolHandling:
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(
                 CodeActStrategy(
-                    config=CodeActConfig(max_iterations=5, max_retries=3, translate_tool_calls=False)
+                    config=CodeActConfig(
+                        max_iterations=5, max_retries=3, translate_tool_calls=False
+                    )
                 )
             )
             async def compute(self) -> int:
@@ -1015,8 +1014,6 @@ class TestBlockSyntaxErrorHandling:
         # We need to simulate generate() raising BlockSyntaxError on first call
         call_count = 0
 
-        original_generate = None
-
         async def generate_with_block_error(*args, **kwargs):
             nonlocal call_count
             call_count += 1
@@ -1032,7 +1029,7 @@ class TestBlockSyntaxErrorHandling:
                 "evt1",
             )
 
-        agent = TestAgent(llm=_TEST_LLM)
+        TestAgent(llm=_TEST_LLM)
 
         # We need to patch the runtime's generate method - use integration approach
         fake_llm = FakeLLMClient(
@@ -1056,7 +1053,6 @@ class TestCodeActNoReturnAnnotation:
     @pytest.mark.asyncio
     async def test_no_return_annotation_raises_generation_error(self):
         """Method without return annotation should raise GenerationError (lines 550-554)."""
-        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy())
@@ -1499,8 +1495,8 @@ class TestPurePythonIsTaskComplete:
         rt = MagicMock()
         rt.agent = MagicMock(spec=[])  # No attributes
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -1542,8 +1538,8 @@ class TestPurePythonFinalizeSuccess:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -1583,8 +1579,8 @@ class TestPurePythonFinalizeSuccess:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
 
         call = CurrentCall(
@@ -1928,7 +1924,7 @@ class TestCodeActPrefillError:
                 """Compute."""
                 ...
 
-        agent = TestAgent(llm=_TEST_LLM)
+        TestAgent(llm=_TEST_LLM)
 
         # Make the prefill raise an error by patching _run_prefill
         fake_llm = FakeLLMClient(
@@ -1937,10 +1933,9 @@ class TestCodeActPrefillError:
             ]
         )
         agent2 = TestAgent(llm=fake_llm)
-        strat = CodeActStrategy()
+        CodeActStrategy()
 
         # Patch _run_prefill to raise an exception
-        original_run_prefill = CodeActStrategy._run_prefill
 
         async def failing_prefill(self, runtime, call, builtins, session):
             raise RuntimeError("prefill failed")
@@ -2146,6 +2141,7 @@ class TestCodeActLoopExhaustion:
         with pytest.raises(GenerationError):
             await agent.compute()
 
+
 # ===========================================================================
 # Additional tests for remaining uncovered lines
 # ===========================================================================
@@ -2169,7 +2165,7 @@ class TestCodeActSessionTurn:
         )
 
         with pytest.raises(ValueError):
-            async with session.turn(em, "test_method", "CODEACT", "gen1", None, 1) as state:
+            async with session.turn(em, "test_method", "CODEACT", "gen1", None, 1):
                 raise ValueError("test error")
 
         # After exception, AfterTurn was emitted with the exception type
@@ -2557,7 +2553,6 @@ class TestCodeActExecuteCodeValidationErrors:
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_result_on_validation_failure(self):
         """_execute_code should return ExecutionResult with error on validation failure."""
-        from nemo_oo_agents.events import ExecutionResult
         from nemo_oo_agents.strategies.generated_code import GeneratedCodeValidator
 
         strat = CodeActStrategy()
@@ -2599,7 +2594,6 @@ class TestCodeActExecuteCodeHelperRejected:
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_on_rejected_helper(self):
         """_execute_code should return error result when helper method is rejected (lines 1862-1868)."""
-        from nemo_oo_agents.events import ExecutionResult
         from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
 
         strat = CodeActStrategy()
@@ -2638,7 +2632,6 @@ class TestCodeActExecuteCodeHelperBindingError:
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_on_helper_binding_error(self):
         """_execute_code should return error result when helper fails to bind (lines 1871-1875)."""
-        from nemo_oo_agents.events import ExecutionResult
         from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
 
         strat = CodeActStrategy()
@@ -2748,8 +2741,8 @@ class TestPurePythonIsTaskCompleteException:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -2784,8 +2777,8 @@ class TestPurePythonIsTaskCompleteException:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -3000,6 +2993,7 @@ class TestHttpxImportFallback:
         assert isinstance(_HTTPX_TIMEOUT_EXCEPTIONS, tuple)
         assert len(_HTTPX_TIMEOUT_EXCEPTIONS) > 0
 
+
 # ===========================================================================
 # Additional tests for remaining uncovered lines (round 2)
 # ===========================================================================
@@ -3181,7 +3175,6 @@ class TestCodeActLLMAPIErrorInLoop:
                 ...
 
         # Test that after an error, the loop continues and succeeds
-        call_count = 0
 
         # We can't easily inject errors into FakeLLMClient, so use a simple success scenario
         fake_llm = FakeLLMClient(
@@ -3241,7 +3234,6 @@ class TestBuildBuiltinsModuleContext:
 
     def test_module_imports_included_in_builtins(self):
         """Module-level imports should be available in builtins (lines 2008, 2020, 2022)."""
-        import sys
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy())
@@ -3299,7 +3291,6 @@ class TestCodeActBlockSyntaxError:
 
         # Patch generate on the agent's runtime to raise BlockSyntaxError on first call
         # then return a valid response
-        generate_call_count = 0
 
         class BlockErrorLLMClient:
             """Custom LLM client that raises BlockSyntaxError on first call."""
@@ -3397,8 +3388,12 @@ class TestPurePythonHelperErrors:
             if call_count_helper == 1:
                 return HelperApplyResult(installed=[], rejected=[], errors=["bind error"])
             return original_apply(
-                self_mgr, code, agent_arg, session_locals,
-                namespace=namespace, target_method_name=target_method_name
+                self_mgr,
+                code,
+                agent_arg,
+                session_locals,
+                namespace=namespace,
+                target_method_name=target_method_name,
             )
 
         # Just run normally to cover the path
@@ -3593,6 +3588,7 @@ class TestReturnResultNoneExplicit:
         result = await agent.do_work()
         assert result is None
 
+
 # ===========================================================================
 # Additional tests targeting specific uncovered lines (round 3)
 # ===========================================================================
@@ -3647,9 +3643,7 @@ class TestBuiltinsLocalFunctionBodies:
                 # Call return_result with multiple positional args (error), then correct call
                 _resp(
                     "",
-                    tool_calls=[
-                        _tool_call("return_result(1, 2)", call_id="c1")
-                    ],
+                    tool_calls=[_tool_call("return_result(1, 2)", call_id="c1")],
                 ),
                 _resp("", tool_calls=[_return_result(result=42)]),
             ]
@@ -3673,9 +3667,7 @@ class TestBuiltinsLocalFunctionBodies:
                 # Call return_result with both positional and kwargs (error)
                 _resp(
                     "",
-                    tool_calls=[
-                        _tool_call("return_result(1, x=2)", call_id="c1")
-                    ],
+                    tool_calls=[_tool_call("return_result(1, x=2)", call_id="c1")],
                 ),
                 _resp("", tool_calls=[_return_result(result=42)]),
             ]
@@ -3699,6 +3691,7 @@ class TestIterAgentAttrsException:
         class EvilDescriptor:
             def __get__(self, obj, objtype=None):
                 raise AttributeError("access denied!")
+
             def __set_name__(self, owner, name):
                 pass
 
@@ -3707,7 +3700,7 @@ class TestIterAgentAttrsException:
 
         agent = MyAgent()
         # This should not raise - exceptions are caught
-        values = list(_iter_agent_attrs(agent))
+        list(_iter_agent_attrs(agent))
         # Values should be returned without the bad attr
 
 
@@ -3820,11 +3813,10 @@ class TestPurePythonTimeoutError:
                 """Compute."""
                 ...
 
-        agent = TestAgent(llm=_TEST_LLM)
+        TestAgent(llm=_TEST_LLM)
 
         # Patch _generate_code to raise timeout on first call
         call_count = 0
-        original_generate_code = PurePythonStrategy._generate_code
 
         async def patched_generate_code(self_strat, runtime, session):
             nonlocal call_count
@@ -3874,8 +3866,10 @@ class TestPurePythonValidationErrorInGenerate:
             if call_count == 1:
                 # Simulate PydanticValidationError
                 from pydantic import BaseModel
+
                 class M(BaseModel):
                     x: int
+
                 try:
                     M(x="bad")
                 except ValidationError:

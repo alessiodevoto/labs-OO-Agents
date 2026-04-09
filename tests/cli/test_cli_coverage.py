@@ -8,10 +8,7 @@ Covers:
 - nemo_oo_agents_cli.commands._otlp_helpers
 """
 
-import io
 import json
-import urllib.error
-import urllib.request
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -144,7 +141,7 @@ class TestLoadDotenvInto:
 # ---------------------------------------------------------------------------
 # _otlp_helpers.py
 # ---------------------------------------------------------------------------
-from nemo_oo_agents_cli.commands._otlp_helpers import (
+from nemo_oo_agents_cli.commands._otlp_helpers import (  # noqa: E402
     check_endpoint_reachable,
     inject_resource_attrs,
     post_annotations,
@@ -352,8 +349,8 @@ class TestCheckEndpointReachable:
 # ---------------------------------------------------------------------------
 # delete_traces.py
 # ---------------------------------------------------------------------------
-from nemo_oo_agents_cli.commands.delete_traces import command as delete_traces_command
-from nemo_oo_agents_cli.commands.delete_traces import _validate_endpoint
+from nemo_oo_agents_cli.commands.delete_traces import _validate_endpoint  # noqa: E402
+from nemo_oo_agents_cli.commands.delete_traces import command as delete_traces_command  # noqa: E402
 
 
 class TestDeleteTracesValidateEndpoint:
@@ -452,13 +449,15 @@ class TestDeleteTracesCommand:
 # ---------------------------------------------------------------------------
 # traces.py CLI commands
 # ---------------------------------------------------------------------------
-from nemo_oo_agents_cli.commands.traces import (
+from nemo_oo_agents_cli.commands.traces import (  # noqa: E402
     _collect_files,
     _discover_trace_dirs,
     _find_eval_files,
     _find_trace_files,
     _has_session_id,
     _walk_for,
+)
+from nemo_oo_agents_cli.commands.traces import (  # noqa: E402
     command as traces_command,
 )
 
@@ -593,18 +592,14 @@ class TestTracesDeleteCommand:
 
     def test_dry_run_shows_files(self, tmp_path):
         (tmp_path / "trace1.jsonl").write_text('{"data": "no session id here"}')
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "--dry-run", "--all"]
-        )
+        result = self.runner.invoke(traces_command, ["delete", str(tmp_path), "--dry-run", "--all"])
         assert "[DRY RUN]" in result.output
         assert result.exit_code == 0
 
     def test_deletes_with_yes_flag(self, tmp_path):
         trace = tmp_path / "trace1.jsonl"
         trace.write_text('{"data": "no session id here"}')
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "-y", "--all"]
-        )
+        result = self.runner.invoke(traces_command, ["delete", str(tmp_path), "-y", "--all"])
         assert "Deleted" in result.output
         assert not trace.exists()
         assert result.exit_code == 0
@@ -613,7 +608,7 @@ class TestTracesDeleteCommand:
         trace = tmp_path / "trace1.jsonl"
         trace.write_text('{"data": "value"}')
         # File is newly created; older-than 100 days should exclude it
-        result = self.runner.invoke(
+        self.runner.invoke(
             traces_command, ["delete", str(tmp_path), "--older-than", "100", "--all", "-y"]
         )
         # The file shouldn't get deleted (it's new)
@@ -622,9 +617,7 @@ class TestTracesDeleteCommand:
     def test_skips_session_id_files_by_default(self, tmp_path):
         trace = tmp_path / "trace1.jsonl"
         trace.write_text('{"session.id": "abc-123"}')
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "-y"]
-        )
+        self.runner.invoke(traces_command, ["delete", str(tmp_path), "-y"])
         # File has session.id so it should be preserved
         assert trace.exists()
 
@@ -633,9 +626,7 @@ class TestTracesDeleteCommand:
         eval_file.write_text("{}")
         trace_file = tmp_path / "trace.jsonl"
         trace_file.write_text("{}")
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "--evals-only", "-y"]
-        )
+        result = self.runner.invoke(traces_command, ["delete", str(tmp_path), "--evals-only", "-y"])
         assert not eval_file.exists()
         assert trace_file.exists()
         assert result.exit_code == 0
@@ -654,17 +645,13 @@ class TestTracesDeleteCommand:
         # Files with session.id and no --all flag → nothing to delete
         trace = tmp_path / "trace1.jsonl"
         trace.write_text('{"session.id": "abc-123"}')
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "-y"]
-        )
+        result = self.runner.invoke(traces_command, ["delete", str(tmp_path), "-y"])
         assert "No files to delete" in result.output
 
     def test_dry_run_more_than_20_files(self, tmp_path):
         for i in range(25):
             (tmp_path / f"trace{i}.jsonl").write_text("{}")
-        result = self.runner.invoke(
-            traces_command, ["delete", str(tmp_path), "--dry-run", "--all"]
-        )
+        result = self.runner.invoke(traces_command, ["delete", str(tmp_path), "--dry-run", "--all"])
         assert "more" in result.output
         assert result.exit_code == 0
 
@@ -714,17 +701,17 @@ class TestTracesStatsCommand:
 # ---------------------------------------------------------------------------
 # completion.py
 # ---------------------------------------------------------------------------
-from nemo_oo_agents_cli.completion import (
+from nemo_oo_agents_cli.completion import (  # noqa: E402
+    _BASH_SCRIPT,
+    _FISH_SCRIPT,
+    _ZSH_SCRIPT,
     _detect_shell,
     _render_script,
-    _BASH_SCRIPT,
-    _ZSH_SCRIPT,
-    _FISH_SCRIPT,
-    completion,
     bash,
-    zsh,
+    completion,
     fish,
     install,
+    zsh,
 )
 
 
