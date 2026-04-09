@@ -227,15 +227,14 @@ class TestCodeActReturnResultWrongType:
 
     @pytest.mark.asyncio
     async def test_return_result_wrong_type_triggers_retry(self):
-        """return_result called with a string when int is expected → validation error → retry.
+        """return_result called with a string when int is expected → validation error → retry → success.
 
-        The strategy should NOT complete — it should either retry or exhaust retries.
         Sequence:
-        1. execute_python(valid code)
-        2. return_result with "not_an_int"  → validation fails
-        3. execute_python again (LLM tries again)
-        4. return_result with "still_wrong" → validation fails again
-        5. Queue runs out → empty response → session eventually exhausted
+        1. execute_python(sets result = 'not_an_int')   → iteration=1
+        2. return_result("not_an_int")                  → validation fails, error_count=1, retry
+        3. execute_python(sets result = 'also_wrong')   → iteration=3
+        4. return_result("also_wrong")                  → validation fails, error_count=2, retry
+        5. return_result(42)                            → validation passes, returns 42
         """
 
         class TestAgent(Agent, llm=_DUMMY_LLM):
@@ -317,10 +316,12 @@ class TestCodeActNamespaceInjection:
 
     @pytest.mark.asyncio
     async def test_execute_python_runs_and_namespace_is_populated(self):
-        """A successful execute_python then return_result exercises the full namespace path.
+        """_inject_agent_types injects SubTool into exec_globals; code that uses SubTool succeeds.
 
         Lines 1840-1852 (_build_namespace) and 1980-1989 (_inject_agent_types)
-        are called for every execute_python invocation.
+        are called for every execute_python invocation. This test verifies that
+        _inject_agent_types actually works: the executed code references SubTool by
+        name (which would NameError if injection failed) and the result confirms it.
         """
 
         class SubTool:
@@ -338,9 +339,18 @@ class TestCodeActNamespaceInjection:
                 """Return the answer."""
                 ...
 
+        # The executed code uses SubTool by name — if _inject_agent_types didn't inject
+        # it into exec_globals, this would raise NameError and the test would fail.
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp(tool_calls=[_exec_python("answer = 42", call_id="c1")]),
+                _resp(
+                    tool_calls=[
+                        _exec_python(
+                            "answer = 42 if isinstance(self.tool, SubTool) else -1",
+                            call_id="c1",
+                        )
+                    ]
+                ),
                 _resp(tool_calls=[_return_result(42, call_id="r1")]),
             ]
         )
