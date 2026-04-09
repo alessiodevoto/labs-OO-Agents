@@ -91,19 +91,22 @@ test:
       key: test-results-$CI_PIPELINE_ID
       paths:
         - test-results.xml
+        - coverage.xml
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
     - uv sync --all-extras --no-extra sandbox
   script:
     # Run all tests (root + packages) - testpaths configured in pyproject.toml
     # Integration tests excluded by default via addopts
-    - uv run pytest --junitxml=test-results.xml
+    - uv run pytest --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
     - uv cache prune --ci
+  # Parse total coverage % from "TOTAL ... 87%" line in terminal output
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%/'
   only:
     - merge_requests
     - main
 
-# Upload junit report - separate job so artifact upload failures don't block MR
+# Upload junit + coverage reports - separate job so artifact upload failures don't block MR
 # GitLab's artifact API can return 500 errors intermittently
 upload-test-report:
   stage: test
@@ -120,11 +123,17 @@ upload-test-report:
     key: test-results-$CI_PIPELINE_ID
     paths:
       - test-results.xml
+      - coverage.xml
   script:
     - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
+    - test -f coverage.xml && echo "Found coverage.xml" || echo "No coverage.xml found"
   artifacts:
     reports:
       junit: test-results.xml
+      # Cobertura XML: annotates MR diff with covered/uncovered lines
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
     expire_in: 7 days
     when: always
   allow_failure: true  # Don't block MR if artifact upload fails
