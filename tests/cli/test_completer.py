@@ -114,15 +114,17 @@ def test_edit_path_partial_filter(completer):
 def test_bang_prefix_returns_builtins(completer):
     items = completer.complete("!")
     texts = [i.text for i in items]
-    assert "!python" in texts
+    # !python was removed; the builtins are now !ipython and !bash
     assert "!ipython" in texts
+    assert "!bash" in texts
 
 
 def test_bang_partial(completer):
-    items = completer.complete("!py")
+    # "!ip" prefix uniquely matches !ipython
+    items = completer.complete("!ip")
     texts = [i.text for i in items]
-    assert "!python" in texts
-    assert "!ipython" not in texts
+    assert "!ipython" in texts
+    assert "!bash" not in texts
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ The ``main()`` coroutine keeps its original signature so that callers like
     await main(config=config, agent=agent)
 """
 
-from __future__ import annotations
 
 import argparse
 from typing import TYPE_CHECKING
@@ -117,8 +116,8 @@ def parse_args() -> argparse.Namespace:
 
 
 async def main(
-    config: Config | None = None,
-    agent: Agent | None = None,
+    config: 'Config | None' = None,
+    agent: "Agent | None" = None,
     continue_last: bool = False,
 ) -> None:
     """Main entry point for the TUI.

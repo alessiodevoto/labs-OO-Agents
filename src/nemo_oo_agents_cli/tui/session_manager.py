@@ -11,7 +11,6 @@ exposes the same public API as before (``record_user``,
 ``list_sessions``, ``load_turns``, etc.).
 """
 
-from __future__ import annotations
 
 import sqlite3
 import time
@@ -62,7 +61,7 @@ class SessionManager:
 
     def __init__(
         self,
-        storage: SQLiteStorageManager,
+        storage: 'SQLiteStorageManager',
         session_id: str | None = None,
         model: str = "",
         agent_cls: str = "TUIAgent",

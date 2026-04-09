@@ -151,11 +151,19 @@ class ClearScreen:
 
 
 @dataclass
+class SessionEnd:
+    """Signal to the frontend that the session has ended cleanly."""
+
+    def to_json(self) -> dict:
+        return {"type": "bye"}
+
+
+@dataclass
 class Thinking:
     """Show or hide the loading/thinking indicator."""
 
     active: bool
-    message: str = "NeMo OO Agents is thinking..."
+    message: str = "thinking..."
 
     def to_json(self) -> dict:
         return {
@@ -283,6 +291,7 @@ Output = (
     | CodeExecution
     | StartupInfo
     | ClearScreen
+    | SessionEnd
     | Thinking
     | BashOutput
     | DiffOutput

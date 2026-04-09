@@ -8,7 +8,6 @@ to the LLM.  Register them with the event manager at startup:
     agent.event_manager.register_event_type(TUIUserInput)
 """
 
-from __future__ import annotations
 
 from typing import ClassVar, Literal
 

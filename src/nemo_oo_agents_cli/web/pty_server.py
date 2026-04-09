@@ -102,89 +102,6 @@ _HTML = r"""<!DOCTYPE html>
     padding: 4px;
   }
 
-  /* ---- Rich panel ---- */
-  #rich-pane {
-    width: 0;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    background: var(--surface);
-    border-left: 1px solid var(--overlay);
-    transition: width 0.25s ease;
-    overflow: hidden;
-  }
-
-  #rich-pane.open {
-    width: 480px;
-  }
-
-  #rich-header {
-    display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--overlay);
-    font-size: 12px;
-    color: var(--subtext);
-    flex-shrink: 0;
-    gap: 8px;
-  }
-
-  #rich-title { flex: 1; }
-
-  #btn-close-rich {
-    background: none;
-    border: none;
-    color: var(--subtext);
-    cursor: pointer;
-    font-size: 14px;
-    padding: 0 4px;
-    line-height: 1;
-  }
-  #btn-close-rich:hover { color: var(--text); }
-
-  #rich-content {
-    flex: 1 1 0;
-    overflow-y: auto;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .rich-item {
-    background: var(--bg);
-    border: 1px solid var(--overlay);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .rich-item-title {
-    padding: 6px 10px;
-    font-size: 11px;
-    color: var(--subtext);
-    border-bottom: 1px solid var(--overlay);
-    background: var(--overlay);
-  }
-
-  .rich-item-body { padding: 10px; }
-
-  .rich-item-body img { max-width: 100%; height: auto; display: block; }
-
-  .rich-item-body pre {
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-size: 12px;
-    color: var(--text);
-  }
-
-  .rich-item-body .md-render { font-size: 13px; line-height: 1.5; color: var(--text); }
-  .rich-item-body .md-render h1,h2,h3 { color: var(--blue); margin: 8px 0 4px; }
-  .rich-item-body .md-render code { background: var(--overlay); padding: 1px 4px; border-radius: 3px; }
-  .rich-item-body .md-render pre code { background: none; }
-  .rich-item-body .md-render a { color: var(--blue); }
-  .rich-item-body .md-render ul,ol { padding-left: 20px; }
-
   /* status bar at top-right */
   #status-bar {
     position: fixed;
@@ -207,13 +124,6 @@ _HTML = r"""<!DOCTYPE html>
       <span id="term-title">NeMo OO Agents</span>
     </div>
     <div id="terminal"></div>
-  </div>
-  <div id="rich-pane">
-    <div id="rich-header">
-      <span id="rich-title">Rich Output</span>
-      <button id="btn-close-rich" title="Close panel">✕</button>
-    </div>
-    <div id="rich-content"></div>
   </div>
 </div>
 <div id="status-bar"></div>
@@ -308,20 +218,12 @@ term.onResize(({cols, rows}) => {
   ptyWs.send(JSON.stringify({t: 'r', cols, rows}));
 });
 
-// Also re-fit when rich panel opens/closes
-const richPane = document.getElementById('rich-pane');
-function fitAfterTransition() {
-  setTimeout(() => { fitAddon.fit(); sendResize(); }, 280);
-}
-
 // ---- Rich WebSocket ----
 richWs.onmessage = (ev) => {
   let payload;
   try { payload = JSON.parse(ev.data); } catch { return; }
   handleRich(payload);
 };
-
-const richContent = document.getElementById('rich-content');
 
 // ---- Inline rendering via xterm.js Decoration API ----
 // registerMarker(0) bookmarks the current cursor row in the scroll buffer.
@@ -330,12 +232,12 @@ const richContent = document.getElementById('rich-content');
 
 function estimateRichRows(payload) {
   switch (payload.kind) {
-    case 'plotly':   return 22;
-    case 'html':     return 18;
-    case 'image':    return 16;
-    case 'markdown': return 8;
-    case 'json':     return 8;
-    default:         return 6;
+    case 'plotly':   return 30;
+    case 'html':     return 20;
+    case 'image':    return 18;
+    case 'markdown': return 10;
+    case 'json':     return 10;
+    default:         return 8;
   }
 }
 
@@ -352,7 +254,7 @@ function renderPayloadInto(payload, el) {
             paper_bgcolor: 'transparent',
             plot_bgcolor:  'transparent',
             font: { color: '#cdd6f4' },
-            margin: { t: 20, b: 20, l: 40, r: 10 },
+            margin: { t: 40, b: 20, l: 40, r: 10 },
           }), { responsive: true, displayModeBar: false });
         } catch(e) { el.textContent = `Plotly error: ${e}`; }
       }, 0);
@@ -410,8 +312,9 @@ function renderRichInline(payload) {
   // Bookmark the current cursor row before writing blank lines
   const marker = term.registerMarker(0);
   if (!marker) return;
-  // Reserve space — write blank rows so subsequent PTY output lands below
-  term.write('\r\n'.repeat(numRows));
+  // Reserve space — write numRows+1 blank rows: numRows for the decoration,
+  // +1 buffer row so the decoration bottom never abuts terminal text directly.
+  term.write('\r\n'.repeat(numRows + 1));
   // Overlay an HTML element at the marker, spanning the reserved rows
   const dec = term.registerDecoration({ marker, height: numRows, width: term.cols, layer: 'top' });
   if (!dec) { marker.dispose(); return; }
@@ -424,128 +327,7 @@ function renderRichInline(payload) {
 
 function handleRich(payload) {
   renderRichInline(payload);
-  if (payload.kind === 'clear') {
-    richContent.innerHTML = '';
-    closeRichPanel();
-    return;
-  }
-  openRichPanel();
-  const item = makeRichItem(payload);
-  if (item) richContent.prepend(item);
 }
-
-function makeRichItem(payload) {
-  const wrap = document.createElement('div');
-  wrap.className = 'rich-item';
-
-  if (payload.title) {
-    const h = document.createElement('div');
-    h.className = 'rich-item-title';
-    h.textContent = payload.title;
-    wrap.appendChild(h);
-  }
-
-  const body = document.createElement('div');
-  body.className = 'rich-item-body';
-  wrap.appendChild(body);
-
-  switch (payload.kind) {
-    case 'plotly': {
-      const div = document.createElement('div');
-      div.style.width = '100%';
-      div.style.height = '320px';
-      body.appendChild(div);
-      // Parse and render after DOM attach
-      setTimeout(() => {
-        try {
-          const fig = JSON.parse(payload.figure_json);
-          Plotly.newPlot(div, fig.data, Object.assign({}, fig.layout, {
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            font: {color: '#cdd6f4'},
-            margin: {t: 30, b: 30, l: 40, r: 10},
-          }), {responsive: true, displayModeBar: false});
-        } catch(e) {
-          div.textContent = `Plotly error: ${e}`;
-        }
-      }, 0);
-      break;
-    }
-
-    case 'html': {
-      // Full HTML pages (with <html>/<script>) go in a sandboxed iframe via data URI.
-      // Fragment HTML (no <html> tag) goes in a shadow DOM.
-      const isFullPage = /^\s*(<html|<!doctype)/i.test(payload.html);
-      if (isFullPage) {
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'width:100%;min-height:400px;border:none;background:#1e1e2e';
-        iframe.sandbox = 'allow-scripts allow-same-origin';
-        iframe.srcdoc = payload.html;
-        body.appendChild(iframe);
-      } else {
-        const shadow = body.attachShadow({mode: 'open'});
-        const style = document.createElement('style');
-        style.textContent = 'body{background:transparent;color:#cdd6f4;font-family:monospace;font-size:13px}';
-        shadow.appendChild(style);
-        const container = document.createElement('div');
-        container.innerHTML = payload.html;
-        shadow.appendChild(container);
-      }
-      break;
-    }
-
-    case 'image': {
-      const img = document.createElement('img');
-      img.src = payload.src;
-      img.alt = payload.alt || '';
-      body.appendChild(img);
-      break;
-    }
-
-    case 'markdown': {
-      const div = document.createElement('div');
-      div.className = 'md-render';
-      div.innerHTML = marked.parse(payload.text || '');
-      body.appendChild(div);
-      break;
-    }
-
-    case 'json': {
-      const pre = document.createElement('pre');
-      try {
-        pre.textContent = JSON.stringify(payload.data, null, 2);
-      } catch {
-        pre.textContent = String(payload.data);
-      }
-      body.appendChild(pre);
-      break;
-    }
-
-    default: {
-      const pre = document.createElement('pre');
-      pre.textContent = JSON.stringify(payload, null, 2);
-      body.appendChild(pre);
-    }
-  }
-
-  return wrap;
-}
-
-function openRichPanel() {
-  if (!richPane.classList.contains('open')) {
-    richPane.classList.add('open');
-    fitAfterTransition();
-  }
-}
-
-function closeRichPanel() {
-  if (richPane.classList.contains('open')) {
-    richPane.classList.remove('open');
-    fitAfterTransition();
-  }
-}
-
-document.getElementById('btn-close-rich').addEventListener('click', closeRichPanel);
 
 // Focus terminal on click
 document.getElementById('terminal').addEventListener('click', () => term.focus());

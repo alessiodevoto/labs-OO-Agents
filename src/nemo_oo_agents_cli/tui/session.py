@@ -43,15 +43,8 @@ def _short_model_name(full_name: str) -> str:
 
 
 def _build_prompt(config: "Config") -> str:
-    """Build the dynamic input prompt: ``~/dir (model) ❯ ``."""
-    cwd = Path.cwd()
-    home = Path.home()
-    try:
-        display_dir = "~/" + str(cwd.relative_to(home))
-    except ValueError:
-        display_dir = str(cwd)
-    short_model = _short_model_name(config.tui.default_model)
-    return f"{display_dir} ({short_model}) ❯ "
+    """Build the dynamic input prompt."""
+    return "❯ "
 
 
 def _code_preview(code: str, max_lines: int = 2) -> str:
@@ -102,19 +95,6 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
         )
         return
 
-    try:
-        import nest_asyncio  # type: ignore[import-not-found]
-
-        nest_asyncio.apply()
-    except ImportError:
-        await frontend.render(
-            TextOutput(
-                "nest-asyncio not installed — 'await' may not work inside the shell. "
-                "Run: uv add nest-asyncio",
-                "warning",
-            )
-        )
-
     # Build the same exec namespace the agent's CodeAct strategy uses:
     # module-level globals + self + framework builtins.
     ns: dict = {}
@@ -164,15 +144,37 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
 
     def _embed() -> None:
         IPython.embed(
-            local_ns=ns,
+            user_ns=ns,
             banner1=banner,
             banner2="",
             exit_msg="\x1b[2mReturning to TUI...\x1b[0m\n",
-            using="asyncio",
+            colors="neutral",
         )
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _embed)
+
+
+async def _handle_bash_shell(frontend: "Frontend") -> None:
+    """Drop into an interactive bash shell, then return to the TUI."""
+    import subprocess
+    import sys
+
+    from .output import TextOutput
+
+    if not sys.stdin.isatty():
+        await frontend.render(
+            TextOutput("!bash requires an interactive terminal.", "warning")
+        )
+        return
+
+    await frontend.stop_thinking()
+    await frontend.render(TextOutput("Entering bash. Type 'exit' to return.", "info"))
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: subprocess.run(["/bin/bash"]))
+
+    await frontend.render(TextOutput("Returned to TUI.", "info"))
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +375,8 @@ class Session:
                     ):
                         asyncio.create_task(self._auto_name_session(self._first_message))
                     if result.exit:
+                        from .output import SessionEnd
+                        await self.frontend.render(SessionEnd())
                         break
                     continue
 
@@ -459,9 +463,14 @@ class Session:
         if not cmd:
             return
 
-        # !python / !ipython → embedded IPython shell
-        if cmd in ("python", "ipython"):
+        # !ipython → embedded IPython shell
+        if cmd == "ipython":
             await _handle_python_shell(self.agent, self.frontend)
+            return
+
+        # !bash → interactive bash shell
+        if cmd == "bash":
+            await _handle_bash_shell(self.frontend)
             return
 
         # Other !commands → run through bash (not recorded as conversation turns)
@@ -561,6 +570,14 @@ class Session:
                             continue
                         if not data:
                             break
+                        # Treat a bare ESC byte as an immediate interrupt rather
+                        # than feeding it to the parser, which buffers it waiting
+                        # for a possible escape sequence (requiring two presses).
+                        if data == b"\x1b":
+                            _interrupted.set()
+                            sys.stderr.write("\r\x1b[2mInterrupting agent…\x1b[0m\n")
+                            sys.stderr.flush()
+                            continue
                         parser.feed(data.decode("utf-8", errors="ignore"))
 
                 threading.Thread(target=_stdin_reader_thread, daemon=True).start()

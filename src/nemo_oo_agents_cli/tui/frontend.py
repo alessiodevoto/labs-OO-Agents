@@ -64,7 +64,7 @@ class Frontend(Protocol):
         """
         ...
 
-    async def start_thinking(self, message: str = "NeMo OO Agents is thinking...") -> None:
+    async def start_thinking(self, message: str = "thinking...") -> None:
         """Show a loading/thinking indicator."""
         ...
 
@@ -190,7 +190,7 @@ class TerminalFrontend:
             None, lambda: self._console.console.input(f"[user]{prompt}[/user]").strip()
         )
 
-    async def start_thinking(self, message: str = "NeMo OO Agents is thinking...") -> None:
+    async def start_thinking(self, message: str = "thinking...") -> None:
         self._console.start_spinner(message)
 
     async def stop_thinking(self) -> None:
@@ -289,11 +289,12 @@ class TerminalFrontend:
         else:
             # code preview: bullet + first line(s)
             text = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
-            # If the first line is a comment, highlight it so intent stands out
+            # If the first line is a comment, highlight it so intent stands out.
+            # Use "not dim" to override the parent dim so the colour renders white.
             first_line = output.content.split("\n", 1)[0]
             if first_line.lstrip().startswith("#"):
                 # +2 for "● " prefix
-                text.stylize(COLORS["text"], 0, 2 + len(first_line))
+                text.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
             c.print(text)
 
     def _render_history_replay(self, output: HistoryReplay) -> None:

@@ -6,18 +6,21 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated
 
-from nemo_oo_agents import Agent, hidden, strategy
-from nemo_oo_agents.agents import TokenBudgetSummarizer
-from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from nemo_oo_agents.tools.web_publisher import WebPublisher
 
-# Standard library
+with hidden:
+    from collections.abc import Callable
+    from nemo_oo_agents import Agent
+    from nemo_oo_agents.agents import TokenBudgetSummarizer
+    from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+
+# Standard library — all visible in REPL
 import collections
 import datetime
 import itertools
@@ -29,7 +32,7 @@ import random
 import re
 import sys
 
-# Optional third-party libraries
+# Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
 try:
     import numpy as np
 except ImportError:
@@ -43,6 +46,7 @@ except ImportError:
 try:
     import plotly.express as px
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 except ImportError:
     pass
 
@@ -55,9 +59,11 @@ try:
     import sklearn
 except ImportError:
     pass
-from unifiedllm import FakeLLMClient, UnifiedLLM
 
-from .config import AgentConfig, SummarizationConfig
+with hidden:
+    from unifiedllm import FakeLLMClient, UnifiedLLM
+    from .config import AgentConfig, SummarizationConfig
+
 from .models import (
     BrainstormResult,
     DiagnosisResult,
@@ -70,16 +76,14 @@ from .models import (
 
 
 # Default LLM for class definition (overridden at instantiation)
-try:
-    from unifiedllm import get_llm_client
-
-    from .config import DEFAULT_MODEL
-
-    _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
-except Exception:
-    from unifiedllm import FakeLLMClient
-
-    _DEFAULT_LLM = FakeLLMClient()
+with hidden:
+    try:
+        from unifiedllm import get_llm_client
+        from .config import DEFAULT_MODEL
+        _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
+    except Exception:
+        from unifiedllm import FakeLLMClient
+        _DEFAULT_LLM = FakeLLMClient()
 
 
 def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
@@ -197,6 +201,7 @@ async def _verify_and_complete(agent: "TUIAgent", plan: Plan | None = None) -> N
     agent._workflow_state = {}
 
 
+@hidden
 class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     """Base class for agents that work with the NeMo OO Agents TUI.
 
@@ -229,6 +234,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         """Generate an ultra-short 2-5 word session title (no punctuation, no quotes) for a conversation that starts with: {user_message}"""
         ...
 
+    @hidden
     @strategy(CodeActStrategy())
     async def respond(self, user_message: str) -> None:
         """Respond to the user's message.
@@ -264,13 +270,10 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     - Use print() to see intermediate values
     - Variables persist across executions within a method call
 
-    Python imports available directly in your code (no install needed):
-    - numpy as np, pandas as pd
-    - plotly.express as px, plotly.graph_objects as go
-    - scipy, sklearn
-    - json, random, math, os, sys, re, datetime, pathlib, collections, itertools
+    Do NOT use import statements — all modules are pre-loaded. Check the
+    execution_context for what's available (np, pd, px, go, json, math, etc.).
 
-    """
+"""
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]
@@ -311,6 +314,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
 
+    @hidden
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
 
@@ -408,7 +412,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Present the plan to the user via self.message() before returning it."""
         ...
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def implement_step(self, step: str) -> StepResult:
         """Implement this plan step using test-driven development.
 
@@ -474,6 +478,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Report your findings honestly."""
         ...
 
+    @hidden
     async def respond(self, user_message: str) -> None:
         """Respond to the user's message.
 
@@ -488,7 +493,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
             await self._respond_codeact(user_message)
 
     @hidden
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def _respond_codeact(self, user_message: str) -> None:
         """Respond to the user's message using a single CodeAct strategy.
 

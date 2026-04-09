@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 # Built-in ! commands
 _BANG_BUILTINS: dict[str, str] = {
-    "!python": "Open embedded IPython shell with agent in scope",
     "!ipython": "Open embedded IPython shell with agent in scope",
+    "!bash": "Open an interactive bash shell",
 }
 
 
@@ -68,6 +68,10 @@ class Completer:
         if lower.startswith("/edit "):
             return self._path_completions(text[6:], prefix="/edit ")
 
+        # Theme name completion
+        if lower.startswith("/theme "):
+            return self._theme_completions(text)
+
         # Session ID completion
         for prefix in ("/session resume ", "/session delete "):
             if lower.startswith(prefix.lower()):
@@ -79,6 +83,25 @@ class Completer:
         for cmd, desc in commands.items():
             if cmd.lower().startswith(text.lower()):
                 items.append(CompletionItem(text=cmd, display=cmd, description=desc))
+        return items
+
+    # ------------------------------------------------------------------
+    # Theme completion
+    # ------------------------------------------------------------------
+
+    def _theme_completions(self, text: str) -> list[CompletionItem]:
+        from .theme import THEMES
+
+        prefix = "/theme "
+        partial = text[len(prefix):]
+        items = []
+        for name in THEMES:
+            if name.startswith(partial.lower()):
+                items.append(CompletionItem(
+                    text=prefix + name,
+                    display=prefix + name,
+                    description=f"Switch to {name} theme",
+                ))
         return items
 
     # ------------------------------------------------------------------

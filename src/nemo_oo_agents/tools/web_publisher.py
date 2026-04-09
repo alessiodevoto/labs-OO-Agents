@@ -29,7 +29,7 @@ class RichOutput(Metadata):
 
 
 class WebPublisher(Skill):
-    """Push rich content inline into the browser terminal — plots, HTML, images, and Markdown.
+    """Push rich content inline into the terminal: self.web.plot(fig) | .html(s) | .image(src) | .markdown(s) | .json(data) | .clear().
 
     Available when the agent runs inside ``nemo oo term``.  Call methods on
     ``self.web`` to render content inline at the current position in the
@@ -37,11 +37,10 @@ class WebPublisher(Skill):
     is not connected the call is silently skipped.  Content is persisted in
     the session and replayed automatically when resuming with ``--continue``.
 
-    Plotly figures (most common — prefer this for any chart)::
+    All modules are pre-loaded — do NOT write import statements.
+    Use np, pd, px, go, make_subplots, base64, io directly.
 
-        import plotly.express as px
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
+    Plotly figures (most common — prefer this for any chart)::
 
         # Scatter
         fig = px.scatter(df, x="year", y="gdp", color="country",
@@ -69,7 +68,6 @@ class WebPublisher(Skill):
         self.web.plot(fig)
 
         # Heatmap / correlation matrix
-        import numpy as np
         corr = df.corr()
         fig = go.Figure(go.Heatmap(z=corr.values, x=corr.columns,
                                    y=corr.index, colorscale="RdBu",
@@ -85,7 +83,7 @@ class WebPublisher(Skill):
         fig = px.sunburst(df, path=["continent", "country"], values="gdp")
         self.web.plot(fig, title="GDP breakdown")
 
-        # Subplots
+        # Subplots (make_subplots is pre-loaded from plotly.subplots)
         fig = make_subplots(rows=1, cols=2, subplot_titles=("Before", "After"))
         fig.add_trace(go.Histogram(x=before), row=1, col=1)
         fig.add_trace(go.Histogram(x=after),  row=1, col=2)
@@ -120,9 +118,8 @@ class WebPublisher(Skill):
         # DataFrame as HTML table
         self.web.html(df.head(20).to_html(index=False))
 
-    Images (data URIs or URLs)::
+    Images (data URIs or URLs — base64, io are pre-loaded)::
 
-        import base64, io
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         src = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

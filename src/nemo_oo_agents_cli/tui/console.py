@@ -23,7 +23,7 @@ class TUIConsole:
         self.console = Console(theme=CATPPUCCIN_THEME)
         self._live_spinner: Live | None = None
 
-    def start_spinner(self, message: str = "NeMo OO Agents is thinking...") -> None:
+    def start_spinner(self, message: str = "thinking...") -> None:
         """Start the thinking spinner.
 
         Can be stopped with stop_spinner() or by the streaming display

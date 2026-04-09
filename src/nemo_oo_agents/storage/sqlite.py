@@ -7,8 +7,10 @@ Provides persistent storage using stdlib sqlite3 — no new dependencies.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
+import os
 import sqlite3
 import typing
 import uuid
@@ -309,6 +311,10 @@ class SQLiteEventBackend:
         return row[0]
 
 
+class SessionAlreadyActiveError(Exception):
+    """Raised when a session database is already open in another process."""
+
+
 class SQLiteStorageManager:
     """StorageManager backed by a SQLite database.
 
@@ -323,10 +329,30 @@ class SQLiteStorageManager:
     Args:
         db_path: Path to SQLite database file. Use ":memory:" for in-memory
                  (useful for testing).
+
+    Raises:
+        SessionAlreadyActiveError: If ``db_path`` is already open in another
+            process.  The caller should start a fresh session instead of
+            resuming this one.
     """
 
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self._db_path = str(db_path)
+        self._lock_fd: int | None = None
+
+        if self._db_path != ":memory:":
+            lock_path = str(Path(self._db_path).with_suffix(".lock"))
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                os.write(fd, str(os.getpid()).encode())
+                self._lock_fd = fd
+            except OSError:
+                os.close(fd)
+                raise SessionAlreadyActiveError(
+                    f"Session {Path(self._db_path).stem!r} is already active in another process"
+                )
+
         self._conn = sqlite3.connect(self._db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")
         _ensure_schema(self._conn)
@@ -396,7 +422,15 @@ class SQLiteStorageManager:
         return True
 
     def close(self) -> None:
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        self._conn.commit()  # Commit any pending transaction before closing
         self._conn.close()
+        if self._lock_fd is not None:
+            fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+            os.close(self._lock_fd)
+            self._lock_fd = None
 
     def __enter__(self) -> SQLiteStorageManager:
         return self

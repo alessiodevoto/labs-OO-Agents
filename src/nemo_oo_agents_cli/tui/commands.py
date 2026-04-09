@@ -8,7 +8,6 @@ frontend directly for its results — it only uses ``self.frontend`` for
 interactive I/O that must happen *during* execution (spinners, prompts).
 """
 
-from __future__ import annotations
 
 import abc
 import datetime
@@ -81,22 +80,22 @@ class CommandResult:
     outputs: list[Output] = field(default_factory=list)
     exit: bool = False
     # When set, Session.run() replaces the active SessionManager with this one.
-    new_session_manager: SessionManager | None = None
+    new_session_manager: "SessionManager | None" = None
     # Set by CompactCommand to signal that auto-renaming should be retried.
     compact_done: bool = False
 
     # Convenience constructors -------------------------------------------
 
     @classmethod
-    def ok(cls, *outputs: Output) -> CommandResult:
+    def ok(cls, *outputs: "Output") -> "CommandResult":
         return cls(success=True, outputs=list(outputs))
 
     @classmethod
-    def err(cls, message: str) -> CommandResult:
+    def err(cls, message: str) -> "CommandResult":
         return cls(success=False, outputs=[TextOutput(message, "error")])
 
     @classmethod
-    def bye(cls) -> CommandResult:
+    def bye(cls) -> "CommandResult":
         return cls(
             success=True,
             outputs=[TextOutput("Goodbye! Stay vibing.", "status")],
@@ -117,10 +116,10 @@ class Command(abc.ABC):
 
     def __init__(
         self,
-        frontend: Frontend,
-        config: TUIConfig,
-        agent: Agent,
-        session_manager: SessionManager | None = None,
+        frontend: "Frontend",
+        config: "TUIConfig",
+        agent: "Agent",
+        session_manager: "SessionManager | None" = None,
         **kwargs,
     ):
         if agent is None:
@@ -131,7 +130,7 @@ class Command(abc.ABC):
         self.session_manager = session_manager
 
     @abc.abstractmethod
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         raise NotImplementedError
 
     @property
@@ -168,7 +167,7 @@ class HelpCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/help": "Show this help message"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         commands_dict = (
             self._registry.get_active_help() if self._registry else CommandRegistry.get_help()
         )
@@ -187,7 +186,7 @@ class ExitCommand(Command):
             "/quit": "Exit the TUI (alias for /exit)",
         }
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         return CommandResult.bye()
 
 
@@ -198,12 +197,42 @@ class ClearCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/clear": "Clear conversation history and terminal"}
+        return {"/clear": "Start a new session (preserves old session history)"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        if hasattr(self.agent, "event_manager"):
-            self.agent.event_manager.clear()
-        return CommandResult.ok(ClearScreen())
+    async def execute(self, args: list[str]) -> "CommandResult":
+        # Create a fresh SessionManager so subsequent turns go to a new file.
+        # NOTE: do NOT call agent.event_manager.clear() here — that would
+        # destroy the old session's SQLite data before _swap_session_manager()
+        # can close and preserve it.  The new storage starts empty; the agent's
+        # event_manager property will return the new backend after the swap.
+        new_sm: "SessionManager | None" = None
+        if self.session_manager is not None:
+            try:
+                import uuid as _uuid
+
+                from nemo_oo_agents.storage import SQLiteStorageManager
+
+                from .session_manager import SESSIONS_DIR
+
+                _new_id = str(_uuid.uuid4())
+                SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                _new_storage = SQLiteStorageManager(SESSIONS_DIR / f"{_new_id}.db")
+                new_sm = SessionManager(
+                    storage=_new_storage,
+                    session_id=_new_id,
+                    model=self.session_manager.model,
+                    agent_cls=self.session_manager.agent_cls,
+                    working_dir=self.session_manager.working_dir,
+                )
+            except Exception:
+                pass
+
+        result = CommandResult.ok(
+            ClearScreen(),
+            TextOutput("Started new session. Previous session saved.", "success"),
+        )
+        result.new_session_manager = new_sm
+        return result
 
 
 class ModelCommand(Command):
@@ -215,7 +244,7 @@ class ModelCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/model": "Show current model"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         return CommandResult.ok(TextOutput(f"Current model: {self.config.default_model}", "info"))
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
@@ -233,7 +262,7 @@ class ModelsCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/models": "List available models from registry"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         from unifiedllm import MODELS
 
         rows: list[list[str]] = []
@@ -262,7 +291,7 @@ class SwitchCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/switch": "Interactive model switcher"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         from unifiedllm import MODELS, get_llm_client
 
         models = sorted(MODELS.keys())
@@ -286,6 +315,49 @@ class SwitchCommand(Command):
             return CommandResult.err(f"Failed to switch model: {e}")
 
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
+
+
+
+
+class ThemeCommand(Command):
+    """Switch the color theme."""
+
+    THEMES = ("mocha", "latte", "vsdark", "vslight")
+
+    @property
+    def name(self) -> str:
+        return "theme"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/theme <mocha|latte|vsdark|vslight>": "Switch color theme"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) != 1:
+            return False, f"Usage: /theme <{'|'.join(self.THEMES)}>"
+        if args[0].lower() not in self.THEMES:
+            return False, f"Theme must be one of: {', '.join(self.THEMES)}"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        from . import theme as theme_module
+
+        name = args[0].lower()
+        theme_module.set_theme(name)
+
+        # Replace the base theme in Rich Console's ThemeStack
+        # We can't just push - we need to replace the base entry
+        if hasattr(self.frontend, "_console") and hasattr(self.frontend._console, "console"):
+            console = self.frontend._console.console
+            new_theme = theme_module.create_theme()
+            
+            # Directly replace the base theme in the stack
+            # This is the only way to actually change colors since Theme snapshots
+            # the COLORS dict at creation time
+            console._theme_stack._entries[0] = new_theme.styles
+            console._theme_stack.get = console._theme_stack._entries[-1].get
+
+        return CommandResult.ok(TextOutput(f"Switched to {name} theme", "success"))
 
 
 # ---------------------------------------------------------------------------
@@ -314,13 +386,13 @@ class HistoryCommand(Command):
             return False, f"Unknown subcommand `{args[0]}`. Usage: /history <status|tags>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
         if subcmd == "status":
             return self._history_status()
         return self._history_tags()
 
-    def _history_status(self) -> CommandResult:
+    def _history_status(self) -> "CommandResult":
         s = self.agent.get_summarization_status()
 
         rows: list[list[str]] = [
@@ -345,7 +417,7 @@ class HistoryCommand(Command):
 
         return CommandResult.ok(*outputs)
 
-    def _history_tags(self) -> CommandResult:
+    def _history_tags(self) -> "CommandResult":
         if not hasattr(self.agent, "event_manager"):
             return CommandResult.err("Agent does not support event history.")
         tags = self.agent.event_manager.keys()
@@ -400,7 +472,7 @@ class MCPCommand(Command):
             return False, f"Usage: /mcp {args[0]} <server_name>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         try:
             from mcp_nemo_oo_agents import MCPManager
         except ImportError:
@@ -485,7 +557,7 @@ class SkillsCommand(Command):
             return False, f"Usage: /skills {args[0]} <skill_id>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         try:
             from nemo_oo_agents import SkillManager
         except ImportError:
@@ -568,7 +640,7 @@ class SandboxCommand(Command):
             return False, f"Unknown subcommand `{args[0]}`"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
 
         if subcmd == "status":
@@ -624,7 +696,7 @@ class CompactCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/compact": "Summarize conversation history into a compact block (frees tokens)"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         if not hasattr(self.agent, "event_manager"):
             return CommandResult.err("Agent does not support history management.")
 
@@ -709,7 +781,7 @@ class PythonCommand(Command):
             return False, f"Unknown subcommand `{args[0]}`"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
 
         if subcmd == "status":
@@ -748,7 +820,7 @@ class EditCommand(Command):
             return False, "Usage: /edit <file>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         import difflib
         from pathlib import Path
 
@@ -817,7 +889,7 @@ class SessionCommand(Command):
             return False, "Usage: /session rename <name>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
 
         if subcmd == "list":
@@ -918,16 +990,12 @@ class SessionCommand(Command):
             return CommandResult.ok(TextOutput(f"Session renamed to: {name}", "success"))
 
         if subcmd == "new":
-            if hasattr(self.agent, "event_manager"):
-                self.agent.event_manager.clear()
-            if hasattr(self.agent, "context"):
-                try:
-                    self.agent.context.clear()
-                except Exception:
-                    pass
+            # NOTE: do NOT call agent.event_manager.clear() here — same
+            # reasoning as ClearCommand: it would wipe the old session's
+            # SQLite data before _swap_session_manager() preserves it.
 
             # Create a fresh SessionManager so subsequent turns go to a new file.
-            new_sm: SessionManager | None = None
+            new_sm: "SessionManager | None" = None
             if self.session_manager is not None:
                 try:
                     import uuid as _uuid
@@ -977,6 +1045,7 @@ class CommandRegistry:
         "model": ModelCommand,
         "models": ModelsCommand,
         "switch": SwitchCommand,
+        "theme": ThemeCommand,
         "history": HistoryCommand,
         "mcp": MCPCommand,
         "skills": SkillsCommand,
@@ -987,12 +1056,12 @@ class CommandRegistry:
 
     def __init__(
         self,
-        config: TUIConfig,
-        agent: Agent,
-        frontend: Frontend,
+        config: "TUIConfig",
+        agent: "Agent",
+        frontend: "Frontend",
         skills_dirs: list[Path] | None = None,
         mcp_file: Path | None = None,
-        session_manager: SessionManager | None = None,
+        session_manager: "SessionManager | None" = None,
     ):
         self.config = config
         self.agent = agent
@@ -1056,11 +1125,11 @@ class CommandRegistry:
 class CommandHandler:
     """Parses slash-command input and dispatches to registered commands."""
 
-    def __init__(self, registry: CommandRegistry, frontend: Frontend) -> None:
+    def __init__(self, registry: "CommandRegistry", frontend: "Frontend") -> None:
         self.registry = registry
         self.frontend = frontend
 
-    async def handle(self, input_text: str) -> CommandResult:
+    async def handle(self, input_text: str) -> "CommandResult":
         if not input_text.startswith("/"):
             return CommandResult(False)
 
@@ -1070,7 +1139,10 @@ class CommandHandler:
             parts = input_text[1:].split()
 
         if not parts:
-            return CommandResult.err("Empty command. Type /help for available commands.")
+            result = CommandResult.err("Empty command. Type /help for available commands.")
+            for output in result.outputs:
+                await self.frontend.render(output)
+            return result
 
         cmd_name = parts[0].lower()
         args = parts[1:]

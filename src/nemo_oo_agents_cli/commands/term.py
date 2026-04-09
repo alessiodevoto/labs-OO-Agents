@@ -95,6 +95,7 @@ def command(
     """
     try:
         import uvicorn
+        from uvicorn import Config, Server
     except ImportError:
         click.echo(
             "Web terminal requires uvicorn. Install with: uv add uvicorn[standard]",
@@ -137,10 +138,66 @@ def command(
     click.echo(f"Starting NeMo OO Agents web terminal at http://{host}:{port}")
     click.echo(f"PTY command: {' '.join(tui_argv)}")
 
+    import asyncio
+    import signal
+    import logging
+    from contextlib import nullcontext
+
+    _SHUTDOWN_TIMEOUT = 5  # seconds shown in countdown
+
+    config = Config(app=app, host=host, port=port, log_level="warning",
+                    timeout_graceful_shutdown=_SHUTDOWN_TIMEOUT + 1)
+    server = Server(config)
+
+    # We manage our own SIGINT/SIGTERM so we can show a countdown.
+    server.capture_signals = nullcontext  # type: ignore[method-assign]
+
+    # Suppress the "Cancel N running task(s), timeout graceful shutdown exceeded"
+    # error that uvicorn logs when we force-close the long-lived PTY WebSocket.
+    class _SuppressShutdownNoise(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return "timeout graceful shutdown" not in msg and "CancelledError" not in str(
+                record.exc_info or ""
+            )
+
+    for _ln in ("uvicorn.error", "uvicorn"):
+        logging.getLogger(_ln).addFilter(_SuppressShutdownNoise())
+
+    async def _serve() -> None:
+        loop = asyncio.get_running_loop()
+        _countdown_started = False
+
+        async def _countdown() -> None:
+            for remaining in range(_SHUTDOWN_TIMEOUT, 0, -1):
+                click.echo(f"\rShutting down... {remaining}s ", err=True, nl=False)
+                await asyncio.sleep(1)
+            click.echo("\rShutting down...           ", err=True, nl=False)
+            server.force_exit = True
+
+        def _on_signal() -> None:
+            nonlocal _countdown_started
+            if _countdown_started:
+                return
+            _countdown_started = True
+            server.should_exit = True
+            click.echo("\nShutting down... ", err=True, nl=False)
+            asyncio.ensure_future(_countdown())
+
+        try:
+            loop.add_signal_handler(signal.SIGINT, _on_signal)
+            loop.add_signal_handler(signal.SIGTERM, _on_signal)
+        except NotImplementedError:
+            pass  # Windows
+
+        await server.serve()
+
     try:
-        uvicorn.run(app, host=host, port=port, log_level="warning")
+        asyncio.run(_serve())
     except KeyboardInterrupt:
-        sys.exit(0)
+        pass
+    click.echo("", err=True)  # newline after countdown
+    sys.exit(0)
 
 
 def _build_tui_argv(
