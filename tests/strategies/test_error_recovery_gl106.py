@@ -109,8 +109,14 @@ class TestCodeActLLMApiErrorExhaustion:
     """LLM calls raise RuntimeError; after max_retries the strategy must raise GenerationError."""
 
     @pytest.mark.asyncio
-    async def test_single_llm_error_then_success(self):
-        """One LLM error followed by a valid return_result should succeed."""
+    async def test_llm_error_exhausts_max_retries(self):
+        """All LLM calls raise RuntimeError; after max_retries the strategy raises GenerationError.
+
+        ErrorAfterNFakeLLM with empty scripted_responses raises immediately on every call.
+        Strategy tries generate() → raises RuntimeError → records error (count=1).
+        session.is_exhausted() is False (max_retries=2, count=1 < 2) → loop continues.
+        Next iteration: generate() → raises again → count=2 → is_exhausted() → GenerationError.
+        """
 
         class TestAgent(Agent, llm=_DUMMY_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_retries=2, max_iterations=10)))
@@ -118,14 +124,6 @@ class TestCodeActLLMApiErrorExhaustion:
                 """Compute {x}."""
                 ...
 
-        # Sequence: 1 runtime-error (queue runs out), then success
-        # We give one valid response, so after the error we get the valid response next.
-        # Actually with ErrorAfterNFakeLLM: first call consumes the scripted resp, second raises.
-        # But for the error path we want the FIRST call to raise. So: empty scripted_responses.
-        #
-        # Strategy tries generate() → raises RuntimeError → records error (count=1).
-        # session.is_exhausted() is False (max_retries=2, count=1 < 2) → loop continues.
-        # Next iteration: generate() → raises again → count=2 → is_exhausted() → GenerationError.
         fake_llm = ErrorAfterNFakeLLM(
             scripted_responses=[],  # All calls raise RuntimeError
             error_message="Simulated LLM API failure",
@@ -241,35 +239,31 @@ class TestCodeActReturnResultWrongType:
         """
 
         class TestAgent(Agent, llm=_DUMMY_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=3, max_retries=5)))
+            @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5, max_retries=5)))
             async def compute(self, x: int) -> int:
                 """Return x doubled."""
                 ...
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                # Turn 1: valid code execution
+                # Turn 1: valid code execution (iteration=1)
                 _resp(tool_calls=[_exec_python("result = 'not_an_int'", call_id="c1")]),
-                # Turn 2: return_result with wrong type (string instead of int)
+                # Turn 2: return_result with wrong type (iteration=2; error_count=1)
                 _resp(tool_calls=[_return_result("not_an_int", call_id="r1")]),
-                # Turn 3: try again — still wrong
+                # Turn 3: try again — still wrong (iteration=3)
                 _resp(tool_calls=[_exec_python("result = 'also_wrong'", call_id="c2")]),
-                # Turn 4: return_result with another wrong type
+                # Turn 4: return_result with another wrong type (iteration=4; error_count=2)
                 _resp(tool_calls=[_return_result("also_wrong", call_id="r2")]),
-                # Turn 5: try int this time (success)
+                # Turn 5: try int this time — succeeds (iteration=5)
                 _resp(tool_calls=[_return_result(42, call_id="r3")]),
             ]
         )
         agent = TestAgent(llm=fake_llm)
-        # Either succeeds with 42 (if validation passes on last attempt) OR raises
-        # GenerationError if iterations exhausted. Either outcome is acceptable for coverage.
-        try:
-            result = await agent.compute(21)
-            # If we get here, the last return_result(42) was accepted
-            assert result == 42
-        except GenerationError:
-            # Iterations exhausted before success — also expected
-            pass
+        # Each tool call (including return_result) counts as one iteration. With max_iterations=5
+        # and max_retries=5, all 5 turns execute: two wrong return_result calls record errors
+        # (error_count=2, still < max_retries=5), and the final return_result(42) succeeds.
+        result = await agent.compute(21)
+        assert result == 42
 
     @pytest.mark.asyncio
     async def test_inline_return_result_validation_error_in_execute_python(self):
@@ -361,28 +355,32 @@ class TestCodeActNamespaceInjection:
 
 
 class TestPurePythonValidationErrorExhaustion:
-    """PurePythonStrategy: LLM returns code that triggers Pydantic validation errors.
+    """PurePythonStrategy: LLM returns code that raises a Pydantic ValidationError at runtime.
 
-    This exercises the PydanticValidationError branch at pure_python.py lines 306-325:
-        except PydanticValidationError as e:
+    This exercises the execution-error branch at pure_python.py lines 367-373:
+        if result.error:
             session.record_error()
-            ...
-            if session.is_exhausted():
-                raise GenerationError(...)
+            await self._send_execution_error(...)
+            continue
 
-    Strategy: agent method returns a Pydantic model, LLM returns code with
-    a Python `return` statement but with wrong field types. The ReturnValueValidator
-    validates the returned value and raises PydanticValidationError.
+    The LLM returns code that instantiates a Pydantic model with invalid field types.
+    The REPL executes the code, which raises a PydanticValidationError at runtime (inside
+    the sandboxed exec). That exception is captured in result.error and handled at lines
+    367-373 — NOT the _generate_code() PydanticValidationError branch (lines 306-325).
+    After max_retries execution errors, the outer loop exhausts and raises GenerationError.
+
+    Note: lines 306-325 handle PydanticValidationError from _generate_code() (i.e., when
+    the LLM response itself fails Pydantic parsing), which is a different path.
     """
 
     @pytest.mark.asyncio
     async def test_pydantic_validation_failure_exhausts_retries(self):
-        """LLM always returns wrong types → PydanticValidationError → GenerationError.
+        """LLM returns code that raises PydanticValidationError at runtime → GenerationError.
 
         The method declares -> SentimentAnalysis (module-level Pydantic model). The
-        LLM returns code with wrong field types causing Pydantic validation to fail
-        on every attempt. Note: the Pydantic model must be module-level so it's in
-        the execution namespace.
+        LLM returns code with invalid field types; the REPL raises PydanticValidationError
+        during execution, captured in result.error. After max_retries errors, GenerationError
+        is raised. Note: the Pydantic model must be module-level so it's in exec_globals.
         """
 
         class TestAgent(Agent, llm=_DUMMY_LLM):
@@ -402,7 +400,10 @@ class TestPurePythonValidationErrorExhaustion:
             ]
         )
         agent = TestAgent(llm=fake_llm)
-        with pytest.raises((GenerationError, Exception)):
+        # The REPL raises PydanticValidationError during execution of the bad code.
+        # result.error is set, session.record_error() called. After max_retries=2 errors,
+        # the outer loop exits and raises GenerationError.
+        with pytest.raises(GenerationError):
             await agent.classify("test text")
 
 
@@ -714,15 +715,11 @@ class TestPredictRawResponseNonePath:
             ]
         )
         agent = TestAgent(llm=fake_llm)
-        # Pydantic may coerce "not_an_int" string and raise, OR succeed (Pydantic v2 is strict
-        # about this by default). We allow both outcomes.
-        try:
-            result = await agent.get_value("test")
-            # If Pydantic coerced successfully, result is fine
-            assert isinstance(result, StrictIntModel)
-        except GenerationError:
-            # Expected if Pydantic strict mode rejects string-as-int
-            pass
+        # Pydantic v2 cannot coerce "not_an_int" to int — validation fails on attempts 1 and 2.
+        # With max_retries=2, error_count reaches 2 after the second failure → GenerationError.
+        # The third scripted response (required_field: 42) is never reached.
+        with pytest.raises(GenerationError):
+            await agent.get_value("test")
 
 
 # ---------------------------------------------------------------------------
