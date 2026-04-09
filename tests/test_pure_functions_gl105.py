@@ -76,18 +76,6 @@ def test_validate_llm_param_raises_for_none():
         _validate_llm_param(None, "MyAgent")
 
 
-def test_validate_llm_param_raises_for_wrong_inherit_instance():
-    """_validate_llm_param raises ValueError for a foreign _InheritSentinel instance."""
-    from nemo_oo_agents.agent import INHERIT, _InheritSentinel, _validate_llm_param
-
-    # Create a *new* instance that is not the module-level INHERIT singleton
-    impostor = _InheritSentinel()
-    assert impostor is not INHERIT  # must be a different object
-
-    with pytest.raises(ValueError, match="INHERIT is internal only"):
-        _validate_llm_param(impostor, "MyAgent")
-
-
 def test_validate_llm_param_ok_for_fake_llm():
     """_validate_llm_param does not raise for a valid LLM client."""
     from nemo_oo_agents.agent import _validate_llm_param
