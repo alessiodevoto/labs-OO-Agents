@@ -7,7 +7,7 @@ from nemo_oo_agents.config.strategy_config import (
     ReflexionConfig,
 )
 from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
-from nemo_oo_agents.config.tool_configs import BashConfig, WebSearchConfig
+from nemo_oo_agents.config.tool_configs import BashConfig
 from nemo_oo_agents.config.truncation_config import TruncationConfig
 
 __all__ = [
@@ -18,6 +18,5 @@ __all__ = [
     "MethodSummarizerConfig",
     "TokenBudgetConfig",
     "BashConfig",
-    "WebSearchConfig",
     "TruncationConfig",
 ]

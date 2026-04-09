@@ -282,28 +282,30 @@ class TestValidatorShouldPreventClassMutation:
     """Tests for the fix: validator should prevent class attribute assignment."""
 
     def test_detect_class_attribute_assignment(self):
-        """The validator should detect and forbid class attribute assignment.
+        """The validator detects and forbids class attribute assignment.
 
         Pattern to detect:
             RouterTestWrapper.process = _make_process_method()
         """
+        from nemo_oo_agents.runtime.code_validator import (
+            UnifiedCodeValidator,
+            ValidationContext,
+        )
+        from nemo_oo_agents.errors import RestrictedCodeError
 
-        _code = """
+        code = """
 def _make_process_method():
     async def process(self):
         pass
     return process
 
-RouterTestWrapper.process = _make_process_method()
-"""  # noqa: F841 - kept for documentation
-        # TODO: This test should pass once the validator is enhanced
-        # For now, it documents the expected behavior
-        # with pytest.raises(ValidationError, match="class attribute assignment"):
-        #     validate_planning_code(code)
+ParentAgent.process = _make_process_method()
+"""
+        agent = ParentAgent.__new__(ParentAgent)
+        context = ValidationContext(agent=agent, available_names=set(), importable_modules=set())
 
-        # Current behavior: no error (validator doesn't catch this)
-        # This is what we need to fix
-        pass  # Placeholder until fix is implemented
+        with pytest.raises(RestrictedCodeError, match="class attribute"):
+            UnifiedCodeValidator().validate(code, context)
 
 
 class TestEndToEndWithFakeLLM:

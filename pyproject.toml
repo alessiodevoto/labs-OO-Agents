@@ -97,6 +97,7 @@ dev = [
     {include-group = "trace-viewer"},
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
     "mypy>=1.7.0",
     "ruff>=0.14.14",
     "httpx[socks]>=0.28.1",
@@ -133,7 +134,7 @@ pythonpath = [
     "packages/openinference-instrumentation-nemo-oo-agents/src",
     "packages/mcp-nemo-oo-agents/src",
 ]
-addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
+addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress' --cov=src/nemo_oo_agents --cov=src/nemo_oo_agents_cli --cov-report=term-missing --cov-report=html"
 markers = [
     "integration: marks tests as integration tests that make real API calls (run with '-m integration')",
     "stress: marks tests as stress/load tests that simulate high concurrency (run with '-m stress')",
@@ -145,6 +146,30 @@ filterwarnings = [
     "ignore:Pydantic serializer warnings:UserWarning",
     "ignore::FutureWarning:nemo_oo_agents.strategies",
 ]
+
+[tool.coverage.run]
+source = ["src/nemo_oo_agents", "src/nemo_oo_agents_cli"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "if __name__ == .__main__.:",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.mypy]
 python_version = "3.12"
