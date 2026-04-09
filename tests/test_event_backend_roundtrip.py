@@ -258,7 +258,7 @@ def test_tool_call_event_result_preserved_after_update(backend):
     assert retrieved.result.result_status == ResultStatus.COMPLETE
 
 
-def test_all_registered_types_have_unique_event_type_keys(backend):
+def test_all_registered_types_have_unique_event_type_keys():
     """Sanity check: no two event types share the same event_type string.
 
     If two types have the same event_type, only one would be in the registry —
