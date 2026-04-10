@@ -33,7 +33,11 @@ from context_blocks import (
 )
 from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 from nemo_oo_agents.events import ExecutionSignal, LLMOutput
-from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from nemo_oo_agents.runtime.context_vars import (
+    _in_exec_middleware,
+    _in_generation_session,
+    _parent_agent_var,
+)
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 
@@ -65,17 +69,6 @@ def _strip_blocked_modules(
         if not is_from_blocked_module(obj, blocked_modules)
     }
 
-
-# Context variable to detect when we're inside a generation session
-# This prevents deadlocks when generated code calls other ellipsis methods
-_in_generation_session = contextvars.ContextVar("in_generation_session", default=False)
-
-# Context variable tracking which EventManager._middleware_id values are currently
-# inside an execute_python middleware chain.  This prevents infinite recursion when
-# middleware-injected code triggers another execute_code() on the same agent.
-_in_exec_middleware: contextvars.ContextVar[frozenset[int]] = contextvars.ContextVar(
-    "in_exec_middleware", default=frozenset()
-)
 
 # Context variables for current generation context (per-task, not per-runtime)
 # This allows parallel nested calls via asyncio.gather to work correctly
