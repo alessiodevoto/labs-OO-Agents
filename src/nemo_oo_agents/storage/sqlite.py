@@ -8,13 +8,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import typing
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from context_blocks import STORABLE_EVENT_TYPES, EventBase, EventStatus, Metadata
+from context_blocks import Event, EventBase, EventStatus, Metadata
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -36,15 +37,20 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
+# Unwrap Event = Annotated[UserEvent | AssistantEvent | ToolCallEvent, Field(...)]
+# to get the concrete types. This stays in sync with the Event union automatically.
+_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(typing.get_args(Event)[0])
+assert len(_CONTEXT_BLOCKS_TYPES) >= 3, (
+    f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "
+    "If Event's structure changed, update the get_args unwrap in sqlite.py."
+)
+
 # All event types pre-registered for deserialization.
-# context_blocks types come from STORABLE_EVENT_TYPES — the canonical list
-# maintained alongside the Event union in context_blocks/events.py.
+# context_blocks types are derived from the Event union above (stays in sync automatically).
 # nemo_oo_agents types are listed explicitly here.
-# If you add a new EventBase subclass in either package, add it to the
-# appropriate list; the test in test_event_backend_protocol.py will catch omissions.
 _CORE_TYPES: dict[str, type[EventBase]] = {}
 for _cls in (
-    *STORABLE_EVENT_TYPES,  # UserEvent, AssistantEvent, ToolCallEvent
+    *_CONTEXT_BLOCKS_TYPES,
     Task,
     Message,
     Reasoning,

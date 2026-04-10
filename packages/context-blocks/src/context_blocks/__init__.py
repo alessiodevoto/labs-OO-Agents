@@ -9,7 +9,6 @@ Features:
 """
 
 from context_blocks.events import (
-    STORABLE_EVENT_TYPES,
     AssistantEvent,
     Event,
     EventBase,
@@ -80,8 +79,6 @@ __all__ = [
     "AssistantEvent",
     "ToolCallEvent",
     "ToolResult",
-    # Storage registration helper
-    "STORABLE_EVENT_TYPES",
     # Render config
     "RenderConfig",
     # Scoped overrides

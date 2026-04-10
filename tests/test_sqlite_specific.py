@@ -1,7 +1,7 @@
-"""SQLite-specific tests: deserialization, registry, and STORABLE_EVENT_TYPES guards.
+"""SQLite-specific tests: deserialization, registry, and _CONTEXT_BLOCKS_TYPES guards.
 
 These tests cover behavior that only applies to SQLiteEventBackend:
-- STORABLE_EVENT_TYPES sanity checks
+- _CONTEXT_BLOCKS_TYPES sanity checks (auto-derived from the Event union)
 - _deserialize() fallback to Metadata for unknown event types
 - register_event_type() custom subclass roundtrip
 - register_event_type() overwrite warning
@@ -10,30 +10,30 @@ These tests cover behavior that only applies to SQLiteEventBackend:
 import logging
 from typing import Literal
 
-from context_blocks import STORABLE_EVENT_TYPES, EventBase, Metadata
+from context_blocks import EventBase, Metadata
 from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+from nemo_oo_agents.storage.sqlite import _CONTEXT_BLOCKS_TYPES, SQLiteEventBackend
 
 # ---------------------------------------------------------------------------
-# STORABLE_EVENT_TYPES sanity
+# _CONTEXT_BLOCKS_TYPES sanity
 # ---------------------------------------------------------------------------
 
 
-def test_storable_event_types_is_not_empty():
-    """STORABLE_EVENT_TYPES must contain at least one type."""
-    assert len(STORABLE_EVENT_TYPES) > 0, "STORABLE_EVENT_TYPES is empty"
+def test_context_blocks_types_is_not_empty():
+    """_CONTEXT_BLOCKS_TYPES must contain at least one type."""
+    assert len(_CONTEXT_BLOCKS_TYPES) > 0, "_CONTEXT_BLOCKS_TYPES is empty"
 
 
-def test_storable_event_types_contains_expected_members():
-    """STORABLE_EVENT_TYPES must contain exactly the types in the Event union."""
-    assert set(STORABLE_EVENT_TYPES) == {UserEvent, AssistantEvent, ToolCallEvent}
+def test_context_blocks_types_contains_expected_members():
+    """_CONTEXT_BLOCKS_TYPES must contain exactly the types in the Event union."""
+    assert set(_CONTEXT_BLOCKS_TYPES) == {UserEvent, AssistantEvent, ToolCallEvent}
 
 
-def test_storable_event_types_all_are_event_base_subclasses():
-    """Every member of STORABLE_EVENT_TYPES must be an EventBase subclass."""
-    for cls in STORABLE_EVENT_TYPES:
+def test_context_blocks_types_all_are_event_base_subclasses():
+    """Every member of _CONTEXT_BLOCKS_TYPES must be an EventBase subclass."""
+    for cls in _CONTEXT_BLOCKS_TYPES:
         assert issubclass(cls, EventBase), (
-            f"{cls.__name__} is in STORABLE_EVENT_TYPES but is not an EventBase subclass"
+            f"{cls.__name__} is in _CONTEXT_BLOCKS_TYPES but is not an EventBase subclass"
         )
 
 
