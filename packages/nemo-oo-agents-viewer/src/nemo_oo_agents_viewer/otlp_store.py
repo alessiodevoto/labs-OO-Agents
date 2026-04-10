@@ -184,16 +184,6 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
     db.execute("DROP TABLE sessions")
     db.execute("ALTER TABLE sessions_v2 RENAME TO sessions")
     db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_experiment ON sessions(experiment)")
-    # Backfill total_size for migrated sessions — sessions_v2 was created with
-    # the column (DEFAULT 0), so the _has_column guard in init_db() won't fire.
-    db.execute("""
-        UPDATE sessions SET total_size = COALESCE((
-            SELECT SUM(LENGTH(COALESCE(attributes, ''))
-                     + LENGTH(COALESCE(resource, ''))
-                     + LENGTH(COALESCE(events, '')))
-            FROM spans WHERE spans.session_id = sessions.session_id
-        ), 0)
-    """)
     db.commit()
     log.info("Migration complete – %d sessions migrated.", len(rows))
 
@@ -314,26 +304,9 @@ def init_db() -> int:
 
     # Add total_size to sessions if missing — cached sum of span payload sizes
     # so /api/traces doesn't need a full-table scan on spans.
+    # Existing sessions will show size=0 until new spans are ingested.
     if not _has_column(_db, "sessions", "total_size"):
         _db.execute("ALTER TABLE sessions ADD COLUMN total_size INTEGER DEFAULT 0")
-        # Backfill from spans for existing data — this is the same expensive
-        # full-table scan we're eliminating from the hot path, but it only
-        # runs once.  May take a while on large databases.
-        span_count = _db.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
-        log.info(
-            "Backfilling total_size for existing sessions (%d spans) — this is a one-time migration…",
-            span_count,
-        )
-        t0 = time.time()
-        _db.execute("""
-            UPDATE sessions SET total_size = COALESCE((
-                SELECT SUM(LENGTH(COALESCE(attributes, ''))
-                         + LENGTH(COALESCE(resource, ''))
-                         + LENGTH(COALESCE(events, '')))
-                FROM spans WHERE spans.session_id = sessions.session_id
-            ), 0)
-        """)
-        log.info("Backfill complete in %.1fs", time.time() - t0)
     _db.commit()
 
     row = _db.execute("SELECT COUNT(*) FROM sessions").fetchone()
