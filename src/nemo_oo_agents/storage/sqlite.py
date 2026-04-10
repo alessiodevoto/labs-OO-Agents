@@ -40,10 +40,11 @@ if TYPE_CHECKING:
 # Unwrap Event = Annotated[UserEvent | AssistantEvent | ToolCallEvent, Field(...)]
 # to get the concrete types. This stays in sync with the Event union automatically.
 _CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(typing.get_args(Event)[0])
-assert len(_CONTEXT_BLOCKS_TYPES) >= 3, (
-    f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "
-    "If Event's structure changed, update the get_args unwrap in sqlite.py."
-)
+if len(_CONTEXT_BLOCKS_TYPES) < 3:
+    raise AssertionError(
+        f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "
+        "If Event's structure changed, update the get_args unwrap in sqlite.py."
+    )
 
 # All event types pre-registered for deserialization.
 # context_blocks types are derived from the Event union above (stays in sync automatically).
