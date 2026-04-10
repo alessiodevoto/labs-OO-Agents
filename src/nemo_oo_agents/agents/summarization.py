@@ -123,7 +123,7 @@ class SummarizationAgent(Agent):
 
         # Extract annotated class attributes from kwargs (max_tokens, preserve_recent, etc.)
         for name in list(kwargs.keys()):
-            if hasattr(self.__class__, name):  # pragma: no cover
+            if hasattr(self.__class__, name):
                 setattr(self, name, kwargs.pop(name))
 
         super().__init__(**kwargs)
@@ -300,7 +300,7 @@ class SummarizationAgent(Agent):
             logger.debug(
                 f"Summarization complete: {start_tag} -> {end_tag} (summary: {len(summary)} chars)"
             )
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             # Log error but don't crash - summarization is best-effort
             logger.warning(f"Summarization failed: {e}")
             self._pending_summary = None
@@ -324,7 +324,7 @@ class SummarizationAgent(Agent):
                 assert self.target_event_manager is not None
                 self.target_event_manager.collapse(start_tag, end_tag, self._pending_summary)
                 logger.debug(f"Applied summary: {start_tag} -> {end_tag}")
-            except Exception as e:  # pragma: no cover
+            except Exception as e:
                 logger.warning(f"Failed to apply summary: {e}")
 
         # Clear pending state
@@ -450,10 +450,10 @@ def context_budget(llm, percent: float = 0.8, fallback: int = 100_000) -> int:
     Example:
         TokenBudgetSummarizer.install(agent, max_tokens=context_budget(my_llm, 0.8))
     """
-    context_limit = getattr(llm, "context_limit", None)  # pragma: no cover
-    if context_limit is not None:  # pragma: no cover
+    context_limit = getattr(llm, "context_limit", None)
+    if context_limit is not None:
         return int(context_limit * percent)
-    return fallback  # pragma: no cover
+    return fallback
 
 
 # =============================================================================
@@ -575,23 +575,37 @@ class MethodSummarizer(SummarizationAgent):
 
     @hidden
     def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
-        """Summarize events from this method's generation_id."""
+        """Summarize all events from this method invocation (including children).
+
+        Uses call_id from event metadata to find the range. Child method calls
+        (nested call_ids) are included because they fall chronologically between
+        the first and last event with the parent call_id.
+        """
         if self.target_event_manager is None:  # pragma: no cover
             return None
 
-        generation_id = event.generation_id
-
-        # Find all tags with matching generation_id
-        matching_tags = []
-        for tag in self.target_event_manager.keys():
-            evt = self.target_event_manager[tag]
-            if hasattr(evt, "generation_id") and getattr(evt, "generation_id") == generation_id:  # noqa: B009  # pragma: no cover
-                matching_tags.append(tag)
-
-        if len(matching_tags) < self.config.min_events:
+        call_id = event.metadata.get("call_id")
+        if call_id is None:
             return None
 
-        return (matching_tags[0], matching_tags[-1])  # pragma: no cover
+        # Find first and last tags with this call_id.
+        # Events from child calls (different call_ids) are interleaved
+        # chronologically, so the range naturally includes them.
+        first_tag: str | None = None
+        last_tag: str | None = None
+        match_count = 0
+        for tag in self.target_event_manager.keys():
+            evt = self.target_event_manager[tag]
+            if evt.metadata.get("call_id") == call_id:
+                if first_tag is None:
+                    first_tag = tag
+                last_tag = tag
+                match_count += 1
+
+        if match_count < self.config.min_events:
+            return None
+
+        return (first_tag, last_tag)  # type: ignore[return-value]
 
     @hidden
     def _is_root_call(self, event: AfterTurn) -> bool:

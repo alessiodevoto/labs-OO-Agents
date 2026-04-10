@@ -329,12 +329,12 @@ class TestMethodSummarizer:
         assert summarizer._should_summarize(event) is True
 
     def test_compute_range_returns_none_when_too_few_events(self, test_agent):
-        """Returns None when fewer events than min_events."""
-        # Add only 2 events (less than default min_events=3)
-        test_agent.event_manager.add(Message(content="Message 1"))
-        test_agent.event_manager.add(Message(content="Message 2"))
-
+        """Returns None when fewer events match the call_id than min_events."""
         summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=10))
+
+        msg = Message(content="Message 1")
+        msg.metadata["call_id"] = "call-abc"
+        test_agent.event_manager.add(msg)
 
         event = AfterTurn(
             method_name="test",
@@ -345,8 +345,180 @@ class TestMethodSummarizer:
             is_final=True,
             success=True,
         )
+        event.metadata["call_id"] = "call-abc"
         result = summarizer._compute_range(event)
         assert result is None
+
+    def test_compute_range_returns_none_when_no_call_id(self, test_agent):
+        """Returns None when AfterTurn has no call_id in metadata."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=1))
+
+        test_agent.event_manager.add(Message(content="Message 1"))
+
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        # No call_id in metadata
+        result = summarizer._compute_range(event)
+        assert result is None
+
+
+class TestMethodSummarizerComputeRangeScenarios:
+    """Scenario-based tests for MethodSummarizer._compute_range.
+
+    These tests verify that call_id based range computation correctly handles
+    the key scenarios: simple calls, nested calls, and interleaved events.
+    """
+
+    def _after_turn(self, call_id: str) -> AfterTurn:
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-123",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        event.metadata["call_id"] = call_id
+        return event
+
+    def _msg(self, content: str, call_id: str) -> Message:
+        msg = Message(content=content)
+        msg.metadata["call_id"] = call_id
+        return msg
+
+    def test_simple_single_method_call(self, test_agent):
+        """Scenario: agent.analyze("data") — 3 turns, all same call_id.
+
+        call_id=C1
+          Turn 1: Task event, LLM output, execution result
+          Turn 2: LLM output, execution result
+          Turn 3: return_result
+        """
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("Task: analyze data", "C1"))  # tag=1
+        em.add(self._msg("LLM turn 1 output", "C1"))  # tag=2
+        em.add(self._msg("Execution result 1", "C1"))  # tag=3
+        em.add(self._msg("LLM turn 2 output", "C1"))  # tag=4
+        em.add(self._msg("Final result", "C1"))  # tag=5
+
+        result = summarizer._compute_range(self._after_turn("C1"))
+        assert result == ("1", "5")
+
+    def test_nested_method_call_included_in_range(self, test_agent):
+        """Scenario: report() calls analyze() internally.
+
+        call_id=C1 (report)
+          Event: "starting report"
+          call_id=C2 (analyze, called by LLM code)
+            Event: "analyzing data"
+            Event: "analysis result"
+          Event: "report complete"
+        """
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("starting report", "C1"))  # tag=1
+        em.add(self._msg("analyzing data", "C2"))  # tag=2 (child)
+        em.add(self._msg("analysis result", "C2"))  # tag=3 (child)
+        em.add(self._msg("report complete", "C1"))  # tag=4
+
+        result = summarizer._compute_range(self._after_turn("C1"))
+        assert result == ("1", "4")
+        # Tags 2 and 3 (child events) are inside this range
+
+    def test_child_call_has_own_range(self, test_agent):
+        """The child's call_id can also be summarized independently."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("parent start", "C1"))  # tag=1
+        em.add(self._msg("child work 1", "C2"))  # tag=2
+        em.add(self._msg("child work 2", "C2"))  # tag=3
+        em.add(self._msg("parent end", "C1"))  # tag=4
+
+        # Child range
+        result = summarizer._compute_range(self._after_turn("C2"))
+        assert result == ("2", "3")
+
+    def test_multiple_nested_children(self, test_agent):
+        """Scenario: method calls two different sub-methods.
+
+        call_id=C1 (orchestrator)
+          Event: "start"
+          call_id=C2 (first tool call)
+            Event: "tool 1 result"
+          call_id=C3 (second tool call)
+            Event: "tool 2 result"
+          Event: "done"
+        """
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("start", "C1"))  # tag=1
+        em.add(self._msg("tool 1 result", "C2"))  # tag=2
+        em.add(self._msg("tool 2 result", "C3"))  # tag=3
+        em.add(self._msg("done", "C1"))  # tag=4
+
+        result = summarizer._compute_range(self._after_turn("C1"))
+        assert result == ("1", "4")
+        # Includes C2 and C3 events by chronological position
+
+    def test_unrelated_events_before_and_after(self, test_agent):
+        """Events from other call_ids outside our range are excluded."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("unrelated before", "C0"))  # tag=1
+        em.add(self._msg("our start", "C1"))  # tag=2
+        em.add(self._msg("our end", "C1"))  # tag=3
+        em.add(self._msg("unrelated after", "C0"))  # tag=4
+
+        result = summarizer._compute_range(self._after_turn("C1"))
+        assert result == ("2", "3")
+        # Tags 1 and 4 are outside the range
+
+    def test_events_without_call_id_not_matched(self, test_agent):
+        """Events without call_id metadata don't count toward min_events."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=3))
+        em = test_agent.event_manager
+
+        em.add(Message(content="no call_id"))  # tag=1
+        em.add(self._msg("has call_id 1", "C1"))  # tag=2
+        em.add(Message(content="no call_id again"))  # tag=3
+        em.add(self._msg("has call_id 2", "C1"))  # tag=4
+
+        # Only 2 events match C1 (tags 2, 4), but min_events=3
+        result = summarizer._compute_range(self._after_turn("C1"))
+        assert result is None
+
+    def test_deeply_nested_calls(self, test_agent):
+        """Three levels deep: C1 → C2 → C3."""
+        summarizer = MethodSummarizer(test_agent, config=MethodSummarizerConfig(min_events=2))
+        em = test_agent.event_manager
+
+        em.add(self._msg("level 1 start", "C1"))  # tag=1
+        em.add(self._msg("level 2 start", "C2"))  # tag=2
+        em.add(self._msg("level 3 work", "C3"))  # tag=3
+        em.add(self._msg("level 2 end", "C2"))  # tag=4
+        em.add(self._msg("level 1 end", "C1"))  # tag=5
+
+        # Top level includes everything
+        assert summarizer._compute_range(self._after_turn("C1")) == ("1", "5")
+        # Mid level includes its child
+        assert summarizer._compute_range(self._after_turn("C2")) == ("2", "4")
+        # Leaf level just its own events
+        result = summarizer._compute_range(self._after_turn("C3"))
+        assert result is None  # Only 1 event, min_events=2
 
 
 # =============================================================================

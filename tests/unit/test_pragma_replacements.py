@@ -6,7 +6,6 @@ proving the code path is exercisable and correct.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -301,8 +300,8 @@ class TestApplyPendingSummaryExceptionHandler:
         summarizer = TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig())
 
         # Set up state as if _run_summarization completed
-        done_task = asyncio.Future()
-        done_task.set_result(None)
+        done_task = MagicMock()
+        done_task.done.return_value = True
         summarizer._pending_task = done_task
         summarizer._pending_range = ("1", "5")
         summarizer._pending_summary = "A summary"
