@@ -14,11 +14,10 @@ The return type annotation is used to validate the output. Supports Pydantic mod
 basic types (str, int, bool, dict, list), Optional[T], and nested models.
 """
 
-import inspect
 import json
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Union, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError

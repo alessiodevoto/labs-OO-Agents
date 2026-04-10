@@ -29,7 +29,6 @@ from typing import (
     Any,
     get_args,
     get_origin,
-    get_type_hints,
 )
 from uuid import uuid4
 
