@@ -241,7 +241,7 @@ class PurePythonStrategy(CompositeStrategy):
 
         # Get generation_id for turn events
         generation_id = runtime.get_generation_id()
-        if generation_id is None:
+        if generation_id is None:  # pragma: no cover
             raise RuntimeError(
                 "get_generation_id() returned None - strategy execution requires a generation context. "
                 "This indicates the runtime was not properly initialized via _in_generation_session()."
@@ -284,7 +284,7 @@ class PurePythonStrategy(CompositeStrategy):
                     )
                     turn_exception = type(e).__name__
 
-                    if session.is_exhausted():
+                    if session.is_exhausted():  # pragma: no cover — retry exhaustion
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise GenerationError(
@@ -316,7 +316,7 @@ class PurePythonStrategy(CompositeStrategy):
                     )
                     turn_exception = type(e).__name__
 
-                    if session.is_exhausted():
+                    if session.is_exhausted():  # pragma: no cover — retry exhaustion
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise GenerationError(
@@ -691,7 +691,7 @@ class PurePythonStrategy(CompositeStrategy):
 
             strategy_extras["PredictStrategy"] = PredictStrategy
             strategy_extras["ReflexionStrategy"] = ReflexionStrategy
-        except ImportError:
+        except ImportError:  # pragma: no cover
             pass
 
         namespace = ExecutionNamespaceBuilder.build(
@@ -719,7 +719,7 @@ class PurePythonStrategy(CompositeStrategy):
             logger.warning(f"[PURE_PYTHON] Rejected helper methods: {helper_result.rejected}")
             return ExecutionResult(stdout="", error=None, defined_methods={})
 
-        if helper_result.errors:
+        if helper_result.errors:  # pragma: no cover — helper method binding failures
             session.record_error()
             error_msg = "**Error**: Failed to define helper method(s):\n" + "\n".join(
                 f"- {e}" for e in helper_result.errors

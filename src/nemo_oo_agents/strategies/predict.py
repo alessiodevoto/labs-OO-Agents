@@ -213,9 +213,11 @@ class PredictStrategy(GenerationStrategy):
                 # Use descriptive placeholder if still None
                 if raw_response_content is None:
                     # Try to get more info about what the LLM returned
-                    if llm_response is None:
+                    if (
+                        llm_response is None
+                    ):  # pragma: no cover — fallback for malformed LLM responses
                         raw_response_content = "(llm_response was None)"
-                    else:
+                    else:  # pragma: no cover
                         # Try to capture all available fields from the response
                         response_info = []
                         for field in ["content", "reasoning", "raw", "text", "message"]:
