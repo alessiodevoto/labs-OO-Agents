@@ -130,6 +130,7 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
             session_id TEXT PRIMARY KEY,
             experiment TEXT NOT NULL,
             span_count INTEGER DEFAULT 0,
+            total_size  INTEGER DEFAULT 0,
             modified REAL DEFAULT 0,
             resource_attrs TEXT,
             eval_passed INTEGER,
@@ -223,6 +224,7 @@ def init_db() -> int:
             session_id TEXT PRIMARY KEY,
             experiment TEXT NOT NULL,
             span_count INTEGER DEFAULT 0,
+            total_size  INTEGER DEFAULT 0,
             modified REAL DEFAULT 0,
             resource_attrs TEXT,
             eval_passed INTEGER,
@@ -299,6 +301,29 @@ def init_db() -> int:
         _db.execute("ALTER TABLE llm_calls ADD COLUMN span_id TEXT")
     # Always ensure the span index exists (safe to re-create)
     _db.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_span ON llm_calls(span_id)")
+
+    # Add total_size to sessions if missing — cached sum of span payload sizes
+    # so /api/traces doesn't need a full-table scan on spans.
+    if not _has_column(_db, "sessions", "total_size"):
+        _db.execute("ALTER TABLE sessions ADD COLUMN total_size INTEGER DEFAULT 0")
+        # Backfill from spans for existing data — this is the same expensive
+        # full-table scan we're eliminating from the hot path, but it only
+        # runs once.  May take a while on large databases.
+        span_count = _db.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
+        log.info(
+            "Backfilling total_size for existing sessions (%d spans) — this is a one-time migration…",
+            span_count,
+        )
+        t0 = time.time()
+        _db.execute("""
+            UPDATE sessions SET total_size = COALESCE((
+                SELECT SUM(LENGTH(COALESCE(attributes, ''))
+                         + LENGTH(COALESCE(resource, ''))
+                         + LENGTH(COALESCE(events, '')))
+                FROM spans WHERE spans.session_id = sessions.session_id
+            ), 0)
+        """)
+        log.info("Backfill complete in %.1fs", time.time() - t0)
     _db.commit()
 
     row = _db.execute("SELECT COUNT(*) FROM sessions").fetchone()
@@ -493,14 +518,18 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
                 )
 
     span_count = len(span_rows)
+    # Compute total payload size for the spans in this batch.
+    # Each span_row tuple has: ..., attributes(10), resource(11), events(12)
+    batch_size = sum(len(r[10]) + len(r[11]) + len(r[12]) for r in span_rows)
 
     existing = db.execute(
-        "SELECT span_count, eval_metadata FROM sessions WHERE session_id = ?",
+        "SELECT span_count, total_size, eval_metadata FROM sessions WHERE session_id = ?",
         (session_id,),
     ).fetchone()
 
     if existing:
         new_count = existing["span_count"] + span_count
+        new_size = (existing["total_size"] or 0) + batch_size
         merged_meta = {}
         if existing["eval_metadata"]:
             try:
@@ -511,6 +540,7 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
 
         updates: dict[str, Any] = {
             "span_count": new_count,
+            "total_size": new_size,
             "modified": now,
         }
         if eval_passed is not None:
@@ -535,13 +565,14 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
 
         db.execute(
             """INSERT INTO sessions
-               (session_id, experiment, span_count, modified, resource_attrs,
-                eval_passed, eval_metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (session_id, experiment, span_count, total_size, modified,
+                resource_attrs, eval_passed, eval_metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id,
                 experiment,
                 span_count,
+                batch_size,
                 now,
                 resource_attrs,
                 eval_passed,
@@ -1062,14 +1093,10 @@ def get_stats() -> dict[str, Any]:
 
 
 def get_session_sizes() -> dict[str, int]:
-    """Return approximate stored size in bytes per session (sum of span attribute/resource/event payloads)."""
+    """Return approximate stored size in bytes per session from the cached total_size column."""
     db = _get_db()
-    rows = db.execute(
-        """SELECT session_id,
-           SUM(LENGTH(COALESCE(attributes, '')) + LENGTH(COALESCE(resource, '')) + LENGTH(COALESCE(events, ''))) AS size
-           FROM spans GROUP BY session_id"""
-    ).fetchall()
-    return {r["session_id"]: int(r["size"] or 0) for r in rows}
+    rows = db.execute("SELECT session_id, total_size FROM sessions").fetchall()
+    return {r["session_id"]: int(r["total_size"] or 0) for r in rows}
 
 
 def delete_session(session_id: str) -> bool:

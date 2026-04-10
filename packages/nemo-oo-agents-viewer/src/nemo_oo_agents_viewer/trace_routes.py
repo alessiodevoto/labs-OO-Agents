@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import litellm
 
+import logging
+
 import yaml
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -21,6 +23,8 @@ from pydantic import BaseModel
 
 from . import otlp_store
 from .trace_models import TraceGroup
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,9 +34,15 @@ MODELS_CONFIG_FILE = Path(_MODELS_CONFIG_ENV) if _MODELS_CONFIG_ENV else Path.cw
 
 CUSTOM_MODELS_FILE = Path.cwd() / "custom_models.json"
 
+# Log requests that take longer than this threshold (ms).
+_SLOW_REQUEST_MS = 200
+
 
 def _log_timing(operation: str, elapsed_ms: float, details: str = ""):
-    pass
+    if elapsed_ms >= _SLOW_REQUEST_MS:
+        log.warning("[slow] %s  %.0fms  %s", operation, elapsed_ms, details)
+    else:
+        log.info("%s  %.0fms  %s", operation, elapsed_ms, details)
 
 
 # ============================================================================
