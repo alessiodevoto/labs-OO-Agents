@@ -36,13 +36,15 @@ class _SkillProperties(BaseModel):
 def _find_skill_md(skill_dir: Path) -> Path | None:
     # Check for both case variants; on case-insensitive filesystems (macOS HFS+/APFS),
     # path.exists() may return True even if the actual filename differs in case.
-    # We iterate through actual directory entries to get the real filename.
+    # We iterate through actual directory entries to get real filenames, then
+    # prefer SKILL.md (uppercase) over skill.md when both exist.
     if not skill_dir.is_dir():
         return None
+    matches: dict[str, Path] = {}
     for entry in skill_dir.iterdir():
         if entry.name in ("SKILL.md", "skill.md"):
-            return entry
-    return None
+            matches[entry.name] = entry
+    return matches.get("SKILL.md") or matches.get("skill.md")
 
 
 def _parse_frontmatter(content: str) -> tuple[dict, str]:
