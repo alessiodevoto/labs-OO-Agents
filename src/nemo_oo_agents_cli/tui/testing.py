@@ -43,7 +43,7 @@ class TestFrontend:
         self.outputs: list[Output] = []
         self._connected: bool = True
 
-    async def render(self, output: "Output") -> None:
+    async def render(self, output: Output) -> None:
         self.outputs.append(output)
 
     async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:

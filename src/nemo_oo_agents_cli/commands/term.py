@@ -7,7 +7,6 @@ session runs normally.
 """
 
 import sys
-from pathlib import Path
 
 import click
 
@@ -94,7 +93,7 @@ def command(
         nemo oo term --agent ./my_agent.py:MyAgent
     """
     try:
-        import uvicorn
+        import uvicorn  # noqa: F401
         from uvicorn import Config, Server
     except ImportError:
         click.echo(
@@ -139,8 +138,8 @@ def command(
     click.echo(f"PTY command: {' '.join(tui_argv)}")
 
     import asyncio
-    import signal
     import logging
+    import signal
     from contextlib import nullcontext
 
     _SHUTDOWN_TIMEOUT = 5  # seconds shown in countdown

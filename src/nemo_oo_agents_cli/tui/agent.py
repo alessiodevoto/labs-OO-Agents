@@ -6,7 +6,7 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
@@ -15,53 +15,46 @@ from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 with hidden:
     from collections.abc import Callable
+
     from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 
 # Standard library — all visible in REPL
-import collections
-import datetime
-import itertools
-import json
-import math
 import os
-import pathlib
-import random
-import re
-import sys
 
 # Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
 try:
-    import numpy as np
+    import numpy as np  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import pandas as pd
+    import pandas as pd  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
+    import plotly.express as px  # noqa: F401
+    import plotly.graph_objects as go  # noqa: F401
+    from plotly.subplots import make_subplots  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import scipy
+    import scipy  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import sklearn
+    import sklearn  # noqa: F401
 except ImportError:
     pass
 
 with hidden:
     from unifiedllm import FakeLLMClient, UnifiedLLM
+
     from .config import AgentConfig, SummarizationConfig
 
 from .models import (
@@ -74,11 +67,11 @@ from .models import (
     VerificationResult,
 )
 
-
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
     try:
         from unifiedllm import get_llm_client
+
         from .config import DEFAULT_MODEL
         _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
     except Exception:
@@ -214,7 +207,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     def __init__(self, llm=None, **kwargs):
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
-        import os
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
             self.event_manager.register_event_type(RichOutput)

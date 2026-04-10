@@ -4,9 +4,9 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Literal
 
-from context_blocks import Metadata
 from pydantic import Field
 
+from context_blocks import Metadata
 from nemo_oo_agents.skill import Skill
 
 _log = logging.getLogger(__name__)

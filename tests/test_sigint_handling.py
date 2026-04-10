@@ -1,9 +1,9 @@
 """Test SIGINT handling in web terminal."""
 
-import subprocess
-import time
 import signal
+import subprocess
 import sys
+import time
 
 
 def test_sigint_cleanup():
@@ -15,23 +15,23 @@ def test_sigint_cleanup():
         stderr=subprocess.PIPE,
         text=True,
     )
-    
+
     # Give it a moment to start up
     time.sleep(2)
-    
+
     # Send SIGINT (simulate ^C)
     proc.send_signal(signal.SIGINT)
-    
+
     # Wait for it to exit
     stdout, stderr = proc.communicate(timeout=5)
-    
+
     # Check that it exited cleanly
     assert proc.returncode == 0, f"Expected exit code 0, got {proc.returncode}"
-    
+
     # Check that there's no ugly traceback in stderr
     assert "Traceback" not in stderr, f"Found traceback in stderr: {stderr}"
     assert "CancelledError" not in stderr, f"Found CancelledError in stderr: {stderr}"
-    
+
     print("✓ Terminal exits cleanly on SIGINT")
 
 

@@ -347,11 +347,11 @@ class SQLiteStorageManager:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 os.write(fd, str(os.getpid()).encode())
                 self._lock_fd = fd
-            except OSError:
+            except OSError as e:
                 os.close(fd)
                 raise SessionAlreadyActiveError(
                     f"Session {Path(self._db_path).stem!r} is already active in another process"
-                )
+                ) from e
 
         self._conn = sqlite3.connect(self._db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")

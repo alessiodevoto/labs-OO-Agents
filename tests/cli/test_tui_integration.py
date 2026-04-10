@@ -22,12 +22,10 @@ from nemo_oo_agents_cli.tui.output import (
     HelpOutput,
     HistoryReplay,
     TableOutput,
-    TextOutput,
 )
 from nemo_oo_agents_cli.tui.session import Session
 from nemo_oo_agents_cli.tui.session_manager import SessionManager
 from nemo_oo_agents_cli.tui.testing import TestFrontend
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers

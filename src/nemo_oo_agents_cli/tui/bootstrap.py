@@ -221,7 +221,8 @@ async def bootstrap(
     import os as _os
     if _resumed and _os.environ.get("NEMO_RICH_URL"):
         try:
-            from nemo_oo_agents.tools.web_publisher import RichOutput, WebPublisher as _WP
+            from nemo_oo_agents.tools.web_publisher import RichOutput
+            from nemo_oo_agents.tools.web_publisher import WebPublisher as _WP
             agent.event_manager.register_event_type(RichOutput)
             _rich_events = agent.event_manager.filter(type="rich_output")
             if _rich_events:
@@ -234,7 +235,7 @@ async def bootstrap(
     # ------------------------------------------------------------------
     # Session manager
     # ------------------------------------------------------------------
-    session_manager: "SessionManager | None" = None
+    session_manager: SessionManager | None = None
     if agent_storage is not None:
         try:
             session_manager = SessionManager(

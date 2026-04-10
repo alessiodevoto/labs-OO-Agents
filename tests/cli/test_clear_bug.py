@@ -24,7 +24,6 @@ from nemo_oo_agents_cli.tui.output import ClearScreen
 from nemo_oo_agents_cli.tui.session_manager import SessionManager
 from nemo_oo_agents_cli.tui.testing import TestFrontend
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

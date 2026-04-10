@@ -343,7 +343,12 @@ from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     SwitchCommand,
     _to_attr_name,
 )
-from nemo_oo_agents_cli.tui.output import ClearScreen, HelpOutput, TableOutput, TextOutput  # noqa: E402
+from nemo_oo_agents_cli.tui.output import (  # noqa: E402
+    ClearScreen,
+    HelpOutput,
+    TableOutput,
+    TextOutput,
+)
 
 
 class TestToAttrName:

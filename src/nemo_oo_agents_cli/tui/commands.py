@@ -20,18 +20,16 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
-from .output import (
+from .output import (  # noqa: E402
     ClearScreen,
     DiffOutput,
     HelpOutput,
-    HistoryReplay,
-    HistoryTurn,
     Output,
     TableOutput,
     TextOutput,
     _RichReplayPayload,
 )
-from .session_manager import SessionManager, build_resume_outputs
+from .session_manager import SessionManager, build_resume_outputs  # noqa: E402
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
@@ -212,7 +210,7 @@ class ClearCommand(Command):
         # destroy the old session's SQLite data before _swap_session_manager()
         # can close and preserve it.  The new storage starts empty; the agent's
         # event_manager property will return the new backend after the swap.
-        new_sm: "SessionManager | None" = None
+        new_sm: SessionManager | None = None
         if self.session_manager is not None:
             try:
                 import uuid as _uuid
@@ -355,7 +353,7 @@ class ThemeCommand(Command):
         if hasattr(self.frontend, "_console") and hasattr(self.frontend._console, "console"):
             console = self.frontend._console.console
             new_theme = theme_module.create_theme()
-            
+
             # Directly replace the base theme in the stack
             # This is the only way to actually change colors since Theme snapshots
             # the COLORS dict at creation time
@@ -539,7 +537,7 @@ class SkillsCommand(Command):
     def __init__(self, frontend, config, agent, **kwargs):
         super().__init__(frontend, config, agent, **kwargs)
         self.skills_dirs = kwargs.get("skills_dirs")
-        self._registry: "CommandRegistry | None" = kwargs.get("registry")
+        self._registry: CommandRegistry | None = kwargs.get("registry")
         self._active_skills: set[str] = set()
 
     @property
@@ -588,13 +586,13 @@ class SkillsCommand(Command):
             scan_rows = []
             try:
                 import re as _re
+
                 import yaml as _yaml
                 for sd in (self.skills_dirs or []):
                     sd = Path(sd)
                     if not sd.is_dir():
                         scan_rows.append([str(sd), "(dir missing)", ""])
                         continue
-                    is_cmd = sd.name == "commands"
                     found = sorted(sd.rglob("SKILL.md"))
                     if not found:
                         scan_rows.append([str(sd), "(no SKILL.md found)", ""])
@@ -1112,7 +1110,7 @@ class SessionCommand(Command):
             # SQLite data before _swap_session_manager() preserves it.
 
             # Create a fresh SessionManager so subsequent turns go to a new file.
-            new_sm: "SessionManager | None" = None
+            new_sm: SessionManager | None = None
             if self.session_manager is not None:
                 try:
                     import uuid as _uuid

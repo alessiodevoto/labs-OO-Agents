@@ -150,7 +150,6 @@ def test_regular_text_no_completions(completer):
 @pytest.fixture
 def user_skill_registry(tmp_path):
     """A real CommandRegistry with one install-as:command skill."""
-    from pathlib import Path
     from unittest.mock import MagicMock
 
     from nemo_oo_agents_cli.tui.commands import CommandRegistry

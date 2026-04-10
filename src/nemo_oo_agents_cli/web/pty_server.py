@@ -359,18 +359,18 @@ def create_pty_app(
     try:
         from fastapi import FastAPI, Request
         from fastapi.responses import HTMLResponse, JSONResponse
-        from fastapi.websockets import WebSocket, WebSocketDisconnect
-    except ImportError:
+        from fastapi.websockets import WebSocket, WebSocketDisconnect  # noqa: F401
+    except ImportError as e:
         raise RuntimeError(
             "Web terminal requires FastAPI. Install with: uv add fastapi uvicorn[standard]"
-        )
+        ) from e
 
     try:
         import ptyprocess  # noqa: F401
-    except ImportError:
+    except ImportError as e:
         raise RuntimeError(
             "Web terminal requires ptyprocess. Install with: uv add ptyprocess"
-        )
+        ) from e
 
     from contextlib import asynccontextmanager
 

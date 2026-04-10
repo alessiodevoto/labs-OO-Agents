@@ -12,7 +12,6 @@ decisions.  Frontends are pure rendering.
 import asyncio
 import concurrent.futures
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
