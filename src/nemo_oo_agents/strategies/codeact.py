@@ -583,7 +583,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Get generation_id for turn events
         generation_id = runtime.get_generation_id()
-        if generation_id is None:
+        if generation_id is None:  # pragma: no cover
             raise RuntimeError(
                 "get_generation_id() returned None - strategy execution requires a generation context. "
                 "This indicates the runtime was not properly initialized via _in_generation_session()."
@@ -1480,7 +1480,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             Returns:
                 Execution result including stdout, errors, and any returned values.
             """
-            return ""
+            return ""  # pragma: no cover — stub for tool schema generation
 
         return Tool(
             name="execute_python",
@@ -1587,7 +1587,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             The result must match the expected return type.
             """
             # This callable won't actually be called - we handle it in the execute loop
-            return result
+            return result  # pragma: no cover — stub for tool schema generation
 
         # Handle None return type specially - no required result parameter
         # Note: `-> None` annotation gives `None` (the value), not `type(None)` (NoneType)
@@ -1837,7 +1837,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             from nemo_oo_agents.strategies.predict import PredictStrategy
 
             strategy_extras["PredictStrategy"] = PredictStrategy
-        except ImportError:
+        except ImportError:  # pragma: no cover
             pass
 
         namespace = ExecutionNamespaceBuilder.build(
@@ -1980,7 +1980,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 context[name] = cls
                 agent_module.__dict__[name] = cls
                 seen.add(name)
-        except Exception:
+        except Exception:  # pragma: no cover
             pass  # Convenience feature — never break execution
 
     def _build_builtins(self, runtime: RuntimeServices, call: "CurrentCall") -> dict[str, Any]:

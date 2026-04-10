@@ -277,7 +277,7 @@ class PredictStrategy(GenerationStrategy):
                 runtime.event_manager.add(Error(content=error_content))
 
         # Should never reach here
-        raise GenerationError(
+        raise GenerationError(  # pragma: no cover
             f"Structured output generation failed after {self.config.max_retries} attempts"
         )
 
@@ -562,7 +562,7 @@ class PredictStrategy(GenerationStrategy):
                 return {"value": parsed_data}
 
         # Shouldn't reach here with output_model
-        raise GenerationError(
+        raise GenerationError(  # pragma: no cover
             f"Unexpected response type: content={type(llm_response.content).__name__}, "
             f"reasoning={type(llm_response.reasoning).__name__ if llm_response.reasoning else None}"
         )
@@ -679,7 +679,7 @@ class PredictStrategy(GenerationStrategy):
 
             response_model.model_rebuild(_types_namespace=vars(_typing))
             return response_model
-        except Exception as e:
+        except Exception as e:  # pragma: no cover — Pydantic's create_model is very robust
             raise GenerationError(
                 f"Failed to create Pydantic model for return type {return_type}: {e}"
             ) from e

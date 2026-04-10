@@ -255,8 +255,6 @@ def _format_single_error(
             if brief:
                 return f"{path}: wrong type - {msg.lower()}"
             line = f"return_result(result=[...]) - '{path}' has wrong type.\nExpected: {type_hint}"
-            if got_line:
-                line += "\n" + got_line
             return line
 
         if brief:

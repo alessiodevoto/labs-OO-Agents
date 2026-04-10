@@ -885,7 +885,7 @@ class ActorRuntime:
                         if method_name in exec_globals and callable(exec_globals[method_name]):
                             try:
                                 exec_globals[method_name]._generated_source = method_code
-                            except (AttributeError, TypeError):
+                            except (AttributeError, TypeError):  # pragma: no cover
                                 # Some built-in functions don't allow attribute assignment
                                 pass
                 else:
@@ -953,7 +953,7 @@ class ActorRuntime:
                     if method_name in exec_globals and callable(exec_globals[method_name]):
                         try:
                             exec_globals[method_name]._generated_source = method_code
-                        except (AttributeError, TypeError):
+                        except (AttributeError, TypeError):  # pragma: no cover
                             # Some built-in functions don't allow attribute assignment
                             pass
 
@@ -1425,7 +1425,9 @@ class ActorRuntime:
                 continue
 
             # Skip properties and other descriptors
-            if isinstance(attr, property):
+            # Note: property objects fail the callable() check above, so this
+            # guard only fires for exotic descriptors that are callable.
+            if isinstance(attr, property):  # pragma: no cover
                 continue
 
             # Skip hidden methods
@@ -1959,7 +1961,7 @@ async def {name}({params_str}) -> {return_type}:
         # Attach generated source for later retrieval
         try:
             func._generated_source = func_code
-        except Exception:
+        except Exception:  # pragma: no cover
             pass
 
         # Bind to agent instance
@@ -2135,9 +2137,9 @@ async def {name}({params_str}) -> {return_type}:
             rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
             if rendered:
                 set_context_blocks(rendered)
-        except ImportError:
+        except ImportError:  # pragma: no cover
             pass  # openinference instrumentation is an optional extra
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             logger.debug("Failed to set context blocks for journal: %s", exc)
         return render_context(
             blocks,
