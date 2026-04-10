@@ -173,7 +173,7 @@ class TestSessionNewPreservesHistory:
 class TestTUIViaTestFrontend:
     """Demonstrate that Session.run() is fully exercisable via TestFrontend."""
 
-    def _make_session(self, tmp_path, inputs: list[str], old_sm):
+    def _make_session(self, inputs: list[str], old_sm):
         """Build a Session with a TestFrontend and scripted inputs."""
         from nemo_oo_agents_cli.tui.commands import CommandRegistry
         from nemo_oo_agents_cli.tui.session import Session
@@ -210,7 +210,7 @@ class TestTUIViaTestFrontend:
         """Session.run() terminates cleanly when the user types /exit."""
         with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
             old_sm = _make_sm(tmp_path)
-            session, frontend, _ = self._make_session(tmp_path, ["/exit"], old_sm)
+            session, frontend, _ = self._make_session(["/exit"], old_sm)
 
             await session.run()
 
@@ -229,7 +229,7 @@ class TestTUIViaTestFrontend:
             old_sm.record_user("stored in old session")
             old_sid = old_sm.session_id
 
-            session, frontend, _ = self._make_session(tmp_path, ["/clear", "/exit"], old_sm)
+            session, frontend, _ = self._make_session(["/clear", "/exit"], old_sm)
 
             await session.run()
 
@@ -245,7 +245,7 @@ class TestTUIViaTestFrontend:
         """TestFrontend.outputs contains every Output rendered during the session."""
         with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
             old_sm = _make_sm(tmp_path)
-            session, frontend, _ = self._make_session(tmp_path, ["/help", "/exit"], old_sm)
+            session, frontend, _ = self._make_session(["/help", "/exit"], old_sm)
 
             await session.run()
 

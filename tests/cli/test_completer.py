@@ -225,6 +225,18 @@ def test_opted_out_skill_not_in_completer(tmp_path):
     )
 
     agent = MagicMock()
+    agent.get_summarization_status = MagicMock(
+        return_value={
+            "active_events": 0,
+            "policy": "auto",
+            "has_summarizer": False,
+            "max_tokens": 100000,
+            "current_tokens": 0,
+            "preserve_recent": 5,
+            "summary_count": 0,
+            "summary_tags": [],
+        }
+    )
     config = MagicMock()
     config.default_model = "test"
     frontend = MagicMock()

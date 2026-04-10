@@ -369,7 +369,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         User message: {user_message}
 
         Use tools to gather information.
-        Use self.message() torespond to the user with a clear, helpful answer.
+        Use self.message() to respond to the user with a clear, helpful answer.
         Use Markdown formatting for readability.
         """
         ...
@@ -386,7 +386,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         - Location: Where should this code live? What existing patterns to follow?
         - Interface: What should the API/interface look like?
 
-        Use self.message() toask each question.
+        Use self.message() to ask each question.
         Use tools to explore the codebase for context.
 
         When you have enough understanding, call return_result() with complete=True

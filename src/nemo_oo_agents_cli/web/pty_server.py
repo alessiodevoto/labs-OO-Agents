@@ -321,7 +321,7 @@ function renderPayloadInto(payload, el) {
       if (isFullPage) {
         const iframe = document.createElement('iframe');
         iframe.style.cssText = 'width:100%;height:100%;border:none;';
-        iframe.sandbox = 'allow-scripts allow-same-origin';
+        iframe.sandbox = 'allow-scripts';
         iframe.srcdoc = payload.html;
         el.appendChild(iframe);
       } else {
@@ -347,7 +347,7 @@ function renderPayloadInto(payload, el) {
       const div = document.createElement('div');
       div.className = 'md-render';
       div.style.cssText = 'padding:8px;font-size:13px;line-height:1.5;color:#cdd6f4;';
-      div.innerHTML = marked.parse(payload.text || '');
+      div.innerHTML = marked.parse(payload.text || '', { renderer: Object.assign(new marked.Renderer(), { html: () => '' }) });
       el.appendChild(div);
       break;
     }

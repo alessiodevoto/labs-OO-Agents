@@ -339,16 +339,19 @@ class SQLiteStorageManager:
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self._db_path = str(db_path)
         self._lock_fd: int | None = None
+        self._closed = False
 
         if self._db_path != ":memory:":
             lock_path = str(Path(self._db_path).with_suffix(".lock"))
+            fd = None
             try:
                 fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY)
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 os.write(fd, str(os.getpid()).encode())
                 self._lock_fd = fd
             except OSError as e:
-                os.close(fd)
+                if fd is not None:
+                    os.close(fd)
                 raise SessionAlreadyActiveError(
                     f"Session {Path(self._db_path).stem!r} is already active in another process"
                 ) from e
@@ -422,15 +425,17 @@ class SQLiteStorageManager:
         return True
 
     def close(self) -> None:
-        if getattr(self, "_closed", False):
+        if self._closed:
             return
         self._closed = True
-        self._conn.commit()  # Commit any pending transaction before closing
-        self._conn.close()
-        if self._lock_fd is not None:
-            fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
-            os.close(self._lock_fd)
-            self._lock_fd = None
+        try:
+            self._conn.commit()  # Commit any pending transaction before closing
+            self._conn.close()
+        finally:
+            if self._lock_fd is not None:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                os.close(self._lock_fd)
+                self._lock_fd = None
 
     def __enter__(self) -> SQLiteStorageManager:
         return self

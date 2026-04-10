@@ -177,6 +177,7 @@ def command(
     async def _serve() -> None:
         loop = asyncio.get_running_loop()
         _countdown_started = False
+        _shutdown_task: asyncio.Task | None = None
 
         async def _countdown() -> None:
             for remaining in range(_SHUTDOWN_TIMEOUT, 0, -1):
@@ -186,7 +187,7 @@ def command(
             server.force_exit = True
 
         def _on_signal() -> None:
-            nonlocal _countdown_started
+            nonlocal _countdown_started, _shutdown_task
             if _countdown_started:
                 return
             _countdown_started = True
@@ -196,7 +197,7 @@ def command(
             # occurs when uvicorn force-closes long-lived connections.
             kill_all_procs()
             click.echo("\nShutting down... ", err=True, nl=False)
-            asyncio.ensure_future(_countdown())
+            _shutdown_task = asyncio.ensure_future(_countdown())
 
         try:
             loop.add_signal_handler(signal.SIGINT, _on_signal)

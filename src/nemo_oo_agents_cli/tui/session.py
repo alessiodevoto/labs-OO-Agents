@@ -215,6 +215,7 @@ class Session:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._unsubscribe_fns: list = []
         self._pending_code: dict[str, str] = {}  # tool_call_id → code
+        self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
 
     @property
     def show_python(self) -> bool:
@@ -370,7 +371,9 @@ class Session:
                         and self._session_manager
                         and not self._session_manager.user_named
                     ):
-                        asyncio.create_task(self._auto_name_session(self._first_message))
+                        _t = asyncio.create_task(self._auto_name_session(self._first_message))
+                        self._background_tasks.add(_t)
+                        _t.add_done_callback(self._background_tasks.discard)
                     if result.exit:
                         from .output import SessionEnd
 
@@ -386,7 +389,9 @@ class Session:
                                 self._session_manager is not None
                                 and not self._session_manager.user_named
                             ):
-                                asyncio.create_task(self._auto_name_session(user_input))
+                                _t = asyncio.create_task(self._auto_name_session(user_input))
+                                self._background_tasks.add(_t)
+                                _t.add_done_callback(self._background_tasks.discard)
                         await self._agent_turn(msg)
                     continue
 
@@ -403,7 +408,9 @@ class Session:
                 if self._first_message is None:
                     self._first_message = user_input
                     if self._session_manager is not None and not self._session_manager.user_named:
-                        asyncio.create_task(self._auto_name_session(user_input))
+                        _t = asyncio.create_task(self._auto_name_session(user_input))
+                        self._background_tasks.add(_t)
+                        _t.add_done_callback(self._background_tasks.discard)
 
                 await self._agent_turn(user_input)
 

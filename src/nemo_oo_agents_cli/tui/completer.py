@@ -8,14 +8,12 @@ behavior is identical everywhere.
 
 import os
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .commands import CommandRegistry
-    from .session_manager import SessionManager
 
 
 # Built-in ! commands
@@ -39,17 +37,13 @@ class Completer:
 
     Args:
         registry: CommandRegistry to pull slash-command completions from.
-        session_manager_fn: Callable returning the current SessionManager
-            (or None).  Called lazily so it tracks session swaps.
     """
 
     def __init__(
         self,
         registry: "CommandRegistry",
-        session_manager_fn: "Callable[[], SessionManager | None] | None" = None,
     ) -> None:
         self._registry = registry
-        self._session_manager_fn = session_manager_fn
 
     def complete(self, text: str) -> list[CompletionItem]:
         """Return completion candidates for *text*."""

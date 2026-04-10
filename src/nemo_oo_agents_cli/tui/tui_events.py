@@ -6,6 +6,7 @@ to the LLM.  Register them with the event manager at startup:
     agent.event_manager.register_event_type(TUISessionStart)
     agent.event_manager.register_event_type(TUISessionRename)
     agent.event_manager.register_event_type(TUIUserInput)
+    agent.event_manager.register_event_type(TUIAgentMessage)
 """
 
 from typing import ClassVar, Literal
