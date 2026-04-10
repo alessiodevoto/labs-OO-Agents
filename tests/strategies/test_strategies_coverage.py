@@ -1768,38 +1768,6 @@ class TestPlainProviderFormatterFormat:
 # ---------------------------------------------------------------------------
 
 
-class TestPredictStrategyGetTypeHintsError:
-    """Tests for the NameError/TypeError/AttributeError fallback in execute() (lines 152-154)."""
-
-    @pytest.mark.asyncio
-    async def test_get_type_hints_fallback_via_signature(self):
-        """When get_type_hints raises, falls back to inspect.signature.
-
-        We test this by creating a method that raises NameError when get_type_hints is called.
-        This hits lines 152-154 in execute().
-        """
-        # The simplest way to hit this code path is through the real Agent mechanism
-        # We'll use a simpler approach: test that the strategy still works even when
-        # type hints resolution is tricky
-        from unittest.mock import patch
-
-        class GoodAgent(Agent, llm=_TEST_LLM):
-            @strategy(PredictStrategy(config=PredictConfig(max_retries=1)))
-            async def typed(self) -> str:
-                """Typed method."""
-                ...
-
-        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": "ok"}))])
-        agent = GoodAgent(llm=fake_llm)
-
-        # Patch get_type_hints to raise NameError to force the fallback path
-        with patch(
-            "nemo_oo_agents.strategies.predict.get_type_hints", side_effect=NameError("bad")
-        ):
-            result = await agent.typed()
-        assert result == "ok"
-
-
 class TestPredictStrategyRawExtractionFallback:
     """Tests covering lines 214-215 and 220-235: fallback raw extraction in exception handler."""
 

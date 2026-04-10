@@ -918,7 +918,7 @@ class TestBuildBuiltins:
             signature="(self, x: int, y: str) -> str",
             docstring="Compute with params.",
             args=(42, "hello"),
-            kwargs={},
+            kwargs={"x": 42, "y": "hello"},  # merged by _execute_with_generation
         )
         rt = MagicMock()
         rt.agent = agent
@@ -2237,36 +2237,6 @@ class TestExecutionContextWithSkillsSection:
 # ---------------------------------------------------------------------------
 
 
-class TestCodeActGetTypeHintsException:
-    """Tests for get_type_hints exception fallback in execute()."""
-
-    @pytest.mark.asyncio
-    async def test_execute_falls_back_to_signature_when_get_type_hints_fails(self):
-        """When get_type_hints raises, fall back to inspect.signature (lines 546-548)."""
-
-        class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy())
-            async def compute(self) -> int:
-                """Compute."""
-                ...
-
-        fake_llm = FakeLLMClient(
-            scripted_responses=[
-                _resp("", tool_calls=[_return_result(result=42)]),
-            ]
-        )
-        agent = TestAgent(llm=fake_llm)
-
-        # Patch get_type_hints to raise NameError to exercise the fallback
-        with patch(
-            "nemo_oo_agents.strategies.codeact.get_type_hints",
-            side_effect=NameError("unknown name"),
-        ):
-            result = await agent.compute()
-
-        assert result == 42
-
-
 # ---------------------------------------------------------------------------
 # CodeActStrategy - direct fields in return_result (line 1305)
 # ---------------------------------------------------------------------------
@@ -3231,7 +3201,7 @@ class TestBuildBuiltinsModuleContext:
             signature="(self, x: int) -> int",
             docstring="Compute.",
             args=(5,),
-            kwargs={},
+            kwargs={"x": 5},  # merged by _execute_with_generation
         )
         rt = MagicMock()
         rt.agent = agent
