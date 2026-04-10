@@ -538,18 +538,12 @@ Standard Python builtins and agent instance (`self`) are available."""
         Raises:
             GenerationError: If generation fails after max retries/iterations.
         """
-        # Get return type — use get_type_hints so that `from __future__ import
-        # annotations` (PEP 563) stringified annotations are resolved back to
-        # actual type objects before being passed to Pydantic.
-        method = getattr(runtime.agent, call.method_name)
-        try:
-            hints = get_type_hints(method, include_extras=True)
-            return_type = hints.get("return", inspect.Parameter.empty)
-        except (NameError, TypeError, AttributeError):
-            sig = inspect.signature(method)
-            return_type = sig.return_annotation
+        # Return type is resolved by the runtime before invoking the strategy
+        # (get_type_hints runs against the original method's globals, so PEP 563
+        # forward references are already resolved).  Use call.return_type directly.
+        return_type = call.return_type
 
-        if return_type == inspect.Signature.empty:
+        if return_type is None:
             raise GenerationError(
                 f"Method `{call.method_name}` has no return type annotation. "
                 f"CodeActStrategy requires a return type (Pydantic model or basic type)."
@@ -2045,17 +2039,9 @@ Standard Python builtins and agent instance (`self`) are available."""
             }
         )
 
-        # Add method parameters as variables
-        method = getattr(runtime.agent, call.method_name, None)
-        if method and callable(method):
-            try:
-                sig = inspect.signature(method)
-                param_names = [p for p in sig.parameters.keys() if p != "self"]
-                for i, name in enumerate(param_names):
-                    if i < len(call.args):
-                        builtins[name] = call.args[i]
-                builtins.update(call.kwargs)
-            except (ValueError, TypeError):
-                pass
+        # Add method parameters as variables.
+        # call.kwargs already contains all arguments (positional args are merged
+        # by name in _execute_with_generation before CurrentCall is built).
+        builtins.update(call.kwargs)
 
         return builtins

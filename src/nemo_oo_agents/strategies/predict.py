@@ -145,17 +145,12 @@ class PredictStrategy(GenerationStrategy):
         Raises:
             GenerationError: If no return type or validation fails after max retries.
         """
-        # Get return type annotation — use get_type_hints to resolve PEP 563
-        # stringified annotations back to actual type objects.
-        method = getattr(runtime.agent, call.method_name)
-        try:
-            hints = get_type_hints(method, include_extras=True)
-            return_type = hints.get("return", inspect.Parameter.empty)
-        except (NameError, TypeError, AttributeError):
-            sig = inspect.signature(method)
-            return_type = sig.return_annotation
+        # Return type is resolved by the runtime before invoking the strategy
+        # (get_type_hints runs against the original method's globals, so PEP 563
+        # forward references are already resolved).  Use call.return_type directly.
+        return_type = call.return_type
 
-        if return_type == inspect.Signature.empty:
+        if return_type is None:
             raise GenerationError(
                 f"Method `{call.method_name}` has no return type annotation. "
                 f"PREDICT strategy requires a return type (Pydantic model or basic type)."

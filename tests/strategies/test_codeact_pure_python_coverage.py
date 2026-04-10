@@ -918,7 +918,7 @@ class TestBuildBuiltins:
             signature="(self, x: int, y: str) -> str",
             docstring="Compute with params.",
             args=(42, "hello"),
-            kwargs={},
+            kwargs={"x": 42, "y": "hello"},  # merged by _execute_with_generation
         )
         rt = MagicMock()
         rt.agent = agent
@@ -3231,7 +3231,7 @@ class TestBuildBuiltinsModuleContext:
             signature="(self, x: int) -> int",
             docstring="Compute.",
             args=(5,),
-            kwargs={},
+            kwargs={"x": 5},  # merged by _execute_with_generation
         )
         rt = MagicMock()
         rt.agent = agent
