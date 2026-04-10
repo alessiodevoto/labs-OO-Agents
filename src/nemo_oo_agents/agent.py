@@ -548,9 +548,9 @@ class Agent(metaclass=AgentMeta):
             # computed value appears in doc(instance). Skip on any exception.
             try:
                 value = getattr(self, name)
-            except (AttributeError, TypeError):  # pragma: no cover
+            except (AttributeError, TypeError):
                 continue
-            except Exception:  # pragma: no cover
+            except Exception:
                 logger.debug(
                     "Skipping attribute %r: getattr raised unexpectedly", name, exc_info=True
                 )

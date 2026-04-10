@@ -2073,7 +2073,7 @@ async def {name}({params_str}) -> {return_type}:
                     result = await self.evaluate_expression(
                         value.expr, extra_context=extra_context, error_mode="raise"
                     )
-                except Exception as e:  # pragma: no cover — DynamicContext eval failure
+                except Exception as e:
                     logger.warning(
                         "DynamicContext block %r failed to resolve: %s: %s (expr: %s)",
                         key,

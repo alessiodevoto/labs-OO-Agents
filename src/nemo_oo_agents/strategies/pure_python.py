@@ -284,7 +284,7 @@ class PurePythonStrategy(CompositeStrategy):
                     )
                     turn_exception = type(e).__name__
 
-                    if session.is_exhausted():  # pragma: no cover — retry exhaustion
+                    if session.is_exhausted():
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise GenerationError(
@@ -316,7 +316,7 @@ class PurePythonStrategy(CompositeStrategy):
                     )
                     turn_exception = type(e).__name__
 
-                    if session.is_exhausted():  # pragma: no cover — retry exhaustion
+                    if session.is_exhausted():
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise GenerationError(
@@ -719,7 +719,7 @@ class PurePythonStrategy(CompositeStrategy):
             logger.warning(f"[PURE_PYTHON] Rejected helper methods: {helper_result.rejected}")
             return ExecutionResult(stdout="", error=None, defined_methods={})
 
-        if helper_result.errors:  # pragma: no cover — helper method binding failures
+        if helper_result.errors:
             session.record_error()
             error_msg = "**Error**: Failed to define helper method(s):\n" + "\n".join(
                 f"- {e}" for e in helper_result.errors

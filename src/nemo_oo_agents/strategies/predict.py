@@ -681,7 +681,7 @@ class PredictStrategy(GenerationStrategy):
 
             response_model.model_rebuild(_types_namespace=vars(_typing))
             return response_model
-        except Exception as e:  # pragma: no cover — Pydantic's create_model is very robust
+        except Exception as e:
             raise GenerationError(
                 f"Failed to create Pydantic model for return type {return_type}: {e}"
             ) from e
