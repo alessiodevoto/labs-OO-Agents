@@ -377,6 +377,15 @@ class Session:
                         from .output import SessionEnd
                         await self.frontend.render(SessionEnd())
                         break
+                    if result.agent_message is not None:
+                        msg = result.agent_message
+                        if self._session_manager is not None:
+                            self._session_manager.record_user(msg)
+                        if self._first_message is None:
+                            self._first_message = user_input  # short form for session naming
+                            if self._session_manager is not None and not self._session_manager.user_named:
+                                asyncio.create_task(self._auto_name_session(user_input))
+                        await self._agent_turn(msg)
                     continue
 
                 # Bang prefix

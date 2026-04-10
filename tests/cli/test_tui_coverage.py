@@ -539,35 +539,25 @@ class TestModelsCommand:
 
 
 class TestSwitchCommand:
-    """SwitchCommand tests — uses frontend.get_input() in new API."""
+    """SwitchCommand tests — now requires model as argument."""
 
-    async def test_keyboard_interrupt_cancelled(self, mock_console, mock_config, mock_agent):
-        import unifiedllm
-
+    async def test_validate_args_empty(self, mock_console, mock_config, mock_agent):
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        original_models = unifiedllm.MODELS
-        unifiedllm.MODELS = {"prov/m": None}
-        try:
-            mock_console.get_input = AsyncMock(side_effect=KeyboardInterrupt)
-            result = await cmd.execute([])
-        finally:
-            unifiedllm.MODELS = original_models
-        assert result.success is False
-        assert any("cancelled" in o.content.lower() for o in result.outputs if isinstance(o, TextOutput))
+        ok, msg = cmd.validate_args([])
+        assert ok is False
+        assert "Usage:" in msg
 
-    async def test_empty_selection(self, mock_console, mock_config, mock_agent):
-        import unifiedllm
-
+    async def test_validate_args_too_many(self, mock_console, mock_config, mock_agent):
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        original_models = unifiedllm.MODELS
-        unifiedllm.MODELS = {"prov/m": None}
-        try:
-            mock_console.get_input = AsyncMock(return_value="")
-            result = await cmd.execute([])
-        finally:
-            unifiedllm.MODELS = original_models
-        assert result.success is False
-        assert any("No model selected" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        ok, msg = cmd.validate_args(["model1", "model2"])
+        assert ok is False
+        assert "Usage:" in msg
+
+    async def test_validate_args_valid(self, mock_console, mock_config, mock_agent):
+        cmd = SwitchCommand(mock_console, mock_config, mock_agent)
+        ok, msg = cmd.validate_args(["prov/m"])
+        assert ok is True
+        assert msg is None
 
     async def test_model_not_in_registry(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -576,8 +566,7 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            mock_console.get_input = AsyncMock(return_value="nonexistent/model")
-            result = await cmd.execute([])
+            result = await cmd.execute(["nonexistent/model"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is False
@@ -590,9 +579,8 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            mock_console.get_input = AsyncMock(return_value="prov/m")
             with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
-                result = await cmd.execute([])
+                result = await cmd.execute(["prov/m"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is True
@@ -605,11 +593,10 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            mock_console.get_input = AsyncMock(return_value="prov/m")
             with patch.object(
                 unifiedllm, "get_llm_client", side_effect=Exception("auth error")
             ):
-                result = await cmd.execute([])
+                result = await cmd.execute(["prov/m"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is False
@@ -1331,12 +1318,12 @@ class TestShowSplash:
             show_splash(mock_console)
         mock_sleep.assert_called_once_with(0.8)
 
-    def test_show_splash_multiple_prints(self):
+    def test_show_splash_prints_panel(self):
         mock_console = MagicMock()
         with patch("nemo_oo_agents_cli.tui.splash.time.sleep"):
             show_splash(mock_console, delay=0.0)
-        # Should call print at least twice (panel + spacing)
-        assert mock_console.print.call_count >= 2
+        # Should call print once (with centered panel containing title and tagline)
+        assert mock_console.print.call_count == 1
 
     def test_ascii_art_constant(self):
         assert "Agent" in AGENT006_ASCII or "_" in AGENT006_ASCII

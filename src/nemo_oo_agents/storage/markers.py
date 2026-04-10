@@ -73,3 +73,16 @@ def _resolve_single(klass: type, name: str) -> Any:
         return eval(raw, ns)  # noqa: S307
     except Exception:
         return None
+
+
+def is_nosnapshot_value(value: Any) -> bool:
+    """Check if a value's class has __nosnapshot__ = True.
+
+    This allows classes to opt-out of snapshotting by setting a class attribute::
+
+        class MyTool:
+            __nosnapshot__ = True  # instances won't be snapshotted
+
+    This is useful for dynamically-added attributes that don't have type annotations.
+    """
+    return getattr(type(value), "__nosnapshot__", False) is True

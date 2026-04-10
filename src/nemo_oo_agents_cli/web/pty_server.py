@@ -43,9 +43,9 @@ _HTML = r"""<!DOCTYPE html>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:      #1e1e2e;
-    --surface: #181825;
-    --overlay: #313244;
+    --bg:      #000000;
+    --surface: #0d0d0d;
+    --overlay: #222222;
     --text:    #cdd6f4;
     --subtext: #a6adc8;
     --blue:    #89b4fa;
@@ -83,8 +83,8 @@ _HTML = r"""<!DOCTYPE html>
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--overlay);
+    background: var(--bg);
+    border-bottom: none;
     font-size: 12px;
     color: var(--subtext);
     flex-shrink: 0;
@@ -129,12 +129,12 @@ _HTML = r"""<!DOCTYPE html>
 <div id="status-bar"></div>
 
 <script>
-// ---- Catppuccin Mocha xterm theme ----
+// ---- xterm theme ----
 const MOCHA = {
-  background:          '#1e1e2e',
+  background:          '#000000',
   foreground:          '#cdd6f4',
   cursor:              '#f5e0dc',
-  cursorAccent:        '#1e1e2e',
+  cursorAccent:        '#000000',
   selectionBackground: '#585b7066',
   black:               '#45475a',
   red:                 '#f38ba8',
@@ -216,6 +216,7 @@ function sendResize() {
 }
 term.onResize(({cols, rows}) => {
   ptyWs.send(JSON.stringify({t: 'r', cols, rows}));
+  setTimeout(updateRichBlocks, 50);
 });
 
 // ---- Rich WebSocket ----
@@ -225,10 +226,66 @@ richWs.onmessage = (ev) => {
   handleRich(payload);
 };
 
-// ---- Inline rendering via xterm.js Decoration API ----
-// registerMarker(0) bookmarks the current cursor row in the scroll buffer.
-// We write blank rows to reserve space, then registerDecoration overlays an
-// HTML element at that marker — it scrolls with the terminal content.
+// ---- Scroll-aware inline rich overlay ----
+// We manage our own position:absolute overlays anchored to buffer lines via
+// persistent xterm markers.  On each scroll/resize we recompute screen
+// positions so plots clip smoothly as they scroll off the top of the viewport
+// rather than disappearing the moment their anchor marker leaves the viewport
+// (which is the behaviour of the Decoration API).
+
+const richBlocks = [];  // {marker, numRows, el, inner}
+let plotsContainer = null;
+
+function setupPlotsContainer() {
+  const screen = document.querySelector('.xterm-screen');
+  if (!screen) return;
+  screen.style.position = 'relative';
+  plotsContainer = document.createElement('div');
+  plotsContainer.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;z-index:10;';
+  screen.appendChild(plotsContainer);
+}
+
+function getCellHeight() {
+  const screen = document.querySelector('.xterm-screen');
+  if (!screen || !term.rows) return 0;
+  return screen.clientHeight / term.rows;
+}
+
+function updateRichBlocks() {
+  if (!plotsContainer) return;
+  const cellH = getCellHeight();
+  if (!cellH) return;
+  const viewportY = term.buffer.active.viewportY;
+  const viewportH = plotsContainer.clientHeight;
+
+  // Remove blocks whose markers were trimmed from the scrollback buffer
+  for (let i = richBlocks.length - 1; i >= 0; i--) {
+    if (richBlocks[i].marker.line === -1) {
+      richBlocks[i].el.remove();
+      richBlocks.splice(i, 1);
+    }
+  }
+
+  for (const block of richBlocks) {
+    const screenTop = (block.marker.line - viewportY) * cellH;
+    const blockH = block.numRows * cellH;
+    const screenBottom = screenTop + blockH;
+
+    if (screenBottom <= 0 || screenTop >= viewportH) {
+      block.el.style.display = 'none';
+      continue;
+    }
+
+    block.el.style.display = '';
+    const clipTop = Math.max(0, screenTop);
+    const clipBottom = Math.min(screenBottom, viewportH);
+    block.el.style.top = clipTop + 'px';
+    block.el.style.height = (clipBottom - clipTop) + 'px';
+    // Shift inner content up so the visible slice starts at the right place
+    block.inner.style.marginTop = Math.min(0, screenTop) + 'px';
+    block.inner.style.height = blockH + 'px';
+  }
+}
 
 function estimateRichRows(payload) {
   switch (payload.kind) {
@@ -307,27 +364,55 @@ function renderPayloadInto(payload, el) {
 }
 
 function renderRichInline(payload) {
-  if (payload.kind === 'clear') return;
+  if (payload.kind === 'clear') {
+    for (const block of richBlocks) {
+      block.el.remove();
+      try { block.marker.dispose(); } catch {}
+    }
+    richBlocks.length = 0;
+    return;
+  }
+  if (!plotsContainer) return;
   const numRows = estimateRichRows(payload);
-  // Bookmark the current cursor row before writing blank lines
+
+  // Create a persistent marker at the current cursor position.
+  // Keep it alive (don't dispose) so marker.line tracks the absolute buffer
+  // line even as more content is written below.
   const marker = term.registerMarker(0);
-  if (!marker) return;
-  // Reserve space — write numRows+1 blank rows: numRows for the decoration,
-  // +1 buffer row so the decoration bottom never abuts terminal text directly.
-  term.write('\r\n'.repeat(numRows + 1));
-  // Overlay an HTML element at the marker, spanning the reserved rows
-  const dec = term.registerDecoration({ marker, height: numRows, width: term.cols, layer: 'top' });
-  if (!dec) { marker.dispose(); return; }
-  dec.onRender((el) => {
-    if (el.hasChildNodes()) return; // already populated (called on each repaint)
-    el.style.cssText = 'overflow:hidden;background:var(--surface);border:1px solid var(--overlay);border-radius:4px;box-sizing:border-box;';
-    renderPayloadInto(payload, el);
-  });
+  if (!marker || marker.line === -1) return;
+
+  // Reserve vertical space for live output only.  Replayed plots skip this so
+  // they don't push the prompt down with empty lines — the overlay sits on top
+  // of whatever buffer content is already there.
+  if (!payload._replay) {
+    term.write('\r\n'.repeat(numRows + 1));
+  }
+
+  // Outer clip element — sized and positioned by updateRichBlocks()
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;left:0;right:0;overflow:hidden;box-sizing:border-box;pointer-events:auto;';
+
+  // Inner content element — full block height; negative marginTop clips top edge
+  const inner = document.createElement('div');
+  inner.style.cssText = 'position:relative;background:var(--surface);border:1px solid var(--overlay);border-radius:4px;box-sizing:border-box;overflow:hidden;';
+
+  renderPayloadInto(payload, inner);
+  el.appendChild(inner);
+  plotsContainer.appendChild(el);
+
+  richBlocks.push({ marker, numRows, el, inner });
+  updateRichBlocks();
 }
 
 function handleRich(payload) {
   renderRichInline(payload);
 }
+
+// Initialise plots overlay (must run after all let/const declarations above)
+setupPlotsContainer();
+// onRender fires after every render cycle (auto-scroll AND user scroll),
+// ensuring plot positions stay in sync whenever the viewport changes.
+term.onRender(() => { if (richBlocks.length > 0) updateRichBlocks(); });
 
 // Focus terminal on click
 document.getElementById('terminal').addEventListener('click', () => term.focus());
@@ -432,10 +517,12 @@ def create_pty_app(
             payload = await request.json()
         except Exception:
             return JSONResponse({"error": "invalid JSON"}, status_code=400)
-        # Store in history for page-reload replay (skip "clear" — nothing to replay)
+        # Store in history for page-reload replay (skip "clear" — nothing to replay).
+        # Strip _replay flag so a page reload treats the content as live.
         if payload.get("kind") != "clear":
+            stored = {k: v for k, v in payload.items() if k != "_replay"}
             with _rich_lock:
-                _rich_history.append(payload)
+                _rich_history.append(stored)
                 if len(_rich_history) > _RICH_HISTORY_LIMIT:
                     del _rich_history[0]
         else:

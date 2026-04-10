@@ -242,12 +242,11 @@ class TestModelsCommand:
 class TestSwitchCommand:
     @pytest.mark.asyncio
     async def test_switch_valid_model(self, tmp_path):
-        """SwitchCommand calls get_input() for model selection — feed it via TestFrontend."""
+        """SwitchCommand now requires model as argument: /switch <model>."""
         with patch("unifiedllm.MODELS", {"new-model": None}):
             with patch("unifiedllm.get_llm_client", return_value=MagicMock()):
-                # inputs: ["/switch", <model chosen from prompt>, "/exit"]
                 session, frontend, _, _ = _make_session(
-                    tmp_path, ["/switch", "new-model", "/exit"]
+                    tmp_path, ["/switch new-model", "/exit"]
                 )
                 await session.run()
         assert any("new-model" in t for t in frontend.text_contents())
@@ -256,19 +255,19 @@ class TestSwitchCommand:
     async def test_switch_invalid_model(self, tmp_path):
         with patch("unifiedllm.MODELS", {"valid-model": None}):
             session, frontend, _, _ = _make_session(
-                tmp_path, ["/switch", "nonexistent-model", "/exit"]
+                tmp_path, ["/switch nonexistent-model", "/exit"]
             )
             await session.run()
         assert any(
-            "not found" in t.lower() or "nonexistent" in t for t in frontend.text_contents()
+            "not found" in t.lower() for t in frontend.text_contents()
         )
 
     @pytest.mark.asyncio
-    async def test_switch_empty_selection(self, tmp_path):
+    async def test_switch_no_args_error(self, tmp_path):
         with patch("unifiedllm.MODELS", {"a-model": None}):
-            session, frontend, _, _ = _make_session(tmp_path, ["/switch", "", "/exit"])
+            session, frontend, _, _ = _make_session(tmp_path, ["/switch", "/exit"])
             await session.run()
-        assert any("No model" in t or "cancelled" in t.lower() for t in frontend.text_contents())
+        assert any("Usage" in t for t in frontend.text_contents())
 
 
 # ---------------------------------------------------------------------------

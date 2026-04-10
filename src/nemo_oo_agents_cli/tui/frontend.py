@@ -307,21 +307,23 @@ class TerminalFrontend:
         user_color = COLORS["subtext1"]
         c = self._console.console
 
-        c.print(
-            Rule(
-                title=f"[{dim}]session {output.session_id} — history[/]",
-                style=COLORS["surface1"],
+        if output.show_header:
+            c.print(
+                Rule(
+                    title=f"[{dim}]session {output.session_id} — history[/]",
+                    style=COLORS["surface1"],
+                )
             )
-        )
         for turn in output.turns:
             if turn.role == "user":
-                c.print(Text(f"You: {turn.content}", style=user_color))
+                c.print(Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}"))
             else:
                 # Render agent turns as dimmed markdown
-                c.print(Text("NeMo OO Agents:", style=f"bold {dim}"))
+                c.print(Text("OO:", style=f"bold {dim}"))
                 c.print(Markdown(turn.content), style=dim)
             c.print()
-        c.print(Rule(style=COLORS["surface1"]))
+        if output.show_footer:
+            c.print(Rule(style=COLORS["surface1"]))
 
     def _render_startup(self, info: StartupInfo) -> None:
         from rich.rule import Rule

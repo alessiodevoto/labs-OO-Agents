@@ -309,3 +309,87 @@ class SessionManager:
             path.unlink()
             return True
         return False
+
+
+def build_resume_outputs(
+    session_db_path: Path,
+    session_id: str,
+    *,
+    in_nemo_term: bool = False,
+) -> list:
+    """Build an interleaved output list for session resume / startup replay.
+
+    Reads all events from *session_db_path* in insertion order and returns a
+    list mixing ``HistoryReplay`` chunks (conversation turns) with
+    ``_RichReplayPayload`` sentinels (inline plots/content) so that each plot
+    appears at its original position between the surrounding turns.
+
+    When *in_nemo_term* is False (plain TUI) rich events are ignored and the
+    list contains a single ``HistoryReplay`` with all turns — matching the
+    original behaviour.
+
+    Callers are responsible for rendering each item:
+    - ``HistoryReplay`` → ``await frontend.render(item)``
+    - ``_RichReplayPayload`` → ``httpx.post(NEMO_RICH_URL, json=item.payload)``
+    """
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    from .output import HistoryReplay, HistoryTurn, _RichReplayPayload
+
+    try:
+        conn = _sqlite3.connect(str(session_db_path))
+        conn.row_factory = _sqlite3.Row
+        rows = conn.execute(
+            "SELECT event_type, data FROM events ORDER BY insertion_order"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        rows = []
+
+    # First pass: collect ordered items
+    items: list[tuple[str, object]] = []  # ("turns", list) | ("rich", dict)
+    pending: list[HistoryTurn] = []
+
+    for row in rows:
+        et = row["event_type"]
+        try:
+            raw = _json.loads(row["data"])
+        except Exception:
+            continue
+        if et == "tui_user_input" and raw.get("text"):
+            pending.append(HistoryTurn(role="user", content=raw["text"]))
+        elif et == "tui_agent_message" and raw.get("content"):
+            pending.append(HistoryTurn(role="agent", content=raw["content"]))
+        elif et == "rich_output" and in_nemo_term and raw.get("payload"):
+            if pending:
+                items.append(("turns", pending[:]))
+                pending = []
+            items.append(("rich", raw["payload"]))
+
+    if pending:
+        items.append(("turns", pending))
+
+    if not items:
+        return []
+
+    # Second pass: assign header/footer flags so rule bars appear exactly once
+    turn_indices = [i for i, (k, _) in enumerate(items) if k == "turns"]
+    if not turn_indices:
+        return []
+    first_tc, last_tc = turn_indices[0], turn_indices[-1]
+    short_id = session_id[:8]
+
+    outputs: list = []
+    for i, (kind, data) in enumerate(items):
+        if kind == "turns":
+            outputs.append(HistoryReplay(
+                turns=data,  # type: ignore[arg-type]
+                session_id=short_id if i == first_tc else "",
+                show_header=(i == first_tc),
+                show_footer=(i == last_tc),
+            ))
+        else:
+            outputs.append(_RichReplayPayload(payload=data))  # type: ignore[arg-type]
+
+    return outputs

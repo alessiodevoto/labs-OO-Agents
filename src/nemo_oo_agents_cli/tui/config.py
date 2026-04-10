@@ -66,12 +66,16 @@ class TUIConfig:
     # MCP servers from .mcp.json
     mcp_file: Path = Path(".mcp.json")
 
-    # Directories to search for skills
+    # Directories to search for skills and user-invocable commands.
+    # Includes both project-local and user-global Claude/Cursor conventions.
     skills_dirs: list[Path] = field(
         default_factory=lambda: [
             Path(".cursor/skills"),
             Path(".claude/skills"),
+            Path(".claude/commands"),
             Path("tui/skills"),
+            Path.home() / ".claude" / "skills",
+            Path.home() / ".claude" / "commands",
         ]
     )
 

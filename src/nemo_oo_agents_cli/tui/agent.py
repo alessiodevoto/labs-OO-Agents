@@ -9,6 +9,7 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 from typing import Annotated
 
 from nemo_oo_agents import hidden, strategy
+from agentdoc import spec
 from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from nemo_oo_agents.tools.web_publisher import WebPublisher
@@ -301,6 +302,10 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         self.bash = BashTool(working_dir=config.working_dir)
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self)
+
+        # Expose context and events to the LLM
+        spec(self, "context", hidden=False)
+        spec(self, "events", hidden=False)
 
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":

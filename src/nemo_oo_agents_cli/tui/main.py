@@ -131,8 +131,8 @@ async def main(
     from .bootstrap import bootstrap, build_registry, build_session, build_startup_info
     from .config import Config
     from .frontend import TerminalFrontend
-    from .output import HistoryReplay, HistoryTurn, TextOutput
-    from .session_manager import SessionManager
+    from .output import TextOutput, _RichReplayPayload
+    from .session_manager import SESSIONS_DIR, build_resume_outputs
     from .splash import show_splash
 
     if config is None:
@@ -157,17 +157,29 @@ async def main(
     # Startup info panel
     await frontend.render(build_startup_info(result))
 
-    # Show resumed session history
+    # Show resumed session history (interleaved with any rich content)
     if result.resumed and result.session_id is not None:
-        turns = SessionManager.load_turns(result.session_id)
-        if turns:
-            await frontend.render(
-                HistoryReplay(
-                    turns=[HistoryTurn(role=t.role, content=t.content) for t in turns],
-                    session_id=result.session_id[:8],
-                )
-            )
+        import os as _os
+        _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+        _db_path = SESSIONS_DIR / f"{result.session_id}.db"
+        _resume_outputs = build_resume_outputs(
+            _db_path, result.session_id, in_nemo_term=_in_nemo_term
+        )
+        if _resume_outputs:
+            _rich_url = _os.environ.get("NEMO_RICH_URL") if _in_nemo_term else None
+            for _item in _resume_outputs:
+                if isinstance(_item, _RichReplayPayload):
+                    if _rich_url:
+                        try:
+                            import httpx as _httpx
+                            _httpx.post(_rich_url, json={**_item.payload, "_replay": True}, timeout=5.0)
+                        except Exception:
+                            pass
+                else:
+                    await frontend.render(_item)
             await frontend.render(TextOutput(f"Session {result.session_id[:8]} resumed.", "status"))
+        else:
+            await frontend.render(TextOutput("No previous session with turns found.", "info"))
     elif continue_last:
         await frontend.render(TextOutput("No previous session with turns found.", "info"))
 

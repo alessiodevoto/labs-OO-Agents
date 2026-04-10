@@ -207,10 +207,18 @@ class HistoryReplay:
     Used when resuming or continuing a session so the user can see what was
     said before.  Frontends should render this in a visually dimmed / muted
     style to distinguish it from the live conversation.
+
+    When rich content is interleaved with history (session resume inside
+    ``nemo oo term``), one session's history may be split into several
+    ``HistoryReplay`` chunks with ``_RichReplayPayload`` objects between them.
+    ``show_header`` / ``show_footer`` control which chunk renders the enclosing
+    rule bars so they appear exactly once around the whole block.
     """
 
     turns: list[HistoryTurn]
     session_id: str  # short (8-char) id for the header label
+    show_header: bool = True
+    show_footer: bool = True
 
     def to_json(self) -> dict:
         return {
@@ -276,6 +284,24 @@ class RichOutput:
             "title": self.title,
             "fallback_text": self.fallback_text,
         }
+
+
+# ---------------------------------------------------------------------------
+# _RichReplayPayload — internal sentinel for interleaved rich-content replay
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _RichReplayPayload:
+    """Carry a raw WebPublisher payload through an output list.
+
+    Not part of the public ``Output`` union — intercepted by ``CommandHandler``
+    and the ``--continue`` startup path before reaching any frontend renderer.
+    Each instance is POSTed to ``NEMO_RICH_URL`` in sequence so that plots
+    appear at their correct inline positions between history turns.
+    """
+
+    payload: dict
 
 
 # ---------------------------------------------------------------------------
