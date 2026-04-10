@@ -216,7 +216,9 @@ class TestTUIViaTestFrontend:
 
         from nemo_oo_agents_cli.tui.output import TextOutput
 
-        goodbyes = [o for o in frontend.outputs if isinstance(o, TextOutput) and "Goodbye" in o.content]
+        goodbyes = [
+            o for o in frontend.outputs if isinstance(o, TextOutput) and "Goodbye" in o.content
+        ]
         assert goodbyes, "Expected a Goodbye message after /exit"
 
     @pytest.mark.asyncio

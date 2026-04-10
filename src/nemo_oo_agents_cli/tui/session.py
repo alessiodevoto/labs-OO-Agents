@@ -162,9 +162,7 @@ async def _handle_bash_shell(frontend: "Frontend") -> None:
     from .output import TextOutput
 
     if not sys.stdin.isatty():
-        await frontend.render(
-            TextOutput("!bash requires an interactive terminal.", "warning")
-        )
+        await frontend.render(TextOutput("!bash requires an interactive terminal.", "warning"))
         return
 
     await frontend.stop_thinking()
@@ -375,6 +373,7 @@ class Session:
                         asyncio.create_task(self._auto_name_session(self._first_message))
                     if result.exit:
                         from .output import SessionEnd
+
                         await self.frontend.render(SessionEnd())
                         break
                     if result.agent_message is not None:
@@ -383,7 +382,10 @@ class Session:
                             self._session_manager.record_user(msg)
                         if self._first_message is None:
                             self._first_message = user_input  # short form for session naming
-                            if self._session_manager is not None and not self._session_manager.user_named:
+                            if (
+                                self._session_manager is not None
+                                and not self._session_manager.user_named
+                            ):
                                 asyncio.create_task(self._auto_name_session(user_input))
                         await self._agent_turn(msg)
                     continue

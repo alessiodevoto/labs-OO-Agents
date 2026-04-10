@@ -769,14 +769,14 @@ def skills_dir(tmp_path):
     # wtf-issue-add — argument-hint + user-invocable: false + invalid YAML arg-hint
     (tmp_path / "wtf-issue-add").mkdir()
     (tmp_path / "wtf-issue-add" / "SKILL.md").write_text(
-        '---\n'
-        'name: wtf-issue-add\n'
-        'description: Create a new WTF issue\n'
+        "---\n"
+        "name: wtf-issue-add\n"
+        "description: Create a new WTF issue\n"
         'argument-hint: "<title>" [-p priority] [-a assignee]\n'
-        'allowed-tools: Bash(uv:*), Bash(.venv/bin/wtf:*)\n'
-        'user-invocable: false\n'
-        '---\n\n'
-        '# WTF Issue Add\n\nCreate an issue.\n'
+        "allowed-tools: Bash(uv:*), Bash(.venv/bin/wtf:*)\n"
+        "user-invocable: false\n"
+        "---\n\n"
+        "# WTF Issue Add\n\nCreate an issue.\n"
     )
 
     # trace-explorer — explicitly opted out with user-invocable: false
@@ -879,8 +879,11 @@ async def test_user_skill_arguments_substitution(tmp_path, mock_frontend, mock_c
         "Write a commit for: $ARGUMENTS\n"
     )
     registry = CommandRegistry(
-        frontend=mock_frontend, config=mock_config, agent=mock_agent,
-        skills_dirs=[tmp_path], mcp_file=Path(".mcp.json"),
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=[tmp_path],
+        mcp_file=Path(".mcp.json"),
     )
     handler = CommandHandler(registry=registry, frontend=mock_frontend)
     result = await handler.handle("/commit fix the login bug")
@@ -901,22 +904,36 @@ def test_all_skills_auto_attached_to_agent(skills_dir, mock_frontend, mock_confi
     from nemo_oo_agents.skill import TextSkill
 
     agent = MagicMock()
-    agent.get_summarization_status = MagicMock(return_value={
-        "active_events": 0, "policy": "auto", "has_summarizer": False,
-        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
-        "summary_count": 0, "summary_tags": [],
-    })
+    agent.get_summarization_status = MagicMock(
+        return_value={
+            "active_events": 0,
+            "policy": "auto",
+            "has_summarizer": False,
+            "max_tokens": 100000,
+            "current_tokens": 0,
+            "preserve_recent": 5,
+            "summary_count": 0,
+            "summary_tags": [],
+        }
+    )
     agent.bash = MagicMock()
     agent.event_manager = MagicMock()
+
     # MagicMock reports hasattr(...) = True for everything, but setattr should work
     # Use a real object so we can check attributes were set
     class _FakeAgent:
         pass
+
     real_agent = _FakeAgent()
     real_agent.get_summarization_status = lambda: {
-        "active_events": 0, "policy": "auto", "has_summarizer": False,
-        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
-        "summary_count": 0, "summary_tags": [],
+        "active_events": 0,
+        "policy": "auto",
+        "has_summarizer": False,
+        "max_tokens": 100000,
+        "current_tokens": 0,
+        "preserve_recent": 5,
+        "summary_count": 0,
+        "summary_tags": [],
     }
     real_agent.event_manager = MagicMock()
     real_agent.bash = MagicMock()
@@ -935,7 +952,9 @@ def test_all_skills_auto_attached_to_agent(skills_dir, mock_frontend, mock_confi
     # All skills (user-invokable AND plain) should be attached to the agent
     assert hasattr(real_agent, "wtf"), "skill 'wtf' was not attached to agent"
     assert hasattr(real_agent, "wtf_status"), "skill 'wtf-status' was not attached to agent"
-    assert hasattr(real_agent, "trace_explorer"), "plain skill 'trace-explorer' was not attached to agent"
+    assert hasattr(real_agent, "trace_explorer"), (
+        "plain skill 'trace-explorer' was not attached to agent"
+    )
     assert isinstance(real_agent.wtf, TextSkill)
     assert isinstance(real_agent.trace_explorer, TextSkill)
 
@@ -946,11 +965,17 @@ def test_user_invokable_skill_also_attached_to_agent(skills_dir, mock_frontend, 
 
     class _FakeAgent:
         pass
+
     agent = _FakeAgent()
     agent.get_summarization_status = lambda: {
-        "active_events": 0, "policy": "auto", "has_summarizer": False,
-        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
-        "summary_count": 0, "summary_tags": [],
+        "active_events": 0,
+        "policy": "auto",
+        "has_summarizer": False,
+        "max_tokens": 100000,
+        "current_tokens": 0,
+        "preserve_recent": 5,
+        "summary_count": 0,
+        "summary_tags": [],
     }
     agent.event_manager = MagicMock()
     agent.bash = MagicMock()
@@ -970,7 +995,6 @@ def test_user_invokable_skill_also_attached_to_agent(skills_dir, mock_frontend, 
     assert agent.wtf.description == "Manage WTF issues"
 
 
-
 def test_user_skill_discovered_when_nested(mock_frontend, mock_config, mock_agent, tmp_path):
     """install-as:command skill nested two levels deep is still discovered.
 
@@ -988,8 +1012,11 @@ def test_user_skill_discovered_when_nested(mock_frontend, mock_config, mock_agen
     )
 
     registry = CommandRegistry(
-        frontend=mock_frontend, config=mock_config, agent=mock_agent,
-        skills_dirs=[tmp_path], mcp_file=None,
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
     skill = registry.get_user_skill("wtf")
     assert skill is not None, (
@@ -998,7 +1025,9 @@ def test_user_skill_discovered_when_nested(mock_frontend, mock_config, mock_agen
     assert skill.name == "wtf"
 
 
-def test_skill_with_invalid_yaml_argument_hint_is_discovered(mock_frontend, mock_config, mock_agent, tmp_path):
+def test_skill_with_invalid_yaml_argument_hint_is_discovered(
+    mock_frontend, mock_config, mock_agent, tmp_path
+):
     """A skill whose frontmatter contains an invalid-YAML argument-hint must still be discovered.
 
     Claude Code-style hints like '"<action>" [issue-id]' are a quoted scalar followed by
@@ -1010,18 +1039,21 @@ def test_skill_with_invalid_yaml_argument_hint_is_discovered(mock_frontend, mock
     skill_dir = tmp_path / "wtf"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        '---\n'
-        'name: wtf\n'
-        'description: Manage WTF issues\n'
-        'install-as: command\n'
+        "---\n"
+        "name: wtf\n"
+        "description: Manage WTF issues\n"
+        "install-as: command\n"
         'argument-hint: "<action>" [issue-id]\n'
-        '---\n'
-        'Use this skill to manage issues.\n'
+        "---\n"
+        "Use this skill to manage issues.\n"
     )
 
     registry = CommandRegistry(
-        frontend=mock_frontend, config=mock_config, agent=mock_agent,
-        skills_dirs=[tmp_path], mcp_file=None,
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
     skill = registry.get_user_skill("wtf")
     assert skill is not None, (
@@ -1049,18 +1081,21 @@ def test_skill_with_user_invocable_false_and_invalid_yaml_not_discovered(
     skill_dir = tmp_path / "wtf-issue-add"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        '---\n'
-        'name: wtf-issue-add\n'
-        'description: Create a new WTF issue\n'
-        'user-invocable: false\n'
-        'argument-hint: "<title>" [-p priority]\n'   # invalid YAML → triggers regex fallback
-        '---\n'
-        'Body.\n'
+        "---\n"
+        "name: wtf-issue-add\n"
+        "description: Create a new WTF issue\n"
+        "user-invocable: false\n"
+        'argument-hint: "<title>" [-p priority]\n'  # invalid YAML → triggers regex fallback
+        "---\n"
+        "Body.\n"
     )
 
     registry = CommandRegistry(
-        frontend=mock_frontend, config=mock_config, agent=mock_agent,
-        skills_dirs=[tmp_path], mcp_file=None,
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
     skill = registry.get_user_skill("wtf-issue-add")
     assert skill is None, (

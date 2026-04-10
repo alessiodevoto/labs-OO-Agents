@@ -37,7 +37,9 @@ class TUIConsole:
             text=Text(message, style=f"{COLORS['subtext1']}"),
             style=COLORS["mauve"],
         )
-        self._live_spinner = Live(spinner, console=self.console, refresh_per_second=10, transient=True)
+        self._live_spinner = Live(
+            spinner, console=self.console, refresh_per_second=10, transient=True
+        )
         self._live_spinner.start()
 
     def stop_spinner(self) -> None:
@@ -65,9 +67,7 @@ class TUIConsole:
         # 4. Normalize line endings and rejoin
         cleaned = "\n".join(line.rstrip() for line in lines)
 
-        self.console.print(
-            Rule(title="[agent]OO[/agent]", style=COLORS["surface2"], align="left")
-        )
+        self.console.print(Rule(title="[agent]OO[/agent]", style=COLORS["surface2"], align="left"))
         self.console.print(Markdown(cleaned))
 
     def print_error(self, message: str) -> None:

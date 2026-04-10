@@ -158,9 +158,7 @@ def test_user_invocable_false_is_not_user_command(tmp_path):
 
 
 def test_no_flags_is_not_user_command(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\n---\nbody"
-    )
+    (tmp_path / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\nbody")
     props = _read_skill_properties(tmp_path)
     assert props.is_user_command is False
 

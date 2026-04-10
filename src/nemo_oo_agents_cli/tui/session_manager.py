@@ -11,7 +11,6 @@ exposes the same public API as before (``record_user``,
 ``list_sessions``, ``load_turns``, etc.).
 """
 
-
 import sqlite3
 import time
 import uuid
@@ -61,7 +60,7 @@ class SessionManager:
 
     def __init__(
         self,
-        storage: 'SQLiteStorageManager',
+        storage: "SQLiteStorageManager",
         session_id: str | None = None,
         model: str = "",
         agent_cls: str = "TUIAgent",
@@ -383,12 +382,14 @@ def build_resume_outputs(
     outputs: list = []
     for i, (kind, data) in enumerate(items):
         if kind == "turns":
-            outputs.append(HistoryReplay(
-                turns=data,  # type: ignore[arg-type]
-                session_id=short_id if i == first_tc else "",
-                show_header=(i == first_tc),
-                show_footer=(i == last_tc),
-            ))
+            outputs.append(
+                HistoryReplay(
+                    turns=data,  # type: ignore[arg-type]
+                    session_id=short_id if i == first_tc else "",
+                    show_header=(i == first_tc),
+                    show_footer=(i == last_tc),
+                )
+            )
         else:
             outputs.append(_RichReplayPayload(payload=data))  # type: ignore[arg-type]
 

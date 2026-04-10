@@ -75,7 +75,7 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
         # --- Fallback: line-by-line regex (Claude Code-compatible) ---
         meta = {}
         for line in fm_text.splitlines():
-            m = re.match(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$', line)
+            m = re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", line)
             if not m:
                 continue
             key, raw = m.group(1), m.group(2).strip()

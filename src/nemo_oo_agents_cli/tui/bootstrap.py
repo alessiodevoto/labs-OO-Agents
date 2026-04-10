@@ -8,7 +8,6 @@ This makes it structurally impossible for a feature to exist in one frontend
 but not the other: if it's in bootstrap, both get it.
 """
 
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 class BootstrapResult:
     """Everything produced by bootstrap — ready to wire to any frontend."""
 
-    config: 'Config'
+    config: "Config"
     agent: "Agent"
     session_manager: "SessionManager | None"
     tracing_enabled: bool
@@ -40,7 +39,7 @@ class BootstrapResult:
 
 
 async def bootstrap(
-    config: 'Config',
+    config: "Config",
     *,
     continue_last: bool = False,
     resume_session_id: str | None = None,
@@ -219,10 +218,12 @@ async def bootstrap(
     # so the browser panel is restored.  Uses the public event_manager.filter()
     # interface — no direct storage access needed.
     import os as _os
+
     if _resumed and _os.environ.get("NEMO_RICH_URL"):
         try:
             from nemo_oo_agents.tools.web_publisher import RichOutput
             from nemo_oo_agents.tools.web_publisher import WebPublisher as _WP
+
             agent.event_manager.register_event_type(RichOutput)
             _rich_events = agent.event_manager.filter(type="rich_output")
             if _rich_events:
@@ -256,7 +257,6 @@ async def bootstrap(
         tracing_enabled=tracing_enabled,
         resumed=_resumed,
         session_id=_session_id,
-
         messages=messages,
     )
 

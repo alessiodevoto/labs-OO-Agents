@@ -593,14 +593,14 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            with patch.object(
-                unifiedllm, "get_llm_client", side_effect=Exception("auth error")
-            ):
+            with patch.object(unifiedllm, "get_llm_client", side_effect=Exception("auth error")):
                 result = await cmd.execute(["prov/m"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is False
-        assert any("Failed to switch" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "Failed to switch" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
 
 class TestHistoryCommandValidation:
@@ -778,7 +778,9 @@ class TestMCPCommandExecute:
             mock_mcp.create_from_server.side_effect = Exception("conn fail")
             result = await cmd.execute(["connect", "server1"])
         assert result.success is False
-        assert any("Failed to connect" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "Failed to connect" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
         mock_console.stop_thinking.assert_called()
 
     async def test_disconnect_not_connected(self, mock_console, mock_config, mock_agent):
@@ -787,7 +789,9 @@ class TestMCPCommandExecute:
             mock_mcp.list_servers.return_value = ["server1"]
             result = await cmd.execute(["disconnect", "server1"])
         assert result.success is False
-        assert any("not connected" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "not connected" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_disconnect_success(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
@@ -851,7 +855,11 @@ class TestSkillsCommandExecute:
         with patch("nemo_oo_agents.SkillManager"):
             result = await cmd.execute(["list"])
         assert result.success is True
-        assert any("No skills directories" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "No skills directories" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_list_with_skills(self, mock_console, mock_config, mock_agent):
         skill_mock = MagicMock()
@@ -869,14 +877,20 @@ class TestSkillsCommandExecute:
             MockSM.discover.return_value = {}
             result = await cmd.execute(["list"])
         assert result.success is True
-        assert any("No skills found" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "No skills found" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_activate_no_dirs(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=None)
         with patch("nemo_oo_agents.SkillManager"):
             result = await cmd.execute(["activate", "myskill"])
         assert result.success is False
-        assert any("No skills directories" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "No skills directories" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_activate_not_found(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -912,7 +926,9 @@ class TestSkillsCommandExecute:
             with patch("nemo_oo_agents_cli.tui.commands.setattr", side_effect=Exception("bad")):
                 result = await cmd.execute(["activate", "myskill"])
         assert result.success is False
-        assert any("Failed to activate" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "Failed to activate" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_deactivate_not_active(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -992,7 +1008,9 @@ class TestSandboxCommandExecute:
         cmd = SandboxCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["enable"])
         assert result.success is True
-        assert any("already enabled" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "already enabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_enable_success(self, mock_console, mock_config, mock_agent):
         mock_agent.bash.sandbox_available = True
@@ -1007,7 +1025,9 @@ class TestSandboxCommandExecute:
         cmd = SandboxCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["disable"])
         assert result.success is True
-        assert any("already disabled" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "already disabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_disable_success(self, mock_console, mock_config, mock_agent):
         mock_agent.bash.use_sandbox = True
@@ -1143,12 +1163,18 @@ class TestCommandHandler:
     async def test_empty_command(self, handler):
         result = await handler.handle("/")
         assert result.success is False
-        assert any("Empty command" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "Empty command" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_unknown_command(self, handler, mock_console):
         result = await handler.handle("/unknown")
         assert result.success is False
-        assert any("Unknown command: /unknown" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "Unknown command: /unknown" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
         mock_console.render.assert_called()
 
     async def test_unavailable_command(self, mock_console, mock_config):
@@ -1158,7 +1184,11 @@ class TestCommandHandler:
         h = CommandHandler(registry=reg, frontend=mock_console)
         result = await h.handle("/sandbox")
         assert result.success is False
-        assert any("not available with this agent" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "not available with this agent" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_suggestion_for_similar_command(self, handler, mock_console):
         result = await handler.handle("/hel")

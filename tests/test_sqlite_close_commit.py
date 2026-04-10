@@ -41,7 +41,9 @@ def test_close_commits_pending_events():
         storage2.close()
 
         assert len(events) >= 1, "Event should be persisted after close"
-        assert any("Test event before close" in str(e) for e in events),             "The specific test event should be found"
+        assert any("Test event before close" in str(e) for e in events), (
+            "The specific test event should be found"
+        )
 
 
 def test_close_commits_agent_snapshot():
@@ -100,8 +102,12 @@ def test_session_swap_preserves_old_session():
         # Verify session 1's events are still there
         assert len(events) >= 2, "Session 1 events should be preserved after swap"
         contents = [str(e) for e in events]
-        assert any("Session 1 message 1" in c for c in contents),             "First message should be preserved"
-        assert any("Session 1 message 2" in c for c in contents),             "Second message should be preserved"
+        assert any("Session 1 message 1" in c for c in contents), (
+            "First message should be preserved"
+        )
+        assert any("Session 1 message 2" in c for c in contents), (
+            "Second message should be preserved"
+        )
 
 
 def test_multiple_close_calls_safe():
@@ -121,4 +127,3 @@ def test_multiple_close_calls_safe():
         storage2.close()
 
         assert len(events) >= 1, "Event should be persisted"
-

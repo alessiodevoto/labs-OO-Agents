@@ -5,11 +5,10 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
-
 from typing import Annotated
 
-from nemo_oo_agents import hidden, strategy
 from agentdoc import spec
+from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from nemo_oo_agents.tools.web_publisher import WebPublisher
@@ -74,9 +73,11 @@ with hidden:
         from unifiedllm import get_llm_client
 
         from .config import DEFAULT_MODEL
+
         _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
     except Exception:
         from unifiedllm import FakeLLMClient
+
         _DEFAULT_LLM = FakeLLMClient()
 
 
@@ -210,8 +211,11 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self._render_message = None
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
+
             self.event_manager.register_event_type(RichOutput)
-            self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(event_manager=self.event_manager)
+            self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(
+                event_manager=self.event_manager
+            )
 
     def message(self, text: str) -> None:
         """Send a Markdown message to the user."""
@@ -266,7 +270,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     Do NOT use import statements — all modules are pre-loaded. Check the
     execution_context for what's available (np, pd, px, go, json, math, etc.).
 
-"""
+    """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]

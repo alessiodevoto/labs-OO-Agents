@@ -316,7 +316,9 @@ class TerminalFrontend:
             )
         for turn in output.turns:
             if turn.role == "user":
-                c.print(Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}"))
+                c.print(
+                    Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}")
+                )
             else:
                 # Render agent turns as dimmed markdown
                 c.print(Text("OO:", style=f"bold {dim}"))

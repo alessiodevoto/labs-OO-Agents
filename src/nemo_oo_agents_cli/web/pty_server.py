@@ -10,7 +10,6 @@ Endpoints:
   POST /rich    — HTTP endpoint the agent POSTs rich payloads to
 """
 
-
 import asyncio
 import base64
 import json

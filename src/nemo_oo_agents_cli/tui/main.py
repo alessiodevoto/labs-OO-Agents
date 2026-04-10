@@ -11,7 +11,6 @@ The ``main()`` coroutine keeps its original signature so that callers like
     await main(config=config, agent=agent)
 """
 
-
 import argparse
 from typing import TYPE_CHECKING
 
@@ -116,7 +115,7 @@ def parse_args() -> argparse.Namespace:
 
 
 async def main(
-    config: 'Config | None' = None,
+    config: "Config | None" = None,
     agent: "Agent | None" = None,
     continue_last: bool = False,
 ) -> None:
@@ -160,6 +159,7 @@ async def main(
     # Show resumed session history (interleaved with any rich content)
     if result.resumed and result.session_id is not None:
         import os as _os
+
         _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
         _db_path = SESSIONS_DIR / f"{result.session_id}.db"
         _resume_outputs = build_resume_outputs(
@@ -172,7 +172,10 @@ async def main(
                     if _rich_url:
                         try:
                             import httpx as _httpx
-                            _httpx.post(_rich_url, json={**_item.payload, "_replay": True}, timeout=5.0)
+
+                            _httpx.post(
+                                _rich_url, json={**_item.payload, "_replay": True}, timeout=5.0
+                            )
                         except Exception:
                             pass
                 else:

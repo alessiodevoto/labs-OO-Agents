@@ -32,4 +32,3 @@ def test_term_command_handles_sigint_cleanly():
     assert result.exit_code == 0, (
         f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
     )
-

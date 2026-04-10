@@ -110,15 +110,17 @@ class Completer:
         from .theme import THEMES
 
         prefix = "/theme "
-        partial = text[len(prefix):]
+        partial = text[len(prefix) :]
         items = []
         for name in THEMES:
             if name.startswith(partial.lower()):
-                items.append(CompletionItem(
-                    text=prefix + name,
-                    display=prefix + name,
-                    description=f"Switch to {name} theme",
-                ))
+                items.append(
+                    CompletionItem(
+                        text=prefix + name,
+                        display=prefix + name,
+                        description=f"Switch to {name} theme",
+                    )
+                )
         return items
 
     # ------------------------------------------------------------------
@@ -132,15 +134,17 @@ class Completer:
             return []
 
         prefix = "/switch "
-        partial = text[len(prefix):]
+        partial = text[len(prefix) :]
         items = []
         for name in sorted(MODELS.keys()):
             if name.lower().startswith(partial.lower()):
-                items.append(CompletionItem(
-                    text=prefix + name,
-                    display=prefix + name,
-                    description=f"Switch to {name}",
-                ))
+                items.append(
+                    CompletionItem(
+                        text=prefix + name,
+                        display=prefix + name,
+                        description=f"Switch to {name}",
+                    )
+                )
         return items
 
     # ------------------------------------------------------------------
@@ -157,7 +161,7 @@ class Completer:
         if not skills_dirs:
             return []
 
-        partial = text[len(prefix):]
+        partial = text[len(prefix) :]
         try:
             skills = SkillManager.discover(skills_dirs)
         except Exception:
@@ -168,11 +172,13 @@ class Completer:
             if partial and not sid.startswith(partial):
                 continue
             desc = getattr(skill, "description", "")
-            items.append(CompletionItem(
-                text=prefix + sid,
-                display=prefix + sid,
-                description=desc,
-            ))
+            items.append(
+                CompletionItem(
+                    text=prefix + sid,
+                    display=prefix + sid,
+                    description=desc,
+                )
+            )
         return items
 
     # ------------------------------------------------------------------

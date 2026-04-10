@@ -61,9 +61,7 @@ import click
     show_default=True,
     help="Host to bind the web server to",
 )
-@click.option(
-    "--port", "-p", default=8000, show_default=True, type=int, help="Port to listen on"
-)
+@click.option("--port", "-p", default=8000, show_default=True, type=int, help="Port to listen on")
 def command(
     model: str | None,
     agent_spec: str | None,
@@ -144,8 +142,13 @@ def command(
 
     _SHUTDOWN_TIMEOUT = 5  # seconds shown in countdown
 
-    config = Config(app=app, host=host, port=port, log_level="warning",
-                    timeout_graceful_shutdown=_SHUTDOWN_TIMEOUT + 1)
+    config = Config(
+        app=app,
+        host=host,
+        port=port,
+        log_level="warning",
+        timeout_graceful_shutdown=_SHUTDOWN_TIMEOUT + 1,
+    )
     server = Server(config)
 
     # We manage our own SIGINT/SIGTERM so we can show a countdown.
@@ -159,9 +162,7 @@ def command(
         def filter(self, record: logging.LogRecord) -> bool:
             msg = record.getMessage()
             exc_str = str(record.exc_info or "")
-            return not any(
-                token in msg or token in exc_str for token in self._SUPPRESSED
-            )
+            return not any(token in msg or token in exc_str for token in self._SUPPRESSED)
 
     _noise_filter = _SuppressShutdownNoise()
     for _ln in ("uvicorn.error", "uvicorn", "uvicorn.access"):

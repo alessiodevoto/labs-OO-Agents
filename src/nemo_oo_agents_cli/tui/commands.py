@@ -8,7 +8,6 @@ frontend directly for its results — it only uses ``self.frontend`` for
 interactive I/O that must happen *during* execution (spinners, prompts).
 """
 
-
 import abc
 import datetime
 import logging
@@ -320,8 +319,6 @@ class SwitchCommand(Command):
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
-
-
 class ThemeCommand(Command):
     """Switch the color theme."""
 
@@ -576,19 +573,24 @@ class SkillsCommand(Command):
             outputs: list[Output] = []
             # 1. What's in _user_skills
             user_skills = registry._user_skills if registry else {}
-            rows_us = [[name, skill.description[:60]] for name, skill in sorted(user_skills.items())]
-            outputs.append(TableOutput(
-                title=f"_user_skills ({len(user_skills)} entries)",
-                columns=["Name", "Description"],
-                rows=rows_us or [["(empty)", ""]],
-            ))
+            rows_us = [
+                [name, skill.description[:60]] for name, skill in sorted(user_skills.items())
+            ]
+            outputs.append(
+                TableOutput(
+                    title=f"_user_skills ({len(user_skills)} entries)",
+                    columns=["Name", "Description"],
+                    rows=rows_us or [["(empty)", ""]],
+                )
+            )
             # 2. Raw scan trace — walk exactly what _discover_user_skills does
             scan_rows = []
             try:
                 import re as _re
 
                 import yaml as _yaml
-                for sd in (self.skills_dirs or []):
+
+                for sd in self.skills_dirs or []:
                     sd = Path(sd)
                     if not sd.is_dir():
                         scan_rows.append([str(sd), "(dir missing)", ""])
@@ -615,7 +617,7 @@ class SkillsCommand(Command):
                             except Exception:
                                 m = {}
                                 for ln in pts[1].splitlines():
-                                    mx = _re.match(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$', ln)
+                                    mx = _re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", ln)
                                     if mx:
                                         rv = mx.group(2).strip()
                                         try:
@@ -630,33 +632,55 @@ class SkillsCommand(Command):
                             nm = str(m.get("name", "")).strip()
                             reason = (
                                 f"OK ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
-                                if uv else
-                                f"SKIP ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
+                                if uv
+                                else f"SKIP ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
                             )
                             scan_rows.append([str(sm.relative_to(sd)), reason, ""])
                         except Exception as ex:
                             scan_rows.append([str(sm), f"ERROR: {ex}", ""])
             except Exception as ex:
                 scan_rows.append(["scan error", str(ex), ""])
-            outputs.append(TableOutput(
-                title="Scan trace",
-                columns=["File", "Result", ""],
-                rows=scan_rows or [["(nothing scanned)", "", ""]],
-            ))
+            outputs.append(
+                TableOutput(
+                    title="Scan trace",
+                    columns=["File", "Result", ""],
+                    rows=scan_rows or [["(nothing scanned)", "", ""]],
+                )
+            )
             # 3. What get_completions() returns (the dict fed to Tab completion)
             if registry:
                 completions = registry.get_completions()
-                skill_completions = {k: v for k, v in completions.items()
-                                     if k not in {"/help", "/exit", "/quit", "/clear",
-                                                  "/compact", "/edit", "/model", "/models",
-                                                  "/switch", "/theme", "/history", "/mcp",
-                                                  "/skills", "/sandbox", "/python", "/session"}}
+                skill_completions = {
+                    k: v
+                    for k, v in completions.items()
+                    if k
+                    not in {
+                        "/help",
+                        "/exit",
+                        "/quit",
+                        "/clear",
+                        "/compact",
+                        "/edit",
+                        "/model",
+                        "/models",
+                        "/switch",
+                        "/theme",
+                        "/history",
+                        "/mcp",
+                        "/skills",
+                        "/sandbox",
+                        "/python",
+                        "/session",
+                    }
+                }
                 rows_c = [[k, v[:60]] for k, v in sorted(skill_completions.items())]
-                outputs.append(TableOutput(
-                    title=f"Skill completions in get_completions() ({len(skill_completions)} extra)",
-                    columns=["Key", "Description"],
-                    rows=rows_c or [["(none)", ""]],
-                ))
+                outputs.append(
+                    TableOutput(
+                        title=f"Skill completions in get_completions() ({len(skill_completions)} extra)",
+                        columns=["Key", "Description"],
+                        rows=rows_c or [["(none)", ""]],
+                    )
+                )
             # 4. Skills dirs
             outputs.append(TextOutput(f"skills_dirs: {self.skills_dirs}", "status"))
             return CommandResult.ok(*outputs)
@@ -1054,9 +1078,7 @@ class SessionCommand(Command):
             _session_db_path = _SESSIONS_DIR / f"{full_id}.db"
             _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
 
-            outputs = build_resume_outputs(
-                _session_db_path, full_id, in_nemo_term=_in_nemo_term
-            )
+            outputs = build_resume_outputs(_session_db_path, full_id, in_nemo_term=_in_nemo_term)
             if not outputs:
                 return CommandResult.err(f"Session '{session_id}' is empty.")
 
@@ -1263,15 +1285,18 @@ class CommandRegistry:
                         # argument-hint: "<action>" [issue-id]  (Claude Code style).
                         # Parse each scalar individually so "false" → False (not "false").
                         import re
+
                         meta = {}
                         for line in parts[1].splitlines():
-                            m = re.match(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$', line)
+                            m = re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", line)
                             if not m:
                                 continue
                             raw = m.group(2).strip()
                             try:
                                 parsed = yaml.safe_load(raw)
-                                meta[m.group(1)] = str(parsed) if isinstance(parsed, list) else parsed
+                                meta[m.group(1)] = (
+                                    str(parsed) if isinstance(parsed, list) else parsed
+                                )
                             except Exception:
                                 meta[m.group(1)] = raw
                     if not isinstance(meta, dict):
@@ -1308,6 +1333,7 @@ class CommandRegistry:
             return
         try:
             from nemo_oo_agents import SkillManager
+
             SkillManager.install(self.agent, skills_dir=self.skills_dirs)
         except ImportError:
             pass
@@ -1421,17 +1447,23 @@ class CommandHandler:
         # here (not forwarded to the frontend) and POSTed to NEMO_RICH_URL so
         # plots appear at their correct inline position between history turns.
         import os as _os
-        _rich_url = _os.environ.get("NEMO_RICH_URL") if any(
-            isinstance(o, _RichReplayPayload) for o in result.outputs
-        ) else None
+
+        _rich_url = (
+            _os.environ.get("NEMO_RICH_URL")
+            if any(isinstance(o, _RichReplayPayload) for o in result.outputs)
+            else None
+        )
         for output in result.outputs:
             if isinstance(output, _RichReplayPayload):
                 if _rich_url:
                     try:
                         import httpx as _httpx
+
                         # _replay=True tells the browser to skip blank-line
                         # reservation so replayed plots don't push down the prompt.
-                        _httpx.post(_rich_url, json={**output.payload, "_replay": True}, timeout=5.0)
+                        _httpx.post(
+                            _rich_url, json={**output.payload, "_replay": True}, timeout=5.0
+                        )
                     except Exception:
                         pass
             else:

@@ -162,18 +162,28 @@ def user_skill_registry(tmp_path):
     )
 
     agent = MagicMock()
-    agent.get_summarization_status = MagicMock(return_value={
-        "active_events": 0, "policy": "auto", "has_summarizer": False,
-        "max_tokens": 100000, "current_tokens": 0,
-        "preserve_recent": 5, "summary_count": 0, "summary_tags": [],
-    })
+    agent.get_summarization_status = MagicMock(
+        return_value={
+            "active_events": 0,
+            "policy": "auto",
+            "has_summarizer": False,
+            "max_tokens": 100000,
+            "current_tokens": 0,
+            "preserve_recent": 5,
+            "summary_count": 0,
+            "summary_tags": [],
+        }
+    )
     config = MagicMock()
     config.default_model = "test-model"
     frontend = MagicMock()
 
     return CommandRegistry(
-        config=config, agent=agent, frontend=frontend,
-        skills_dirs=[tmp_path], mcp_file=None,
+        config=config,
+        agent=agent,
+        frontend=frontend,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
 
 
@@ -186,9 +196,7 @@ def test_user_skill_appears_in_completer_via_real_registry(user_skill_registry):
     completer = Completer(registry=user_skill_registry)
     items = completer.complete("/")
     texts = [i.text for i in items]
-    assert any("myskill" in t for t in texts), (
-        f"Expected '/myskill' in completions, got: {texts}"
-    )
+    assert any("myskill" in t for t in texts), f"Expected '/myskill' in completions, got: {texts}"
 
 
 def test_user_skill_partial_completion(user_skill_registry):
@@ -222,8 +230,11 @@ def test_opted_out_skill_not_in_completer(tmp_path):
     frontend = MagicMock()
 
     registry = CommandRegistry(
-        config=config, agent=agent, frontend=frontend,
-        skills_dirs=[tmp_path], mcp_file=None,
+        config=config,
+        agent=agent,
+        frontend=frontend,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
     completer = Completer(registry=registry)
     items = completer.complete("/")
@@ -244,18 +255,28 @@ def _make_skill_registry(tmp_path, skill_name: str, skill_md_text: str):
     (skill_dir / "SKILL.md").write_text(skill_md_text)
 
     agent = MagicMock()
-    agent.get_summarization_status = MagicMock(return_value={
-        "active_events": 0, "policy": "auto", "has_summarizer": False,
-        "max_tokens": 100000, "current_tokens": 0,
-        "preserve_recent": 5, "summary_count": 0, "summary_tags": [],
-    })
+    agent.get_summarization_status = MagicMock(
+        return_value={
+            "active_events": 0,
+            "policy": "auto",
+            "has_summarizer": False,
+            "max_tokens": 100000,
+            "current_tokens": 0,
+            "preserve_recent": 5,
+            "summary_count": 0,
+            "summary_tags": [],
+        }
+    )
     config = MagicMock()
     config.default_model = "test"
     frontend = MagicMock()
 
     return CommandRegistry(
-        config=config, agent=agent, frontend=frontend,
-        skills_dirs=[tmp_path], mcp_file=None,
+        config=config,
+        agent=agent,
+        frontend=frontend,
+        skills_dirs=[tmp_path],
+        mcp_file=None,
     )
 
 
@@ -266,7 +287,8 @@ def test_bracket_hint_not_inserted(tmp_path):
     insert '/wtf-status' only — not '/wtf-status [label]'.
     """
     registry = _make_skill_registry(
-        tmp_path, "wtf-status",
+        tmp_path,
+        "wtf-status",
         "---\nname: wtf-status\ndescription: Show project status\n"
         "argument-hint: [label]\n---\nShow status.\n",
     )
@@ -276,15 +298,14 @@ def test_bracket_hint_not_inserted(tmp_path):
     assert items, "Expected at least one completion for /wtf-status"
     item = next((i for i in items if "wtf-status" in i.text), None)
     assert item is not None, f"No wtf-status item found in: {[i.text for i in items]}"
-    assert item.text == "/wtf-status", (
-        f"Hint must not be inserted; got text={item.text!r}"
-    )
+    assert item.text == "/wtf-status", f"Hint must not be inserted; got text={item.text!r}"
 
 
 def test_bracket_hint_shown_in_display(tmp_path):
     """[label] style argument hints must appear in the display (menu) string."""
     registry = _make_skill_registry(
-        tmp_path, "wtf-status",
+        tmp_path,
+        "wtf-status",
         "---\nname: wtf-status\ndescription: Show project status\n"
         "argument-hint: [label]\n---\nShow status.\n",
     )
@@ -301,9 +322,9 @@ def test_bracket_hint_shown_in_display(tmp_path):
 def test_angle_hint_shown_in_display(tmp_path):
     """<action> style argument hints must appear in the display (menu) string."""
     registry = _make_skill_registry(
-        tmp_path, "wtf",
-        "---\nname: wtf\ndescription: Manage issues\n"
-        "argument-hint: <action>\n---\nManage.\n",
+        tmp_path,
+        "wtf",
+        "---\nname: wtf\ndescription: Manage issues\nargument-hint: <action>\n---\nManage.\n",
     )
     completer = Completer(registry=registry)
     items = completer.complete("/wtf")

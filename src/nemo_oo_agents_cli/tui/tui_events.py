@@ -8,7 +8,6 @@ to the LLM.  Register them with the event manager at startup:
     agent.event_manager.register_event_type(TUIUserInput)
 """
 
-
 from typing import ClassVar, Literal
 
 from pydantic import Field

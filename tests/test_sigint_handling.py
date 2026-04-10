@@ -37,4 +37,3 @@ def test_sigint_cleanup():
 
 if __name__ == "__main__":
     test_sigint_cleanup()
-

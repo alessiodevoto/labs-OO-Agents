@@ -245,9 +245,7 @@ class TestSwitchCommand:
         """SwitchCommand now requires model as argument: /switch <model>."""
         with patch("unifiedllm.MODELS", {"new-model": None}):
             with patch("unifiedllm.get_llm_client", return_value=MagicMock()):
-                session, frontend, _, _ = _make_session(
-                    tmp_path, ["/switch new-model", "/exit"]
-                )
+                session, frontend, _, _ = _make_session(tmp_path, ["/switch new-model", "/exit"])
                 await session.run()
         assert any("new-model" in t for t in frontend.text_contents())
 
@@ -258,9 +256,7 @@ class TestSwitchCommand:
                 tmp_path, ["/switch nonexistent-model", "/exit"]
             )
             await session.run()
-        assert any(
-            "not found" in t.lower() for t in frontend.text_contents()
-        )
+        assert any("not found" in t.lower() for t in frontend.text_contents())
 
     @pytest.mark.asyncio
     async def test_switch_no_args_error(self, tmp_path):
@@ -469,9 +465,7 @@ class TestEditCommand:
     @pytest.mark.asyncio
     async def test_edit_cancelled(self, tmp_path):
         """open_editor() returns None → 'Edit cancelled.'"""
-        session, frontend, _, _ = _make_session(
-            tmp_path, ["/edit some_file.py", "/exit"]
-        )
+        session, frontend, _, _ = _make_session(tmp_path, ["/edit some_file.py", "/exit"])
         # TestFrontend.open_editor returns None by default
         await session.run()
         assert any("cancelled" in t.lower() for t in frontend.text_contents())
@@ -592,9 +586,7 @@ class TestMCPCommand:
         mock_mcp = MagicMock()
         mock_mcp.MCPManager.list_servers.return_value = ["srv1"]
         with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp}):
-            session, frontend, _, _ = _make_session(
-                tmp_path, ["/mcp connect nope", "/exit"]
-            )
+            session, frontend, _, _ = _make_session(tmp_path, ["/mcp connect nope", "/exit"])
             await session.run()
         assert any("not found" in t.lower() or "nope" in t for t in frontend.text_contents())
 
@@ -615,9 +607,7 @@ class TestMCPCommand:
         mock_mcp = MagicMock()
         mock_mcp.MCPManager.list_servers.return_value = ["myserver"]
         with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp}):
-            session, frontend, _, _ = _make_session(
-                tmp_path, ["/mcp disconnect myserver", "/exit"]
-            )
+            session, frontend, _, _ = _make_session(tmp_path, ["/mcp disconnect myserver", "/exit"])
             await session.run()
         assert any("not connected" in t.lower() for t in frontend.text_contents())
 
@@ -764,9 +754,7 @@ class TestSessionCommand:
     @pytest.mark.asyncio
     async def test_session_delete_not_found(self, tmp_path):
         with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
-            session, frontend, _, _ = _make_session(
-                tmp_path, ["/session delete aaaabbbb", "/exit"]
-            )
+            session, frontend, _, _ = _make_session(tmp_path, ["/session delete aaaabbbb", "/exit"])
             await session.run()
         assert any("not found" in t.lower() or "aaaabbbb" in t for t in frontend.text_contents())
 
@@ -811,7 +799,9 @@ class TestSessionCommand:
             tmp_path, ["/session export", "/exit"], session_manager=sm
         )
         await session.run()
-        assert any("exported" in t.lower() or "session" in t.lower() for t in frontend.text_contents())
+        assert any(
+            "exported" in t.lower() or "session" in t.lower() for t in frontend.text_contents()
+        )
 
     @pytest.mark.asyncio
     async def test_session_no_args_error(self, tmp_path):
@@ -830,9 +820,7 @@ class TestSessionRouting:
     async def test_regular_message_calls_agent_respond(self, tmp_path):
         """Non-command input routes to _agent_turn → agent.respond()."""
         agent = _make_agent()
-        session, frontend, _, _ = _make_session(
-            tmp_path, ["hello world", "/exit"], agent=agent
-        )
+        session, frontend, _, _ = _make_session(tmp_path, ["hello world", "/exit"], agent=agent)
         await session.run()
         agent.respond.assert_called_once_with("hello world")
 
@@ -863,9 +851,7 @@ class TestSessionRouting:
     async def test_bang_prefix_runs_bash(self, tmp_path):
         """!cmd routes to _handle_bang which calls agent.bash.run()."""
         agent = _make_agent()
-        session, frontend, _, _ = _make_session(
-            tmp_path, ["!echo hi", "/exit"], agent=agent
-        )
+        session, frontend, _, _ = _make_session(tmp_path, ["!echo hi", "/exit"], agent=agent)
         await session.run()
         agent.bash.run.assert_called_once_with("echo hi")
 
@@ -873,8 +859,6 @@ class TestSessionRouting:
     async def test_empty_input_skipped(self, tmp_path):
         """Empty string is silently skipped — agent.respond() not called."""
         agent = _make_agent()
-        session, frontend, _, _ = _make_session(
-            tmp_path, ["", "/exit"], agent=agent
-        )
+        session, frontend, _, _ = _make_session(tmp_path, ["", "/exit"], agent=agent)
         await session.run()
         agent.respond.assert_not_called()
