@@ -38,6 +38,8 @@ def command(port: int, host: str):
         )
         raise SystemExit(1) from None
 
+    import copy
+
     import uvicorn
 
     logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
@@ -47,7 +49,7 @@ def command(port: int, host: str):
     # uvicorn.run() calls dictConfig() internally which reconfigures the
     # root logger, wiping any prior basicConfig() handler.  Adding our
     # logger directly to the config dict survives that reset.
-    log_config = uvicorn.config.LOGGING_CONFIG.copy()
+    log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
     log_config["loggers"]["nemo_oo_agents_viewer"] = {
         "handlers": ["default"],
         "level": "INFO",

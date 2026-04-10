@@ -6,6 +6,7 @@ Uses otlp_store for trace storage/retrieval (OTLP JSON in SQLite).
 """
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -13,8 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import litellm
-
-import logging
 
 import yaml
 from fastapi import APIRouter, HTTPException

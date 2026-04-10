@@ -184,6 +184,16 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
     db.execute("DROP TABLE sessions")
     db.execute("ALTER TABLE sessions_v2 RENAME TO sessions")
     db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_experiment ON sessions(experiment)")
+    # Backfill total_size for migrated sessions — sessions_v2 was created with
+    # the column (DEFAULT 0), so the _has_column guard in init_db() won't fire.
+    db.execute("""
+        UPDATE sessions SET total_size = COALESCE((
+            SELECT SUM(LENGTH(COALESCE(attributes, ''))
+                     + LENGTH(COALESCE(resource, ''))
+                     + LENGTH(COALESCE(events, '')))
+            FROM spans WHERE spans.session_id = sessions.session_id
+        ), 0)
+    """)
     db.commit()
     log.info("Migration complete – %d sessions migrated.", len(rows))
 
