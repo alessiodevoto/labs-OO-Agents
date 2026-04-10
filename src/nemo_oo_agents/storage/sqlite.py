@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import typing
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from context_blocks import EventBase, EventStatus, Metadata
+from context_blocks import Event, EventBase, EventStatus, Metadata
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -38,22 +39,40 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
-# Core event types pre-registered for deserialization.
-_CORE_TYPES: dict[str, type[EventBase]] = {
-    cls.model_fields["event_type"].default: cls  # type: ignore[index]
-    for cls in (
-        Task,
-        Message,
-        Reasoning,
-        Error,
-        Feedback,
-        LLMOutput,
-        PythonOutput,
-        Summary,
-        BeforeTurn,
-        AfterTurn,
+# Unwrap Event = Annotated[UserEvent | AssistantEvent | ToolCallEvent, Field(...)]
+# to get the concrete types. This stays in sync with the Event union automatically.
+_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(typing.get_args(Event)[0])
+if len(_CONTEXT_BLOCKS_TYPES) < 3:
+    raise AssertionError(
+        f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "
+        "If Event's structure changed, update the get_args unwrap in sqlite.py."
     )
-}
+
+# All event types pre-registered for deserialization.
+# context_blocks types are derived from the Event union above (stays in sync automatically).
+# nemo_oo_agents types are listed explicitly here.
+_CORE_TYPES: dict[str, type[EventBase]] = {}
+for _cls in (
+    *_CONTEXT_BLOCKS_TYPES,
+    Task,
+    Message,
+    Reasoning,
+    Error,
+    Feedback,
+    LLMOutput,
+    PythonOutput,
+    Summary,
+    BeforeTurn,
+    AfterTurn,
+):
+    _key: str = _cls.model_fields["event_type"].default  # type: ignore[assignment]
+    if _key in _CORE_TYPES:
+        raise AssertionError(
+            f"Duplicate event_type key {_key!r} in _CORE_TYPES: "
+            f"{_CORE_TYPES[_key].__name__} vs {_cls.__name__}. "
+            "Each event class must have a unique event_type default."
+        )
+    _CORE_TYPES[_key] = _cls
 
 _SCHEMA_VERSION = 1
 

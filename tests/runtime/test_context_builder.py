@@ -48,9 +48,10 @@ def _make_context_manager(blocks: dict[str, Any] | None = None) -> Any:
 
 
 def _make_event_manager(events: list | None = None) -> MagicMock:
-    """Create a mock event manager that returns the given events from filter()."""
+    """Create a mock event manager that returns the given events from values()."""
     em = MagicMock()
     em.filter.return_value = events or []
+    em.values.return_value = events or []
     return em
 
 

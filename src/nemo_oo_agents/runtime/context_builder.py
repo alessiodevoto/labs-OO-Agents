@@ -403,14 +403,12 @@ def _phase_events(
         runtime_event_query or scoped_event_query or decorator_event_query or agent_event_query
     )
 
-    # Get events - either filtered or all
+    # Use only active (non-archived) events in their display order.
+    # values() uses active_tags() — excludes events archived by collapse().
     if active_query:
-        # Get all events and apply query filter
-        all_events = event_manager.filter()
-        events = active_query.apply(all_events, current_call_id=current_call_id)
+        events = active_query.apply(event_manager.values(), current_call_id=current_call_id)
     else:
-        # No filter - show all events
-        events = event_manager.filter()
+        events = event_manager.values()
 
     new_blocks: list[ResolvedBlock] = []
 
