@@ -407,7 +407,7 @@ async def test_skills_command_no_args_output(handler):
 
     assert result.success is False
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("Usage: /skills <list|activate|deactivate>" in o.content for o in text_outputs)
+    assert any("Usage: /skills" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
@@ -720,6 +720,366 @@ async def test_history_tags_without_event_manager_returns_error(mock_frontend, m
     assert result.success is False
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
     assert text_outputs, "Expected a TextOutput error message"
+
+
+# ============================================================================
+# User-invocable skill commands
+# ============================================================================
+
+
+@pytest.fixture
+def skills_dir(tmp_path):
+    """Fixture mirroring the REAL skill layout on the user's machine.
+
+    All skills live in a single directory (no commands/ split).
+    User-invocable skills are identified by argument-hint without user-invocable: false.
+    Skills with user-invocable: false are explicitly opted out.
+    Skills without argument-hint are plain context skills (not user commands).
+
+    wtf/          ← argument-hint, no opt-out → user command
+    wtf-status/   ← argument-hint, no opt-out → user command
+    wtf-issue-add/← argument-hint + user-invocable: false (invalid YAML) → NOT a command
+    trace-explorer/← no argument-hint → NOT a command
+    """
+    # wtf — has argument-hint, no install-as, no user-invocable flag
+    (tmp_path / "wtf").mkdir()
+    (tmp_path / "wtf" / "SKILL.md").write_text(
+        "---\n"
+        "name: wtf\n"
+        "description: Manage WTF issues\n"
+        "argument-hint: <action> [issue-id] [details]\n"
+        "allowed-tools: Bash(uv:*), Bash(.venv/bin/wtf:*), Read\n"
+        "disable-model-invocation: true\n"
+        "---\n\n"
+        "# WTF\n\nUse this skill to manage issues.\n"
+    )
+
+    # wtf-status — argument-hint, no opt-out
+    (tmp_path / "wtf-status").mkdir()
+    (tmp_path / "wtf-status" / "SKILL.md").write_text(
+        "---\n"
+        "name: wtf-status\n"
+        "description: Show WTF project status\n"
+        "argument-hint: [label]\n"
+        "allowed-tools: Bash(uv:*), Bash(.venv/bin/wtf:*)\n"
+        "---\n\n"
+        "# WTF Status\n\nShow project status.\n"
+    )
+
+    # wtf-issue-add — argument-hint + user-invocable: false + invalid YAML arg-hint
+    (tmp_path / "wtf-issue-add").mkdir()
+    (tmp_path / "wtf-issue-add" / "SKILL.md").write_text(
+        '---\n'
+        'name: wtf-issue-add\n'
+        'description: Create a new WTF issue\n'
+        'argument-hint: "<title>" [-p priority] [-a assignee]\n'
+        'allowed-tools: Bash(uv:*), Bash(.venv/bin/wtf:*)\n'
+        'user-invocable: false\n'
+        '---\n\n'
+        '# WTF Issue Add\n\nCreate an issue.\n'
+    )
+
+    # trace-explorer — explicitly opted out with user-invocable: false
+    (tmp_path / "trace-explorer").mkdir()
+    (tmp_path / "trace-explorer" / "SKILL.md").write_text(
+        "---\n"
+        "name: trace-explorer\n"
+        "description: Explore agent execution traces\n"
+        "user-invocable: false\n"
+        "---\n\n"
+        "# Trace Explorer\n\nExplore traces.\n"
+    )
+
+    return tmp_path
+
+
+def _skills_dirs_from(tmp_path):
+    """Return [tmp_path] for the skills_dir fixture layout (flat, no subdirs)."""
+    return [tmp_path]
+
+
+@pytest.fixture
+def registry_with_skills(mock_frontend, mock_config, mock_agent, skills_dir):
+    return CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=_skills_dirs_from(skills_dir),
+        mcp_file=Path(".mcp.json"),
+    )
+
+
+@pytest.fixture
+def handler_with_skills(registry_with_skills, mock_frontend):
+    return CommandHandler(registry=registry_with_skills, frontend=mock_frontend)
+
+
+def test_user_skill_with_argument_hint_is_discovered(registry_with_skills):
+    """Skills with argument-hint and no user-invocable: false are user commands.
+
+    This is the real-world pattern: wtf/wtf-status have argument-hint with no opt-out.
+    They should appear as /wtf and /wtf-status slash commands.
+    """
+    skill = registry_with_skills.get_user_skill("wtf")
+    assert skill is not None
+    assert skill.name == "wtf"
+    assert skill.description == "Manage WTF issues"
+    assert skill.argument_hint == "<action> [issue-id] [details]"
+
+
+def test_both_argument_hint_skills_discovered(registry_with_skills):
+    """Both wtf and wtf-status (both have argument-hint, no opt-out) appear as user commands."""
+    assert registry_with_skills.get_user_skill("wtf") is not None
+    assert registry_with_skills.get_user_skill("wtf-status") is not None
+
+
+def test_opted_out_and_plain_skills_not_discovered(registry_with_skills):
+    """Skills with user-invocable: false or no argument-hint are NOT user commands."""
+    assert registry_with_skills.get_user_skill("wtf-issue-add") is None  # explicit opt-out
+    assert registry_with_skills.get_user_skill("trace-explorer") is None  # no argument-hint
+
+
+def test_user_skill_appears_in_active_help(registry_with_skills):
+    """User-invocable skill appears in /help output."""
+    help_text = registry_with_skills.get_active_help()
+    assert any("wtf" in key for key in help_text)
+
+
+def test_user_skill_appears_in_completions(registry_with_skills):
+    """User-invocable skill appears in Tab completions."""
+    completions = registry_with_skills.get_completions()
+    assert any("wtf" in key for key in completions)
+
+
+@pytest.mark.asyncio
+async def test_user_skill_invocation_sets_agent_message(handler_with_skills):
+    """/wtf returns agent_message with the skill body — no outputs rendered."""
+    result = await handler_with_skills.handle("/wtf")
+    assert result.success is True
+    assert result.agent_message is not None
+    assert "WTF" in result.agent_message
+    assert result.outputs == []
+
+
+@pytest.mark.asyncio
+async def test_user_skill_invocation_with_args_appended(handler_with_skills):
+    """/wtf list appends args to the skill body."""
+    result = await handler_with_skills.handle("/wtf list gl-42")
+    assert result.agent_message is not None
+    assert "list gl-42" in result.agent_message
+
+
+@pytest.mark.asyncio
+async def test_user_skill_arguments_substitution(tmp_path, mock_frontend, mock_config, mock_agent):
+    """$ARGUMENTS placeholder in skill body is substituted with user args."""
+    skill_dir = tmp_path / "commit"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: commit\ndescription: Commit\ninstall-as: command\n---\n"
+        "Write a commit for: $ARGUMENTS\n"
+    )
+    registry = CommandRegistry(
+        frontend=mock_frontend, config=mock_config, agent=mock_agent,
+        skills_dirs=[tmp_path], mcp_file=Path(".mcp.json"),
+    )
+    handler = CommandHandler(registry=registry, frontend=mock_frontend)
+    result = await handler.handle("/commit fix the login bug")
+    assert result.agent_message is not None
+    assert "fix the login bug" in result.agent_message
+    assert "$ARGUMENTS" not in result.agent_message
+
+
+# ============================================================================
+# Auto-attach skills to agent at startup
+# ============================================================================
+
+
+def test_all_skills_auto_attached_to_agent(skills_dir, mock_frontend, mock_config):
+    """ALL skills (user-invokable AND plain) are attached to the agent when registry is created."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.skill import TextSkill
+
+    agent = MagicMock()
+    agent.get_summarization_status = MagicMock(return_value={
+        "active_events": 0, "policy": "auto", "has_summarizer": False,
+        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
+        "summary_count": 0, "summary_tags": [],
+    })
+    agent.bash = MagicMock()
+    agent.event_manager = MagicMock()
+    # MagicMock reports hasattr(...) = True for everything, but setattr should work
+    # Use a real object so we can check attributes were set
+    class _FakeAgent:
+        pass
+    real_agent = _FakeAgent()
+    real_agent.get_summarization_status = lambda: {
+        "active_events": 0, "policy": "auto", "has_summarizer": False,
+        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
+        "summary_count": 0, "summary_tags": [],
+    }
+    real_agent.event_manager = MagicMock()
+    real_agent.bash = MagicMock()
+    real_agent.bash.use_sandbox = False
+    real_agent.bash.sandbox_available = True
+    real_agent._llm = MagicMock()
+
+    CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=real_agent,
+        skills_dirs=_skills_dirs_from(skills_dir),
+        mcp_file=None,
+    )
+
+    # All skills (user-invokable AND plain) should be attached to the agent
+    assert hasattr(real_agent, "wtf"), "skill 'wtf' was not attached to agent"
+    assert hasattr(real_agent, "wtf_status"), "skill 'wtf-status' was not attached to agent"
+    assert hasattr(real_agent, "trace_explorer"), "plain skill 'trace-explorer' was not attached to agent"
+    assert isinstance(real_agent.wtf, TextSkill)
+    assert isinstance(real_agent.trace_explorer, TextSkill)
+
+
+def test_user_invokable_skill_also_attached_to_agent(skills_dir, mock_frontend, mock_config):
+    """install-as:command skill is attached to agent as a TextSkill attribute."""
+    from nemo_oo_agents.skill import TextSkill
+
+    class _FakeAgent:
+        pass
+    agent = _FakeAgent()
+    agent.get_summarization_status = lambda: {
+        "active_events": 0, "policy": "auto", "has_summarizer": False,
+        "max_tokens": 100000, "current_tokens": 0, "preserve_recent": 5,
+        "summary_count": 0, "summary_tags": [],
+    }
+    agent.event_manager = MagicMock()
+    agent.bash = MagicMock()
+    agent.bash.use_sandbox = False
+    agent.bash.sandbox_available = True
+    agent._llm = MagicMock()
+
+    CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=agent,
+        skills_dirs=_skills_dirs_from(skills_dir),
+        mcp_file=None,
+    )
+
+    assert isinstance(agent.wtf, TextSkill)
+    assert agent.wtf.description == "Manage WTF issues"
+
+
+
+def test_user_skill_discovered_when_nested(mock_frontend, mock_config, mock_agent, tmp_path):
+    """install-as:command skill nested two levels deep is still discovered.
+
+    /skills list uses SkillManager.discover() which uses rglob (recursive).
+    _discover_user_skills() must also use rglob so the two stay in sync.
+    Previously used iterdir() (one level only) — this test would have failed then.
+    """
+    # Nest the skill two levels deep: tmp_path/group/wtf/SKILL.md
+    group_dir = tmp_path / "group"
+    group_dir.mkdir()
+    skill_dir = group_dir / "wtf"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: wtf\ndescription: Nested WTF\ninstall-as: command\n---\nBody.\n"
+    )
+
+    registry = CommandRegistry(
+        frontend=mock_frontend, config=mock_config, agent=mock_agent,
+        skills_dirs=[tmp_path], mcp_file=None,
+    )
+    skill = registry.get_user_skill("wtf")
+    assert skill is not None, (
+        "Nested skill not discovered — _discover_user_skills must use rglob, not iterdir"
+    )
+    assert skill.name == "wtf"
+
+
+def test_skill_with_invalid_yaml_argument_hint_is_discovered(mock_frontend, mock_config, mock_agent, tmp_path):
+    """A skill whose frontmatter contains an invalid-YAML argument-hint must still be discovered.
+
+    Claude Code-style hints like '"<action>" [issue-id]' are a quoted scalar followed by
+    unstructured text — invalid YAML.  yaml.safe_load() raises on the ENTIRE block, so
+    naive code falls back to meta={}, loses install-as, and silently skips the skill.
+
+    The fix: add a line-by-line regex fallback (same as nemo_oo_agents._parse_frontmatter).
+    """
+    skill_dir = tmp_path / "wtf"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        '---\n'
+        'name: wtf\n'
+        'description: Manage WTF issues\n'
+        'install-as: command\n'
+        'argument-hint: "<action>" [issue-id]\n'
+        '---\n'
+        'Use this skill to manage issues.\n'
+    )
+
+    registry = CommandRegistry(
+        frontend=mock_frontend, config=mock_config, agent=mock_agent,
+        skills_dirs=[tmp_path], mcp_file=None,
+    )
+    skill = registry.get_user_skill("wtf")
+    assert skill is not None, (
+        "Skill with invalid-YAML argument-hint must still be discovered — "
+        "yaml.safe_load() fails on the whole block, not just that field"
+    )
+    assert skill.name == "wtf"
+    assert skill.description == "Manage WTF issues"
+    assert skill.argument_hint == '"<action>" [issue-id]'
+
+
+def test_skill_with_user_invocable_false_and_invalid_yaml_not_discovered(
+    mock_frontend, mock_config, mock_agent, tmp_path
+):
+    """user-invocable: false must suppress discovery even when YAML parsing falls back to regex.
+
+    Root cause: if argument-hint (or any field) contains invalid YAML, yaml.safe_load()
+    fails on the ENTIRE block and we fall back to a line-by-line regex.  The regex stores
+    raw strings, so user-invocable becomes the string "false" — which is TRUTHY in Python.
+    `not "false"` is False, so the filter passes and the skill is incorrectly registered
+    as a user command.
+
+    Fix: parse each individual scalar value with yaml.safe_load() so that "false" → False.
+    """
+    skill_dir = tmp_path / "wtf-issue-add"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        '---\n'
+        'name: wtf-issue-add\n'
+        'description: Create a new WTF issue\n'
+        'user-invocable: false\n'
+        'argument-hint: "<title>" [-p priority]\n'   # invalid YAML → triggers regex fallback
+        '---\n'
+        'Body.\n'
+    )
+
+    registry = CommandRegistry(
+        frontend=mock_frontend, config=mock_config, agent=mock_agent,
+        skills_dirs=[tmp_path], mcp_file=None,
+    )
+    skill = registry.get_user_skill("wtf-issue-add")
+    assert skill is None, (
+        "Skill with user-invocable: false must NOT be registered as a user command — "
+        "the regex fallback stores 'false' as a string which is truthy"
+    )
+
+
+def test_skills_not_attached_when_no_dirs(mock_frontend, mock_config, mock_agent):
+    """Registry with no skills_dirs does not attempt to attach skills."""
+    registry = CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=None,
+        mcp_file=None,
+    )
+    # No error raised — auto-install is a no-op
+    assert registry._user_skills == {}
 
 
 # ============================================================================

@@ -11,10 +11,14 @@ interactive I/O that must happen *during* execution (spinners, prompts).
 
 import abc
 import datetime
+import logging
+import re
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
+
+logger = logging.getLogger(__name__)
 
 from .output import (
     ClearScreen,
@@ -25,8 +29,9 @@ from .output import (
     Output,
     TableOutput,
     TextOutput,
+    _RichReplayPayload,
 )
-from .session_manager import SessionManager
+from .session_manager import SessionManager, build_resume_outputs
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
@@ -83,6 +88,8 @@ class CommandResult:
     new_session_manager: "SessionManager | None" = None
     # Set by CompactCommand to signal that auto-renaming should be retried.
     compact_done: bool = False
+    # When set, Session.run() passes this as the user message for an agent turn.
+    agent_message: str | None = None
 
     # Convenience constructors -------------------------------------------
 
@@ -229,6 +236,7 @@ class ClearCommand(Command):
 
         result = CommandResult.ok(
             ClearScreen(),
+            _RichReplayPayload(payload={"kind": "clear"}),
             TextOutput("Started new session. Previous session saved.", "success"),
         )
         result.new_session_manager = new_sm
@@ -289,20 +297,17 @@ class SwitchCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/switch": "Interactive model switcher"}
+        return {"/switch <model>": "Switch the LLM model (Tab to autocomplete)"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) != 1:
+            return False, "Usage: /switch <model>  (Tab to autocomplete)"
+        return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
         from unifiedllm import MODELS, get_llm_client
 
-        models = sorted(MODELS.keys())
-        try:
-            selected = await self.frontend.get_input("Model: ", completions=models)
-        except (KeyboardInterrupt, EOFError):
-            return CommandResult.err("Model switch cancelled")
-
-        if not selected:
-            return CommandResult.err("No model selected")
-
+        selected = args[0]
         if selected not in MODELS:
             return CommandResult.err(
                 f"Model `{selected}` not found. Use /models to see available options."
@@ -534,6 +539,7 @@ class SkillsCommand(Command):
     def __init__(self, frontend, config, agent, **kwargs):
         super().__init__(frontend, config, agent, **kwargs)
         self.skills_dirs = kwargs.get("skills_dirs")
+        self._registry: "CommandRegistry | None" = kwargs.get("registry")
         self._active_skills: set[str] = set()
 
     @property
@@ -546,12 +552,13 @@ class SkillsCommand(Command):
             "/skills list": "List available skills",
             "/skills activate <id>": "Activate a skill",
             "/skills deactivate <id>": "Deactivate a skill",
+            "/skills commands": "Show auto-registered slash commands from skills",
         }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
-            return False, "Usage: /skills <list|activate|deactivate>"
-        if args[0].lower() not in ("list", "activate", "deactivate"):
+            return False, "Usage: /skills <list|activate|deactivate|commands|debug>"
+        if args[0].lower() not in ("list", "activate", "deactivate", "commands", "debug"):
             return False, f"Unknown subcommand `{args[0]}`"
         if args[0].lower() in ("activate", "deactivate") and len(args) < 2:
             return False, f"Usage: /skills {args[0]} <skill_id>"
@@ -565,6 +572,116 @@ class SkillsCommand(Command):
 
         subcmd = args[0].lower()
         subargs = args[1:]
+
+        if subcmd == "debug":
+            registry = self._registry
+            outputs: list[Output] = []
+            # 1. What's in _user_skills
+            user_skills = registry._user_skills if registry else {}
+            rows_us = [[name, skill.description[:60]] for name, skill in sorted(user_skills.items())]
+            outputs.append(TableOutput(
+                title=f"_user_skills ({len(user_skills)} entries)",
+                columns=["Name", "Description"],
+                rows=rows_us or [["(empty)", ""]],
+            ))
+            # 2. Raw scan trace — walk exactly what _discover_user_skills does
+            scan_rows = []
+            try:
+                import re as _re
+                import yaml as _yaml
+                for sd in (self.skills_dirs or []):
+                    sd = Path(sd)
+                    if not sd.is_dir():
+                        scan_rows.append([str(sd), "(dir missing)", ""])
+                        continue
+                    is_cmd = sd.name == "commands"
+                    found = sorted(sd.rglob("SKILL.md"))
+                    if not found:
+                        scan_rows.append([str(sd), "(no SKILL.md found)", ""])
+                        continue
+                    for sm in found:
+                        try:
+                            c = sm.read_text(encoding="utf-8")
+                            if not c.startswith("---"):
+                                scan_rows.append([str(sm), "SKIP: no frontmatter", ""])
+                                continue
+                            pts = c.split("---", 2)
+                            if len(pts) < 3:
+                                scan_rows.append([str(sm), "SKIP: unclosed frontmatter", ""])
+                                continue
+                            try:
+                                m = _yaml.safe_load(pts[1]) or {}
+                                if not isinstance(m, dict):
+                                    raise ValueError
+                                parse_mode = "yaml"
+                            except Exception:
+                                m = {}
+                                for ln in pts[1].splitlines():
+                                    mx = _re.match(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$', ln)
+                                    if mx:
+                                        rv = mx.group(2).strip()
+                                        try:
+                                            pv = _yaml.safe_load(rv)
+                                            m[mx.group(1)] = str(pv) if isinstance(pv, list) else pv
+                                        except Exception:
+                                            m[mx.group(1)] = rv
+                                parse_mode = "regex"
+                            ia = m.get("install-as") == "command"
+                            iv = m.get("user-invocable")
+                            uv = ia or iv is True
+                            nm = str(m.get("name", "")).strip()
+                            reason = (
+                                f"OK ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
+                                if uv else
+                                f"SKIP ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
+                            )
+                            scan_rows.append([str(sm.relative_to(sd)), reason, ""])
+                        except Exception as ex:
+                            scan_rows.append([str(sm), f"ERROR: {ex}", ""])
+            except Exception as ex:
+                scan_rows.append(["scan error", str(ex), ""])
+            outputs.append(TableOutput(
+                title="Scan trace",
+                columns=["File", "Result", ""],
+                rows=scan_rows or [["(nothing scanned)", "", ""]],
+            ))
+            # 3. What get_completions() returns (the dict fed to Tab completion)
+            if registry:
+                completions = registry.get_completions()
+                skill_completions = {k: v for k, v in completions.items()
+                                     if k not in {"/help", "/exit", "/quit", "/clear",
+                                                  "/compact", "/edit", "/model", "/models",
+                                                  "/switch", "/theme", "/history", "/mcp",
+                                                  "/skills", "/sandbox", "/python", "/session"}}
+                rows_c = [[k, v[:60]] for k, v in sorted(skill_completions.items())]
+                outputs.append(TableOutput(
+                    title=f"Skill completions in get_completions() ({len(skill_completions)} extra)",
+                    columns=["Key", "Description"],
+                    rows=rows_c or [["(none)", ""]],
+                ))
+            # 4. Skills dirs
+            outputs.append(TextOutput(f"skills_dirs: {self.skills_dirs}", "status"))
+            return CommandResult.ok(*outputs)
+
+        if subcmd == "commands":
+            user_skills = self._registry._user_skills if self._registry else {}
+            rows_cmd = [
+                [f"/{name}", skill.argument_hint or "", skill.description]
+                for name, skill in sorted(user_skills.items())
+            ]
+            if rows_cmd:
+                return CommandResult.ok(
+                    TableOutput(
+                        columns=["Command", "Args", "Description"],
+                        rows=rows_cmd,
+                        title="Skill slash commands (install-as: command)",
+                    ),
+                    TextOutput(f"Searched: {self.skills_dirs}", "status"),
+                )
+            return CommandResult.ok(
+                TextOutput("No skills with install-as: command found.", "info"),
+                TextOutput(f"Searched: {self.skills_dirs}", "status"),
+            )
 
         if subcmd == "list":
             if not self.skills_dirs:
@@ -931,30 +1048,30 @@ class SessionCommand(Command):
                 ids = ", ".join(m[:8] for m in matches)
                 return CommandResult.err(f"Ambiguous session prefix '{session_id}' matches: {ids}")
             full_id = matches[0]
-            turns = SessionManager.load_turns(full_id)
-            if not turns:
-                return CommandResult.err(f"Session '{session_id}' is empty.")
-            outputs: list[Output] = [
-                HistoryReplay(
-                    turns=[HistoryTurn(role=t.role, content=t.content) for t in turns],
-                    session_id=full_id[:8],
-                )
-            ]
 
-            # Open the old session's DB and swap it in as the active storage
+            import os as _os
+
+            from .session_manager import SESSIONS_DIR as _SESSIONS_DIR
+
+            _session_db_path = _SESSIONS_DIR / f"{full_id}.db"
+            _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+
+            outputs = build_resume_outputs(
+                _session_db_path, full_id, in_nemo_term=_in_nemo_term
+            )
+            if not outputs:
+                return CommandResult.err(f"Session '{session_id}' is empty.")
+
+            # Open the old session's DB, restore agent state, swap session manager
             from nemo_oo_agents.storage import SQLiteStorageManager
 
-            from .session_manager import SESSIONS_DIR
-
-            session_db = SESSIONS_DIR / f"{full_id}.db"
             try:
-                old_storage = SQLiteStorageManager(session_db)
+                old_storage = SQLiteStorageManager(_session_db_path)
                 restored = old_storage.restore_latest_snapshot(self.agent)
                 if restored:
                     outputs.append(
                         TextOutput(f"Agent state restored from session {full_id[:8]}.", "status")
                     )
-                # Create a resumed SessionManager on the old DB
                 new_sm = SessionManager(
                     storage=old_storage,
                     session_id=full_id,
@@ -1019,6 +1136,7 @@ class SessionCommand(Command):
 
             result = CommandResult.ok(
                 ClearScreen(),
+                _RichReplayPayload(payload={"kind": "clear"}),
                 TextOutput("Started new session. History cleared.", "success"),
             )
             result.new_session_manager = new_sm
@@ -1030,6 +1148,30 @@ class SessionCommand(Command):
 # ---------------------------------------------------------------------------
 # Registry and handler
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _UserSkill:
+    """Metadata for a user-invocable skill slash command."""
+
+    name: str
+    body: str
+    description: str
+    argument_hint: str | None = None
+
+    def help_entry(self) -> tuple[str, str]:
+        hint = self.argument_hint or ""
+        key = f"/{self.name} {hint}".strip()
+        return key, self.description
+
+    def make_agent_message(self, args: list[str]) -> str:
+        body = self.body
+        if args:
+            joined = " ".join(args)
+            if "$ARGUMENTS" in body:
+                return body.replace("$ARGUMENTS", joined)
+            return f"{body}\n\nArguments: {joined}"
+        return body
 
 
 class CommandRegistry:
@@ -1070,6 +1212,8 @@ class CommandRegistry:
         self.mcp_file = mcp_file
         self.session_manager = session_manager
         self._commands: dict[str, Command] = self._register()
+        self._user_skills: dict[str, _UserSkill] = self._discover_user_skills()
+        self._auto_install_skills()
 
     def _register(self) -> dict[str, Command]:
         commands: dict[str, Command] = {}
@@ -1085,8 +1229,98 @@ class CommandRegistry:
             commands[name] = cls(self.frontend, self.config, self.agent, **kwargs)
         return commands
 
-    def get_command(self, name: str) -> Command | None:
+    def _discover_user_skills(self) -> "dict[str, _UserSkill]":
+        """Scan skills dirs for install-as:command skills and register them as slash commands.
+
+        Uses rglob to match SkillManager.discover() — finds skills at any depth.
+        Parses SKILL.md frontmatter inline to avoid depending on private nemo_oo_agents
+        internals that may not be present in older installed versions.
+        """
+        skills: dict[str, _UserSkill] = {}
+        if not self.skills_dirs:
+            return skills
+        try:
+            import yaml
+        except ImportError:
+            return skills
+        for skills_dir in self.skills_dirs:
+            skills_dir = Path(skills_dir)
+            if not skills_dir.is_dir():
+                continue
+            for skill_md in sorted(skills_dir.rglob("SKILL.md")):
+                entry = skill_md.parent
+                try:
+                    content = skill_md.read_text(encoding="utf-8")
+                    if not content.startswith("---"):
+                        continue
+                    parts = content.split("---", 2)
+                    if len(parts) < 3:
+                        continue
+                    try:
+                        meta = yaml.safe_load(parts[1]) or {}
+                        if not isinstance(meta, dict):
+                            raise ValueError("not a mapping")
+                    except Exception:
+                        # Fallback: line-by-line regex for invalid-YAML values like
+                        # argument-hint: "<action>" [issue-id]  (Claude Code style).
+                        # Parse each scalar individually so "false" → False (not "false").
+                        import re
+                        meta = {}
+                        for line in parts[1].splitlines():
+                            m = re.match(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$', line)
+                            if not m:
+                                continue
+                            raw = m.group(2).strip()
+                            try:
+                                parsed = yaml.safe_load(raw)
+                                meta[m.group(1)] = str(parsed) if isinstance(parsed, list) else parsed
+                            except Exception:
+                                meta[m.group(1)] = raw
+                    if not isinstance(meta, dict):
+                        continue
+                    # CC convention: user-invocable defaults to true.
+                    # Opt out with user-invocable: false.
+                    # install-as: command is honored for backward compat.
+                    if meta.get("user-invocable") is False:
+                        continue
+                    name = str(meta.get("name", "")).strip()
+                    if not name or name in self._commands or name in skills:
+                        continue
+                    description = str(meta.get("description", "")).strip()
+                    body = parts[2].strip()
+                    hint = meta.get("argument-hint")
+                    if isinstance(hint, list):
+                        # YAML parses [label] as a list; reconstruct bracket notation
+                        hint = "[" + ", ".join(str(x) for x in hint) + "]"
+                    elif hint is not None:
+                        hint = str(hint)
+                    skills[name] = _UserSkill(
+                        name=name,
+                        body=body,
+                        description=description,
+                        argument_hint=hint,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to load skill from %s: %s", entry, e)
+        return skills
+
+    def _auto_install_skills(self) -> None:
+        """Attach all discovered skills as agent attributes at startup."""
+        if not self.skills_dirs:
+            return
+        try:
+            from nemo_oo_agents import SkillManager
+            SkillManager.install(self.agent, skills_dir=self.skills_dirs)
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning("Failed to auto-install skills: %s", e)
+
+    def get_command(self, name: str) -> "Command | None":
         return self._commands.get(name.lower())
+
+    def get_user_skill(self, name: str) -> "_UserSkill | None":
+        return self._user_skills.get(name.lower())
 
     @classmethod
     def get_all_command_classes(cls) -> dict[str, type[Command]]:
@@ -1110,13 +1344,17 @@ class CommandRegistry:
             if cls not in seen:
                 seen.add(cls)
                 commands.update(cls.help_text())
+        for skill in self._user_skills.values():
+            key, desc = skill.help_entry()
+            commands[key] = desc
         return commands
 
     def get_completions(self) -> dict[str, str]:
         help_text = self.get_active_help()
         completions: dict[str, str] = {}
         for cmd, desc in help_text.items():
-            clean = cmd.split("<")[0].strip()
+            # Strip both <action> and [label] style argument hints
+            clean = re.split(r"\s+(?=[<\[])", cmd, maxsplit=1)[0].strip()
             if clean and clean not in completions:
                 completions[clean] = desc
         return dict(sorted(completions.items()))
@@ -1147,6 +1385,11 @@ class CommandHandler:
         cmd_name = parts[0].lower()
         args = parts[1:]
 
+        # Check user-invocable skills before falling through to unknown-command error
+        skill = self.registry.get_user_skill(cmd_name)
+        if skill is not None:
+            return CommandResult(success=True, agent_message=skill.make_agent_message(args))
+
         command = self.registry.get_command(cmd_name)
         if not command:
             all_classes = self.registry.get_all_command_classes()
@@ -1176,6 +1419,23 @@ class CommandHandler:
             result = await command.execute(args)
         except Exception as exc:
             result = CommandResult.err(f"Command failed: {exc}")
+        # Render outputs in order.  _RichReplayPayload sentinels are intercepted
+        # here (not forwarded to the frontend) and POSTed to NEMO_RICH_URL so
+        # plots appear at their correct inline position between history turns.
+        import os as _os
+        _rich_url = _os.environ.get("NEMO_RICH_URL") if any(
+            isinstance(o, _RichReplayPayload) for o in result.outputs
+        ) else None
         for output in result.outputs:
-            await self.frontend.render(output)
+            if isinstance(output, _RichReplayPayload):
+                if _rich_url:
+                    try:
+                        import httpx as _httpx
+                        # _replay=True tells the browser to skip blank-line
+                        # reservation so replayed plots don't push down the prompt.
+                        _httpx.post(_rich_url, json={**output.payload, "_replay": True}, timeout=5.0)
+                    except Exception:
+                        pass
+            else:
+                await self.frontend.render(output)
         return result

@@ -7,6 +7,7 @@ behavior is identical everywhere.
 """
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,17 +73,33 @@ class Completer:
         if lower.startswith("/theme "):
             return self._theme_completions(text)
 
+        # Model completion
+        if lower.startswith("/switch "):
+            return self._model_completions(text)
+
+        # Skill ID completion for /skills activate and /skills deactivate
+        for prefix in ("/skills activate ", "/skills deactivate "):
+            if lower.startswith(prefix.lower()):
+                return self._skill_id_completions(text, prefix)
+
         # Session ID completion
         for prefix in ("/session resume ", "/session delete "):
             if lower.startswith(prefix.lower()):
                 return self._session_id_completions(text, prefix)
 
-        # Top-level slash commands + subcommands
-        commands = self._registry.get_completions()
+        # Top-level slash commands + subcommands.
+        # get_active_help() keys may include argument hints ("/wtf-status [label]").
+        # We strip the hint for text (insertion) but keep it for display.
+        commands = self._registry.get_active_help()
+        seen: set[str] = set()
         items: list[CompletionItem] = []
-        for cmd, desc in commands.items():
-            if cmd.lower().startswith(text.lower()):
-                items.append(CompletionItem(text=cmd, display=cmd, description=desc))
+        for display_cmd, desc in commands.items():
+            clean = re.split(r"\s+(?=[<\[])", display_cmd, maxsplit=1)[0].strip()
+            if clean in seen:
+                continue
+            if clean.lower().startswith(text.lower()):
+                seen.add(clean)
+                items.append(CompletionItem(text=clean, display=display_cmd, description=desc))
         return items
 
     # ------------------------------------------------------------------
@@ -102,6 +119,60 @@ class Completer:
                     display=prefix + name,
                     description=f"Switch to {name} theme",
                 ))
+        return items
+
+    # ------------------------------------------------------------------
+    # Model completion
+    # ------------------------------------------------------------------
+
+    def _model_completions(self, text: str) -> list[CompletionItem]:
+        try:
+            from unifiedllm import MODELS
+        except Exception:
+            return []
+
+        prefix = "/switch "
+        partial = text[len(prefix):]
+        items = []
+        for name in sorted(MODELS.keys()):
+            if name.lower().startswith(partial.lower()):
+                items.append(CompletionItem(
+                    text=prefix + name,
+                    display=prefix + name,
+                    description=f"Switch to {name}",
+                ))
+        return items
+
+    # ------------------------------------------------------------------
+    # Skill ID completion
+    # ------------------------------------------------------------------
+
+    def _skill_id_completions(self, text: str, prefix: str) -> list[CompletionItem]:
+        try:
+            from nemo_oo_agents import SkillManager
+        except ImportError:
+            return []
+
+        skills_dirs = getattr(self._registry, "skills_dirs", None)
+        if not skills_dirs:
+            return []
+
+        partial = text[len(prefix):]
+        try:
+            skills = SkillManager.discover(skills_dirs)
+        except Exception:
+            return []
+
+        items = []
+        for sid, skill in sorted(skills.items()):
+            if partial and not sid.startswith(partial):
+                continue
+            desc = getattr(skill, "description", "")
+            items.append(CompletionItem(
+                text=prefix + sid,
+                display=prefix + sid,
+                description=desc,
+            ))
         return items
 
     # ------------------------------------------------------------------
