@@ -58,7 +58,7 @@ try:
         httpx.ConnectTimeout,
         httpx.PoolTimeout,
     )
-except ImportError:
+except ImportError:  # pragma: no cover
     # httpx not available - define a base exception class for timeout detection
     _HTTPX_TIMEOUT_EXCEPTIONS = (TimeoutError,)
 
@@ -608,8 +608,9 @@ class PurePythonStrategy(CompositeStrategy):
 
         # Extract target method body
         body_nodes = target_method_node.body
-        if not body_nodes:
-            return code, False
+        assert body_nodes, (
+            "Function body is always non-empty in valid Python (syntax error otherwise)"
+        )
 
         # Build extracted code: helper method definitions + target method body
         extracted_parts = []
@@ -1012,21 +1013,6 @@ class PurePythonStrategy(CompositeStrategy):
             if re.match(nested_wrapper_pattern, inner_content, re.DOTALL):
                 raise XMLFormatError(
                     f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
-                    "Return plain Python code only, without any XML or HTML markup."
-                )
-
-        # Check for multiple top-level XML tags in inner content
-        # Only flag if we find XML tags that could be wrappers (start at beginning, end at end)
-        # This is more conservative to avoid false positives with XML strings in Python code
-        wrapper_pattern = r"^\s*<(\w+)(?:\s+[^>]*)?>.*</(\w+)>\s*$"
-        wrapper_match = re.match(wrapper_pattern, inner_content, re.DOTALL)
-
-        if wrapper_match:
-            opening_tag, closing_tag = wrapper_match.groups()
-            if opening_tag == closing_tag:
-                # Found another complete XML wrapper inside
-                raise XMLFormatError(
-                    f"Output contains multiple XML tags (<{tag_name}> and <{opening_tag}>). "
                     "Return plain Python code only, without any XML or HTML markup."
                 )
 

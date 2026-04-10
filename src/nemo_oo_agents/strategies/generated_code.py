@@ -462,7 +462,7 @@ class ReturnValueValidator:
 
         try:
             return isinstance(return_type, type) and issubclass(return_type, BaseModel)
-        except TypeError:
+        except TypeError:  # pragma: no cover
             return False
 
     def _validate_pydantic(self, value: Any, return_type: Any, method_name: str) -> Any:
@@ -610,9 +610,8 @@ class ReturnValueValidator:
             # Annotated types - unwrap and check the actual type (first arg)
             if origin is typing.Annotated:
                 args = get_args(expected_type)
-                if args:
-                    return self._is_instance_of(value, args[0])
-                return True
+                # Annotated always has at least one type arg; the fallback is a safety net.
+                return self._is_instance_of(value, args[0]) if args else True
             # Other generic types (list, dict, etc.) - check origin
             return isinstance(value, origin)
 

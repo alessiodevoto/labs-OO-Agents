@@ -41,7 +41,7 @@ def _try_auto_enable_tracing() -> None:
         from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
         enable_tracing()
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass
 
 

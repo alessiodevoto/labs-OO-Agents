@@ -178,14 +178,12 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
                     }
                 )
 
-            # PythonOutput — skip if already merged into tool response above
+            # PythonOutput — skip (already merged into tool response above)
             elif isinstance(block.event, PythonOutput):
-                if block.event.tool_call_id in python_outputs:
-                    # Already merged into the ToolCallEvent response
-                    continue
-                # Orphan PythonOutput (shouldn't happen, but handle gracefully)
-                content = plain_event_content(block.event, max_chars=self._max_pre_format_chars)
-                messages.append({"role": "user", "content": content})
+                assert block.event.tool_call_id in python_outputs, (
+                    "PythonOutput not in python_outputs index — indexing loop above should capture all"
+                )
+                continue
 
             # All other events — render as plain text
             else:
