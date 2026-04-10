@@ -2332,44 +2332,45 @@ class TestNexusMiddlewareAgentLlmPath:
         fake_nexus = MagicMock()
         fake_llm_request = MagicMock()
 
+        import nemo_oo_agents.nexus_middleware  # noqa: F401 (ensure loaded)
+
         with patch.dict(
             sys.modules,
             {"nat_nexus": fake_nexus, "nat_nexus.LLMRequest": fake_llm_request},
         ):
-            import nemo_oo_agents.nexus_middleware  # noqa: F401 (ensure loaded)
-
             nm = sys.modules["nemo_oo_agents.nexus_middleware"]
             importlib.reload(nm)
-            try:
-                # We need to extract and test the inner serialize_response logic
-                # The function is nested inside nexus_llm_middleware
-                # Test the logic directly by understanding what it does
 
-                # An object with no model_dump, no assistant_message, no raw_response
-                class _UnknownResp:
-                    pass
+            # We need to extract and test the inner serialize_response logic
+            # The function is nested inside nexus_llm_middleware
+            # Test the logic directly by understanding what it does
 
-                resp = _UnknownResp()
-                # line 155: raw = getattr(resp, 'raw_response', None) → None
-                # line 156: raw is not None → False
-                # line 159: hasattr(resp, 'model_dump') → False
-                # line 162: hasattr(resp, 'assistant_message') → False
-                # line 169: return {}  ← this is what we're testing
+            # An object with no model_dump, no assistant_message, no raw_response
+            class _UnknownResp:
+                pass
 
-                # Manually replicate the serialization logic to verify line 169 behavior
-                raw = getattr(resp, "raw_response", None)
-                if raw is not None and hasattr(raw, "model_dump"):
-                    result = raw.model_dump(mode="json")
-                elif hasattr(resp, "model_dump"):
-                    result = resp.model_dump(mode="json")
-                elif hasattr(resp, "assistant_message"):
-                    result = {"message": resp.assistant_message}
-                else:
-                    result = {}  # Line 169
+            resp = _UnknownResp()
+            # line 155: raw = getattr(resp, 'raw_response', None) → None
+            # line 156: raw is not None → False
+            # line 159: hasattr(resp, 'model_dump') → False
+            # line 162: hasattr(resp, 'assistant_message') → False
+            # line 169: return {}  ← this is what we're testing
 
-                assert result == {}
-            finally:
-                importlib.reload(nm)
+            # Manually replicate the serialization logic to verify line 169 behavior
+            raw = getattr(resp, "raw_response", None)
+            if raw is not None and hasattr(raw, "model_dump"):
+                result = raw.model_dump(mode="json")
+            elif hasattr(resp, "model_dump"):
+                result = resp.model_dump(mode="json")
+            elif hasattr(resp, "assistant_message"):
+                result = {"message": resp.assistant_message}
+            else:
+                result = {}  # Line 169
+
+            assert result == {}
+
+        # Reload AFTER patch.dict exits to restore _HAS_NAT_NEXUS = False
+        importlib.reload(nm)
 
     def test_llm_model_extraction_from_agent(self):
         """Lines 99-101: agent._llm.model extracted when agent is present."""

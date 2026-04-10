@@ -249,6 +249,9 @@ def _nexus_patched():
     fake_nexus, _ = _make_fake_nexus()
     fake_llm_request = MagicMock()
 
+    # Ensure the module is imported before patching (KeyError if not in sys.modules)
+    import nemo_oo_agents.nexus_middleware as _nm_ensure  # noqa: F811, F401
+
     with patch.dict(
         sys.modules,
         {
@@ -261,8 +264,10 @@ def _nexus_patched():
         try:
             yield nm, fake_nexus
         finally:
-            # Restore original state (without nat_nexus)
-            importlib.reload(nm)
+            pass  # Don't reload here — still inside patch.dict so nat_nexus is present
+
+    # Reload AFTER patch.dict exits (nat_nexus removed from sys.modules)
+    importlib.reload(nm)
 
 
 class TestNexusMiddlewareWithoutNatNexus:
