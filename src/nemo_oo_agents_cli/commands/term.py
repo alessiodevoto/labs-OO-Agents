@@ -133,7 +133,7 @@ def command(
 
     from nemo_oo_agents_cli.web.pty_server import create_pty_app
 
-    app = create_pty_app(tui_argv=tui_argv, env_extra=env_extra)
+    app, kill_all_procs = create_pty_app(tui_argv=tui_argv, env_extra=env_extra)
 
     click.echo(f"Starting NeMo OO Agents web terminal at http://{host}:{port}")
     click.echo(f"PTY command: {' '.join(tui_argv)}")
@@ -155,14 +155,24 @@ def command(
     # Suppress the "Cancel N running task(s), timeout graceful shutdown exceeded"
     # error that uvicorn logs when we force-close the long-lived PTY WebSocket.
     class _SuppressShutdownNoise(logging.Filter):
+        _SUPPRESSED = ("timeout graceful shutdown", "CancelledError")
+
         def filter(self, record: logging.LogRecord) -> bool:
             msg = record.getMessage()
-            return "timeout graceful shutdown" not in msg and "CancelledError" not in str(
-                record.exc_info or ""
+            exc_str = str(record.exc_info or "")
+            return not any(
+                token in msg or token in exc_str for token in self._SUPPRESSED
             )
 
-    for _ln in ("uvicorn.error", "uvicorn"):
-        logging.getLogger(_ln).addFilter(_SuppressShutdownNoise())
+    _noise_filter = _SuppressShutdownNoise()
+    for _ln in ("uvicorn.error", "uvicorn", "uvicorn.access"):
+        _lg = logging.getLogger(_ln)
+        _lg.addFilter(_noise_filter)
+        for _h in _lg.handlers:
+            _h.addFilter(_noise_filter)
+    # Also apply to root logger handlers in case uvicorn propagates
+    for _h in logging.getLogger().handlers:
+        _h.addFilter(_noise_filter)
 
     async def _serve() -> None:
         loop = asyncio.get_running_loop()
@@ -181,6 +191,10 @@ def command(
                 return
             _countdown_started = True
             server.should_exit = True
+            # Kill PTY processes immediately so WebSockets drain before uvicorn's
+            # graceful-shutdown timer expires — this avoids the CancelledError that
+            # occurs when uvicorn force-closes long-lived connections.
+            kill_all_procs()
             click.echo("\nShutting down... ", err=True, nl=False)
             asyncio.ensure_future(_countdown())
 

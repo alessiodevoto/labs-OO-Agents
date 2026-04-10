@@ -342,8 +342,15 @@ term.focus();
 # ---------------------------------------------------------------------------
 
 
-def create_pty_app(tui_argv: list[str], env_extra: dict[str, str] | None = None):
+def create_pty_app(
+    tui_argv: list[str], env_extra: dict[str, str] | None = None
+) -> "tuple[Any, Any]":
     """Create the FastAPI PTY terminal application.
+
+    Returns:
+        A ``(app, kill_all)`` tuple.  ``kill_all()`` is a synchronous callable
+        that terminates every active PTY process — call it from a SIGINT handler
+        so connections drain before uvicorn's graceful shutdown timer expires.
 
     Args:
         tui_argv: Command + arguments to spawn in the PTY (e.g. ``["python", "-m", ...]``).
@@ -581,7 +588,17 @@ def create_pty_app(tui_argv: list[str], env_extra: dict[str, str] | None = None)
             except Exception:
                 pass
 
-    return app
+    def kill_all() -> None:
+        """Terminate every active PTY subprocess (call on SIGINT/SIGTERM)."""
+        with _procs_lock:
+            procs = list(_active_procs)
+        for proc in procs:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    return app, kill_all
 
 
 def _b64(data: bytes) -> str:

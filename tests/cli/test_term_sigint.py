@@ -17,10 +17,14 @@ def test_term_command_handles_sigint_cleanly():
     runner = CliRunner()
 
     mock_app = MagicMock()
+    mock_kill_all = MagicMock()
     mock_serve = AsyncMock(side_effect=KeyboardInterrupt())
 
     with (
-        patch("nemo_oo_agents_cli.web.pty_server.create_pty_app", return_value=mock_app),
+        patch(
+            "nemo_oo_agents_cli.web.pty_server.create_pty_app",
+            return_value=(mock_app, mock_kill_all),
+        ),
         patch("uvicorn.Server.serve", mock_serve),
     ):
         result = runner.invoke(command, ["--port", "19999"])
