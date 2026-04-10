@@ -23,14 +23,14 @@ class _SkillProperties(BaseModel):
     compatibility: str | None = None
     allowed_tools: str | None = None
     metadata: dict[str, str] = {}
-    user_invocable: bool = False  # explicit user-invocable: true
-    install_as: str | None = None  # install-as: command → user-invocable slash command
+    user_invocable: bool = True  # CC default: true; opt out with user-invocable: false
+    install_as: str | None = None  # install-as: command → honored for backward compat
     argument_hint: str | None = None
 
     @property
     def is_user_command(self) -> bool:
         """True if this skill should be registered as a user-invocable slash command."""
-        return self.install_as == "command" or self.user_invocable
+        return self.user_invocable
 
 
 def _find_skill_md(skill_dir: Path) -> Path | None:
@@ -113,7 +113,7 @@ def _read_skill_properties(skill_dir: Path) -> _SkillProperties:
         compatibility=meta.get("compatibility"),
         allowed_tools=meta.get("allowed-tools"),
         metadata=meta.get("metadata") or {},
-        user_invocable=bool(meta.get("user-invocable", False)),
+        user_invocable=bool(meta.get("user-invocable", True)),
         install_as=meta.get("install-as"),
         argument_hint=meta.get("argument-hint"),
     )

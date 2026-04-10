@@ -157,10 +157,11 @@ def test_user_invocable_false_is_not_user_command(tmp_path):
     assert props.is_user_command is False
 
 
-def test_no_flags_is_not_user_command(tmp_path):
+def test_no_flags_is_user_command_by_default(tmp_path):
+    """CC default: user-invocable is True. No flags → user command."""
     (tmp_path / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\nbody")
     props = _read_skill_properties(tmp_path)
-    assert props.is_user_command is False
+    assert props.is_user_command is True
 
 
 def test_argument_hint_plain_string(tmp_path):
