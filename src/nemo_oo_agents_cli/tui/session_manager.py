@@ -11,6 +11,7 @@ exposes the same public API as before (``record_user``,
 ``list_sessions``, ``load_turns``, etc.).
 """
 
+import json
 import sqlite3
 import time
 import uuid
@@ -206,8 +207,6 @@ class SessionManager:
 
         for row in rows:
             try:
-                import json
-
                 raw = json.loads(row["data"])
                 et = row["event_type"]
                 ts = raw.get("timestamp")
@@ -270,8 +269,6 @@ class SessionManager:
         turns: list[Turn] = []
         for row in rows:
             try:
-                import json
-
                 raw = json.loads(row["data"])
                 ts_str = raw.get("timestamp")
                 ts = time.time()
@@ -331,7 +328,6 @@ def build_resume_outputs(
     - ``HistoryReplay`` → ``await frontend.render(item)``
     - ``_RichReplayPayload`` → ``httpx.post(NEMO_RICH_URL, json=item.payload)``
     """
-    import json as _json
     import sqlite3 as _sqlite3
 
     from .output import HistoryReplay, HistoryTurn, _RichReplayPayload
@@ -353,7 +349,7 @@ def build_resume_outputs(
     for row in rows:
         et = row["event_type"]
         try:
-            raw = _json.loads(row["data"])
+            raw = json.loads(row["data"])
         except Exception:
             continue
         if et == "tui_user_input" and raw.get("text"):

@@ -356,11 +356,15 @@ class SQLiteStorageManager:
                     f"Session {Path(self._db_path).stem!r} is already active in another process"
                 ) from e
 
-        self._conn = sqlite3.connect(self._db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        _ensure_schema(self._conn)
-        self._backend = SQLiteEventBackend(self._conn)
-        self._event_manager = EventManager(backend=self._backend)
+        try:
+            self._conn = sqlite3.connect(self._db_path)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            _ensure_schema(self._conn)
+            self._backend = SQLiteEventBackend(self._conn)
+            self._event_manager = EventManager(backend=self._backend)
+        except Exception:
+            self.close()
+            raise
 
     @property
     def event_manager(self) -> EventManager:
@@ -429,8 +433,10 @@ class SQLiteStorageManager:
             return
         self._closed = True
         try:
-            self._conn.commit()  # Commit any pending transaction before closing
-            self._conn.close()
+            conn = getattr(self, "_conn", None)
+            if conn is not None:
+                conn.commit()  # Commit any pending transaction before closing
+                conn.close()
         finally:
             if self._lock_fd is not None:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
