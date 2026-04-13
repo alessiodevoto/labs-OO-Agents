@@ -33,7 +33,7 @@ def nemo():
 
 @nemo.group()
 def oo():
-    """OO Agents — agent orchestration toolkit.
+    """OO Agents — agent toolkit.
 
     Extensible CLI for running agents, evaluations, and trace management.
     Add new commands by dropping a .py file in nemo_oo_agents_cli/commands/.

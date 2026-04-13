@@ -1,17 +1,40 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Slash command parser and handlers for NeMo OO Agents TUI.
+"""Slash command parser and handlers for NeMo OO Agents TUI/Web.
 
-Uses Catppuccin Mocha theme from https://catppuccin.com/palette/
+Commands return structured ``CommandResult`` objects whose ``outputs`` list
+is rendered by the active ``Frontend``.  No command calls the console or
+frontend directly for its results — it only uses ``self.frontend`` for
+interactive I/O that must happen *during* execution (spinners, prompts).
 """
 
 import abc
+import datetime
+import logging
+import re
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .theme import COLORS
+logger = logging.getLogger(__name__)
+
+from .output import (  # noqa: E402
+    ClearScreen,
+    DiffOutput,
+    HelpOutput,
+    Output,
+    TableOutput,
+    TextOutput,
+    _RichReplayPayload,
+)
+from .session_manager import SessionManager, build_resume_outputs  # noqa: E402
+
+if TYPE_CHECKING:
+    from nemo_oo_agents import Agent
+
+    from .config import TUIConfig
+    from .frontend import Frontend
 
 
 def _to_attr_name(name: str) -> str:
@@ -19,11 +42,36 @@ def _to_attr_name(name: str) -> str:
     return name.replace("-", "_")
 
 
-if TYPE_CHECKING:
-    from nemo_oo_agents import Agent
+def _detect_language(suffix: str) -> str:
+    """Map a file extension to a language name for editor/diff rendering."""
+    return {
+        ".py": "python",
+        ".js": "javascript",
+        ".ts": "typescript",
+        ".jsx": "javascript",
+        ".tsx": "typescript",
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".md": "markdown",
+        ".sh": "bash",
+        ".bash": "bash",
+        ".toml": "toml",
+        ".html": "html",
+        ".css": "css",
+        ".rs": "rust",
+        ".go": "go",
+        ".c": "c",
+        ".cpp": "cpp",
+        ".java": "java",
+        ".rb": "ruby",
+        ".sql": "sql",
+    }.get(suffix.lower(), "plaintext")
 
-    from .config import TUIConfig
-    from .console import TUIConsole
+
+# ---------------------------------------------------------------------------
+# CommandResult
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -31,109 +79,88 @@ class CommandResult:
     """Result from a command execution."""
 
     success: bool
-    message: str = ""
+    outputs: list[Output] = field(default_factory=list)
     exit: bool = False
+    # When set, Session.run() replaces the active SessionManager with this one.
+    new_session_manager: "SessionManager | None" = None
+    # Set by CompactCommand to signal that auto-renaming should be retried.
+    compact_done: bool = False
+    # When set, Session.run() passes this as the user message for an agent turn.
+    agent_message: str | None = None
+
+    # Convenience constructors -------------------------------------------
+
+    @classmethod
+    def ok(cls, *outputs: "Output") -> "CommandResult":
+        return cls(success=True, outputs=list(outputs))
+
+    @classmethod
+    def err(cls, message: str) -> "CommandResult":
+        return cls(success=False, outputs=[TextOutput(message, "error")])
+
+    @classmethod
+    def bye(cls) -> "CommandResult":
+        return cls(
+            success=True,
+            outputs=[TextOutput("Goodbye! Stay vibing.", "status")],
+            exit=True,
+        )
 
 
-# ============================================================================
-# Command Pattern: Base Command Interface
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Command base class
+# ---------------------------------------------------------------------------
 
 
 class Command(abc.ABC):
-    """Abstract base class for all commands following the Command pattern."""
+    """Abstract base class for all slash commands."""
 
     # Agent attributes that must be present for this command to be registered.
-    # CommandRegistry filters out commands whose required capabilities are absent.
-    # Use frozenset() (the default) to indicate the command works with any agent.
     required_capabilities: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(
         self,
-        console: "TUIConsole",
+        frontend: "Frontend",
         config: "TUIConfig",
         agent: "Agent",
+        session_manager: "SessionManager | None" = None,
         **kwargs,
     ):
-        """Initialize command with dependencies.
-
-        Args:
-            console: TUI console for output
-            config: Application configuration
-            agent: Any chat agent subclassing NeMo OO Agents
-            **kwargs: Extra arguments (e.g. skills_dirs, mcp_file)
-
-        Raises:
-            ValueError: If agent is None
-        """
         if agent is None:
-            raise ValueError(
-                "agent cannot be None. Commands require a valid NeMo OO Agents instance."
-            )
-        self.console = console
+            raise ValueError("agent cannot be None.")
+        self.frontend = frontend
         self.config = config
-        self.agent: Any = agent  # duck-typed; capabilities checked via hasattr
+        self.agent: Any = agent
+        self.session_manager = session_manager
 
     @abc.abstractmethod
-    async def execute(self, args: list[str]) -> CommandResult:
-        """Execute the command.
-
-        Args:
-            args: Command arguments
-
-        Returns:
-            CommandResult with success status and message
-        """
+    async def execute(self, args: list[str]) -> "CommandResult":
         raise NotImplementedError
 
     @property
     @abc.abstractmethod
     def name(self) -> str:
-        """Return the command name."""
         raise NotImplementedError
 
     @classmethod
     @abc.abstractmethod
     def help_text(cls) -> dict[str, str]:
-        """Return help text for this command.
-
-        Returns:
-            Dict mapping command strings (e.g., "/command" or "/command subcmd")
-            to their descriptions. For commands with subcommands, include all variants.
-        """
         raise NotImplementedError
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        """Validate command arguments.
-
-        Args:
-            args: Command arguments
-
-        Returns:
-            Tuple of (is_valid, error_message). If is_valid is False, error_message
-            should contain a helpful error message with expected usage. If is_valid is True,
-            error_message should be None.
-        """
         if len(args) > 0:
             return False, f"Usage: /{self.name}"
         return True, None
 
 
-# ============================================================================
-# Concrete Command Classes
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Concrete commands
+# ---------------------------------------------------------------------------
 
 
 class HelpCommand(Command):
-    def __init__(
-        self,
-        console: "TUIConsole",
-        config: "TUIConfig",
-        agent: "Agent",
-        **kwargs,
-    ):
-        super().__init__(console, config, agent, **kwargs)
-        # Injected by CommandRegistry so help only shows commands available for this agent
+    def __init__(self, frontend, config, agent, **kwargs):
+        super().__init__(frontend, config, agent, **kwargs)
         self._registry = kwargs.get("registry")
 
     @property
@@ -144,13 +171,11 @@ class HelpCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/help": "Show this help message"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        if self._registry is not None:
-            commands_dict = self._registry.get_active_help()
-        else:
-            commands_dict = CommandRegistry.get_help()  # fallback (standalone use)
-        self.console.print_help(commands_dict)
-        return CommandResult(True)
+    async def execute(self, args: list[str]) -> "CommandResult":
+        commands_dict = (
+            self._registry.get_active_help() if self._registry else CommandRegistry.get_help()
+        )
+        return CommandResult.ok(HelpOutput(commands_dict))
 
 
 class ExitCommand(Command):
@@ -165,10 +190,8 @@ class ExitCommand(Command):
             "/quit": "Exit the TUI (alias for /exit)",
         }
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        """Exit the TUI."""
-        self.console.print_status("Goodbye! Stay vibing.")
-        return CommandResult(True, exit=True)
+    async def execute(self, args: list[str]) -> "CommandResult":
+        return CommandResult.bye()
 
 
 class ClearCommand(Command):
@@ -178,14 +201,43 @@ class ClearCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/clear": "Clear conversation history and terminal"}
+        return {"/clear": "Start a new session (preserves old session history)"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        # Clear event history when the agent supports it
-        if hasattr(self.agent, "event_manager"):
-            self.agent.event_manager.clear()
-        self.console.console.clear()
-        return CommandResult(True)
+    async def execute(self, args: list[str]) -> "CommandResult":
+        # Create a fresh SessionManager so subsequent turns go to a new file.
+        # NOTE: do NOT call agent.event_manager.clear() here — that would
+        # destroy the old session's SQLite data before _swap_session_manager()
+        # can close and preserve it.  The new storage starts empty; the agent's
+        # event_manager property will return the new backend after the swap.
+        new_sm: SessionManager | None = None
+        if self.session_manager is not None:
+            try:
+                import uuid as _uuid
+
+                from nemo_oo_agents.storage import SQLiteStorageManager
+
+                from .session_manager import SESSIONS_DIR
+
+                _new_id = str(_uuid.uuid4())
+                SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                _new_storage = SQLiteStorageManager(SESSIONS_DIR / f"{_new_id}.db")
+                new_sm = SessionManager(
+                    storage=_new_storage,
+                    session_id=_new_id,
+                    model=self.session_manager.model,
+                    agent_cls=self.session_manager.agent_cls,
+                    working_dir=self.session_manager.working_dir,
+                )
+            except Exception:
+                pass
+
+        result = CommandResult.ok(
+            ClearScreen(),
+            _RichReplayPayload(payload={"kind": "clear"}),
+            TextOutput("Started new session. Previous session saved.", "success"),
+        )
+        result.new_session_manager = new_sm
+        return result
 
 
 class ModelCommand(Command):
@@ -197,18 +249,12 @@ class ModelCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/model": "Show current model"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        self.console.print_info(
-            f"Current model: [bold {COLORS['green']}]{self.config.default_model}[/]"
-        )
-        return CommandResult(True)
+    async def execute(self, args: list[str]) -> "CommandResult":
+        return CommandResult.ok(TextOutput(f"Current model: {self.config.default_model}", "info"))
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if len(args) > 0:
-            return (
-                False,
-                "Usage: /model. Note: To switch models, use the interactive /switch command.",
-            )
+            return False, "Usage: /model  (to switch, use /switch)"
         return True, None
 
 
@@ -221,34 +267,26 @@ class ModelsCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {"/models": "List available models from registry"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         from unifiedllm import MODELS
 
-        # Group models by provider
-        providers: dict[str, list[str]] = {}
+        rows: list[list[str]] = []
         for model_name in sorted(MODELS.keys()):
-            parts = model_name.split("/")
-            provider = parts[0] if parts else "unknown"
-            if provider not in providers:
-                providers[provider] = []
-            providers[provider].append(model_name)
+            marker = "\u2192" if model_name == self.config.default_model else ""
+            rows.append([model_name, marker])
 
-        self.console.console.print(f"\n[bold {COLORS['mauve']}]Available Models[/]\n")
-
-        for provider, models in sorted(providers.items()):
-            self.console.console.print(f"  [{COLORS['lavender']}]{provider}[/]:")
-            for model in models:
-                is_current = model == self.config.default_model
-                marker = f"[{COLORS['green']}]→[/] " if is_current else "  "
-                self.console.console.print(f"    {marker}[{COLORS['text']}]{model}[/]")
-        self.console.console.print(f"\n  [{COLORS['subtext1']}]Use /switch to change[/]")
-        self.console.console.print()
-        return CommandResult(True)
+        return CommandResult.ok(
+            TableOutput(
+                title="Available Models",
+                columns=["Model", ""],
+                rows=rows,
+                footer="Use /switch to change",
+            )
+        )
 
 
 class SwitchCommand(Command):
-    # bash is the proxy for "full codeact TUIAgent whose respond() uses the LLM"
-    required_capabilities: ClassVar[frozenset[str]] = frozenset({"bash"})
+    required_capabilities: ClassVar[frozenset[str]] = frozenset()
 
     @property
     def name(self) -> str:
@@ -256,55 +294,78 @@ class SwitchCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/switch": "Interactive model switcher"}
+        return {"/switch <model>": "Switch the LLM model (Tab to autocomplete)"}
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        from prompt_toolkit import PromptSession
-        from prompt_toolkit.completion import WordCompleter
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) != 1:
+            return False, "Usage: /switch <model>  (Tab to autocomplete)"
+        return True, None
 
+    async def execute(self, args: list[str]) -> "CommandResult":
         from unifiedllm import MODELS, get_llm_client
 
-        models = sorted(MODELS.keys())
-        completer = WordCompleter(models, ignore_case=True)
-
-        self.console.console.print(
-            f"\n[{COLORS['subtext1']}]Type model name (Tab to complete, Enter to select, Ctrl+C to cancel)[/]"
-        )
-        self.console.console.print(
-            f"[{COLORS['subtext1']}]Current: [{COLORS['green']}]{self.config.default_model}[/][/]\n"
-        )
-
-        try:
-            session = PromptSession(completer=completer, complete_while_typing=True)
-            selected = (await session.prompt_async("Model: ")).strip()
-        except KeyboardInterrupt:
-            return CommandResult(False, "Model switch cancelled")
-
-        if not selected:
-            return CommandResult(False, "No model selected")
-
+        selected = args[0]
         if selected not in MODELS:
-            return CommandResult(
-                False,
-                f"Model `{selected}` not found in registry. Use /models to see available options.",
+            return CommandResult.err(
+                f"Model `{selected}` not found. Use /models to see available options."
             )
 
         self.config.default_model = selected
         try:
             self.agent._llm = get_llm_client(selected)
         except Exception as e:
-            return CommandResult(False, f"Failed to switch model: {e}")
-        self.console.print_info(f"Switched to model: [bold {COLORS['green']}]{selected}[/]")
-        return CommandResult(True)
+            return CommandResult.err(f"Failed to switch model: {e}")
+
+        return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
-# ============================================================================
-# History Commands
-# ============================================================================
+class ThemeCommand(Command):
+    """Switch the color theme."""
+
+    THEMES = ("mocha", "latte", "vsdark", "vslight")
+
+    @property
+    def name(self) -> str:
+        return "theme"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/theme <mocha|latte|vsdark|vslight>": "Switch color theme"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) != 1:
+            return False, f"Usage: /theme <{'|'.join(self.THEMES)}>"
+        if args[0].lower() not in self.THEMES:
+            return False, f"Theme must be one of: {', '.join(self.THEMES)}"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        from . import theme as theme_module
+
+        name = args[0].lower()
+        theme_module.set_theme(name)
+
+        # Replace the base theme in Rich Console's ThemeStack
+        # We can't just push - we need to replace the base entry
+        if hasattr(self.frontend, "_console") and hasattr(self.frontend._console, "console"):
+            console = self.frontend._console.console
+            new_theme = theme_module.create_theme()
+
+            # Directly replace the base theme in the stack
+            # This is the only way to actually change colors since Theme snapshots
+            # the COLORS dict at creation time
+            console._theme_stack._entries[0] = new_theme.styles
+            console._theme_stack.get = console._theme_stack._entries[-1].get
+
+        return CommandResult.ok(TextOutput(f"Switched to {name} theme", "success"))
+
+
+# ---------------------------------------------------------------------------
+# History commands
+# ---------------------------------------------------------------------------
 
 
 class HistoryCommand(Command):
-    # get_summarization_status is only on TUIAgent (PassthroughAgent has no summarizer)
     required_capabilities: ClassVar[frozenset[str]] = frozenset({"get_summarization_status"})
 
     @property
@@ -321,111 +382,73 @@ class HistoryCommand(Command):
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
             return False, "Usage: /history <status|tags>"
-        subcmd = args[0].lower()
-        if subcmd not in ("status", "tags"):
-            return False, f"Unknown subcommand: `{subcmd}`. Usage: /history <status|tags>"
+        if args[0].lower() not in ("status", "tags"):
+            return False, f"Unknown subcommand `{args[0]}`. Usage: /history <status|tags>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
-
         if subcmd == "status":
-            return await self._history_status()
-        elif subcmd == "tags":
-            return await self._history_tags()
-        else:
-            return CommandResult(
-                False, f"Unknown subcommand: `{subcmd}`. Usage: /history <status|tags>"
-            )
+            return self._history_status()
+        return self._history_tags()
 
-    async def _history_status(self) -> CommandResult:
-        status = self.agent.get_summarization_status()
+    def _history_status(self) -> "CommandResult":
+        s = self.agent.get_summarization_status()
 
-        self.console.console.print(f"\n[bold {COLORS['mauve']}]History Status[/]\n")
-        self.console.console.print(
-            f"  Active events: [bold {COLORS['peach']}]{status['active_events']}[/]"
-        )
-        self.console.console.print(
-            f"  Summarization policy: [bold {COLORS['sapphire']}]{status['policy']}[/]"
-        )
+        rows: list[list[str]] = [
+            ["Active events", str(s["active_events"])],
+            ["Policy", s["policy"]],
+        ]
 
-        if status["has_summarizer"] and status["max_tokens"] > 0:
-            current = status["current_tokens"]
-            max_tokens = status["max_tokens"]
-            pct = (current / max_tokens * 100) if max_tokens > 0 else 0
-            if pct >= 80:
-                color = COLORS["red"]
-            elif pct >= 50:
-                color = COLORS["yellow"]
-            else:
-                color = COLORS["green"]
-            self.console.console.print(
-                f"  Token usage: [bold {color}]{current:,}[/] / {max_tokens:,} ({pct:.1f}%)"
-            )
-            self.console.console.print(
-                f"  Preserve recent: [bold]{status['preserve_recent']}[/] events"
-            )
+        if s.get("has_summarizer") and s.get("max_tokens", 0) > 0:
+            cur = s["current_tokens"]
+            mx = s["max_tokens"]
+            pct = cur / mx * 100 if mx else 0
+            rows.append([f"Token usage ({pct:.1f}%)", f"{cur:,} / {mx:,}"])
+            rows.append(["Preserve recent", str(s.get("preserve_recent", 0))])
 
-        self.console.console.print(
-            f"  Summary count: [bold {COLORS['yellow']}]{status['summary_count']}[/]"
-        )
+        rows.append(["Summary count", str(s.get("summary_count", 0))])
 
-        if status["summary_tags"]:
-            tags_str = (
-                f"[{COLORS['yellow']}]"
-                + f"[/], [{COLORS['yellow']}]".join(status["summary_tags"])
-                + "[/]"
-            )
-            self.console.console.print(f"  Summary tags: {tags_str}")
+        outputs: list[Output] = [
+            TableOutput(title="History Status", columns=["Field", "Value"], rows=rows)
+        ]
+        if s.get("summary_tags"):
+            outputs.append(TextOutput("Tags: " + ", ".join(s["summary_tags"]), "status"))
 
-        self.console.console.print()
-        return CommandResult(True)
+        return CommandResult.ok(*outputs)
 
-    async def _history_tags(self) -> CommandResult:
+    def _history_tags(self) -> "CommandResult":
+        if not hasattr(self.agent, "event_manager"):
+            return CommandResult.err("Agent does not support event history.")
         tags = self.agent.event_manager.keys()
+        rows: list[list[str]] = []
+        for tag in tags[:50]:
+            event = self.agent.event_manager[tag]
+            etype = getattr(event, "event_type", type(event).__name__)
+            rows.append([tag, etype])
 
-        self.console.console.print(
-            f"\n[bold {COLORS['mauve']}]Active History Tags[/] "
-            f"([{COLORS['peach']}]{len(tags)}[/] total)\n"
+        footer = f"\u2026 and {len(tags) - 50} more" if len(tags) > 50 else ""
+        return CommandResult.ok(
+            TableOutput(
+                title=f"Active History Tags ({len(tags)} total)",
+                columns=["Tag", "Type"],
+                rows=rows,
+                footer=footer,
+            )
         )
 
-        for tag in tags[:20]:
-            event = self.agent.event_manager[tag]
-            event_type = event.event_type if hasattr(event, "event_type") else type(event).__name__
-            is_summary = ".." in tag
-            tag_color = COLORS["yellow"] if is_summary else COLORS["blue"]
-            self.console.console.print(
-                f"  [{tag_color}]{tag}[/]: [{COLORS['subtext1']}]{event_type}[/]"
-            )
 
-        if len(tags) > 20:
-            self.console.console.print(f"  [{COLORS['overlay1']}]... and {len(tags) - 20} more[/]")
-
-        self.console.console.print()
-        return CommandResult(True)
-
-
-# ============================================================================
-# MCP Commands
-# ============================================================================
+# ---------------------------------------------------------------------------
+# MCP commands
+# ---------------------------------------------------------------------------
 
 
 class MCPCommand(Command):
-    # MCP tools are only useful if the agent runs CodeAct and can invoke them.
-    # bash is the proxy for "full codeact TUIAgent".
-    required_capabilities: ClassVar[frozenset[str]] = frozenset({"bash"})
+    required_capabilities: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(
-        self,
-        console: "TUIConsole",
-        config: "TUIConfig",
-        agent: "Agent",
-        **kwargs,
-    ):
-        super().__init__(console, config, agent, **kwargs)
+    def __init__(self, frontend, config, agent, **kwargs):
+        super().__init__(frontend, config, agent, **kwargs)
         self.mcp_file = kwargs.get("mcp_file")
-        # Track active MCP connections explicitly to avoid false positives from hasattr()
-        # Store in command instance to avoid attribute name clashes on the agent
         self._mcp_connections: set[str] = set()
 
     @property
@@ -443,102 +466,75 @@ class MCPCommand(Command):
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
             return False, "Usage: /mcp <list|connect|disconnect>"
-        subcmd = args[0].lower()
-        if subcmd not in ("list", "connect", "disconnect"):
-            return False, f"Unknown subcommand: `{subcmd}`. Usage: /mcp <list|connect|disconnect>"
-        if subcmd in ("connect", "disconnect"):
-            if len(args) < 2:
-                return False, f"Usage: /mcp {subcmd} <server_name>"
+        if args[0].lower() not in ("list", "connect", "disconnect"):
+            return False, f"Unknown subcommand `{args[0]}`"
+        if args[0].lower() in ("connect", "disconnect") and len(args) < 2:
+            return False, f"Usage: /mcp {args[0]} <server_name>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
-        subcmd = args[0].lower()
-        subargs = args[1:] if len(args) > 1 else []
-
-        # Lazy import to avoid module-level side effects and enable test mocking
+    async def execute(self, args: list[str]) -> "CommandResult":
         try:
             from mcp_nemo_oo_agents import MCPManager
         except ImportError:
-            return CommandResult(
-                False,
-                "MCP is not enabled. To use MCP, run `uv sync --extra mcp` and restart the TUI.",
-            )
+            return CommandResult.err("MCP not enabled. Run `uv sync --extra mcp` and restart.")
 
-        servers = MCPManager.list_servers(self.mcp_file)
+        subcmd = args[0].lower()
+        subargs = args[1:]
+        try:
+            servers = MCPManager.list_servers(self.mcp_file)
+        except Exception as exc:
+            return CommandResult.err(f"Failed to read MCP config: {exc}")
 
         if subcmd == "list":
-            # Use explicit connection tracking instead of hasattr() to avoid false positives
-            self.console.print_table(
-                "MCP Servers",
-                ["Server", "Connected"],
-                [[server, "✓" if server in self._mcp_connections else ""] for server in servers],
+            rows = [[s, "\u2713" if s in self._mcp_connections else ""] for s in servers]
+            return CommandResult.ok(
+                TableOutput(columns=["Server", "Connected"], rows=rows, title="MCP Servers"),
+                TextOutput(f"MCP file: {self.mcp_file}", "status"),
             )
-            self.console.print_info(f"Using mcp file: {self.mcp_file}")
-            return CommandResult(True)
 
-        elif subcmd == "connect":
+        if subcmd == "connect":
             server_name = subargs[0]
             if server_name not in servers:
-                return CommandResult(
-                    False,
-                    f"MCP server `{server_name}` not found. Use /mcp list to see available servers.",
-                )
+                return CommandResult.err(f"Server `{server_name}` not found. Use /mcp list.")
             try:
-                self.console.start_spinner(message=f"Connecting to MCP server `{server_name}`...")
+                await self.frontend.start_thinking(f"Connecting to `{server_name}`\u2026")
                 tool = MCPManager.create_from_server(server_name, mcp_file=self.mcp_file)
                 setattr(self.agent, _to_attr_name(server_name), tool)
-                # Track connection explicitly in command instance
                 self._mcp_connections.add(server_name)
-                return CommandResult(True, f"MCP server `{server_name}` connected")
-            except Exception as e:
-                return CommandResult(False, f"Failed to connect to MCP server `{server_name}`: {e}")
-            finally:
-                self.console.stop_spinner()
-
-        elif subcmd == "disconnect":
-            server_name = subargs[0]
-            try:
-                # Check explicit connection tracking instead of hasattr()
-                if server_name not in self._mcp_connections:
-                    return CommandResult(
-                        False,
-                        f"MCP server `{server_name}` not connected. Use /mcp list to see connected servers.",
-                    )
-                self._mcp_connections.discard(server_name)
-                delattr(self.agent, _to_attr_name(server_name))
-                return CommandResult(True, f"MCP server `{server_name}` disconnected")
-            except Exception as e:
-                return CommandResult(
-                    False, f"Failed to disconnect from MCP server `{server_name}`: {e}"
+                return CommandResult.ok(
+                    TextOutput(f"MCP server `{server_name}` connected", "success")
                 )
+            except Exception as e:
+                return CommandResult.err(f"Failed to connect to `{server_name}`: {e}")
+            finally:
+                await self.frontend.stop_thinking()
 
-        else:
-            return CommandResult(
-                False, f"Unknown subcommand: `{subcmd}`. Usage: /mcp <list|connect|disconnect>"
+        # disconnect
+        server_name = subargs[0]
+        if server_name not in self._mcp_connections:
+            return CommandResult.err(f"`{server_name}` not connected. Use /mcp list.")
+        try:
+            self._mcp_connections.discard(server_name)
+            delattr(self.agent, _to_attr_name(server_name))
+            return CommandResult.ok(
+                TextOutput(f"MCP server `{server_name}` disconnected", "success")
             )
+        except Exception as e:
+            return CommandResult.err(f"Failed to disconnect `{server_name}`: {e}")
 
 
-# ============================================================================
-# Skills Commands
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Skills commands
+# ---------------------------------------------------------------------------
 
 
 class SkillsCommand(Command):
-    # Skills are only useful if the agent runs CodeAct and can invoke them.
-    # bash is the proxy for "full codeact TUIAgent".
-    required_capabilities: ClassVar[frozenset[str]] = frozenset({"bash"})
+    required_capabilities: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(
-        self,
-        console: "TUIConsole",
-        config: "TUIConfig",
-        agent: "Agent",
-        **kwargs,
-    ):
-        super().__init__(console, config, agent, **kwargs)
+    def __init__(self, frontend, config, agent, **kwargs):
+        super().__init__(frontend, config, agent, **kwargs)
         self.skills_dirs = kwargs.get("skills_dirs")
-        # Track active skills explicitly to avoid false positives from hasattr()
-        # Store in command instance to avoid attribute name clashes on the agent
+        self._registry: CommandRegistry | None = kwargs.get("registry")
         self._active_skills: set[str] = set()
 
     @property
@@ -548,119 +544,217 @@ class SkillsCommand(Command):
     @classmethod
     def help_text(cls) -> dict[str, str]:
         return {
-            "/skills list": "List available skills (skills are reloaded automatically on each invocation)",
+            "/skills list": "List available skills",
             "/skills activate <id>": "Activate a skill",
             "/skills deactivate <id>": "Deactivate a skill",
+            "/skills commands": "Show auto-registered slash commands from skills",
         }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
-            return False, "Usage: /skills <list|activate|deactivate>"
-        subcmd = args[0].lower()
-        if subcmd not in ("list", "activate", "deactivate"):
-            return (
-                False,
-                f"Unknown subcommand: `{subcmd}`. Usage: /skills <list|activate|deactivate>",
-            )
-        if subcmd in ("activate", "deactivate"):
-            if len(args) < 2:
-                return False, f"Usage: /skills {subcmd} <skill_id>"
+            return False, "Usage: /skills <list|activate|deactivate|commands|debug>"
+        if args[0].lower() not in ("list", "activate", "deactivate", "commands", "debug"):
+            return False, f"Unknown subcommand `{args[0]}`"
+        if args[0].lower() in ("activate", "deactivate") and len(args) < 2:
+            return False, f"Usage: /skills {args[0]} <skill_id>"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         try:
             from nemo_oo_agents import SkillManager
         except ImportError:
-            return CommandResult(
-                False,
-                "Skills are not enabled. To use skills, run `uv sync --extra skills` and restart the TUI.",
-            )
+            return CommandResult.err("Skills not enabled. Run `uv sync --extra skills`.")
 
         subcmd = args[0].lower()
-        subargs = args[1:] if len(args) > 1 else []
+        subargs = args[1:]
+
+        if subcmd == "debug":
+            registry = self._registry
+            outputs: list[Output] = []
+            # 1. What's in _user_skills
+            user_skills = registry._user_skills if registry else {}
+            rows_us = [
+                [name, skill.description[:60]] for name, skill in sorted(user_skills.items())
+            ]
+            outputs.append(
+                TableOutput(
+                    title=f"_user_skills ({len(user_skills)} entries)",
+                    columns=["Name", "Description"],
+                    rows=rows_us or [["(empty)", ""]],
+                )
+            )
+            # 2. Raw scan trace — walk exactly what _discover_user_skills does
+            scan_rows = []
+            try:
+                import re as _re
+
+                import yaml as _yaml
+
+                for sd in self.skills_dirs or []:
+                    sd = Path(sd)
+                    if not sd.is_dir():
+                        scan_rows.append([str(sd), "(dir missing)", ""])
+                        continue
+                    found = sorted(sd.rglob("SKILL.md"))
+                    if not found:
+                        scan_rows.append([str(sd), "(no SKILL.md found)", ""])
+                        continue
+                    for sm in found:
+                        try:
+                            c = sm.read_text(encoding="utf-8")
+                            if not c.startswith("---"):
+                                scan_rows.append([str(sm), "SKIP: no frontmatter", ""])
+                                continue
+                            pts = c.split("---", 2)
+                            if len(pts) < 3:
+                                scan_rows.append([str(sm), "SKIP: unclosed frontmatter", ""])
+                                continue
+                            try:
+                                m = _yaml.safe_load(pts[1]) or {}
+                                if not isinstance(m, dict):
+                                    raise ValueError
+                                parse_mode = "yaml"
+                            except Exception:
+                                m = {}
+                                for ln in pts[1].splitlines():
+                                    mx = _re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", ln)
+                                    if mx:
+                                        rv = mx.group(2).strip()
+                                        try:
+                                            pv = _yaml.safe_load(rv)
+                                            m[mx.group(1)] = str(pv) if isinstance(pv, list) else pv
+                                        except Exception:
+                                            m[mx.group(1)] = rv
+                                parse_mode = "regex"
+                            ia = m.get("install-as") == "command"
+                            iv = m.get("user-invocable")
+                            uv = ia or iv is True
+                            nm = str(m.get("name", "")).strip()
+                            reason = (
+                                f"OK ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
+                                if uv
+                                else f"SKIP ia={ia} iv={iv} name={nm!r} parse={parse_mode}"
+                            )
+                            scan_rows.append([str(sm.relative_to(sd)), reason, ""])
+                        except Exception as ex:
+                            scan_rows.append([str(sm), f"ERROR: {ex}", ""])
+            except Exception as ex:
+                scan_rows.append(["scan error", str(ex), ""])
+            outputs.append(
+                TableOutput(
+                    title="Scan trace",
+                    columns=["File", "Result", ""],
+                    rows=scan_rows or [["(nothing scanned)", "", ""]],
+                )
+            )
+            # 3. What get_completions() returns (the dict fed to Tab completion)
+            if registry:
+                completions = registry.get_completions()
+                skill_completions = {
+                    k: v
+                    for k, v in completions.items()
+                    if k
+                    not in {
+                        "/help",
+                        "/exit",
+                        "/quit",
+                        "/clear",
+                        "/compact",
+                        "/edit",
+                        "/model",
+                        "/models",
+                        "/switch",
+                        "/theme",
+                        "/history",
+                        "/mcp",
+                        "/skills",
+                        "/sandbox",
+                        "/python",
+                        "/session",
+                    }
+                }
+                rows_c = [[k, v[:60]] for k, v in sorted(skill_completions.items())]
+                outputs.append(
+                    TableOutput(
+                        title=f"Skill completions in get_completions() ({len(skill_completions)} extra)",
+                        columns=["Key", "Description"],
+                        rows=rows_c or [["(none)", ""]],
+                    )
+                )
+            # 4. Skills dirs
+            outputs.append(TextOutput(f"skills_dirs: {self.skills_dirs}", "status"))
+            return CommandResult.ok(*outputs)
+
+        if subcmd == "commands":
+            user_skills = self._registry._user_skills if self._registry else {}
+            rows_cmd = [
+                [f"/{name}", skill.argument_hint or "", skill.description]
+                for name, skill in sorted(user_skills.items())
+            ]
+            if rows_cmd:
+                return CommandResult.ok(
+                    TableOutput(
+                        columns=["Command", "Args", "Description"],
+                        rows=rows_cmd,
+                        title="Skill slash commands (install-as: command)",
+                    ),
+                    TextOutput(f"Searched: {self.skills_dirs}", "status"),
+                )
+            return CommandResult.ok(
+                TextOutput("No skills with install-as: command found.", "info"),
+                TextOutput(f"Searched: {self.skills_dirs}", "status"),
+            )
 
         if subcmd == "list":
             if not self.skills_dirs:
-                self.console.print_info("No skills directories configured")
-                return CommandResult(True)
-
+                return CommandResult.ok(TextOutput("No skills directories configured", "info"))
             skills_dict = SkillManager.discover(self.skills_dirs)
-
             if not skills_dict:
-                self.console.print_info(
-                    "No skills found. Add .md files to .cursor/skills/ or .claude/skills/"
-                )
-                return CommandResult(True)
-
+                return CommandResult.ok(TextOutput("No skills found", "info"))
             rows = [
                 [
-                    skill_id,
-                    "✓" if skill_id in self._active_skills else "",
-                    skill.description,  # type: ignore[attr-defined]
+                    sid,
+                    "\u2713" if sid in self._active_skills else "",
+                    getattr(skill, "description", ""),
                 ]
-                for skill_id, skill in sorted(skills_dict.items(), key=lambda x: x[0])
+                for sid, skill in sorted(skills_dict.items())
             ]
+            return CommandResult.ok(
+                TableOutput(columns=["ID", "Active", "Description"], rows=rows, title="Skills"),
+                TextOutput(f"Dirs: {self.skills_dirs}", "status"),
+            )
 
-            self.console.print_table("Skills", ["ID", "Active", "Description"], rows)
-            self.console.print_info(f"Using skills directories: {self.skills_dirs}")
-            return CommandResult(True)
-
-        elif subcmd == "activate":
+        if subcmd == "activate":
             skill_id = subargs[0]
-
             if not self.skills_dirs:
-                return CommandResult(False, "No skills directories configured")
-
-            # Check if skill exists first
+                return CommandResult.err("No skills directories configured")
             available = SkillManager.discover(self.skills_dirs)
             if skill_id not in available:
-                error_message = (
-                    f"Skill `{skill_id}` not found. Use /skills list to see available skills."
-                )
-                return CommandResult(False, error_message)
-
-            # Then check if it's already active
+                return CommandResult.err(f"Skill `{skill_id}` not found. Use /skills list.")
             if skill_id in self._active_skills:
-                error_message = f"Skill `{skill_id}` is already activated"
-                return CommandResult(False, error_message)
-
+                return CommandResult.err(f"Skill `{skill_id}` already active")
             try:
-                attr_name = _to_attr_name(skill_id)
-                skill_obj = available[skill_id]
-                setattr(self.agent, attr_name, skill_obj)
-                # Track activation explicitly in command instance
+                setattr(self.agent, _to_attr_name(skill_id), available[skill_id])
                 self._active_skills.add(skill_id)
-                return CommandResult(True, f"Skill `{skill_id}` activated")
+                return CommandResult.ok(TextOutput(f"Skill `{skill_id}` activated", "success"))
             except Exception as e:
-                return CommandResult(False, f"Failed to activate skill `{skill_id}`: {e}")
+                return CommandResult.err(f"Failed to activate `{skill_id}`: {e}")
 
-        elif subcmd == "deactivate":
-            skill_id = subargs[0]
-
-            try:
-                # Check explicit connection tracking instead of hasattr()
-                if skill_id not in self._active_skills:
-                    return CommandResult(
-                        False,
-                        f"Skill `{skill_id}` not active. Use /skills list to see active skills.",
-                    )
-
-                delattr(self.agent, _to_attr_name(skill_id))
-                self._active_skills.discard(skill_id)
-                return CommandResult(True, f"Skill `{skill_id}` deactivated")
-            except Exception as e:
-                return CommandResult(False, f"Failed to deactivate skill `{skill_id}`: {e}")
-
-        else:
-            self.console.print_error(
-                f"Unknown subcommand: <{subcmd}>. Usage: /skills <list|activate|deactivate>"
-            )
-            return CommandResult(False, f"Unknown subcommand: `{subcmd}`")
+        # deactivate
+        skill_id = subargs[0]
+        if skill_id not in self._active_skills:
+            return CommandResult.err(f"`{skill_id}` not active. Use /skills list.")
+        try:
+            delattr(self.agent, _to_attr_name(skill_id))
+            self._active_skills.discard(skill_id)
+            return CommandResult.ok(TextOutput(f"Skill `{skill_id}` deactivated", "success"))
+        except Exception as e:
+            return CommandResult.err(f"Failed to deactivate `{skill_id}`: {e}")
 
 
-# ============================================================================
-# Sandbox Commands
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Sandbox commands
+# ---------------------------------------------------------------------------
 
 
 class SandboxCommand(Command):
@@ -681,93 +775,131 @@ class SandboxCommand(Command):
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
             return False, "Usage: /sandbox <status|enable|disable>"
-        subcmd = args[0].lower()
-        if subcmd not in ("status", "enable", "disable"):
-            return (
-                False,
-                f"Unknown subcommand: `{subcmd}`. Usage: /sandbox <status|enable|disable>",
-            )
+        if args[0].lower() not in ("status", "enable", "disable"):
+            return False, f"Unknown subcommand `{args[0]}`"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
 
         if subcmd == "status":
-            return await self._sandbox_status()
-        elif subcmd == "enable":
-            return await self._sandbox_enable()
-        elif subcmd == "disable":
-            return await self._sandbox_disable()
-        else:
-            return CommandResult(
-                False,
-                f"Unknown subcommand: `{subcmd}`. Usage: /sandbox <status|enable|disable>",
-            )
+            available = self.agent.bash.sandbox_available
+            enabled = self.agent.bash.use_sandbox
+            note = ""
+            if enabled and not available:
+                note = "Warning: sandbox enabled but SRT not available \u2014 running unsandboxed"
+            elif enabled:
+                note = "Bash commands running in SRT sandbox"
+            else:
+                note = "Bash commands running without sandbox"
 
-    async def _sandbox_status(self) -> CommandResult:
-        available = self.agent.bash.sandbox_available
-        enabled = self.agent.bash.use_sandbox
+            rows = [
+                ["SRT available", "Yes" if available else "No"],
+                ["Sandbox enabled", "Yes" if enabled else "No"],
+            ]
+            outputs: list[Output] = [
+                TableOutput(columns=["Field", "Value"], rows=rows, title="Sandbox Status")
+            ]
+            if note:
+                outputs.append(TextOutput(note, "status"))
+            return CommandResult.ok(*outputs)
 
-        self.console.console.print(f"\n[bold {COLORS['mauve']}]Sandbox Status[/]\n")
-        self.console.console.print(
-            f"  SRT available: [bold {COLORS['green'] if available else COLORS['red']}]{'Yes' if available else 'No'}[/]"
-        )
-        self.console.console.print(
-            f"  Sandbox enabled: [bold {COLORS['green'] if enabled else COLORS['yellow']}]{'Yes' if enabled else 'No'}[/]"
-        )
+        if subcmd == "enable":
+            if not self.agent.bash.sandbox_available:
+                return CommandResult.err("SRT not available. Install to use sandboxing.")
+            if self.agent.bash.use_sandbox:
+                return CommandResult.ok(TextOutput("Sandbox already enabled", "info"))
+            self.agent.bash.use_sandbox = True
+            return CommandResult.ok(TextOutput("Sandbox enabled", "success"))
 
-        if enabled and not available:
-            self.console.console.print(
-                f"  [{COLORS['yellow']}]Warning: Sandbox enabled but SRT not available. Commands will run unsandboxed.[/]"
-            )
-        elif enabled and available:
-            self.console.console.print(
-                f"  [{COLORS['green']}]Bash commands are running in SRT sandbox.[/]"
-            )
-        else:
-            self.console.console.print(
-                f"  [{COLORS['subtext1']}]Bash commands are running without sandbox.[/]"
-            )
-
-        self.console.console.print()
-        return CommandResult(True)
-
-    async def _sandbox_enable(self) -> CommandResult:
-        if not self.agent.bash.sandbox_available:
-            error_message = "SRT sandbox not available. Install SRT: npm install -g @anthropic-ai/sandbox-runtime"
-            return CommandResult(False, error_message)
-
-        if self.agent.bash.use_sandbox:
-            return CommandResult(True, "Sandbox already enabled")
-
-        self.agent.bash.use_sandbox = True
-        return CommandResult(True, "Sandbox enabled for bash commands")
-
-    async def _sandbox_disable(self) -> CommandResult:
+        # disable
         if not self.agent.bash.use_sandbox:
-            return CommandResult(False, "Sandbox is already disabled")
-
+            return CommandResult.ok(TextOutput("Sandbox already disabled", "info"))
         self.agent.bash.use_sandbox = False
-        return CommandResult(True, "Sandbox disabled for bash commands")
+        return CommandResult.ok(TextOutput("Sandbox disabled", "success"))
 
 
-# ============================================================================
-# Python Output Commands
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Compact command
+# ---------------------------------------------------------------------------
+
+
+class CompactCommand(Command):
+    """Summarize and compact conversation history."""
+
+    @property
+    def name(self) -> str:
+        return "compact"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/compact": "Summarize conversation history into a compact block (frees tokens)"}
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not hasattr(self.agent, "event_manager"):
+            return CommandResult.err("Agent does not support history management.")
+
+        tags = self.agent.event_manager.keys()
+        events_before = len(tags)
+        if events_before == 0:
+            return CommandResult.ok(
+                TextOutput("Nothing to compact \u2014 history is already empty.", "info")
+            )
+
+        tokens_before = 0
+        summarizers = getattr(self.agent, "_summarizers", [])
+        if summarizers:
+            try:
+                tokens_before = summarizers[0]._estimate_tokens()
+            except Exception:
+                pass
+
+        if summarizers:
+            summarizer = summarizers[0]
+            start_tag = tags[0]
+            end_tag = tags[-1]
+            try:
+                await self.frontend.start_thinking("Summarizing history\u2026")
+                history_md = summarizer._render_range_to_markdown(start_tag, end_tag)
+                target_chars = getattr(getattr(summarizer, "config", None), "target_chars", 2000)
+                summary_text = await summarizer.summarize(history_md, target_chars)
+                self.agent.event_manager.collapse(start_tag, end_tag, summary_text)
+                events_after = len(self.agent.event_manager.keys())
+                tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
+                result = CommandResult.ok(
+                    TextOutput(
+                        f"Compacted {events_before} events \u2192 {events_after} (summary block){tok_sfx}.",
+                        "success",
+                    )
+                )
+                result.compact_done = True
+                return result
+            except Exception as e:
+                self.agent.event_manager.clear()
+                return CommandResult.ok(
+                    TextOutput(
+                        f"Summarization failed ({e}); cleared {events_before} events.", "warning"
+                    )
+                )
+            finally:
+                await self.frontend.stop_thinking()
+
+        self.agent.event_manager.clear()
+        tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
+        result = CommandResult.ok(
+            TextOutput(f"Cleared {events_before} history events{tok_sfx}.", "success")
+        )
+        result.compact_done = True
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Python display toggle
+# ---------------------------------------------------------------------------
 
 
 class PythonCommand(Command):
-    """Toggle display of the Python execution panel (code + output)."""
-
-    def __init__(
-        self,
-        console: "TUIConsole",
-        config: "TUIConfig",
-        agent: "Agent",
-        **kwargs,
-    ):
-        super().__init__(console, config, agent, **kwargs)
-        self._streaming_display = kwargs.get("streaming_display")
+    """Toggle display of the Python execution panel."""
 
     @property
     def name(self) -> str:
@@ -777,249 +909,563 @@ class PythonCommand(Command):
     def help_text(cls) -> dict[str, str]:
         return {
             "/python status": "Show whether Python execution display is on or off",
-            "/python on": "Enable Python execution display (code + output panels)",
+            "/python on": "Enable Python execution display",
             "/python off": "Suppress Python execution display",
         }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
         if not args:
             return False, "Usage: /python <status|on|off>"
-        subcmd = args[0].lower()
-        if subcmd not in ("status", "on", "off"):
-            return False, f"Unknown subcommand: `{subcmd}`. Usage: /python <status|on|off>"
+        if args[0].lower() not in ("status", "on", "off"):
+            return False, f"Unknown subcommand `{args[0]}`"
         return True, None
 
-    async def execute(self, args: list[str]) -> CommandResult:
+    async def execute(self, args: list[str]) -> "CommandResult":
         subcmd = args[0].lower()
 
-        if self._streaming_display is None:
-            return CommandResult(False, "Streaming display not available.")
-
         if subcmd == "status":
-            state = "on" if self._streaming_display.show_python else "off"
-            self.console.print_info(f"Python execution display: [{COLORS['green']}]{state}[/]")
-            return CommandResult(True)
+            state = "on" if self.config.show_python else "off"
+            return CommandResult.ok(TextOutput(f"Python execution display: {state}", "info"))
 
         if subcmd == "on":
-            if self._streaming_display.show_python:
-                return CommandResult(True, "Python execution display is already on.")
-            self._streaming_display.show_python = True
-            return CommandResult(True, "Python execution display enabled.")
+            self.config.show_python = True
+            return CommandResult.ok(TextOutput("Python execution display enabled.", "success"))
 
         # off
-        if not self._streaming_display.show_python:
-            return CommandResult(True, "Python execution display is already off.")
-        self._streaming_display.show_python = False
-        return CommandResult(True, "Python execution display suppressed.")
+        self.config.show_python = False
+        return CommandResult.ok(TextOutput("Python execution display suppressed.", "success"))
 
 
-# ============================================================================
-# Command Registry
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Edit command
+# ---------------------------------------------------------------------------
+
+
+class EditCommand(Command):
+    """Open a file in $EDITOR (TUI) or Monaco (web) and show the diff on save."""
+
+    @property
+    def name(self) -> str:
+        return "edit"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/edit <file>": "Open file in $EDITOR (TUI) or Monaco editor (web) \u2014 shows diff on save",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if not args:
+            return False, "Usage: /edit <file>"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        import difflib
+        from pathlib import Path
+
+        path = Path(args[0]).expanduser().resolve()
+        original = path.read_text(errors="replace") if path.exists() else ""
+        language = _detect_language(path.suffix)
+
+        new_content = await self.frontend.open_editor(str(path), original, language)
+        if new_content is None:
+            return CommandResult.ok(TextOutput("Edit cancelled.", "info"))
+        if new_content == original:
+            return CommandResult.ok(TextOutput("No changes.", "info"))
+
+        # Write the file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(new_content)
+
+        # Compute unified diff
+        diff_lines = list(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"a/{path.name}",
+                tofile=f"b/{path.name}",
+                lineterm="\n",
+            )
+        )
+        diff_text = "".join(diff_lines)
+
+        outputs: list[Output] = [TextOutput(f"Saved {path}.", "success")]
+        if diff_text:
+            outputs.append(DiffOutput(diff=diff_text, filename=str(path)))
+        return CommandResult.ok(*outputs)
+
+
+# Session management command
+# ---------------------------------------------------------------------------
+
+
+class SessionCommand(Command):
+    """List, resume, and manage conversation sessions."""
+
+    @property
+    def name(self) -> str:
+        return "session"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/session list": "List recent sessions",
+            "/session new": "Start a new session (current history cleared)",
+            "/session resume <id>": "Resume a past session (injects history as context)",
+            "/session delete <id>": "Delete a session",
+            "/session export": "Export current session as Markdown",
+            "/session rename <name>": "Rename the current session",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if not args:
+            return False, "Usage: /session <list|new|resume|delete|export|rename>"
+        if args[0].lower() not in ("list", "new", "resume", "delete", "export", "rename"):
+            return False, f"Unknown subcommand `{args[0]}`"
+        if args[0].lower() in ("resume", "delete") and len(args) < 2:
+            return False, f"Usage: /session {args[0]} <session_id>"
+        if args[0].lower() == "rename" and len(args) < 2:
+            return False, "Usage: /session rename <name>"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        subcmd = args[0].lower()
+
+        if subcmd == "list":
+            sessions = SessionManager.list_sessions()
+            if not sessions:
+                return CommandResult.ok(TextOutput("No sessions found.", "info"))
+            rows = []
+            for s in sessions:
+                dt = datetime.datetime.fromtimestamp(s.last_active).strftime("%m/%d %H:%M")
+                name_display = s.name[:28] if s.name else ""
+                rows.append(
+                    [s.id[:8], dt, s.model.split("/")[-1][:20], str(s.turn_count), name_display]
+                )
+            return CommandResult.ok(
+                TableOutput(
+                    title="Recent Sessions",
+                    columns=["ID", "Last Active", "Model", "Turns", "Name"],
+                    rows=rows,
+                )
+            )
+
+        if subcmd == "export":
+            if self.session_manager is None:
+                return CommandResult.err("No active session manager.")
+            md = self.session_manager.as_markdown()
+            fname = f"session-{self.session_manager.session_id[:8]}-{datetime.date.today()}.md"
+            try:
+                Path(fname).write_text(md)
+                return CommandResult.ok(TextOutput(f"Session exported to {fname}", "success"))
+            except Exception as e:
+                return CommandResult.ok(TextOutput(f"Export failed: {e}\n\n{md[:500]}", "warning"))
+
+        if subcmd == "resume":
+            session_id = args[1]
+            matches = SessionManager.find_by_prefix(session_id)
+            if not matches:
+                return CommandResult.err(f"Session '{session_id}' not found. Use /session list.")
+            if len(matches) > 1:
+                ids = ", ".join(m[:8] for m in matches)
+                return CommandResult.err(f"Ambiguous session prefix '{session_id}' matches: {ids}")
+            full_id = matches[0]
+
+            import os as _os
+
+            from .session_manager import SESSIONS_DIR as _SESSIONS_DIR
+
+            _session_db_path = _SESSIONS_DIR / f"{full_id}.db"
+            _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+
+            outputs = build_resume_outputs(_session_db_path, full_id, in_nemo_term=_in_nemo_term)
+            if not outputs:
+                return CommandResult.err(f"Session '{session_id}' is empty.")
+
+            # Open the old session's DB, restore agent state, swap session manager
+            from nemo_oo_agents.storage import SQLiteStorageManager
+
+            try:
+                old_storage = SQLiteStorageManager(_session_db_path)
+                restored = old_storage.restore_latest_snapshot(self.agent)
+                if restored:
+                    outputs.append(
+                        TextOutput(f"Agent state restored from session {full_id[:8]}.", "status")
+                    )
+                new_sm = SessionManager(
+                    storage=old_storage,
+                    session_id=full_id,
+                    model=self.session_manager.model if self.session_manager else "",
+                    agent_cls=type(self.agent).__name__,
+                    working_dir=self.session_manager.working_dir if self.session_manager else "",
+                    resumed=True,
+                )
+                result = CommandResult.ok(*outputs)
+                result.new_session_manager = new_sm
+                return result
+            except Exception as e:
+                outputs.append(TextOutput(f"Could not restore session: {e}", "warning"))
+
+            return CommandResult.ok(*outputs)
+
+        if subcmd == "delete":
+            session_id = args[1]
+            matches = SessionManager.find_by_prefix(session_id)
+            if not matches:
+                return CommandResult.err(f"Session '{session_id}' not found.")
+            if len(matches) > 1:
+                ids = ", ".join(m[:8] for m in matches)
+                return CommandResult.err(f"Ambiguous session prefix '{session_id}' matches: {ids}")
+            SessionManager.delete_session(matches[0])
+            return CommandResult.ok(TextOutput(f"Session {matches[0][:8]} deleted.", "success"))
+
+        if subcmd == "rename":
+            name = " ".join(args[1:]).strip()
+            if self.session_manager is None:
+                return CommandResult.err("No active session.")
+            self.session_manager.rename(name, user_named=True)
+            return CommandResult.ok(TextOutput(f"Session renamed to: {name}", "success"))
+
+        if subcmd == "new":
+            # NOTE: do NOT call agent.event_manager.clear() here — same
+            # reasoning as ClearCommand: it would wipe the old session's
+            # SQLite data before _swap_session_manager() preserves it.
+
+            # Create a fresh SessionManager so subsequent turns go to a new file.
+            new_sm: SessionManager | None = None
+            if self.session_manager is not None:
+                try:
+                    import uuid as _uuid
+
+                    from nemo_oo_agents.storage import SQLiteStorageManager
+
+                    from .session_manager import SESSIONS_DIR
+
+                    _new_id = str(_uuid.uuid4())
+                    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                    _new_storage = SQLiteStorageManager(SESSIONS_DIR / f"{_new_id}.db")
+                    new_sm = SessionManager(
+                        storage=_new_storage,
+                        session_id=_new_id,
+                        model=self.session_manager.model,
+                        agent_cls=self.session_manager.agent_cls,
+                        working_dir=self.session_manager.working_dir,
+                    )
+                except Exception:
+                    pass
+
+            result = CommandResult.ok(
+                ClearScreen(),
+                _RichReplayPayload(payload={"kind": "clear"}),
+                TextOutput("Started new session. History cleared.", "success"),
+            )
+            result.new_session_manager = new_sm
+            return result
+
+        return CommandResult.err(f"Unknown subcommand `{subcmd}`")
+
+
+# ---------------------------------------------------------------------------
+# Registry and handler
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _UserSkill:
+    """Metadata for a user-invocable skill slash command."""
+
+    name: str
+    body: str
+    description: str
+    argument_hint: str | None = None
+
+    def help_entry(self) -> tuple[str, str]:
+        hint = self.argument_hint or ""
+        key = f"/{self.name} {hint}".strip()
+        return key, self.description
+
+    def make_agent_message(self, args: list[str]) -> str:
+        body = self.body
+        if args:
+            joined = " ".join(args)
+            if "$ARGUMENTS" in body:
+                return body.replace("$ARGUMENTS", joined)
+            return f"{body}\n\nArguments: {joined}"
+        return body
 
 
 class CommandRegistry:
-    """Registry of command instances.
+    """Registry of command instances."""
 
-    This is the single source of truth for command registration and instantiation.
-    """
-
-    # Command classes (shared across all instances)
     _command_classes: dict[str, type[Command]] = {
         "help": HelpCommand,
         "exit": ExitCommand,
-        "quit": ExitCommand,  # Alias
+        "quit": ExitCommand,
         "clear": ClearCommand,
+        "compact": CompactCommand,
+        "edit": EditCommand,
         "model": ModelCommand,
         "models": ModelsCommand,
         "switch": SwitchCommand,
+        "theme": ThemeCommand,
         "history": HistoryCommand,
         "mcp": MCPCommand,
         "skills": SkillsCommand,
         "sandbox": SandboxCommand,
         "python": PythonCommand,
+        "session": SessionCommand,
     }
 
     def __init__(
         self,
         config: "TUIConfig",
         agent: "Agent",
-        console: "TUIConsole",
-        skills_dirs: "list[Path] | None" = None,
-        mcp_file: "Path | None" = None,
-        streaming_display=None,
+        frontend: "Frontend",
+        skills_dirs: list[Path] | None = None,
+        mcp_file: Path | None = None,
+        session_manager: "SessionManager | None" = None,
     ):
-        """Initialize registry with command instances.
-
-        Args:
-            config: Application configuration
-            agent: Any chat agent subclassing NeMo OO Agents
-            skills_dirs: Directories to search for skills
-            mcp_file: Path to MCP config file
-            streaming_display: StreamingDisplay instance (for /python command)
-        """
         self.config = config
         self.agent = agent
+        self.frontend = frontend
         self.skills_dirs = skills_dirs
         self.mcp_file = mcp_file
-        self.console = console
-        self.streaming_display = streaming_display
-        self._commands: dict[str, Command] = self.register_commands()
+        self.session_manager = session_manager
+        self._commands: dict[str, Command] = self._register()
+        self._user_skills: dict[str, _UserSkill] = self._discover_user_skills()
+        self._auto_install_skills()
 
-    def register_commands(self) -> dict[str, Command]:
-        """Register commands supported by the current agent.
-
-        Commands whose ``required_capabilities`` are not present on the agent
-        are silently omitted, so ``/help`` only lists available commands.
-        """
+    def _register(self) -> dict[str, Command]:
         commands: dict[str, Command] = {}
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "skills_dirs": self.skills_dirs,
             "mcp_file": self.mcp_file,
-            "registry": self,  # injected into HelpCommand for accurate /help output
-            "streaming_display": self.streaming_display,  # injected into PythonCommand
+            "registry": self,
+            "session_manager": self.session_manager,
         }
-        for cmd_name, cmd_class in self.get_all_command_classes().items():
-            if not all(hasattr(self.agent, cap) for cap in cmd_class.required_capabilities):
+        for name, cls in self.get_all_command_classes().items():
+            if not all(hasattr(self.agent, cap) for cap in cls.required_capabilities):
                 continue
-            command = cmd_class(self.console, self.config, self.agent, **kwargs)
-            commands[cmd_name] = command
+            commands[name] = cls(self.frontend, self.config, self.agent, **kwargs)
         return commands
 
-    def get_command(self, name: str) -> Command | None:
-        """Get command instance by name.
+    def _discover_user_skills(self) -> "dict[str, _UserSkill]":
+        """Scan skills dirs for install-as:command skills and register them as slash commands.
 
-        Args:
-            name: Command name
-
-        Returns:
-            Command instance or None if not found
+        Uses rglob to match SkillManager.discover() — finds skills at any depth.
+        Parses SKILL.md frontmatter inline to avoid depending on private nemo_oo_agents
+        internals that may not be present in older installed versions.
         """
+        skills: dict[str, _UserSkill] = {}
+        if not self.skills_dirs:
+            return skills
+        try:
+            import yaml
+        except ImportError:
+            return skills
+        for skills_dir in self.skills_dirs:
+            skills_dir = Path(skills_dir)
+            if not skills_dir.is_dir():
+                continue
+            for skill_md in sorted(skills_dir.rglob("SKILL.md")):
+                entry = skill_md.parent
+                try:
+                    content = skill_md.read_text(encoding="utf-8")
+                    if not content.startswith("---"):
+                        continue
+                    parts = content.split("---", 2)
+                    if len(parts) < 3:
+                        continue
+                    try:
+                        meta = yaml.safe_load(parts[1]) or {}
+                        if not isinstance(meta, dict):
+                            raise ValueError("not a mapping")
+                    except Exception:
+                        # Fallback: line-by-line regex for invalid-YAML values like
+                        # argument-hint: "<action>" [issue-id]  (Claude Code style).
+                        # Parse each scalar individually so "false" → False (not "false").
+                        import re
+
+                        meta = {}
+                        for line in parts[1].splitlines():
+                            m = re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", line)
+                            if not m:
+                                continue
+                            raw = m.group(2).strip()
+                            try:
+                                parsed = yaml.safe_load(raw)
+                                meta[m.group(1)] = (
+                                    str(parsed) if isinstance(parsed, list) else parsed
+                                )
+                            except Exception:
+                                meta[m.group(1)] = raw
+                    if not isinstance(meta, dict):
+                        continue
+                    # CC convention: user-invocable defaults to true.
+                    # Opt out with user-invocable: false.
+                    # install-as: command is honored for backward compat.
+                    if meta.get("user-invocable") is False:
+                        continue
+                    name = str(meta.get("name", "")).strip()
+                    if not name or name in self._commands or name in skills:
+                        continue
+                    description = str(meta.get("description", "")).strip()
+                    body = parts[2].strip()
+                    hint = meta.get("argument-hint")
+                    if isinstance(hint, list):
+                        # YAML parses [label] as a list; reconstruct bracket notation
+                        hint = "[" + ", ".join(str(x) for x in hint) + "]"
+                    elif hint is not None:
+                        hint = str(hint)
+                    skills[name] = _UserSkill(
+                        name=name,
+                        body=body,
+                        description=description,
+                        argument_hint=hint,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to load skill from %s: %s", entry, e)
+        return skills
+
+    def _auto_install_skills(self) -> None:
+        """Attach all discovered skills as agent attributes at startup."""
+        if not self.skills_dirs:
+            return
+        try:
+            from nemo_oo_agents import SkillManager
+
+            SkillManager.install(self.agent, skills_dir=self.skills_dirs)
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning("Failed to auto-install skills: %s", e)
+
+    def get_command(self, name: str) -> "Command | None":
         return self._commands.get(name.lower())
+
+    def get_user_skill(self, name: str) -> "_UserSkill | None":
+        return self._user_skills.get(name.lower())
 
     @classmethod
     def get_all_command_classes(cls) -> dict[str, type[Command]]:
-        """Get all registered command classes.
-
-        Returns:
-            Dict mapping command names to command classes
-        """
         return cls._command_classes.copy()
 
     @classmethod
     def get_help(cls) -> dict[str, str]:
-        """Generate help text dict from all registered commands.
-
-        This ensures the help text and command registry stay in sync.
-        Each command class provides its help text via the help_text() classmethod.
-
-        Returns:
-            Dict mapping command strings to descriptions for help display
-        """
         commands: dict[str, str] = {}
-        # Use set to avoid processing the same class multiple times (e.g., ExitCommand for exit/quit)
-        processed_classes: set[type[Command]] = set()
-        for cmd_class in cls._command_classes.values():
-            if cmd_class not in processed_classes:
-                processed_classes.add(cmd_class)
-                # Get help text from each command class
-                help_dict = cmd_class.help_text()
-                commands.update(help_dict)
+        seen: set[type[Command]] = set()
+        for cmd_cls in cls._command_classes.values():
+            if cmd_cls not in seen:
+                seen.add(cmd_cls)
+                commands.update(cmd_cls.help_text())
         return commands
 
     def get_active_help(self) -> dict[str, str]:
-        """Generate help text for currently registered (available) commands only.
-
-        Unlike the classmethod ``get_help()``, this reflects what is actually
-        usable with the current agent — commands filtered by ``required_capabilities``
-        are omitted.
-        """
         commands: dict[str, str] = {}
-        processed_classes: set[type[Command]] = set()
-        for command in self._commands.values():
-            cmd_class = type(command)
-            if cmd_class not in processed_classes:
-                processed_classes.add(cmd_class)
-                commands.update(cmd_class.help_text())
+        seen: set[type[Command]] = set()
+        for cmd in self._commands.values():
+            cls = type(cmd)
+            if cls not in seen:
+                seen.add(cls)
+                commands.update(cls.help_text())
+        for skill in self._user_skills.values():
+            key, desc = skill.help_entry()
+            commands[key] = desc
         return commands
 
     def get_completions(self) -> dict[str, str]:
-        """Get completion options (commands without arg placeholders).
-
-        Returns:
-            Dict mapping command names (without args) to descriptions for completion
-        """
         help_text = self.get_active_help()
         completions: dict[str, str] = {}
         for cmd, desc in help_text.items():
-            # Strip argument placeholders like "<name>" for cleaner completion
-            clean_cmd = cmd.split("<")[0].strip()
-            if clean_cmd and clean_cmd not in completions:
-                completions[clean_cmd] = desc
+            # Strip both <action> and [label] style argument hints
+            clean = re.split(r"\s+(?=[<\[])", cmd, maxsplit=1)[0].strip()
+            if clean and clean not in completions:
+                completions[clean] = desc
         return dict(sorted(completions.items()))
 
 
 class CommandHandler:
-    """Command invoker that parses input and executes commands using the Command pattern."""
+    """Parses slash-command input and dispatches to registered commands."""
 
-    def __init__(
-        self,
-        registry: CommandRegistry,
-        console: "TUIConsole",
-    ) -> None:
-        """Initialize command handler.
-
-        Args:
-            registry: Command registry
-            console: TUI console for output
-        """
+    def __init__(self, registry: "CommandRegistry", frontend: "Frontend") -> None:
         self.registry = registry
-        self.console = console
+        self.frontend = frontend
 
-    async def handle(self, input_text: str) -> CommandResult:
-        """Parse and execute a slash command.
-
-        Args:
-            input_text: The full input starting with /
-
-        Returns:
-            CommandResult with success status and message
-        """
+    async def handle(self, input_text: str) -> "CommandResult":
         if not input_text.startswith("/"):
-            return CommandResult(False, "Not a command")
+            return CommandResult(False)
 
-        parts = shlex.split(input_text[1:])
+        try:
+            parts = shlex.split(input_text[1:])
+        except ValueError:
+            parts = input_text[1:].split()
+
         if not parts:
-            return CommandResult(False, "Empty command. Type /help for available commands.")
+            result = CommandResult.err("Empty command. Type /help for available commands.")
+            for output in result.outputs:
+                await self.frontend.render(output)
+            return result
 
-        cmd = parts[0].lower()
-        args = parts[1:] if len(parts) > 1 else []
+        cmd_name = parts[0].lower()
+        args = parts[1:]
 
-        command = self.registry.get_command(cmd)
+        # Check user-invocable skills before falling through to unknown-command error
+        skill = self.registry.get_user_skill(cmd_name)
+        if skill is not None:
+            return CommandResult(success=True, agent_message=skill.make_agent_message(args))
+
+        command = self.registry.get_command(cmd_name)
         if not command:
             all_classes = self.registry.get_all_command_classes()
-            if cmd in all_classes:
-                msg = f"Command /{cmd} is not available with this agent. Type /help for available commands."
+            if cmd_name in all_classes:
+                msg = f"/{cmd_name} is not available with this agent."
             else:
-                suggestions = [c for c in all_classes if c.startswith(cmd[:2])][:3]
+                suggestions = [c for c in all_classes if c.startswith(cmd_name[:2])][:3]
                 suffix = (
                     f" Did you mean: {', '.join(f'/{s}' for s in suggestions)}?"
                     if suggestions
                     else ""
                 )
-                msg = f"Unknown command: /{cmd}. Type /help for available commands.{suffix}"
-            self.console.print_error(msg)
-            return CommandResult(False, msg)
+                msg = f"Unknown command: /{cmd_name}.{suffix} Type /help."
+            result = CommandResult.err(msg)
+            for output in result.outputs:
+                await self.frontend.render(output)
+            return result
 
         is_valid, error_msg = command.validate_args(args)
         if not is_valid:
-            self.console.print_error(error_msg or "Invalid arguments")
-            return CommandResult(False, error_msg or "Invalid arguments")
+            result = CommandResult.err(error_msg or "Invalid arguments")
+            for output in result.outputs:
+                await self.frontend.render(output)
+            return result
 
-        result = await command.execute(args)
-        if result.message:
-            if not result.success:
-                self.console.print_error(result.message)
+        try:
+            result = await command.execute(args)
+        except Exception as exc:
+            result = CommandResult.err(f"Command failed: {exc}")
+        # Render outputs in order.  _RichReplayPayload sentinels are intercepted
+        # here (not forwarded to the frontend) and POSTed to NEMO_RICH_URL so
+        # plots appear at their correct inline position between history turns.
+        import os as _os
+
+        _rich_url = (
+            _os.environ.get("NEMO_RICH_URL")
+            if any(isinstance(o, _RichReplayPayload) for o in result.outputs)
+            else None
+        )
+        for output in result.outputs:
+            if isinstance(output, _RichReplayPayload):
+                if _rich_url:
+                    try:
+                        import httpx as _httpx
+
+                        # _replay=True tells the browser to skip blank-line
+                        # reservation so replayed plots don't push down the prompt.
+                        _httpx.post(
+                            _rich_url, json={**output.payload, "_replay": True}, timeout=5.0
+                        )
+                    except Exception:
+                        pass
             else:
-                self.console.print_success(result.message)
+                await self.frontend.render(output)
         return result

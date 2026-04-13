@@ -114,6 +114,10 @@ def _try_auto_convert(obj: Any) -> dict | None:
     return _try_matplotlib_to_content_block(obj)
 
 
+# Alias used by tests covering line 113 (the try_auto_convert return path).
+_to_content_block = _try_auto_convert
+
+
 def _try_pil_to_content_block(obj: Any) -> dict | None:
     """Convert a PIL Image to an image_url content block, or None."""
     try:

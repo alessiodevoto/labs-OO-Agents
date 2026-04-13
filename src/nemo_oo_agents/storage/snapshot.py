@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from context_blocks import DynamicContext
 from nemo_oo_agents.errors.storage import SerializationError
-from nemo_oo_agents.storage.markers import is_nosnapshot_field
+from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_value
 
 SNAPSHOT_VERSION: Final = 1
 
@@ -103,13 +103,19 @@ class AgentSnapshot(BaseModel):
                 continue
             if is_nosnapshot_field(agent_cls, attr_name):
                 continue
+            if is_nosnapshot_value(attr_value):
+                continue
             if callable(attr_value):
                 continue
             try:
                 json.dumps(attr_value)
             except (TypeError, ValueError) as exc:
+                type_name = type(attr_value).__name__
                 raise SerializationError(
-                    f"Attribute {attr_name!r} is not JSON-serializable: {exc}"
+                    f"Attribute {attr_name!r} (type: {type_name}) is not JSON-serializable.\n"
+                    f"To fix, either:\n"
+                    f"  1. Mark the field as non-persistent: {attr_name}: Annotated[{type_name}, nosnapshot]\n"
+                    f"  2. Ensure all nested values are JSON primitives (str, int, float, bool, list, dict, None)"
                 ) from exc
             attributes[attr_name] = attr_value
 

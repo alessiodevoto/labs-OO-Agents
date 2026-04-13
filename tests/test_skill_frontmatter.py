@@ -123,3 +123,68 @@ def test_read_skill_properties_with_metadata(tmp_path):
     )
     props = _read_skill_properties(tmp_path)
     assert props.metadata == {"env": "prod"}
+
+
+# ---------------------------------------------------------------------------
+# install-as / user-invocable / is_user_command
+# ---------------------------------------------------------------------------
+
+
+def test_install_as_command_is_user_command(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: wtf\ndescription: Issue manager\ninstall-as: command\n---\nbody"
+    )
+    props = _read_skill_properties(tmp_path)
+    assert props.install_as == "command"
+    assert props.is_user_command is True
+
+
+def test_user_invocable_true_is_user_command(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: y\nuser-invocable: true\n---\nbody"
+    )
+    props = _read_skill_properties(tmp_path)
+    assert props.user_invocable is True
+    assert props.is_user_command is True
+
+
+def test_user_invocable_false_is_not_user_command(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: y\nuser-invocable: false\n---\nbody"
+    )
+    props = _read_skill_properties(tmp_path)
+    assert props.user_invocable is False
+    assert props.is_user_command is False
+
+
+def test_no_flags_is_user_command_by_default(tmp_path):
+    """CC default: user-invocable is True. No flags → user command."""
+    (tmp_path / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\nbody")
+    props = _read_skill_properties(tmp_path)
+    assert props.is_user_command is True
+
+
+def test_argument_hint_plain_string(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: y\nargument-hint: <action> [issue-id]\n---\nbody"
+    )
+    props = _read_skill_properties(tmp_path)
+    assert props.argument_hint == "<action> [issue-id]"
+
+
+def test_argument_hint_invalid_yaml_is_raw_string(tmp_path):
+    """Values like '"<title>" [-p priority]' are invalid YAML but must parse as a string."""
+    (tmp_path / "SKILL.md").write_text(
+        '---\nname: x\ndescription: y\nargument-hint: "<title>" [-p priority] [-a assignee]\n---\nbody'
+    )
+    props = _read_skill_properties(tmp_path)
+    assert props.argument_hint == '"<title>" [-p priority] [-a assignee]'
+
+
+def test_argument_hint_yaml_list_coerced_to_string(tmp_path):
+    """argument-hint: [label] is valid YAML (a list) but must be coerced to a string."""
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: y\nargument-hint: [label]\n---\nbody"
+    )
+    props = _read_skill_properties(tmp_path)
+    assert isinstance(props.argument_hint, str)

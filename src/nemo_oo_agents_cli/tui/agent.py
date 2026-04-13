@@ -5,18 +5,58 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
-from __future__ import annotations
+from typing import Annotated
 
-from typing import TYPE_CHECKING, Annotated
-
-from nemo_oo_agents import Agent, hidden, strategy
-from nemo_oo_agents.agents import TokenBudgetSummarizer
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+from agentdoc import spec
+from nemo_oo_agents import hidden, strategy
+from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.tools.web_publisher import WebPublisher
 
-from .config import AgentConfig, SummarizationConfig
+with hidden:
+    from collections.abc import Callable
+
+    from nemo_oo_agents import Agent
+    from nemo_oo_agents.agents import TokenBudgetSummarizer
+    from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+
+# Standard library — all visible in REPL
+import os
+
+# Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
+try:
+    import numpy as np  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import pandas as pd  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import plotly.express as px  # noqa: F401
+    import plotly.graph_objects as go  # noqa: F401
+    from plotly.subplots import make_subplots  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import scipy  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import sklearn  # noqa: F401
+except ImportError:
+    pass
+
+with hidden:
+    from unifiedllm import FakeLLMClient, UnifiedLLM
+
+    from .config import AgentConfig, SummarizationConfig
+
 from .models import (
     BrainstormResult,
     DiagnosisResult,
@@ -27,21 +67,18 @@ from .models import (
     VerificationResult,
 )
 
-if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
-
-
 # Default LLM for class definition (overridden at instantiation)
-try:
-    from unifiedllm import get_llm_client
+with hidden:
+    try:
+        from unifiedllm import get_llm_client
 
-    from .config import DEFAULT_MODEL
+        from .config import DEFAULT_MODEL
 
-    _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
-except Exception:
-    from unifiedllm import FakeLLMClient
+        _DEFAULT_LLM = get_llm_client(DEFAULT_MODEL)
+    except Exception:
+        from unifiedllm import FakeLLMClient
 
-    _DEFAULT_LLM = FakeLLMClient()
+        _DEFAULT_LLM = FakeLLMClient()
 
 
 def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
@@ -70,7 +107,7 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _orchestrate(agent: TUIAgent, user_message: str) -> None:
+async def _orchestrate(agent: "TUIAgent", user_message: str) -> None:
     """Core orchestration logic. Extracted for testability.
 
     Routes user messages through workflow phases based on agent._phase state.
@@ -109,7 +146,7 @@ async def _orchestrate(agent: TUIAgent, user_message: str) -> None:
         return
 
 
-async def _continue_brainstorm(agent: TUIAgent, user_message: str) -> None:
+async def _continue_brainstorm(agent: "TUIAgent", user_message: str) -> None:
     """Resume brainstorming with user's answer."""
     spec = await agent.brainstorm(user_message)
     if not spec.complete:
@@ -117,7 +154,7 @@ async def _continue_brainstorm(agent: TUIAgent, user_message: str) -> None:
     await _proceed_to_plan(agent, spec)
 
 
-async def _proceed_to_plan(agent: TUIAgent, spec: BrainstormResult) -> None:
+async def _proceed_to_plan(agent: "TUIAgent", spec: BrainstormResult) -> None:
     """Transition from brainstorm to planning."""
     agent.context["brainstorm_decisions"] = f"'''{spec.model_dump_json()}'''"
     agent._phase = "planning"
@@ -126,7 +163,7 @@ async def _proceed_to_plan(agent: TUIAgent, spec: BrainstormResult) -> None:
     agent._phase = "awaiting_plan_approval"
 
 
-async def _handle_plan_approval(agent: TUIAgent, user_message: str) -> None:
+async def _handle_plan_approval(agent: "TUIAgent", user_message: str) -> None:
     """Handle user's response to plan presentation."""
     approval_keywords = {"yes", "ok", "okay", "approve", "approved", "lgtm", "proceed", "go"}
     words = set(user_message.lower().split())
@@ -140,7 +177,7 @@ async def _handle_plan_approval(agent: TUIAgent, user_message: str) -> None:
     agent._workflow_state["plan"] = plan
 
 
-async def _execute_plan(agent: TUIAgent, plan: Plan) -> None:
+async def _execute_plan(agent: "TUIAgent", plan: Plan) -> None:
     """Execute all plan steps with TDD, then verify and review."""
     agent.context["plan"] = f"'''{plan.model_dump_json()}'''"
     agent._phase = "implementing"
@@ -149,7 +186,7 @@ async def _execute_plan(agent: TUIAgent, plan: Plan) -> None:
     await _verify_and_complete(agent, plan)
 
 
-async def _verify_and_complete(agent: TUIAgent, plan: Plan | None = None) -> None:
+async def _verify_and_complete(agent: "TUIAgent", plan: Plan | None = None) -> None:
     """Verification gate — always runs before completion."""
     agent._phase = "verifying"
     await agent.verify_work()
@@ -159,12 +196,89 @@ async def _verify_and_complete(agent: TUIAgent, plan: Plan | None = None) -> Non
     agent._workflow_state = {}
 
 
-class TUIAgent(Agent, llm=_DEFAULT_LLM):
-    """NeMo OO Agents TUI agent."""
+@hidden
+class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
+    """Base class for agents that work with the NeMo OO Agents TUI.
 
-    _config: Annotated[AgentConfig, hidden]
+    Subclass this and implement ``respond()`` to build a custom TUI agent.
+    ``message()`` and ``name_session()`` are provided for free.
+    """
+
+    _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
+
+    def __init__(self, llm=None, **kwargs):
+        super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
+        self._render_message = None
+        if os.environ.get("NEMO_RICH_URL"):
+            from nemo_oo_agents.tools.web_publisher import RichOutput
+
+            self.event_manager.register_event_type(RichOutput)
+            self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(
+                event_manager=self.event_manager
+            )
+
+    def message(self, text: str) -> None:
+        """Send a Markdown message to the user."""
+        from .tui_events import TUIAgentMessage
+
+        self.event_manager.add(TUIAgentMessage(content=str(text)))
+        if self._render_message is not None:
+            self._render_message(text)
+
+    @hidden
+    @strategy(PredictStrategy())
+    async def name_session(self, user_message: str) -> str:
+        """Generate an ultra-short 2-5 word session title (no punctuation, no quotes) for a conversation that starts with: {user_message}"""
+        ...
+
+    @hidden
+    @strategy(CodeActStrategy())
+    async def respond(self, user_message: str) -> None:
+        """Respond to the user's message.
+
+        Message: {user_message}
+
+        Use self.message() to send formatted Markdown to the user.
+        Call return_result() when done to hand control back to the user.
+        """
+        ...
+
+
+class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
+    """You are NeMo OO Agents, a development assistant running in a terminal.
+
+    Call return_result() to yield back to the user.
+
+    You have access to these tools via self:
+    - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
+    - self.files — Read/write files (.read(), .write(), .str_replace(), .list(), .find(), .grep())
+
+    Communication:
+    - Use self.message("text") to send formatted Markdown to the user during your turn
+    - Use Python comments to log internal thinking
+    - Use return_result() to end your turn — the user will then reply and you'll be called again
+
+    This is a multi-turn conversation. return_result() is like pressing `send`: it ends your current
+    response and hands control back to the user. If you need more information, ask via self.message()
+    then call return_result() to wait for their reply.
+
+    Workflow:
+    - Execute ONE thing at a time, then observe results
+    - Use print() to see intermediate values
+    - Variables persist across executions within a method call
+
+    Do NOT use import statements — all modules are pre-loaded. Check the
+    execution_context for what's available (np, pd, px, go, json, math, etc.).
+
+    """
+
+    _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]
     _workflow_state: Annotated[dict, hidden]
+    bash: Annotated[BashTool, nosnapshot]
+    files: Annotated[FileTool, nosnapshot]
+    libs: Annotated[LibraryWriting, nosnapshot]
+    _summarizers: Annotated[list, hidden, nosnapshot]
 
     def __init__(
         self,
@@ -179,7 +293,7 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
             config: Agent behavior configuration (summarization, orchestrator, etc.)
             **kwargs: Additional arguments passed to Agent
         """
-        super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
+        super().__init__(llm=llm, **kwargs)
 
         config = config or AgentConfig()
 
@@ -193,10 +307,15 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self)
 
+        # Expose context and events to the LLM
+        spec(self, "context", hidden=False)
+        spec(self, "events", hidden=False)
+
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
 
+    @hidden
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
 
@@ -229,26 +348,6 @@ class TUIAgent(Agent, llm=_DEFAULT_LLM):
             "preserve_recent": preserve_recent,
         }
 
-    @hidden
-    def _system_prompt(self) -> str:
-        """System prompt for TUI agent. Phase-specific instructions are in method docstrings."""
-        return """You are NeMo OO Agents, a development assistant running in a terminal.
-
-You have access to these tools via self:
-- self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
-- self.files — Read/write files (.read(), .write(), .str_replace(), .list(), .find(), .grep())
-
-Communication:
-- Use message("text") to send formatted Markdown to the user
-- Use reasoning("text") to log internal thinking (not shown to user)
-- Use return_result(...) to return structured results when done
-
-Workflow:
-- Execute ONE thing at a time, then observe results
-- Use print() to see intermediate values
-- Variables persist across executions within a method call
-"""
-
     @strategy(PredictStrategy())
     async def classify_intent(self, user_message: str) -> Intent:
         """Classify the user's message into a task type.
@@ -270,7 +369,7 @@ Workflow:
         User message: {user_message}
 
         Use tools to gather information.
-        Use message() to respond to the user with a clear, helpful answer.
+        Use self.message() to respond to the user with a clear, helpful answer.
         Use Markdown formatting for readability.
         """
         ...
@@ -287,7 +386,7 @@ Workflow:
         - Location: Where should this code live? What existing patterns to follow?
         - Interface: What should the API/interface look like?
 
-        Use message() to ask each question.
+        Use self.message() to ask each question.
         Use tools to explore the codebase for context.
 
         When you have enough understanding, call return_result() with complete=True
@@ -311,10 +410,10 @@ Workflow:
         - Specific about which files to create/modify
 
         Use tools to check the existing codebase for patterns.
-        Present the plan to the user via message() before returning it."""
+        Present the plan to the user via self.message() before returning it."""
         ...
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def implement_step(self, step: str) -> StepResult:
         """Implement this plan step using test-driven development.
 
@@ -380,8 +479,11 @@ Workflow:
         Report your findings honestly."""
         ...
 
+    @hidden
     async def respond(self, user_message: str) -> None:
         """Respond to the user's message.
+
+        Call return_result() to yield back to the user.
 
         When orchestrator mode is enabled (config.orchestrator=True), routes
         through workflow phases. Otherwise uses a single CodeAct strategy.
@@ -392,14 +494,15 @@ Workflow:
             await self._respond_codeact(user_message)
 
     @hidden
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def _respond_codeact(self, user_message: str) -> None:
         """Respond to the user's message using a single CodeAct strategy.
 
         Message: {user_message}
 
         Use tools to help the user.
-        Use message() to respond with formatted Markdown.
+        Use self.message() to respond with formatted Markdown.
+        Call return_result() when done — this ends your turn and the user can reply.
         Execute ONE thing at a time, then observe results.
         """
         ...

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -22,28 +23,78 @@ class _SkillProperties(BaseModel):
     compatibility: str | None = None
     allowed_tools: str | None = None
     metadata: dict[str, str] = {}
+    user_invocable: bool = True  # CC default: true; opt out with user-invocable: false
+    install_as: str | None = None  # install-as: command → honored for backward compat
+    argument_hint: str | None = None
+
+    @property
+    def is_user_command(self) -> bool:
+        """True if this skill should be registered as a user-invocable slash command."""
+        return self.user_invocable
 
 
 def _find_skill_md(skill_dir: Path) -> Path | None:
-    for name in ("SKILL.md", "skill.md"):
-        path = skill_dir / name
-        if path.exists():
-            return path
-    return None
+    # Check for both case variants; on case-insensitive filesystems (macOS HFS+/APFS),
+    # path.exists() may return True even if the actual filename differs in case.
+    # We iterate through actual directory entries to get real filenames, then
+    # prefer SKILL.md (uppercase) over skill.md when both exist.
+    if not skill_dir.is_dir():
+        return None
+    matches: dict[str, Path] = {}
+    for entry in skill_dir.iterdir():
+        if entry.name in ("SKILL.md", "skill.md"):
+            matches[entry.name] = entry
+    return matches.get("SKILL.md") or matches.get("skill.md")
 
 
 def _parse_frontmatter(content: str) -> tuple[dict, str]:
+    """Parse SKILL.md frontmatter compatible with Claude Code's lenient behaviour.
+
+    Strategy: try ``yaml.safe_load`` on the whole block first — it handles
+    multi-line values (e.g. ``metadata:`` sub-keys) correctly.  If the block
+    contains an invalid YAML scalar (e.g. ``argument-hint: "<title>" [-p]``),
+    fall back to a line-by-line regex that treats each value as a raw string,
+    matching what Claude Code actually does.
+
+    In both paths, YAML lists are coerced to strings (Claude Code v2.1.47+
+    behaviour for ``argument-hint: [label]``).
+    """
     if not content.startswith("---"):
         raise ValueError("SKILL.md must start with YAML frontmatter (---)")
     parts = content.split("---", 2)
     if len(parts) < 3:
         raise ValueError("SKILL.md frontmatter not properly closed with ---")
-    meta = yaml.safe_load(parts[1]) or {}
-    if not isinstance(meta, dict):
-        raise ValueError("SKILL.md frontmatter must be a YAML mapping")
+
+    fm_text = parts[1]
+    body = parts[2].strip()
+
+    # --- Fast path: strict YAML ---
+    try:
+        meta = yaml.safe_load(fm_text) or {}
+        if not isinstance(meta, dict):
+            raise ValueError("SKILL.md frontmatter must be a YAML mapping")
+    except yaml.YAMLError:
+        # --- Fallback: line-by-line regex (Claude Code-compatible) ---
+        meta = {}
+        for line in fm_text.splitlines():
+            m = re.match(r"^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.+)$", line)
+            if not m:
+                continue
+            key, raw = m.group(1), m.group(2).strip()
+            try:
+                parsed = yaml.safe_load(raw)
+                meta[key] = str(parsed) if isinstance(parsed, list) else parsed
+            except yaml.YAMLError:
+                meta[key] = raw  # invalid scalar — keep as raw string
+
+    # Coerce any top-level list values to strings (e.g. argument-hint: [label])
+    for key, val in meta.items():
+        if isinstance(val, list):
+            meta[key] = str(val)
+
     if "metadata" in meta and isinstance(meta["metadata"], dict):
         meta["metadata"] = {str(k): str(v) for k, v in meta["metadata"].items()}
-    return meta, parts[2].strip()
+    return meta, body
 
 
 def _read_skill_properties(skill_dir: Path) -> _SkillProperties:
@@ -62,6 +113,9 @@ def _read_skill_properties(skill_dir: Path) -> _SkillProperties:
         compatibility=meta.get("compatibility"),
         allowed_tools=meta.get("allowed-tools"),
         metadata=meta.get("metadata") or {},
+        user_invocable=bool(meta.get("user-invocable", True)),
+        install_as=meta.get("install-as"),
+        argument_hint=meta.get("argument-hint"),
     )
 
 
@@ -146,6 +200,10 @@ class Skill:
     # Tells agentdoc not to expand this type in "Referenced Types" sections.
     # Skills show a brief one-liner wherever they appear as a field type.
     __agentdoc_skip__ = True
+
+    # Skills are reconstructed on agent init (e.g., LibraryManager rescans libs/).
+    # They shouldn't be serialized in snapshots — mark them as nosnapshot.
+    __nosnapshot__ = True
 
     def __init__(self, obj=None, *, content: str | None = None):
         n_given = sum(x is not None for x in (obj, content))

@@ -43,11 +43,17 @@ class LibrarySkill(Skill):
                 except SyntaxError:
                     pass
 
-        object.__setattr__(self, "_lib_path", path)
+        # Store path as string for JSON serializability (snapshot support)
+        object.__setattr__(self, "_lib_path", str(path))
         super().__init__(content=description)
         self.__class__ = type(lib_name, (LibrarySkill,), {"__doc__": description})  # type: ignore[assignment]
 
+    @property
+    def path(self) -> Path:
+        """Return the library path as a Path object."""
+        return Path(object.__getattribute__(self, "_lib_path"))
+
     def __dir__(self) -> list[str]:
-        lib_name = object.__getattribute__(self, "_lib_path").name
+        lib_name = Path(object.__getattribute__(self, "_lib_path")).name
         mod = sys.modules.get(lib_name)
         return dir(mod) if mod is not None else list(super().__dir__())

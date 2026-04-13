@@ -36,6 +36,12 @@ def make_mock_console():
     console.console.clear = MagicMock()
     console.start_spinner = MagicMock()
     console.stop_spinner = MagicMock()
+    # Frontend protocol (async methods needed by CommandHandler)
+    console.render = AsyncMock()
+    console.get_input = AsyncMock(return_value="")
+    console.start_thinking = AsyncMock()
+    console.stop_thinking = AsyncMock()
+    console.is_connected = True
     return console
 
 
@@ -337,6 +343,12 @@ from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     SwitchCommand,
     _to_attr_name,
 )
+from nemo_oo_agents_cli.tui.output import (  # noqa: E402
+    ClearScreen,
+    HelpOutput,
+    TableOutput,
+    TextOutput,
+)
 
 
 class TestToAttrName:
@@ -355,15 +367,17 @@ class TestCommandResult:
         r = CommandResult(True)
         assert r.success is True
         assert r.exit is False
-        assert r.message == ""
+        assert r.outputs == []
 
     def test_exit_true(self):
         r = CommandResult(True, exit=True)
         assert r.exit is True
 
-    def test_message(self):
-        r = CommandResult(False, message="oops")
-        assert r.message == "oops"
+    def test_err_outputs(self):
+        r = CommandResult.err("oops")
+        assert r.success is False
+        assert len(r.outputs) == 1
+        assert "oops" in r.outputs[0].content
 
 
 @pytest.fixture
@@ -384,9 +398,9 @@ def mock_agent():
 @pytest.fixture
 def registry(mock_console, mock_config, mock_agent):
     return CommandRegistry(
-        console=mock_console,
         config=mock_config,
         agent=mock_agent,
+        frontend=mock_console,
         skills_dirs=[],
         mcp_file=Path(".mcp.json"),
     )
@@ -394,7 +408,7 @@ def registry(mock_console, mock_config, mock_agent):
 
 @pytest.fixture
 def handler(registry, mock_console):
-    return CommandHandler(registry=registry, console=mock_console)
+    return CommandHandler(registry=registry, frontend=mock_console)
 
 
 class TestCommandBaseValidation:
@@ -422,14 +436,14 @@ class TestHelpCommand:
         cmd = HelpCommand(mock_console, mock_config, mock_agent, registry=registry)
         result = await cmd.execute([])
         assert result.success is True
-        mock_console.print_help.assert_called_once()
+        assert any(isinstance(o, HelpOutput) for o in result.outputs)
 
     async def test_execute_without_registry(self, mock_console, mock_config, mock_agent):
         cmd = HelpCommand(mock_console, mock_config, mock_agent)
         with patch.object(CommandRegistry, "get_help", return_value={"/help": "help"}):
             result = await cmd.execute([])
         assert result.success is True
-        mock_console.print_help.assert_called_once()
+        assert any(isinstance(o, HelpOutput) for o in result.outputs)
 
     def test_name(self, mock_console, mock_config, mock_agent):
         cmd = HelpCommand(mock_console, mock_config, mock_agent)
@@ -445,7 +459,7 @@ class TestExitCommand:
         result = await cmd.execute([])
         assert result.success is True
         assert result.exit is True
-        mock_console.print_status.assert_called_once()
+        assert len(result.outputs) > 0
 
     def test_name(self, mock_console, mock_config, mock_agent):
         cmd = ExitCommand(mock_console, mock_config, mock_agent)
@@ -462,16 +476,12 @@ class TestClearCommand:
         cmd = ClearCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute([])
         assert result.success is True
-        mock_agent.event_manager.clear.assert_called_once()
-        mock_console.console.clear.assert_called_once()
+        # ClearCommand must NOT call event_manager.clear() — that destroys old session data
+        mock_agent.event_manager.clear.assert_not_called()
+        assert any(isinstance(o, ClearScreen) for o in result.outputs)
 
-    async def test_no_event_manager(self, mock_console, mock_config):
-        MagicMock(spec=[])  # no event_manager attribute
-        agent_with_bash = MagicMock()
-        agent_with_bash.bash = MagicMock()
-        # Use an agent with no event_manager
-        cmd = ClearCommand(mock_console, mock_config, agent_with_bash)
-        del agent_with_bash.event_manager
+    async def test_no_session_manager(self, mock_console, mock_config, mock_agent):
+        cmd = ClearCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute([])
         assert result.success is True
 
@@ -485,8 +495,7 @@ class TestModelCommand:
         cmd = ModelCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute([])
         assert result.success is True
-        mock_console.print_info.assert_called_once()
-        assert "test-model" in mock_console.print_info.call_args[0][0]
+        assert any("test-model" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     def test_validate_extra_args(self, mock_console, mock_config, mock_agent):
         cmd = ModelCommand(mock_console, mock_config, mock_agent)
@@ -513,7 +522,7 @@ class TestModelsCommand:
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is True
-        assert mock_console.console.print.call_count > 0
+        assert any(isinstance(o, TableOutput) for o in result.outputs)
 
     async def test_current_model_marked(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -530,42 +539,25 @@ class TestModelsCommand:
 
 
 class TestSwitchCommand:
-    """SwitchCommand tests — PromptSession is imported lazily inside execute()
-    so we patch it at its source: prompt_toolkit.PromptSession."""
+    """SwitchCommand tests — now requires model as argument."""
 
-    async def test_keyboard_interrupt_cancelled(self, mock_console, mock_config, mock_agent):
-        import unifiedllm
-
+    async def test_validate_args_empty(self, mock_console, mock_config, mock_agent):
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        original_models = unifiedllm.MODELS
-        unifiedllm.MODELS = {"prov/m": None}
-        try:
-            with patch("prompt_toolkit.PromptSession") as MockSession:
-                instance = MagicMock()
-                instance.prompt_async = AsyncMock(side_effect=KeyboardInterrupt)
-                MockSession.return_value = instance
-                result = await cmd.execute([])
-        finally:
-            unifiedllm.MODELS = original_models
-        assert result.success is False
-        assert "cancelled" in result.message.lower()
+        ok, msg = cmd.validate_args([])
+        assert ok is False
+        assert "Usage:" in msg
 
-    async def test_empty_selection(self, mock_console, mock_config, mock_agent):
-        import unifiedllm
-
+    async def test_validate_args_too_many(self, mock_console, mock_config, mock_agent):
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        original_models = unifiedllm.MODELS
-        unifiedllm.MODELS = {"prov/m": None}
-        try:
-            with patch("prompt_toolkit.PromptSession") as MockSession:
-                instance = MagicMock()
-                instance.prompt_async = AsyncMock(return_value="  ")
-                MockSession.return_value = instance
-                result = await cmd.execute([])
-        finally:
-            unifiedllm.MODELS = original_models
-        assert result.success is False
-        assert "No model selected" in result.message
+        ok, msg = cmd.validate_args(["model1", "model2"])
+        assert ok is False
+        assert "Usage:" in msg
+
+    async def test_validate_args_valid(self, mock_console, mock_config, mock_agent):
+        cmd = SwitchCommand(mock_console, mock_config, mock_agent)
+        ok, msg = cmd.validate_args(["prov/m"])
+        assert ok is True
+        assert msg is None
 
     async def test_model_not_in_registry(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -574,15 +566,11 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            with patch("prompt_toolkit.PromptSession") as MockSession:
-                instance = MagicMock()
-                instance.prompt_async = AsyncMock(return_value="nonexistent/model")
-                MockSession.return_value = instance
-                result = await cmd.execute([])
+            result = await cmd.execute(["nonexistent/model"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is False
-        assert "not found" in result.message
+        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_successful_switch(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -591,12 +579,8 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            with patch("prompt_toolkit.PromptSession") as MockSession:
-                instance = MagicMock()
-                instance.prompt_async = AsyncMock(return_value="prov/m")
-                MockSession.return_value = instance
-                with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
-                    result = await cmd.execute([])
+            with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
+                result = await cmd.execute(["prov/m"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is True
@@ -609,18 +593,14 @@ class TestSwitchCommand:
         original_models = unifiedllm.MODELS
         unifiedllm.MODELS = {"prov/m": None}
         try:
-            with patch("prompt_toolkit.PromptSession") as MockSession:
-                instance = MagicMock()
-                instance.prompt_async = AsyncMock(return_value="prov/m")
-                MockSession.return_value = instance
-                with patch.object(
-                    unifiedllm, "get_llm_client", side_effect=Exception("auth error")
-                ):
-                    result = await cmd.execute([])
+            with patch.object(unifiedllm, "get_llm_client", side_effect=Exception("auth error")):
+                result = await cmd.execute(["prov/m"])
         finally:
             unifiedllm.MODELS = original_models
         assert result.success is False
-        assert "Failed to switch" in result.message
+        assert any(
+            "Failed to switch" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
 
 class TestHistoryCommandValidation:
@@ -764,7 +744,7 @@ class TestMCPCommandExecute:
         with patch.dict("sys.modules", {"mcp_nemo_oo_agents": None}):
             result = await cmd.execute(["list"])
         assert result.success is False
-        assert "MCP is not enabled" in result.message
+        assert any("MCP" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_list(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
@@ -772,7 +752,7 @@ class TestMCPCommandExecute:
             mock_mcp.list_servers.return_value = ["s1", "s2"]
             result = await cmd.execute(["list"])
         assert result.success is True
-        mock_console.print_table.assert_called_once()
+        assert any(isinstance(o, TableOutput) for o in result.outputs)
 
     async def test_connect_success(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
@@ -789,7 +769,7 @@ class TestMCPCommandExecute:
             mock_mcp.list_servers.return_value = ["other"]
             result = await cmd.execute(["connect", "missing"])
         assert result.success is False
-        assert "not found" in result.message
+        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_connect_failure_exception(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
@@ -798,8 +778,10 @@ class TestMCPCommandExecute:
             mock_mcp.create_from_server.side_effect = Exception("conn fail")
             result = await cmd.execute(["connect", "server1"])
         assert result.success is False
-        assert "Failed to connect" in result.message
-        mock_console.stop_spinner.assert_called()
+        assert any(
+            "Failed to connect" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
+        mock_console.stop_thinking.assert_called()
 
     async def test_disconnect_not_connected(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
@@ -807,7 +789,9 @@ class TestMCPCommandExecute:
             mock_mcp.list_servers.return_value = ["server1"]
             result = await cmd.execute(["disconnect", "server1"])
         assert result.success is False
-        assert "not connected" in result.message
+        assert any(
+            "not connected" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_disconnect_success(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
@@ -871,8 +855,11 @@ class TestSkillsCommandExecute:
         with patch("nemo_oo_agents.SkillManager"):
             result = await cmd.execute(["list"])
         assert result.success is True
-        info_calls = [c.args[0] for c in mock_console.print_info.call_args_list]
-        assert any("No skills directories" in m for m in info_calls)
+        assert any(
+            "No skills directories" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_list_with_skills(self, mock_console, mock_config, mock_agent):
         skill_mock = MagicMock()
@@ -882,7 +869,7 @@ class TestSkillsCommandExecute:
             MockSM.discover.return_value = {"test-skill": skill_mock}
             result = await cmd.execute(["list"])
         assert result.success is True
-        mock_console.print_table.assert_called_once()
+        assert any(isinstance(o, TableOutput) for o in result.outputs)
 
     async def test_list_empty_skills(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -890,15 +877,20 @@ class TestSkillsCommandExecute:
             MockSM.discover.return_value = {}
             result = await cmd.execute(["list"])
         assert result.success is True
-        info_calls = [c.args[0] for c in mock_console.print_info.call_args_list]
-        assert any("No skills found" in m for m in info_calls)
+        assert any(
+            "No skills found" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_activate_no_dirs(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=None)
         with patch("nemo_oo_agents.SkillManager"):
             result = await cmd.execute(["activate", "myskill"])
         assert result.success is False
-        assert "No skills directories" in result.message
+        assert any(
+            "No skills directories" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_activate_not_found(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -906,7 +898,7 @@ class TestSkillsCommandExecute:
             MockSM.discover.return_value = {}
             result = await cmd.execute(["activate", "missing"])
         assert result.success is False
-        assert "not found" in result.message
+        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_activate_already_active(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -915,7 +907,7 @@ class TestSkillsCommandExecute:
             MockSM.discover.return_value = {"myskill": MagicMock()}
             result = await cmd.execute(["activate", "myskill"])
         assert result.success is False
-        assert "already activated" in result.message
+        assert any("already" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_activate_success(self, mock_console, mock_config, mock_agent):
         skill_obj = MagicMock()
@@ -934,14 +926,16 @@ class TestSkillsCommandExecute:
             with patch("nemo_oo_agents_cli.tui.commands.setattr", side_effect=Exception("bad")):
                 result = await cmd.execute(["activate", "myskill"])
         assert result.success is False
-        assert "Failed to activate" in result.message
+        assert any(
+            "Failed to activate" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_deactivate_not_active(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
         with patch("nemo_oo_agents.SkillManager"):
             result = await cmd.execute(["deactivate", "notactive"])
         assert result.success is False
-        assert "not active" in result.message
+        assert any("not active" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_deactivate_success(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
@@ -1006,7 +1000,7 @@ class TestSandboxCommandExecute:
         cmd = SandboxCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["enable"])
         assert result.success is False
-        assert "SRT sandbox not available" in result.message
+        assert any("SRT" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_enable_already_enabled(self, mock_console, mock_config, mock_agent):
         mock_agent.bash.sandbox_available = True
@@ -1014,7 +1008,9 @@ class TestSandboxCommandExecute:
         cmd = SandboxCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["enable"])
         assert result.success is True
-        assert "already enabled" in result.message
+        assert any(
+            "already enabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_enable_success(self, mock_console, mock_config, mock_agent):
         mock_agent.bash.sandbox_available = True
@@ -1028,8 +1024,10 @@ class TestSandboxCommandExecute:
         mock_agent.bash.use_sandbox = False
         cmd = SandboxCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["disable"])
-        assert result.success is False
-        assert "already disabled" in result.message
+        assert result.success is True
+        assert any(
+            "already disabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_disable_success(self, mock_console, mock_config, mock_agent):
         mock_agent.bash.use_sandbox = True
@@ -1040,58 +1038,47 @@ class TestSandboxCommandExecute:
 
 
 class TestPythonCommand:
-    async def test_no_streaming_display(self, mock_console, mock_config, mock_agent):
+    async def test_status_on(self, mock_console, mock_config, mock_agent):
+        mock_config.show_python = True
         cmd = PythonCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["status"])
-        assert result.success is False
-        assert "not available" in result.message
-
-    async def test_status_on(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = True
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
-        result = await cmd.execute(["status"])
         assert result.success is True
-        mock_console.print_info.assert_called_once()
+        assert any("on" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_status_off(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = False
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
+        mock_config.show_python = False
+        cmd = PythonCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["status"])
         assert result.success is True
-
-    async def test_on_already_on(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = True
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
-        result = await cmd.execute(["on"])
-        assert result.success is True
-        assert "already on" in result.message
+        assert any("off" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_on_enables(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = False
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
+        mock_config.show_python = False
+        cmd = PythonCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["on"])
         assert result.success is True
-        assert display.show_python is True
+        assert mock_config.show_python is True
 
-    async def test_off_already_off(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = False
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
-        result = await cmd.execute(["off"])
+    async def test_on_already_on(self, mock_console, mock_config, mock_agent):
+        mock_config.show_python = True
+        cmd = PythonCommand(mock_console, mock_config, mock_agent)
+        result = await cmd.execute(["on"])
         assert result.success is True
-        assert "already off" in result.message
+        assert mock_config.show_python is True
 
     async def test_off_disables(self, mock_console, mock_config, mock_agent):
-        display = MagicMock()
-        display.show_python = True
-        cmd = PythonCommand(mock_console, mock_config, mock_agent, streaming_display=display)
+        mock_config.show_python = True
+        cmd = PythonCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["off"])
         assert result.success is True
-        assert display.show_python is False
+        assert mock_config.show_python is False
+
+    async def test_off_already_off(self, mock_console, mock_config, mock_agent):
+        mock_config.show_python = False
+        cmd = PythonCommand(mock_console, mock_config, mock_agent)
+        result = await cmd.execute(["off"])
+        assert result.success is True
+        assert mock_config.show_python is False
 
     def test_validate_no_args(self, mock_console, mock_config, mock_agent):
         cmd = PythonCommand(mock_console, mock_config, mock_agent)
@@ -1111,7 +1098,7 @@ class TestPythonCommand:
 
 class TestCommandRegistry:
     def test_registers_basic_commands(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         assert reg.get_command("help") is not None
         assert reg.get_command("exit") is not None
         assert reg.get_command("quit") is not None
@@ -1120,18 +1107,18 @@ class TestCommandRegistry:
 
     def test_filters_by_required_capabilities(self, mock_console, mock_config):
         agent = MagicMock(spec=[])  # no attributes at all
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=agent)
-        # bash not available → switch/sandbox/mcp/skills should not be registered
-        assert reg.get_command("switch") is None
+        reg = CommandRegistry(config=mock_config, agent=agent, frontend=mock_console)
+        # bash not available → sandbox/history should not be registered
         assert reg.get_command("sandbox") is None
+        assert reg.get_command("history") is None
 
     def test_get_command_case_insensitive(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         assert reg.get_command("HELP") is not None
         assert reg.get_command("Help") is not None
 
     def test_get_command_unknown_returns_none(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         assert reg.get_command("nonexistent") is None
 
     def test_get_all_command_classes(self):
@@ -1147,13 +1134,13 @@ class TestCommandRegistry:
         assert "/exit" in help_dict
 
     def test_get_active_help(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         active = reg.get_active_help()
         assert isinstance(active, dict)
         assert "/help" in active
 
     def test_get_completions(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         completions = reg.get_completions()
         assert isinstance(completions, dict)
         assert all("/" in k for k in completions)
@@ -1162,7 +1149,7 @@ class TestCommandRegistry:
         assert keys == sorted(keys)
 
     def test_get_completions_strips_arg_placeholders(self, mock_console, mock_config, mock_agent):
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=mock_agent)
+        reg = CommandRegistry(config=mock_config, agent=mock_agent, frontend=mock_console)
         completions = reg.get_completions()
         # No angle brackets in keys
         assert all("<" not in k for k in completions)
@@ -1172,27 +1159,36 @@ class TestCommandHandler:
     async def test_not_a_command(self, handler):
         result = await handler.handle("not a command")
         assert result.success is False
-        assert "Not a command" in result.message
 
     async def test_empty_command(self, handler):
         result = await handler.handle("/")
         assert result.success is False
-        assert "Empty command" in result.message
+        assert any(
+            "Empty command" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_unknown_command(self, handler, mock_console):
         result = await handler.handle("/unknown")
         assert result.success is False
-        assert "Unknown command: /unknown" in result.message
-        mock_console.print_error.assert_called()
+        assert any(
+            "Unknown command: /unknown" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
+        mock_console.render.assert_called()
 
     async def test_unavailable_command(self, mock_console, mock_config):
         """Command in registry but not available for this agent."""
         agent_no_caps = MagicMock(spec=[])  # no bash, no get_summarization_status
-        reg = CommandRegistry(console=mock_console, config=mock_config, agent=agent_no_caps)
-        h = CommandHandler(registry=reg, console=mock_console)
-        result = await h.handle("/switch")
+        reg = CommandRegistry(config=mock_config, agent=agent_no_caps, frontend=mock_console)
+        h = CommandHandler(registry=reg, frontend=mock_console)
+        result = await h.handle("/sandbox")
         assert result.success is False
-        assert "not available with this agent" in result.message
+        assert any(
+            "not available with this agent" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
 
     async def test_suggestion_for_similar_command(self, handler, mock_console):
         result = await handler.handle("/hel")
@@ -1203,19 +1199,19 @@ class TestCommandHandler:
         """Command found but args invalid → prints error."""
         result = await handler.handle("/model extra_arg")
         assert result.success is False
-        mock_console.print_error.assert_called()
+        mock_console.render.assert_called()
 
     async def test_success_with_message(self, handler, mock_console):
         """Successful command with a message prints success."""
         result = await handler.handle("/sandbox enable")
         if result.success:
-            mock_console.print_success.assert_called()
+            mock_console.render.assert_called()
 
     async def test_failure_with_message(self, handler, mock_console, mock_agent):
         mock_agent.bash.sandbox_available = False
         result = await handler.handle("/sandbox enable")
         assert result.success is False
-        mock_console.print_error.assert_called()
+        mock_console.render.assert_called()
 
 
 # ===========================================================================
@@ -1229,7 +1225,6 @@ class TestTUIConsoleInit:
     def test_init_creates_console(self):
         c = TUIConsole()
         assert c.console is not None
-        assert c._input_handler is None
         assert c._live_spinner is None
 
 
@@ -1239,12 +1234,6 @@ class TestTUIConsolePrintMethods:
     def setup_method(self):
         self.tui = TUIConsole()
         self.tui.console = MagicMock()
-
-    def test_print_user(self):
-        self.tui.print_user("hello")
-        self.tui.console.print.assert_called_once()
-        args = self.tui.console.print.call_args[0][0]
-        assert "hello" in args
 
     def test_print_error(self):
         self.tui.print_error("bad thing")
@@ -1278,12 +1267,13 @@ class TestTUIConsolePrintMethods:
 
     def test_print_agent(self):
         self.tui.print_agent("**bold text**")
-        self.tui.console.print.assert_called_once()
+        # print_agent calls console.print twice: Rule header + Markdown content
+        assert self.tui.console.print.call_count >= 2
 
     def test_print_agent_dedents(self):
         """print_agent should clean up indented text."""
         self.tui.print_agent("  line1\n  line2\n")
-        self.tui.console.print.assert_called_once()
+        assert self.tui.console.print.call_count >= 2
 
     def test_print_help(self):
         self.tui.print_help({"/help": "show help", "/exit": "quit"})
@@ -1331,55 +1321,10 @@ class TestTUIConsoleSpinner:
         c.stop_spinner()
         assert c._live_spinner is None
 
-    def test_thinking_spinner_context_manager(self):
+    def test_thinking_spinner_not_present(self):
+        """thinking_spinner context manager was removed in TUI refactor."""
         c = TUIConsole()
-        c.console = MagicMock()
-        with patch("nemo_oo_agents_cli.tui.console.Live") as MockLive:
-            mock_live = MagicMock()
-            mock_live.__enter__ = MagicMock(return_value=mock_live)
-            mock_live.__exit__ = MagicMock(return_value=False)
-            MockLive.return_value = mock_live
-            with c.thinking_spinner() as live:
-                assert live is mock_live
-
-
-class TestTUIConsoleGetInput:
-    async def test_get_input_with_handler(self):
-        c = TUIConsole()
-        mock_handler = MagicMock()
-        mock_handler.get_input = AsyncMock(return_value="hello")
-        c._input_handler = mock_handler
-        result = await c.get_input("You: ")
-        assert result == "hello"
-        mock_handler.get_input.assert_called_once_with("You: ")
-
-    async def test_get_input_fallback(self):
-        """Without input handler, falls back to executor."""
-        c = TUIConsole()
-        c._input_handler = None
-        c.console = MagicMock()
-        c.console.input = MagicMock(return_value="test input  ")
-        result = await c.get_input()
-        assert result == "test input"
-
-    def test_init_input_handler(self):
-        c = TUIConsole()
-        mock_registry = MagicMock()
-        # TUIInputHandler is lazily imported inside init_input_handler, so patch it
-        # at its actual module path
-        with patch("nemo_oo_agents_cli.tui.input_handler.TUIInputHandler") as MockHandler:
-            MockHandler.return_value = MagicMock()
-            # Also patch the import in the method's local scope
-            import nemo_oo_agents_cli.tui.input_handler as ih_mod
-
-            original_cls = getattr(ih_mod, "TUIInputHandler", None)
-            ih_mod.TUIInputHandler = MockHandler
-            try:
-                c.init_input_handler(mock_registry)
-            finally:
-                if original_cls is not None:
-                    ih_mod.TUIInputHandler = original_cls
-        assert c._input_handler is not None
+        assert not hasattr(c, "thinking_spinner")
 
 
 # ===========================================================================
@@ -1403,12 +1348,12 @@ class TestShowSplash:
             show_splash(mock_console)
         mock_sleep.assert_called_once_with(0.8)
 
-    def test_show_splash_multiple_prints(self):
+    def test_show_splash_prints_panel(self):
         mock_console = MagicMock()
         with patch("nemo_oo_agents_cli.tui.splash.time.sleep"):
             show_splash(mock_console, delay=0.0)
-        # Should call print at least twice (panel + spacing)
-        assert mock_console.print.call_count >= 2
+        # Should call print once (with centered panel containing title and tagline)
+        assert mock_console.print.call_count == 1
 
     def test_ascii_art_constant(self):
         assert "Agent" in AGENT006_ASCII or "_" in AGENT006_ASCII

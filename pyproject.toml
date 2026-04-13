@@ -14,6 +14,7 @@ dependencies = [
     "unifiedllm",
     "agentdoc",
     "context-blocks",
+    "ipython>=9.12.0",
 ]
 
 [project.scripts]
@@ -66,9 +67,13 @@ sandbox = [
 mcp = [
     "mcp-nemo-oo-agents",
 ]
+# Scientific / plotting stack pre-loaded into the TUI agent REPL (np, pd, px, go, scipy, sklearn)
 tui = [
-    "rich>=13.0.0",
-    "prompt-toolkit>=3.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "plotly>=5.0.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
 ]
 harbor-benchmarks = [
     "harbor",
@@ -76,6 +81,99 @@ harbor-benchmarks = [
 # nexus = [
 #     "nvidia-nat-nexus",  # TODO: update once published to PyPI
 # ]
+# BigCodeBench dependencies (libraries used across 1140 benchmark tasks)
+bigcodebench = [
+    "llvmlite>=0.46.0",
+    # Core scientific computing (334+ tasks)
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    # Visualization (314+ tasks)
+    "matplotlib>=3.5.0",
+    "seaborn>=0.12.0",
+    # ML/Statistics (182+ tasks)
+    "scikit-learn>=1.3.0",
+    "scipy>=1.10.0",
+    "statsmodels>=0.14.0",
+    # NLP (31+ tasks)
+    "nltk>=3.8.0",
+    "wordcloud>=1.9.0",
+    # Web/HTTP (40+ tasks)
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    # Date/Time (16+ tasks)
+    "pytz>=2023.3",
+    "python-dateutil>=2.8.0",
+    # Image processing (10+ tasks)
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    # Crypto (7+ tasks)
+    "cryptography>=41.0.0",
+    "rsa>=4.9",
+    # Flask ecosystem (5+ tasks)
+    "flask>=2.3.0",
+    "flask-restful>=0.3.10",
+    "flask-login>=0.6.3",
+    "flask-mail>=0.10.0",
+    # Django (4+ tasks)
+    "django>=4.2.0",
+    # Wikipedia API (1+ tasks)
+    "wikipedia>=1.4.0",
+    # Document processing (6+ tasks)
+    "python-docx>=1.1.0",  # docx
+    "openpyxl>=3.1.0",
+    "xlwt>=1.3.0",
+    # Mapping/Geo (6+ tasks)
+    "folium>=0.15.0",
+    "geopy>=2.4.0",
+    "geopandas>=0.14.0",
+    "shapely>=2.0.0",
+    # ML/Deep Learning (6+ tasks)
+    "keras>=3.0.0",
+    "tensorflow>=2.15.0",
+    # NLP additional (5+ tasks)
+    "textblob>=0.18.0",
+    "gensim>=4.3.0",
+    # Data utilities (4+ tasks)
+    "faker>=22.0.0",
+    "texttable>=1.7.0",
+    "xmltodict>=0.13.0",
+    # Math/Science (3+ tasks)
+    "sympy>=1.12.0",
+    # Audio (2+ tasks)
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
+    # Web scraping (2+ tasks)
+    "mechanize>=0.4.0",
+    # Flask forms (2+ tasks)
+    "flask-wtf>=1.2.0",
+    "wtforms>=3.1.0",
+    "werkzeug>=3.0.0",
+    # Misc (1-2 tasks each)
+    "pycryptodome>=3.20.0",  # Crypto
+    "python-Levenshtein>=0.25.0",
+    "blake3>=0.4.0",
+    "natsort>=8.4.0",
+    "prettytable>=3.10.0",
+    "pyquery>=2.0.0",
+    "pytesseract>=0.3.10",
+    "sendgrid>=6.11.0",
+    "scikit-image>=0.22.0",  # skimage
+    "wordninja>=2.0.0",
+    "holidays>=0.40",
+    # Other common (various tasks)
+    "regex>=2023.0.0",
+    "psutil>=5.9.0",
+    "lxml>=4.9.0",
+    "pyyaml>=6.0.0",
+    "chardet>=5.0.0",
+]
+tui-optional = [
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "plotly>=6.6.0",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.11,<0.10.0"]
