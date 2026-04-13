@@ -186,15 +186,17 @@ def _load_config_file() -> dict:
     """Load .nemo_oo_tui/config.toml and return its [tui] section as a flat dict."""
     import tomllib
 
-    config_path = Path(".nemo_oo_tui") / "config.toml"
+    from nemo_oo_agents_cli._common import find_project_root
+
+    config_path = find_project_root() / ".nemo_oo_tui" / "config.toml"
     if not config_path.exists():
         return {}
     try:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
         return data.get("tui", {})
-    except Exception:
-        logger.warning("Failed to load config file %s", config_path)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        logger.warning("Failed to load config file %s: %s", config_path, e)
         return {}
 
 

@@ -63,9 +63,9 @@ _CONFIG_TOML_TEMPLATE = """\
 
 def _scaffold_project_dir(config: "Config") -> None:
     """Create .nemo_oo_tui/ and write a config.toml template on first run."""
-    from pathlib import Path
+    from nemo_oo_agents_cli._common import find_project_root
 
-    project_dir = Path(".nemo_oo_tui")
+    project_dir = find_project_root() / ".nemo_oo_tui"
     project_dir.mkdir(exist_ok=True)
 
     config_path = project_dir / "config.toml"

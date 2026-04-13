@@ -306,13 +306,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         from nemo_oo_agents.config.tool_configs import BashConfig
 
-        _srt = Path(".nemo_oo_tui") / "srt_settings.json"
+        _project_dir = Path(config.working_dir) / ".nemo_oo_tui"
+        _srt = _project_dir / "srt_settings.json"
         self.bash = BashTool(
             working_dir=config.working_dir,
             config=BashConfig(srt_settings=_srt if _srt.exists() else None),
         )
         self.files = FileTool(self.bash)
-        self.libs = LibraryWriting(self, path=Path(".nemo_oo_tui") / "libs")
+        self.libs = LibraryWriting(self, path=_project_dir / "libs")
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
