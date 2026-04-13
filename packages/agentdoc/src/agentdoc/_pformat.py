@@ -1288,68 +1288,32 @@ def _format_dict(
     indent: int,
     _budget: list[int] | None = None,
 ) -> str:
-    """Format a dictionary."""
+    """Format a dictionary.
+
+    When max_length truncation fires, shows the first n_head and last n_tail
+    key-value pairs with a "... N items not shown ..." notice in the middle —
+    matching the numpy/pandas head+tail style. Dicts are insertion-ordered so
+    head and tail are well-defined. Budget-based truncation keeps head-only.
+    """
     if not d:
         return "{}"
 
-    items = list(d.items())
-    truncated_count = 0
-    if max_length is not None and len(items) > max_length:
-        truncated_count = len(items) - max_length
-        items = items[:max_length]
+    all_items = list(d.items())
 
-    # Compact format when not expand_all (Rich pprint style)
-    if not expand_all:
-        # Snapshot budget and truncated_count before the compact trial.  If the
-        # result is too long (>= 120 chars) we discard it and fall through to the
-        # expanded path; the expanded path re-formats every item from scratch, so it
-        # must start with the original budget — not one depleted by the discarded trial.
-        budget_snapshot = _budget[0] if _budget is not None else 0
-        truncated_snapshot = truncated_count
-        parts = []
-        remaining_items = len(items)
-        for k, v in items:
-            remaining_items -= 1
-            k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
-            before = _budget[0] if _budget is not None else 0
-            v_str = _format_value(
-                v,
-                max_length=max_length,
-                max_string=max_string,
-                max_depth=max_depth,
-                expand_all=expand_all,
-                depth=depth + 1,
-                indent=0,
-                _budget=_budget,
-            )
-            item_str = f"{k_str}: {v_str}"
-            parts.append(item_str)
-            if _budget is not None:
-                # Set budget to (before - actual output chars), not -= len(item_str).
-                # The recursive _format_value call may have already deducted chars for
-                # nested containers; using the delta avoids double-counting.
-                _budget[0] = before - len(item_str)
-                if _budget[0] <= 0:
-                    total_remaining = truncated_count + remaining_items
-                    parts.append(f"... +{total_remaining} more")
-                    truncated_count = 0
-                    break
-        if truncated_count > 0:
-            parts.append(f"... +{truncated_count}")
-        result = "{" + ", ".join(parts) + "}"
-        if len(result) < 120:  # Allow longer single lines like Rich
-            return result
-        # Discard compact trial; restore state for expanded format.
-        if _budget is not None:
-            _budget[0] = budget_snapshot
-        truncated_count = truncated_snapshot
+    # Head+tail slicing for dicts (insertion-ordered).
+    tail_items: list = []
+    dropped = 0
 
-    # Expanded format (when expand_all=True or line too long)
-    lines = ["{"]
-    inner_indent = "    " * (indent + 1)
-    remaining_items = len(items)
-    for k, v in items:
-        remaining_items -= 1
+    if max_length is not None and len(all_items) > max_length:
+        n_head = (max_length + 1) // 2  # ceiling half
+        n_tail = max_length - n_head      # floor half
+        dropped = len(all_items) - n_head - n_tail
+        tail_items = all_items[-n_tail:] if n_tail > 0 else []
+        head_items = all_items[:n_head]
+    else:
+        head_items = all_items
+
+    def _fmt_item(k: object, v: object, current_indent: int) -> str:
         k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
         before = _budget[0] if _budget is not None else 0
         v_str = _format_value(
@@ -1359,21 +1323,84 @@ def _format_dict(
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth + 1,
-            indent=indent + 1,
+            indent=current_indent,
             _budget=_budget,
         )
-        item_str = f"{inner_indent}{k_str}: {v_str},"
-        lines.append(item_str)
+        # Deduct budget based on actual output chars to avoid double-counting.
         if _budget is not None:
-            _budget[0] = before - len(item_str)
-            if _budget[0] <= 0:
-                total_remaining = truncated_count + remaining_items
-                lines.append(f"{inner_indent}... +{total_remaining} more")
-                truncated_count = 0
+            item_chars = len(f"{k_str}: {v_str}")
+            _budget[0] = before - item_chars
+        return k_str, v_str
+
+    # Compact format when not expand_all (Rich pprint style)
+    if not expand_all:
+        # Snapshot budget before the compact trial; restore if we fall through.
+        budget_snapshot = _budget[0] if _budget is not None else 0
+        parts: list[str] = []
+        budget_fired = False
+
+        remaining_head = len(head_items)
+        for k, v in head_items:
+            remaining_head -= 1
+            k_str, v_str = _fmt_item(k, v, 0)
+            item_str = f"{k_str}: {v_str}"
+            parts.append(item_str)
+            if _budget is not None and _budget[0] <= 0:
+                budget_total = dropped + len(tail_items) + remaining_head
+                parts.append(f"... +{budget_total} more")
+                budget_fired = True
                 break
 
-    if truncated_count > 0:
-        lines.append(f"{inner_indent}... +{truncated_count}")
+        if not budget_fired:
+            if tail_items:
+                # Head+tail: prose notice between head and tail.
+                parts.append(f"... {dropped} items not shown ...")
+                for k, v in tail_items:
+                    k_str, v_str = _fmt_item(k, v, 0)
+                    parts.append(f"{k_str}: {v_str}")
+                    if _budget is not None and _budget[0] <= 0:
+                        break
+            elif dropped > 0:
+                # Single-end: legacy compact suffix.
+                parts.append(f"... +{dropped}")
+
+        result = "{" + ", ".join(parts) + "}"
+        if len(result) < 120:  # Allow longer single lines like Rich
+            return result
+        # Discard compact trial; restore budget for expanded format.
+        if _budget is not None:
+            _budget[0] = budget_snapshot
+
+    # Expanded format (when expand_all=True or line too long)
+    lines = ["{"]
+    inner_indent = "    " * (indent + 1)
+    budget_fired = False
+
+    remaining_head = len(head_items)
+    for k, v in head_items:
+        remaining_head -= 1
+        k_str, v_str = _fmt_item(k, v, indent + 1)
+        line = f"{inner_indent}{k_str}: {v_str},"
+        lines.append(line)
+        if _budget is not None and _budget[0] <= 0:
+            budget_total = dropped + len(tail_items) + remaining_head
+            lines.append(f"{inner_indent}... +{budget_total} more")
+            budget_fired = True
+            break
+
+    if not budget_fired:
+        if tail_items:
+            # Head+tail: prose notice between head and tail.
+            lines.append(f"{inner_indent}... {dropped} items not shown ...")
+            for k, v in tail_items:
+                k_str, v_str = _fmt_item(k, v, indent + 1)
+                line = f"{inner_indent}{k_str}: {v_str},"
+                lines.append(line)
+                if _budget is not None and _budget[0] <= 0:
+                    break
+        elif dropped > 0:
+            # Single-end: legacy suffix.
+            lines.append(f"{inner_indent}... +{dropped}")
 
     lines.append("    " * indent + "}")
     return "\n".join(lines)
@@ -1390,85 +1417,131 @@ def _format_sequence(
     indent: int,
     _budget: list[int] | None = None,
 ) -> str:
-    """Format a sequence (list, tuple, set, frozenset)."""
+    """Format a sequence (list, tuple, set, frozenset).
+
+    For ordered containers (list, tuple) with max_length truncation, shows the
+    first n_head and last n_tail elements with a "... N items not shown ..."
+    notice in the middle — matching numpy/pandas head+tail style.
+    Unordered containers (set, frozenset) use head-only (no stable order).
+    Budget-based truncation keeps head-only (can't collect tail lazily).
+    """
     brackets = _get_brackets(type(seq))
 
     if not seq:
         return brackets[0] + brackets[1]
 
-    items = list(seq)
-    truncated_count = 0
-    if max_length is not None and len(items) > max_length:
-        truncated_count = len(items) - max_length
-        items = items[:max_length]
+    all_items = list(seq)
 
-    # Compact format when not expand_all (Rich pprint style)
-    if not expand_all:
-        # Snapshot state before the compact trial; restore if we fall through to expanded.
-        budget_snapshot = _budget[0] if _budget is not None else 0
-        truncated_snapshot = truncated_count
-        parts = []
-        remaining_items = len(items)
-        for x in items:
-            remaining_items -= 1
-            before = _budget[0] if _budget is not None else 0
-            item_str = _format_value(
-                x,
-                max_length=max_length,
-                max_string=max_string,
-                max_depth=max_depth,
-                expand_all=expand_all,
-                depth=depth + 1,
-                indent=0,
-                _budget=_budget,
-            )
-            parts.append(item_str)
-            if _budget is not None:
-                _budget[0] = before - len(item_str)
-                if _budget[0] <= 0:
-                    total_remaining = truncated_count + remaining_items
-                    parts.append(f"... +{total_remaining} more")
-                    truncated_count = 0
-                    break
-        if truncated_count > 0:
-            parts.append(f"... +{truncated_count}")
-        result = brackets[0] + ", ".join(parts) + brackets[1]
-        if len(result) < 120:  # Allow longer single lines like Rich
-            return result
-        # Discard compact trial; restore state for expanded format.
-        if _budget is not None:
-            _budget[0] = budget_snapshot
-        truncated_count = truncated_snapshot
+    # Head+tail slicing for ordered containers; head-only for unordered.
+    is_ordered = isinstance(seq, (list, tuple))
+    tail_items: list = []
+    dropped = 0
 
-    # Expanded format (when expand_all=True or line too long)
-    lines = [brackets[0]]
-    inner_indent = "    " * (indent + 1)
-    remaining_items = len(items)
-    for item in items:
-        remaining_items -= 1
-        before = _budget[0] if _budget is not None else 0
-        item_str = _format_value(
-            item,
+    if max_length is not None and len(all_items) > max_length:
+        if is_ordered:
+            n_head = (max_length + 1) // 2  # ceiling half
+            n_tail = max_length - n_head      # floor half
+            dropped = len(all_items) - n_head - n_tail
+            tail_items = all_items[-n_tail:] if n_tail > 0 else []
+            head_items = all_items[:n_head]
+        else:
+            dropped = len(all_items) - max_length
+            head_items = all_items[:max_length]
+    else:
+        head_items = all_items
+
+    def _fmt(x: object, current_indent: int) -> str:
+        return _format_value(
+            x,
             max_length=max_length,
             max_string=max_string,
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth + 1,
-            indent=indent + 1,
+            indent=current_indent,
             _budget=_budget,
         )
+
+    # Compact format when not expand_all (Rich pprint style)
+    if not expand_all:
+        # Snapshot budget before the compact trial; restore if we fall through.
+        budget_snapshot = _budget[0] if _budget is not None else 0
+        parts: list[str] = []
+        budget_fired = False
+
+        remaining_head = len(head_items)
+        for x in head_items:
+            remaining_head -= 1
+            before = _budget[0] if _budget is not None else 0
+            item_str = _fmt(x, 0)
+            parts.append(item_str)
+            if _budget is not None:
+                _budget[0] = before - len(item_str)
+                if _budget[0] <= 0:
+                    budget_total = dropped + len(tail_items) + remaining_head
+                    parts.append(f"... +{budget_total} more")
+                    budget_fired = True
+                    break
+
+        if not budget_fired:
+            if tail_items:
+                # Ordered with head+tail: prose notice between head and tail.
+                parts.append(f"... {dropped} items not shown ...")
+                for x in tail_items:
+                    before = _budget[0] if _budget is not None else 0
+                    item_str = _fmt(x, 0)
+                    parts.append(item_str)
+                    if _budget is not None:
+                        _budget[0] = before - len(item_str)
+                        if _budget[0] <= 0:
+                            break
+            elif dropped > 0:
+                # Unordered or single-end: legacy compact suffix.
+                parts.append(f"... +{dropped}")
+
+        result = brackets[0] + ", ".join(parts) + brackets[1]
+        if len(result) < 120:  # Allow longer single lines like Rich
+            return result
+        # Discard compact trial; restore budget for expanded format.
+        if _budget is not None:
+            _budget[0] = budget_snapshot
+
+    # Expanded format (when expand_all=True or line too long)
+    lines = [brackets[0]]
+    inner_indent = "    " * (indent + 1)
+    budget_fired = False
+
+    remaining_head = len(head_items)
+    for item in head_items:
+        remaining_head -= 1
+        before = _budget[0] if _budget is not None else 0
+        item_str = _fmt(item, indent + 1)
         line = f"{inner_indent}{item_str},"
         lines.append(line)
         if _budget is not None:
             _budget[0] = before - len(line)
             if _budget[0] <= 0:
-                total_remaining = truncated_count + remaining_items
-                lines.append(f"{inner_indent}... +{total_remaining} more")
-                truncated_count = 0
+                budget_total = dropped + len(tail_items) + remaining_head
+                lines.append(f"{inner_indent}... +{budget_total} more")
+                budget_fired = True
                 break
 
-    if truncated_count > 0:
-        lines.append(f"{inner_indent}... +{truncated_count}")
+    if not budget_fired:
+        if tail_items:
+            # Ordered with head+tail: prose notice between head and tail.
+            lines.append(f"{inner_indent}... {dropped} items not shown ...")
+            for item in tail_items:
+                before = _budget[0] if _budget is not None else 0
+                item_str = _fmt(item, indent + 1)
+                line = f"{inner_indent}{item_str},"
+                lines.append(line)
+                if _budget is not None:
+                    _budget[0] = before - len(line)
+                    if _budget[0] <= 0:
+                        break
+        elif dropped > 0:
+            # Unordered or single-end: legacy suffix.
+            lines.append(f"{inner_indent}... +{dropped}")
 
     lines.append("    " * indent + brackets[1])
     return "\n".join(lines)
