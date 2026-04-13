@@ -216,6 +216,7 @@ class Session:
         self._unsubscribe_fns: list = []
         self._pending_code: dict[str, str] = {}  # tool_call_id → code
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
+        self._agent_has_messaged: bool = False  # True after first message() in current turn
 
     @property
     def show_python(self) -> bool:
@@ -337,7 +338,11 @@ class Session:
             frontend = self.frontend
 
             def _render_msg(text: str) -> None:
-                asyncio.run_coroutine_threadsafe(frontend.render(AgentMessage(content=text)), loop)
+                show_rule = not self._agent_has_messaged
+                self._agent_has_messaged = True
+                asyncio.run_coroutine_threadsafe(
+                    frontend.render(AgentMessage(content=text, show_rule=show_rule)), loop
+                )
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
@@ -540,6 +545,7 @@ class Session:
 
         # Clear previous streaming state before new turn
         self._clear_streaming_state()
+        self._agent_has_messaged = False  # reset so first message() gets the OO ── rule
 
         await self.frontend.start_thinking()
 

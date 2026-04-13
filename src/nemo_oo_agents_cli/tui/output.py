@@ -64,6 +64,8 @@ class AgentMessage:
     """A markdown-formatted message produced by the agent via ``message()``."""
 
     content: str
+    # False for 2nd+ message() calls in the same turn — suppresses the OO ── rule
+    show_rule: bool = True
 
     def to_json(self) -> dict:
         return {"type": "agent_message", "content": self.content}
