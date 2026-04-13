@@ -16,7 +16,7 @@ Then send SIGUSR2 to dump debug info:
     kill -USR2 <pid>
 
 Debug output is written to:
-    ~/.cache/nemo_oo_agents/debug_dump_<pid>.txt
+    debug_dump_<pid>.txt  (in the current working directory, or dump_dir if set)
 
 LLM Call Tracking:
     from nemo_oo_agents.runtime.debug_handler import llm_call_context
@@ -196,19 +196,8 @@ def _detect_llm_in_stack(frame) -> list[str]:
 
 
 def _get_debug_dump_path() -> Path:
-    """Get user-specific debug dump path with PID.
-
-    Uses XDG_CACHE_HOME (~/.cache) for user-specific, non-world-readable storage.
-    Includes PID to avoid conflicts between multiple processes.
-    """
-    # Use XDG_CACHE_HOME or default to ~/.cache
-    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    nemo_oo_agents_dir = cache_dir / "nemo_oo_agents"
-
-    # Create directory if needed (with user-only permissions)
-    nemo_oo_agents_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-
-    return nemo_oo_agents_dir / f"debug_dump_{os.getpid()}.txt"
+    """Get debug dump path with PID. Uses _dump_dir, defaulting to cwd."""
+    return _dump_dir / f"debug_dump_{os.getpid()}.txt"
 
 
 def _dump_cell_code(file=None):
@@ -295,14 +284,20 @@ def _debug_signal_handler(signum, frame):
 
 
 _handler_installed = False
+_dump_dir: Path = Path(".")
 
 
-def install_debug_handler():
+def install_debug_handler(dump_dir: Path | None = None):
     """Install SIGUSR2 handler for debug dumps.
 
     Safe to call multiple times - only installs once.
+
+    Args:
+        dump_dir: Directory to write debug_dump_<pid>.txt files. Defaults to cwd.
     """
-    global _handler_installed
+    global _handler_installed, _dump_dir
+    if dump_dir is not None:
+        _dump_dir = dump_dir
     if _handler_installed:
         return
 

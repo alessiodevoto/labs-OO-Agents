@@ -197,17 +197,17 @@ class TestConfigOverrides:
 
 class TestConfigEnvVars:
     def test_env_model_override(self):
-        with patch.dict("os.environ", {"AGENT006_MODEL": "env-model"}):
+        with patch.dict("os.environ", {"NEMO_OO_MODEL": "env-model"}):
             cfg = Config.load()
         assert cfg.tui.default_model == "env-model"
 
     def test_env_trace_dir_override(self, tmp_path):
-        with patch.dict("os.environ", {"AGENT006_TRACE_DIR": str(tmp_path)}):
+        with patch.dict("os.environ", {"NEMO_OO_TRACE_DIR": str(tmp_path)}):
             cfg = Config.load()
         assert cfg.tui.trace_dir == tmp_path
 
     def test_explicit_override_beats_env(self):
-        with patch.dict("os.environ", {"AGENT006_MODEL": "env-model"}):
+        with patch.dict("os.environ", {"NEMO_OO_MODEL": "env-model"}):
             cfg = Config.load(model="explicit-model")
         assert cfg.tui.default_model == "explicit-model"
 
@@ -1331,7 +1331,7 @@ class TestTUIConsoleSpinner:
 # tui/splash.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.splash import AGENT006_ASCII, show_splash  # noqa: E402
+from nemo_oo_agents_cli.tui.splash import NEMO_OO_ASCII, show_splash  # noqa: E402
 
 
 class TestShowSplash:
@@ -1356,7 +1356,7 @@ class TestShowSplash:
         assert mock_console.print.call_count == 1
 
     def test_ascii_art_constant(self):
-        assert "Agent" in AGENT006_ASCII or "_" in AGENT006_ASCII
+        assert "Agent" in NEMO_OO_ASCII or "_" in NEMO_OO_ASCII
 
 
 # ===========================================================================

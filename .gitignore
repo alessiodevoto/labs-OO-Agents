@@ -313,6 +313,8 @@ debug_http_logs/
 
 # Claude Code sandbox artifacts (created at runtime, not project files)
 .srt-settings.json
+# Debug handler dumps (written to cwd on SIGUSR2)
+debug_dump_*.txt
 # Shell config stubs (empty read-only files injected by sandbox)
 .zshrc
 .zprofile

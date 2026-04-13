@@ -15,6 +15,8 @@ class BashConfig(BaseModel):
     default_timeout: float = 30.0
     use_sandbox: bool = False
     srt_settings: str | Path | None = None
+    """Path to SRT settings file. When None (default), SRT uses its own default at
+    ~/.srt-settings.json. Set this to use a project-specific policy file."""
     srt_executable: str | None = None
 
     def merge_with(self, other: "BashConfig") -> "BashConfig":

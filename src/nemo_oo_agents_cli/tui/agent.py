@@ -5,6 +5,7 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
+from pathlib import Path
 from typing import Annotated
 
 from agentdoc import spec
@@ -305,7 +306,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
 
         self.bash = BashTool(working_dir=config.working_dir)
         self.files = FileTool(self.bash)
-        self.libs = LibraryWriting(self)
+        self.libs = LibraryWriting(self, path=Path(config.working_dir) / "libs")
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)

@@ -60,7 +60,7 @@ class LintReport:
 class LibraryWriting(Skill):
     """Write persistent Python libraries that survive across sessions.
 
-    Libraries are standard Python packages stored at ~/.nemo_oo_agents/<AgentClass>/libs/.
+    Libraries are standard Python packages stored at a caller-specified path.
     Any valid package layout is accepted — no specific file name is required.
 
     ## Lifecycle
@@ -95,9 +95,9 @@ class LibraryWriting(Skill):
     - Use a library for logic worth naming and reusing; use inline code for one-offs
     """
 
-    def __init__(self, agent: Any, path: Path | None = None) -> None:
+    def __init__(self, agent: Any, path: Path) -> None:
         self._agent = agent
-        self._path = path or (Path.home() / ".nemo_oo_agents" / type(agent).__name__ / "libs")
+        self._path = path
         self._path.mkdir(parents=True, exist_ok=True)
         self._bash = BashTool(working_dir=self._path)
         self._files = FileTool(self._bash)

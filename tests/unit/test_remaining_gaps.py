@@ -1554,37 +1554,6 @@ class TestBashToolRun:
         mock_proc.kill.assert_called_once()
 
 
-class TestGetSrtSettingsPath:
-    """Cover _get_srt_settings_path (lines 66-71)."""
-
-    def test_creates_settings_file_if_missing(self, tmp_path):
-        from nemo_oo_agents.tools.bash_tool import _get_srt_settings_path
-
-        with patch("nemo_oo_agents.tools.bash_tool.Path") as MockPath:
-            settings = tmp_path / ".srt-settings.json"
-            mock_settings = MagicMock()
-            mock_settings.exists.return_value = False
-            mock_settings.write_text = MagicMock()
-            mock_settings.resolve.return_value = settings
-            MockPath.return_value = mock_settings
-            _get_srt_settings_path()
-            mock_settings.write_text.assert_called_once()
-
-    def test_returns_existing_path_without_writing(self, tmp_path):
-        from nemo_oo_agents.tools.bash_tool import _get_srt_settings_path
-
-        existing = tmp_path / ".srt-settings.json"
-        existing.write_text("{}")
-
-        with patch("nemo_oo_agents.tools.bash_tool.Path") as MockPath:
-            mock_settings = MagicMock()
-            mock_settings.exists.return_value = True
-            mock_settings.resolve.return_value = existing
-            MockPath.return_value = mock_settings
-            _get_srt_settings_path()
-            mock_settings.write_text.assert_not_called()
-
-
 class TestFileResult:
     """Cover FileResult.lines (line 248) and FileTool operations."""
 

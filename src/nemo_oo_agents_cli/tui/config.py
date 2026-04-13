@@ -134,8 +134,8 @@ class Config:
 
     # ── Environment variable mapping ──────────────────────────────────
     _ENV: ClassVar[dict] = {
-        "AGENT006_MODEL": "tui.default_model",
-        "AGENT006_TRACE_DIR": ("tui.trace_dir", Path),
+        "NEMO_OO_MODEL": "tui.default_model",
+        "NEMO_OO_TRACE_DIR": ("tui.trace_dir", Path),
     }
 
     @classmethod
