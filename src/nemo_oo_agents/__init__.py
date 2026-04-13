@@ -132,7 +132,7 @@ __all__ = [
 ]
 
 # Install debug handler by default (zero overhead until SIGUSR2 received)
-# Usage: kill -USR2 <pid> → dumps traceback + cell code to ~/.cache/nemo_oo_agents/
+# Usage: kill -USR2 <pid> → dumps traceback + cell code to debug_dump_<pid>.txt in cwd
 from nemo_oo_agents.runtime.debug_handler import install_debug_handler  # noqa: E402
 
 install_debug_handler()

@@ -296,6 +296,10 @@ def install_debug_handler(dump_dir: Path | None = None):
         dump_dir: Directory to write debug_dump_<pid>.txt files. Defaults to cwd.
     """
     global _handler_installed, _dump_dir
+    # Update _dump_dir before the early-return so callers can redirect the dump
+    # location even after the handler is already installed (e.g. second call
+    # with a different dump_dir).  Handler re-installation is intentionally
+    # skipped; only the output path changes.
     if dump_dir is not None:
         _dump_dir = dump_dir
     if _handler_installed:

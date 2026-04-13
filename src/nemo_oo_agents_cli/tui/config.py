@@ -135,14 +135,14 @@ class Config:
     def load(cls, **overrides) -> "Config":
         """Build config: defaults → config file → overrides.
 
-        Config file: ~/.config/nemo-oo/config.toml (optional).
+        Config file: .nemo_oo_tui/config.toml (project-local, optional).
         Accepts any keyword argument matching _OVERRIDES keys.
         Unknown keys are silently ignored, so you can pass ``**vars(args)``
         from argparse directly.
         """
         cfg = cls()
 
-        # Layer 2: user config file (~/.config/nemo-oo/config.toml)
+        # Layer 2: project-local config file (.nemo_oo_tui/config.toml)
         for key, val in _load_config_file().items():
             if key in cls._OVERRIDES:
                 _set_nested(cfg, *_unpack_target(cls._OVERRIDES[key], val))
