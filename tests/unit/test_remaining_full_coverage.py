@@ -778,12 +778,15 @@ class TestSQLiteModuleLevelAssertions:
                 return result[:2]  # Force < 3 to trigger assertion
             return result
 
-        with patch.object(typing, "get_args", side_effect=fake_get_args):
-            with pytest.raises(AssertionError, match="Failed to unwrap context_blocks Event union"):
-                importlib.reload(sqlite_mod)
-
-        # Restore module
-        importlib.reload(sqlite_mod)
+        try:
+            with patch.object(typing, "get_args", side_effect=fake_get_args):
+                with pytest.raises(
+                    AssertionError, match="Failed to unwrap context_blocks Event union"
+                ):
+                    importlib.reload(sqlite_mod)
+        finally:
+            # Always restore module even if assertion doesn't match
+            importlib.reload(sqlite_mod)
 
     def test_duplicate_event_type_assertion(self):
         """Line 72: duplicate event_type key in _CORE_TYPES raises AssertionError."""
@@ -917,9 +920,6 @@ def _make_fake_nexus_for_test():
     fake.llm.execute = AsyncMock(side_effect=default_llm_execute)
     fake.scope.push.return_value = MagicMock()
     fake.scope.pop.return_value = None
-
-    # Make LLMRequest constructable
-    MagicMock(return_value=MagicMock(content={}))
 
     return fake, fake_handle
 
