@@ -41,7 +41,7 @@ def _try_auto_enable_tracing() -> None:
         from openinference_instrumentation_nemo_oo_agents import enable_tracing
 
         enable_tracing()
-    except ImportError:  # pragma: no cover
+    except ImportError:
         pass
 
 
@@ -443,7 +443,7 @@ class Agent(metaclass=AgentMeta):
         for name, value in inspect.getmembers(cls, predicate=inspect.isfunction):
             if name.startswith("__") and name.endswith("__"):
                 continue
-            if name in seen_names:  # pragma: no cover — deduplication guard
+            if name in seen_names:
                 continue
             explicitly_shown = getattr(value, "_agentdoc_hidden", None) is False
             if name.startswith("_") and not explicitly_shown:
@@ -458,17 +458,15 @@ class Agent(metaclass=AgentMeta):
         for name, value in inspect.getmembers(cls, predicate=inspect.ismethod):
             if name.startswith("__") and name.endswith("__"):
                 continue
-            if name in seen_names:  # pragma: no cover — deduplication guard
+            if name in seen_names:
                 continue
             explicitly_shown = getattr(value, "_agentdoc_hidden", None) is False
-            if name.startswith("_") and not explicitly_shown:  # pragma: no cover
+            if name.startswith("_") and not explicitly_shown:
                 continue
             raw = next(
                 (vars(klass).get(name) for klass in cls.__mro__ if name in vars(klass)), None
             )
-            if is_hidden_method(value) or (
-                raw is not None and is_hidden_method(raw)
-            ):  # pragma: no cover
+            if is_hidden_method(value) or (raw is not None and is_hidden_method(raw)):
                 continue
             seen_names.add(name)
             all_methods.append(extract_callable_info(value))
@@ -480,7 +478,7 @@ class Agent(metaclass=AgentMeta):
                     qualname = (
                         getattr(value, "__qualname__", None) or f"{klass.__qualname__}.{name}"
                     )
-                except Exception:  # pragma: no cover
+                except Exception:
                     qualname = f"{klass.__qualname__}.{name}"
                 if qualname not in source_order:
                     source_order[qualname] = idx

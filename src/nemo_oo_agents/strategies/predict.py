@@ -213,11 +213,9 @@ class PredictStrategy(GenerationStrategy):
                 # Use descriptive placeholder if still None
                 if raw_response_content is None:
                     # Try to get more info about what the LLM returned
-                    if (
-                        llm_response is None
-                    ):  # pragma: no cover — fallback for malformed LLM responses
+                    if llm_response is None:
                         raw_response_content = "(llm_response was None)"
-                    else:  # pragma: no cover
+                    else:
                         # Try to capture all available fields from the response
                         response_info = []
                         for field in ["content", "reasoning", "raw", "text", "message"]:
@@ -279,7 +277,7 @@ class PredictStrategy(GenerationStrategy):
                 runtime.event_manager.add(Error(content=error_content))
 
         # Should never reach here
-        raise GenerationError(  # pragma: no cover
+        raise GenerationError(
             f"Structured output generation failed after {self.config.max_retries} attempts"
         )
 
@@ -564,7 +562,7 @@ class PredictStrategy(GenerationStrategy):
                 return {"value": parsed_data}
 
         # Shouldn't reach here with output_model
-        raise GenerationError(  # pragma: no cover
+        raise GenerationError(
             f"Unexpected response type: content={type(llm_response.content).__name__}, "
             f"reasoning={type(llm_response.reasoning).__name__ if llm_response.reasoning else None}"
         )

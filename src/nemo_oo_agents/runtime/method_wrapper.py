@@ -247,7 +247,7 @@ def create_agent_method_wrapper(
             call_args = args[1:]  # Skip runtime parameter
             call_kwargs = kwargs
 
-            if not resolved_strategy:  # pragma: no cover — line 93-97 always resolves a default
+            if not resolved_strategy:
                 raise ValueError(
                     f"@strategy method {original_func.__name__} on strategy requires strategy parameter. "
                     f"Usage: @strategy(SomeStrategy())"

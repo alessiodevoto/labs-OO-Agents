@@ -147,7 +147,7 @@ class SummarizationAgent(Agent):
         Called automatically if target_event_manager is set at creation,
         or by parent Agent after wiring target_event_manager.
         """
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             raise ValueError("Cannot install: target_event_manager is None")
 
         self._unsub_before = self.target_event_manager.on("before_turn", self._handle_before_turn)
@@ -193,11 +193,9 @@ class SummarizationAgent(Agent):
         if self._pending_task is not None and not self._pending_task.done():
             return
 
-        # Clear completed task reference so we can schedule new one
-        if self._pending_task is not None and self._pending_task.done():  # pragma: no cover
-            self._pending_task = None
+        # Note: if _pending_task was done, _apply_pending_summary() already cleared it.
 
-        if not isinstance(event, _AfterTurn):  # pragma: no cover
+        if not isinstance(event, _AfterTurn):
             return
 
         if self._should_summarize(event):
@@ -274,7 +272,7 @@ class SummarizationAgent(Agent):
     @hidden
     def _schedule_summarization(self, start_tag: str, end_tag: str) -> None:
         """Schedule async summarization as a background task."""
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return
 
         self._pending_range = (start_tag, end_tag)
@@ -349,7 +347,7 @@ class SummarizationAgent(Agent):
         Returns:
             List of (tag, event) tuples
         """
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return []
 
         result = []
@@ -382,12 +380,12 @@ class SummarizationAgent(Agent):
         Returns:
             Markdown-formatted events section
         """
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return ""
 
         events = self._get_events_in_range(start_tag, end_tag)
 
-        if not events:  # pragma: no cover
+        if not events:
             return ""
 
         from context_blocks import BlockMetadata, ResolvedBlock, Role, format_message_content
@@ -410,12 +408,12 @@ class SummarizationAgent(Agent):
     @hidden
     def _estimate_tokens(self) -> int:
         """Estimate total tokens in target event manager."""
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return 0
 
         # Render all active events to markdown for token estimation
         tags = self.target_event_manager.keys()
-        if not tags:  # pragma: no cover
+        if not tags:
             return 0
 
         # Render using the same method we use for summarization
@@ -428,7 +426,7 @@ class SummarizationAgent(Agent):
             return self._llm.count_tokens(rendered)
 
         # Fallback: chars / 4 heuristic
-        return len(rendered) // 4  # pragma: no cover
+        return len(rendered) // 4
 
 
 # =============================================================================
@@ -510,7 +508,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
     @hidden
     def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
         """Summarize oldest events, preserving recent ones."""
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return None
 
         tags = self.target_event_manager.keys()
@@ -581,7 +579,7 @@ class MethodSummarizer(SummarizationAgent):
         (nested call_ids) are included because they fall chronologically between
         the first and last event with the parent call_id.
         """
-        if self.target_event_manager is None:  # pragma: no cover
+        if self.target_event_manager is None:
             return None
 
         call_id = event.metadata.get("call_id")

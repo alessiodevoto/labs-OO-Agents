@@ -27,7 +27,7 @@ def _is_media(value: Any) -> bool:
         from nemo_oo_agents.media import Media
 
         return isinstance(value, Media)
-    except ImportError:  # pragma: no cover
+    except ImportError:
         return False
 
 
