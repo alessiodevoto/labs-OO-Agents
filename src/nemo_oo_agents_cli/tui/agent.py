@@ -6,13 +6,27 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from agentdoc import spec
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from nemo_oo_agents.tools.web_publisher import WebPublisher
+
+# TYPE_CHECKING block mirrors the with hidden: imports below so pyright can
+# resolve these names. At runtime TYPE_CHECKING is False; the with hidden:
+# blocks provide the actual imports.
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from nemo_oo_agents import Agent
+    from nemo_oo_agents.agents import TokenBudgetSummarizer
+    from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+    from unifiedllm import FakeLLMClient, UnifiedLLM
+
+    from .config import AgentConfig, SummarizationConfig
 
 with hidden:
     from collections.abc import Callable
@@ -27,29 +41,29 @@ import os
 
 # Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
 try:
-    import numpy as np  # noqa: F401
+    import numpy as np  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import pandas as pd  # noqa: F401
+    import pandas as pd  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import plotly.express as px  # noqa: F401
-    import plotly.graph_objects as go  # noqa: F401
-    from plotly.subplots import make_subplots  # noqa: F401
+    import plotly.express as px  # noqa: F401  # type: ignore[import-untyped]
+    import plotly.graph_objects as go  # noqa: F401  # type: ignore[import-untyped]
+    from plotly.subplots import make_subplots  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import scipy  # noqa: F401
+    import scipy  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import sklearn  # noqa: F401
+    import sklearn  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
@@ -67,6 +81,12 @@ from .models import (
     StepResult,
     VerificationResult,
 )
+
+# WTF project management skill
+try:
+    from .wtf_project_management import WtfProjectManagement
+except ImportError:
+    WtfProjectManagement = None  # type: ignore
 
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
@@ -245,7 +265,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         ...
 
 
-class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
+class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     """You are NeMo OO Agents, a development assistant running in a terminal.
 
     Call return_result() to yield back to the user.
@@ -306,7 +326,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
 
         self.bash = BashTool(working_dir=config.working_dir)
         self.files = FileTool(self.bash)
-        self.libs = LibraryWriting(self, path=Path(config.working_dir) / "libs")
+        self.libs = LibraryWriting(self, path=Path(".nemo_oo_tui") / "libs")
+
+        # WTF project management (if available)
+        if WtfProjectManagement is not None:
+            try:
+                self.wtf_pm = WtfProjectManagement()
+            except Exception:
+                pass  # WTF not configured or dependencies missing
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
