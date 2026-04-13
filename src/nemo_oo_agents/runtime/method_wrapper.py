@@ -18,7 +18,14 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 # These imports are safe at module level (no circular dependencies)
-from nemo_oo_agents.runtime.context_vars import _parent_agent_var
+from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+from nemo_oo_agents.runtime.context_vars import (
+    _get_agent_call_stack,
+    _in_generation_session,
+    _parent_agent_var,
+    _pop_agent_call_id,
+    _push_agent_call_id,
+)
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
 # Protocol import for isinstance() checks - RuntimeServices is @runtime_checkable
@@ -67,16 +74,6 @@ def create_agent_method_wrapper(
     @wraps(original_func)
     async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         """Unified wrapper for agent methods."""
-        # Lazy imports: actor.py has bidirectional dependencies with agent.py/metaclass.py
-        # that would cause circular imports if moved to module level
-        from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
-        from nemo_oo_agents.runtime.actor import _in_generation_session
-        from nemo_oo_agents.runtime.context_vars import (
-            _get_agent_call_stack,
-            _pop_agent_call_id,
-            _push_agent_call_id,
-        )
-
         # Generation-specific runtime checks and setup
         resolved_strategy = strategy
         if needs_generation:

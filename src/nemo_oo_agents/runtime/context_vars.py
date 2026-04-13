@@ -11,6 +11,22 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
+# Context variable to detect when we're inside a generation session.
+# Defined here (not in actor.py) to avoid circular imports with method_wrapper.py.
+# method_wrapper.py needs this at module level, but actor.py has bidirectional
+# deps with agent.py/metaclass.py that would cause circular imports.
+_in_generation_session: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "in_generation_session", default=False
+)
+
+# Context variable tracking which EventManager._middleware_id values are currently
+# inside an execute_python middleware chain.  Prevents infinite recursion when
+# middleware-injected code triggers another execute_code() on the same agent.
+# Defined here alongside _in_generation_session for the same circular-import reason.
+_in_exec_middleware: contextvars.ContextVar[frozenset[int]] = contextvars.ContextVar(
+    "in_exec_middleware", default=frozenset()
+)
+
 # Context variable for LLM inheritance from parent agent
 # When a subagent is instantiated within generated code, it can inherit the parent's LLM
 # if the subagent class was defined without an LLM (class MyAgent(Agent): ...)
