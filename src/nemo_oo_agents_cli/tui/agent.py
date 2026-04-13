@@ -85,6 +85,11 @@ class RespondResult(Enum):
     WAIT_FOR_USER_INPUT = "wait_for_user_input"
     CONTINUE_WORKING = "continue_working"
 
+# WTF project management skill (from wtf-issues[nemo] optional package)
+try:
+    from wtf_issues import WtfProjectManagement  # type: ignore[import-untyped]
+except ImportError:
+    WtfProjectManagement = None  # type: ignore
 
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
