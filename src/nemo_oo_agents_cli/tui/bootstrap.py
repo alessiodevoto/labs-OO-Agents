@@ -81,7 +81,14 @@ async def bootstrap(
     # ------------------------------------------------------------------
     if not config.no_trace:
         try:
-            from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
+            from datetime import UTC, datetime
+            from uuid import uuid4
+
+            from openinference_instrumentation_nemo_oo_agents import (
+                enable_tracing,
+                exporters,
+                set_session,
+            )
 
             trace_dir = config.tui.trace_dir
             if trace_dir is not None:
@@ -89,6 +96,10 @@ async def bootstrap(
                 enable_tracing(exporters=[exporters.jsonl(trace_dir), exporters.journal()])
             else:
                 enable_tracing()
+            # Override the auto-generated session ID with a human-readable name
+            # so trace files are easy to find: tui-YYYYMMDD-HHMMSS-xxxxxxxx
+            tui_session = "tui-" + datetime.now(UTC).strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8]
+            set_session(tui_session)
             tracing_enabled = True
         except ImportError:
             messages.append(
