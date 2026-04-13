@@ -310,16 +310,19 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self._phase: str = "idle"
         self._workflow_state: dict = {}
 
-        self.bash = BashTool(working_dir=config.working_dir)
+        from nemo_oo_agents.config.tool_configs import BashConfig
+
+        _srt = Path(".nemo_oo_tui") / "srt_settings.json"
+        self.bash = BashTool(
+            working_dir=config.working_dir,
+            config=BashConfig(srt_settings=_srt if _srt.exists() else None),
+        )
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self, path=Path(".nemo_oo_tui") / "libs")
 
-        # WTF project management (if available)
-        if WtfProjectManagement is not None:
-            try:
-                self.wtf_pm = WtfProjectManagement()
-            except Exception:
-                pass  # WTF not configured or dependencies missing
+        # WTF project management (lazy initialization)
+        self._wtf_pm = None
+        self._wtf_pm_available = WtfProjectManagement is not None
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
@@ -329,7 +332,19 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
 
-    @hidden
+    @property
+    def wtf_pm(self):
+        """Lazy-initialized WTF project management skill."""
+        if self._wtf_pm is None and self._wtf_pm_available:
+            try:
+                self._wtf_pm = WtfProjectManagement()  # type: ignore[misc]
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed to initialize WTF skill: {e}")
+                self._wtf_pm_available = False
+        return self._wtf_pm
+
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
 
