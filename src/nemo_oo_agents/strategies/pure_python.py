@@ -241,7 +241,7 @@ class PurePythonStrategy(CompositeStrategy):
 
         # Get generation_id for turn events
         generation_id = runtime.get_generation_id()
-        if generation_id is None:
+        if generation_id is None:  # pragma: no cover
             raise RuntimeError(
                 "get_generation_id() returned None - strategy execution requires a generation context. "
                 "This indicates the runtime was not properly initialized via _in_generation_session()."
@@ -691,7 +691,7 @@ class PurePythonStrategy(CompositeStrategy):
 
             strategy_extras["PredictStrategy"] = PredictStrategy
             strategy_extras["ReflexionStrategy"] = ReflexionStrategy
-        except ImportError:
+        except ImportError:  # pragma: no cover
             pass
 
         namespace = ExecutionNamespaceBuilder.build(

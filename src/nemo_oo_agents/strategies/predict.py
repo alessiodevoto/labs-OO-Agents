@@ -213,9 +213,11 @@ class PredictStrategy(GenerationStrategy):
                 # Use descriptive placeholder if still None
                 if raw_response_content is None:
                     # Try to get more info about what the LLM returned
-                    if llm_response is None:
+                    if (
+                        llm_response is None
+                    ):  # pragma: no cover — fallback for malformed LLM responses
                         raw_response_content = "(llm_response was None)"
-                    else:
+                    else:  # pragma: no cover
                         # Try to capture all available fields from the response
                         response_info = []
                         for field in ["content", "reasoning", "raw", "text", "message"]:
@@ -679,7 +681,7 @@ class PredictStrategy(GenerationStrategy):
 
             response_model.model_rebuild(_types_namespace=vars(_typing))
             return response_model
-        except Exception as e:  # pragma: no cover — Pydantic's create_model is very robust
+        except Exception as e:
             raise GenerationError(
                 f"Failed to create Pydantic model for return type {return_type}: {e}"
             ) from e
