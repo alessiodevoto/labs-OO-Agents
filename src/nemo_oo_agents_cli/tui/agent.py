@@ -218,7 +218,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             )
 
     def message(self, text: str) -> None:
-        """Send a Markdown message to the user."""
+        """Send a Markdown message to the user.
+
+        Each call renders as an independent block — so every call must be a
+        complete, self-contained Markdown document.  In particular, never split
+        a table across calls: the header row and all data rows must be in the
+        same ``message()`` call, otherwise the table will not render correctly.
+        """
         from .tui_events import TUIAgentMessage
 
         self.event_manager.add(TUIAgentMessage(content=str(text)))
