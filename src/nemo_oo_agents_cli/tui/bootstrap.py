@@ -177,11 +177,9 @@ async def bootstrap(
     # Name the initial trace session using the SQLite session UUID so the
     # trace file correlates directly to the storage file.
     if _set_trace_session is not None and _session_id is not None:
-        from datetime import UTC, datetime
+        from .session_manager import _make_trace_session_name
 
-        _set_trace_session(
-            f"tui-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{_session_id[:8]}"
-        )
+        _set_trace_session(_make_trace_session_name(_session_id))
 
     # ------------------------------------------------------------------
     # Agent

@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 SESSIONS_DIR = Path.home() / ".nemo_oo_agents" / "sessions"
 
 
+def _make_trace_session_name(session_id: str) -> str:
+    """Build a human-readable trace session name correlated to a SQLite session UUID.
+
+    Format: ``tui-YYYYMMDD-HHMMSS-<first8_of_uuid>``
+    The 8-char suffix matches the corresponding ``.db`` filename so trace files
+    and storage files are trivially correlated.
+    """
+    from datetime import UTC, datetime
+
+    return f"tui-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{session_id[:8]}"
+
+
 @dataclass
 class SessionMeta:
     """Lightweight session metadata."""
