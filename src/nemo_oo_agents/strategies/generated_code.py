@@ -460,10 +460,7 @@ class ReturnValueValidator:
     def _is_pydantic_model(self, return_type: Any) -> bool:
         from pydantic import BaseModel
 
-        try:
-            return isinstance(return_type, type) and issubclass(return_type, BaseModel)
-        except TypeError:  # pragma: no cover
-            return False
+        return isinstance(return_type, type) and issubclass(return_type, BaseModel)
 
     def _validate_pydantic(self, value: Any, return_type: Any, method_name: str) -> Any:
         from pydantic import ValidationError as PydanticValidationError

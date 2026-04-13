@@ -341,7 +341,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         imported_items = []
 
         for name, obj in context.items():
-            if is_from_blocked_module(obj, blocked):  # pragma: no cover
+            if is_from_blocked_module(obj, blocked):
                 continue
             if isinstance(obj, types.ModuleType):
                 actual_name = getattr(obj, "__name__", name)
@@ -432,7 +432,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             has_context = not is_hidden_field(type(runtime.agent), "context") and hasattr(
                 runtime.agent, "context"
             )
-            if has_context:  # pragma: no cover
+            if has_context:
                 parts.append('- Pin to context: `self.context["<skill>"] = doc(self.<skill>)`')
                 parts.append('- Unpin: `del self.context["<skill>"]`')
 
@@ -583,7 +583,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Get generation_id for turn events
         generation_id = runtime.get_generation_id()
-        if generation_id is None:  # pragma: no cover
+        if generation_id is None:
             raise RuntimeError(
                 "get_generation_id() returned None - strategy execution requires a generation context. "
                 "This indicates the runtime was not properly initialized via _in_generation_session()."
@@ -1119,12 +1119,10 @@ Standard Python builtins and agent instance (`self`) are available."""
 
             error_text = ""
             if result.error:
-                line_offset = getattr(result, "wrapper_line_offset", 0)  # pragma: no cover
-                error_text = self._format_error(
-                    result.error, line_offset=line_offset
-                )  # pragma: no cover
+                line_offset = getattr(result, "wrapper_line_offset", 0)
+                error_text = self._format_error(result.error, line_offset=line_offset)
             stderr = result.stderr
-            if error_text:  # pragma: no cover
+            if error_text:
                 stderr = (
                     f"{stderr}\nExecution error:\n{error_text}"
                     if stderr
@@ -1191,7 +1189,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 logger.debug(
                     "[CODEACT] Auto-completion validation failed (type mismatch), continuing loop"
                 )
-            except Exception as e:  # pragma: no cover
+            except Exception as e:
                 logger.debug(f"[CODEACT] Auto-completion validation error: {e}, continuing loop")
 
         # Note: Bare expressions (IPython-style) are shown as "Out[n]:" but do NOT auto-complete.
@@ -1202,7 +1200,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         if result.error:
             line_offset = getattr(result, "wrapper_line_offset", 0)
             if (
-                isinstance(result.error, PydanticValidationError)  # pragma: no cover
+                isinstance(result.error, PydanticValidationError)
                 and result.returned_value is not None
             ):
                 error_text = format_validation_error(
@@ -1491,7 +1489,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             Returns:
                 Execution result including stdout, errors, and any returned values.
             """
-            return ""  # pragma: no cover — stub for tool schema generation
+            return ""
 
         return Tool(
             name="execute_python",
@@ -1598,7 +1596,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             The result must match the expected return type.
             """
             # This callable won't actually be called - we handle it in the execute loop
-            return result  # pragma: no cover — stub for tool schema generation
+            return result
 
         # Handle None return type specially - no required result parameter
         # Note: `-> None` annotation gives `None` (the value), not `type(None)` (NoneType)
@@ -1848,7 +1846,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             from nemo_oo_agents.strategies.predict import PredictStrategy
 
             strategy_extras["PredictStrategy"] = PredictStrategy
-        except ImportError:  # pragma: no cover
+        except ImportError:
             pass
 
         namespace = ExecutionNamespaceBuilder.build(
@@ -1991,7 +1989,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 context[name] = cls
                 agent_module.__dict__[name] = cls
                 seen.add(name)
-        except Exception:  # pragma: no cover
+        except Exception:
             pass  # Convenience feature — never break execution
 
     def _build_builtins(self, runtime: RuntimeServices, call: "CurrentCall") -> dict[str, Any]:

@@ -330,7 +330,7 @@ class ActorRuntime:
             # Or directly in code
             current_id = self.runtime.current_call.call_id
         """
-        return _current_call_var.get()  # pragma: no cover — set during method execution
+        return _current_call_var.get()
 
     @property
     def _current_method(self) -> Any:
@@ -451,7 +451,7 @@ class ActorRuntime:
         if isinstance(content, BaseModel):
             # Pydantic model - serialize to JSON string
             content = content.model_dump_json()
-        elif not isinstance(content, str):  # pragma: no cover
+        elif not isinstance(content, str):
             # Other non-string types - convert to string representation
             content = str(content)
         event = LLMOutput(content=content)
@@ -847,7 +847,7 @@ class ActorRuntime:
                                     f"Code execution timed out after {timeout} seconds. "
                                     "Check for infinite loops or blocking operations."
                                 ) from None
-                        else:  # pragma: no cover — no-timeout async path
+                        else:
                             result_value = await coro
 
                     # Extract captured locals (filter out non-serializable/internal items)
@@ -878,7 +878,7 @@ class ActorRuntime:
                         if method_name in exec_globals and callable(exec_globals[method_name]):
                             try:
                                 exec_globals[method_name]._generated_source = method_code
-                            except (AttributeError, TypeError):  # pragma: no cover
+                            except (AttributeError, TypeError):
                                 # Some built-in functions don't allow attribute assignment
                                 pass
                 else:
@@ -925,12 +925,12 @@ class ActorRuntime:
                                 if timeout is not None:
                                     try:
                                         await asyncio.wait_for(coro, timeout=timeout)
-                                    except TimeoutError:  # pragma: no cover
+                                    except TimeoutError:
                                         raise TimeoutError(
                                             f"Code execution timed out after {timeout} seconds. "
                                             "Check for infinite loops or blocking operations."
                                         ) from None
-                                else:  # pragma: no cover — no-timeout async path
+                                else:
                                     await coro
                         else:
                             # Sync code execution - enable async safety for Future.result() etc
@@ -946,7 +946,7 @@ class ActorRuntime:
                     if method_name in exec_globals and callable(exec_globals[method_name]):
                         try:
                             exec_globals[method_name]._generated_source = method_code
-                        except (AttributeError, TypeError):  # pragma: no cover
+                        except (AttributeError, TypeError):
                             # Some built-in functions don't allow attribute assignment
                             pass
 
@@ -1076,13 +1076,13 @@ class ActorRuntime:
         # Extract strategy config for tracing
         # Works for CodeActStrategy, PurePythonStrategy, PredictStrategy, ReflexionStrategy
         strategy_kwargs = {}
-        if hasattr(strategy, "max_iterations"):  # pragma: no cover
+        if hasattr(strategy, "max_iterations"):
             strategy_kwargs["max_iterations"] = getattr(strategy, "max_iterations")  # noqa: B009
-        if hasattr(strategy, "max_retries"):  # pragma: no cover
+        if hasattr(strategy, "max_retries"):
             strategy_kwargs["max_retries"] = getattr(strategy, "max_retries")  # noqa: B009
-        if hasattr(strategy, "max_reflections"):  # pragma: no cover
+        if hasattr(strategy, "max_reflections"):
             strategy_kwargs["max_reflections"] = getattr(strategy, "max_reflections")  # noqa: B009
-        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009  # pragma: no cover
+        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009
             strategy_kwargs["has_prefill"] = True
 
         # Call generation hooks (skip for non-traceable strategies like TemplateStrategy)
@@ -1107,7 +1107,7 @@ class ActorRuntime:
             # Execute nested strategy directly (we're already in a generation session)
             result = await strategy.execute(self, call)
             return result
-        except Exception as e:  # pragma: no cover — strategy exception capture for hooks
+        except Exception as e:
             exception_caught = e
             raise
         finally:
@@ -1420,7 +1420,7 @@ class ActorRuntime:
             # Skip properties and other descriptors
             # Note: property objects fail the callable() check above, so this
             # guard only fires for exotic descriptors that are callable.
-            if isinstance(attr, property):  # pragma: no cover
+            if isinstance(attr, property):
                 continue
 
             # Skip hidden methods
@@ -1444,7 +1444,7 @@ class ActorRuntime:
             try:
                 sig = inspect.signature(attr)
                 signature_str = f"{name}{sig}"
-            except (ValueError, TypeError):  # pragma: no cover
+            except (ValueError, TypeError):
                 signature_str = f"{name}(...)"
 
             # Get docstring (first line)
@@ -1702,13 +1702,13 @@ class ActorRuntime:
         # Extract strategy config for tracing
         # Works for CodeActStrategy, PurePythonStrategy, PredictStrategy, ReflexionStrategy
         strategy_kwargs = {}
-        if hasattr(strategy, "max_iterations"):  # pragma: no cover
+        if hasattr(strategy, "max_iterations"):
             strategy_kwargs["max_iterations"] = getattr(strategy, "max_iterations")  # noqa: B009
-        if hasattr(strategy, "max_retries"):  # pragma: no cover
+        if hasattr(strategy, "max_retries"):
             strategy_kwargs["max_retries"] = getattr(strategy, "max_retries")  # noqa: B009
-        if hasattr(strategy, "max_reflections"):  # pragma: no cover
+        if hasattr(strategy, "max_reflections"):
             strategy_kwargs["max_reflections"] = getattr(strategy, "max_reflections")  # noqa: B009
-        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009  # pragma: no cover
+        if hasattr(strategy, "prefill") and getattr(strategy, "prefill") is not None:  # noqa: B009
             strategy_kwargs["has_prefill"] = True
 
         # Call generation hooks (skip for non-traceable strategies like TemplateStrategy)
@@ -1954,7 +1954,7 @@ async def {name}({params_str}) -> {return_type}:
         # Attach generated source for later retrieval
         try:
             func._generated_source = func_code
-        except Exception:  # pragma: no cover
+        except Exception:
             pass
 
         # Bind to agent instance
@@ -2075,13 +2075,13 @@ async def {name}({params_str}) -> {return_type}:
                         value.expr,
                     )
                     return f"{type(e).__name__}: {e}"
-                if result is None:  # pragma: no cover
+                if result is None:
                     return "None"
-                if isinstance(result, str):  # pragma: no cover
+                if isinstance(result, str):
                     return result
-                from context_blocks.utils import safe_pformat  # pragma: no cover
+                from context_blocks.utils import safe_pformat
 
-                return safe_pformat(result, max_chars=tc.max_pre_format_chars)  # pragma: no cover
+                return safe_pformat(result, max_chars=tc.max_pre_format_chars)
             return value
 
         build_result = await build_context(
@@ -2130,9 +2130,9 @@ async def {name}({params_str}) -> {return_type}:
             rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
             if rendered:
                 set_context_blocks(rendered)
-        except ImportError:  # pragma: no cover
+        except ImportError:
             pass  # openinference instrumentation is an optional extra
-        except Exception as exc:  # pragma: no cover  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.debug("Failed to set context blocks for journal: %s", exc)
         return render_context(
             blocks,

@@ -58,7 +58,7 @@ try:
         httpx.ConnectTimeout,
         httpx.PoolTimeout,
     )
-except ImportError:  # pragma: no cover
+except ImportError:
     # httpx not available - define a base exception class for timeout detection
     _HTTPX_TIMEOUT_EXCEPTIONS = (TimeoutError,)
 
@@ -241,7 +241,7 @@ class PurePythonStrategy(CompositeStrategy):
 
         # Get generation_id for turn events
         generation_id = runtime.get_generation_id()
-        if generation_id is None:  # pragma: no cover
+        if generation_id is None:
             raise RuntimeError(
                 "get_generation_id() returned None - strategy execution requires a generation context. "
                 "This indicates the runtime was not properly initialized via _in_generation_session()."
@@ -691,7 +691,7 @@ class PurePythonStrategy(CompositeStrategy):
 
             strategy_extras["PredictStrategy"] = PredictStrategy
             strategy_extras["ReflexionStrategy"] = ReflexionStrategy
-        except ImportError:  # pragma: no cover
+        except ImportError:
             pass
 
         namespace = ExecutionNamespaceBuilder.build(

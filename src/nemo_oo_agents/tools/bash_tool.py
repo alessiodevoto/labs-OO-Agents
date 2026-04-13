@@ -409,8 +409,7 @@ class FileTool:
             locations = []
             for _ in range(count):
                 pos = content.find(search_block, pos)
-                if pos == -1:  # pragma: no cover — count() guarantees all occurrences exist
-                    break
+                assert pos != -1, "count() guarantees all occurrences exist"
                 locations.append(content[:pos].count("\n") + 1)
                 pos += len(search_block)
             raise ValueError(

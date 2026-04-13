@@ -276,7 +276,7 @@ def _debug_signal_handler(signum, frame):
                 try:
                     # Use traceback module which uses linecache for source lines
                     traceback.print_stack(frame, file=file)
-                except Exception as e:  # pragma: no cover
+                except Exception as e:
                     file.write(f"Error getting traceback: {e}\n")
 
                 # 3. Dump pending LLM calls (registered via llm_call_context)

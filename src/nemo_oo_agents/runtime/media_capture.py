@@ -109,7 +109,7 @@ def _try_auto_convert(obj: Any) -> dict | None:
     Returns None if the object is not a recognized type.
     """
     block = _try_pil_to_content_block(obj)
-    if block is not None:  # pragma: no cover — requires PIL
+    if block is not None:
         return block
     return _try_matplotlib_to_content_block(obj)
 
@@ -141,7 +141,7 @@ def _try_matplotlib_to_content_block(obj: Any) -> dict | None:
     try:
         from matplotlib.figure import Figure  # type: ignore[import-not-found]
 
-        if isinstance(obj, Figure):  # pragma: no cover — requires matplotlib
+        if isinstance(obj, Figure):
             buf = io.BytesIO()
             obj.savefig(buf, format="png", bbox_inches="tight")
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
