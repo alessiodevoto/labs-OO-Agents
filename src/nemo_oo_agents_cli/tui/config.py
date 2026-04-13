@@ -81,8 +81,8 @@ class TUIConfig:
     # Default LLM model (from unifiedllm registry)
     default_model: str = DEFAULT_MODEL
 
-    # Trace output directory (set via --trace to override; --no-trace to disable)
-    trace_dir: Path | None = Path(".nemo_oo_tui/traces")
+    # Trace output directory (None = OTLP auto-probe only; set via --trace to write files)
+    trace_dir: Path | None = None
 
     # Vi keybindings in prompt_toolkit input
     vi_mode: bool = False
