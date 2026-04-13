@@ -448,6 +448,17 @@ class Session:
         self.registry.session_manager = new_sm
         for cmd in self.registry._commands.values():
             cmd.session_manager = new_sm
+        # Start a fresh trace for the new session so it gets its own .jsonl file.
+        # Use the first 8 chars of the SQLite session UUID to correlate trace↔storage.
+        try:
+            from datetime import UTC, datetime
+
+            from openinference_instrumentation_nemo_oo_agents import set_session
+
+            short = (new_sm.session_id or "")[:8]
+            set_session(f"tui-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{short}")
+        except ImportError:
+            pass
 
     # ------------------------------------------------------------------
     # Session auto-naming
