@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Session — the REPL loop that glues a Frontend to an Agent.
 
 ``Session`` is frontend-agnostic: it reads input via ``frontend.get_input()``,
@@ -284,7 +286,12 @@ class Session:
                     if not self.show_python:
                         from .output import ActivityLine
 
-                        preview = _code_preview(code)
+                        # Detect prefill executions and show a friendlier message
+                        if tool_call_id.startswith("prefill_"):
+                            preview = "Inspecting inputs..."
+                        else:
+                            preview = _code_preview(code)
+
                         if preview and self._loop is not None:
                             fut = asyncio.run_coroutine_threadsafe(
                                 self.frontend.render(ActivityLine(preview, kind="code")),
