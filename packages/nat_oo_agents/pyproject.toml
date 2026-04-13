@@ -1,7 +1,7 @@
 [project]
 name = "nat-oo-agents"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 description = "NeMo OO Agents integration plugin for NVIDIA NeMo Agent Toolkit"
 license = {text = "Apache-2.0"}
 dependencies = [
