@@ -315,6 +315,8 @@ debug_http_logs/
 .srt-settings.json
 # Debug handler dumps (written to cwd on SIGUSR2)
 debug_dump_*.txt
+# NeMo OO TUI project directory (libraries, traces, config)
+.nemo_oo_tui/
 # Shell config stubs (empty read-only files injected by sandbox)
 .zshrc
 .zprofile
