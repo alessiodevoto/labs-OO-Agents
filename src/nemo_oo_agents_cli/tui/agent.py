@@ -68,12 +68,6 @@ from .models import (
     VerificationResult,
 )
 
-# WTF project management skill
-try:
-    from .wtf_project_management import WtfProjectManagement
-except ImportError:
-    WtfProjectManagement = None  # type: ignore
-
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
     try:
@@ -320,10 +314,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self, path=Path(".nemo_oo_tui") / "libs")
 
-        # WTF project management (lazy initialization)
-        self._wtf_pm = None
-        self._wtf_pm_available = WtfProjectManagement is not None
-
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
@@ -331,19 +321,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
-
-    @property
-    def wtf_pm(self):
-        """Lazy-initialized WTF project management skill."""
-        if self._wtf_pm is None and self._wtf_pm_available:
-            try:
-                self._wtf_pm = WtfProjectManagement()  # type: ignore[misc]
-            except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).warning(f"Failed to initialize WTF skill: {e}")
-                self._wtf_pm_available = False
-        return self._wtf_pm
 
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
