@@ -6,27 +6,13 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from agentdoc import spec
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
 from nemo_oo_agents.tools.web_publisher import WebPublisher
-
-# TYPE_CHECKING block mirrors the with hidden: imports below so pyright can
-# resolve these names. At runtime TYPE_CHECKING is False; the with hidden:
-# blocks provide the actual imports.
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from nemo_oo_agents import Agent
-    from nemo_oo_agents.agents import TokenBudgetSummarizer
-    from nemo_oo_agents.config import CodeActConfig
-    from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from unifiedllm import FakeLLMClient, UnifiedLLM
-
-    from .config import AgentConfig, SummarizationConfig
 
 with hidden:
     from collections.abc import Callable
