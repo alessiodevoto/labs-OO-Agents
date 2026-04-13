@@ -448,6 +448,16 @@ class Session:
         self.registry.session_manager = new_sm
         for cmd in self.registry._commands.values():
             cmd.session_manager = new_sm
+        # Start a fresh trace for the new session so it gets its own .jsonl file.
+        # Use the first 8 chars of the SQLite session UUID to correlate trace↔storage.
+        try:
+            from openinference_instrumentation_nemo_oo_agents import set_session
+
+            from .session_manager import _make_trace_session_name
+
+            set_session(_make_trace_session_name(new_sm.session_id or ""))
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Session auto-naming

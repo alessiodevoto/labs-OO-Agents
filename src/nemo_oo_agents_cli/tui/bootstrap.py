@@ -79,9 +79,14 @@ async def bootstrap(
     # ------------------------------------------------------------------
     # Tracing
     # ------------------------------------------------------------------
+    _set_trace_session = None  # deferred: called once _session_id is known
     if not config.no_trace:
         try:
-            from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
+            from openinference_instrumentation_nemo_oo_agents import (
+                enable_tracing,
+                exporters,
+                set_session,
+            )
 
             trace_dir = config.tui.trace_dir
             if trace_dir is not None:
@@ -90,6 +95,7 @@ async def bootstrap(
             else:
                 enable_tracing()
             tracing_enabled = True
+            _set_trace_session = set_session
         except ImportError:
             messages.append(
                 TextOutput(
@@ -167,6 +173,13 @@ async def bootstrap(
         agent_storage = SQLiteStorageManager(agent_db)
     except Exception as e:
         messages.append(TextOutput(f"Agent storage unavailable: {e}", "warning"))
+
+    # Name the initial trace session using the SQLite session UUID so the
+    # trace file correlates directly to the storage file.
+    if _set_trace_session is not None and _session_id is not None:
+        from .session_manager import _make_trace_session_name
+
+        _set_trace_session(_make_trace_session_name(_session_id))
 
     # ------------------------------------------------------------------
     # Agent
