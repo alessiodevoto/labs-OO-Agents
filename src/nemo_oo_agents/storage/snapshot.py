@@ -123,8 +123,13 @@ class AgentSnapshot(BaseModel):
                 continue
             if callable(attr_value):
                 continue
-            serialized, allowlist = serialize(attr_value)
-            all_allowlist |= allowlist
+            try:
+                serialized, allowlist = serialize(attr_value)
+                all_allowlist |= allowlist
+            except SerializationError as exc:
+                raise SerializationError(
+                    f"Attribute {attr_name!r} is not serializable: {exc}"
+                ) from exc
             if serialized is SKIP:
                 continue
             attributes[attr_name] = serialized

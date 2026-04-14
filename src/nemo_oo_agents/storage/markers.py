@@ -94,15 +94,18 @@ def is_nosnapshot_value(value: Any) -> bool:
 
 
 class _Snapshotable:
-    """Annotation marker and class decorator for snapshot-serializable classes.
+    """Class decorator that marks a class as snapshot-serializable.
 
-    Dual-use — works both as ``@snapshotable`` on a class and as
-    ``Annotated[T, snapshotable]`` on a field type hint, mirroring the
-    pattern used by ``nosnapshot``.
+    Usage::
 
-    When used as a class decorator, it sets ``cls.__snapshot_dict__ = True``
-    so that ``serialize()`` knows it can call ``vars(instance)`` to produce
-    a serializable dict.
+        @snapshotable
+        class MyConfig:
+            def __init__(self, host: str, port: int = 8080):
+                self.host = host
+                self.port = port
+
+    Sets ``cls.__snapshot_dict__ = True`` so that ``serialize()`` knows it
+    can call ``vars(instance)`` to produce a serializable dict.
     """
 
     def __call__(self, cls: type) -> type:

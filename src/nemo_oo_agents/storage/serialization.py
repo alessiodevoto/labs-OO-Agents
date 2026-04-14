@@ -11,6 +11,9 @@ Envelope format for non-primitive types::
     {"__type__": "pydantic"|"dataclass"|"dict_class",
      "__class__": "module.ClassName",
      "data": {...}}
+
+    {"__type__": "tuple",
+     "data": [...]}
 """
 
 from __future__ import annotations
@@ -53,7 +56,8 @@ SKIP = _Skip()
 _PYDANTIC = "pydantic"
 _DATACLASS = "dataclass"
 _DICT_CLASS = "dict_class"
-_ENVELOPE_TYPES = frozenset({_PYDANTIC, _DATACLASS, _DICT_CLASS})
+_TUPLE = "tuple"
+_ENVELOPE_TYPES = frozenset({_PYDANTIC, _DATACLASS, _DICT_CLASS, _TUPLE})
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +112,12 @@ def _serialize(value: Any, allowlist: set[str]) -> Any:
     # 2. Collections — recurse
     if isinstance(value, dict):
         return {k: _serialize(v, allowlist) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, tuple):
+        return {
+            "__type__": _TUPLE,
+            "data": [_serialize(item, allowlist) for item in value],
+        }
+    if isinstance(value, list):
         return [_serialize(item, allowlist) for item in value]
 
     # 3. nosnapshot — return SKIP sentinel
@@ -119,10 +128,13 @@ def _serialize(value: Any, allowlist: set[str]) -> Any:
     if isinstance(value, BaseModel):
         fqn = _fqn(type(value))
         allowlist.add(fqn)
-        # Use model_dump() for the data — it handles nested Pydantic models.
-        # But we still need to serialize non-Pydantic nested values (e.g.
-        # a field that holds a dataclass or @snapshotable).
-        data = _serialize(value.model_dump(), allowlist)
+        # Iterate over model_fields directly so nested non-Pydantic objects
+        # (dataclasses, @snapshotable) are serialized with their type envelopes
+        # instead of being flattened to plain dicts by model_dump().
+        data = {
+            field_name: _serialize(getattr(value, field_name), allowlist)
+            for field_name in type(value).model_fields
+        }
         return {"__type__": _PYDANTIC, "__class__": fqn, "data": data}
 
     # 5. Dataclasses
@@ -168,6 +180,8 @@ def _deserialize(blob: Any, allowlist: set[str]) -> Any:
     # Dicts — check if envelope
     if isinstance(blob, dict):
         envelope_type = blob.get("__type__")
+        if envelope_type == _TUPLE and "data" in blob:
+            return tuple(_deserialize(item, allowlist) for item in blob["data"])
         if envelope_type in _ENVELOPE_TYPES and "__class__" in blob and "data" in blob:
             return _deserialize_envelope(blob, allowlist)
         # Regular dict — recurse values
@@ -191,8 +205,10 @@ def _deserialize_envelope(blob: dict[str, Any], allowlist: set[str]) -> Any:
     cls = _import_class(fqn)
 
     if envelope_type == _PYDANTIC:
-        # Pydantic handles its own schema drift via model_validate
-        return cls.model_validate(data)
+        # Deserialize nested envelopes first (e.g. dataclass/snapshotable
+        # fields), then let Pydantic validate the reconstructed objects.
+        deserialized_data = {k: _deserialize(v, allowlist) for k, v in data.items()}
+        return cls.model_validate(deserialized_data)
 
     if envelope_type == _DATACLASS:
         # Lenient: filter to accepted kwargs, let defaults fill gaps
@@ -229,20 +245,23 @@ def _fqn(cls: type) -> str:
 def _import_class(fqn: str) -> type:
     """Import a class by its fully qualified name.
 
+    Supports nested/inner classes whose ``__qualname__`` contains dots
+    (e.g. ``module.Outer.Inner``).  We try progressively shorter module
+    paths so that ``getattr`` can traverse the class hierarchy.
+
     Raises:
         DeserializationError: If the module or class cannot be found.
     """
-    parts = fqn.rsplit(".", 1)
-    if len(parts) != 2:
+    parts = fqn.split(".")
+    if len(parts) < 2:
         raise DeserializationError(f"Invalid fully qualified name: {fqn!r}")
-    module_path, class_name = parts
-    try:
-        module = importlib.import_module(module_path)
-    except ImportError as exc:
-        raise DeserializationError(
-            f"Cannot import module {module_path!r} for class {fqn!r}: {exc}"
-        ) from exc
-    cls = getattr(module, class_name, None)
-    if cls is None:
-        raise DeserializationError(f"Module {module_path!r} has no attribute {class_name!r}")
-    return cls
+    for i in range(len(parts) - 1, 0, -1):
+        module_path = ".".join(parts[:i])
+        try:
+            obj = importlib.import_module(module_path)
+            for attr in parts[i:]:
+                obj = getattr(obj, attr)
+            return obj  # type: ignore[return-value]
+        except (ImportError, AttributeError):
+            continue
+    raise DeserializationError(f"Cannot import class {fqn!r}: module or attribute not found")

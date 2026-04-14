@@ -120,11 +120,23 @@ class TestCollections:
         assert al == set()
         assert deserialize(blob, al) == {"a": 1, "b": True}
 
-    def test_tuple_roundtrips_as_list(self):
-        """Tuples become lists after JSON roundtrip — that's expected."""
+    def test_tuple_roundtrip_preserves_type(self):
+        """Tuples survive roundtrip as tuples via a type envelope."""
         blob, al = serialize((1, 2, 3))
-        assert blob == [1, 2, 3]
-        assert deserialize(blob, al) == [1, 2, 3]
+        assert blob["__type__"] == "tuple"
+        assert blob["data"] == [1, 2, 3]
+        restored = deserialize(blob, al)
+        assert restored == (1, 2, 3)
+        assert type(restored) is tuple
+
+    def test_tuple_with_nested_objects(self):
+        """Tuples containing typed objects preserve both the tuple and object types."""
+        value = (Point(x=1.0, y=2.0), MyModel(name="t", value=3))
+        blob, al = serialize(value)
+        restored = deserialize(blob, al)
+        assert type(restored) is tuple
+        assert isinstance(restored[0], Point)
+        assert isinstance(restored[1], MyModel)
 
     def test_nested_collection(self):
         value = {"items": [1, {"nested": True}], "count": 2}
@@ -441,3 +453,91 @@ class TestEdgeCases:
         restored = deserialize(blob1, al1)
         blob2, al2 = serialize(restored)
         assert blob1 == blob2
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: Pydantic model with nested non-Pydantic objects
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class Coord:
+    lat: float
+    lon: float
+
+
+class LocationModel(BaseModel):
+    name: str
+    coord: Any  # holds a dataclass at runtime
+
+
+class SnapshotableHolder(BaseModel):
+    """Pydantic model that holds a @snapshotable object."""
+
+    cfg: Any
+
+
+class TestPydanticNestedNonPydantic:
+    """Pydantic models containing dataclass/snapshotable fields must
+    preserve the nested type through serialization roundtrip."""
+
+    def test_pydantic_with_nested_dataclass_roundtrip(self):
+        loc = LocationModel(name="HQ", coord=Coord(lat=37.7, lon=-122.4))
+        blob, al = serialize(loc)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, LocationModel)
+        assert isinstance(restored.coord, Coord)
+        assert restored.coord.lat == 37.7
+        assert restored.coord.lon == -122.4
+
+    def test_pydantic_with_nested_snapshotable_roundtrip(self):
+        """Pydantic model holding a @snapshotable object roundtrips correctly."""
+        cfg = Config(host="db.local", port=5432)
+        holder = SnapshotableHolder(cfg=cfg)
+        blob, al = serialize(holder)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, SnapshotableHolder)
+        assert isinstance(restored.cfg, Config)
+        assert restored.cfg.host == "db.local"
+        assert restored.cfg.port == 5432
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Nested/inner class import
+# ---------------------------------------------------------------------------
+
+
+class Outer:
+    """Module-level class with an inner class, for testing nested import."""
+
+    @snapshotable
+    class Inner:
+        def __init__(self, val: int = 0):
+            self.val = val
+
+
+class TestNestedClassImport:
+    def test_nested_inner_class_roundtrip(self):
+        """A @snapshotable inner class survives serialize/deserialize."""
+        obj = Outer.Inner(val=42)
+        blob, al = serialize(obj)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, Outer.Inner)
+        assert restored.val == 42
+
+    def test_import_class_invalid_fqn(self):
+        """_import_class raises DeserializationError for a single-part name."""
+        with pytest.raises(DeserializationError, match="Invalid fully qualified name"):
+            deserialize(
+                {"__type__": "dict_class", "__class__": "NoDots", "data": {}},
+                {"NoDots"},
+            )
+
+    def test_import_class_nonexistent_raises(self):
+        """_import_class raises DeserializationError for unfindable class."""
+        fqn = "nonexistent.module.Klass"
+        with pytest.raises(DeserializationError, match="Cannot import class"):
+            deserialize(
+                {"__type__": "dict_class", "__class__": fqn, "data": {}},
+                {fqn},
+            )
