@@ -200,7 +200,7 @@ class TestCollisionWarning:
 
         with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
 
-            class HttpsError(EventBase):  # noqa: N801 – intentional name for collision test
+            class HttpsError(EventBase):  # intentional name for collision test
                 code: int = 1
 
         assert any("https_error" in record.message for record in caplog.records)
