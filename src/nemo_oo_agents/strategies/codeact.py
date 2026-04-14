@@ -22,7 +22,7 @@ import json
 import logging
 import types
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -32,7 +32,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from pydantic import PydanticSchemaGenerationError, PydanticUserError, create_model
+from pydantic import BaseModel, PydanticSchemaGenerationError, PydanticUserError, create_model
 from pydantic import ValidationError as PydanticValidationError
 
 from agentdoc._structured import format_type as _format_type
@@ -45,7 +45,6 @@ from nemo_oo_agents.events import (
     BeforeTurn,
     Error,
     ExecutionSignal,
-    Message,
     PythonOutput,
     Reasoning,
     Task,
@@ -60,7 +59,7 @@ from nemo_oo_agents.strategies.generated_code import (
     HelperMethodManager,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
-from unifiedllm import Tool
+from unifiedllm import Tool, ToolCall
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.strategy_config import CodeActConfig
@@ -86,6 +85,42 @@ class _ReturnResultSignal(ExecutionSignal):
     def __init__(self, result: dict[str, Any]):
         self.result = result
         super().__init__("return_result() called")
+
+
+# Maximum characters of LLM text to embed in a synthetic reasoning() call.
+# Long verbatim text inflates trace storage and is rarely useful beyond a preview.
+_MAX_REASONING_TEXT = 500
+
+
+def _truncate_reasoning(text: str) -> str:
+    """Truncate *text* to _MAX_REASONING_TEXT chars for embedding in reasoning()."""
+    if len(text) <= _MAX_REASONING_TEXT:
+        return text
+    return text[:_MAX_REASONING_TEXT] + " [truncated]"
+
+
+def _prepend_reasoning(tool_calls: list[ToolCall], text: str) -> list[ToolCall]:
+    """Return a copy of *tool_calls* with reasoning(text) prepended to the
+    first execute_python code block.  Other tool calls are left unchanged.
+    """
+    result: list[ToolCall] = []
+    prepended = False
+    preview = _truncate_reasoning(text)
+    for tc in tool_calls:
+        if not prepended and tc.name == "execute_python":
+            try:
+                args = json.loads(tc.arguments)
+                original_code = args.get("code", "")
+                args["code"] = f"reasoning({preview!r})\n{original_code}"
+                tc = replace(tc, arguments=json.dumps(args))
+                prepended = True
+            except json.JSONDecodeError:
+                logger.debug(
+                    "[CODEACT] _prepend_reasoning: skipping execute_python with unparseable arguments (tool_call_id=%s)",
+                    tc.id,
+                )
+        result.append(tc)
+    return result
 
 
 @dataclass
@@ -386,7 +421,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         parts.append("")
         parts.append(
-            "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `message()`, `reasoning()` method parameters"
+            "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
         )
         parts.append("Do NOT write import statements — all symbols above are already in scope.")
 
@@ -662,8 +697,21 @@ Standard Python builtins and agent instance (`self`) are available."""
 
                 # Tool calls
                 if response.finish_reason == "tool_calls" and response.tool_calls:
+                    tool_calls = response.tool_calls
+                    # If the LLM also emitted message content alongside the tool
+                    # call(s), preserve it by prepending reasoning(text) at the
+                    # top of the first execute_python code block.
+                    if response.content:
+                        content = response.content
+                        text = (
+                            content.model_dump_json()
+                            if isinstance(content, BaseModel)
+                            else str(content)
+                        )
+                        if text.strip():
+                            tool_calls = _prepend_reasoning(tool_calls, text)
                     result = await self._process_tool_calls(
-                        response.tool_calls,
+                        tool_calls,
                         runtime,
                         builtins,
                         session,
@@ -677,21 +725,49 @@ Standard Python builtins and agent instance (`self`) are available."""
                         return result.final_value
                     continue
 
-                # Text-only response (no tool call) - provide feedback
+                # Text-only response (no tool call) - convert to synthetic reasoning() call
                 if response.content:
-                    session.record_iteration()
-                    # Remove the assistant event - we'll add feedback instead
-                    # Some APIs (e.g., NVIDIA) reject messages without tool calls
-                    runtime.event_manager.remove(event_id)
-                    feedback = await self._tool_use_reminder(
-                        runtime, reason="You must call a tool each turn."
+                    # Normalize content so we can strip-check before committing to synthetic path
+                    content = response.content
+                    text = (
+                        content.model_dump_json()
+                        if isinstance(content, BaseModel)
+                        else str(content)
                     )
-                    runtime.event_manager.add(Error(content=feedback))
-                    logger.debug(
-                        f"[CODEACT] Text-only response, providing feedback. "
-                        f"Content preview: {str(response.content)[:100]}..."
-                    )
-                    continue
+                    if text.strip():
+                        session.record_iteration()
+                        # Remove the bare LLMOutput — some APIs (e.g., NVIDIA) reject assistant
+                        # messages without a tool call. Convert the text to a synthetic
+                        # execute_python(reasoning(...)) pair so the content is preserved in
+                        # traces and the LLM learns correct interface usage by example.
+                        runtime.event_manager.remove(event_id)
+                        synthetic_id = f"synthetic_{uuid4().hex[:8]}"
+                        runtime.event_manager.add(
+                            ToolCallEvent(
+                                tool_call_id=synthetic_id,
+                                name="execute_python",
+                                arguments={"code": f"reasoning({_truncate_reasoning(text)!r})"},
+                                result=ToolResult(
+                                    tool_call_id=synthetic_id,
+                                    content="status: complete",
+                                    result_status=ResultStatus.COMPLETE,
+                                ),
+                                metadata={"synthetic": True, "synthetic_type": "text_response"},
+                            )
+                        )
+                        runtime.event_manager.add(
+                            PythonOutput(
+                                tool_call_id=synthetic_id,
+                                execution_count=session.iteration or 1,
+                                execution_status=ResultStatus.COMPLETE,
+                                metadata={"synthetic": True, "synthetic_type": "text_response"},
+                            )
+                        )
+                        logger.debug(
+                            f"[CODEACT] Text-only response ({len(text)} chars) converted to synthetic reasoning() call."
+                        )
+                        continue
+                    # Whitespace-only content falls through to the empty-response error handler.
 
                 # Empty response - error
                 session.record_error()
@@ -1996,17 +2072,13 @@ Standard Python builtins and agent instance (`self`) are available."""
         was written directly in the method body, with access to:
         - Module-level imports
         - Module-level type definitions (Pydantic models, etc.)
-        - Strategy builtins (reasoning, message, return_result)
+        - Strategy builtins (reasoning, return_result)
         - Method parameters
         """
 
         def reasoning(text: str) -> None:
             """Record reasoning (not shown to user)."""
             runtime.event_manager.add(Reasoning(content=str(text)), record=False)
-
-        def emit_message(text: str) -> None:
-            """Send a message to the user."""
-            runtime.event_manager.add(Message(content=str(text)), record=False)
 
         def return_result(*args: Any, **kwargs: Any) -> None:
             """Submit the final answer from within execute_python code.
@@ -2039,7 +2111,6 @@ Standard Python builtins and agent instance (`self`) are available."""
         builtins.update(
             {
                 "reasoning": reasoning,
-                "message": emit_message,
                 "return_result": return_result,
             }
         )
