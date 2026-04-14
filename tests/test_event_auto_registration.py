@@ -12,6 +12,16 @@ import pytest
 
 from context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata, _camel_to_snake
 
+
+@pytest.fixture(autouse=True)
+def _restore_event_registry():
+    """Snapshot and restore the global event registry to prevent test pollution."""
+    snapshot = dict(_EVENT_REGISTRY)
+    yield
+    _EVENT_REGISTRY.clear()
+    _EVENT_REGISTRY.update(snapshot)
+
+
 # ---------------------------------------------------------------------------
 # _camel_to_snake edge cases
 # ---------------------------------------------------------------------------
@@ -20,38 +30,23 @@ from context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata, _camel_t
 class TestCamelToSnake:
     """Test the CamelCase -> snake_case conversion utility."""
 
-    def test_simple(self):
-        assert _camel_to_snake("Simple") == "simple"
-
-    def test_two_words(self):
-        assert _camel_to_snake("UserMessage") == "user_message"
-
-    def test_consecutive_uppercase(self):
-        """LLMOutput -> llm_output, not l_l_m_output."""
-        assert _camel_to_snake("LLMOutput") == "llm_output"
-
-    def test_http_error(self):
-        assert _camel_to_snake("HTTPError") == "http_error"
-
-    def test_all_caps(self):
-        assert _camel_to_snake("HTTP") == "http"
-
-    def test_mixed_acronym_start(self):
-        """HTMLParser -> html_parser."""
-        assert _camel_to_snake("HTMLParser") == "html_parser"
-
-    def test_trailing_acronym(self):
-        """ParseHTML -> parse_html."""
-        assert _camel_to_snake("ParseHTML") == "parse_html"
-
-    def test_single_letter(self):
-        assert _camel_to_snake("A") == "a"
-
-    def test_already_lower(self):
-        assert _camel_to_snake("task") == "task"
-
-    def test_numbers(self):
-        assert _camel_to_snake("Event2D") == "event2_d"
+    @pytest.mark.parametrize(
+        "input_str,expected",
+        [
+            ("Simple", "simple"),
+            ("UserMessage", "user_message"),
+            ("LLMOutput", "llm_output"),
+            ("HTTPError", "http_error"),
+            ("HTTP", "http"),
+            ("HTMLParser", "html_parser"),
+            ("ParseHTML", "parse_html"),
+            ("A", "a"),
+            ("task", "task"),
+            ("Event2D", "event2_d"),
+        ],
+    )
+    def test_camel_to_snake(self, input_str, expected):
+        assert _camel_to_snake(input_str) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +321,7 @@ class TestSQLiteBackendUsesRegistry:
 
         retrieved = backend.get("1")
         assert retrieved is not None
-        assert type(retrieved) is CustomPayload
+        assert isinstance(retrieved, CustomPayload)
         assert retrieved.payload == "test_data"
         assert retrieved.event_type == "custom_payload"
 
@@ -343,7 +338,7 @@ class TestSQLiteBackendUsesRegistry:
 
         retrieved = backend.get("1")
         assert retrieved is not None
-        assert type(retrieved) is AutoMetaEvent
+        assert isinstance(retrieved, AutoMetaEvent)
         assert retrieved.label == "important"
 
     def test_explicit_event_type_sqlite_roundtrip(self, sqlite_conn):
@@ -366,7 +361,7 @@ class TestSQLiteBackendUsesRegistry:
 
         retrieved = backend.get("1")
         assert retrieved is not None
-        assert type(retrieved) is ExplicitSQLiteEvent
+        assert isinstance(retrieved, ExplicitSQLiteEvent)
         assert retrieved.data == "test"
 
 
