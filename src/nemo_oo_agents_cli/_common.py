@@ -13,9 +13,6 @@ from nemo_oo_agents.paths import DIR_NAME as PROJECT_DIR_NAME
 from nemo_oo_agents.paths import find_project_root
 from nemo_oo_agents.paths import get_project_dir, get_user_dir
 
-# User-global data directory (sessions, viewer DB).
-USER_DATA_DIR = get_user_dir()
-
 
 def format_size(size_bytes: int) -> str:
     """Format a byte count as human-readable (e.g. '4.2 MB')."""
