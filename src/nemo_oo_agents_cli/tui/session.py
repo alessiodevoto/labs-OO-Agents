@@ -651,7 +651,7 @@ class Session:
                     task.cancel()
                     try:
                         await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-                    except (TimeoutError, asyncio.CancelledError, Exception):
+                    except Exception:  # Suppress all errors during graceful cancellation
                         pass
                     if not _force_exit:
                         await self.frontend.render(TextOutput("Agent interrupted.", "warning"))
