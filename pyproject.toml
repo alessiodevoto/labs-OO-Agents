@@ -30,6 +30,7 @@ mcp-nemo-oo-agents = { workspace = true }
 eval_pipeline = { workspace = true }
 evaluation = { workspace = true }
 trace_explorer = { workspace = true }
+nemo-oo-agents-harbor = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -48,6 +49,7 @@ members = [
     "packages/trace_explorer",
     "util/eval_pipeline",
     "packages/evaluation",
+    "packages/nemo-oo-agents-harbor",
 ]
 
 

@@ -1,0 +1,23 @@
+[project]
+name = "nemo-oo-agents-harbor"
+version = "0.1.0"
+description = "Harbor benchmark runner for nemo-oo-agents"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
+dependencies = [
+    "nemo_oo_agents",
+    "click>=8.1.0",
+]
+
+[project.scripts]
+nemo-harbor = "nemo_oo_agents_harbor.runner:main"
+
+[tool.uv.sources]
+nemo_oo_agents = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["nemo_oo_agents_harbor"]

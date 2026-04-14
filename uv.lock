@@ -24,6 +24,7 @@ members = [
     "evaluation",
     "mcp-nemo-oo-agents",
     "nemo-oo-agents",
+    "nemo-oo-agents-harbor",
     "nemo-oo-agents-viewer",
     "openinference-instrumentation-nemo-oo-agents",
     "trace-explorer",
@@ -3523,6 +3524,21 @@ trace-viewer = [
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "uvicorn", specifier = ">=0.38.0" },
     { name = "watchfiles", specifier = ">=1.0.0" },
+]
+
+[[package]]
+name = "nemo-oo-agents-harbor"
+version = "0.1.0"
+source = { editable = "packages/nemo-oo-agents-harbor" }
+dependencies = [
+    { name = "click" },
+    { name = "nemo-oo-agents" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "nemo-oo-agents", editable = "." },
 ]
 
 [[package]]
