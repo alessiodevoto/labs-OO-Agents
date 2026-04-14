@@ -86,3 +86,37 @@ def is_nosnapshot_value(value: Any) -> bool:
     This is useful for dynamically-added attributes that don't have type annotations.
     """
     return getattr(type(value), "__nosnapshot__", False) is True
+
+
+# ---------------------------------------------------------------------------
+# @snapshotable — opt-in marker for custom classes
+# ---------------------------------------------------------------------------
+
+
+class _Snapshotable:
+    """Annotation marker and class decorator for snapshot-serializable classes.
+
+    Dual-use — works both as ``@snapshotable`` on a class and as
+    ``Annotated[T, snapshotable]`` on a field type hint, mirroring the
+    pattern used by ``nosnapshot``.
+
+    When used as a class decorator, it sets ``cls.__snapshot_dict__ = True``
+    so that ``serialize()`` knows it can call ``vars(instance)`` to produce
+    a serializable dict.
+    """
+
+    def __call__(self, cls: type) -> type:
+        """Decorate a class to mark it as snapshotable."""
+        cls.__snapshot_dict__ = True  # type: ignore[attr-defined]
+        return cls
+
+    def __repr__(self) -> str:
+        return "snapshotable"
+
+
+snapshotable = _Snapshotable()
+
+
+def is_snapshotable_class(cls: type) -> bool:
+    """Return True if *cls* has been decorated with ``@snapshotable``."""
+    return getattr(cls, "__snapshot_dict__", False) is True

@@ -97,17 +97,17 @@ class TestSnapshotRoundtrip:
         assert "cache" not in snap["attributes"]
 
     def test_non_serializable_attr_raises(self, agent):
-        """Non-JSON-serializable user attributes raise SerializationError."""
+        """Non-serializable user attributes raise SerializationError."""
         agent.bad = object()
 
-        with pytest.raises(SerializationError, match="not JSON-serializable"):
+        with pytest.raises(SerializationError, match="Cannot serialize"):
             snapshot_to_json(agent)
 
     def test_non_serializable_context_raises(self, agent):
-        """Non-JSON-serializable static context values raise SerializationError."""
+        """Non-serializable static context values raise SerializationError."""
         agent.context_manager["bad"] = object()
 
-        with pytest.raises(SerializationError, match="not JSON-serializable"):
+        with pytest.raises(SerializationError, match="not serializable"):
             snapshot_to_json(agent)
 
     def test_methods_roundtrip(self, agent):
