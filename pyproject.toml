@@ -75,6 +75,12 @@ tui = [
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
 ]
+# Everything needed for `nemo oo term` — web terminal + plotting stack
+term = [
+    "nemo-oo-agents[tui]",
+    "uvicorn[standard]>=0.34.0",
+    "ptyprocess>=0.7.0",
+]
 harbor-benchmarks = [
     "harbor",
 ]

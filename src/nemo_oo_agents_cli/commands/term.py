@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Web terminal command for nemo_oo_agents CLI.
 
 Launches an xterm.js browser terminal connected to a real PTY running the
@@ -95,7 +97,7 @@ def command(
         from uvicorn import Config, Server
     except ImportError:
         click.echo(
-            "Web terminal requires uvicorn. Install with: uv add uvicorn[standard]",
+            "Web terminal requires uvicorn. Install with: uv sync --extra term",
             err=True,
         )
         sys.exit(1)
@@ -104,7 +106,7 @@ def command(
         import ptyprocess  # noqa: F401
     except ImportError:
         click.echo(
-            "Web terminal requires ptyprocess. Install with: uv add ptyprocess",
+            "Web terminal requires ptyprocess. Install with: uv sync --extra term",
             err=True,
         )
         sys.exit(1)

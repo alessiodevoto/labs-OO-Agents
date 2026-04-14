@@ -3346,6 +3346,15 @@ mcp = [
 sandbox = [
     { name = "openshell" },
 ]
+term = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "plotly" },
+    { name = "ptyprocess" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
 trace-explorer = [
     { name = "trace-explorer" },
 ]
@@ -3434,6 +3443,7 @@ requires-dist = [
     { name = "mcp-nemo-oo-agents", marker = "extra == 'mcp'", editable = "packages/mcp-nemo-oo-agents" },
     { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
     { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
+    { name = "nemo-oo-agents", extras = ["tui"], marker = "extra == 'term'" },
     { name = "nemo-oo-agents-viewer", marker = "extra == 'viewer'", editable = "packages/nemo-oo-agents-viewer" },
     { name = "nltk", marker = "extra == 'bigcodebench'", specifier = ">=3.8.0" },
     { name = "numpy", marker = "extra == 'bigcodebench'", specifier = ">=1.24.0" },
@@ -3451,6 +3461,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'tui-optional'", specifier = ">=6.6.0" },
     { name = "prettytable", marker = "extra == 'bigcodebench'", specifier = ">=3.10.0" },
     { name = "psutil", marker = "extra == 'bigcodebench'", specifier = ">=5.9.0" },
+    { name = "ptyprocess", marker = "extra == 'term'", specifier = ">=0.7.0" },
     { name = "pycryptodome", marker = "extra == 'bigcodebench'", specifier = ">=3.20.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "pyquery", marker = "extra == 'bigcodebench'", specifier = ">=2.0.0" },
@@ -3481,6 +3492,7 @@ requires-dist = [
     { name = "texttable", marker = "extra == 'bigcodebench'", specifier = ">=1.7.0" },
     { name = "trace-explorer", marker = "extra == 'trace-explorer'", editable = "packages/trace_explorer" },
     { name = "unifiedllm", editable = "packages/unifiedllm" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'term'", specifier = ">=0.34.0" },
     { name = "werkzeug", marker = "extra == 'bigcodebench'", specifier = ">=3.0.0" },
     { name = "wikipedia", marker = "extra == 'bigcodebench'", specifier = ">=1.4.0" },
     { name = "wordcloud", marker = "extra == 'bigcodebench'", specifier = ">=1.9.0" },
@@ -3489,7 +3501,7 @@ requires-dist = [
     { name = "xlwt", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
     { name = "xmltodict", marker = "extra == 'bigcodebench'", specifier = ">=0.13.0" },
 ]
-provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "harbor-benchmarks", "bigcodebench", "tui-optional"]
+provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "term", "harbor-benchmarks", "bigcodebench", "tui-optional"]
 
 [package.metadata.requires-dev]
 dev = [

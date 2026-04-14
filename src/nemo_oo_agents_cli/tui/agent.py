@@ -8,7 +8,7 @@ Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 from enum import Enum
 from typing import Annotated
 
-from agentdoc import spec
+from agentdoc import doc, spec
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
 
@@ -237,6 +237,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(
                 event_manager=self.event_manager
             )
+            self.context["web"] = doc(self.web)
 
     def message(self, text: str) -> None:
         """Send a Markdown message to the user.
