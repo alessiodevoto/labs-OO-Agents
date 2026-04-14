@@ -2,8 +2,11 @@
 Test cases for reserved parameter name validation.
 
 This test suite verifies that @strategy methods cannot use reserved names
-like 'reasoning' and 'message' as parameter names, since these would
-shadow the builtin functions available in generated code.
+like 'reasoning' as parameter names, since these would shadow the builtin
+functions available in generated code.
+
+Note: 'message' was previously reserved but was removed when the message()
+builtin was removed from CodeAct. Only 'reasoning' is now reserved.
 """
 
 import pytest
@@ -21,26 +24,6 @@ def _resp(content: str) -> LLMResponse:
         finish_reason="stop",
         assistant_message={"role": "assistant", "content": content},
     )
-
-
-def test_message_parameter_raises_value_error():
-    """Test that using 'message' as a parameter name raises ValueError."""
-
-    test_llm = FakeLLMClient()
-
-    # Defining a class with 'message' parameter should raise ValueError
-    with pytest.raises(ValueError) as exc_info:
-
-        class TestAgent(Agent, llm=test_llm):
-            """Test agent with message parameter."""
-
-            async def process_with_message(self, message: str) -> str:
-                """This should fail - message is reserved."""
-                ...
-
-    error_msg = str(exc_info.value)
-    assert "reserved parameter name" in error_msg.lower()
-    assert "message" in error_msg
 
 
 def test_reasoning_parameter_raises_value_error():
@@ -63,28 +46,44 @@ def test_reasoning_parameter_raises_value_error():
     assert "reasoning" in error_msg
 
 
-def test_burger_order_scenario_fails_at_definition():
-    """Test that the burger order scenario fails when class is defined."""
+def test_message_parameter_is_no_longer_reserved():
+    """Test that 'message' is no longer a reserved parameter name."""
 
     test_llm = FakeLLMClient()
 
-    # The problematic method definition should fail immediately
-    with pytest.raises(ValueError) as exc_info:
+    # 'message' was removed from reserved names when the message() builtin was removed
+    # Defining a class with 'message' as an implemented (non-ellipsis) method should work fine
+    class TestAgent(Agent, llm=test_llm):
+        """Test agent - message param is now allowed."""
 
-        class OrderAgent(Agent, llm=test_llm):
-            """Agent for processing food orders."""
+        async def process_with_message(self, message: str) -> str:
+            """Implemented method - message is no longer reserved."""
+            return f"Got: {message}"
 
-            async def add_item(self, item: str) -> None:
-                """Add an item to the order."""
-                pass
+    # Should work fine since message is no longer reserved
+    agent = TestAgent()
+    assert agent is not None
 
-            async def process_request(self, message: str) -> dict:
-                """This should fail - message is reserved."""
-                ...
 
-    error_msg = str(exc_info.value)
-    assert "message" in error_msg
-    assert "reserved" in error_msg.lower()
+def test_burger_order_scenario_with_message_param():
+    """Test that 'message' parameter in an implemented method works now."""
+
+    test_llm = FakeLLMClient()
+
+    # Previously this would fail; now it should work fine
+    class OrderAgent(Agent, llm=test_llm):
+        """Agent for processing food orders."""
+
+        async def add_item(self, item: str) -> None:
+            """Add an item to the order."""
+            pass
+
+        async def process_request(self, message: str) -> str:
+            """Implemented - message param is fine now."""
+            return f"Handled: {message}"
+
+    agent = OrderAgent()
+    assert agent is not None
 
 
 @pytest.mark.asyncio
@@ -96,9 +95,6 @@ reasoning("Processing the customer request")
 
 # Access parameter with safe name
 result = f"Processed: {request}"
-
-# Call message() function - works because no conflict
-message("Task completed successfully")
 
 return result
 """
@@ -120,39 +116,47 @@ return result
     assert result == "Processed: hello world"
 
 
-def test_multiple_params_one_reserved():
-    """Test that error is raised even when only one param is reserved."""
+def test_multiple_params_only_reasoning_reserved():
+    """Test that only 'reasoning' triggers reserved-name error, not 'message'."""
 
     test_llm = FakeLLMClient()
 
+    # 'message' no longer reserved — should not raise
+    class TestAgentOk(Agent, llm=test_llm):
+        async def process(self, text: str, message: str, count: int) -> str:
+            """Implemented method - message param allowed."""
+            return text
+
+    assert TestAgentOk is not None
+
+    # 'reasoning' still reserved — should raise
     with pytest.raises(ValueError) as exc_info:
 
-        class TestAgent(Agent, llm=test_llm):
-            async def process(self, text: str, message: str, count: int) -> str:
-                """Should fail because of 'message' parameter."""
+        class TestAgentBad(Agent, llm=test_llm):
+            async def process(self, text: str, reasoning: str, count: int) -> str:
+                """Should fail because of 'reasoning' parameter."""
                 ...
 
     error_msg = str(exc_info.value)
-    assert "message" in error_msg
+    assert "reasoning" in error_msg
     assert "reserved" in error_msg.lower()
 
 
-def test_both_reserved_names():
-    """Test that using both reserved names raises error."""
+def test_reasoning_reserved_name():
+    """Test that only reasoning triggers reserved-name error."""
 
     test_llm = FakeLLMClient()
 
     with pytest.raises(ValueError) as exc_info:
 
         class TestAgent(Agent, llm=test_llm):
-            async def process(self, reasoning: str, message: str) -> str:
-                """Should fail - both params are reserved."""
+            async def process(self, reasoning: str) -> str:
+                """Should fail - reasoning is reserved."""
                 ...
 
-    # Error should mention reserved names (at least one of them)
     error_msg = str(exc_info.value).lower()
     assert "reserved" in error_msg
-    assert "reasoning" in error_msg or "message" in error_msg
+    assert "reasoning" in error_msg
 
 
 @pytest.mark.asyncio
@@ -182,7 +186,7 @@ def test_error_message_provides_suggestions():
     with pytest.raises(ValueError) as exc_info:
 
         class TestAgent(Agent, llm=test_llm):
-            async def process(self, message: str) -> str: ...
+            async def process(self, reasoning: str) -> str: ...
 
     error_msg = str(exc_info.value).lower()
     # Should provide helpful suggestions

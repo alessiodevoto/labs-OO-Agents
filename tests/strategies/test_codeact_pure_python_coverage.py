@@ -2788,9 +2788,8 @@ class TestPurePythonBuildBuiltins:
         ):
             builtins = strat._build_builtins(rt, call)
 
-        # Should have reasoning and message at minimum
+        # Should have reasoning at minimum
         assert "reasoning" in builtins
-        assert "message" in builtins
 
 
 # ---------------------------------------------------------------------------
@@ -3203,9 +3202,8 @@ class TestBuildBuiltinsModuleContext:
         rt.event_manager = MagicMock()
 
         builtins = strat._build_builtins(rt, call)
-        # Should have reasoning, message, return_result
+        # Should have reasoning, return_result
         assert "reasoning" in builtins
-        assert "message" in builtins
         assert "return_result" in builtins
         # Should have method param x=5 (from merged kwargs)
         assert "x" in builtins
@@ -3501,9 +3499,9 @@ class TestReturnResultNoneExplicit:
 class TestBuiltinsLocalFunctionBodies:
     """Tests for local function bodies inside _build_builtins."""
 
-    @pytest.mark.asyncio
-    async def test_message_builtin_emits_message_event(self):
-        """message() builtin should emit Message event (line 2008)."""
+    def test_message_not_in_builtins(self):
+        """message() was removed from builtins; verify it is absent."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -3511,20 +3509,22 @@ class TestBuiltinsLocalFunctionBodies:
                 """Compute."""
                 ...
 
-        fake_llm = FakeLLMClient(
-            scripted_responses=[
-                # Call message() then return result
-                _resp(
-                    "",
-                    tool_calls=[
-                        _tool_call("message('hello user')\nreturn_result(42)", call_id="c1")
-                    ],
-                ),
-            ]
+        agent = TestAgent()
+        strat = CodeActStrategy(config=CodeActConfig())
+        call = CurrentCall(
+            id="c1",
+            method_name="compute",
+            decorator="strategy",
+            signature="(self) -> int",
+            docstring="Compute.",
+            args=(),
+            kwargs={},
         )
-        agent = TestAgent(llm=fake_llm)
-        result = await agent.compute()
-        assert result == 42
+        rt = MagicMock()
+        rt.agent = agent
+        rt.event_manager = MagicMock()
+        builtins = strat._build_builtins(rt, call)
+        assert "message" not in builtins
 
     @pytest.mark.asyncio
     async def test_return_result_with_multiple_positional_args_raises(self):

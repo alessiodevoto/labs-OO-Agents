@@ -1074,6 +1074,233 @@ class TestCodeActStrategyEventSequence:
                     )
 
     @pytest.mark.asyncio
+    async def test_text_only_response_becomes_synthetic_reasoning_call(self):
+        """Text-only LLM response is converted to a synthetic execute_python(reasoning(...)) call.
+
+        When the LLM returns plain text instead of a tool call, the strategy converts
+        it to a synthetic execute_python(reasoning(...)) pair instead of removing the
+        event and adding an error. This preserves the content in traces and teaches the
+        LLM correct interface usage by example (same approach as prefill).
+        """
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def think_and_answer(self) -> str:
+                """A task that requires thinking."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("I need to think about this carefully before answering."),
+                _resp("", tool_calls=[_return_result(result="answer")]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.think_and_answer()
+
+        assert result == "answer"
+
+        events = agent_instance.event_manager.values()
+        event_types = [e.event_type for e in events]
+
+        # Exact sequence: task → synthetic(tool_call + python_output) → return_result tool_call
+        assert event_types == ["task", "tool_call", "python_output", "tool_call"], (
+            f"Expected ['task', 'tool_call', 'python_output', 'tool_call'], got: {event_types}"
+        )
+
+        # No error event should be added for a text-only response
+        assert "error" not in event_types
+
+        # Find the synthetic tool call (first tool_call, not the final return_result)
+        synthetic = events[1]
+        assert synthetic.event_type == "tool_call"
+        assert synthetic.metadata.get("synthetic") is True
+        assert synthetic.name == "execute_python"
+
+        # The original text should be preserved inside a reasoning() call
+        code = synthetic.arguments["code"]
+        assert "reasoning(" in code, f"Code should call reasoning(), got: {code!r}"
+        assert "I need to think about this carefully before answering." in code, (
+            f"Original text should be in code, got: {code!r}"
+        )
+
+        # The synthetic call should have a successful result with matching tool_call_id
+        assert synthetic.result is not None
+        assert synthetic.result.result_status == ResultStatus.COMPLETE
+        assert synthetic.result.tool_call_id == synthetic.tool_call_id
+
+        # The PythonOutput should be linked to the same synthetic tool call
+        python_output = events[2]
+        assert python_output.event_type == "python_output"
+        assert python_output.tool_call_id == synthetic.tool_call_id
+
+    @pytest.mark.asyncio
+    async def test_text_only_basemodel_response_normalized_to_json(self):
+        """BaseModel text-only response is normalized via model_dump_json() in the reasoning() call.
+
+        LLMResponse.content can be a BaseModel (e.g. from structured output). The same
+        text-only path applies; content is serialized to JSON before being embedded in
+        the synthetic reasoning() call, consistent with how actor.py records LLMOutput.
+        """
+        from pydantic import BaseModel as PydanticBaseModel
+
+        class ThoughtModel(PydanticBaseModel):
+            thought: str
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def think_and_answer(self) -> str:
+                """A task that requires thinking."""
+                ...
+
+        model_response = LLMResponse(
+            raw_response=None,
+            content=ThoughtModel(thought="I need to reason carefully here."),
+            tool_calls=[],
+            finish_reason="stop",
+            assistant_message={"role": "assistant", "content": ""},
+        )
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                model_response,
+                _resp("", tool_calls=[_return_result(result="answer")]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.think_and_answer()
+
+        assert result == "answer"
+
+        events = agent_instance.event_manager.values()
+        synthetic_calls = [
+            e for e in events if e.event_type == "tool_call" and e.metadata.get("synthetic") is True
+        ]
+        assert len(synthetic_calls) == 1
+
+        code = synthetic_calls[0].arguments["code"]
+        assert "reasoning(" in code
+        # BaseModel is serialized as JSON — key and value should appear in the code
+        assert "I need to reason carefully here." in code
+
+    @pytest.mark.asyncio
+    async def test_text_only_whitespace_response_treated_as_empty(self):
+        """Whitespace-only text response (no tool calls) is treated as empty, not synthetic.
+
+        "   " is truthy but str.strip() is falsy, so it should fall through to the
+        empty-response error handler rather than creating reasoning('   ').
+        """
+        from nemo_oo_agents.errors import GenerationError
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=1)))
+            async def whitespace_task(self) -> str:
+                """A task where LLM returns only whitespace."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("   "),  # whitespace-only, no tool calls
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+
+        with pytest.raises(GenerationError):
+            await agent_instance.whitespace_task()
+
+        all_events = agent_instance.event_manager.values()
+        event_types = [e.event_type for e in all_events]
+        # Should produce an error event, NOT a synthetic tool_call
+        assert "error" in event_types, f"Expected error event, got: {event_types}"
+        synthetic_calls = [
+            e for e in all_events if e.event_type == "tool_call" and e.metadata.get("synthetic")
+        ]
+        assert len(synthetic_calls) == 0, (
+            f"Whitespace-only response should not create synthetic events, got: {synthetic_calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_text_only_basemodel_response_with_tool_calls_prepends_reasoning(self):
+        """BaseModel content alongside execute_python tool calls is prepended as reasoning().
+
+        Exercises the model_dump_json() branch in the content+tool_calls path.
+        """
+        from pydantic import BaseModel as PydanticBaseModel
+
+        class ThoughtModel(PydanticBaseModel):
+            thought: str
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def think_and_answer(self) -> str:
+                """A task requiring thought."""
+                ...
+
+        model_response = LLMResponse(
+            raw_response=None,
+            content=ThoughtModel(thought="I should calculate this."),
+            tool_calls=[_tool_call("x = 6 * 7", call_id="c1")],
+            finish_reason="tool_calls",
+            assistant_message={"role": "assistant", "content": ""},
+        )
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                model_response,
+                _resp("", tool_calls=[_return_result(result="done")]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.think_and_answer()
+        assert result == "done"
+
+        events = agent_instance.event_manager.values()
+        exec_calls = [
+            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+        ]
+        assert len(exec_calls) == 1
+        code = exec_calls[0].arguments["code"]
+        assert code.startswith("reasoning("), f"Expected reasoning() prepended, got: {code!r}"
+        assert "I should calculate this." in code, f"BaseModel JSON should appear in code: {code!r}"
+        assert "x = 6 * 7" in code, f"Original code should follow: {code!r}"
+
+    @pytest.mark.asyncio
+    async def test_empty_response_adds_error_feedback(self):
+        """Truly empty LLM response (no content, no tool calls) still produces an error event.
+
+        This is distinct from a text-only response. An empty response gets the
+        remove-and-error treatment to push the LLM to produce a valid response.
+        """
+        from nemo_oo_agents.errors import GenerationError
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=1)))
+            async def empty_task(self) -> str:
+                """A task where LLM keeps returning nothing."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp(""),  # empty - no content, no tool calls; exhausts max_retries=1
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+
+        with pytest.raises(GenerationError):
+            await agent_instance.empty_task()
+
+        # Error events should have been added for the empty responses
+        all_events = agent_instance.event_manager.values()
+        error_events = [e for e in all_events if e.event_type == "error"]
+        assert len(error_events) >= 1, (
+            f"Expected at least 1 error event for empty response, got: "
+            f"{[e.event_type for e in all_events]}"
+        )
+
+    @pytest.mark.asyncio
     async def test_multiple_tool_calls_event_sequence(self):
         """Multiple tool calls produce ToolCallEvent with nested result + PythonOutput.
 
@@ -1119,6 +1346,148 @@ class TestCodeActStrategyEventSequence:
             assert tc.result is not None, (
                 f"ToolCallEvent {tc.tool_call_id} should have nested result"
             )
+
+    @pytest.mark.asyncio
+    async def test_content_plus_tool_calls_prepends_reasoning(self):
+        """When LLM returns both content and execute_python tool calls, the content
+        is prepended as reasoning(text) at the top of the first execute_python code.
+
+        This preserves any explanatory text the LLM produced alongside its tool
+        call without creating a separate synthetic event.
+        """
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def think_and_answer(self) -> str:
+                """A task that requires thinking."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                # LLM returns text content AND a tool call in the same response
+                _resp(
+                    "Let me work through this step by step.",
+                    tool_calls=[_tool_call("x = 42", call_id="c1")],
+                ),
+                _resp("", tool_calls=[_return_result(result="done")]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.think_and_answer()
+
+        assert result == "done"
+
+        events = agent_instance.event_manager.values()
+        tool_calls = [e for e in events if e.event_type == "tool_call"]
+
+        # First tool call should have reasoning prepended to the code
+        first_tc = tool_calls[0]
+        code = first_tc.arguments["code"]
+        assert code.startswith("reasoning("), f"Expected reasoning() prepended, got: {code!r}"
+        assert "Let me work through this step by step." in code, (
+            f"Original content should appear in reasoning(), got: {code!r}"
+        )
+        assert "x = 42" in code, f"Original code should follow reasoning(), got: {code!r}"
+
+    @pytest.mark.asyncio
+    async def test_content_plus_tool_calls_empty_content_not_prepended(self):
+        """Whitespace-only content alongside tool calls is ignored (not prepended)."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("   ", tool_calls=[_return_result(result=7)]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.compute()
+
+        assert result == 7
+
+        # The return_result tool call should have no reasoning prepended
+        events = agent_instance.event_manager.values()
+        tool_calls = [e for e in events if e.event_type == "tool_call"]
+        final_tc = tool_calls[0]
+        code = final_tc.arguments.get("code", "")
+        assert not code.startswith("reasoning("), (
+            f"Whitespace-only content should not be prepended, got: {code!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_content_plus_tool_calls_prepends_first_execute_python_only(self):
+        """reasoning() is prepended to the first execute_python; later ones are untouched."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp(
+                    "Thinking aloud.",
+                    tool_calls=[
+                        _tool_call("x = 1", call_id="c1"),
+                        _tool_call("y = 2", call_id="c2"),
+                    ],
+                ),
+                _resp("", tool_calls=[_return_result(result=3)]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.compute()
+        assert result == 3
+
+        events = agent_instance.event_manager.values()
+        exec_calls = [
+            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+        ]
+        # First execute_python should have reasoning prepended
+        assert exec_calls[0].arguments["code"].startswith("reasoning("), (
+            f"First execute_python should have reasoning prepended, got: {exec_calls[0].arguments['code']!r}"
+        )
+        # Second execute_python should be unchanged
+        assert exec_calls[1].arguments["code"] == "y = 2", (
+            f"Second execute_python should be unchanged, got: {exec_calls[1].arguments['code']!r}"
+        )
+
+    def test_prepend_reasoning_skips_to_next_on_invalid_json(self):
+        """If the first execute_python has invalid JSON arguments, skip it and prepend to next."""
+        from nemo_oo_agents.strategies.codeact import _prepend_reasoning
+        from unifiedllm import ToolCall
+
+        bad_tc = ToolCall(id="bad", name="execute_python", arguments="NOT VALID JSON")
+        good_tc = ToolCall(id="c2", name="execute_python", arguments=json.dumps({"code": "x = 42"}))
+        result = _prepend_reasoning([bad_tc, good_tc], "Thinking aloud.")
+
+        # First tool call unchanged (bad JSON)
+        assert result[0].arguments == "NOT VALID JSON"
+        # Second tool call should have reasoning prepended
+        args = json.loads(result[1].arguments)
+        assert args["code"].startswith("reasoning("), (
+            f"Second execute_python should have reasoning prepended, got: {args['code']!r}"
+        )
+        assert "x = 42" in args["code"]
+
+    def test_prepend_reasoning_no_execute_python_unchanged(self):
+        """If there's no execute_python in the list, all tool calls are returned unchanged."""
+        from nemo_oo_agents.strategies.codeact import _prepend_reasoning
+        from unifiedllm import ToolCall
+
+        rr = ToolCall(id="ret", name="return_result", arguments=json.dumps({"result": 7}))
+        result = _prepend_reasoning([rr], "some content")
+
+        assert len(result) == 1
+        assert result[0].arguments == rr.arguments
 
 
 class TestCodeActStrategyPersistentState:

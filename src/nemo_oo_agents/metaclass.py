@@ -139,7 +139,7 @@ class AgentMeta(ABCMeta):
     def _validate_reserved_parameters(func: Callable) -> None:
         """Validate that generation method doesn't use reserved parameter names."""
         sig = inspect.signature(func)
-        reserved = {"reasoning", "message"}
+        reserved = {"reasoning"}
         param_names = set(sig.parameters.keys())
         if reserved & param_names:
             raise ValueError(
