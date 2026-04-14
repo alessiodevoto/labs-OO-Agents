@@ -11,8 +11,6 @@ from typing import Annotated
 from agentdoc import spec
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
-from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
-from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 with hidden:
     from collections.abc import Callable
@@ -21,6 +19,8 @@ with hidden:
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
+    from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
 import os
@@ -58,15 +58,16 @@ with hidden:
 
     from .config import AgentConfig, SummarizationConfig
 
-from .models import (
-    BrainstormResult,
-    DiagnosisResult,
-    Intent,
-    Plan,
-    ReviewResult,
-    StepResult,
-    VerificationResult,
-)
+with hidden:
+    from .models import (
+        BrainstormResult,
+        DiagnosisResult,
+        Intent,
+        Plan,
+        ReviewResult,
+        StepResult,
+        VerificationResult,
+    )
 
 
 class RespondResult(Enum):
@@ -276,7 +277,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
 
     You have access to these tools via self:
     - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
-    - self.files — Read/write files (.read(), .write(), .str_replace(), .list(), .find(), .grep())
+    - self.files — Read/write files (.read(), .write(), .edit_file(), .list(), .find(), .grep())
 
     Communication:
     - Use self.message("text") to send formatted Markdown to the user during your turn
@@ -374,6 +375,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
             "preserve_recent": preserve_recent,
         }
 
+    @hidden
     @strategy(PredictStrategy())
     async def classify_intent(self, user_message: str) -> Intent:
         """Classify the user's message into a task type.
@@ -388,6 +390,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         """
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30)))
     async def answer_question(self, user_message: str) -> None:
         """Answer the user's question or handle their simple request.
@@ -400,6 +403,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         """
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15)))
     async def brainstorm(self, request: str) -> BrainstormResult:
         """Explore requirements for: {request}
@@ -424,6 +428,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Do NOT write implementation code. Do NOT skip asking questions."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def write_plan(self, spec: str) -> Plan:
         """Create an implementation plan.
@@ -439,6 +444,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Present the plan to the user via self.message() before returning it."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def implement_step(self, step: str) -> StepResult:
         """Implement this plan step using test-driven development.
@@ -459,6 +465,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         If the test passes immediately, your test is wrong — fix the test first."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30)))
     async def debug_issue(self, description: str) -> DiagnosisResult:
         """Debug: {description}
@@ -477,6 +484,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Do NOT guess — investigate systematically."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def verify_work(self) -> VerificationResult:
         """Verify that recent changes work correctly.
@@ -490,6 +498,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         If tests fail, report which ones and why."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def review_changes(self, plan: str) -> ReviewResult:
         """Review the implementation against the plan.
@@ -509,7 +518,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     async def respond(self, user_message: str) -> "RespondResult | None":
         """Respond to the user's message.
 
-        Call return_result() to yield back to the user.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
 
         When orchestrator mode is enabled (config.orchestrator=True), routes
         through workflow phases. Otherwise uses a single CodeAct strategy.
