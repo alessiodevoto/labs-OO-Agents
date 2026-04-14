@@ -537,11 +537,8 @@ Standard Python builtins and agent instance (`self`) are available."""
         Raises:
             GenerationError: If generation fails after max retries/iterations.
         """
-        # Return type is resolved by the runtime before invoking the strategy
-        # (get_type_hints runs against the original method's globals, so PEP 563
-        # forward references are already resolved).  Use call.return_type directly.
+        # Return type is pre-resolved by _execute_with_generation (handles PEP 563).
         return_type = call.return_type
-
         if return_type is None:
             raise GenerationError(
                 f"Method `{call.method_name}` has no return type annotation. "
@@ -2048,8 +2045,8 @@ Standard Python builtins and agent instance (`self`) are available."""
         )
 
         # Add method parameters as variables.
-        # call.kwargs already contains all arguments (positional args are merged
-        # by name in _execute_with_generation before CurrentCall is built).
+        # call.kwargs is already the fully merged positional+keyword mapping
+        # (built by _execute_with_generation before the strategy is invoked).
         builtins.update(call.kwargs)
 
         return builtins

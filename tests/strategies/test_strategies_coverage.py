@@ -1763,11 +1763,6 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0]["content"] == "python result"
 
 
-# ---------------------------------------------------------------------------
-# Additional tests: predict.py — remaining missing lines
-# ---------------------------------------------------------------------------
-
-
 class TestPredictStrategyRawExtractionFallback:
     """Tests covering lines 214-215 and 220-235: fallback raw extraction in exception handler."""
 

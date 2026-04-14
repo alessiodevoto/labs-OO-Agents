@@ -97,6 +97,16 @@ def strategy(
 
                 strat = get_default_strategy()
 
+        # Detect standalone functions (no 'self' as first parameter).
+        # Each call creates a fresh agent stub — no state, no history.
+        _params = list(inspect.signature(func).parameters)
+        if not _params or _params[0] != "self":
+            if needs_gen:
+                from nemo_oo_agents.standalone import create_standalone_wrapper
+
+                return create_standalone_wrapper(func, strat, llm)  # type: ignore[return-value]
+            return func  # type: ignore[return-value]  # non-generation standalone: nothing to wrap
+
         from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
 
         wrapper = create_agent_method_wrapper(
