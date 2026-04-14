@@ -68,11 +68,19 @@ class CurrentCall:
             return NotImplemented
         return self.id == other.id
 
-    def format_parameters_as_code(self) -> str:
+    def format_parameters_as_code(
+        self,
+        value_formatter: Callable[[Any], str] | None = None,
+    ) -> str:
         """Format method parameters as Python variable assignments.
 
         Creates a string with one assignment per line, suitable for inclusion
         in LLM prompts to show the current parameter values.
+
+        Args:
+            value_formatter: Optional callable to format each parameter value.
+                Defaults to ``repr``.  Pass ``safe_pformat`` to cap large values
+                before embedding in prompts.
 
         Returns:
             Formatted parameter assignments (e.g., "data = 'test'\\nthreshold = 0.5")
@@ -84,11 +92,12 @@ class CurrentCall:
             data = "test"
             threshold = 0.5
         """
+        fmt = value_formatter if value_formatter is not None else repr
+
         if not self.signature:
-            # No signature available, fall back to kwargs only
-            if not self.kwargs:
-                return ""
-            lines = [f"{name} = {value!r}" for name, value in self.kwargs.items()]
+            # No signature available: format positional args as arg_0, arg_1, … then kwargs.
+            lines = [f"arg_{i} = {fmt(value)}" for i, value in enumerate(self.args)]
+            lines += [f"{name} = {fmt(value)}" for name, value in self.kwargs.items()]
             return "\n".join(lines)
 
         # Extract parameter names from signature
@@ -123,14 +132,14 @@ class CurrentCall:
                 return ""
 
             # Format as Python assignments
-            lines = [f"{name} = {value!r}" for name, value in param_dict.items()]
+            lines = [f"{name} = {fmt(value)}" for name, value in param_dict.items()]
             return "\n".join(lines)
 
         except (ValueError, AttributeError):
             # Fallback: just format kwargs
             if not self.kwargs:
                 return ""
-            lines = [f"{name} = {value!r}" for name, value in self.kwargs.items()]
+            lines = [f"{name} = {fmt(value)}" for name, value in self.kwargs.items()]
             return "\n".join(lines)
 
     def format_signature(self) -> str:

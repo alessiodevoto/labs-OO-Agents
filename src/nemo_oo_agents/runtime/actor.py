@@ -43,6 +43,23 @@ from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
 
 logger = logging.getLogger(__name__)
 
+
+def _get_token_counter(llm: Any) -> Any:
+    """Return a token-counting callable for *llm*.
+
+    If *llm* has a ``count_tokens`` method, return it.  Otherwise log a warning
+    and return a char-based approximation (``len(text) // 4`` ≈ 4 chars/token for
+    English) so that token limits remain functional without raising.
+    """
+    if callable(getattr(llm, "count_tokens", None)):
+        return llm.count_tokens
+    logger.warning(
+        "max_context_tokens / max_event_tokens set but LLM has no count_tokens; "
+        "using char approximation (÷4). Token limits may be inaccurate."
+    )
+    return lambda text: len(text) // 4
+
+
 # Suppress SyntaxWarning for invalid escape sequences (e.g. '\s' instead of r'\s')
 # in LLM-generated code.  The string value is identical either way, so the warning
 # is pure noise — and showing it to the LLM just wastes a turn trying to "fix" it.
@@ -1672,18 +1689,8 @@ class ActorRuntime:
         if llm_client is None:
             raise RuntimeError(f"No LLM client available for {method_name}")
 
-        # Fail early if token limits are configured but the LLM cannot count tokens.
-        # Check here (before strategy execution) so the error propagates directly
-        # rather than being caught and retried by the strategy's error handler.
+        # Resolve token counter once per call — used later in _render_context_for_turn.
         tc = self.agent._truncation
-        if tc.max_context_tokens is not None or tc.max_event_tokens is not None:
-            if not callable(getattr(llm_client, "count_tokens", None)):
-                raise RuntimeError(
-                    f"TruncationConfig sets token limits (max_context_tokens or max_event_tokens) "
-                    f"but the LLM client ({type(llm_client).__name__}) does not implement "
-                    f"count_tokens(). Either remove the token limits from TruncationConfig or "
-                    f"use an LLM that supports count_tokens()."
-                )
 
         # Mark that we're in a generation session
         # This allows nested ellipsis method calls to execute inline without deadlocking
@@ -2120,7 +2127,11 @@ async def {name}({params_str}) -> {return_type}:
         blocks = await self._prepare_context(method, call_args, call_kwargs)
         tc = self.agent._truncation
         llm_client = _current_llm_var.get()
-        count_tokens = getattr(llm_client, "count_tokens", None)
+        count_tokens = (
+            _get_token_counter(llm_client)
+            if (tc.max_context_tokens is not None or tc.max_event_tokens is not None)
+            else None
+        )
         try:
             from openinference_instrumentation_nemo_oo_agents._context_sideband import (
                 set_context_blocks,

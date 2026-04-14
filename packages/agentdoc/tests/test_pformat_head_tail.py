@@ -169,17 +169,13 @@ class TestUnorderedCollections:
         assert result
 
 
-class TestBudgetTruncationUnchanged:
-    """Budget-based (_budget / max_total_chars) truncation remains head-only.
+class TestMaxCharsTruncation:
+    """max_chars uses TruncatingStringIO — output is bounded during formatting."""
 
-    The budget path can't show the tail without materialising the full sequence,
-    so it keeps the existing "... +N more" behaviour.
-    """
-
-    def test_budget_does_not_require_tail(self):
-        """Large list with max_total_chars budget: head-only is acceptable."""
+    def test_max_chars_bounds_output(self):
+        """Large list with max_chars: output bounded, prose notice included."""
         items = list(range(1_000_000))
-        result = pformat(items, max_total_chars=1000)
+        result = pformat(items, max_chars=1000)
         assert len(result) < 10_000  # bounded
 
 

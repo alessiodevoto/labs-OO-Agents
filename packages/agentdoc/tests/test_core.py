@@ -820,10 +820,10 @@ class TestLargeValueTruncation:
 
     def test_doc_on_huge_builtin_with_max_length(self):
         """doc() on raw containers respects explicit max_length, shows head+tail."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str
 
         huge_list = list(range(100_000))
-        result = _pformat(huge_list, max_length=10, max_string=500, max_depth=3)
+        result = _pformat_to_str(huge_list, max_length=10, max_string=500, max_depth=3)
 
         assert "items not shown" in result  # head+tail notice
         assert "99999" in result            # tail item visible
@@ -903,7 +903,7 @@ class TestPformatMatchesRich:
 
         from rich.pretty import pprint
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = "x" * 100
         max_string = 10
@@ -926,7 +926,7 @@ class TestPformatMatchesRich:
     )
     def test_list_truncation_shows_head_and_tail(self):
         """List truncation uses head+tail format (diverges intentionally from Rich head-only)."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = list(range(20))
         max_length = 5
@@ -949,7 +949,7 @@ class TestPformatMatchesRich:
     )
     def test_dict_truncation_shows_head_and_tail(self):
         """Dict truncation uses head+tail format (diverges intentionally from Rich head-only)."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = {f"k{i}": i for i in range(20)}
         max_length = 3
@@ -971,7 +971,7 @@ class TestPformatAdditionalTypes:
 
     def test_tuple_truncation(self):
         """Test tuple truncation uses head+tail format."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = tuple(range(20))
         result = _pformat(data, max_length=5)
@@ -984,7 +984,7 @@ class TestPformatAdditionalTypes:
 
     def test_set_truncation(self):
         """Test set truncation uses Rich-style format."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = set(range(20))
         result = _pformat(data, max_length=5)
@@ -995,7 +995,7 @@ class TestPformatAdditionalTypes:
 
     def test_frozenset_truncation(self):
         """Test frozenset truncation uses Rich-style format."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = frozenset(range(20))
         result = _pformat(data, max_length=5)
@@ -1011,7 +1011,7 @@ class TestPformatTypes:
         """pformat() on Pydantic type shows Python class syntax."""
         from pydantic import BaseModel
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class UserModel(BaseModel):
             name: str
@@ -1027,7 +1027,7 @@ class TestPformatTypes:
         """pformat() on dataclass type shows decorator and fields."""
         from dataclasses import dataclass
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         @dataclass
         class Point:
@@ -1045,7 +1045,7 @@ class TestPformatTypes:
         """pformat() truncates fields with max_length."""
         from pydantic import BaseModel
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class BigModel(BaseModel):
             f1: str
@@ -1067,7 +1067,7 @@ class TestPformatTypes:
         """pformat() on Enum shows members."""
         import enum
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class Color(enum.Enum):
             RED = 1

@@ -728,20 +728,34 @@ class OpenInferenceHooks:
             safe_pformat = None
 
         if hasattr(result, "model_dump"):
+            # Use has_return to check for real return value (exclude _NO_RETURN sentinel).
+            has_return = getattr(result, "has_return", False)
             d = result.model_dump(exclude_none=True)
+            if not has_return:
+                d.pop("returned_value", None)
         elif isinstance(result, dict):
             d = result
+            has_return = True
         else:
             return str(result)[:50_000]
 
-        # Bound returned_value via safe_pformat
+        # Bound returned_value before JSON serialization so the JSON is always valid.
         rv = d.get("returned_value")
         if rv is not None and safe_pformat is not None:
-            d["returned_value"] = safe_pformat(rv)
+            d["returned_value"] = safe_pformat(rv, max_chars=50_000)
         elif rv is not None:
             s = str(rv)
             if len(s) > 50_000:
-                d["returned_value"] = s[:50_000] + f"\n<truncated {len(s):,} chars>"
+                head = s[:25_000]
+                tail = s[-25_000:]
+                dropped = len(s) - 50_000
+                d["returned_value"] = (
+                    f"Output too large ({len(s):,} chars). "
+                    f"Showing first 25,000 and last 25,000 chars.\n\n"
+                    f"{head}\n\n"
+                    f"... {dropped:,} chars not shown ...\n\n"
+                    f"{tail}"
+                )
 
         return json.dumps(d, default=str)
 
