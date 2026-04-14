@@ -11,6 +11,8 @@ Budget-based truncation (_budget / max_total_chars) keeps head-only (can't
 collect tail without materialising the full sequence).
 """
 
+import re
+
 import pytest
 
 from agentdoc import pformat
@@ -47,7 +49,7 @@ class TestListHeadTail:
         assert "199" in result
         # Item 5 should NOT appear (it's in the dropped middle)
         # Item 194 should NOT appear (it's in the dropped middle)
-        assert "194" not in result or "1940" in result  # 194 OK if part of 1940+
+        assert not re.search(r"\b194\b", result)  # 194 as standalone number, not part of 1940+
 
     def test_list_under_max_length_unchanged(self):
         """Lists within max_length show all items, no notice."""
@@ -179,6 +181,31 @@ class TestBudgetTruncationUnchanged:
         items = list(range(1_000_000))
         result = pformat(items, max_total_chars=1000)
         assert len(result) < 10_000  # bounded
+
+
+class TestExpandedFormat:
+    """Expanded (multiline) format paths for head+tail."""
+
+    def test_expanded_list_head_tail(self):
+        """Expanded list: head+tail notice present, brackets balanced, no comma before bracket."""
+        items = list(range(20))
+        result = pformat(items, max_length=6, expand_all=True)
+        assert result.startswith("[")
+        assert result.endswith("]")
+        assert "not shown" in result
+        assert "0" in result
+        assert "19" in result
+        assert ",]" not in result
+
+    def test_expanded_dict_head_tail(self):
+        """Expanded dict: head+tail notice present, brackets balanced."""
+        d = {str(i): i for i in range(20)}
+        result = pformat(d, max_length=6, expand_all=True)
+        assert result.startswith("{")
+        assert result.endswith("}")
+        assert "not shown" in result
+        assert "'0'" in result
+        assert "'19'" in result
 
 
 class TestNestedContainers:
