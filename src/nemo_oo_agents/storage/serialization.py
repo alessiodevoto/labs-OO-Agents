@@ -106,13 +106,13 @@ def deserialize(blob: Any, allowlist: set[str]) -> Any:
 
 
 def _serialize(value: Any, allowlist: set[str]) -> Any:
-    # 1. JSON primitives — pass through
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-
-    # 2. Enums — serialize to their underlying value
+    # 1. Enums — unwrap to value (must be before primitives since StrEnum/IntEnum are isinstance str/int)
     if isinstance(value, enum.Enum):
         return _serialize(value.value, allowlist)
+
+    # 2. JSON primitives — pass through
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
 
     # 3. Collections — recurse (filtering out SKIP sentinels)
     if isinstance(value, dict):

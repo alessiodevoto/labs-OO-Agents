@@ -295,13 +295,15 @@ class TestSnapshotable:
         blob = {
             "__type__": "dict_class",
             "__class__": f"{Config.__module__}.Config",
-            "data": {"host": "localhost", "port": 80, "extra": "ignored"},
+            "data": {"host": "localhost", "port": 80, "extra": "preserved"},
         }
         fqn = f"{Config.__module__}.Config"
         restored = deserialize(blob, {fqn})
         assert isinstance(restored, Config)
         assert restored.host == "localhost"
         assert restored.port == 80
+        assert hasattr(restored, "extra")
+        assert restored.extra == "preserved"
 
     def test_snapshotable_mixed_in_collection(self):
         """@snapshotable inside a list/dict."""
@@ -705,6 +707,30 @@ class TestEnum:
         value = {"color": Color.GREEN, "priority": Priority.LOW}
         blob, al = serialize(value)
         assert blob == {"color": "green", "priority": 1}
+
+    def test_strenum_serializes_to_plain_string(self):
+        """StrEnum members serialize to plain str, not enum objects."""
+        import enum
+
+        class StrColor(enum.StrEnum):
+            RED = "red"
+            BLUE = "blue"
+
+        blob, _ = serialize(StrColor.RED)
+        assert blob == "red"
+        assert type(blob) is str  # NOT StrColor
+
+    def test_intenum_serializes_to_plain_int(self):
+        """IntEnum members serialize to plain int, not enum objects."""
+        import enum
+
+        class IntPriority(enum.IntEnum):
+            LOW = 1
+            HIGH = 3
+
+        blob, _ = serialize(IntPriority.HIGH)
+        assert blob == 3
+        assert type(blob) is int  # NOT IntPriority
 
 
 # ---------------------------------------------------------------------------
