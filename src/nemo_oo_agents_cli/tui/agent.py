@@ -5,6 +5,7 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
+from enum import Enum
 from typing import Annotated
 
 from agentdoc import spec
@@ -66,6 +67,22 @@ from .models import (
     StepResult,
     VerificationResult,
 )
+
+
+class RespondResult(Enum):
+    """Return value for respond() / _respond_codeact() that controls what happens next.
+
+    Pass one of these to ``return_result()`` at the end of your turn:
+
+    - ``RespondResult.STOP_WORK`` — done; the TUI will NOT call respond() again.
+    - ``RespondResult.WAIT_FOR_USER_INPUT`` — done for now; hand control back to the user.
+    - Any other return (including ``None``) — the TUI will call respond() again
+      immediately without waiting for the user.  The agent keeps working by default.
+    """
+
+    STOP_WORK = "stop_work"
+    WAIT_FOR_USER_INPUT = "wait_for_user_input"
+
 
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
@@ -239,13 +256,14 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
     @hidden
     @strategy(CodeActStrategy())
-    async def respond(self, user_message: str) -> None:
+    async def respond(self, user_message: str) -> "RespondResult | None":
         """Respond to the user's message.
 
         Message: {user_message}
 
         Use self.message() to send formatted Markdown to the user.
-        Call return_result() when done to hand control back to the user.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to hand control back to the user.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
         """
         ...
 
@@ -253,7 +271,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     """You are NeMo OO Agents, a development assistant running in a terminal.
 
-    Call return_result() to yield back to the user.
+    Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
+    Call return_result(RespondResult.STOP_WORK) when completely done.
 
     You have access to these tools via self:
     - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
@@ -262,11 +281,12 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     Communication:
     - Use self.message("text") to send formatted Markdown to the user during your turn
     - Use Python comments to log internal thinking
-    - Use return_result() to end your turn — the user will then reply and you'll be called again
+    - Use return_result(RespondResult.WAIT_FOR_USER_INPUT) to end your turn — the user will then reply and you'll be called again
 
-    This is a multi-turn conversation. return_result() is like pressing `send`: it ends your current
-    response and hands control back to the user. If you need more information, ask via self.message()
-    then call return_result() to wait for their reply.
+    This is a multi-turn conversation. return_result(RespondResult.WAIT_FOR_USER_INPUT) is like pressing
+    `send`: it ends your current response and hands control back to the user. If you need more
+    information, ask via self.message() then call return_result(RespondResult.WAIT_FOR_USER_INPUT) to
+    wait for their reply.
 
     Workflow:
     - Execute ONE thing at a time, then observe results
@@ -486,7 +506,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    async def respond(self, user_message: str) -> None:
+    async def respond(self, user_message: str) -> "RespondResult | None":
         """Respond to the user's message.
 
         Call return_result() to yield back to the user.
@@ -496,19 +516,21 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         """
         if self._config.orchestrator:
             await _orchestrate(self, user_message)
+            return None
         else:
-            await self._respond_codeact(user_message)
+            return await self._respond_codeact(user_message)
 
     @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
-    async def _respond_codeact(self, user_message: str) -> None:
+    async def _respond_codeact(self, user_message: str) -> "RespondResult | None":
         """Respond to the user's message using a single CodeAct strategy.
 
         Message: {user_message}
 
         Use tools to help the user.
         Use self.message() to respond with formatted Markdown.
-        Call return_result() when done — this ends your turn and the user can reply.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to end your turn.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
         Execute ONE thing at a time, then observe results.
         """
         ...
