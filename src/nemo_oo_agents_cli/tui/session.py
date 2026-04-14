@@ -628,7 +628,7 @@ class Session:
 
                 task = asyncio.create_task(self.agent.respond(current_input))  # type: ignore[union-attr]
 
-                async def _poll_interrupt(t: asyncio.Task = task) -> None:  # noqa: B008
+                async def _poll_interrupt(t: asyncio.Task = task) -> None:
                     while not t.done():
                         if _interrupted.is_set():
                             return
