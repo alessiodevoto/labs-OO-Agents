@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from nemo_oo_agents.storage import SQLiteStorageManager
 
-from nemo_oo_agents_cli._common import USER_DATA_DIR
+from nemo_oo_agents.paths import get_user_dir
 
-SESSIONS_DIR = USER_DATA_DIR / "sessions"
+SESSIONS_DIR = get_user_dir("sessions")
 
 
 @dataclass

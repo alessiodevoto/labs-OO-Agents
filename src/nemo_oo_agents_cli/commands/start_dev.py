@@ -30,10 +30,10 @@ def command(port: int, host: str):
     """Start the unified trace + evaluation viewer."""
     import os
 
-    from nemo_oo_agents_cli._common import USER_DATA_DIR
+    from nemo_oo_agents.paths import get_user_dir
 
     # Set the viewer DB path before importing the viewer (it reads this at module level).
-    db_path = USER_DATA_DIR / "traces.db"
+    db_path = get_user_dir("traces.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("TRACE_STORE_DB", str(db_path))
 
