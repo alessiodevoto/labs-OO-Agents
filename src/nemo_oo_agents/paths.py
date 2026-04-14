@@ -2,30 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 """Well-known filesystem paths for NeMo OO Agents.
 
-Two root directories, one name:
+Two root directories:
 
-- **User dir** (``~/.nemo_oo_agents/``) — global to the user; sessions,
-  viewer database, anything that should persist across projects.
+- **User dir** — namespaced under NAT's config directory at ``oo/``:
+  ``~/.config/nat/oo/`` on Linux, ``~/Library/Application Support/nat/oo/``
+  on macOS.  Respects the ``NAT_CONFIG_DIR`` environment variable.
+  Overridable via ``NEMO_OO_USER_DIR``.
+
 - **Project dir** (``<project-root>/.nemo_oo_agents/``) — local to the
   current project; config, optional trace files, library code.
-
-Both are overridable via environment variables::
-
-    NEMO_OO_USER_DIR=/data/nemo_agents nemo_oo_agents
-    NEMO_OO_PROJECT_DIR=/shared/.nemo_oo_agents nemo_oo_agents
+  Overridable via ``NEMO_OO_PROJECT_DIR``.
 
 Usage::
 
     from nemo_oo_agents.paths import get_user_dir, get_project_dir
 
-    sessions = get_user_dir("sessions")        # ~/.nemo_oo_agents/sessions
+    sessions = get_user_dir("sessions")        # ~/.config/nat/oo/sessions
     config   = get_project_dir("config.toml") # <root>/.nemo_oo_agents/config.toml
 """
 
 import os
 from pathlib import Path
 
-#: Directory name used for both user-global and project-local directories.
+#: Directory name used for the project-local directory.
 DIR_NAME = ".nemo_oo_agents"
 
 
@@ -45,17 +44,29 @@ def find_project_root() -> Path:
 def get_user_dir(*parts: str) -> Path:
     """Return the user-global NeMo OO Agents directory, optionally joined with *parts*.
 
-    Defaults to ``~/.nemo_oo_agents/``.  Override with the ``NEMO_OO_USER_DIR``
-    environment variable.
+    Namespaced under NAT's config directory (``oo/`` subdirectory), so it
+    co-locates with other NAT components.  Respects ``NAT_CONFIG_DIR`` if set.
+    Override the entire base with ``NEMO_OO_USER_DIR``.
+
+    Default locations:
+
+    - Linux:  ``~/.config/nat/oo/``
+    - macOS:  ``~/Library/Application Support/nat/oo/``
 
     Examples::
 
-        get_user_dir()              # ~/.nemo_oo_agents/
-        get_user_dir("sessions")    # ~/.nemo_oo_agents/sessions/
-        get_user_dir("traces.db")   # ~/.nemo_oo_agents/traces.db
+        get_user_dir()              # ~/.config/nat/oo/
+        get_user_dir("sessions")    # ~/.config/nat/oo/sessions/
+        get_user_dir("traces.db")   # ~/.config/nat/oo/traces.db
     """
-    base_str = os.environ.get("NEMO_OO_USER_DIR")
-    base = Path(base_str) if base_str else Path.home() / DIR_NAME
+    override = os.environ.get("NEMO_OO_USER_DIR")
+    if override:
+        base = Path(override)
+    else:
+        from platformdirs import user_config_dir
+
+        nat_config = os.environ.get("NAT_CONFIG_DIR", user_config_dir(appname="nat"))
+        base = Path(nat_config) / "oo"
     return base.joinpath(*parts) if parts else base
 
 
