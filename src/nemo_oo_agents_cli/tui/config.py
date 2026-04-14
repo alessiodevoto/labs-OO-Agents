@@ -135,14 +135,14 @@ class Config:
     def load(cls, **overrides) -> "Config":
         """Build config: defaults → config file → overrides.
 
-        Config file: .nemo_oo_tui/config.toml (project-local, optional).
+        Config file: .nemo_oo/config.toml (project-local, optional).
         Accepts any keyword argument matching _OVERRIDES keys.
         Unknown keys are silently ignored, so you can pass ``**vars(args)``
         from argparse directly.
         """
         cfg = cls()
 
-        # Layer 2: project-local config file (.nemo_oo_tui/config.toml)
+        # Layer 2: project-local config file (.nemo_oo/config.toml)
         for key, val in _load_config_file().items():
             if key in cls._OVERRIDES:
                 _set_nested(cfg, *_unpack_target(cls._OVERRIDES[key], val))
@@ -183,12 +183,12 @@ class Config:
 
 
 def _load_config_file() -> dict:
-    """Load .nemo_oo_tui/config.toml and return its [tui] section as a flat dict."""
+    """Load .nemo_oo/config.toml and return its [tui] section as a flat dict."""
     import tomllib
 
-    from nemo_oo_agents_cli._common import find_project_root
+    from nemo_oo_agents_cli._common import PROJECT_DIR_NAME, find_project_root
 
-    config_path = find_project_root() / ".nemo_oo_tui" / "config.toml"
+    config_path = find_project_root() / PROJECT_DIR_NAME / "config.toml"
     if not config_path.exists():
         return {}
     try:

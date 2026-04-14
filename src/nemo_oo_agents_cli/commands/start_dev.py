@@ -28,6 +28,15 @@ class _AccessLogFilter(logging.Filter):
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0).")
 def command(port: int, host: str):
     """Start the unified trace + evaluation viewer."""
+    import os
+
+    from nemo_oo_agents_cli._common import USER_DATA_DIR
+
+    # Set the viewer DB path before importing the viewer (it reads this at module level).
+    db_path = USER_DATA_DIR / "traces.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("TRACE_STORE_DB", str(db_path))
+
     try:
         from nemo_oo_agents_viewer.main import app
     except ImportError:

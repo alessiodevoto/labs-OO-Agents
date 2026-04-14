@@ -306,7 +306,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         from nemo_oo_agents.config.tool_configs import BashConfig
 
-        _project_dir = Path(config.working_dir) / ".nemo_oo_tui"
+        from nemo_oo_agents_cli._common import PROJECT_DIR_NAME
+
+        _project_dir = Path(config.working_dir) / PROJECT_DIR_NAME
         _srt = _project_dir / "srt_settings.json"
         self.bash = BashTool(
             working_dir=config.working_dir,

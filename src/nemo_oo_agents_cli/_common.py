@@ -9,6 +9,12 @@ Import from here instead of duplicating helpers across command modules:
 
 from pathlib import Path
 
+# Project-local directory name (relative to project root).
+PROJECT_DIR_NAME = ".nemo_oo"
+
+# User-global data directory (sessions, viewer DB).
+USER_DATA_DIR = Path.home() / ".nemo_oo_agents"
+
 
 def find_project_root() -> Path:
     """Walk up from this file to find the project root (where pyproject.toml lives).
