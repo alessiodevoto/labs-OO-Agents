@@ -418,10 +418,11 @@ class TestAgentTurnSessionRecording:
     @pytest.mark.asyncio
     async def test_agent_turn_completes_with_session_manager(self, mock_frontend):
         """_agent_turn completes without error when a session_manager is present."""
+        from nemo_oo_agents_cli.tui.agent import RespondResult
         from nemo_oo_agents_cli.tui.session import Session
 
         mock_agent = MagicMock()
-        mock_agent.respond = AsyncMock(return_value="response text")
+        mock_agent.respond = AsyncMock(return_value=RespondResult.WAIT_FOR_USER_INPUT)
         mock_agent.event_manager = MagicMock()
 
         mock_config = MagicMock()
@@ -441,10 +442,11 @@ class TestAgentTurnSessionRecording:
     @pytest.mark.asyncio
     async def test_agent_turn_completes_without_session_manager(self, mock_frontend):
         """_agent_turn completes without error when session_manager is None."""
+        from nemo_oo_agents_cli.tui.agent import RespondResult
         from nemo_oo_agents_cli.tui.session import Session
 
         mock_agent = MagicMock()
-        mock_agent.respond = AsyncMock(return_value="x")
+        mock_agent.respond = AsyncMock(return_value=RespondResult.WAIT_FOR_USER_INPUT)
         mock_agent.event_manager = MagicMock()
 
         mock_config = MagicMock()

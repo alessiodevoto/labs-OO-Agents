@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nemo_oo_agents.storage import SQLiteStorageManager
+from nemo_oo_agents_cli.tui.agent import RespondResult
 from nemo_oo_agents_cli.tui.commands import CommandRegistry
 from nemo_oo_agents_cli.tui.output import (
     ClearScreen,
@@ -51,7 +52,7 @@ def _make_agent(*, with_bash=True, with_summarization=True):
     agent.event_manager.keys.return_value = []
     agent._summarizers = []
 
-    agent.respond = AsyncMock()
+    agent.respond = AsyncMock(return_value=RespondResult.WAIT_FOR_USER_INPUT)
 
     if with_bash:
         agent.bash = MagicMock()
