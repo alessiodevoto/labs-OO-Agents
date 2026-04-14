@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unified type serialization for agent snapshots.
 
-Provides ``serialize()`` and ``deserialize()`` — a 7-step isinstance dispatch
-that handles JSON primitives, collections, nosnapshot values, Pydantic models,
-dataclasses, and ``@snapshotable``-decorated classes.
+Provides ``serialize()`` and ``deserialize()`` — an 8-step isinstance dispatch
+that handles JSON primitives, enums, collections, nosnapshot values, Pydantic
+models, dataclasses, and ``@snapshotable``-decorated classes.
 
 Envelope format for non-primitive types::
 
@@ -19,6 +19,7 @@ Envelope format for non-primitive types::
 from __future__ import annotations
 
 import dataclasses
+import enum
 import importlib
 import inspect
 from typing import Any
@@ -109,50 +110,73 @@ def _serialize(value: Any, allowlist: set[str]) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
 
-    # 2. Collections — recurse
+    # 2. Enums — serialize to their underlying value
+    if isinstance(value, enum.Enum):
+        return _serialize(value.value, allowlist)
+
+    # 3. Collections — recurse (filtering out SKIP sentinels)
     if isinstance(value, dict):
-        return {k: _serialize(v, allowlist) for k, v in value.items()}
+        result = {}
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise SerializationError(
+                    f"Dict key {k!r} (type: {type(k).__name__}) is not a string. "
+                    f"JSON requires string keys."
+                )
+            serialized = _serialize(v, allowlist)
+            if serialized is not SKIP:
+                result[k] = serialized
+        return result
     if isinstance(value, tuple):
         return {
             "__type__": _TUPLE,
-            "data": [_serialize(item, allowlist) for item in value],
+            "data": [s for item in value if (s := _serialize(item, allowlist)) is not SKIP],
         }
     if isinstance(value, list):
-        return [_serialize(item, allowlist) for item in value]
+        return [s for item in value if (s := _serialize(item, allowlist)) is not SKIP]
 
-    # 3. nosnapshot — return SKIP sentinel
+    # 4. nosnapshot — return SKIP sentinel
     if is_nosnapshot_value(value):
         return SKIP
 
-    # 4. Pydantic models
+    # 5. Pydantic models
     if isinstance(value, BaseModel):
         fqn = _fqn(type(value))
         allowlist.add(fqn)
         # Iterate over model_fields directly so nested non-Pydantic objects
         # (dataclasses, @snapshotable) are serialized with their type envelopes
         # instead of being flattened to plain dicts by model_dump().
-        data = {
-            field_name: _serialize(getattr(value, field_name), allowlist)
-            for field_name in type(value).model_fields
-        }
+        data = {}
+        for field_name in type(value).model_fields:
+            serialized = _serialize(getattr(value, field_name), allowlist)
+            if serialized is not SKIP:
+                data[field_name] = serialized
         return {"__type__": _PYDANTIC, "__class__": fqn, "data": data}
 
-    # 5. Dataclasses
+    # 6. Dataclasses
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         fqn = _fqn(type(value))
         allowlist.add(fqn)
         fields = dataclasses.fields(value)
-        data = {f.name: _serialize(getattr(value, f.name), allowlist) for f in fields}
+        data = {}
+        for f in fields:
+            serialized = _serialize(getattr(value, f.name), allowlist)
+            if serialized is not SKIP:
+                data[f.name] = serialized
         return {"__type__": _DATACLASS, "__class__": fqn, "data": data}
 
-    # 6. @snapshotable classes
+    # 7. @snapshotable classes
     if is_snapshotable_class(type(value)):
         fqn = _fqn(type(value))
         allowlist.add(fqn)
-        data = {k: _serialize(v, allowlist) for k, v in vars(value).items()}
+        data = {}
+        for k, v in vars(value).items():
+            serialized = _serialize(v, allowlist)
+            if serialized is not SKIP:
+                data[k] = serialized
         return {"__type__": _DICT_CLASS, "__class__": fqn, "data": data}
 
-    # 7. Unknown type — error with helpful message
+    # 8. Unknown type — error with helpful message
     type_name = type(value).__qualname__
     raise SerializationError(
         f"Cannot serialize value of type {type_name!r}.\n"
@@ -208,7 +232,11 @@ def _deserialize_envelope(blob: dict[str, Any], allowlist: set[str]) -> Any:
         # Deserialize nested envelopes first (e.g. dataclass/snapshotable
         # fields), then let Pydantic validate the reconstructed objects.
         deserialized_data = {k: _deserialize(v, allowlist) for k, v in data.items()}
-        return cls.model_validate(deserialized_data)
+        # Filter to known fields for lenient restoration (handles extra="forbid"
+        # models that would reject extra fields from schema drift).
+        known_fields = set(cls.model_fields)
+        filtered = {k: v for k, v in deserialized_data.items() if k in known_fields}
+        return cls.model_validate(filtered)
 
     if envelope_type == _DATACLASS:
         # Lenient: filter to accepted kwargs, let defaults fill gaps

@@ -9,10 +9,11 @@ rejection as specified in the Phase 1 design.
 from __future__ import annotations
 
 import dataclasses
+import enum
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from nemo_oo_agents.errors.storage import DeserializationError, SerializationError
 from nemo_oo_agents.storage.markers import snapshotable
@@ -290,7 +291,7 @@ class TestSnapshotable:
         assert restored.label == "prod"
 
     def test_snapshotable_lenient_extra_keys(self):
-        """Deserialization ignores extra keys for @snapshotable."""
+        """Deserialization preserves extra keys via setattr for @snapshotable."""
         blob = {
             "__type__": "dict_class",
             "__class__": f"{Config.__module__}.Config",
@@ -541,3 +542,293 @@ class TestNestedClassImport:
                 {"__type__": "dict_class", "__class__": fqn, "data": {}},
                 {fqn},
             )
+
+
+# ---------------------------------------------------------------------------
+# Bug 1: SKIP must not leak into nested collections
+# ---------------------------------------------------------------------------
+
+
+class _NoSnapshotItem:
+    __nosnapshot__ = True
+
+
+class ModelWithNoSnapshot(BaseModel):
+    name: str
+    transient: Any = None
+
+
+@dataclasses.dataclass
+class DataclassWithNoSnapshot:
+    label: str
+    transient: Any = None
+
+
+@snapshotable
+class SnapshotableWithNoSnapshot:
+    def __init__(self, label: str, transient: Any = None):
+        self.label = label
+        self.transient = transient
+
+
+class TestNoSnapshotNested:
+    def test_nosnapshot_nested_in_dict(self):
+        """Dict containing a nosnapshot value drops that key."""
+        value = {"keep": "yes", "drop": _NoSnapshotItem()}
+        blob, al = serialize(value)
+        assert "keep" in blob
+        assert "drop" not in blob
+        assert blob == {"keep": "yes"}
+
+    def test_nosnapshot_nested_in_list(self):
+        """List containing a nosnapshot value removes that item."""
+        value = [1, _NoSnapshotItem(), 3]
+        blob, al = serialize(value)
+        assert blob == [1, 3]
+
+    def test_nosnapshot_nested_in_pydantic_model(self):
+        """Pydantic model with a nosnapshot field value drops the field from data."""
+        m = ModelWithNoSnapshot(name="test", transient=_NoSnapshotItem())
+        blob, al = serialize(m)
+        assert "transient" not in blob["data"]
+        assert blob["data"]["name"] == "test"
+        # Roundtrip: the field gets its default (None)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, ModelWithNoSnapshot)
+        assert restored.name == "test"
+        assert restored.transient is None
+
+    def test_nosnapshot_nested_in_dataclass(self):
+        """Dataclass with a nosnapshot field value drops the field from data."""
+        dc = DataclassWithNoSnapshot(label="test", transient=_NoSnapshotItem())
+        blob, al = serialize(dc)
+        assert "transient" not in blob["data"]
+        restored = deserialize(blob, al)
+        assert isinstance(restored, DataclassWithNoSnapshot)
+        assert restored.label == "test"
+        assert restored.transient is None
+
+    def test_nosnapshot_nested_in_snapshotable(self):
+        """Snapshotable with a nosnapshot attr value drops the attr from data."""
+        obj = SnapshotableWithNoSnapshot(label="test", transient=_NoSnapshotItem())
+        blob, al = serialize(obj)
+        assert "transient" not in blob["data"]
+        restored = deserialize(blob, al)
+        assert isinstance(restored, SnapshotableWithNoSnapshot)
+        assert restored.label == "test"
+        assert restored.transient is None
+
+    def test_nosnapshot_nested_in_tuple(self):
+        """Tuple containing a nosnapshot value removes that item."""
+        value = (1, _NoSnapshotItem(), 3)
+        blob, al = serialize(value)
+        assert blob["data"] == [1, 3]
+        restored = deserialize(blob, al)
+        assert restored == (1, 3)
+
+
+# ---------------------------------------------------------------------------
+# Bug 2: Enum serialization
+# ---------------------------------------------------------------------------
+
+
+class Color(enum.Enum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+
+
+class Priority(enum.IntEnum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+
+class ModelWithEnum(BaseModel):
+    color: Color
+    priority: Priority
+
+
+@dataclasses.dataclass
+class DataclassWithEnum:
+    color: Color
+    priority: Priority
+
+
+class TestEnum:
+    def test_enum_with_string_value(self):
+        """StrEnum-like enum serializes to its string value."""
+        blob, al = serialize(Color.RED)
+        assert blob == "red"
+        assert al == set()
+
+    def test_enum_with_int_value(self):
+        """IntEnum serializes to its int value."""
+        blob, al = serialize(Priority.HIGH)
+        assert blob == 3
+        assert al == set()
+
+    def test_enum_in_pydantic_model_roundtrip(self):
+        """Pydantic model with enum fields roundtrips correctly."""
+        m = ModelWithEnum(color=Color.GREEN, priority=Priority.MEDIUM)
+        blob, al = serialize(m)
+        # Enum values are serialized as their primitives
+        assert blob["data"]["color"] == "green"
+        assert blob["data"]["priority"] == 2
+        # Pydantic coerces primitives back to enum on model_validate
+        restored = deserialize(blob, al)
+        assert isinstance(restored, ModelWithEnum)
+        assert restored.color is Color.GREEN
+        assert restored.priority is Priority.MEDIUM
+
+    def test_enum_in_dataclass_roundtrip(self):
+        """Dataclass with enum fields: enums serialize to primitives,
+        deserialize as primitives (dataclass __init__ receives raw values)."""
+        dc = DataclassWithEnum(color=Color.BLUE, priority=Priority.LOW)
+        blob, al = serialize(dc)
+        assert blob["data"]["color"] == "blue"
+        assert blob["data"]["priority"] == 1
+        # Dataclass __init__ receives raw primitives — no coercion
+        restored = deserialize(blob, al)
+        assert isinstance(restored, DataclassWithEnum)
+        assert restored.color == "blue"
+        assert restored.priority == 1
+
+    def test_enum_in_list(self):
+        """Enum values in a list serialize to their primitives."""
+        value = [Color.RED, Priority.HIGH]
+        blob, al = serialize(value)
+        assert blob == ["red", 3]
+
+    def test_enum_in_dict_value(self):
+        """Enum values in a dict serialize to their primitives."""
+        value = {"color": Color.GREEN, "priority": Priority.LOW}
+        blob, al = serialize(value)
+        assert blob == {"color": "green", "priority": 1}
+
+
+# ---------------------------------------------------------------------------
+# Bug 3: extra="forbid" Pydantic models
+# ---------------------------------------------------------------------------
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    value: int = 0
+
+
+class TestPydanticExtraForbid:
+    def test_pydantic_extra_forbid_lenient_restore(self):
+        """Model with extra='forbid' deserializes when extra fields exist in blob."""
+        blob = {
+            "__type__": "pydantic",
+            "__class__": f"{StrictModel.__module__}.StrictModel",
+            "data": {"name": "test", "value": 42, "removed_field": "stale"},
+        }
+        fqn = f"{StrictModel.__module__}.StrictModel"
+        restored = deserialize(blob, {fqn})
+        assert isinstance(restored, StrictModel)
+        assert restored.name == "test"
+        assert restored.value == 42
+
+    def test_pydantic_extra_forbid_normal_roundtrip(self):
+        """Model with extra='forbid' roundtrips normally when no drift."""
+        m = StrictModel(name="ok", value=7)
+        blob, al = serialize(m)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, StrictModel)
+        assert restored.name == "ok"
+        assert restored.value == 7
+
+
+# ---------------------------------------------------------------------------
+# Bug 4: Non-string dict keys
+# ---------------------------------------------------------------------------
+
+
+class TestNonStringDictKeys:
+    def test_non_string_dict_keys_raise(self):
+        """{1: 'value'} raises SerializationError with a clear message."""
+        with pytest.raises(SerializationError, match="Dict key 1.*not a string"):
+            serialize({1: "value"})
+
+    def test_non_string_dict_keys_tuple_key(self):
+        """Tuple key also raises SerializationError."""
+        with pytest.raises(SerializationError, match="not a string"):
+            serialize({(1, 2): "value"})
+
+
+# ---------------------------------------------------------------------------
+# Additional edge case tests
+# ---------------------------------------------------------------------------
+
+
+class OptionalHolder(BaseModel):
+    item: MyModel | None = None
+
+
+class DeepModel(BaseModel):
+    label: str
+    payload: Any  # holds a dataclass at runtime
+
+
+@snapshotable
+class DeepConfig:
+    def __init__(self, host: str, port: int = 80):
+        self.host = host
+        self.port = port
+
+
+@dataclasses.dataclass
+class DeepContainer:
+    config: Any  # holds a snapshotable at runtime
+    score: int = 0
+
+
+class TestAdditionalEdgeCases:
+    def test_optional_pydantic_model_none(self):
+        """Optional[MyModel] field with value None roundtrips correctly."""
+        holder = OptionalHolder(item=None)
+        blob, al = serialize(holder)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, OptionalHolder)
+        assert restored.item is None
+
+    def test_optional_pydantic_model_with_value(self):
+        """Optional[MyModel] field with a value roundtrips correctly."""
+        holder = OptionalHolder(item=MyModel(name="test", value=1))
+        blob, al = serialize(holder)
+        restored = deserialize(blob, al)
+        assert isinstance(restored, OptionalHolder)
+        assert isinstance(restored.item, MyModel)
+        assert restored.item.name == "test"
+
+    def test_empty_tuple_roundtrip(self):
+        """() roundtrips as empty tuple."""
+        blob, al = serialize(())
+        assert blob["__type__"] == "tuple"
+        assert blob["data"] == []
+        restored = deserialize(blob, al)
+        assert restored == ()
+        assert type(restored) is tuple
+
+    def test_deeply_nested_mixed_types(self):
+        """Pydantic model containing a dataclass containing a snapshotable — full roundtrip."""
+        value = DeepModel(
+            label="deep",
+            payload=DeepContainer(
+                config=DeepConfig("db.local", 5432),
+                score=99,
+            ),
+        )
+        blob, al = serialize(value)
+        restored = deserialize(blob, al)
+
+        assert isinstance(restored, DeepModel)
+        assert restored.label == "deep"
+        assert isinstance(restored.payload, DeepContainer)
+        assert restored.payload.score == 99
+        assert isinstance(restored.payload.config, DeepConfig)
+        assert restored.payload.config.host == "db.local"
+        assert restored.payload.config.port == 5432
