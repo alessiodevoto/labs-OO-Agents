@@ -663,10 +663,7 @@ class Session:
                         await self.frontend.render(TextOutput(f"Agent error: {exc}", "error"))
                         break
                     result = task.result()
-                    if (
-                        result is RespondResult.STOP_WORK
-                        or result is RespondResult.WAIT_FOR_USER_INPUT
-                    ):
+                    if result is not RespondResult.CONTINUE_WORKING:
                         break
                     current_input = ""
                     continue

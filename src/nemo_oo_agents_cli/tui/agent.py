@@ -71,18 +71,19 @@ with hidden:
 
 
 class RespondResult(Enum):
-    """Return value for respond() / _respond_codeact() that controls what happens next.
+    """Return value for respond() that controls what happens next.
 
     Pass one of these to ``return_result()`` at the end of your turn:
 
     - ``RespondResult.STOP_WORK`` — done; the TUI will NOT call respond() again.
     - ``RespondResult.WAIT_FOR_USER_INPUT`` — done for now; hand control back to the user.
-    - Any other return (including ``None``) — the TUI will call respond() again
-      immediately without waiting for the user.  The agent keeps working by default.
+    - ``RespondResult.CONTINUE_WORKING`` — the TUI will call respond() again
+      immediately without waiting for the user.
     """
 
     STOP_WORK = "stop_work"
     WAIT_FOR_USER_INPUT = "wait_for_user_input"
+    CONTINUE_WORKING = "continue_working"
 
 
 # Default LLM for class definition (overridden at instantiation)
@@ -125,43 +126,45 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _orchestrate(agent: "TUIAgent", user_message: str) -> None:
+async def _orchestrate(agent: "TUIAgent", user_message: str) -> "RespondResult":
     """Core orchestration logic. Extracted for testability.
 
     Routes user messages through workflow phases based on agent._phase state.
     """
     if agent._phase == "brainstorming":
         await _continue_brainstorm(agent, user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if agent._phase == "awaiting_plan_approval":
         await _handle_plan_approval(agent, user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     intent = await agent.classify_intent(user_message)
 
     if intent.task_type == "question":
         await agent.answer_question(user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "feature":
         agent._phase = "brainstorming"
         spec = await agent.brainstorm(user_message)
         if not spec.complete:
-            return
+            return RespondResult.WAIT_FOR_USER_INPUT
         await _proceed_to_plan(agent, spec)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "bugfix":
         await agent.debug_issue(user_message)
         await _verify_and_complete(agent)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "refactor":
         agent._phase = "planning"
         plan = await agent.write_plan(user_message)
         await _execute_plan(agent, plan)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
+
+    return RespondResult.WAIT_FOR_USER_INPUT
 
 
 async def _continue_brainstorm(agent: "TUIAgent", user_message: str) -> None:
@@ -257,7 +260,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
     @hidden
     @strategy(CodeActStrategy())
-    async def respond(self, user_message: str) -> "RespondResult | None":
+    async def respond(self, user_message: str) -> "RespondResult":
         """Respond to the user's message.
 
         Message: {user_message}
@@ -515,7 +518,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    async def respond(self, user_message: str) -> "RespondResult | None":
+    async def respond(self, user_message: str) -> "RespondResult":
         """Respond to the user's message.
 
         Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
@@ -525,14 +528,13 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         through workflow phases. Otherwise uses a single CodeAct strategy.
         """
         if self._config.orchestrator:
-            await _orchestrate(self, user_message)
-            return None
+            return await _orchestrate(self, user_message)
         else:
             return await self._respond_codeact(user_message)
 
     @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
-    async def _respond_codeact(self, user_message: str) -> "RespondResult | None":
+    async def _respond_codeact(self, user_message: str) -> "RespondResult":
         """Respond to the user's message using a single CodeAct strategy.
 
         Message: {user_message}
