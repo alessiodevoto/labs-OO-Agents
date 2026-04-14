@@ -144,11 +144,8 @@ class PredictStrategy(GenerationStrategy):
         Raises:
             GenerationError: If no return type or validation fails after max retries.
         """
-        # Return type is resolved by the runtime before invoking the strategy
-        # (get_type_hints runs against the original method's globals, so PEP 563
-        # forward references are already resolved).  Use call.return_type directly.
+        # Return type is pre-resolved by _execute_with_generation (handles PEP 563).
         return_type = call.return_type
-
         if return_type is None:
             raise GenerationError(
                 f"Method `{call.method_name}` has no return type annotation. "

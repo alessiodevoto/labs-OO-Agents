@@ -917,8 +917,8 @@ class TestBuildBuiltins:
             decorator="strategy",
             signature="(self, x: int, y: str) -> str",
             docstring="Compute with params.",
-            args=(42, "hello"),
-            kwargs={"x": 42, "y": "hello"},  # merged by _execute_with_generation
+            args=(),
+            kwargs={"x": 42, "y": "hello"},
         )
         rt = MagicMock()
         rt.agent = agent
@@ -2233,11 +2233,6 @@ class TestExecutionContextWithSkillsSection:
 
 
 # ---------------------------------------------------------------------------
-# CodeActStrategy.execute() - get_type_hints exception path (lines 546-548)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # CodeActStrategy - direct fields in return_result (line 1305)
 # ---------------------------------------------------------------------------
 
@@ -3200,8 +3195,8 @@ class TestBuildBuiltinsModuleContext:
             decorator="strategy",
             signature="(self, x: int) -> int",
             docstring="Compute.",
-            args=(5,),
-            kwargs={"x": 5},  # merged by _execute_with_generation
+            args=(),
+            kwargs={"x": 5},
         )
         rt = MagicMock()
         rt.agent = agent
@@ -3212,7 +3207,7 @@ class TestBuildBuiltinsModuleContext:
         assert "reasoning" in builtins
         assert "message" in builtins
         assert "return_result" in builtins
-        # Should have method param x=5
+        # Should have method param x=5 (from merged kwargs)
         assert "x" in builtins
         assert builtins["x"] == 5
 
