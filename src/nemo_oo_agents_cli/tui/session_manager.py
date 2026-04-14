@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Session management — UUID-keyed persistent conversation history.
 
 Each session gets a ``SQLiteStorageManager`` at
@@ -92,7 +94,10 @@ class SessionManager:
         self._name: str | None = None
         self._user_named: bool = False
 
-        # Register TUI event types so they deserialize correctly
+        # TUI event types are auto-registered in the global _EVENT_REGISTRY
+        # via __pydantic_init_subclass__, so these per-instance register calls
+        # are no longer strictly necessary.  Kept for backward compatibility
+        # with any code that relies on the per-backend registry.
         for cls in TUI_EVENT_TYPES:
             storage.event_manager.register_event_type(cls)
 

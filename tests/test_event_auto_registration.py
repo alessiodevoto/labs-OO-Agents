@@ -168,6 +168,45 @@ class TestCollisionWarning:
         # Last-registered wins
         assert _EVENT_REGISTRY["collision_test_type"] is CollisionB
 
+    def test_auto_derived_collision_with_explicit(self, caplog):
+        """Auto-derived name collides with a later explicit event_type of the same value."""
+
+        class WidgetStatus(EventBase):
+            value: int = 0
+
+        # "widget_status" is now auto-registered.
+        assert _EVENT_REGISTRY["widget_status"] is WidgetStatus
+
+        with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
+
+            class UnrelatedName(EventBase):
+                event_type: str = "widget_status"
+                value: int = 99
+
+        assert any("widget_status" in record.message for record in caplog.records)
+        # Last-registered wins
+        assert _EVENT_REGISTRY["widget_status"] is UnrelatedName
+
+    def test_auto_derived_collision_both_implicit(self, caplog):
+        """Two classes whose names auto-derive to the same snake_case trigger a warning.
+
+        HTTPSError -> https_error, HttpsError -> https_error.
+        """
+
+        class HTTPSError(EventBase):
+            code: int = 0
+
+        assert _EVENT_REGISTRY.get("https_error") is HTTPSError
+
+        with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
+
+            class HttpsError(EventBase):  # noqa: N801 – intentional name for collision test
+                code: int = 1
+
+        assert any("https_error" in record.message for record in caplog.records)
+        # Last-registered wins
+        assert _EVENT_REGISTRY["https_error"] is HttpsError
+
 
 # ---------------------------------------------------------------------------
 # Private class skipped

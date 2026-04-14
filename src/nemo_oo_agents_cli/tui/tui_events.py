@@ -1,12 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """TUI-specific metadata events stored in the per-session SQLite DB.
 
 These are ``Metadata`` subclasses — persisted to storage but never shown
-to the LLM.  Register them with the event manager at startup:
-
-    agent.event_manager.register_event_type(TUISessionStart)
-    agent.event_manager.register_event_type(TUISessionRename)
-    agent.event_manager.register_event_type(TUIUserInput)
-    agent.event_manager.register_event_type(TUIAgentMessage)
+to the LLM.  Each type is **auto-registered** in the global
+``_EVENT_REGISTRY`` via ``EventBase.__pydantic_init_subclass__``, so
+manual ``register_event_type()`` calls are no longer needed.
 """
 
 from typing import ClassVar, Literal
@@ -56,7 +55,7 @@ class TUIAgentMessage(Metadata):
     content: str = ""
 
 
-# All TUI event types — pass each to event_manager.register_event_type()
+# All TUI event types (auto-registered; kept as a convenience tuple)
 TUI_EVENT_TYPES: tuple[type[Metadata], ...] = (
     TUISessionStart,
     TUISessionRename,
