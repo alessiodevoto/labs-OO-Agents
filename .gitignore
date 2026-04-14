@@ -316,7 +316,7 @@ debug_http_logs/
 # Debug handler dumps (written to cwd on SIGUSR2)
 debug_dump_*.txt
 # NeMo OO project directory (libraries, traces, config)
-.nemo_oo/
+.nemo_oo_agents/
 # Shell config stubs (empty read-only files injected by sandbox)
 .zshrc
 .zprofile

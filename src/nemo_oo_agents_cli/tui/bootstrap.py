@@ -42,7 +42,7 @@ class BootstrapResult:
 
 _CONFIG_TOML_TEMPLATE = """\
 # NeMo OO Agents TUI — project-local configuration
-# Place this file at .nemo_oo/config.toml to override defaults.
+# Place this file at .nemo_oo_agents/config.toml to override defaults.
 # All keys are optional; omit any you don't want to change.
 
 [tui]
@@ -51,7 +51,7 @@ _CONFIG_TOML_TEMPLATE = """\
 
 # Write trace files to this directory (relative to project root).
 # Omit or comment out to use OTLP auto-probe only (no files written).
-# trace = ".nemo_oo/traces"
+# trace = ".nemo_oo_agents/traces"
 
 # Show agent Python code execution panels
 # python = false
@@ -62,7 +62,7 @@ _CONFIG_TOML_TEMPLATE = """\
 
 
 def _scaffold_project_dir(config: "Config") -> None:
-    """Create .nemo_oo/ and write a config.toml template on first run."""
+    """Create .nemo_oo_agents/ and write a config.toml template on first run."""
     from nemo_oo_agents_cli._common import PROJECT_DIR_NAME, find_project_root
 
     project_dir = find_project_root() / PROJECT_DIR_NAME
@@ -112,7 +112,7 @@ async def bootstrap(
         )
 
     # ------------------------------------------------------------------
-    # Project directory — scaffold .nemo_oo/ on first run
+    # Project directory — scaffold .nemo_oo_agents/ on first run
     # ------------------------------------------------------------------
     _scaffold_project_dir(config)
 
