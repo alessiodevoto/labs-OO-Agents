@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Structured output types for NeMo OO Agents frontends.
 
 Commands and agent events produce ``Output`` instances; each ``Frontend``
@@ -64,9 +66,11 @@ class AgentMessage:
     """A markdown-formatted message produced by the agent via ``message()``."""
 
     content: str
+    # False for 2nd+ message() calls in the same turn — suppresses the OO ── rule
+    show_rule: bool = True
 
     def to_json(self) -> dict:
-        return {"type": "agent_message", "content": self.content}
+        return {"type": "agent_message", "content": self.content, "show_rule": self.show_rule}
 
 
 @dataclass

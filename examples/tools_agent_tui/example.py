@@ -23,6 +23,7 @@ import asyncio
 from collections import defaultdict
 
 from nemo_oo_agents import Agent
+from nemo_oo_agents_cli.tui.agent import RespondResult
 from nemo_oo_agents_cli.tui.config import DEFAULT_MODEL, Config
 from nemo_oo_agents_cli.tui.main import main
 from unifiedllm import FakeLLMClient, get_llm_client
@@ -83,7 +84,7 @@ class NotesAgent(Agent, llm=_llm):
 
     # -- generation method ----------------------------------------------------
 
-    async def respond(self, user_input: str) -> None:
+    async def respond(self, user_input: str) -> RespondResult:
         """You are a helpful personal assistant managing the user's notes.
 
         Available tools (call via execute_python):
@@ -93,6 +94,7 @@ class NotesAgent(Agent, llm=_llm):
 
         Help the user manage their notes. Use the tools above to read or write
         notes as needed, then send a clear reply with message().
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) when done.
         """
         ...
 

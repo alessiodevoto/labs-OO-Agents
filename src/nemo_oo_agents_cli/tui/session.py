@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Session — the REPL loop that glues a Frontend to an Agent.
 
 ``Session`` is frontend-agnostic: it reads input via ``frontend.get_input()``,
@@ -216,6 +218,7 @@ class Session:
         self._unsubscribe_fns: list = []
         self._pending_code: dict[str, str] = {}  # tool_call_id → code
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
+        self._agent_has_messaged: bool = False  # True after first message() in current turn
 
     @property
     def show_python(self) -> bool:
@@ -337,7 +340,11 @@ class Session:
             frontend = self.frontend
 
             def _render_msg(text: str) -> None:
-                asyncio.run_coroutine_threadsafe(frontend.render(AgentMessage(content=text)), loop)
+                show_rule = not self._agent_has_messaged
+                self._agent_has_messaged = True
+                asyncio.run_coroutine_threadsafe(
+                    frontend.render(AgentMessage(content=text, show_rule=show_rule)), loop
+                )
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
@@ -536,16 +543,12 @@ class Session:
         from prompt_toolkit.input.vt100_parser import Vt100Parser
         from prompt_toolkit.keys import Keys
 
+        from .agent import RespondResult
         from .output import TextOutput
 
-        # Clear previous streaming state before new turn
         self._clear_streaming_state()
 
-        await self.frontend.start_thinking()
-
-        task = asyncio.create_task(self.agent.respond(user_input))  # type: ignore[union-attr]
-
-        # --- Interrupt detection (Escape + Ctrl+C) ---
+        # --- Interrupt detection (set up once for the full turn) ---
         _interrupted = threading.Event()
         _ctrl_c_count = 0
         _force_exit = False
@@ -616,52 +619,63 @@ class Session:
                         pass
                     _raw_ctx = None
 
-        # Poll the threading.Event + frontend disconnect.
-        async def _poll_interrupt() -> None:
-            while not task.done():
-                if _interrupted.is_set():
-                    return
-                if not self.frontend.is_connected:
-                    _interrupted.set()
-                    return
-                await asyncio.sleep(0.1)
-
-        poll_task = asyncio.create_task(_poll_interrupt())
-
+        # --- Turn loop: repeat until agent returns STOP_WORK ---
+        current_input = user_input
         try:
-            done, _pending = await asyncio.wait(
-                {task, poll_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            await self.frontend.start_thinking()
+            while not _interrupted.is_set():
+                self._agent_has_messaged = False  # first message() of each respond() gets the rule
+
+                task = asyncio.create_task(self.agent.respond(current_input))  # type: ignore[union-attr]
+
+                async def _poll_interrupt(t: asyncio.Task = task) -> None:
+                    while not t.done():
+                        if _interrupted.is_set():
+                            return
+                        if not self.frontend.is_connected:
+                            _interrupted.set()
+                            return
+                        await asyncio.sleep(0.1)
+
+                poll_task = asyncio.create_task(_poll_interrupt())
+                try:
+                    await asyncio.wait({task, poll_task}, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    poll_task.cancel()
+                    try:
+                        await poll_task
+                    except asyncio.CancelledError:
+                        pass
+
+                if _interrupted.is_set():
+                    task.cancel()
+                    try:
+                        await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
+                    except Exception:  # Suppress all errors during graceful cancellation
+                        pass
+                    if not _force_exit:
+                        await self.frontend.render(TextOutput("Agent interrupted.", "warning"))
+                    break
+
+                if task.done():
+                    exc = task.exception()
+                    if exc is not None:
+                        await self.frontend.render(TextOutput(f"Agent error: {exc}", "error"))
+                        break
+                    result = task.result()
+                    if result is not RespondResult.CONTINUE_WORKING:
+                        break
+                    current_input = ""
+                    continue
+                break
         finally:
-            poll_task.cancel()
-            try:
-                await poll_task
-            except asyncio.CancelledError:
-                pass
-
-        if _interrupted.is_set():
-            task.cancel()
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-            except (TimeoutError, asyncio.CancelledError, Exception):
-                pass
-            if not _force_exit:
-                await self.frontend.render(TextOutput("Agent interrupted.", "warning"))
-        elif task.done():
-            exc = task.exception()
-            if exc is not None:
-                await self.frontend.render(TextOutput(f"Agent error: {exc}", "error"))
-
-        # --- Cleanup ---
-        await self.frontend.stop_thinking()
-
-        _stop_reader.set()
-        if _raw_ctx is not None:
-            try:
-                _raw_ctx.__exit__(None, None, None)
-            except Exception:
-                pass
+            await self.frontend.stop_thinking()
+            _stop_reader.set()
+            if _raw_ctx is not None:
+                try:
+                    _raw_ctx.__exit__(None, None, None)
+                except Exception:
+                    pass
 
         if _force_exit:
             raise KeyboardInterrupt

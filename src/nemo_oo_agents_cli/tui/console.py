@@ -48,8 +48,8 @@ class TUIConsole:
             self._live_spinner.stop()
             self._live_spinner = None
 
-    def print_agent(self, message: str) -> None:
-        """Print an agent response with a rule header."""
+    def print_agent(self, message: str, *, show_rule: bool = True) -> None:
+        """Print an agent response, optionally with the OO ── rule header."""
         import textwrap
 
         # Aggressive cleanup for markdown rendering:
@@ -67,7 +67,10 @@ class TUIConsole:
         # 4. Normalize line endings and rejoin
         cleaned = "\n".join(line.rstrip() for line in lines)
 
-        self.console.print(Rule(title="[agent]OO[/agent]", style=COLORS["surface2"], align="left"))
+        if show_rule:
+            self.console.print(
+                Rule(title="[agent]OO[/agent]", style=COLORS["surface2"], align="left")
+            )
         self.console.print(Markdown(cleaned))
 
     def print_error(self, message: str) -> None:

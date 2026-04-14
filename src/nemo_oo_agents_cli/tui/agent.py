@@ -5,13 +5,12 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
+from enum import Enum
 from typing import Annotated
 
-from agentdoc import spec
+from agentdoc import doc, spec
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.storage.markers import nosnapshot
-from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
-from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 with hidden:
     from collections.abc import Callable
@@ -20,6 +19,8 @@ with hidden:
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
+    from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
 import os
@@ -57,15 +58,33 @@ with hidden:
 
     from .config import AgentConfig, SummarizationConfig
 
-from .models import (
-    BrainstormResult,
-    DiagnosisResult,
-    Intent,
-    Plan,
-    ReviewResult,
-    StepResult,
-    VerificationResult,
-)
+with hidden:
+    from .models import (
+        BrainstormResult,
+        DiagnosisResult,
+        Intent,
+        Plan,
+        ReviewResult,
+        StepResult,
+        VerificationResult,
+    )
+
+
+class RespondResult(Enum):
+    """Return value for respond() that controls what happens next.
+
+    Pass one of these to ``return_result()`` at the end of your turn:
+
+    - ``RespondResult.STOP_WORK`` — done; the TUI will NOT call respond() again.
+    - ``RespondResult.WAIT_FOR_USER_INPUT`` — done for now; hand control back to the user.
+    - ``RespondResult.CONTINUE_WORKING`` — the TUI will call respond() again
+      immediately without waiting for the user.
+    """
+
+    STOP_WORK = "stop_work"
+    WAIT_FOR_USER_INPUT = "wait_for_user_input"
+    CONTINUE_WORKING = "continue_working"
+
 
 # Default LLM for class definition (overridden at instantiation)
 with hidden:
@@ -107,43 +126,45 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _orchestrate(agent: "TUIAgent", user_message: str) -> None:
+async def _orchestrate(agent: "TUIAgent", user_message: str) -> "RespondResult":
     """Core orchestration logic. Extracted for testability.
 
     Routes user messages through workflow phases based on agent._phase state.
     """
     if agent._phase == "brainstorming":
         await _continue_brainstorm(agent, user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if agent._phase == "awaiting_plan_approval":
         await _handle_plan_approval(agent, user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     intent = await agent.classify_intent(user_message)
 
     if intent.task_type == "question":
         await agent.answer_question(user_message)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "feature":
         agent._phase = "brainstorming"
         spec = await agent.brainstorm(user_message)
         if not spec.complete:
-            return
+            return RespondResult.WAIT_FOR_USER_INPUT
         await _proceed_to_plan(agent, spec)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "bugfix":
         await agent.debug_issue(user_message)
         await _verify_and_complete(agent)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
 
     if intent.task_type == "refactor":
         agent._phase = "planning"
         plan = await agent.write_plan(user_message)
         await _execute_plan(agent, plan)
-        return
+        return RespondResult.WAIT_FOR_USER_INPUT
+
+    return RespondResult.WAIT_FOR_USER_INPUT
 
 
 async def _continue_brainstorm(agent: "TUIAgent", user_message: str) -> None:
@@ -216,9 +237,16 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(
                 event_manager=self.event_manager
             )
+            self.context["web"] = doc(self.web)
 
     def message(self, text: str) -> None:
-        """Send a Markdown message to the user."""
+        """Send a Markdown message to the user.
+
+        Each call renders as an independent block — so every call must be a
+        complete, self-contained Markdown document.  In particular, never split
+        a table across calls: the header row and all data rows must be in the
+        same ``message()`` call, otherwise the table will not render correctly.
+        """
         from .tui_events import TUIAgentMessage
 
         self.event_manager.add(TUIAgentMessage(content=str(text)))
@@ -233,13 +261,14 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
     @hidden
     @strategy(CodeActStrategy())
-    async def respond(self, user_message: str) -> None:
+    async def respond(self, user_message: str) -> "RespondResult":
         """Respond to the user's message.
 
         Message: {user_message}
 
         Use self.message() to send formatted Markdown to the user.
-        Call return_result() when done to hand control back to the user.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to hand control back to the user.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
         """
         ...
 
@@ -247,20 +276,22 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
     """You are NeMo OO Agents, a development assistant running in a terminal.
 
-    Call return_result() to yield back to the user.
+    Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
+    Call return_result(RespondResult.STOP_WORK) when completely done.
 
     You have access to these tools via self:
     - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
-    - self.files — Read/write files (.read(), .write(), .str_replace(), .list(), .find(), .grep())
+    - self.files — Read/write files (.read(), .write(), .edit_file(), .list(), .find(), .grep())
 
     Communication:
     - Use self.message("text") to send formatted Markdown to the user during your turn
     - Use Python comments to log internal thinking
-    - Use return_result() to end your turn — the user will then reply and you'll be called again
+    - Use return_result(RespondResult.WAIT_FOR_USER_INPUT) to end your turn — the user will then reply and you'll be called again
 
-    This is a multi-turn conversation. return_result() is like pressing `send`: it ends your current
-    response and hands control back to the user. If you need more information, ask via self.message()
-    then call return_result() to wait for their reply.
+    This is a multi-turn conversation. return_result(RespondResult.WAIT_FOR_USER_INPUT) is like pressing
+    `send`: it ends your current response and hands control back to the user. If you need more
+    information, ask via self.message() then call return_result(RespondResult.WAIT_FOR_USER_INPUT) to
+    wait for their reply.
 
     Workflow:
     - Execute ONE thing at a time, then observe results
@@ -348,6 +379,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
             "preserve_recent": preserve_recent,
         }
 
+    @hidden
     @strategy(PredictStrategy())
     async def classify_intent(self, user_message: str) -> Intent:
         """Classify the user's message into a task type.
@@ -362,6 +394,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         """
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30)))
     async def answer_question(self, user_message: str) -> None:
         """Answer the user's question or handle their simple request.
@@ -374,6 +407,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         """
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15)))
     async def brainstorm(self, request: str) -> BrainstormResult:
         """Explore requirements for: {request}
@@ -398,6 +432,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Do NOT write implementation code. Do NOT skip asking questions."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def write_plan(self, spec: str) -> Plan:
         """Create an implementation plan.
@@ -413,6 +448,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Present the plan to the user via self.message() before returning it."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
     async def implement_step(self, step: str) -> StepResult:
         """Implement this plan step using test-driven development.
@@ -433,6 +469,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         If the test passes immediately, your test is wrong — fix the test first."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30)))
     async def debug_issue(self, description: str) -> DiagnosisResult:
         """Debug: {description}
@@ -451,6 +488,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         Do NOT guess — investigate systematically."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def verify_work(self) -> VerificationResult:
         """Verify that recent changes work correctly.
@@ -464,6 +502,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         If tests fail, report which ones and why."""
         ...
 
+    @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
     async def review_changes(self, plan: str) -> ReviewResult:
         """Review the implementation against the plan.
@@ -480,29 +519,31 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    async def respond(self, user_message: str) -> None:
+    async def respond(self, user_message: str) -> "RespondResult":
         """Respond to the user's message.
 
-        Call return_result() to yield back to the user.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
 
         When orchestrator mode is enabled (config.orchestrator=True), routes
         through workflow phases. Otherwise uses a single CodeAct strategy.
         """
         if self._config.orchestrator:
-            await _orchestrate(self, user_message)
+            return await _orchestrate(self, user_message)
         else:
-            await self._respond_codeact(user_message)
+            return await self._respond_codeact(user_message)
 
     @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
-    async def _respond_codeact(self, user_message: str) -> None:
+    async def _respond_codeact(self, user_message: str) -> "RespondResult":
         """Respond to the user's message using a single CodeAct strategy.
 
         Message: {user_message}
 
         Use tools to help the user.
         Use self.message() to respond with formatted Markdown.
-        Call return_result() when done — this ends your turn and the user can reply.
+        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to end your turn.
+        Call return_result(RespondResult.STOP_WORK) when completely done.
         Execute ONE thing at a time, then observe results.
         """
         ...

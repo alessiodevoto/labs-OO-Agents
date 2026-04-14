@@ -141,7 +141,7 @@ class TerminalFrontend:
         elif isinstance(output, HelpOutput):
             self._console.print_help(output.commands)
         elif isinstance(output, AgentMessage):
-            self._console.print_agent(output.content)
+            self._console.print_agent(output.content, show_rule=output.show_rule)
         elif isinstance(output, CodeExecution):
             self._render_code_execution(output)
         elif isinstance(output, StartupInfo):
