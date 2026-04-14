@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from context_blocks import Event, EventBase, EventStatus, Metadata
+from context_blocks.events import _EVENT_REGISTRY
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -165,6 +166,9 @@ class SQLiteEventBackend:
         raw = json.loads(data)
         event_type = raw.get("event_type", "")
         cls = self._registry.get(event_type)
+        if cls is None:
+            # Fall back to the global auto-registration registry
+            cls = _EVENT_REGISTRY.get(event_type)
         if cls is None:
             logger.warning("Unknown event_type %r, falling back to Metadata", event_type)
             return Metadata.model_validate(raw)
