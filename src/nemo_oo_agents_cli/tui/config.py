@@ -6,7 +6,7 @@ Hydra-like config: structured dataclass with Config.load(**overrides).
 
 Resolution order (last wins):
     1. Dataclass defaults
-    2. Environment variables (_ENV map)
+    2. Config file (.nemo_oo_agents/config.toml, [tui] section)
     3. Keyword overrides from CLI args (_OVERRIDES map)
 
 Usage:
