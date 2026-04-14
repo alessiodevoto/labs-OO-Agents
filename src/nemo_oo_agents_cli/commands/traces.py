@@ -17,7 +17,8 @@ from pathlib import Path
 
 import click
 
-from nemo_oo_agents_cli._common import find_project_root, format_size
+from nemo_oo_agents.paths import find_project_root
+from nemo_oo_agents_cli._common import format_size
 
 SESSION_ID_RE = re.compile(r'"session\.id"\s*:\s*"[^"]+"')
 

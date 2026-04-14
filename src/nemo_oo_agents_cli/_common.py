@@ -4,14 +4,10 @@
 
 Import from here instead of duplicating helpers across command modules:
 
-    from nemo_oo_agents_cli._common import find_project_root, format_size
+    from nemo_oo_agents_cli._common import format_size, load_dotenv_into
 """
 
 from pathlib import Path
-
-from nemo_oo_agents.paths import DIR_NAME as PROJECT_DIR_NAME
-from nemo_oo_agents.paths import find_project_root
-from nemo_oo_agents.paths import get_project_dir, get_user_dir
 
 
 def format_size(size_bytes: int) -> str:

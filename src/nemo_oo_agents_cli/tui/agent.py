@@ -5,7 +5,6 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
-from pathlib import Path
 from typing import Annotated
 
 from agentdoc import spec
@@ -305,7 +304,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self._workflow_state: dict = {}
 
         from nemo_oo_agents.config.tool_configs import BashConfig
-
         from nemo_oo_agents.paths import get_project_dir
 
         _project_dir = get_project_dir()
