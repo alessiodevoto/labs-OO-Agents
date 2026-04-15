@@ -101,12 +101,14 @@ class TemplateStrategy(GenerationStrategy):
         if not template:
             return ""
 
-        # Build context for template expansion
+        # Build context for template expansion.
+        # tc is injected AFTER kwargs so it always refers to the truncation config —
+        # even if a method has a parameter named "tc", the config wins.
         context = {
             "self": runtime.agent,  # For {self.xxx} expressions
             "call": call,  # For {call.xxx} expressions
-            "tc": runtime.truncation_config,  # For {original_call.format_parameters_as_code(tc=tc)}
             **call.kwargs,  # Method parameters as variables
+            "tc": runtime.truncation_config,  # For {original_call.format_parameters_as_code(tc=tc)}
         }
 
         # Expand using runtime's powerful expand_variables

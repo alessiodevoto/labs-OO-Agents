@@ -285,6 +285,75 @@ Evaluation complete."""
         assert result == "Method: analyze, Tools: 3"
 
 
+class TestTemplateTcContext:
+    """tc (TruncationConfig) is injected into TemplateStrategy context.
+
+    tc is injected AFTER kwargs so it always refers to the truncation config,
+    even if a method has a parameter also named 'tc'.
+    """
+
+    @pytest.mark.asyncio
+    async def test_tc_available_in_template(self):
+        """tc is accessible in template expressions as runtime.truncation_config."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+        strategy = TemplateStrategy()
+        runtime = MockRuntime()
+
+        call = CurrentCall(
+            id="test_tc_1",
+            method_name="test",
+            decorator="plan",
+            docstring="elements={tc.max_pprint_elements}",
+            kwargs={},
+        )
+
+        result = await strategy.execute(runtime, call)
+        assert str(DEFAULT_TRUNCATION_CONFIG.max_pprint_elements) in result
+
+    @pytest.mark.asyncio
+    async def test_tc_format_parameters_as_code_pattern(self):
+        """The canonical usage: {call.format_parameters_as_code(tc=tc)} works."""
+        strategy = TemplateStrategy()
+        runtime = MockRuntime()
+
+        call = CurrentCall(
+            id="test_tc_2",
+            method_name="test",
+            decorator="plan",
+            signature="(items: list)",
+            docstring="Params:\n{call.format_parameters_as_code(tc=tc)}",
+            args=(list(range(5)),),
+            kwargs={},
+        )
+
+        result = await strategy.execute(runtime, call)
+        assert "items" in result  # parameter name present
+        assert "0" in result  # values present
+
+    @pytest.mark.asyncio
+    async def test_tc_wins_over_kwarg_named_tc(self):
+        """tc injected after kwargs — a method param named 'tc' doesn't shadow the config."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+        strategy = TemplateStrategy()
+        runtime = MockRuntime()
+
+        # Method has a kwarg literally named "tc" with a non-config value
+        call = CurrentCall(
+            id="test_tc_3",
+            method_name="test",
+            decorator="plan",
+            docstring="elements={tc.max_pprint_elements}",
+            kwargs={"tc": "this_should_be_overridden"},
+        )
+
+        result = await strategy.execute(runtime, call)
+        # The injected TruncationConfig wins — the string kwarg was overridden
+        assert str(DEFAULT_TRUNCATION_CONFIG.max_pprint_elements) in result
+        assert "this_should_be_overridden" not in result
+
+
 class TestPlanDecoratorOnStrategies:
     """Tests for @strategy decorator working on strategy methods."""
 
