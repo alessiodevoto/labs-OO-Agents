@@ -3,6 +3,7 @@
 from .bash_tool import BashResult, BashTool, FileResult, FileTool
 from .library_writing_lib import LibraryWriting
 from .method_writing_lib import MethodWriting
+from .todo import Todo, TodoManager
 
 __all__ = [
     "BashResult",
@@ -11,4 +12,6 @@ __all__ = [
     "FileResult",
     "LibraryWriting",
     "MethodWriting",
+    "Todo",
+    "TodoManager",
 ]

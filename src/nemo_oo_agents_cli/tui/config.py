@@ -42,6 +42,7 @@ class SummarizationConfig:
     max_tokens: int = 100_000
     window_size: int = 50
     preserve_recent: int = 10
+    target_chars: int = 4000
 
 
 @dataclass
@@ -173,6 +174,21 @@ class Config:
                     cfg.tui.skills_dirs.append(p)
 
         # ── Post-processing ───────────────────────────────────────────
+        # Auto-discover skill dirs registered via entry points
+        # (e.g. wtf-issues registers nemo_oo_tui.skills_dirs → its skills-nemo/)
+        try:
+            from importlib.metadata import entry_points as _entry_points
+
+            for _ep in _entry_points(group="nemo_oo_tui.skills_dirs"):
+                try:
+                    _d = Path(str(_ep.load()()))
+                    if _d not in cfg.tui.skills_dirs:
+                        cfg.tui.skills_dirs.append(_d)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Filter skills dirs to existing directories
         cfg.tui.skills_dirs = [d for d in cfg.tui.skills_dirs if d.exists()]
 

@@ -5,7 +5,6 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
-from enum import Enum
 from typing import Annotated
 
 from agentdoc import doc, spec
@@ -14,12 +13,13 @@ from nemo_oo_agents.storage.markers import nosnapshot
 
 with hidden:
     from collections.abc import Callable
+    from enum import Enum
 
     from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting
+    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
@@ -117,6 +117,7 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
         config=TokenBudgetConfig(
             max_tokens=config.max_tokens,
             preserve_recent=config.preserve_recent,
+            target_chars=config.target_chars,
         ),
     )
 
@@ -260,7 +261,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    @strategy(CodeActStrategy())
+    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def respond(self, user_message: str) -> "RespondResult":
         """Respond to the user's message.
 
@@ -282,6 +283,31 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     You have access to these tools via self:
     - self.bash — Execute shell commands (returns BashResult with .stdout, .stderr, .return_code)
     - self.files — Read/write files (.read(), .write(), .edit_file(), .list(), .find(), .grep())
+    - self.todo — Plan and track multi-step work (see doc(self.todo) for full API)
+    - await self.do_it(id, title, notes) — Execute a todo item yourself (inline, no subagent)
+
+    Working with todos:
+    For non-trivial work, plan with todos, then execute them.
+
+    Execute a todo yourself (inline):
+        t = self.todo.add("Explore the codebase")
+        result = await self.do_it(t.id, t.title, t.notes)
+
+    Delegate to a Doer subagent (isolates context, good for complex tasks):
+        dk = dict(llm=self._llm, bash=self.bash, files=self.files, todo=self.todo, skills_dirs=self._skills_dirs)
+        result = await DoerAgent(**dk).execute(t.id, t.title, t.notes)
+
+    Parallel execution (when todos are independent — use asyncio.gather):
+        t1 = self.todo.add("Fix module A")
+        t2 = self.todo.add("Fix module B")
+        t3 = self.todo.add("Run tests", deps=[t1.id, t2.id])
+        dk = dict(llm=self._llm, bash=self.bash, files=self.files, todo=self.todo, skills_dirs=self._skills_dirs)
+        r1, r2 = await asyncio.gather(
+            DoerAgent(**dk).execute(t1.id, t1.title, t1.notes),
+            DoerAgent(**dk).execute(t2.id, t2.title, t2.notes),
+        )
+
+    The <todo_status> context block shows current progress every turn.
 
     Communication:
     - Use self.message("text") to send formatted Markdown to the user during your turn
@@ -309,6 +335,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     bash: Annotated[BashTool, nosnapshot]
     files: Annotated[FileTool, nosnapshot]
     libs: Annotated[LibraryWriting, nosnapshot]
+    todo: TodoManager
+    _skills_dirs: Annotated[list, hidden, nosnapshot]
     _summarizers: Annotated[list, hidden, nosnapshot]
 
     def __init__(
@@ -334,6 +362,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self._phase: str = "idle"
         self._workflow_state: dict = {}
 
+        self._skills_dirs: list = []  # set by bootstrap with CLI --skills-dir + entry points
+
         from nemo_oo_agents.config.tool_configs import BashConfig
         from nemo_oo_agents.paths import get_project_dir
 
@@ -345,15 +375,20 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         )
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self, path=_project_dir / "libs")
+        self.todo = TodoManager()
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
 
+        # Show todo progress to the LLM every turn
+        self.context.set_dynamic("todo_status", "self.todo.status()")
+
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
 
+    @hidden
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
 
@@ -385,6 +420,25 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             "max_tokens": max_tokens,
             "preserve_recent": preserve_recent,
         }
+
+    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
+    async def do_it(self, todo_id: str, todo_title: str, todo_notes: str) -> str:
+        """Execute a single todo item and return a summary of what was done.
+
+        Todo: [{todo_id}] {todo_title}
+        Notes: {todo_notes}
+
+        Instructions:
+        1. Read the todo title and notes carefully.
+        2. Execute the work described using self.bash and self.files.
+        3. When done, update the todo with what you learned:
+           self.todo.update("{todo_id}", notes="what you did and found")
+        4. Mark it complete: self.todo.done("{todo_id}")
+        5. Return a concise summary of what you did and the outcome.
+
+        Focus only on this one item. Do NOT work on other todos.
+        """
+        ...
 
     @hidden
     @strategy(PredictStrategy())

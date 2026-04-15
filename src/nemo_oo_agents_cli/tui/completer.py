@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Shared completion engine for NeMo OO Agents frontends.
 
 ``Completer`` is frontend-agnostic: it takes a text buffer and returns a list
@@ -80,6 +82,10 @@ class Completer:
         for prefix in ("/session resume ", "/session delete "):
             if lower.startswith(prefix.lower()):
                 return self._session_id_completions(text, prefix)
+
+        # Todo ID completion
+        if lower.startswith("/todo "):
+            return self._todo_id_completions(text)
 
         # Top-level slash commands + subcommands.
         # get_active_help() keys may include argument hints ("/wtf-status [label]").
@@ -199,6 +205,33 @@ class Completer:
                     text=prefix + short,
                     display=prefix + short,
                     description=meta.name or sid,
+                )
+            )
+        return items
+
+    # ------------------------------------------------------------------
+    # Todo ID completion
+    # ------------------------------------------------------------------
+
+    def _todo_id_completions(self, text: str) -> list[CompletionItem]:
+        prefix = "/todo "
+        partial = text[len(prefix) :]
+        agent = getattr(self._registry, "agent", None)
+        todo_mgr = getattr(agent, "todo", None) if agent else None
+        if todo_mgr is None:
+            return []
+
+        items: list[CompletionItem] = []
+        icons = {"open": "○", "done": "✓", "blocked": "●"}
+        for t in todo_mgr.list_todos():
+            if partial and not t.id.startswith(partial):
+                continue
+            icon = icons.get(t.status, "?")
+            items.append(
+                CompletionItem(
+                    text=prefix + t.id,
+                    display=prefix + t.id,
+                    description=f"{icon} {t.title}",
                 )
             )
         return items

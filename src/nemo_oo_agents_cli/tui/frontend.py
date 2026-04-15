@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Frontend protocol and TerminalFrontend implementation.
 
 A ``Frontend`` is a **pure rendering surface** — it renders Output objects,
@@ -26,6 +28,7 @@ from .output import (
     TableOutput,
     TextOutput,
     Thinking,
+    UserMessage,
 )
 from .theme import COLORS
 
@@ -163,6 +166,8 @@ class TerminalFrontend:
             self._render_history_replay(output)
         elif isinstance(output, ActivityLine):
             self._render_activity_line(output)
+        elif isinstance(output, UserMessage):
+            self._render_user_message(output)
 
     async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:
         """Read user input from the terminal.
@@ -182,7 +187,10 @@ class TerminalFrontend:
             return (await session.prompt_async(prompt)).strip()
 
         if self._input_handler:
-            return await self._input_handler.get_input(prompt)
+            result = await self._input_handler.get_input(prompt)
+            if result.strip():
+                self._overwrite_input(prompt, result)
+            return result
 
         # Fallback: plain input via executor
         loop = asyncio.get_running_loop()
@@ -199,6 +207,28 @@ class TerminalFrontend:
     # ------------------------------------------------------------------
     # Internal rendering helpers
     # ------------------------------------------------------------------
+
+    def _overwrite_input(self, prompt: str, text: str) -> None:
+        """Replace prompt_toolkit's input line(s) with a styled version."""
+        import sys
+
+        c = self._console.console
+        width = c.size.width
+        # Count lines to erase: input lines + 1 for the prompt line
+        input_lines = text.count("\n") + 1
+        # Move cursor up and clear each line
+        for _ in range(input_lines):
+            sys.stdout.write("\033[A\033[2K")
+        sys.stdout.flush()
+        # Write edge-to-edge background using ANSI: set bg color, pad to full width
+        bg = COLORS["surface2"]  # e.g. "#585b70"
+        fg = COLORS["text"]  # e.g. "#cdd6f4"
+        # Convert hex to RGB for ANSI 24-bit color
+        br, bg_, bb = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
+        fr, fg_, fb = int(fg[1:3], 16), int(fg[3:5], 16), int(fg[5:7], 16)
+        line = f" {text} ".ljust(width)
+        sys.stdout.write(f"\033[38;2;{fr};{fg_};{fb}m\033[48;2;{br};{bg_};{bb}m{line}\033[0m\n")
+        sys.stdout.flush()
 
     def _render_text(self, output: TextOutput) -> None:
         lvl = output.level
@@ -296,6 +326,18 @@ class TerminalFrontend:
                 # +2 for "● " prefix
                 text.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
             c.print(text)
+
+    def _render_user_message(self, output: UserMessage) -> None:
+        """Render the user's submitted text with a high-contrast background bar."""
+        from rich.text import Text
+
+        c = self._console.console
+        # Full-width bar: white text on light grey background
+        width = c.size.width
+        # Pad to full terminal width so the background spans the whole line
+        display = f" {output.content} "
+        text = Text(display.ljust(width), style=f"{COLORS['text']} on {COLORS['surface2']}")
+        c.print(text)
 
     def _render_history_replay(self, output: HistoryReplay) -> None:
         """Render past conversation turns in a dimmed style."""
