@@ -8,10 +8,33 @@ Captures all context needed by strategies to generate code for a method call.
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, get_type_hints
+from typing import TYPE_CHECKING, Any, get_type_hints
 from uuid import uuid4
 
 from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.truncation_config import TruncationConfig
+
+
+def _parse_param_names(signature: str) -> list[str]:
+    """Extract ordered parameter names from a signature string like '(self, a: int, b: str)'.
+
+    Strips 'self', type annotations, and default values.  Returns an empty list
+    if the signature is empty or cannot be parsed.
+    """
+    sig_content = signature.strip("()")
+    if not sig_content:
+        return []
+    names: list[str] = []
+    for param in sig_content.split(","):
+        param = param.strip()
+        if not param or param == "self":
+            continue
+        name = param.split(":")[0].split("=")[0].strip()
+        if name and name != "self":
+            names.append(name)
+    return names
 
 
 @dataclass(frozen=True)
@@ -68,11 +91,25 @@ class CurrentCall:
             return NotImplemented
         return self.id == other.id
 
-    def format_parameters_as_code(self) -> str:
+    def format_parameters_as_code(
+        self,
+        value_formatter: Callable[[Any], str] | None = None,
+        *,
+        tc: "TruncationConfig | None" = None,
+    ) -> str:
         """Format method parameters as Python variable assignments.
 
         Creates a string with one assignment per line, suitable for inclusion
         in LLM prompts to show the current parameter values.
+
+        Args:
+            value_formatter: Optional callable to format each parameter value.
+                When provided, takes precedence over ``tc``.
+                When both are None, defaults to ``repr``.
+            tc: Optional TruncationConfig.  When provided (and ``value_formatter``
+                is None), uses ``pformat`` with the config's structural limits
+                (``max_pprint_elements``, ``max_pprint_string``, ``max_pprint_depth``).
+                This matches how ``InspectInputsPrefill`` formats parameter values.
 
         Returns:
             Formatted parameter assignments (e.g., "data = 'test'\\nthreshold = 0.5")
@@ -84,31 +121,34 @@ class CurrentCall:
             data = "test"
             threshold = 0.5
         """
+        if value_formatter is not None:
+            fmt = value_formatter
+        elif tc is not None:
+            from agentdoc import pformat
+
+            _tc = tc  # capture for closure
+
+            def fmt(v: Any) -> str:
+                return pformat(
+                    v,
+                    max_length=_tc.max_pprint_elements,
+                    max_string=_tc.max_pprint_string,
+                    max_depth=_tc.max_pprint_depth,
+                )
+        else:
+            fmt = repr
+
         if not self.signature:
-            # No signature available, fall back to kwargs only
-            if not self.kwargs:
-                return ""
-            lines = [f"{name} = {value!r}" for name, value in self.kwargs.items()]
+            # No signature available: format positional args as arg_0, arg_1, … then kwargs.
+            lines = [f"arg_{i} = {fmt(value)}" for i, value in enumerate(self.args)]
+            lines += [f"{name} = {fmt(value)}" for name, value in self.kwargs.items()]
             return "\n".join(lines)
 
         # Extract parameter names from signature
         try:
-            # Parse signature string to get parameter names
-            # Remove outer parentheses and split by comma
-            sig_content = self.signature.strip("()")
-            if not sig_content:
+            param_names = _parse_param_names(self.signature)
+            if not param_names and not self.kwargs:
                 return ""
-
-            # Split parameters and extract names
-            param_names = []
-            for param in sig_content.split(","):
-                param = param.strip()
-                if not param or param == "self":
-                    continue
-                # Extract just the parameter name (before : or =)
-                param_name = param.split(":")[0].split("=")[0].strip()
-                if param_name and param_name != "self":
-                    param_names.append(param_name)
 
             # Build parameter dict: map positional args to names, then add kwargs
             param_dict: dict[str, Any] = {}
@@ -123,14 +163,14 @@ class CurrentCall:
                 return ""
 
             # Format as Python assignments
-            lines = [f"{name} = {value!r}" for name, value in param_dict.items()]
+            lines = [f"{name} = {fmt(value)}" for name, value in param_dict.items()]
             return "\n".join(lines)
 
         except (ValueError, AttributeError):
             # Fallback: just format kwargs
             if not self.kwargs:
                 return ""
-            lines = [f"{name} = {value!r}" for name, value in self.kwargs.items()]
+            lines = [f"{name} = {fmt(value)}" for name, value in self.kwargs.items()]
             return "\n".join(lines)
 
     def format_signature(self) -> str:

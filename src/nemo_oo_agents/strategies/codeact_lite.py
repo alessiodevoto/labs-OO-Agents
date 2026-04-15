@@ -24,7 +24,7 @@ from context_blocks import ResolvedBlock, ToolCallEvent
 from context_blocks.formatter import OpenAIProviderFormatter
 from context_blocks.models import Role
 from context_blocks.scoped import ScopedContext
-from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, safe_pformat
+from context_blocks.utils import truncating_pformat
 from nemo_oo_agents.events import (
     Error,
     Feedback,
@@ -36,6 +36,9 @@ from nemo_oo_agents.events import (
 )
 from nemo_oo_agents.runtime.event_query import EventQuery
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
+
+# Default cap when no TruncationConfig is available (matches TruncationConfig.max_block_chars default).
+_DEFAULT_MAX_CHARS = 20_000
 
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import RuntimeServices
@@ -49,7 +52,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def plain_event_content(event: Any, max_chars: int = _MAX_PRE_FORMAT_CHARS) -> str:
+def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
     """Render an event as plain text — no type wrappers, no metadata.
 
     Extracts human-readable content from event objects instead of using
@@ -59,7 +62,7 @@ def plain_event_content(event: Any, max_chars: int = _MAX_PRE_FORMAT_CHARS) -> s
         event:     An event object (Task, Error, PythonOutput, etc.)
         max_chars: Hard character cap applied to pformat of non-string values
                    (e.g. Out[n] Python return values).  Comes from
-                   TruncationConfig.max_pre_format_chars via PlainProviderFormatter.
+                   TruncationConfig.max_block_chars via PlainProviderFormatter.
 
     Returns:
         Plain text content suitable for LLM consumption.
@@ -78,10 +81,10 @@ def plain_event_content(event: Any, max_chars: int = _MAX_PRE_FORMAT_CHARS) -> s
         if event.stderr and not event.error:
             parts.append(f"Stderr: {event.stderr}")
         if event.value is not None:
-            # safe_pformat handles non-strings; strings bypass pformat but must
+            # truncating_pformat handles non-strings; strings bypass pformat but must
             # still be capped so a 10 MB string return value doesn't create a
             # huge intermediate allocation before block-level truncation fires.
-            value_str = safe_pformat(event.value, max_chars=max_chars)
+            value_str = truncating_pformat(event.value, max_chars=max_chars)
             parts.append(f"Out[{event.execution_count}]: {value_str}")
         if event.captured_locals:
             parts.append(event.captured_locals)
@@ -111,13 +114,13 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
     System prompt blocks are not affected — they still use XML formatting.
 
     Args:
-        max_pre_format_chars: Hard character cap forwarded to plain_event_content
+        max_chars: Hard character cap forwarded to plain_event_content
             for non-string Out[n] values.  Set from
-            TruncationConfig.max_pre_format_chars by CodeActLiteStrategy.
+            TruncationConfig.max_block_chars by CodeActLiteStrategy.
     """
 
-    def __init__(self, max_pre_format_chars: int = _MAX_PRE_FORMAT_CHARS):
-        self._max_pre_format_chars = max_pre_format_chars
+    def __init__(self, max_chars: int = _DEFAULT_MAX_CHARS):
+        self._max_chars = max_chars  # set from tc.max_block_chars by CodeActLiteStrategy
 
     def format(
         self,
@@ -162,9 +165,7 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
                 # Tool response: merge PythonOutput content if available
                 py_out_block = python_outputs.get(event.tool_call_id)
                 if py_out_block and py_out_block.event:
-                    content = plain_event_content(
-                        py_out_block.event, max_chars=self._max_pre_format_chars
-                    )
+                    content = plain_event_content(py_out_block.event, max_chars=self._max_chars)
                 elif event.result is not None:
                     content = event.result.content
                 else:
@@ -188,7 +189,7 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
             # All other events — render as plain text
             else:
                 if block.event is not None:
-                    content = plain_event_content(block.event, max_chars=self._max_pre_format_chars)
+                    content = plain_event_content(block.event, max_chars=self._max_chars)
                 else:
                     content = block.content or ""
                 messages.append({"role": block.role.value, "content": content})
@@ -243,13 +244,13 @@ class CodeActLiteStrategy(CodeActStrategy):
         call_id = stack[-1] if stack else call.id
 
         # Swap the agent's render_config to use our plain formatter, threading
-        # the pre-format char limit from TruncationConfig.
+        # the block char limit from TruncationConfig.
         original_render_config = runtime.agent.render_config
         tc = runtime.agent._truncation
         runtime.agent.render_config = original_render_config.model_copy(
             update={
                 "provider_formatter": PlainProviderFormatter(
-                    max_pre_format_chars=tc.max_pre_format_chars,
+                    max_chars=tc.max_block_chars,
                 )
             }
         )

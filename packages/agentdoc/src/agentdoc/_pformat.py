@@ -17,6 +17,7 @@ The unified pformat() function handles:
 
 import importlib
 import inspect
+import io
 import re
 from typing import Any
 
@@ -123,6 +124,7 @@ def _field_type_docstring(field_default: Any, context_obj: type | None, type_nam
 
 def _pformat(
     _object: Any,
+    _stream: Any,
     *,
     max_length: int | None = None,
     max_string: int | None = None,
@@ -133,40 +135,22 @@ def _pformat(
     instance_mode: str = "repr",
     _depth: int = 0,
     _indent: int = 0,
-    _budget: list[int] | None = None,
-) -> str:
-    """Return pretty-formatted string with smart truncation.
+) -> None:
+    """Write pretty-formatted representation of *_object* to *_stream*.
 
     Args:
         _object: Object to format.
+        _stream: Writer with a ``write(str)`` method. May be a
+            ``TruncatingStringIO`` (hard char cap) or plain ``io.StringIO``.
         max_length: Max elements per container (None=unlimited).
         max_string: Max string chars (None=unlimited).
         max_depth: Max nesting depth (None=unlimited).
         concise: If True, show first-line docstrings only.
         inline_depth: How deep to expand referenced types inline.
-            - 0: No referenced types shown
-            - 1: Direct references only
-            - 2+: Transitive references
-            - None: Auto (0 if concise=True, 1 if concise=False)
         expand_all: Always expand containers.
-        instance_mode: How to format instances - "repr" for repr-style, "type" for type structure.
+        instance_mode: How to format instances — "repr" or "type".
         _depth: Current nesting depth (internal).
         _indent: Current indentation level (internal).
-        _budget: Optional mutable [remaining_chars] budget; stops early when depleted.
-            Note: _budget is only threaded through plain value paths (_format_value,
-            _format_dict, _format_sequence) — NOT through _format_type_info,
-            _format_instance_repr, or _format_nested_instance. Those structured-type
-            paths are already bounded by max_length (field count). The budget is
-            specifically for unbounded plain containers (large lists/dicts of plain
-            values).
-            Budget accounting: each level deducts exactly the chars it contributes to
-            the output (the full item string including key/separators/indentation).
-            Recursive calls pass the budget down so inner containers can stop early
-            too, but the parent resets the budget based on actual output length —
-            avoiding double-counting across nesting levels.
-
-    Returns:
-        Formatted string representation.
     """
     # Resolve inline_depth default
     if inline_depth is None:
@@ -175,37 +159,43 @@ def _pformat(
     # Use match statement for clean dispatch on Info types and Python objects
     match _object:
         case TypeInfo():
-            return _format_type_info(
-                _object,
-                concise=concise,
-                type_depth=inline_depth,
-                max_length=max_length,
-                indent=_indent,
-                context_obj=None,
+            _stream.write(
+                _format_type_info(
+                    _object,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    max_length=max_length,
+                    indent=_indent,
+                    context_obj=None,
+                )
             )
         case CallableInfo():
-            return _format_callable_info(
-                _object,
-                concise=concise,
-                type_depth=inline_depth,
-                indent=_indent,
+            _stream.write(
+                _format_callable_info(
+                    _object,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    indent=_indent,
+                )
             )
         case ModuleInfo():
-            return _format_module_info(_object, concise=concise, indent=_indent)
+            _stream.write(_format_module_info(_object, concise=concise, indent=_indent))
         case _ if _object.__class__.__name__ == "Environment" and hasattr(_object, "render"):
-            return _object.render()
+            _stream.write(_object.render())
         case type():
             # Python type (class) - extract and format
             from agentdoc._structured import extract_type_info
 
             type_info = extract_type_info(_object)
-            return _format_type_info(
-                type_info,
-                concise=concise,
-                type_depth=inline_depth,
-                max_length=max_length,
-                indent=_indent,
-                context_obj=_object,  # Pass the original type for discovery
+            _stream.write(
+                _format_type_info(
+                    type_info,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    max_length=max_length,
+                    indent=_indent,
+                    context_obj=_object,  # Pass the original type for discovery
+                )
             )
         case _ if inspect.ismodule(_object):
             from agentdoc.registry import get_module_info_extractor
@@ -217,17 +207,19 @@ def _pformat(
                 from agentdoc._structured import extract_module_info
 
                 module_info = extract_module_info(_object)
-            return _format_module_info(module_info, concise=concise, indent=_indent)
+            _stream.write(_format_module_info(module_info, concise=concise, indent=_indent))
         case _ if inspect.isfunction(_object) or inspect.ismethod(_object):
             from agentdoc._structured import extract_callable_info
 
             callable_info = extract_callable_info(_object)
-            return _format_callable_info(
-                callable_info,
-                concise=concise,
-                type_depth=inline_depth,
-                indent=_indent,
-                context_obj=_object,  # Pass the function/method for type discovery
+            _stream.write(
+                _format_callable_info(
+                    callable_info,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    indent=_indent,
+                    context_obj=_object,  # Pass the function/method for type discovery
+                )
             )
         case _ if _is_structured_instance(_object):
             # Instance of a structured type
@@ -290,36 +282,71 @@ def _pformat(
                         type_info = extract_type_info(obj_type)
                     values = _extract_instance_values(_object, type_info)
 
-                return _format_type_info(
-                    type_info,
-                    concise=concise,
-                    type_depth=inline_depth,
-                    max_length=max_length,
-                    indent=_indent,
-                    context_obj=obj_type,
-                    instance_values=values,
+                _stream.write(
+                    _format_type_info(
+                        type_info,
+                        concise=concise,
+                        type_depth=inline_depth,
+                        max_length=max_length,
+                        indent=_indent,
+                        context_obj=obj_type,
+                        instance_values=values,
+                    )
                 )
             else:
                 # Show repr-style (for pprint())
-                return _format_instance_repr(
-                    _object,
-                    max_length=max_length,
-                    max_string=max_string,
-                    max_depth=max_depth,
-                    indent=_indent,
+                _stream.write(
+                    _format_instance_repr(
+                        _object,
+                        max_length=max_length,
+                        max_string=max_string,
+                        max_depth=max_depth,
+                        indent=_indent,
+                    )
                 )
         case _:
             # Regular value - use truncation formatting
-            return _format_value(
+            _format_value(
                 _object,
+                _stream,
                 max_length=max_length,
                 max_string=max_string,
                 max_depth=max_depth,
                 expand_all=expand_all,
                 depth=_depth,
                 indent=_indent,
-                _budget=_budget,
             )
+
+
+def _pformat_to_str(
+    _object: Any,
+    *,
+    max_length: int | None = None,
+    max_string: int | None = None,
+    max_depth: int | None = None,
+    concise: bool = False,
+    inline_depth: int | None = None,
+    expand_all: bool = False,
+    instance_mode: str = "repr",
+    _depth: int = 0,
+    _indent: int = 0,
+) -> str:
+    """Convenience wrapper: call ``_pformat`` into an ``io.StringIO`` and return the string."""
+    stream = io.StringIO()
+    _pformat(
+        _object,
+        stream,
+        max_length=max_length,
+        max_string=max_string,
+        max_depth=max_depth,
+        concise=concise,
+        inline_depth=inline_depth,
+        expand_all=expand_all,
+        instance_mode=instance_mode,
+        _depth=_depth,
+        _indent=_indent,
+    )
+    return stream.getvalue()
 
 
 def _is_structured_instance(obj: Any) -> bool:
@@ -468,7 +495,7 @@ def _format_type_info(
             fields = fields[:max_length]
 
         for field in fields:
-            value_str = _pformat(
+            value_str = _pformat_to_str(
                 field.default,
                 max_length=5,
                 max_string=50,
@@ -500,7 +527,7 @@ def _format_type_info(
             continue
         line = f"{ind}    {field.name}: {field.type}"
         if instance_values is not None and field.name in instance_values:
-            default_str = _format_value(
+            default_str = _format_value_to_str(
                 instance_values[field.name],
                 max_length=3,
                 max_string=50,
@@ -511,7 +538,7 @@ def _format_type_info(
             )
             line += f" = {default_str}"
         elif instance_values is None and field.default is not ...:
-            default_str = _format_value(
+            default_str = _format_value_to_str(
                 field.default,
                 max_length=3,
                 max_string=50,
@@ -558,7 +585,7 @@ def _format_type_info(
 
             for name, value in extra_attrs:
                 type_name = type(value).__name__
-                value_str = _format_value(
+                value_str = _format_value_to_str(
                     value,
                     max_length=3,
                     max_string=100,
@@ -867,7 +894,7 @@ def _format_instance_repr(
             if max_length and i >= max_length:
                 values.append("...")
                 break
-            value_str = _format_value(
+            value_str = _format_value_to_str(
                 value,
                 max_length=5,
                 max_string=max_string or 150,
@@ -938,7 +965,7 @@ def _format_instance_repr(
         # only keep types (classes), since those are intentional class-level tools.
         if callable(value) and not isinstance(value, type):
             continue
-        value_str = _format_value(
+        value_str = _format_value_to_str(
             value,
             max_length=5,
             max_string=max_string or 150,
@@ -964,7 +991,7 @@ def _format_instance_repr(
             if max_length and field_count >= max_length:
                 break
 
-            value_str = _format_value(
+            value_str = _format_value_to_str(
                 value,
                 max_length=5,
                 max_string=max_string or 150,
@@ -1091,7 +1118,7 @@ def _format_nested_instance(
         if name in values:
             value = values[name]
             # Recursively format the value with tighter limits
-            value_str = _format_value(
+            value_str = _format_value_to_str(
                 value,
                 max_length=2,
                 max_string=nested_max_string,
@@ -1117,6 +1144,7 @@ def _format_nested_instance(
 
 def _format_value(
     _object: Any,
+    _stream: Any,
     *,
     max_length: int | None,
     max_string: int | None,
@@ -1124,84 +1152,116 @@ def _format_value(
     expand_all: bool,
     depth: int,
     indent: int,
-    _budget: list[int] | None = None,
-) -> str:
-    """Format a regular Python value with truncation.
+) -> None:
+    """Write a regular Python value to *_stream* with truncation.
 
     Args:
-        _object: Value to format
-        max_length: Max elements per container
-        max_string: Max string chars
-        max_depth: Max nesting depth
-        expand_all: Always expand containers
-        depth: Current nesting depth
-        indent: Current indentation level
-        _budget: Optional mutable [remaining_chars] budget; stops early when depleted.
-
-    Returns:
-        Formatted string representation
+        _object: Value to format.
+        _stream: Writer with a ``write(str)`` method.
+        max_length: Max elements per container.
+        max_string: Max string chars.
+        max_depth: Max nesting depth.
+        expand_all: Always expand containers.
+        depth: Current nesting depth.
+        indent: Current indentation level.
     """
     # Check depth limit
     if max_depth is not None and depth >= max_depth:
-        return _format_shallow(_object, max_string)
+        _stream.write(_format_shallow(_object, max_string))
+        return
 
     # Handle by type
     if isinstance(_object, str):
-        return _format_string(_object, max_string)
+        _stream.write(_format_string(_object, max_string))
+        return
 
     if isinstance(_object, dict):
-        return _format_dict(
+        _format_dict(
             _object,
+            _stream,
             max_length=max_length,
             max_string=max_string,
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth,
             indent=indent,
-            _budget=_budget,
         )
+        return
 
     if isinstance(_object, (list, tuple, set, frozenset)):
-        return _format_sequence(
+        _format_sequence(
             _object,
+            _stream,
             max_length=max_length,
             max_string=max_string,
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth,
             indent=indent,
-            _budget=_budget,
         )
+        return
 
     # Handle marker classes from _structured.py (they have clean __repr__)
     from agentdoc._structured import _ClassRef, _InstanceRef
 
     if isinstance(_object, (_ClassRef, _InstanceRef)):
-        return repr(_object)
+        _stream.write(repr(_object))
+        return
 
     # Handle class objects (like child agent classes) - show just the name
     if isinstance(_object, type):
-        return _object.__name__
+        _stream.write(_object.__name__)
+        return
 
     # Structured instances (dataclass, Pydantic, etc.) - format recursively
     if _is_structured_instance(_object):
-        return _format_nested_instance(
-            _object,
-            max_length=max_length,
-            max_string=max_string,
-            max_depth=max_depth,
-            depth=depth,
-            indent=indent,
+        _stream.write(
+            _format_nested_instance(
+                _object,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                depth=depth,
+                indent=indent,
+            )
         )
+        return
 
     # Fallback to repr for other types
     try:
         result = repr(_object)
     except Exception:
-        return f"<{type(_object).__name__}>"
+        _stream.write(f"<{type(_object).__name__}>")
+        return
     if max_string and len(result) > max_string:
-        return result[:max_string] + f"... +{len(result) - max_string}"
-    return result
+        _stream.write(result[:max_string] + f"... +{len(result) - max_string}")
+        return
+    _stream.write(result)
+
+
+def _format_value_to_str(
+    _object: Any,
+    *,
+    max_length: int | None,
+    max_string: int | None,
+    max_depth: int | None,
+    expand_all: bool = False,
+    depth: int = 0,
+    indent: int = 0,
+) -> str:
+    """Convenience wrapper: call ``_format_value`` into an ``io.StringIO`` and return the string."""
+    tmp = io.StringIO()
+    _format_value(
+        _object,
+        tmp,
+        max_length=max_length,
+        max_string=max_string,
+        max_depth=max_depth,
+        expand_all=expand_all,
+        depth=depth,
+        indent=indent,
+    )
+    return tmp.getvalue()
 
 
 def _format_string(s: str, max_string: int | None) -> str:
@@ -1279,6 +1339,7 @@ def _format_shallow(_object: Any, max_string: int | None) -> str:
 
 def _format_dict(
     d: dict,
+    _stream: Any,
     *,
     max_length: int | None,
     max_string: int | None,
@@ -1286,101 +1347,114 @@ def _format_dict(
     expand_all: bool,
     depth: int,
     indent: int,
-    _budget: list[int] | None = None,
-) -> str:
-    """Format a dictionary."""
-    if not d:
-        return "{}"
+) -> None:
+    """Write a dictionary to *_stream*.
 
-    items = list(d.items())
-    truncated_count = 0
-    if max_length is not None and len(items) > max_length:
-        truncated_count = len(items) - max_length
-        items = items[:max_length]
+    When max_length truncation fires, shows the first n_head and last n_tail
+    key-value pairs with a "... N items not shown ..." notice in the middle —
+    matching the numpy/pandas head+tail style. Dicts are insertion-ordered so
+    head and tail are well-defined.
+    """
+    if not d:
+        _stream.write("{}")
+        return
+
+    all_items = list(d.items())
+
+    # Head+tail slicing for dicts (insertion-ordered).
+    tail_items: list = []
+    dropped = 0
+
+    if max_length is not None and len(all_items) > max_length:
+        n_head = (max_length + 1) // 2  # ceiling half
+        n_tail = max_length - n_head  # floor half
+        dropped = len(all_items) - n_head - n_tail
+        tail_items = all_items[-n_tail:] if n_tail > 0 else []
+        head_items = all_items[:n_head]
+    else:
+        head_items = all_items
+
+    def _fmt_item_to_str(k: object, v: object, current_indent: int) -> tuple[str, str]:
+        k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
+        tmp = io.StringIO()
+        _format_value(
+            v,
+            tmp,
+            max_length=max_length,
+            max_string=max_string,
+            max_depth=max_depth,
+            expand_all=expand_all,
+            depth=depth + 1,
+            indent=current_indent,
+        )
+        return k_str, tmp.getvalue()
 
     # Compact format when not expand_all (Rich pprint style)
     if not expand_all:
-        # Snapshot budget and truncated_count before the compact trial.  If the
-        # result is too long (>= 120 chars) we discard it and fall through to the
-        # expanded path; the expanded path re-formats every item from scratch, so it
-        # must start with the original budget — not one depleted by the discarded trial.
-        budget_snapshot = _budget[0] if _budget is not None else 0
-        truncated_snapshot = truncated_count
-        parts = []
-        remaining_items = len(items)
-        for k, v in items:
-            remaining_items -= 1
-            k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
-            before = _budget[0] if _budget is not None else 0
-            v_str = _format_value(
-                v,
-                max_length=max_length,
-                max_string=max_string,
-                max_depth=max_depth,
-                expand_all=expand_all,
-                depth=depth + 1,
-                indent=0,
-                _budget=_budget,
-            )
-            item_str = f"{k_str}: {v_str}"
-            parts.append(item_str)
-            if _budget is not None:
-                # Set budget to (before - actual output chars), not -= len(item_str).
-                # The recursive _format_value call may have already deducted chars for
-                # nested containers; using the delta avoids double-counting.
-                _budget[0] = before - len(item_str)
-                if _budget[0] <= 0:
-                    total_remaining = truncated_count + remaining_items
-                    parts.append(f"... +{total_remaining} more")
-                    truncated_count = 0
-                    break
-        if truncated_count > 0:
-            parts.append(f"... +{truncated_count}")
-        result = "{" + ", ".join(parts) + "}"
-        if len(result) < 120:  # Allow longer single lines like Rich
-            return result
-        # Discard compact trial; restore state for expanded format.
-        if _budget is not None:
-            _budget[0] = budget_snapshot
-        truncated_count = truncated_snapshot
+        trial = io.StringIO()
+        parts: list[str] = []
 
-    # Expanded format (when expand_all=True or line too long)
-    lines = ["{"]
+        for k, v in head_items:
+            k_str, v_str = _fmt_item_to_str(k, v, 0)
+            parts.append(f"{k_str}: {v_str}")
+
+        if tail_items:
+            parts.append(f"... {dropped} items not shown ...")
+            for k, v in tail_items:
+                k_str, v_str = _fmt_item_to_str(k, v, 0)
+                parts.append(f"{k_str}: {v_str}")
+        elif dropped > 0:
+            parts.append(f"... +{dropped}")
+
+        trial.write("{" + ", ".join(parts) + "}")
+        if len(trial.getvalue()) < 120:
+            _stream.write(trial.getvalue())
+            return
+
+    # Expanded format (when expand_all=True or compact line too long)
     inner_indent = "    " * (indent + 1)
-    remaining_items = len(items)
-    for k, v in items:
-        remaining_items -= 1
+    _stream.write("{\n")
+
+    for k, v in head_items:
         k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
-        before = _budget[0] if _budget is not None else 0
-        v_str = _format_value(
+        _stream.write(f"{inner_indent}{k_str}: ")
+        _format_value(
             v,
+            _stream,
             max_length=max_length,
             max_string=max_string,
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth + 1,
             indent=indent + 1,
-            _budget=_budget,
         )
-        item_str = f"{inner_indent}{k_str}: {v_str},"
-        lines.append(item_str)
-        if _budget is not None:
-            _budget[0] = before - len(item_str)
-            if _budget[0] <= 0:
-                total_remaining = truncated_count + remaining_items
-                lines.append(f"{inner_indent}... +{total_remaining} more")
-                truncated_count = 0
-                break
+        _stream.write(",\n")
 
-    if truncated_count > 0:
-        lines.append(f"{inner_indent}... +{truncated_count}")
+    if tail_items:
+        _stream.write(f"{inner_indent}... {dropped} items not shown ...\n")
+        for k, v in tail_items:
+            k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
+            _stream.write(f"{inner_indent}{k_str}: ")
+            _format_value(
+                v,
+                _stream,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                expand_all=expand_all,
+                depth=depth + 1,
+                indent=indent + 1,
+            )
+            _stream.write(",\n")
+    elif dropped > 0:
+        _stream.write(f"{inner_indent}... +{dropped}\n")
 
-    lines.append("    " * indent + "}")
-    return "\n".join(lines)
+    _stream.write("    " * indent + "}")
 
 
 def _format_sequence(
     seq,
+    _stream: Any,
     *,
     max_length: int | None,
     max_string: int | None,
@@ -1388,90 +1462,111 @@ def _format_sequence(
     expand_all: bool,
     depth: int,
     indent: int,
-    _budget: list[int] | None = None,
-) -> str:
-    """Format a sequence (list, tuple, set, frozenset)."""
+) -> None:
+    """Write a sequence (list, tuple, set, frozenset) to *_stream*.
+
+    For ordered containers (list, tuple) with max_length truncation, shows the
+    first n_head and last n_tail elements with a "... N items not shown ..."
+    notice in the middle — matching numpy/pandas head+tail style.
+    Unordered containers (set, frozenset) use head-only (no stable order).
+    """
     brackets = _get_brackets(type(seq))
 
     if not seq:
-        return brackets[0] + brackets[1]
+        _stream.write(brackets[0] + brackets[1])
+        return
 
-    items = list(seq)
-    truncated_count = 0
-    if max_length is not None and len(items) > max_length:
-        truncated_count = len(items) - max_length
-        items = items[:max_length]
+    all_items = list(seq)
+
+    # Head+tail slicing for ordered containers; head-only for unordered.
+    is_ordered = isinstance(seq, (list, tuple))
+    tail_items: list = []
+    dropped = 0
+
+    if max_length is not None and len(all_items) > max_length:
+        if is_ordered:
+            n_head = (max_length + 1) // 2  # ceiling half
+            n_tail = max_length - n_head  # floor half
+            dropped = len(all_items) - n_head - n_tail
+            tail_items = all_items[-n_tail:] if n_tail > 0 else []
+            head_items = all_items[:n_head]
+        else:
+            dropped = len(all_items) - max_length
+            head_items = all_items[:max_length]
+    else:
+        head_items = all_items
+
+    def _fmt_to_str(x: object, current_indent: int) -> str:
+        tmp = io.StringIO()
+        _format_value(
+            x,
+            tmp,
+            max_length=max_length,
+            max_string=max_string,
+            max_depth=max_depth,
+            expand_all=expand_all,
+            depth=depth + 1,
+            indent=current_indent,
+        )
+        return tmp.getvalue()
 
     # Compact format when not expand_all (Rich pprint style)
     if not expand_all:
-        # Snapshot state before the compact trial; restore if we fall through to expanded.
-        budget_snapshot = _budget[0] if _budget is not None else 0
-        truncated_snapshot = truncated_count
-        parts = []
-        remaining_items = len(items)
-        for x in items:
-            remaining_items -= 1
-            before = _budget[0] if _budget is not None else 0
-            item_str = _format_value(
-                x,
-                max_length=max_length,
-                max_string=max_string,
-                max_depth=max_depth,
-                expand_all=expand_all,
-                depth=depth + 1,
-                indent=0,
-                _budget=_budget,
-            )
-            parts.append(item_str)
-            if _budget is not None:
-                _budget[0] = before - len(item_str)
-                if _budget[0] <= 0:
-                    total_remaining = truncated_count + remaining_items
-                    parts.append(f"... +{total_remaining} more")
-                    truncated_count = 0
-                    break
-        if truncated_count > 0:
-            parts.append(f"... +{truncated_count}")
-        result = brackets[0] + ", ".join(parts) + brackets[1]
-        if len(result) < 120:  # Allow longer single lines like Rich
-            return result
-        # Discard compact trial; restore state for expanded format.
-        if _budget is not None:
-            _budget[0] = budget_snapshot
-        truncated_count = truncated_snapshot
+        trial = io.StringIO()
+        parts: list[str] = []
 
-    # Expanded format (when expand_all=True or line too long)
-    lines = [brackets[0]]
+        for x in head_items:
+            parts.append(_fmt_to_str(x, 0))
+
+        if tail_items:
+            parts.append(f"... {dropped} items not shown ...")
+            for x in tail_items:
+                parts.append(_fmt_to_str(x, 0))
+        elif dropped > 0:
+            parts.append(f"... +{dropped}")
+
+        trial.write(brackets[0] + ", ".join(parts) + brackets[1])
+        if len(trial.getvalue()) < 120:
+            _stream.write(trial.getvalue())
+            return
+
+    # Expanded format (when expand_all=True or compact line too long)
     inner_indent = "    " * (indent + 1)
-    remaining_items = len(items)
-    for item in items:
-        remaining_items -= 1
-        before = _budget[0] if _budget is not None else 0
-        item_str = _format_value(
+    _stream.write(brackets[0] + "\n")
+
+    for item in head_items:
+        _stream.write(inner_indent)
+        _format_value(
             item,
+            _stream,
             max_length=max_length,
             max_string=max_string,
             max_depth=max_depth,
             expand_all=expand_all,
             depth=depth + 1,
             indent=indent + 1,
-            _budget=_budget,
         )
-        line = f"{inner_indent}{item_str},"
-        lines.append(line)
-        if _budget is not None:
-            _budget[0] = before - len(line)
-            if _budget[0] <= 0:
-                total_remaining = truncated_count + remaining_items
-                lines.append(f"{inner_indent}... +{total_remaining} more")
-                truncated_count = 0
-                break
+        _stream.write(",\n")
 
-    if truncated_count > 0:
-        lines.append(f"{inner_indent}... +{truncated_count}")
+    if tail_items:
+        _stream.write(f"{inner_indent}... {dropped} items not shown ...\n")
+        for item in tail_items:
+            _stream.write(inner_indent)
+            _format_value(
+                item,
+                _stream,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                expand_all=expand_all,
+                depth=depth + 1,
+                indent=indent + 1,
+            )
+            _stream.write(",\n")
+    elif dropped > 0:
+        _stream.write(f"{inner_indent}... +{dropped}\n")
 
-    lines.append("    " * indent + brackets[1])
-    return "\n".join(lines)
+    _stream.write("    " * indent + brackets[1])
 
 
 def _get_brackets(seq_type: type) -> tuple[str, str]:

@@ -12,10 +12,17 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
 
+from agentdoc import pformat
 from agentdoc.visibility import is_hidden_field
+from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
 
 
-def format_validation_error(error: Exception, return_type: Any, actual_value: Any = None) -> str:
+def format_validation_error(
+    error: Exception,
+    return_type: Any,
+    actual_value: Any = None,
+    truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
+) -> str:
     """Format validation error as actionable return_result() feedback for the LLM."""
     if isinstance(error, json.JSONDecodeError):
         return (
@@ -24,13 +31,16 @@ def format_validation_error(error: Exception, return_type: Any, actual_value: An
         )
 
     if isinstance(error, PydanticValidationError):
-        return _format_pydantic_error(error, return_type, actual_value)
+        return _format_pydantic_error(error, return_type, actual_value, truncation_config)
 
     return f"return_result() failed: {error}"
 
 
 def _format_pydantic_error(
-    error: PydanticValidationError, return_type: Any, actual_value: Any = None
+    error: PydanticValidationError,
+    return_type: Any,
+    actual_value: Any = None,
+    truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
 ) -> str:
     """Format Pydantic validation errors as actionable return_result() feedback."""
     errors = error.errors()
@@ -41,21 +51,29 @@ def _format_pydantic_error(
 
     if missing_field_errors:
         # Format with expected schema for missing field errors
-        return _format_missing_fields_error(missing_field_errors, errors, return_type, actual_value)
+        return _format_missing_fields_error(
+            missing_field_errors, errors, return_type, actual_value, truncation_config
+        )
 
     if len(errors) == 1:
         # Single error - format concisely
-        return _format_single_error(errors[0], return_type, type_hint, actual_value=actual_value)
+        return _format_single_error(
+            errors[0],
+            return_type,
+            type_hint,
+            actual_value=actual_value,
+            truncation_config=truncation_config,
+        )
 
     # Multiple errors - list them
     lines = [f"return_result() failed with {len(errors)} errors:"]
     for err in errors:
         lines.append(
-            f"  • {_format_single_error(err, return_type, type_hint, brief=True, actual_value=actual_value)}"
+            f"  • {_format_single_error(err, return_type, type_hint, brief=True, actual_value=actual_value, truncation_config=truncation_config)}"
         )
 
     lines.append(
-        f"\nExpected return type: {type_hint} - Got: {_format_value_for_error(actual_value)}"
+        f"\nExpected return type: {type_hint} - Got: {_format_value_for_error(actual_value, truncation_config)}"
     )
     return "\n".join(lines)
 
@@ -65,6 +83,7 @@ def _format_missing_fields_error(
     all_errors: list[ErrorDetails],
     return_type: Any,
     actual_value: Any,
+    truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
 ) -> str:
     """Format error message for missing required fields with expected schema."""
     # Extract the missing field names
@@ -99,7 +118,7 @@ def _format_missing_fields_error(
 
     # Show what was actually received if available
     if actual_value is not None:
-        got_repr = _format_actual_value(actual_value)
+        got_repr = _format_actual_value(actual_value, truncation_config)
         lines.append(f"Got: {got_repr}")
 
     # List the specific missing fields
@@ -141,15 +160,26 @@ def _format_expected_schema(return_type: Any) -> str:
     return name
 
 
-def _format_value_for_error(value: Any, max_len: int = 80) -> str:
-    """Format value for (value: ...) in error messages; truncate if needed."""
-    s = repr(value)
-    if len(s) <= max_len:
-        return s
-    return s[: max_len - 3] + "..."
+def _pformat(value: Any, tc: TruncationConfig) -> str:
+    """Format a value using the agent's pprint truncation settings."""
+    return pformat(
+        value,
+        max_length=tc.max_pprint_elements,
+        max_string=tc.max_pprint_string,
+        max_depth=tc.max_pprint_depth,
+    )
 
 
-def _format_actual_value(value: Any) -> str:
+def _format_value_for_error(
+    value: Any, truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG
+) -> str:
+    """Format value for (value: ...) in error messages."""
+    return _pformat(value, truncation_config)
+
+
+def _format_actual_value(
+    value: Any, truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG
+) -> str:
     """Format the actual value received for error display."""
     if isinstance(value, dict):
         # Show dict keys and values compactly
@@ -167,7 +197,7 @@ def _format_actual_value(value: Any) -> str:
             return f"[{items}]" if isinstance(value, list) else f"({items})"
         return f"{type_name} with {len(value)} items"
     else:
-        return repr(value)[:100]
+        return _pformat(value, truncation_config)
 
 
 def _format_value_brief(value: Any) -> str:
@@ -185,13 +215,19 @@ def _format_value_brief(value: Any) -> str:
     elif isinstance(value, (list, tuple)):
         return "[...]" if isinstance(value, list) else "(...)"
     else:
-        return repr(value)[:20]
+        # Brief display: just show the type — pformat for non-trivial objects would
+        # always produce multiline output in a brief inline context.
+        return f"{type(value).__name__}(...)"
 
 
-def _format_got_line(actual_value: Any, brief: bool = False) -> str:
+def _format_got_line(
+    actual_value: Any,
+    brief: bool = False,
+    truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
+) -> str:
     """Format 'Got: <type> (value: ...)' for result-level type errors."""
     actual_type = type(actual_value).__name__
-    truncated = _format_value_for_error(actual_value)
+    truncated = _format_value_for_error(actual_value, truncation_config)
     return f"Got: {actual_type} (value: {truncated})" if not brief else f"Got: {actual_type}"
 
 
@@ -201,6 +237,7 @@ def _format_single_error(
     type_hint: str,
     brief: bool = False,
     actual_value: Any = None,
+    truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
 ) -> str:
     """Format a single Pydantic error into an actionable message."""
     loc = err["loc"]
@@ -210,7 +247,7 @@ def _format_single_error(
     # Got value line: show the actual value if available
     is_result_level = not loc or (len(loc) == 1 and loc[0] == "result")
     got_line = (
-        _format_got_line(actual_value, brief)
+        _format_got_line(actual_value, brief, truncation_config)
         if (actual_value is not None and is_result_level)
         else ""
     )

@@ -46,8 +46,8 @@ class TestFormatEventBounded:
 
     def test_output_bounded_when_cap_set(self):
         """When an explicit max_chars cap is set, the output must be bounded."""
-        # Pass a large string value; format_event calls safe_pformat(event, max_chars=5_000).
-        # Even though BigValueEvent is a structured instance, safe_pformat must
+        # Pass a large string value; format_event calls truncating_pformat(event, max_chars=5_000).
+        # Even though BigValueEvent is a structured instance, truncating_pformat must
         # keep the total output bounded.
         event = BigValueEvent(value="z" * 20_000)
         result = self.fmt.format_event(event, max_chars=5_000)

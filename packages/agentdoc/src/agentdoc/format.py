@@ -4,7 +4,7 @@
 
 from typing import Any
 
-from agentdoc._pformat import _pformat
+from agentdoc._pformat import _pformat_to_str as _pformat
 from agentdoc.doc_config import DocConfig
 
 

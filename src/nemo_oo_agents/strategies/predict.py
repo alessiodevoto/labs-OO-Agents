@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
+from agentdoc import pformat
 from agentdoc.visibility import is_hidden_field
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
@@ -162,10 +163,32 @@ class PredictStrategy(GenerationStrategy):
         all_values = list(call.args) + list(call.kwargs.values())
         media_blocks = [media_to_content_block(v) for v in all_values if isinstance(v, Media)]
 
+        # Guard against oversized parameters before building the prompt.
+        # PredictStrategy is single-shot — a truncated input produces silently wrong output.
+        self._assert_param_sizes(call)
+
+        # Build task prompt first so we can check its size before adding it to events.
+        task_prompt = await self._build_task_message(runtime, original_call=call)
+
+        # Guard against silent truncation in context blocks.
+        # max_block_chars caps how much of the Task event the LLM sees — if the
+        # task prompt exceeds this limit, the input is silently cropped, producing
+        # wrong output with no indication.  Fail loudly instead.
+        tc = runtime.truncation_config
+        if len(task_prompt) > tc.max_block_chars:
+            raise ValueError(
+                f"PredictStrategy: task prompt for '{call.method_name}' is "
+                f"{len(task_prompt):,} chars but max_block_chars is "
+                f"{tc.max_block_chars:,}. The prompt would be silently truncated, "
+                f"producing wrong output. Raise the limit with "
+                f"@strategy(PredictStrategy(), truncation=TruncationConfig("
+                f"max_block_chars={len(task_prompt) + 1000})) or reduce the input size."
+            )
+
         # Add task event (with media attachments if any)
         runtime.event_manager.add(
             Task(
-                prompt=await self._build_task_message(runtime, original_call=call),
+                prompt=task_prompt,
                 images=media_blocks,
             )
         )
@@ -214,11 +237,17 @@ class PredictStrategy(GenerationStrategy):
                         raw_response_content = "(llm_response was None)"
                     else:
                         # Try to capture all available fields from the response
+                        tc = runtime.truncation_config
                         response_info = []
                         for field in ["content", "reasoning", "raw", "text", "message"]:
                             val = getattr(llm_response, field, "<missing>")
                             if val != "<missing>":
-                                val_repr = repr(val)[:100] if val else repr(val)
+                                val_repr = pformat(
+                                    val,
+                                    max_length=tc.max_pprint_elements,
+                                    max_string=tc.max_pprint_string,
+                                    max_depth=tc.max_pprint_depth,
+                                )
                                 response_info.append(f"{field}={val_repr}")
                         if response_info:
                             raw_response_content = (
@@ -287,11 +316,68 @@ class PredictStrategy(GenerationStrategy):
         {original_call.docstring}
 
         ## Input parameters:
-        {original_call.format_parameters_as_code()}
+        {original_call.format_parameters_as_code(tc=tc)}
 
         Perform the task and return the result directly.
         """
         ...
+
+    def _assert_param_sizes(self, call: "CurrentCall") -> None:
+        """Raise ValueError if any parameter's repr size exceeds max_param_chars.
+
+        PredictStrategy makes a single-shot call — a silently truncated input produces
+        wrong output with no indication of failure.  Fail loudly instead so callers can
+        chunk, summarise, or raise max_param_chars in their PredictConfig.
+
+        Size is measured by writing repr(value) into a TruncatingStringIO and checking
+        was_truncated — the same mechanism used throughout the formatting pipeline.
+        repr() matches the conservative lower bound of what format_parameters_as_code
+        puts into the prompt (truncating_pformat can produce larger output for complex objects).
+
+        String fast-path: plain strings skip the repr() allocation.  len(s) ≤ len(repr(s))
+        always, so a string that already exceeds the limit certainly has an oversized repr.
+        """
+        from agentdoc import TruncatingStringIO
+        from nemo_oo_agents.strategies.current_call import _parse_param_names
+
+        limit = self.config.max_param_chars
+
+        # Build a name → value mapping the same way format_parameters_as_code does.
+        named: list[tuple[str, Any]] = []
+        if call.signature:
+            try:
+                param_names = _parse_param_names(call.signature)
+                for i, name in enumerate(param_names):
+                    if i < len(call.args):
+                        named.append((name, call.args[i]))
+                named += list(call.kwargs.items())
+            except (ValueError, AttributeError):
+                named = [(f"arg_{i}", v) for i, v in enumerate(call.args)]
+                named += list(call.kwargs.items())
+        else:
+            named = [(f"arg_{i}", v) for i, v in enumerate(call.args)]
+            named += list(call.kwargs.items())
+
+        for name, value in named:
+            # Fast path for strings: avoids repr() allocation for large inputs.
+            # len(s) ≤ len(repr(s)) always, so if the string itself exceeds limit
+            # its repr certainly does too.
+            if isinstance(value, str) and len(value) > limit:
+                raise ValueError(
+                    f"PredictStrategy: parameter '{name}' is {len(value):,} chars, "
+                    f"exceeding max_param_chars={limit:,}. "
+                    f"Chunk or summarise the input before calling this method, "
+                    f"or raise PredictConfig(max_param_chars=...) if the size is intentional."
+                )
+            stream = TruncatingStringIO(limit=limit)
+            stream.write(repr(value))
+            if stream.was_truncated:
+                raise ValueError(
+                    f"PredictStrategy: parameter '{name}' is {stream.chars_written:,} chars (repr), "
+                    f"exceeding max_param_chars={limit:,}. "
+                    f"Chunk or summarise the input before calling this method, "
+                    f"or raise PredictConfig(max_param_chars=...) if the size is intentional."
+                )
 
     def _extract_raw_from_llm_response(self, llm_response: Any) -> str | None:
         """Extract raw content from LLMResponse object for error reporting.

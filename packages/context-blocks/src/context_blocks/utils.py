@@ -4,7 +4,7 @@
 
 import re
 
-from agentdoc import safe_pformat as safe_pformat  # noqa: F401 — re-exported for callers
+from agentdoc import truncating_pformat as truncating_pformat  # noqa: F401 — re-exported for callers
 
 # Hard character cap applied to pformat output **before** block-level truncation.
 # This is a safety net that prevents OOM when a Python object (e.g. a 10 M-element
@@ -45,10 +45,12 @@ def truncate_content(value: str, limit: int, format_type: str) -> tuple[str, boo
     dropped = total_chars - head_chars - tail_chars
 
     result = (
+        f"<truncated-output>\n"
         f"Output too large ({total_chars:,} chars). "
         f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
         f"{head}\n\n"
         f"... {dropped:,} chars not shown ...\n\n"
-        f"{tail}"
+        f"{tail}\n"
+        f"</truncated-output>"
     )
     return result, True

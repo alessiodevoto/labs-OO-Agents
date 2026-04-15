@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """StringIO with hard character limit and truncation notices.
 
-Used for stdout/stderr capture during code execution to prevent LLMs from
-accidentally filling their context window with massive outputs.
+Used by pformat/truncating_pformat to bound memory during formatting of large objects.
 """
 
 import collections
@@ -52,14 +51,7 @@ class TruncatingStringIO(io.StringIO):
         self._chars_written = 0
 
     def write(self, s: str) -> int:
-        """Write string, filling head then rolling tail.
-
-        Args:
-            s: String to write.
-
-        Returns:
-            Number of characters from s that were written (for compatibility).
-        """
+        """Write string, filling head then rolling tail."""
         n = len(s)
         self._chars_written += n
 
@@ -68,11 +60,9 @@ class TruncatingStringIO(io.StringIO):
             remaining_head = self._head_limit - current_head
 
             if n <= remaining_head:
-                # Entire chunk fits in head
                 super().write(s)
                 return n
 
-            # Fill the rest of the head, then overflow to tail
             if remaining_head > 0:
                 super().write(s[:remaining_head])
             self._head_full = True
@@ -88,7 +78,6 @@ class TruncatingStringIO(io.StringIO):
         """Add a chunk to the rolling tail buffer, evicting old chars as needed."""
         self._tail_chunks.append(s)
         self._tail_chars += len(s)
-        # Trim excess from the front of the deque
         while self._tail_chars > self._tail_limit and self._tail_chunks:
             oldest = self._tail_chunks[0]
             excess = self._tail_chars - self._tail_limit
@@ -104,18 +93,10 @@ class TruncatingStringIO(io.StringIO):
         return "".join(self._tail_chunks)
 
     def getvalue(self) -> str:
-        """Get buffer contents, with prose head+tail notice if truncated.
-
-        Returns:
-            Buffer contents with optional truncation notice when truncated.
-        """
+        """Get buffer contents, with prose head+tail notice if truncated."""
         head = super().getvalue()
 
         if not self.was_truncated:
-            # Not truncated — all content fits within the limit.
-            # If nothing went to the tail, return head directly.
-            # If some content went to the tail (e.g. _chars_written == limit),
-            # concatenate head + tail so no content is lost.
             tail = self._get_tail()
             return head + tail
 
@@ -126,18 +107,21 @@ class TruncatingStringIO(io.StringIO):
         dropped = total - head_chars - tail_chars
 
         return (
+            f"<truncated-output>\n"
             f"Output too large ({total:,} chars). "
             f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
-            f"{tail}"
+            f"{tail}\n"
+            f"</truncated-output>"
         )
 
     @property
     def was_truncated(self) -> bool:
-        """Check if output was truncated.
-
-        Returns:
-            True if total chars written exceeded the limit.
-        """
+        """True if total chars written exceeded the limit."""
         return self._chars_written > self._limit
+
+    @property
+    def chars_written(self) -> int:
+        """Total characters written (including chars that were dropped)."""
+        return self._chars_written

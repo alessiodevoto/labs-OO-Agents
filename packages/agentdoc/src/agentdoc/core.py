@@ -5,7 +5,7 @@
 import inspect
 from typing import Annotated, Any, Literal
 
-from agentdoc._pformat import _pformat
+from agentdoc._pformat import _pformat_to_str as _pformat
 from agentdoc._structured import format_type as _format_type_impl
 from agentdoc.doc_config import DocConfig
 from agentdoc.format import (

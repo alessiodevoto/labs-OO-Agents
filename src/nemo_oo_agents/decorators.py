@@ -16,6 +16,7 @@ from context_blocks import ScopedContext
 from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
 if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC
     from unifiedllm import UnifiedLLM
 
@@ -28,6 +29,7 @@ def strategy(
     context: ScopedContext | None = None,
     *,
     llm: UnifiedLLM | None = None,
+    truncation: TruncationConfig | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Strategy decorator for agent methods.
 
@@ -40,6 +42,9 @@ def strategy(
         context: ScopedContext instance with context and/or events overrides.
             Applied in _prepare_context() between strategy overrides and scoped blocks.
         llm: Optional LLM override for this method
+        truncation: Optional TruncationConfig override for this method. Fields set
+            here take precedence over the agent-level truncation config. Unset fields
+            inherit from the agent-level config.
 
     Examples:
         from nemo_oo_agents import EventQuery
@@ -81,6 +86,7 @@ def strategy(
         setattr(func, "_strategy_llm", llm)  # noqa: B010
         setattr(func, "_strategy_context", final_context)  # noqa: B010
         setattr(func, "_strategy_events", final_events)  # noqa: B010
+        setattr(func, "_strategy_truncation", truncation)  # noqa: B010
 
         # Also create runtime wrapper for dynamically-defined methods
         if not inspect.iscoroutinefunction(func):
@@ -121,6 +127,7 @@ def strategy(
         setattr(wrapper, "_plan_llm", llm)  # noqa: B010
         setattr(wrapper, "_strategy_context", final_context)  # noqa: B010
         setattr(wrapper, "_strategy_events", final_events)  # noqa: B010
+        setattr(wrapper, "_strategy_truncation", truncation)  # noqa: B010
 
         # Also attach to original function (needed for _execute_task)
         setattr(func, "_agent_decorator", "auto")  # noqa: B010

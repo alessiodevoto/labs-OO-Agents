@@ -23,10 +23,6 @@ class TestTruncationConfigValidation:
         with pytest.raises(ValueError, match="max_stderr_chars"):
             TruncationConfig(max_stderr_chars=0)
 
-    def test_rejects_zero_max_pre_format_chars(self):
-        with pytest.raises(ValueError, match="max_pre_format_chars"):
-            TruncationConfig(max_pre_format_chars=0)
-
     def test_rejects_zero_pprint_elements(self):
         with pytest.raises(ValueError, match="max_pprint_elements"):
             TruncationConfig(max_pprint_elements=0)

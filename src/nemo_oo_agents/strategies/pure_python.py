@@ -867,7 +867,7 @@ class PurePythonStrategy(CompositeStrategy):
         {original_call.docstring}
 
         ## Input parameters:
-        {original_call.format_parameters_as_code()}
+        {original_call.format_parameters_as_code(tc=tc)}
 
         *Important*:
         - If you are not just returning the result directly (using return <result>), explain using `reasoning()` why you cannot do that and then perform the task (in the same turn).

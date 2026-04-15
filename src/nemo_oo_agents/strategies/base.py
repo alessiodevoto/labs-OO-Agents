@@ -14,6 +14,7 @@ from nemo_oo_agents.metaclass import AgentMeta
 
 if TYPE_CHECKING:
     from context_blocks import DynamicContext
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
     from nemo_oo_agents.strategies.current_call import CurrentCall
 
@@ -46,6 +47,11 @@ class RuntimeServices(Protocol):
     @property
     def event_manager(self) -> Any:
         """Event manager for conversation management."""
+        ...
+
+    @property
+    def truncation_config(self) -> "TruncationConfig":
+        """Truncation configuration for the current agent."""
         ...
 
     async def generate(

@@ -45,17 +45,16 @@ class TestPformat:
         long_list = list(range(100))
         result = _pformat(long_list, max_length=10)
 
-        assert "... +90" in result  # Should show truncated count
-        assert "0" in result  # First item visible
-        assert "9" in result  # 10th item visible
-        assert "99" not in result  # Last item not visible
+        assert "90 items not shown" in result  # Should show truncated count
+        assert "0" in result  # First item visible (head)
+        assert "99" in result  # Last item visible (tail)
 
     def test_dict_truncation(self):
         """Long dicts should be truncated with max_length."""
         long_dict = {f"key_{i}": i for i in range(100)}
         result = _pformat(long_dict, max_length=10)
 
-        assert "... +90" in result  # Should show truncated count
+        assert "90 items not shown" in result  # Should show truncated count
 
     def test_depth_truncation(self):
         """Nested structures should be truncated with max_depth."""
@@ -166,7 +165,7 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "... +95" in output  # Should show truncation
+        assert "95 items not shown" in output  # Should show truncation
 
     def test_pprint_with_max_string(self):
         """pprint() should respect max_string."""
@@ -210,10 +209,9 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        # Should include all items and no framework truncation marker
+        # Should include all items and no truncation notice
         assert "199" in output
-        # Our truncation uses an ellipsis with a count suffix, e.g. "... +95"
-        assert "... +" not in output
+        assert "not shown" not in output
 
 
 class TestFormatBrackets:
@@ -254,9 +252,9 @@ class TestComplexScenarios:
         ]
         result = _pformat(data, max_length=5, max_string=50)
 
-        assert "... +995" in result  # Should truncate list
-        assert "'id': 0" in result  # First item visible
-        assert "'id': 999" not in result  # Last item not visible
+        assert "995 items not shown" in result  # Should truncate list
+        assert "'id': 0" in result  # First item visible (head)
+        assert "'id': 999" in result  # Last item visible (tail)
 
     def test_nested_api_response(self):
         """Nested API response should format clearly."""

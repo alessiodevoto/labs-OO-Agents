@@ -72,6 +72,7 @@ from nemo_oo_agents.strategies import (  # noqa: E402
     get_default_strategy,
     set_default_strategy,
 )
+from nemo_oo_agents.token_counter import char_approximate_token_counter  # noqa: E402
 from unifiedllm import LLMResponse  # noqa: E402
 
 __all__ = [
@@ -129,6 +130,8 @@ __all__ = [
     "StorageNotConfiguredError",
     # Storage
     "StorageManager",
+    # Token counting
+    "char_approximate_token_counter",
 ]
 
 # Install debug handler by default (zero overhead until SIGUSR2 received)

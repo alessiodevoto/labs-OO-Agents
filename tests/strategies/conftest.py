@@ -47,6 +47,13 @@ def mock_runtime(mock_agent, mock_event_manager):
             """Event manager."""
             return self._events
 
+        @property
+        def truncation_config(self):
+            """Truncation configuration."""
+            from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+            return DEFAULT_TRUNCATION_CONFIG
+
         async def generate(self, *, tools=None, **kwargs):
             response = MagicMock(content="generated code", reasoning=None, usage={})
             return response, "event_123"

@@ -1,6 +1,6 @@
 """Tests for TruncatingStringIO."""
 
-from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
+from agentdoc import TruncatingStringIO
 
 
 class TestTruncatingStringIO:
@@ -40,8 +40,9 @@ class TestTruncatingStringIO:
         buffer.write("x" * 100)
         result = buffer.getvalue()
 
-        # Notice should be at the beginning as prose
-        assert result.startswith("Output too large")
+        # Notice is wrapped in <truncated-output> tag
+        assert result.startswith("<truncated-output>")
+        assert "Output too large" in result
         assert "100 chars" in result
         # Head and tail portions shown
         assert "Showing first" in result

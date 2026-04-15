@@ -28,9 +28,6 @@ from nemo_oo_agents.runtime.context_vars import (
 )
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
-# Protocol import for isinstance() checks - RuntimeServices is @runtime_checkable
-from nemo_oo_agents.strategies.base import RuntimeServices
-
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import GenerationStrategy
 
@@ -82,9 +79,23 @@ def create_agent_method_wrapper(
 
             # Lazy import: only needed for generation path, avoids loading
             # generated_code.py machinery for non-generation methods
+            from nemo_oo_agents.strategies.base import RuntimeServices
             from nemo_oo_agents.strategies.generated_code import ArgumentValidator
 
-            ArgumentValidator().validate(original_func, args, kwargs)
+            # Resolve truncation config for error message formatting:
+            # - Agent methods: self._truncation (the agent's config)
+            # - Strategy helper methods: args[0] is the runtime (by convention)
+            # - Anything else (malformed call, non-Agent class): fall back to defaults
+            if hasattr(self, "_truncation"):
+                _tc = self._truncation
+            elif args and isinstance(args[0], RuntimeServices):
+                _tc = args[0].truncation_config
+            else:
+                from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+                _tc = DEFAULT_TRUNCATION_CONFIG
+
+            ArgumentValidator().validate(original_func, args, kwargs, _tc)
 
             # Strategy resolution if not provided
             if resolved_strategy is None:

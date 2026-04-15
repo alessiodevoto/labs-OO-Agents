@@ -9,7 +9,7 @@ Two-step mental model:
 
 Quick start:
 
-    from agentdoc import spec, hidden, doc, pformat, safe_pformat
+    from agentdoc import spec, hidden, doc, pformat, truncating_pformat
 
     class MyAgent:
         api_key: Annotated[str, hidden] = ""          # excluded from documentation
@@ -21,10 +21,13 @@ Quick start:
     pformat(agent) # → compact repr: MyAgent(label='agent')
 """
 
+import io
+import sys
 from typing import Annotated, Any
 
 from agentdoc._docs import spec
 from agentdoc._pformat import _pformat
+from agentdoc._truncating_stream import TruncatingStringIO
 from agentdoc._visibility import hidden
 from agentdoc.core import doc
 from agentdoc.doc_config import DocConfig
@@ -34,33 +37,32 @@ __version__ = "0.2.0"
 __submodules__ = ["ext", "introspect", "visibility", "adapters"]
 
 
-_SAFE_PFORMAT_MAX_CHARS: int = 500_000
+_TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 
 
-def safe_pformat(
+def truncating_pformat(
     obj: Annotated[Any, "Object to format"],
     *,
-    max_chars: Annotated[int, "Hard character cap on total output"] = _SAFE_PFORMAT_MAX_CHARS,
+    max_chars: Annotated[int, "Hard character cap on total output"] = _TRUNCATING_PFORMAT_MAX_CHARS,
     **kwargs: Any,
 ) -> str:
     """Format *obj* as a string, bounded to prevent OOM.
 
     Like :func:`pformat` but with a hard ``max_chars`` cap on total output length.
-    Uses abort-early budget for non-strings so that formatting is stopped as soon
-    as the budget is exhausted — avoiding building a huge intermediate string.
+    Uses :class:`TruncatingStringIO` internally so the cap fires *during* formatting —
+    not after building a potentially-huge intermediate string.
 
     When the cap fires, a prose notice is prepended so the consumer knows the
-    value was large and how much was kept.
+    value was large and how much was kept.  Both the head and tail are retained.
 
     String fast-path: plain strings skip pformat entirely — the cap is applied
-    directly.  When truncated, both the head and tail are retained (head+tail
-    format preserves context from both ends of the string).
+    directly.  When truncated, both the head and tail are retained.
 
     Raises:
         ValueError: if ``max_chars`` is <= 0.
     """
     if max_chars <= 0:
-        raise ValueError(f"safe_pformat max_chars must be > 0, got {max_chars}")
+        raise ValueError(f"truncating_pformat max_chars must be > 0, got {max_chars}")
 
     if isinstance(obj, str):
         if len(obj) <= max_chars:
@@ -72,41 +74,22 @@ def safe_pformat(
         tail = obj[-tail_chars:]
         dropped = len(obj) - head_chars - tail_chars
         return (
+            f"<truncated-output>\n"
             f"Output too large ({len(obj):,} chars). "
             f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
-            f"{tail}"
+            f"{tail}\n"
+            f"</truncated-output>"
         )
 
-    # Non-strings: use pformat with abort-early budget.
-    # Strip reserved pformat-internal kwargs to avoid TypeError on duplicate keyword args.
-    kwargs.pop("max_total_chars", None)
-    kwargs.pop("_truncated_out", None)
-    truncated_out: list[bool] = [False]
-    # Default max_string to max_chars so strings inside objects aren't silently
-    # truncated by pformat's internal 150-char default.  The abort-early budget
-    # (max_total_chars) handles overall size bounding — max_string just prevents
-    # individual string fields from being clipped before the budget kicks in.
+    # Non-strings: delegate to _pformat with a TruncatingStringIO cap.
+    # Default max_string to max_chars so individual string fields don't get
+    # silently clipped before the overall cap fires.
     kwargs.setdefault("max_string", max_chars)
-    text = pformat(obj, max_total_chars=max_chars, _truncated_out=truncated_out, **kwargs)
-
-    # Hard post-cap: even when max_string lets individual fields through, the
-    # total output must never exceed max_chars.  This covers multi-field objects
-    # where each field is under max_string but their sum exceeds the budget.
-    if len(text) <= max_chars:
-        return text
-
-    n_head = max_chars // 2
-    n_tail = max_chars - n_head
-    dropped = len(text) - n_head - n_tail
-    return (
-        f"Output too large ({len(text):,} chars). "
-        f"Showing first {n_head:,} and last {n_tail:,} chars.\n\n"
-        f"{text[:n_head]}\n\n"
-        f"... {dropped:,} chars not shown ...\n\n"
-        f"{text[-n_tail:]}"
-    )
+    stream = TruncatingStringIO(limit=max_chars)
+    _pformat(obj, stream, **kwargs)
+    return stream.getvalue()
 
 
 def pformat(
@@ -120,8 +103,6 @@ def pformat(
     expand_all: Annotated[bool, "Always expand containers to multiple lines"] = False,
     concise: Annotated[bool, "Show first-line docstrings only"] = False,
     instance_mode: Annotated[str, "Instance format: 'repr' for repr-style, 'type' for type structure"] = "repr",
-    max_total_chars: int | None = None,
-    _truncated_out: list[bool] | None = None,
 ) -> str:
     """Format an object as a string with smart truncation.
 
@@ -131,36 +112,26 @@ def pformat(
 
     ``console`` and ``indent_guides`` are accepted for Rich API compatibility but have no effect.
 
-    ``max_total_chars``: when set, formatting is aborted early once the budget is
-    exhausted, stopping iteration in containers.  ``_truncated_out`` is a mutable
-    ``[bool]`` list; after the call its first element is set to ``True`` when the
-    budget was exhausted.
+    To cap total output size (preventing OOM on huge objects), use :func:`truncating_pformat`
+    which applies a hard ``max_chars`` limit via :class:`TruncatingStringIO`.
     """
     # console and indent_guides are intentionally ignored for Rich compatibility
     del console, indent_guides
 
-    budget: list[int] | None = None
-    if max_total_chars is not None:
-        budget = [max_total_chars]
+    stream: io.StringIO = io.StringIO()
 
-    # Only the `case _:` (regular value) path supports budget threading.
-    # For other paths (TypeInfo, type, module, function, structured instance)
-    # we fall back to the normal _pformat call.
-    result = _pformat(
+    _pformat(
         obj,
+        stream,
         max_length=max_length,
         max_string=max_string,
         max_depth=max_depth,
         expand_all=expand_all,
         concise=concise,
         instance_mode=instance_mode,
-        _budget=budget,
     )
 
-    if _truncated_out is not None and budget is not None:
-        _truncated_out[0] = budget[0] <= 0
-
-    return result
+    return stream.getvalue()
 
 
 def pprint(
@@ -178,21 +149,25 @@ def pprint(
     """Pretty-print an object with smart truncation. Prints to stdout.
 
     Drop-in replacement for ``rich.pretty.pprint()``.
+    Writes directly to ``sys.stdout`` via stream-based formatting so that
+    stdout capture (via ``ContextVarStream``) bounds output during formatting.
+
     ``console`` and ``indent_guides`` are accepted for Rich API compatibility but have no effect.
     """
-    print(
-        pformat(
-            obj,
-            console=console,
-            indent_guides=indent_guides,
-            max_length=max_length,
-            max_string=max_string,
-            max_depth=max_depth,
-            expand_all=expand_all,
-            concise=concise,
-            instance_mode=instance_mode,
-        )
+    # console and indent_guides are intentionally ignored for Rich compatibility
+    del console, indent_guides
+
+    _pformat(
+        obj,
+        sys.stdout,
+        max_length=max_length,
+        max_string=max_string,
+        max_depth=max_depth,
+        expand_all=expand_all,
+        concise=concise,
+        instance_mode=instance_mode,
     )
+    sys.stdout.write("\n")
 
 
 __all__ = [
@@ -202,5 +177,6 @@ __all__ = [
     "DocConfig",
     "pformat",
     "pprint",
-    "safe_pformat",
+    "truncating_pformat",
+    "TruncatingStringIO",
 ]

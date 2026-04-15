@@ -615,6 +615,13 @@ def mock_runtime():
             """Execute nested strategy (for @strategy methods)."""
             return await strategy.execute(self, call)
 
+        @property
+        def truncation_config(self):
+            """Truncation configuration."""
+            from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+            return DEFAULT_TRUNCATION_CONFIG
+
         def get_generation_id(self) -> str | None:
             """Get the current generation session ID."""
             return "mock-generation-id"

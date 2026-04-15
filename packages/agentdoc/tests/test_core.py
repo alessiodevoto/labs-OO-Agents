@@ -722,8 +722,8 @@ class TestLargeValueTruncation:
 
         # Result should be small
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
-        # Should show truncation indicator (format: ... +N where N is large)
-        assert "... +" in result and "999" in result  # Should show truncation
+        # Should show truncation notice and tail items (head+tail format for lists)
+        assert "items not shown" in result and "999" in result  # tail item 99999
 
     def test_huge_dict_is_truncated(self):
         """Test that huge dicts don't blow up context."""
@@ -738,8 +738,8 @@ class TestLargeValueTruncation:
 
         # Result should be small (dict expands to multi-line)
         assert len(result) < 2000, f"pformat() output too large: {len(result)} chars"
-        # Should show truncation indicator (format: ... +N where N is large)
-        assert "... +" in result and "499" in result  # Should show truncation
+        # Should show truncation notice and tail items (head+tail format for dicts)
+        assert "items not shown" in result and "499" in result  # tail key key_49999
 
     def test_deeply_nested_object_is_truncated(self):
         """Test that deeply nested objects don't blow up context."""
@@ -819,13 +819,14 @@ class TestLargeValueTruncation:
         assert "'+" not in result_large
 
     def test_doc_on_huge_builtin_with_max_length(self):
-        """doc() on raw containers respects explicit max_length."""
-        from agentdoc._pformat import _pformat
+        """doc() on raw containers respects explicit max_length, shows head+tail."""
+        from agentdoc._pformat import _pformat_to_str
 
         huge_list = list(range(100_000))
-        result = _pformat(huge_list, max_length=10, max_string=500, max_depth=3)
+        result = _pformat_to_str(huge_list, max_length=10, max_string=500, max_depth=3)
 
-        assert "... +" in result
+        assert "items not shown" in result  # head+tail notice
+        assert "99999" in result  # tail item visible
         assert len(result) < 2000
 
     def test_doc_on_object_with_huge_repr(self):
@@ -902,7 +903,7 @@ class TestPformatMatchesRich:
 
         from rich.pretty import pprint
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = "x" * 100
         max_string = 10
@@ -923,76 +924,67 @@ class TestPformatMatchesRich:
         not pytest.importorskip("rich", reason="rich not installed"),
         reason="rich not installed",
     )
-    def test_list_truncation_matches_rich(self):
-        """List truncation format should match Rich pprint."""
-        import sys
-        from io import StringIO
-
-        from rich.pretty import pprint
-
-        from agentdoc._pformat import _pformat
+    def test_list_truncation_shows_head_and_tail(self):
+        """List truncation uses head+tail format (diverges intentionally from Rich head-only)."""
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = list(range(20))
         max_length = 5
-
-        # Get Rich pprint output (capture stdout)
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        pprint(data, max_length=max_length)
-        rich_output = sys.stdout.getvalue().strip()
-        sys.stdout = old_stdout
-
-        # Get our output
         our_output = _pformat(data, max_length=max_length)
 
-        assert our_output == rich_output, f"Mismatch:\nRich: {rich_output!r}\nOurs: {our_output!r}"
+        # Head: first 3 items (ceiling of 5/2)
+        assert "0" in our_output
+        assert "2" in our_output
+        # Tail: last 2 items
+        assert "19" in our_output
+        assert "18" in our_output
+        # Middle dropped with prose notice
+        assert "items not shown" in our_output
+        # Valid brackets
+        assert our_output.startswith("[") and our_output.endswith("]")
 
     @pytest.mark.skipif(
         not pytest.importorskip("rich", reason="rich not installed"),
         reason="rich not installed",
     )
-    def test_dict_truncation_matches_rich(self):
-        """Dict truncation format should match Rich pprint."""
-        import sys
-        from io import StringIO
-
-        from rich.pretty import pprint
-
-        from agentdoc._pformat import _pformat
+    def test_dict_truncation_shows_head_and_tail(self):
+        """Dict truncation uses head+tail format (diverges intentionally from Rich head-only)."""
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = {f"k{i}": i for i in range(20)}
         max_length = 3
-
-        # Get Rich pprint output (capture stdout)
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        pprint(data, max_length=max_length)
-        rich_output = sys.stdout.getvalue().strip()
-        sys.stdout = old_stdout
-
-        # Get our output
         our_output = _pformat(data, max_length=max_length)
 
-        assert our_output == rich_output, f"Mismatch:\nRich: {rich_output!r}\nOurs: {our_output!r}"
+        # Head: first 2 keys (ceiling of 3/2)
+        assert "'k0'" in our_output
+        assert "'k1'" in our_output
+        # Tail: last 1 key
+        assert "'k19'" in our_output
+        # Middle dropped with prose notice
+        assert "items not shown" in our_output
+        # Valid brackets
+        assert "{" in our_output and "}" in our_output
 
 
 class TestPformatAdditionalTypes:
     """Tests for _pformat with additional types (tuples, sets, etc)."""
 
     def test_tuple_truncation(self):
-        """Test tuple truncation uses Rich-style format."""
-        from agentdoc._pformat import _pformat
+        """Test tuple truncation uses head+tail format."""
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = tuple(range(20))
         result = _pformat(data, max_length=5)
 
         assert result.startswith("(")
         assert result.endswith(")")
-        assert "... +15" in result
+        # Head+tail: shows first 3 and last 2 with prose notice
+        assert "items not shown" in result
+        assert "19" in result  # tail item visible
 
     def test_set_truncation(self):
         """Test set truncation uses Rich-style format."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = set(range(20))
         result = _pformat(data, max_length=5)
@@ -1003,7 +995,7 @@ class TestPformatAdditionalTypes:
 
     def test_frozenset_truncation(self):
         """Test frozenset truncation uses Rich-style format."""
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         data = frozenset(range(20))
         result = _pformat(data, max_length=5)
@@ -1019,7 +1011,7 @@ class TestPformatTypes:
         """pformat() on Pydantic type shows Python class syntax."""
         from pydantic import BaseModel
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class UserModel(BaseModel):
             name: str
@@ -1035,7 +1027,7 @@ class TestPformatTypes:
         """pformat() on dataclass type shows decorator and fields."""
         from dataclasses import dataclass
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         @dataclass
         class Point:
@@ -1053,7 +1045,7 @@ class TestPformatTypes:
         """pformat() truncates fields with max_length."""
         from pydantic import BaseModel
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class BigModel(BaseModel):
             f1: str
@@ -1075,7 +1067,7 @@ class TestPformatTypes:
         """pformat() on Enum shows members."""
         import enum
 
-        from agentdoc._pformat import _pformat
+        from agentdoc._pformat import _pformat_to_str as _pformat
 
         class Color(enum.Enum):
             RED = 1
@@ -1111,7 +1103,7 @@ class TestFormatValueFullVsSummary:
         assert "+" in full  # truncated at 500
 
     def test_full_shows_more_list_items(self):
-        """format_value_full should show more list items."""
+        """format_value_full should show more list items, both use head+tail."""
         from agentdoc.ext import DocConfig
         from agentdoc.format import format_value_full, format_value_summary
 
@@ -1121,9 +1113,12 @@ class TestFormatValueFullVsSummary:
         summary = format_value_summary(data, config)
         full = format_value_full(data, config)
 
-        # Summary shows 10 items, full shows 100
-        assert "... +190" in summary
-        assert "... +100" in full
+        # Summary: max_length=10 → 5 head + 5 tail, 190 dropped
+        assert "190 items not shown" in summary
+        assert "199" in summary  # tail visible
+        # Full: max_length=100 → 50 head + 50 tail, 100 dropped
+        assert "100 items not shown" in full
+        assert "199" in full  # tail visible
 
 
 class TestParameterDefaultTruncation:
@@ -1212,8 +1207,10 @@ class TestRichApiCompatibility:
             expand_all=False,
         )
 
+        # max_length=2: head='a', tail='c', 'b' correctly dropped (middle item)
         assert "a" in result
-        assert "b" in result
+        assert "c" in result
+        assert "b" not in result  # correctly in dropped middle
 
     def test_pprint_accepts_rich_parameters(self):
         """pprint() should accept all rich.pprint() parameters."""

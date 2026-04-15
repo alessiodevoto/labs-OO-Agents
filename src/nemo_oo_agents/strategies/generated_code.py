@@ -23,6 +23,19 @@ from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.errors import PydanticSchemaGenerationError
 
+from agentdoc import pformat
+from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
+
+
+def _pformat(value: Any, tc: TruncationConfig) -> str:
+    """Format a value using truncation config's pprint settings."""
+    return pformat(
+        value,
+        max_length=tc.max_pprint_elements,
+        max_string=tc.max_pprint_string,
+        max_depth=tc.max_pprint_depth,
+    )
+
 
 @dataclass(frozen=True)
 class HelperApplyResult:
@@ -403,7 +416,9 @@ class ReturnValueValidator:
         # Handle both plain types (list, dict) and parameterized generics (list[str], dict[str, int])
         origin = self._get_origin(unwrapped_type)
         if origin in self._BASIC_TYPES or unwrapped_type in self._BASIC_TYPES:
-            return self._validate_basic_type(value, unwrapped_type, method_name)
+            return self._validate_basic_type(
+                value, unwrapped_type, method_name, runtime.truncation_config
+            )
 
         return value
 
@@ -491,7 +506,13 @@ class ReturnValueValidator:
             f"Hint: Return a dict with keys matching {return_type.__name__} fields."
         )
 
-    def _validate_basic_type(self, value: Any, return_type: Any, method_name: str) -> Any:
+    def _validate_basic_type(
+        self,
+        value: Any,
+        return_type: Any,
+        method_name: str,
+        truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
+    ) -> Any:
         from typing import get_args, get_origin
 
         origin = get_origin(return_type)
@@ -516,14 +537,24 @@ class ReturnValueValidator:
         # For parameterized generics, validate element types
         type_args = get_args(return_type)
         if type_args and origin is not None:
-            return self._validate_generic_elements(value, origin, type_args, method_name)
+            return self._validate_generic_elements(
+                value, origin, type_args, method_name, truncation_config
+            )
 
         return value
 
     def _validate_generic_elements(
-        self, value: Any, origin: type, type_args: tuple, method_name: str
+        self,
+        value: Any,
+        origin: type,
+        type_args: tuple,
+        method_name: str,
+        truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
     ) -> Any:
         """Validate elements of parameterized generic types like list[str], dict[str, int]."""
+
+        def fmt(v: Any) -> str:
+            return _pformat(v, truncation_config)
 
         if origin is list or origin is set:
             element_type = type_args[0]
@@ -533,7 +564,7 @@ class ReturnValueValidator:
                         f"Return value type mismatch for method `{method_name}`.\n"
                         f"Expected: {origin.__name__}[{_type_name(element_type)}]\n"
                         f"Element at index {i} has wrong type: {type(elem).__name__}\n"
-                        f"Value: {repr(elem)[:100]}"
+                        f"Value: {fmt(elem)}"
                     )
 
         elif origin is tuple:
@@ -546,7 +577,7 @@ class ReturnValueValidator:
                             f"Return value type mismatch for method `{method_name}`.\n"
                             f"Expected: tuple[{_type_name(element_type)}, ...]\n"
                             f"Element at index {i} has wrong type: {type(elem).__name__}\n"
-                            f"Value: {repr(elem)[:100]}"
+                            f"Value: {fmt(elem)}"
                         )
             # Handle tuple[int, str, float] (heterogeneous, fixed-length)
             elif type_args:
@@ -561,7 +592,7 @@ class ReturnValueValidator:
                             f"Return value type mismatch for method `{method_name}`.\n"
                             f"Expected element {i} to be {_type_name(expected_type)}\n"
                             f"Got: {type(elem).__name__}\n"
-                            f"Value: {repr(elem)[:100]}"
+                            f"Value: {fmt(elem)}"
                         )
 
         elif origin is dict:
@@ -573,14 +604,14 @@ class ReturnValueValidator:
                         f"Return value type mismatch for method `{method_name}`.\n"
                         f"Expected dict key type: {_type_name(key_type)}\n"
                         f"Key has wrong type: {type(k).__name__}\n"
-                        f"Key: {repr(k)[:100]}"
+                        f"Key: {fmt(k)}"
                     )
                 if not self._is_instance_of(v, val_type):
                     raise TypeError(
                         f"Return value type mismatch for method `{method_name}`.\n"
                         f"Expected dict value type: {_type_name(val_type)}\n"
-                        f"Value for key {repr(k)[:50]} has wrong type: {type(v).__name__}\n"
-                        f"Value: {repr(v)[:100]}"
+                        f"Value for key {fmt(k)} has wrong type: {type(v).__name__}\n"
+                        f"Value: {fmt(v)}"
                     )
 
         return value
@@ -631,13 +662,20 @@ class ArgumentValidator:
     early, before dispatching to the LLM for code generation.
     """
 
-    def validate(self, func: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
+    def validate(
+        self,
+        func: Any,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
+    ) -> None:
         """Validate arguments against function signature and type hints.
 
         Args:
             func: The function/method being called (used to extract signature and type hints)
             args: Positional arguments passed to the method (excluding 'self')
             kwargs: Keyword arguments passed to the method
+            truncation_config: Truncation settings for value display in error messages.
 
         Raises:
             TypeError: If required arguments are missing, unexpected arguments are provided,
@@ -672,7 +710,7 @@ class ArgumentValidator:
             signature_str = str(sig)
 
             # Provide detailed error message
-            provided_args = self._format_provided_args(args, kwargs, params)
+            provided_args = self._format_provided_args(args, kwargs, params, truncation_config)
             raise TypeError(
                 f"Invalid call to {method_name}():\n"
                 f"  {e}\n\n"
@@ -707,7 +745,9 @@ class ArgumentValidator:
                 continue
 
             expected_type = hints[param_name]
-            self._validate_type(param_name, value, expected_type, method_name, signature_str)
+            self._validate_type(
+                param_name, value, expected_type, method_name, signature_str, truncation_config
+            )
 
     def _validate_type(
         self,
@@ -716,6 +756,7 @@ class ArgumentValidator:
         expected_type: Any,
         method_name: str,
         signature_str: str,
+        truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
     ) -> None:
         """Validate a single argument against its expected type using Pydantic."""
 
@@ -738,9 +779,7 @@ class ArgumentValidator:
             # Get type name for error message
             type_name = _type_name(expected_type)
             value_type = type(value).__name__
-            value_repr = repr(value)
-            if len(value_repr) > 100:
-                value_repr = value_repr[:100] + "..."
+            value_repr = _pformat(value, truncation_config)
 
             raise TypeError(
                 f"Invalid call to {method_name}():\n"
@@ -755,29 +794,22 @@ class ArgumentValidator:
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         params: list[tuple[str, Any]],
+        truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
     ) -> str:
         """Format provided arguments for error message."""
         parts = []
 
         # Map positional args to parameter names
         for i, value in enumerate(args):
+            fmt = _pformat(value, truncation_config)
             if i < len(params):
                 param_name = params[i][0]
-                value_repr = repr(value)
-                if len(value_repr) > 50:
-                    value_repr = value_repr[:50] + "..."
-                parts.append(f"{param_name}={value_repr}")
+                parts.append(f"{param_name}={fmt}")
             else:
-                value_repr = repr(value)
-                if len(value_repr) > 50:
-                    value_repr = value_repr[:50] + "..."
-                parts.append(value_repr)
+                parts.append(fmt)
 
         # Add keyword arguments
         for key, value in kwargs.items():
-            value_repr = repr(value)
-            if len(value_repr) > 50:
-                value_repr = value_repr[:50] + "..."
-            parts.append(f"{key}={value_repr}")
+            parts.append(f"{key}={_pformat(value, truncation_config)}")
 
         return ", ".join(parts) if parts else "(no arguments)"
