@@ -13,7 +13,7 @@ collect tail without materialising the full sequence).
 
 import re
 
-from agentdoc import pformat
+from agentdoc import pformat, truncating_pformat
 
 
 class TestListHeadTail:
@@ -168,12 +168,12 @@ class TestUnorderedCollections:
 
 
 class TestMaxCharsTruncation:
-    """max_chars uses TruncatingStringIO — output is bounded during formatting."""
+    """max_chars cap belongs to truncating_pformat, not pformat."""
 
     def test_max_chars_bounds_output(self):
         """Large list with max_chars: output bounded, prose notice included."""
         items = list(range(1_000_000))
-        result = pformat(items, max_chars=1000)
+        result = truncating_pformat(items, max_chars=1000)
         assert len(result) < 10_000  # bounded
 
 

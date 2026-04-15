@@ -12,7 +12,7 @@ Use by setting _block_formatter on your agent:
 
 from context_blocks.events import EventBase
 from context_blocks.formatter import FORMAT_PLAIN, FormatType, XMLBlockFormatter
-from context_blocks.utils import safe_pformat
+from context_blocks.utils import truncating_pformat
 
 # Default cap when no TruncationConfig is available (e.g. standalone use).
 # Matches TruncationConfig.max_block_chars default.
@@ -39,7 +39,7 @@ class PlainBlockFormatter(XMLBlockFormatter):
         """Serialize event fields not marked repr=False as plain XML elements."""
 
         def render(value: object) -> str:
-            return safe_pformat(value, max_chars=max_chars)
+            return truncating_pformat(value, max_chars=max_chars)
 
         def is_empty(value: object) -> bool:
             return value is None or value == ""

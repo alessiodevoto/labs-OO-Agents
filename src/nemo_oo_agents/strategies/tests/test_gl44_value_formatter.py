@@ -59,20 +59,20 @@ class TestFormatParametersValueFormatter:
         assert "count" in result
         assert "<cap>" in result
 
-    def test_safe_pformat_usable_as_formatter(self):
+    def test_truncating_pformat_usable_as_formatter(self):
         # TDD: will fail until Change 5 is implemented
-        from agentdoc import safe_pformat
+        from agentdoc import truncating_pformat
 
         big = list(range(10_000))
         call = _make_call(args=(big,))
         result = call.format_parameters_as_code(
-            value_formatter=lambda v: safe_pformat(v, max_chars=200)
+            value_formatter=lambda v: truncating_pformat(v, max_chars=200)
         )
         # Output should be bounded
         assert len(result) < 2000
 
-    def test_none_formatter_uses_safe_pformat(self):
-        # Default formatter is safe_pformat — value still appears in output.
+    def test_none_formatter_uses_truncating_pformat(self):
+        # Default formatter is truncating_pformat — value still appears in output.
         call = _make_call(args=("hello",))
         result = call.format_parameters_as_code(value_formatter=None)
         assert "hello" in result

@@ -332,7 +332,7 @@ class PredictStrategy(GenerationStrategy):
         Size is measured by writing repr(value) into a TruncatingStringIO and checking
         was_truncated — the same mechanism used throughout the formatting pipeline.
         repr() matches the conservative lower bound of what format_parameters_as_code
-        puts into the prompt (safe_pformat can produce larger output for complex objects).
+        puts into the prompt (truncating_pformat can produce larger output for complex objects).
 
         String fast-path: plain strings skip the repr() allocation.  len(s) ≤ len(repr(s))
         always, so a string that already exceeds the limit certainly has an oversized repr.

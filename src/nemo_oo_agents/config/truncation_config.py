@@ -11,7 +11,7 @@ class TruncationConfig(BaseModel):
     """Controls output size at render time.
 
     max_block_chars: Per-block character clamp. Applied to context blocks and events,
-                     and also used as the cap for safe_pformat() serialization (single
+                     and also used as the cap for truncating_pformat() serialization (single
                      pipeline — no double truncation).
     max_context_tokens: Total token budget for system/context blocks (None = no limit).
                         Requires count_tokens to be passed to render_context().

@@ -24,7 +24,7 @@ from context_blocks import ResolvedBlock, ToolCallEvent
 from context_blocks.formatter import OpenAIProviderFormatter
 from context_blocks.models import Role
 from context_blocks.scoped import ScopedContext
-from context_blocks.utils import safe_pformat
+from context_blocks.utils import truncating_pformat
 from nemo_oo_agents.events import (
     Error,
     Feedback,
@@ -81,10 +81,10 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
         if event.stderr and not event.error:
             parts.append(f"Stderr: {event.stderr}")
         if event.value is not None:
-            # safe_pformat handles non-strings; strings bypass pformat but must
+            # truncating_pformat handles non-strings; strings bypass pformat but must
             # still be capped so a 10 MB string return value doesn't create a
             # huge intermediate allocation before block-level truncation fires.
-            value_str = safe_pformat(event.value, max_chars=max_chars)
+            value_str = truncating_pformat(event.value, max_chars=max_chars)
             parts.append(f"Out[{event.execution_count}]: {value_str}")
         if event.captured_locals:
             parts.append(event.captured_locals)

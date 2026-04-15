@@ -1,19 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""TDD: safe_pformat uses TruncatingStringIO instead of string post-cap slicing.
+"""TDD: truncating_pformat uses TruncatingStringIO instead of string post-cap slicing.
 
-Change 2 of truncation-2.0: safe_pformat delegates to TruncatingStringIO
+Change 2 of truncation-2.0: truncating_pformat delegates to TruncatingStringIO
 for head+tail truncation, producing valid prose output instead of mid-repr slices.
 """
 
-from agentdoc import safe_pformat
+from agentdoc import truncating_pformat
 
 
 class TestSafePformatUsesTruncatingStringIO:
-    """safe_pformat must use TruncatingStringIO prose format when cap fires."""
+    """truncating_pformat must use TruncatingStringIO prose format when cap fires."""
 
     def test_small_value_passes_through_unchanged(self):
-        result = safe_pformat([1, 2, 3], max_chars=1000)
+        result = truncating_pformat([1, 2, 3], max_chars=1000)
         assert "1" in result
         assert "Output too large" not in result
 
@@ -21,7 +21,7 @@ class TestSafePformatUsesTruncatingStringIO:
         # TDD: will fail until Change 2 is implemented
         # Current code does string slicing; new code uses TruncatingStringIO.getvalue()
         big = list(range(100_000))
-        result = safe_pformat(big, max_chars=200)
+        result = truncating_pformat(big, max_chars=200)
         # TruncatingStringIO produces "Output too large (...) chars..." prose
         assert "Output too large" in result
         assert "chars not shown" in result
@@ -33,7 +33,7 @@ class TestSafePformatUsesTruncatingStringIO:
         head_marker = "START_UNIQUE_MARKER"
         tail_marker = "END_UNIQUE_MARKER"
         big = [head_marker] + ["x"] * 10_000 + [tail_marker]
-        result = safe_pformat(big, max_chars=300)
+        result = truncating_pformat(big, max_chars=300)
         assert head_marker in result
         assert tail_marker in result
 
@@ -43,7 +43,7 @@ class TestSafePformatUsesTruncatingStringIO:
         # "Output too large (N chars). Showing first X and last Y chars.
         #  \n\n<head>\n\n... Z chars not shown ...\n\n<tail>"
         big = "a" * 10_000
-        result = safe_pformat(big, max_chars=100)
+        result = truncating_pformat(big, max_chars=100)
         assert "Output too large" in result
         assert "Showing first" in result
         assert "and last" in result
@@ -52,7 +52,7 @@ class TestSafePformatUsesTruncatingStringIO:
     def test_string_fast_path_unchanged(self):
         # String fast-path is unchanged; TruncatingStringIO is for non-strings
         huge_str = "START" + "x" * 10_000 + "END"
-        result = safe_pformat(huge_str, max_chars=100)
+        result = truncating_pformat(huge_str, max_chars=100)
         assert "START" in result
         assert "END" in result
         assert "Output too large" in result
@@ -62,7 +62,7 @@ class TestSafePformatUsesTruncatingStringIO:
         # String slicing cuts mid-repr (e.g. "[0, 1, 2, 3..." without "]").
         # TruncatingStringIO preserves clean head + clean tail.
         big = list(range(10_000))
-        result = safe_pformat(big, max_chars=500)
+        result = truncating_pformat(big, max_chars=500)
         # Result should start with the prose notice, not a dangling "["
         assert result.startswith("<truncated-output>") or result.startswith("[")
         # If it starts with "[", it wasn't truncated — that's fine too

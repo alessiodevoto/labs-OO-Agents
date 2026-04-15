@@ -9,7 +9,7 @@ Two-step mental model:
 
 Quick start:
 
-    from agentdoc import spec, hidden, doc, pformat, safe_pformat
+    from agentdoc import spec, hidden, doc, pformat, truncating_pformat
 
     class MyAgent:
         api_key: Annotated[str, hidden] = ""          # excluded from documentation
@@ -37,13 +37,13 @@ __version__ = "0.2.0"
 __submodules__ = ["ext", "introspect", "visibility", "adapters"]
 
 
-_SAFE_PFORMAT_MAX_CHARS: int = 500_000
+_TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 
 
-def safe_pformat(
+def truncating_pformat(
     obj: Annotated[Any, "Object to format"],
     *,
-    max_chars: Annotated[int, "Hard character cap on total output"] = _SAFE_PFORMAT_MAX_CHARS,
+    max_chars: Annotated[int, "Hard character cap on total output"] = _TRUNCATING_PFORMAT_MAX_CHARS,
     **kwargs: Any,
 ) -> str:
     """Format *obj* as a string, bounded to prevent OOM.
@@ -62,7 +62,7 @@ def safe_pformat(
         ValueError: if ``max_chars`` is <= 0.
     """
     if max_chars <= 0:
-        raise ValueError(f"safe_pformat max_chars must be > 0, got {max_chars}")
+        raise ValueError(f"truncating_pformat max_chars must be > 0, got {max_chars}")
 
     if isinstance(obj, str):
         if len(obj) <= max_chars:
@@ -83,11 +83,13 @@ def safe_pformat(
             f"</truncated-output>"
         )
 
-    # Non-strings: delegate to pformat with a TruncatingStringIO cap.
+    # Non-strings: delegate to _pformat with a TruncatingStringIO cap.
     # Default max_string to max_chars so individual string fields don't get
     # silently clipped before the overall cap fires.
     kwargs.setdefault("max_string", max_chars)
-    return pformat(obj, max_chars=max_chars, **kwargs)
+    stream = TruncatingStringIO(limit=max_chars)
+    _pformat(obj, stream, **kwargs)
+    return stream.getvalue()
 
 
 def pformat(
@@ -101,7 +103,6 @@ def pformat(
     expand_all: Annotated[bool, "Always expand containers to multiple lines"] = False,
     concise: Annotated[bool, "Show first-line docstrings only"] = False,
     instance_mode: Annotated[str, "Instance format: 'repr' for repr-style, 'type' for type structure"] = "repr",
-    max_chars: int | None = None,
 ) -> str:
     """Format an object as a string with smart truncation.
 
@@ -111,15 +112,13 @@ def pformat(
 
     ``console`` and ``indent_guides`` are accepted for Rich API compatibility but have no effect.
 
-    ``max_chars``: when set, a :class:`TruncatingStringIO` caps total output size during
-    formatting.  When the cap fires the result includes a prose head+tail notice.
+    To cap total output size (preventing OOM on huge objects), use :func:`truncating_pformat`
+    which applies a hard ``max_chars`` limit via :class:`TruncatingStringIO`.
     """
     # console and indent_guides are intentionally ignored for Rich compatibility
     del console, indent_guides
 
-    stream: io.StringIO | TruncatingStringIO = (
-        TruncatingStringIO(limit=max_chars) if max_chars is not None else io.StringIO()
-    )
+    stream: io.StringIO = io.StringIO()
 
     _pformat(
         obj,
@@ -178,6 +177,6 @@ __all__ = [
     "DocConfig",
     "pformat",
     "pprint",
-    "safe_pformat",
+    "truncating_pformat",
     "TruncatingStringIO",
 ]

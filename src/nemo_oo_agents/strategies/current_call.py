@@ -99,7 +99,7 @@ class CurrentCall:
 
         Args:
             value_formatter: Optional callable to format each parameter value.
-                Defaults to ``repr``.  Pass ``safe_pformat`` to cap large values
+                Defaults to ``repr``.  Pass ``truncating_pformat`` to cap large values
                 before embedding in prompts.
 
         Returns:

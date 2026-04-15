@@ -518,7 +518,7 @@ class TestReflexionStrategyResultFormatting:
         tc = DEFAULT_TRUNCATION_CONFIG
 
         assert strategy._format_result_for_reflection(42, tc) == "42"
-        # safe_pformat returns raw string (no quotes) for strings
+        # truncating_pformat returns raw string (no quotes) for strings
         assert strategy._format_result_for_reflection("hello", tc) == "hello"
         assert strategy._format_result_for_reflection([1, 2, 3], tc) == "[1, 2, 3]"
 

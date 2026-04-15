@@ -755,18 +755,18 @@ class TestDynamicContextResultNone:
 
 
 # ===========================================================================
-# Lines 2082-2084: DynamicContext result is non-string (safe_pformat path)
+# Lines 2082-2084: DynamicContext result is non-string (truncating_pformat path)
 # ===========================================================================
 
 
 class TestDynamicContextNonStringResult:
     """Lines 2082-2084: When a DynamicContext expression returns a non-string
-    value (e.g., a list or dict), it goes through safe_pformat().
+    value (e.g., a list or dict), it goes through truncating_pformat().
     """
 
     @pytest.mark.asyncio
     async def test_non_string_result_formatted(self):
-        """DynamicContext returning a list goes through safe_pformat."""
+        """DynamicContext returning a list goes through truncating_pformat."""
 
         class _Agent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -787,7 +787,7 @@ class TestDynamicContextNonStringResult:
         found = False
         for block in blocks:
             if hasattr(block, "key") and block.key == "list_block":
-                # safe_pformat should convert [1, 2, 3] to a string representation
+                # truncating_pformat should convert [1, 2, 3] to a string representation
                 assert "1" in block.content
                 assert "2" in block.content
                 assert "3" in block.content

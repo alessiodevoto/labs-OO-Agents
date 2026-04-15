@@ -11,7 +11,7 @@ import time
 from contextvars import ContextVar
 from typing import Any
 
-from agentdoc import safe_pformat
+from agentdoc import truncating_pformat
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
@@ -737,7 +737,7 @@ class OpenInferenceHooks:
     def _safe_serialize_execution_result(result: Any) -> str:
         """Serialize an ExecutionResult for trace spans, bounding returned_value.
 
-        Uses safe_pformat on returned_value so a 100 MB return value
+        Uses truncating_pformat on returned_value so a 100 MB return value
         doesn't blow up OTLP payloads.  Other fields (stdout, stderr)
         are already bounded by TruncatingStringIO.
         """
@@ -755,7 +755,7 @@ class OpenInferenceHooks:
         # Bound returned_value before JSON serialization so the JSON is always valid.
         rv = d.get("returned_value")
         if rv is not None:
-            d["returned_value"] = safe_pformat(rv, max_chars=50_000)
+            d["returned_value"] = truncating_pformat(rv, max_chars=50_000)
 
         return json.dumps(d, default=str)
 
@@ -763,7 +763,7 @@ class OpenInferenceHooks:
         """Safely serialize an object to string for trace span attributes.
 
         No truncation — traces must faithfully record what the agent produced.
-        Agent-facing truncation is done upstream by safe_pformat / block-level
+        Agent-facing truncation is done upstream by truncating_pformat / block-level
         limits; by the time a value reaches a trace span it is already the
         bounded representation the agent actually saw.
 

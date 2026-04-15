@@ -2093,9 +2093,9 @@ async def {name}({params_str}) -> {return_type}:
                     return "None"
                 if isinstance(result, str):
                     return result
-                from context_blocks.utils import safe_pformat
+                from context_blocks.utils import truncating_pformat
 
-                return safe_pformat(result, max_chars=tc.max_block_chars)
+                return truncating_pformat(result, max_chars=tc.max_block_chars)
             return value
 
         build_result = await build_context(

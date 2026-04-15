@@ -4,7 +4,7 @@
 
 import re
 
-from agentdoc import safe_pformat as safe_pformat  # noqa: F401 — re-exported for callers
+from agentdoc import truncating_pformat as truncating_pformat  # noqa: F401 — re-exported for callers
 
 # Hard character cap applied to pformat output **before** block-level truncation.
 # This is a safety net that prevents OOM when a Python object (e.g. a 10 M-element

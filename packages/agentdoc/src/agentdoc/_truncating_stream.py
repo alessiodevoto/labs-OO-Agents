@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """StringIO with hard character limit and truncation notices.
 
-Used by pformat/safe_pformat to bound memory during formatting of large objects.
+Used by pformat/truncating_pformat to bound memory during formatting of large objects.
 """
 
 import collections

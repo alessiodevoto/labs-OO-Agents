@@ -25,7 +25,7 @@ from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
-from context_blocks.utils import safe_pformat
+from context_blocks.utils import truncating_pformat
 
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import FrameworkBlock
@@ -295,7 +295,7 @@ async def _phase_persistent_blocks(
                 content = "None"
             else:
                 kwargs = {} if pre_format_chars is None else {"max_chars": pre_format_chars}
-                content = safe_pformat(value, **kwargs)
+                content = truncating_pformat(value, **kwargs)
             meta = BlockMetadata(expr=f'self.context["{key}"]', user_block=True)
 
         blocks = [

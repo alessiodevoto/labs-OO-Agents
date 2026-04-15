@@ -72,7 +72,7 @@ class TestSafeSerializeSentinel:
 class TestSafeSerializeNoTruncation:
     """Traces must NOT truncate — _safe_serialize is always lossless.
 
-    Agent-facing truncation is done upstream (safe_pformat / block-level limits).
+    Agent-facing truncation is done upstream (truncating_pformat / block-level limits).
     By the time a value reaches a span attribute it is already the bounded
     representation the agent actually saw — we must not truncate it further.
     """

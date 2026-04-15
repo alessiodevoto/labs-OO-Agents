@@ -20,7 +20,7 @@ Example in LLM-generated code:
 
 from typing import TYPE_CHECKING, Any
 
-from agentdoc import safe_pformat
+from agentdoc import truncating_pformat
 from nemo_oo_agents.events import PythonOutput
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ class OutAccessor:
         items = []
         for event in events:
             v = event.value
-            items.append(f"Out[{event.execution_count}]: {safe_pformat(v, max_chars=500)}")
+            items.append(f"Out[{event.execution_count}]: {truncating_pformat(v, max_chars=500)}")
         return "\n".join(items)
 
     @property

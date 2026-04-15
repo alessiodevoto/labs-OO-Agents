@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """TDD: gl-74 — _safe_serialize_execution_result caps returned_value before JSON.
 
-Change 4 of truncation-2.0: Use safe_pformat(rv, max_chars=50_000) and remove
+Change 4 of truncation-2.0: Use truncating_pformat(rv, max_chars=50_000) and remove
 the post-JSON string slicing that produces invalid JSON on large return values.
 """
 
@@ -48,7 +48,7 @@ class TestGl74ReturnedValueCap:
 
     def test_capped_output_uses_prose_notice(self):
         # TDD: will fail until Change 4 is implemented
-        # safe_pformat produces "Output too large..." prose, not raw s[:50000]
+        # truncating_pformat produces "Output too large..." prose, not raw s[:50000]
         huge = "START" + "x" * 200_000 + "END"
         result = self._make_result(huge)
         serialized = self.hooks._safe_serialize_execution_result(result)

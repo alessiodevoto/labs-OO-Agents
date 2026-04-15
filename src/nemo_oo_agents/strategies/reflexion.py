@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from agentdoc import safe_pformat
+from agentdoc import truncating_pformat
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Feedback
@@ -293,7 +293,7 @@ class ReflexionStrategy(GenerationStrategy):
             return "None (no value returned)"
 
         # Show as much of the result as possible — the LLM must evaluate its quality.
-        return safe_pformat(result, max_chars=tc.max_block_chars)
+        return truncating_pformat(result, max_chars=tc.max_block_chars)
 
     def _format_reflection_feedback(
         self,

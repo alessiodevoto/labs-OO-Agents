@@ -389,12 +389,12 @@ class SummarizationAgent(Agent):
             return ""
 
         from context_blocks import BlockMetadata, ResolvedBlock, Role, format_message_content
-        from context_blocks.utils import safe_pformat
+        from context_blocks.utils import truncating_pformat
 
         parts = []
         for tag, event in events:
             event_role = getattr(event, "_role", Role.USER)
-            body = safe_pformat(event, max_chars=self._truncation.max_block_chars)
+            body = truncating_pformat(event, max_chars=self._truncation.max_block_chars)
             block = ResolvedBlock(
                 key=f"event_{tag}",
                 content=body,

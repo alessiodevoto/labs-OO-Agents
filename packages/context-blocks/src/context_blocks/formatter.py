@@ -16,7 +16,7 @@ from typing import Any
 
 from context_blocks.events import EventBase, ToolCallEvent
 from context_blocks.models import ResolvedBlock, Role
-from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, safe_pformat
+from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, truncating_pformat
 
 
 class FormatType(StrEnum):
@@ -76,7 +76,7 @@ class BlockFormatter(ABC):
         Called by render_context() for each non-ToolCallEvent message block
         before truncation. The result becomes block.content.
 
-        Default: bounded repr via safe_pformat. Override in subclasses
+        Default: bounded repr via truncating_pformat. Override in subclasses
         (e.g. PlainBlockFormatter) for alternative serialization.
 
         Args:
@@ -87,7 +87,7 @@ class BlockFormatter(ABC):
         Returns:
             String content to use as the block's message content.
         """
-        return safe_pformat(event, max_chars=max_chars)
+        return truncating_pformat(event, max_chars=max_chars)
 
 
 class XMLBlockFormatter(BlockFormatter):

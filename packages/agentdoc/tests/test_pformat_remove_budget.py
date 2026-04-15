@@ -3,7 +3,7 @@
 """TDD: pformat API change — max_total_chars and _truncated_out removed.
 
 Change 1 of truncation-2.0: pformat becomes purely structural (M1).
-Memory safety is M2's responsibility (safe_pformat / TruncatingStringIO).
+Memory safety is M2's responsibility (truncating_pformat / TruncatingStringIO).
 """
 
 import pytest
