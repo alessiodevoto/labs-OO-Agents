@@ -616,3 +616,129 @@ class TestMethodLevelTruncationConfig:
 
         # Strategy must have seen the method-level max_block_chars, not the agent's
         assert captured["max_block_chars"] == 5_000
+
+    @pytest.mark.asyncio
+    async def test_concurrent_method_calls_have_isolated_truncation_configs(self):
+        """Concurrent calls to methods with different truncation configs are isolated.
+
+        asyncio context vars are copied into each new Task at creation time, so
+        _execute_with_generation's var.set() in one task cannot bleed into another.
+        This verifies the contextvars-based isolation holds under actual concurrency.
+        """
+        import asyncio
+
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        captured = {}
+
+        class CapturingStrategy(GenerationStrategy):
+            name = "CAPTURING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                # Yield once to allow the other task to interleave
+                await asyncio.sleep(0)
+                seen = runtime.truncation_config.max_stdout_chars
+                captured[call.method_name] = seen
+                # Yield again — if the context var leaked, seen would have changed
+                await asyncio.sleep(0)
+                assert runtime.truncation_config.max_stdout_chars == seen, (
+                    "truncation_config changed after yielding — context var leaked between tasks"
+                )
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(max_stdout_chars=100_000),
+        ):
+            @strategy(CapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=1_000))
+            async def method_a(self) -> str:
+                """Method A with small stdout limit."""
+                ...
+
+            @strategy(CapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=2_000))
+            async def method_b(self) -> str:
+                """Method B with medium stdout limit."""
+                ...
+
+        agent = TestAgent()
+        await asyncio.gather(agent.method_a(), agent.method_b())
+
+        # Each task must have seen exactly its own method-level config
+        assert captured["method_a"] == 1_000
+        assert captured["method_b"] == 2_000
+
+    @pytest.mark.asyncio
+    async def test_nested_method_call_sees_inner_method_config(self):
+        """When outer's strategy calls inner(), inner sees its own truncation config.
+
+        _execute_with_generation sets the context var for the duration of each
+        method call and resets it in finally.  Nested calls therefore get their
+        own method-level config during execution, and the outer config is
+        restored once the inner call returns.
+        """
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        captured: dict = {}
+
+        class InnerCapturingStrategy(GenerationStrategy):
+            name = "INNER_CAP"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                captured["inner"] = runtime.truncation_config.max_stdout_chars
+                return "done"
+
+        class OuterCallingStrategy(GenerationStrategy):
+            """Strategy that records its config, calls agent.inner(), then records again."""
+
+            name = "OUTER_CALL"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                captured["outer_before"] = runtime.truncation_config.max_stdout_chars
+                await runtime.agent.inner()
+                # Config must be restored to outer's value after inner returns
+                captured["outer_after"] = runtime.truncation_config.max_stdout_chars
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(max_stdout_chars=100_000),
+        ):
+            @strategy(OuterCallingStrategy(), truncation=TruncationConfig(max_stdout_chars=1_000))
+            async def outer(self) -> str:
+                """Outer method."""
+                ...
+
+            @strategy(InnerCapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=2_000))
+            async def inner(self) -> str:
+                """Inner method called from outer's strategy."""
+                ...
+
+        agent = TestAgent()
+        await agent.outer()
+
+        # Inner sees its own config (2_000), not outer's (1_000)
+        assert captured["inner"] == 2_000
+        # Outer sees its own config before and after calling inner
+        assert captured["outer_before"] == 1_000
+        assert captured["outer_after"] == 1_000
