@@ -309,3 +309,212 @@ class TestTokenBudgetIntegration:
 
         with pytest.raises((RuntimeError, GenerationError), match="count_tokens"):
             await agent.answer("hello")
+
+
+class TestMethodLevelTruncationConfig:
+    """Tests for method-level TruncationConfig via @strategy(truncation=...)."""
+
+    def test_strategy_decorator_stores_truncation_attribute(self):
+        """@strategy(truncation=...) should store the config as _strategy_truncation."""
+        from nemo_oo_agents import strategy
+
+        tc = TruncationConfig(max_stdout_chars=1234)
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(truncation=tc)
+            async def method(self) -> str:
+                """Do something."""
+                ...
+
+        # The decorator should store the truncation config on the underlying function
+        fn = TestAgent.__dict__["method"]
+        # The wrapper exposes it on itself; the underlying func also has it
+        # (via setattr on func directly)
+        assert getattr(fn, "_strategy_truncation", None) is tc or (
+            hasattr(fn, "__func__") and getattr(fn.__func__, "_strategy_truncation", None) is tc
+        )
+
+    def test_strategy_decorator_without_truncation_stores_none(self):
+        """@strategy() without truncation= should set _strategy_truncation to None."""
+        from nemo_oo_agents import strategy
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy()
+            async def method(self) -> str:
+                """Do something."""
+                ...
+
+        fn = TestAgent.__dict__["method"]
+        assert getattr(fn, "_strategy_truncation", None) is None
+
+    @pytest.mark.asyncio
+    async def test_method_level_truncation_visible_to_runtime_during_execution(self):
+        """During method execution, runtime.truncation_config should reflect method-level override.
+
+        We use a custom strategy that captures the truncation config visible through
+        runtime during strategy execution, then verify it is the merged (method-level) config.
+        """
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        captured_tc = {}
+
+        class CapturingStrategy(GenerationStrategy):
+            """Strategy that captures runtime.truncation_config and returns a fixed value."""
+
+            name = "CAPTURING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                captured_tc["config"] = runtime.truncation_config
+                return "captured"
+
+        method_tc = TruncationConfig(max_stdout_chars=12345)
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(
+                max_stdout_chars=100_000,
+                max_pprint_elements=77,
+            ),
+        ):
+            @strategy(CapturingStrategy(), truncation=method_tc)
+            async def run(self) -> str:
+                """Run."""
+                ...
+
+        agent = TestAgent()
+        result = await agent.run()
+        assert result == "captured"
+
+        # The strategy should have seen the merged config
+        assert "config" in captured_tc
+        tc = captured_tc["config"]
+        # Method-level field wins
+        assert tc.max_stdout_chars == 12345
+        # Agent-level field preserved (not in method override)
+        assert tc.max_pprint_elements == 77
+
+    @pytest.mark.asyncio
+    async def test_method_level_truncation_applied_to_execute_code(self):
+        """execute_code during a method call should use the method-level stdout limit.
+
+        The agent has a large stdout limit (100k), but the method is decorated with
+        a small limit (200 chars). Code executed during that method should be truncated
+        at 200 chars.
+        """
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        execution_results = {}
+
+        class CodeRunningStrategy(GenerationStrategy):
+            """Strategy that runs some code and captures the stdout result."""
+
+            name = "CODE_RUNNING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                # Execute code that produces 5000 chars of output
+                result = await runtime.execute_code("print('x' * 5000)")
+                execution_results["stdout"] = result.stdout
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(max_stdout_chars=100_000),  # Large agent-level limit
+        ):
+            @strategy(CodeRunningStrategy(), truncation=TruncationConfig(max_stdout_chars=200))
+            async def run_code(self) -> str:
+                """Run code."""
+                ...
+
+        agent = TestAgent()
+        result = await agent.run_code()
+        assert result == "done"
+
+        # The stdout should be truncated at 200 chars (not 100_000)
+        assert "stdout" in execution_results
+        stdout = execution_results["stdout"]
+        assert "Output too large" in stdout, (
+            f"Expected truncation at 200 chars but got: {stdout[:300]!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_method_level_truncation_does_not_affect_other_methods(self):
+        """A truncation override on one method should not affect another method."""
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+
+        llm = FakeLLMClient.with_tool_call("return_result", {"result": "done"})
+
+        class TestAgent(
+            Agent,
+            llm=llm,
+            truncation=TruncationConfig(max_stdout_chars=100_000),
+        ):
+            @strategy(CodeActStrategy(), truncation=TruncationConfig(max_stdout_chars=500))
+            async def small_limit(self) -> str:
+                """Small stdout limit."""
+                ...
+
+            @strategy(CodeActStrategy())
+            async def big_limit(self) -> str:
+                """Uses agent-level limit."""
+                ...
+
+        agent = TestAgent()
+
+        # Both methods resolve at the agent level — verify the agent config is intact
+        assert agent._truncation.max_stdout_chars == 100_000
+
+        # The small_limit method's wrapper should have _strategy_truncation set
+        small_fn = TestAgent.__dict__["small_limit"]
+        assert getattr(small_fn, "_strategy_truncation", None) is not None
+
+        # The big_limit method's wrapper should NOT have _strategy_truncation set
+        big_fn = TestAgent.__dict__["big_limit"]
+        assert getattr(big_fn, "_strategy_truncation", None) is None
+
+    def test_truncation_config_merge_at_method_level(self):
+        """Method-level config merges with agent config (method fields win)."""
+        from nemo_oo_agents import strategy
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(
+                max_stdout_chars=100_000,
+                max_pprint_elements=100,
+            ),
+        ):
+            @strategy(truncation=TruncationConfig(max_stdout_chars=500))
+            async def method(self) -> str:
+                """Method with partial truncation override."""
+                ...
+
+        agent = TestAgent()
+
+        # Simulate what actor does: merge agent config with method-level override
+        method_fn = TestAgent.__dict__["method"]
+        method_tc = getattr(method_fn, "_strategy_truncation", None)
+        assert method_tc is not None
+
+        merged = agent._truncation.merge_with(method_tc)
+
+        # Method field wins
+        assert merged.max_stdout_chars == 500
+        # Agent field preserved (not in method override)
+        assert merged.max_pprint_elements == 100

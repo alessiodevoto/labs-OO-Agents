@@ -82,6 +82,13 @@ _current_method_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
 )
 _current_llm_var: contextvars.ContextVar[Any] = contextvars.ContextVar("current_llm", default=None)
 
+# Context variable for the resolved truncation config for the current generation call.
+# Set by _execute_with_generation() so that method-level @strategy(truncation=...)
+# overrides are visible to runtime.truncation_config throughout strategy execution.
+_current_truncation_config_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "current_truncation_config", default=None
+)
+
 # Context variable for current strategy being executed
 _current_strategy_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "current_strategy", default=None
@@ -348,7 +355,14 @@ class ActorRuntime:
 
     @property
     def truncation_config(self) -> "TruncationConfig":
-        """Truncation configuration for the current agent (RuntimeServices protocol)."""
+        """Truncation configuration for the current generation call (RuntimeServices protocol).
+
+        Returns the method-level override (set by @strategy(truncation=...)) if active,
+        otherwise falls back to the agent-level config.
+        """
+        override = _current_truncation_config_var.get()
+        if override is not None:
+            return override
         return self.agent._truncation
 
     async def generate(
@@ -1679,6 +1693,10 @@ class ActorRuntime:
         if llm_client is None:
             raise RuntimeError(f"No LLM client available for {method_name}")
 
+        # Resolve truncation config: method-level @strategy(truncation=...) > agent-level
+        method_truncation = getattr(base_method, "_strategy_truncation", None)
+        resolved_truncation = self.agent._truncation.merge_with(method_truncation)
+
         # Mark that we're in a generation session
         # This allows nested ellipsis method calls to execute inline without deadlocking
         prev_in_session = _in_generation_session.get()
@@ -1803,6 +1821,7 @@ class ActorRuntime:
                 call_token = _current_call_var.set(call)
                 method_token = _current_method_var.set(method)
                 llm_token = _current_llm_var.set(llm_client)
+                truncation_token = _current_truncation_config_var.set(resolved_truncation)
 
                 # Propagate decorator context to nested calls:
                 # merge parent's inherited context with this method's @strategy(context={...})
@@ -1839,6 +1858,7 @@ class ActorRuntime:
                     _current_call_var.reset(call_token)
                     _current_method_var.reset(method_token)
                     _current_llm_var.reset(llm_token)
+                    _current_truncation_config_var.reset(truncation_token)
                     _decorator_context_var.reset(decorator_ctx_token)
                     _decorator_events_var.reset(decorator_evt_token)
             else:
