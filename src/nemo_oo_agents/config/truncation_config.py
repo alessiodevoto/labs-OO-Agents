@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class TruncationConfig(BaseModel):
     """Controls output size at render time.
 
-    max_block_chars: Per-block character clamp. Applied to context blocks and events.
+    max_block_chars: Per-block character clamp. Applied to context blocks and events,
+                     and also used as the cap for safe_pformat() serialization (single
+                     pipeline — no double truncation).
     max_context_tokens: Total token budget for system/context blocks (None = no limit).
                         Requires count_tokens to be passed to render_context().
     max_event_tokens: Total token budget for event/message blocks (None = no limit).
@@ -46,18 +48,6 @@ class TruncationConfig(BaseModel):
     ] = 50
     max_pprint_string: Annotated[int | None, Field(description="Max string chars in pprint")] = 500
     max_pprint_depth: Annotated[int | None, Field(description="Max nesting depth in pprint")] = 4
-    max_pre_format_chars: Annotated[
-        int,
-        Field(
-            description=(
-                "Hard character cap applied to pformat output before block-level truncation. "
-                "Prevents OOM when an agent returns a very large Python object (e.g. a 10 M-element "
-                "list). Block-level truncation (max_block_chars) still applies afterwards; "
-                "this is purely a safety net for the serialisation step. "
-                "Default: 500,000 chars (25× max_block_chars)."
-            )
-        ),
-    ] = 500_000
 
     @model_validator(mode="after")
     def _check_values(self) -> "TruncationConfig":
@@ -67,7 +57,6 @@ class TruncationConfig(BaseModel):
             "max_block_chars",
             "max_stdout_chars",
             "max_stderr_chars",
-            "max_pre_format_chars",
         ):
             if getattr(self, name) <= 0:
                 errors.append(f"{name} must be > 0, got {getattr(self, name)}")

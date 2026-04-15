@@ -20,6 +20,7 @@ from uuid import uuid4
 from agentdoc.introspect import methods, variables
 
 if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.events import ExecutionResult
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
@@ -39,25 +40,10 @@ from nemo_oo_agents.runtime.context_vars import (
     _parent_agent_var,
 )
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
-from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
+from agentdoc import TruncatingStringIO
 
 logger = logging.getLogger(__name__)
 
-
-def _get_token_counter(llm: Any) -> Any:
-    """Return a token-counting callable for *llm*.
-
-    If *llm* has a ``count_tokens`` method, return it.  Otherwise log a warning
-    and return a char-based approximation (``len(text) // 4`` ≈ 4 chars/token for
-    English) so that token limits remain functional without raising.
-    """
-    if callable(getattr(llm, "count_tokens", None)):
-        return llm.count_tokens
-    logger.warning(
-        "max_context_tokens / max_event_tokens set but LLM has no count_tokens; "
-        "using char approximation (÷4). Token limits may be inaccurate."
-    )
-    return lambda text: len(text) // 4
 
 
 # Suppress SyntaxWarning for invalid escape sequences (e.g. '\s' instead of r'\s')
@@ -360,6 +346,11 @@ class ActorRuntime:
     def event_manager(self) -> Any:
         """Event manager for conversation management (RuntimeServices protocol)."""
         return self.agent.event_manager
+
+    @property
+    def truncation_config(self) -> "TruncationConfig":
+        """Truncation configuration for the current agent (RuntimeServices protocol)."""
+        return self.agent._truncation
 
     async def generate(
         self,
@@ -714,7 +705,7 @@ class ActorRuntime:
             # Each async task gets its own buffers via contextvars, so parallel
             # executions are isolated. TruncatingStringIO prevents LLMs from
             # filling the context window.
-            truncation_config = self.agent._truncation
+            truncation_config = self.truncation_config
             stdout_buffer = TruncatingStringIO(
                 limit=truncation_config.max_stdout_chars,
                 tail_chars=truncation_config.stdout_tail_chars,
@@ -1690,7 +1681,7 @@ class ActorRuntime:
             raise RuntimeError(f"No LLM client available for {method_name}")
 
         # Resolve token counter once per call — used later in _render_context_for_turn.
-        tc = self.agent._truncation
+        tc = self.truncation_config
 
         # Mark that we're in a generation session
         # This allows nested ellipsis method calls to execute inline without deadlocking
@@ -2042,7 +2033,7 @@ async def {name}({params_str}) -> {return_type}:
         """
         from nemo_oo_agents.runtime.context_builder import build_context
 
-        tc = self.agent._truncation
+        tc = self.truncation_config
         call_kwargs = call_kwargs or {}
 
         # Get current strategy
@@ -2088,7 +2079,7 @@ async def {name}({params_str}) -> {return_type}:
                     return result
                 from context_blocks.utils import safe_pformat
 
-                return safe_pformat(result, max_chars=tc.max_pre_format_chars)
+                return safe_pformat(result, max_chars=tc.max_block_chars)
             return value
 
         build_result = await build_context(
@@ -2104,7 +2095,7 @@ async def {name}({params_str}) -> {return_type}:
             scoped_event_query=_scoped_events_var.get(),
             agent_event_query=getattr(self.agent, "event_query", None),
             current_call_id=self._agent_call_id,
-            pre_format_chars=tc.max_pre_format_chars,
+            pre_format_chars=tc.max_block_chars,
         )
 
         # Apply the resolved cache (the only side effect)
@@ -2125,13 +2116,18 @@ async def {name}({params_str}) -> {return_type}:
         block and provider formatters.
         """
         blocks = await self._prepare_context(method, call_args, call_kwargs)
-        tc = self.agent._truncation
+        tc = self.truncation_config
         llm_client = _current_llm_var.get()
-        count_tokens = (
-            _get_token_counter(llm_client)
-            if (tc.max_context_tokens is not None or tc.max_event_tokens is not None)
-            else None
-        )
+        need_token_counter = tc.max_context_tokens is not None or tc.max_event_tokens is not None
+        if need_token_counter and not callable(getattr(llm_client, "count_tokens", None)):
+            raise RuntimeError(
+                "max_context_tokens / max_event_tokens requires a token counter, but the LLM "
+                f"({type(llm_client).__name__!r}) has no count_tokens method. "
+                "Register an explicit counter: pass count_tokens=char_approximate_token_counter "
+                "to your LLM, or use 'from nemo_oo_agents import char_approximate_token_counter' "
+                "and attach it to your LLM instance."
+            )
+        count_tokens = llm_client.count_tokens if need_token_counter else None
         try:
             from openinference_instrumentation_nemo_oo_agents._context_sideband import (
                 set_context_blocks,
@@ -2153,5 +2149,5 @@ async def {name}({params_str}) -> {return_type}:
             context_limit=tc.max_context_tokens,
             event_limit=tc.max_event_tokens,
             count_tokens=count_tokens,
-            pre_format_limit=tc.max_pre_format_chars,
+            pre_format_limit=tc.max_block_chars,
         )

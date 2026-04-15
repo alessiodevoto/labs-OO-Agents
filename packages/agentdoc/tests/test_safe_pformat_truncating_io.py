@@ -65,7 +65,7 @@ class TestSafePformatUsesTruncatingStringIO:
         big = list(range(10_000))
         result = safe_pformat(big, max_chars=500)
         # Result should start with the prose notice, not a dangling "["
-        assert result.startswith("Output too large") or result.startswith("[")
+        assert result.startswith("<truncated-output>") or result.startswith("[")
         # If it starts with "[", it wasn't truncated — that's fine too
         if "Output too large" in result:
             # Verify it's the TruncatingStringIO format, not a bare slice

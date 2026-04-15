@@ -59,6 +59,7 @@ from nemo_oo_agents.skill_manager import SkillManager  # noqa: E402
 
 # Export storage
 from nemo_oo_agents.storage import StorageManager  # noqa: E402
+from nemo_oo_agents.token_counter import char_approximate_token_counter  # noqa: E402
 
 # Export strategy base class and implementations
 from nemo_oo_agents.strategies import (  # noqa: E402
@@ -129,6 +130,8 @@ __all__ = [
     "StorageNotConfiguredError",
     # Storage
     "StorageManager",
+    # Token counting
+    "char_approximate_token_counter",
 ]
 
 # Install debug handler by default (zero overhead until SIGUSR2 received)

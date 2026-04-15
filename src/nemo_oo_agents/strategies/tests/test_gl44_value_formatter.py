@@ -25,7 +25,7 @@ def _make_call(method_name="test", signature=None, args=(), kwargs=None):
 class TestFormatParametersValueFormatter:
     """format_parameters_as_code must accept optional value_formatter."""
 
-    def test_default_formatter_is_repr(self):
+    def test_default_formatter_renders_values(self):
         call = _make_call(args=(42,), kwargs={"flag": True})
         result = call.format_parameters_as_code()
         assert "42" in result
@@ -75,8 +75,8 @@ class TestFormatParametersValueFormatter:
         # Output should be bounded
         assert len(result) < 2000
 
-    def test_none_formatter_uses_repr(self):
-        # TDD: will fail until Change 5 is implemented
+    def test_none_formatter_uses_safe_pformat(self):
+        # Default formatter is safe_pformat — value still appears in output.
         call = _make_call(args=("hello",))
         result = call.format_parameters_as_code(value_formatter=None)
         assert "hello" in result

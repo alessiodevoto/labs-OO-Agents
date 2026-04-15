@@ -18,6 +18,8 @@ Inspired by: Methodic's Reflexion strategy
 import logging
 from typing import TYPE_CHECKING, Any
 
+from agentdoc import safe_pformat
+
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents.decorators import strategy
@@ -29,6 +31,7 @@ from nemo_oo_agents.strategies.template import TemplateStrategy
 if TYPE_CHECKING:
     from context_blocks import DynamicContext
     from nemo_oo_agents.config.strategy_config import ReflexionConfig
+    from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.strategies.current_call import CurrentCall
 
 logger = logging.getLogger(__name__)
@@ -244,7 +247,7 @@ class ReflexionStrategy(GenerationStrategy):
         task_description = "\n".join(task_parts)
 
         # Format result for reflection
-        result_str = self._format_result_for_reflection(result)
+        result_str = self._format_result_for_reflection(result, runtime.truncation_config)
 
         # Build reflection prompt using @strategy method with TemplateStrategy
         prompt = await self.reflection_prompt(runtime, task=task_description, result=result_str)
@@ -277,11 +280,12 @@ class ReflexionStrategy(GenerationStrategy):
                 issues=["Failed to parse reflection - retrying"],
             )
 
-    def _format_result_for_reflection(self, result: Any) -> str:
+    def _format_result_for_reflection(self, result: Any, tc: "TruncationConfig") -> str:
         """Format result for the reflection prompt.
 
         Args:
             result: The result to format.
+            tc: Truncation config controlling how much of the result to show.
 
         Returns:
             String representation suitable for LLM evaluation.
@@ -289,15 +293,8 @@ class ReflexionStrategy(GenerationStrategy):
         if result is None:
             return "None (no value returned)"
 
-        # For complex objects, try to get a meaningful representation
-        result_str = repr(result)
-
-        # Truncate very long results
-        max_length = 2000
-        if len(result_str) > max_length:
-            result_str = result_str[:max_length] + "... (truncated)"
-
-        return result_str
+        # Show as much of the result as possible — the LLM must evaluate its quality.
+        return safe_pformat(result, max_chars=tc.max_block_chars)
 
     def _format_reflection_feedback(
         self,

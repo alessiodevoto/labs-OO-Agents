@@ -215,7 +215,8 @@ def render_context(
             is set. When None and no token limits are set, char-based counting is used.
         pre_format_limit: Hard character cap passed to block_formatter.format_event()
             before block-level truncation.  Comes from
-            TruncationConfig.max_pre_format_chars.  None uses the formatter default.
+            TruncationConfig.max_block_chars (single pipeline — same cap for both).
+            None uses the formatter default.
 
     Returns:
         Provider-specific output (list[dict] for OpenAI, dict for Anthropic).

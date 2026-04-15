@@ -44,22 +44,24 @@ class TestTruncateContent:
         assert result.count("x") == 100  # head + tail = limit
 
     def test_xml_truncation_notice_format(self):
-        """format_type is ignored; all truncation uses the same prose notice."""
+        """format_type is ignored; all truncation uses the same XML-wrapped prose notice."""
         value = "a" * 200
         result, was_truncated = truncate_content(value, 100, "xml")
 
         assert was_truncated is True
+        assert result.startswith("<truncated-output>")
         assert "Output too large" in result
-        assert result.startswith("Output too large")
+        assert result.endswith("</truncated-output>")
 
     def test_markdown_truncation_notice_format(self):
-        """format_type is ignored; markdown and xml produce identical prose notice."""
+        """format_type is ignored; markdown and xml produce identical XML-wrapped prose notice."""
         value = "b" * 200
         result, was_truncated = truncate_content(value, 100, "markdown")
 
         assert was_truncated is True
+        assert result.startswith("<truncated-output>")
         assert "Output too large" in result
-        assert result.startswith("Output too large")
+        assert result.endswith("</truncated-output>")
 
 
 class TestRenderContextTruncation:

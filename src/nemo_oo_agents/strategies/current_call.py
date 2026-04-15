@@ -14,6 +14,26 @@ from uuid import uuid4
 from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code
 
 
+def _parse_param_names(signature: str) -> list[str]:
+    """Extract ordered parameter names from a signature string like '(self, a: int, b: str)'.
+
+    Strips 'self', type annotations, and default values.  Returns an empty list
+    if the signature is empty or cannot be parsed.
+    """
+    sig_content = signature.strip("()")
+    if not sig_content:
+        return []
+    names: list[str] = []
+    for param in sig_content.split(","):
+        param = param.strip()
+        if not param or param == "self":
+            continue
+        name = param.split(":")[0].split("=")[0].strip()
+        if name and name != "self":
+            names.append(name)
+    return names
+
+
 @dataclass(frozen=True)
 class CurrentCall:
     """Represents a method call being generated.
@@ -92,7 +112,9 @@ class CurrentCall:
             data = "test"
             threshold = 0.5
         """
-        fmt = value_formatter if value_formatter is not None else repr
+        from agentdoc import safe_pformat as _safe_pformat
+
+        fmt = value_formatter if value_formatter is not None else _safe_pformat
 
         if not self.signature:
             # No signature available: format positional args as arg_0, arg_1, … then kwargs.
@@ -102,22 +124,9 @@ class CurrentCall:
 
         # Extract parameter names from signature
         try:
-            # Parse signature string to get parameter names
-            # Remove outer parentheses and split by comma
-            sig_content = self.signature.strip("()")
-            if not sig_content:
+            param_names = _parse_param_names(self.signature)
+            if not param_names and not self.kwargs:
                 return ""
-
-            # Split parameters and extract names
-            param_names = []
-            for param in sig_content.split(","):
-                param = param.strip()
-                if not param or param == "self":
-                    continue
-                # Extract just the parameter name (before : or =)
-                param_name = param.split(":")[0].split("=")[0].strip()
-                if param_name and param_name != "self":
-                    param_names.append(param_name)
 
             # Build parameter dict: map positional args to names, then add kwargs
             param_dict: dict[str, Any] = {}

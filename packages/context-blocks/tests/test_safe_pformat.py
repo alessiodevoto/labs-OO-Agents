@@ -45,7 +45,7 @@ class TestSafePformat:
         # A plain string longer than the cap triggers the fast path directly.
         huge = "a" * (_MAX_PRE_FORMAT_CHARS + 100_000)
         result = safe_pformat(huge)
-        assert result.startswith("Output too large")
+        assert result.startswith("<truncated-output>")
         assert "chars not shown" in result
 
     def test_truncation_notice_has_head_and_tail(self):

@@ -1277,7 +1277,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 and result.returned_value is not None
             ):
                 error_text = format_validation_error(
-                    result.error, return_type, result.returned_value
+                    result.error, return_type, result.returned_value, runtime.truncation_config
                 )
             else:
                 error_text = self._format_error(result.error, line_offset=line_offset)
@@ -1445,7 +1445,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             session.record_error()
             # Pass actual value for better "Got: {...}" error messages
             actual_value = normalized_args.get("result") if normalized_args else None
-            error_msg = format_validation_error(e, return_type, actual_value)
+            error_msg = format_validation_error(e, return_type, actual_value, runtime.truncation_config)
             logger.debug(f"[CODEACT] return_result validation failed: {e}")
 
             if session.is_exhausted():

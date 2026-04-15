@@ -81,9 +81,8 @@ class BlockFormatter(ABC):
 
         Args:
             event:     The raw event to serialize.
-            max_chars: Hard character cap on pformat output (safety net before
-                       block-level truncation).  Comes from
-                       ``TruncationConfig.max_pre_format_chars`` via render_context().
+            max_chars: Hard character cap on pformat output — single-pipeline cap,
+                       comes from ``TruncationConfig.max_block_chars`` via render_context().
 
         Returns:
             String content to use as the block's message content.

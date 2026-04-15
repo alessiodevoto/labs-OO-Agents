@@ -74,11 +74,13 @@ def safe_pformat(
         tail = obj[-tail_chars:]
         dropped = len(obj) - head_chars - tail_chars
         return (
+            f"<truncated-output>\n"
             f"Output too large ({len(obj):,} chars). "
             f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
-            f"{tail}"
+            f"{tail}\n"
+            f"</truncated-output>"
         )
 
     # Non-strings: delegate to pformat with a TruncatingStringIO cap.
@@ -179,4 +181,5 @@ __all__ = [
     "pformat",
     "pprint",
     "safe_pformat",
+    "TruncatingStringIO",
 ]

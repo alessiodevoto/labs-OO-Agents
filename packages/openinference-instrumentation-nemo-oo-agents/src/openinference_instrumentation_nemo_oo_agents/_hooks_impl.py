@@ -11,6 +11,7 @@ import time
 from contextvars import ContextVar
 from typing import Any
 
+from agentdoc import safe_pformat
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
@@ -26,6 +27,24 @@ def _get_active_spans() -> dict[str, Span]:
         spans = {}
         _context_active_spans.set(spans)
     return spans
+
+
+_ERROR_MESSAGE_LIMIT = 5_000
+
+
+def _error_message(exception: BaseException) -> str:
+    """Return str(exception) capped at _ERROR_MESSAGE_LIMIT chars.
+
+    Exception messages are unbounded — a custom exception can embed repr()
+    of a large object.  Span attributes with MB-sized values blow up OTLP
+    payloads and trace storage.
+    """
+    msg = str(exception)
+    if len(msg) <= _ERROR_MESSAGE_LIMIT:
+        return msg
+    half = _ERROR_MESSAGE_LIMIT // 2
+    dropped = len(msg) - _ERROR_MESSAGE_LIMIT
+    return f"{msg[:half]}\n... {dropped:,} chars truncated ...\n{msg[-half:]}"
 
 
 # OpenInference span kinds
@@ -194,7 +213,7 @@ class OpenInferenceHooks:
         if exception:
             span.set_status(Status(StatusCode.ERROR, str(exception)))
             span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            span.set_attribute("error.message", _error_message(exception))
         else:
             span.set_status(Status(StatusCode.OK))
             with contextlib.suppress(Exception):
@@ -303,7 +322,7 @@ class OpenInferenceHooks:
         if exception:
             span.set_status(Status(StatusCode.ERROR, str(exception)))
             span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            span.set_attribute("error.message", _error_message(exception))
         else:
             span.set_status(Status(StatusCode.OK))
             # Capture the generation result
@@ -411,7 +430,7 @@ class OpenInferenceHooks:
         if exception:
             span.set_status(Status(StatusCode.ERROR, str(exception)))
             span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            span.set_attribute("error.message", _error_message(exception))
         else:
             span.set_status(Status(StatusCode.OK))
             try:
@@ -511,7 +530,7 @@ class OpenInferenceHooks:
         if exception:
             span.set_status(Status(StatusCode.ERROR, str(exception)))
             span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            span.set_attribute("error.message", _error_message(exception))
         else:
             span.set_status(Status(StatusCode.OK))
             try:
@@ -618,7 +637,7 @@ class OpenInferenceHooks:
         if exception:
             span.set_status(Status(StatusCode.ERROR, str(exception)))
             span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", str(exception))
+            span.set_attribute("error.message", _error_message(exception))
         else:
             span.set_status(Status(StatusCode.OK))
             try:
@@ -722,11 +741,6 @@ class OpenInferenceHooks:
         doesn't blow up OTLP payloads.  Other fields (stdout, stderr)
         are already bounded by TruncatingStringIO.
         """
-        try:
-            from agentdoc import safe_pformat
-        except ImportError:
-            safe_pformat = None
-
         if hasattr(result, "model_dump"):
             # Use has_return to check for real return value (exclude _NO_RETURN sentinel).
             has_return = getattr(result, "has_return", False)
@@ -735,27 +749,13 @@ class OpenInferenceHooks:
                 d.pop("returned_value", None)
         elif isinstance(result, dict):
             d = result
-            has_return = True
         else:
             return str(result)[:50_000]
 
         # Bound returned_value before JSON serialization so the JSON is always valid.
         rv = d.get("returned_value")
-        if rv is not None and safe_pformat is not None:
+        if rv is not None:
             d["returned_value"] = safe_pformat(rv, max_chars=50_000)
-        elif rv is not None:
-            s = str(rv)
-            if len(s) > 50_000:
-                head = s[:25_000]
-                tail = s[-25_000:]
-                dropped = len(s) - 50_000
-                d["returned_value"] = (
-                    f"Output too large ({len(s):,} chars). "
-                    f"Showing first 25,000 and last 25,000 chars.\n\n"
-                    f"{head}\n\n"
-                    f"... {dropped:,} chars not shown ...\n\n"
-                    f"{tail}"
-                )
 
         return json.dumps(d, default=str)
 

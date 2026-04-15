@@ -650,12 +650,6 @@ class TestTruncationConfigValidators:
         with pytest.raises(Exception, match="max_stderr_chars must be > 0"):
             TruncationConfig(max_stderr_chars=0)
 
-    def test_max_pre_format_chars_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
-
-        with pytest.raises(Exception, match="max_pre_format_chars must be > 0"):
-            TruncationConfig(max_pre_format_chars=0)
-
     def test_max_context_tokens_zero_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 

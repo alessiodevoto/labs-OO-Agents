@@ -1,7 +1,8 @@
 # Truncation 2.0 Design
 
 **Branch:** `feat/truncation-2.0`  
-**Issues:** gl-20, gl-41, gl-44, gl-46, gl-54, gl-74, gl-89
+**Issues:** gl-20, gl-41, gl-44, gl-54, gl-74, gl-89  
+**Deferred:** gl-46 (tail() context manager) — removed from this branch
 
 ---
 
@@ -36,74 +37,82 @@ Remove `_budget`, `max_total_chars`, and `_truncated_out` from all internal func
 
 ---
 
-## Change 2: safe_pformat — use TruncatingStringIO
+## Change 2: pformat — stream-based internals
 
-### Current state
+### Goal
 
-```python
-text = pformat(obj, max_total_chars=max_chars, _truncated_out=truncated_out, **kwargs)
-if len(text) > max_chars:
-    # String slicing post-cap — can produce broken Python syntax
-    return head_notice + text[:n_head] + notice + text[-n_tail:]
-```
+`pformat` currently builds strings bottom-up (each `_format_*` function returns a string to its caller). This means the entire formatted representation must exist in memory before the char cap can fire. Replacing string-building with stream writes allows `TruncatingStringIO` to bound memory *during* formatting — not after.
 
-### New state
+### New internal architecture
+
+All internal `_format_*` functions (`_pformat`, `_format_value`, `_format_sequence`, `_format_dict`) accept a `stream` writer and write to it directly instead of returning strings.
 
 ```python
-stream = TruncatingStringIO(limit=max_chars)
-text = pformat(obj, **kwargs)
-stream.write(text)
-return stream.getvalue()
+# Before
+def _format_sequence(seq, *, max_length, ...) -> str:
+    parts = []
+    for item in seq:
+        parts.append(_format_value(item, ...))
+    return "[" + ", ".join(parts) + "]"
+
+# After
+def _format_sequence(seq, stream, *, max_length, ...):
+    stream.write("[")
+    for i, item in enumerate(head_items):
+        if i > 0:
+            stream.write(", ")
+        _format_value(item, stream, ...)
+    if tail_items:
+        stream.write(f", ... {dropped} items not shown ..., ")
+        for i, item in enumerate(tail_items):
+            if i > 0:
+                stream.write(", ")
+            _format_value(item, stream, ...)
+    stream.write("]")
 ```
 
-`TruncatingStringIO` already exists (`truncating_stream.py`). It keeps a fixed head buffer and a rolling circular tail buffer. `getvalue()` returns head+tail with a prose notice when truncated.
+Nested containers share the same `TruncatingStringIO`. Total output across the entire object tree is bounded by `max_chars`.
 
-The string fast-path (plain strings) is unchanged — strings bypass pformat entirely and get head+tail applied directly.
+### Compact/expanded path
 
-**Memory safety note:** pformat still builds the full string in memory before handing it to `TruncatingStringIO`. This is not a regression — the current approach also builds the string in memory. The improvement is in output quality: `TruncatingStringIO` produces valid head+tail with a clean prose notice, whereas the current string slicing chops mid-repr and can produce broken Python syntax. Memory safety remains the caller's responsibility via reasonable structural limits (`max_length`, `max_string`, `max_depth`).
+The compact trial (try single-line, fall back to multi-line if > 120 chars) formats into a temporary `io.StringIO`. If the result is ≤ 120 chars, write it to the main stream. Otherwise write the expanded format directly to the main stream. No "undo" needed.
+
+```python
+trial = io.StringIO()
+_format_sequence_compact(seq, trial, ...)
+if len(trial.getvalue()) < 120:
+    stream.write(trial.getvalue())
+else:
+    _format_sequence_expanded(seq, stream, ...)
+```
+
+### Public API changes
+
+`pformat(obj, *, max_length, max_string, max_depth, max_chars=None, ...)`:
+- Removes `max_total_chars` and `_truncated_out` (gone with `_budget`)
+- Adds `max_chars: int | None = None` — feeds into `TruncatingStringIO(limit=max_chars)` when set
+- Internally: always uses a stream. If `max_chars=None`, uses `io.StringIO` (unlimited). Returns `stream.getvalue()`.
+
+`pprint(obj, ...)`:
+- Writes formatted output directly to stdout via the internal stream-based formatter
+- No intermediate string built. Stdout is already `TruncatingStringIO` via `ContextVarStream` — bounded automatically.
+
+### safe_pformat simplification
+
+```python
+def safe_pformat(obj, *, max_chars=_SAFE_PFORMAT_MAX_CHARS, **kwargs):
+    if isinstance(obj, str):
+        # string fast-path: head+tail directly (unchanged)
+        ...
+    # Non-strings: pformat now handles the char cap internally
+    return pformat(obj, max_chars=max_chars, **kwargs)
+```
+
+The post-cap string slicing disappears entirely. `_budget` / `max_total_chars` disappear. `safe_pformat` becomes a thin wrapper that sets the `max_chars` cap and handles the string fast-path.
 
 ---
 
-## Change 3: gl-46 — tail() context manager
-
-### Motivation
-
-Agents want to see only the end of long computations:
-
-```python
-with tail(25_000):
-    some_long_running_loop()
-```
-
-### Implementation
-
-Stdout during code execution is captured via `ContextVarStream` + `_stdout_buffer_var` (a ContextVar), **not** via `sys.stdout` replacement. `contextlib.redirect_stdout` would be the wrong mechanism — it only intercepts `sys.stdout` attribute access, but `ContextVarStream.write()` reads the ContextVar directly, bypassing any `sys.stdout` swap.
-
-**`tail(chars)` context manager** — temporarily replaces `_stdout_buffer_var` with a tail-only buffer, then on exit forwards the captured tail to the outer buffer.
-
-```python
-@contextmanager
-def tail(chars: int = 25_000):
-    buf = TruncatingStringIO(limit=chars, tail_chars=chars)  # head_limit=0 → tail-only
-    token = _stdout_buffer_var.set(buf)
-    try:
-        yield
-    finally:
-        _stdout_buffer_var.reset(token)
-        outer = token.old_value
-        if outer is not None:
-            outer.write(buf.getvalue())
-```
-
-`TruncatingStringIO(limit=N, tail_chars=N)` gives `head_limit=0` — all writes go directly to the rolling tail buffer. No new class needed; `TruncatingStringIO` is reused with this configuration.
-
-`_stdout_buffer_var` must be importable from wherever `tail()` is defined. Move it (or re-export it) from `actor.py` to `stream_wrappers.py` so `tail()` can import it without circular dependencies.
-
-Add `tail` to `codeact_exec_globals` alongside `pprint` and `doc`.
-
----
-
-## Change 4: gl-74 — instrumentation cap
+## Change 3: gl-74 — instrumentation cap
 
 ### Current state
 
@@ -123,7 +132,7 @@ All other `_safe_serialize` calls (for `agent.args`, `agent.kwargs`, `method.res
 
 ---
 
-## Change 5: gl-44 — PredictStrategy safeguard
+## Change 4: gl-44 — PredictStrategy safeguard
 
 ### Current state
 
@@ -154,7 +163,7 @@ The default remains `repr` for all other callers (`pure_python.py` etc.) so exis
 
 ---
 
-## Change 6: gl-89 — token-based context/event limits
+## Change 5: gl-89 — token-based context/event limits
 
 ### Current state
 
@@ -206,7 +215,7 @@ After all changes above, verify each site in the pipeline:
 | `prefill.py` parameter inspection | pformat M1 | ✅ same |
 | `PredictStrategy` parameter embedding | safe_pformat cap | ✅ gl-44 |
 | stdout/stderr from code execution | TruncatingStringIO | ✅ existing |
-| `tail()` stdout capture | TailingStringIO | ✅ gl-46 |
+| `tail()` stdout capture | TailingStringIO | ⏭ gl-46 deferred |
 | Event serialization return values | safe_pformat | ✅ gl-74 |
 | Trace span `returned_value` | safe_pformat + cap | ✅ gl-74 |
 | Per-block context truncation | block_limit chars | ✅ existing |

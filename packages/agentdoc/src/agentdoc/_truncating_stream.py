@@ -107,14 +107,21 @@ class TruncatingStringIO(io.StringIO):
         dropped = total - head_chars - tail_chars
 
         return (
+            f"<truncated-output>\n"
             f"Output too large ({total:,} chars). "
             f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
-            f"{tail}"
+            f"{tail}\n"
+            f"</truncated-output>"
         )
 
     @property
     def was_truncated(self) -> bool:
         """True if total chars written exceeded the limit."""
         return self._chars_written > self._limit
+
+    @property
+    def chars_written(self) -> int:
+        """Total characters written (including chars that were dropped)."""
+        return self._chars_written

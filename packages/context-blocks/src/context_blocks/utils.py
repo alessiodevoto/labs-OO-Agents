@@ -45,10 +45,12 @@ def truncate_content(value: str, limit: int, format_type: str) -> tuple[str, boo
     dropped = total_chars - head_chars - tail_chars
 
     result = (
+        f"<truncated-output>\n"
         f"Output too large ({total_chars:,} chars). "
         f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
         f"{head}\n\n"
         f"... {dropped:,} chars not shown ...\n\n"
-        f"{tail}"
+        f"{tail}\n"
+        f"</truncated-output>"
     )
     return result, True

@@ -18,7 +18,7 @@ from nemo_oo_agents.runtime.events import EventsApi
 from nemo_oo_agents.runtime.hooks import InstrumentationHooks, get_hooks, set_hooks
 from nemo_oo_agents.runtime.media_capture import show
 from nemo_oo_agents.runtime.pprint import pprint
-from nemo_oo_agents.runtime.truncating_stream import TruncatingStringIO
+from agentdoc import TruncatingStringIO
 
 __all__ = [
     "ActorRuntime",
