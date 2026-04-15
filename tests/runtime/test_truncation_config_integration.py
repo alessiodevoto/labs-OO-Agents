@@ -518,3 +518,101 @@ class TestMethodLevelTruncationConfig:
         assert merged.max_stdout_chars == 500
         # Agent field preserved (not in method override)
         assert merged.max_pprint_elements == 100
+
+    @pytest.mark.asyncio
+    async def test_truncation_config_reverts_after_method_returns(self):
+        """After a method call completes, runtime.truncation_config must return
+        to the agent-level config, not the method-level override.
+
+        This verifies the context var is properly reset in the finally block.
+        """
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        captured = {}
+
+        class CapturingStrategy(GenerationStrategy):
+            name = "CAPTURING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                captured["during"] = runtime.truncation_config
+                return "done"
+
+        method_tc = TruncationConfig(max_stdout_chars=99_999)
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(max_stdout_chars=100_000),
+        ):
+            @strategy(CapturingStrategy(), truncation=method_tc)
+            async def run(self) -> str:
+                """Run."""
+                ...
+
+        agent = TestAgent()
+
+        # Before: runtime reflects agent-level config
+        assert agent.runtime.truncation_config.max_stdout_chars == 100_000
+
+        await agent.run()
+
+        # During: strategy saw the method-level override
+        assert captured["during"].max_stdout_chars == 99_999
+
+        # After: runtime has reverted to agent-level config
+        assert agent.runtime.truncation_config.max_stdout_chars == 100_000
+
+    @pytest.mark.asyncio
+    async def test_method_level_max_block_chars_limits_context_rendering(self):
+        """Method-level max_block_chars should limit the content the LLM sees
+        in rendered context blocks, independently of the agent-level setting.
+
+        We use a custom strategy that captures what runtime.truncation_config
+        reports for max_block_chars, then verify it matches the method override
+        (not the agent-level value).  The context builder reads this same property
+        when capping block content, so if the property returns the right value the
+        rendering will use the right cap.
+        """
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        captured = {}
+
+        class BlockCapturingStrategy(GenerationStrategy):
+            name = "BLOCK_CAPTURING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                captured["max_block_chars"] = runtime.truncation_config.max_block_chars
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(max_block_chars=20_000),  # agent default
+        ):
+            @strategy(
+                BlockCapturingStrategy(),
+                truncation=TruncationConfig(max_block_chars=5_000),  # method override
+            )
+            async def run(self) -> str:
+                """Run."""
+                ...
+
+        agent = TestAgent()
+        await agent.run()
+
+        # Strategy must have seen the method-level max_block_chars, not the agent's
+        assert captured["max_block_chars"] == 5_000
