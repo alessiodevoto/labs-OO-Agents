@@ -5,7 +5,7 @@ Harbor agent runner for nemo-oo-agents — executed inside the Harbor container.
 
 Harbor invokes this as a CLI process::
 
-    python -m nemo_oo_agents_harbor \\
+    python -m nemo_oo_agents_benchmarks \\
         --instruction '...' \\
         --model 'anthropic/claude-opus-4-6' \\
         --agent-type basic
@@ -32,7 +32,7 @@ from typing import Any
 
 import click
 
-logger = logging.getLogger("nemo_oo_agents_harbor.runner")
+logger = logging.getLogger("nemo_oo_agents_benchmarks.runner")
 
 # Harbor container path conventions
 LOGS_DIR = Path("/logs/agent")
@@ -55,7 +55,7 @@ def _setup_logging() -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     try:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(str(LOGS_DIR / "nemo_oo_agents_harbor.log")))
+        handlers.append(logging.FileHandler(str(LOGS_DIR / "nemo_oo_agents_benchmarks.log")))
     except OSError:
         # Outside a Harbor container /logs may not exist or be writable — stderr only.
         pass
@@ -85,7 +85,7 @@ def _setup_tracing() -> None:
 
 
 def _import_agent_class(agent_type: str) -> type:
-    from nemo_oo_agents_harbor.agents import AGENT_CLASSES
+    from nemo_oo_agents_benchmarks.agents import AGENT_CLASSES
 
     entry = AGENT_CLASSES.get(agent_type)
     if entry is None:
@@ -114,7 +114,7 @@ def _write_result(result: dict[str, Any], model: str, agent_type: str) -> None:
 
 async def _run(instruction: str, model: str, agent_type: str, api_base: str | None) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
-    from nemo_oo_agents_harbor.tools import SWEBenchLocalTools
+    from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
     from unifiedllm import get_llm_client
 
     # Build LLM client — honour env-var overrides for local vLLM deployments.
@@ -166,14 +166,14 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
 def main(instruction: str, model: str, agent_type: str, api_base: str | None) -> None:
     """Run a nemo-oo-agents agent on a task inside a Harbor container."""
     _setup_logging()
-    logger.info("nemo-oo-agents-harbor runner starting")
+    logger.info("nemo-oo-agents-benchmarks runner starting")
     logger.info("  model:      %s", model)
     logger.info("  agent_type: %s", agent_type)
     if api_base:
         logger.info("  api_base:   %s", api_base)
 
     # Validate agent_type early so we get a clean error before any heavy imports.
-    from nemo_oo_agents_harbor.agents import AGENT_CLASSES
+    from nemo_oo_agents_benchmarks.agents import AGENT_CLASSES
 
     if agent_type not in AGENT_CLASSES:
         logger.error(

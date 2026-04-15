@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-SWEBench basic agent for nemo-oo-agents-harbor.
+SWEBench basic agent for nemo-oo-agents-benchmarks.
 
 Single-generation-method agent that uses CodeAct to solve SWEBench tasks
 with shell tools available via ``self.swebench``.

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for nemo_oo_agents_harbor.runner — smoke tests for CLI and imports."""
+"""Tests for nemo_oo_agents_benchmarks.runner — smoke tests for CLI and imports."""
 
 import subprocess
 import sys
@@ -9,7 +9,7 @@ import sys
 def test_runner_help():
     """Runner module must be importable and show help."""
     result = subprocess.run(
-        [sys.executable, "-m", "nemo_oo_agents_harbor.runner", "--help"],
+        [sys.executable, "-m", "nemo_oo_agents_benchmarks.runner", "--help"],
         capture_output=True,
         text=True,
     )
@@ -20,9 +20,9 @@ def test_runner_help():
 
 
 def test_runner_module_entrypoint_help():
-    """``python -m nemo_oo_agents_harbor`` must also show help."""
+    """``python -m nemo_oo_agents_benchmarks`` must also show help."""
     result = subprocess.run(
-        [sys.executable, "-m", "nemo_oo_agents_harbor", "--help"],
+        [sys.executable, "-m", "nemo_oo_agents_benchmarks", "--help"],
         capture_output=True,
         text=True,
     )
@@ -36,7 +36,7 @@ def test_runner_invalid_agent_type():
         [
             sys.executable,
             "-m",
-            "nemo_oo_agents_harbor.runner",
+            "nemo_oo_agents_benchmarks.runner",
             "--instruction",
             "Fix the bug",
             "--model",
@@ -58,8 +58,8 @@ def test_agent_classes_importable():
         [
             sys.executable,
             "-c",
-            "from nemo_oo_agents_harbor.agents.swebench_basic import SWEBenchBasicAgent; "
-            "from nemo_oo_agents_harbor.agents.swebench_opt1 import SWEBenchOpt1Agent; "
+            "from nemo_oo_agents_benchmarks.agents.swebench_basic import SWEBenchBasicAgent; "
+            "from nemo_oo_agents_benchmarks.agents.swebench_opt1 import SWEBenchOpt1Agent; "
             "print('OK')",
         ],
         capture_output=True,
@@ -75,7 +75,7 @@ def test_tools_importable():
         [
             sys.executable,
             "-c",
-            "from nemo_oo_agents_harbor.tools import SWEBenchLocalTools; print('OK')",
+            "from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools; print('OK')",
         ],
         capture_output=True,
         text=True,
@@ -90,7 +90,7 @@ def test_agent_registry_complete():
         [
             sys.executable,
             "-c",
-            "from nemo_oo_agents_harbor.agents import AGENT_CLASSES; "
+            "from nemo_oo_agents_benchmarks.agents import AGENT_CLASSES; "
             "assert 'basic' in AGENT_CLASSES; "
             "assert 'opt1' in AGENT_CLASSES; "
             "print('OK')",

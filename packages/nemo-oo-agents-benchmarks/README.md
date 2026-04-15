@@ -1,4 +1,4 @@
-# nemo-oo-agents-harbor
+# nemo-oo-agents-benchmarks
 
 The code that runs **inside** a Harbor/Apptainer container when solving benchmark tasks.
 
@@ -19,7 +19,7 @@ From this package's perspective, Harbor:
 1. Pulls a per-task benchmark SIF image (a pre-configured container environment).
 2. Starts it via Apptainer, mounts `/logs`, runs `setup.sh`.
 3. Clones this repo into the container and installs it.
-4. Fires `python -m nemo_oo_agents_harbor --instruction '...' --model '...'` and waits.
+4. Fires `python -m nemo_oo_agents_benchmarks --instruction '...' --model '...'` and waits.
 
 Harbor's HTTP sidecar lets the *orchestrator* (on the host) send exec and file commands into the container. That channel is host→container. The agent process running *inside* the container cannot use it.
 
@@ -27,7 +27,7 @@ This package contains only the code that runs **inside** the container.
 
 ### Inside the container — this package
 
-Once Harbor fires up the container and calls `python -m nemo_oo_agents_harbor`, this package is on its own. Three files own the work:
+Once Harbor fires up the container and calls `python -m nemo_oo_agents_benchmarks`, this package is on its own. Three files own the work:
 
 | File | Responsibility |
 |------|---------------|
@@ -38,8 +38,8 @@ Once Harbor fires up the container and calls `python -m nemo_oo_agents_harbor`, 
 
 ```
 Harbor (host)
-    │  clone + install nemo-oo-agents-harbor
-    │  python -m nemo_oo_agents_harbor --instruction ... --model ...
+    │  clone + install nemo-oo-agents-benchmarks
+    │  python -m nemo_oo_agents_benchmarks --instruction ... --model ...
     ▼
 Container (/testbed = benchmark repo; path is benchmark-specific)
     runner.py
@@ -57,7 +57,7 @@ Container (/testbed = benchmark repo; path is benchmark-specific)
 
 ```bash
 # From the nemo-oo-agents workspace root:
-uv pip install -e packages/nemo-oo-agents-harbor
+uv pip install -e packages/nemo-oo-agents-benchmarks
 ```
 
 ---
@@ -171,7 +171,7 @@ harbor run --config examples/harbor_local.yaml
 Monitor logs while running:
 
 ```bash
-tail -f /tmp/harbor_jobs/*/trials/*/logs/agent/nemo_oo_agents_harbor.log
+tail -f /tmp/harbor_jobs/*/trials/*/logs/agent/nemo_oo_agents_benchmarks.log
 ```
 
 ---
@@ -190,7 +190,7 @@ tail -f /tmp/harbor_jobs/*/trials/*/logs/agent/nemo_oo_agents_harbor.log
 | Path | Purpose |
 |------|---------|
 | `/testbed` | Benchmark repository. SWEBench uses `/testbed` with a `testbed` conda env; other benchmarks may differ. |
-| `/logs/agent/` | `nemo_oo_agents_harbor.log` + `result.json` |
+| `/logs/agent/` | `nemo_oo_agents_benchmarks.log` + `result.json` |
 | `/logs/artifacts/traces/` | OTel JSONL trace files |
 
 ---
