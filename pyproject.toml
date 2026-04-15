@@ -84,8 +84,8 @@ term = [
     "uvicorn[standard]>=0.34.0",
     "ptyprocess>=0.7.0",
 ]
-harbor-benchmarks = [
-    "harbor",
+harbor = [
+    "nemo-oo-agents-harbor",
 ]
 # nexus = [
 #     "nvidia-nat-nexus",  # TODO: update once published to PyPI

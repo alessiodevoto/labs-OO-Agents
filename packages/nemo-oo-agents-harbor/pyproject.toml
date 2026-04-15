@@ -26,13 +26,9 @@ dependencies = [
 #
 # See README.md → "Local development setup" for the full walkthrough.
 
-[project.optional-dependencies]
-# Internal GitLab package; install manually per README.md.
-# Listed here for documentation — uv/pip cannot resolve this without credentials.
-# Install manually: uv pip install -e 3p/harbor-nemo  (see README.md)
-harbor = [
-    "nvidia-harbor @ git+ssh://git@gitlab-master.nvidia.com:12051/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor.git@agronskiy/experimental/agent006-onboard",
-]
+# Runtime dependency (not on PyPI — install manually per README.md):
+#   nvidia-harbor @ git+ssh://git@gitlab-master.nvidia.com:12051/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor.git@agronskiy/experimental/agent006-onboard
+#   uv pip install -e 3p/harbor-nemo
 
 [project.scripts]
 nemo-harbor = "nemo_oo_agents_harbor.runner:main"
