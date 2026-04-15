@@ -83,7 +83,7 @@ def agent_pprint(agent):
         if parts:
             display(Markdown("**Execution Output:**\n\n" + "\n\n".join(parts)))
 
-    _active_unsubs.append(agent.event_manager.on("reasoning", on_reasoning))
-    _active_unsubs.append(agent.event_manager.on("tool_call", on_tool_call))
-    _active_unsubs.append(agent.event_manager.on("python_output", on_python_output))
+    _active_unsubs.append(agent.event_manager.on("Reasoning", on_reasoning))
+    _active_unsubs.append(agent.event_manager.on("ToolCallEvent", on_tool_call))
+    _active_unsubs.append(agent.event_manager.on("PythonOutput", on_python_output))
     print(f"Verbose output enabled for {type(agent).__name__}")

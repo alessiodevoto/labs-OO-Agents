@@ -168,27 +168,21 @@ class EventManager:
         reading from storage.
 
         Args:
-            cls: An EventBase subclass with a ``Literal`` ``event_type`` field.
+            cls: An EventBase subclass. The registry key is derived from the
+                class name or an explicit ``event_type`` field default.
 
         Raises:
             TypeError: If *cls* is not an EventBase subclass.
-            ValueError: If *cls* has no ``event_type`` field or its default is
-                not a non-empty string.
         """
         if not (isinstance(cls, type) and issubclass(cls, EventBase)):
             raise TypeError(f"Expected an EventBase subclass, got {cls!r}")
-        field_info = cls.model_fields.get("event_type")
-        if field_info is None or not isinstance(field_info.default, str) or not field_info.default:
-            raise ValueError(
-                f"{cls.__name__} must define an event_type field with a non-empty string default"
-            )
         self._backend.register_event_type(cls)
 
     def on(self, event_type: str, handler: EventHandler) -> Callable[[], None]:
         """Subscribe to events of a specific type.
 
         Args:
-            event_type: Event type (e.g., "task", "llm_output", "error")
+            event_type: Event type (e.g., "Task", "LLMOutput", "Error")
                        or "*" for all events.
             handler: Callback function receiving Event.
 
@@ -356,7 +350,7 @@ class EventManager:
         """Filter events with AND semantics.
 
         Args:
-            type: Event type filter (e.g., "task", "python_output")
+            type: Event type filter (e.g., "Task", "PythonOutput")
             call_id: Call ID filter (matches metadata.call_id)
             query: Text search (case-insensitive substring, or regex if regex=True)
             regex: If True, treat query as regex pattern

@@ -90,7 +90,7 @@ def test_filter_includes_execute_python_events():
     assert len(recent_events) == 50
 
     # The PythonOutput should be included (it's at position 0 of the slice)
-    assert recent_events[0].event_type == "python_output"
+    assert recent_events[0].event_type == "PythonOutput"
     assert recent_events[0].tool_call_id == "tooluse_will_be_cut"
 
 
@@ -164,12 +164,12 @@ def test_filter_by_call_id_and_type():
     events.add(t2)
 
     # Only tasks for call-1
-    result = events.filter(call_id="call-1", type="task")
+    result = events.filter(call_id="call-1", type="Task")
     assert len(result) == 1
     assert result[0].prompt == "Task for call-1"
 
     # LLM output for call-1
-    result = events.filter(call_id="call-1", type="llm_output")
+    result = events.filter(call_id="call-1", type="LLMOutput")
     assert len(result) == 1
     assert result[0].content == "LLM for call-1"
 

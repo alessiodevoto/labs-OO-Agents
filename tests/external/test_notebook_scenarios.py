@@ -391,7 +391,7 @@ async def test_message_callback():
 
     # Create agent and subscribe to message events
     agent = SimpleAgent(llm=fake_llm)
-    agent.event_manager.on("message", capture_message)
+    agent.event_manager.on("Message", capture_message)
 
     # Call method
     await agent.perform_task()
@@ -428,7 +428,7 @@ async def test_reasoning_callback():
 
     # Create agent and subscribe to reasoning events
     agent = SimpleAgent(llm=fake_llm)
-    agent.event_manager.on("reasoning", capture_reasoning)
+    agent.event_manager.on("Reasoning", capture_reasoning)
 
     # Call method
     await agent.perform_task()
@@ -500,7 +500,7 @@ async def test_variable_substitution():
 
     # Create agent and subscribe to messages
     agent = QueueStatusAgent(llm=fake_llm)
-    agent.event_manager.on("message", capture_message)
+    agent.event_manager.on("Message", capture_message)
 
     # Set up state
     agent.queue = ["task1"]

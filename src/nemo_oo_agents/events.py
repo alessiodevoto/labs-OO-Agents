@@ -19,7 +19,7 @@ Type names follow "Type Names are Prompts" - no redundant "Event" suffix.
 """
 
 from collections.abc import Callable
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -56,7 +56,6 @@ class ExecutionSignal(BaseException):
 class Task(EventBase):
     """Task prompt event - added at start of generation."""
 
-    event_type: Literal["task"] = Field(default="task", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     prompt: Annotated[str, Field(description="Task prompt describing what to do")]
@@ -70,7 +69,6 @@ class Task(EventBase):
 class Message(EventBase):
     """User-facing message from generated code via message()."""
 
-    event_type: Literal["message"] = Field(default="message", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     content: Annotated[str, Field(description="User-facing message content")]
@@ -79,7 +77,6 @@ class Message(EventBase):
 class Reasoning(EventBase):
     """Chain-of-thought from generated code via reasoning()."""
 
-    event_type: Literal["reasoning"] = Field(default="reasoning", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     content: Annotated[str, Field(description="Chain-of-thought reasoning content")]
@@ -88,7 +85,6 @@ class Reasoning(EventBase):
 class Error(EventBase):
     """Error for LLM retry."""
 
-    event_type: Literal["error"] = Field(default="error", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     content: Annotated[str, Field(description="Error message for LLM retry")]
@@ -97,7 +93,6 @@ class Error(EventBase):
 class Feedback(EventBase):
     """Execution feedback when target method not yet defined."""
 
-    event_type: Literal["feedback"] = Field(default="feedback", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     content: Annotated[str, Field(description="Execution feedback content")]
@@ -106,7 +101,6 @@ class Feedback(EventBase):
 class LLMOutput(EventBase):
     """Raw LLM output - code (PURE_PYTHON), JSON (STRUCTURED_OUTPUT), or tool calls (CODEACT)."""
 
-    event_type: Literal["llm_output"] = Field(default="llm_output", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     content: Annotated[str, Field(description="LLM response content (code or JSON)")]
@@ -120,7 +114,6 @@ class PythonOutput(EventBase):
     message ordering requirements (tool results must immediately follow tool calls).
     """
 
-    event_type: Literal["python_output"] = Field(default="python_output", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     tool_call_id: Annotated[str, Field(description="ID of the tool call that produced this output")]
@@ -167,7 +160,6 @@ class BeforeTurn(EventBase):
     Uses Role.RUNTIME_EVENT to indicate it's never recorded in conversation events.
     """
 
-    event_type: Literal["before_turn"] = Field(default="before_turn", repr=False)
     _role: ClassVar[Role] = Role.RUNTIME_EVENT
 
     method_name: Annotated[str, Field(description="Name of the method being generated")]
@@ -195,7 +187,6 @@ class AfterTurn(EventBase):
     - turn_number=N, is_final=True: Final turn, method complete
     """
 
-    event_type: Literal["after_turn"] = Field(default="after_turn", repr=False)
     _role: ClassVar[Role] = Role.RUNTIME_EVENT
 
     method_name: Annotated[str, Field(description="Name of the method being generated")]
@@ -235,7 +226,6 @@ class Summary(EventBase):
     - events["5"] always works, even after event is archived
     """
 
-    event_type: Literal["summary"] = Field(default="summary", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT  # LLM's own recap of past actions
 
     # The tag for this summary event (e.g., "2..40") - REQUIRED
@@ -257,9 +247,9 @@ class Summary(EventBase):
     doc: str = Field(default="", description="Usage hint for accessing collapsed events")
 
 
-# === Discriminated Union ===
+# === Union of all core event types ===
 
-Event = Annotated[
+Event = (
     Task
     | Message
     | Reasoning
@@ -269,9 +259,8 @@ Event = Annotated[
     | PythonOutput
     | Summary
     | BeforeTurn
-    | AfterTurn,
-    Field(discriminator="event_type"),
-]
+    | AfterTurn
+)
 
 
 # === ExecutionResult ===

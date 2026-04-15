@@ -907,7 +907,7 @@ def test_keys_empty():
 def test_on_unsubscribe_idempotent():
     """Calling unsubscribe twice does not raise."""
     hm = EventManager()
-    unsub = hm.on("task", lambda e: None)
+    unsub = hm.on("Task", lambda e: None)
     unsub()
     unsub()  # second call should be a no-op
 
@@ -922,7 +922,7 @@ def test_on_handler_self_unsubscribe_during_emit():
         received.append(event)
         unsub()
 
-    unsub = hm.on("task", self_removing)
+    unsub = hm.on("Task", self_removing)
     hm.add(Task(prompt="trigger"))
 
     assert len(received) == 1
@@ -938,9 +938,9 @@ def test_on_handler_adds_new_handler_during_emit():
 
     def adder(event):
         # Add a new handler mid-emit
-        hm.on("task", lambda e: second_received.append(e))
+        hm.on("Task", lambda e: second_received.append(e))
 
-    hm.on("task", adder)
+    hm.on("Task", adder)
     hm.add(Task(prompt="first"))
 
     # The new handler was added but should NOT have seen 'first'
@@ -1005,8 +1005,8 @@ def test_emit_handler_exception_does_not_skip_others():
     def good_handler(event):
         calls.append("good")
 
-    hm.on("task", bad_handler)
-    hm.on("task", good_handler)
+    hm.on("Task", bad_handler)
+    hm.on("Task", good_handler)
 
     hm.add(Task(prompt="test"))
     assert "good" in calls  # good_handler must still fire

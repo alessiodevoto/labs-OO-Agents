@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Session management — UUID-keyed persistent conversation history.
 
 Each session gets a ``SQLiteStorageManager`` at
@@ -92,7 +94,10 @@ class SessionManager:
         self._name: str | None = None
         self._user_named: bool = False
 
-        # Register TUI event types so they deserialize correctly
+        # TUI event types are auto-registered in the global _EVENT_REGISTRY
+        # via __pydantic_init_subclass__, so these per-instance register calls
+        # are no longer strictly necessary.  Kept for backward compatibility
+        # with any code that relies on the per-backend registry.
         for cls in TUI_EVENT_TYPES:
             storage.event_manager.register_event_type(cls)
 
@@ -231,14 +236,14 @@ class SessionManager:
                     except Exception:
                         pass
 
-                if et == "tui_session_start" and start_event is None:
+                if et == "TUISessionStart" and start_event is None:
                     start_event = TUISessionStart.model_validate(raw)
                     start_ts = last_ts
-                elif et == "tui_session_rename":
+                elif et == "TUISessionRename":
                     ev = TUISessionRename.model_validate(raw)
                     name = ev.name or None
                     user_named = ev.user_named
-                elif et in ("tui_user_input", "tui_agent_message"):
+                elif et in ("TUIUserInput", "TUIAgentMessage"):
                     turn_count += 1
             except Exception:
                 continue
@@ -272,7 +277,7 @@ class SessionManager:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT event_type, data FROM events "
-                "WHERE event_type IN ('tui_user_input', 'tui_agent_message') "
+                "WHERE event_type IN ('TUIUserInput', 'TUIAgentMessage') "
                 "ORDER BY insertion_order"
             ).fetchall()
             conn.close()
@@ -293,10 +298,10 @@ class SessionManager:
                     except Exception:
                         pass
 
-                if row["event_type"] == "tui_user_input":
+                if row["event_type"] == "TUIUserInput":
                     ev = TUIUserInput.model_validate(raw)
                     turns.append(Turn(role="user", content=ev.text, ts=ts))
-                elif row["event_type"] == "tui_agent_message":
+                elif row["event_type"] == "TUIAgentMessage":
                     turns.append(Turn(role="agent", content=raw.get("content", ""), ts=ts))
             except Exception:
                 continue
@@ -365,11 +370,11 @@ def build_resume_outputs(
             raw = json.loads(row["data"])
         except Exception:
             continue
-        if et == "tui_user_input" and raw.get("text"):
+        if et == "TUIUserInput" and raw.get("text"):
             pending.append(HistoryTurn(role="user", content=raw["text"]))
-        elif et == "tui_agent_message" and raw.get("content"):
+        elif et == "TUIAgentMessage" and raw.get("content"):
             pending.append(HistoryTurn(role="agent", content=raw["content"]))
-        elif et == "rich_output" and in_nemo_term and raw.get("payload"):
+        elif et == "RichOutput" and in_nemo_term and raw.get("payload"):
             if pending:
                 items.append(("turns", pending[:]))
                 pending = []

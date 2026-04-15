@@ -1,17 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """TUI-specific metadata events stored in the per-session SQLite DB.
 
 These are ``Metadata`` subclasses — persisted to storage but never shown
-to the LLM.  Register them with the event manager at startup:
-
-    agent.event_manager.register_event_type(TUISessionStart)
-    agent.event_manager.register_event_type(TUISessionRename)
-    agent.event_manager.register_event_type(TUIUserInput)
-    agent.event_manager.register_event_type(TUIAgentMessage)
+to the LLM.  Each type is **auto-registered** in the global
+``_EVENT_REGISTRY`` via ``EventBase.__pydantic_init_subclass__``, so
+manual ``register_event_type()`` calls are no longer needed.
 """
 
-from typing import ClassVar, Literal
-
-from pydantic import Field
+from typing import ClassVar
 
 from context_blocks import Metadata
 from context_blocks.roles import Role
@@ -20,7 +17,6 @@ from context_blocks.roles import Role
 class TUISessionStart(Metadata):
     """Session metadata written once when the TUI starts."""
 
-    event_type: Literal["tui_session_start"] = Field(default="tui_session_start", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
     model: str = ""
@@ -31,7 +27,6 @@ class TUISessionStart(Metadata):
 class TUISessionRename(Metadata):
     """Written when a session is renamed (auto or user)."""
 
-    event_type: Literal["tui_session_rename"] = Field(default="tui_session_rename", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
     name: str = ""
@@ -41,7 +36,6 @@ class TUISessionRename(Metadata):
 class TUIUserInput(Metadata):
     """The raw text the user typed at the TUI prompt."""
 
-    event_type: Literal["tui_user_input"] = Field(default="tui_user_input", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
     text: str = ""
@@ -50,13 +44,12 @@ class TUIUserInput(Metadata):
 class TUIAgentMessage(Metadata):
     """A Markdown message sent by the agent to the user via self.message()."""
 
-    event_type: Literal["tui_agent_message"] = Field(default="tui_agent_message", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
     content: str = ""
 
 
-# All TUI event types — pass each to event_manager.register_event_type()
+# All TUI event types (auto-registered; kept as a convenience tuple)
 TUI_EVENT_TYPES: tuple[type[Metadata], ...] = (
     TUISessionStart,
     TUISessionRename,

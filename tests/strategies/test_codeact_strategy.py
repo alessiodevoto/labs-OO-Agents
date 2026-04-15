@@ -622,7 +622,7 @@ class TestCodeActStrategyToolResults:
 
         # Check that execution output was added to history
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         # Should have one execute_python event (for execute_python)
         assert len(exec_output_events) == 1
@@ -681,7 +681,7 @@ class TestCodeActStrategyToolResults:
 
         # Check that execution output shows "Out[n]:" (Jupyter-style)
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         assert len(exec_output_events) == 1  # One execute_python with output
         first_exec_event = exec_output_events[0]
@@ -716,7 +716,7 @@ class TestCodeActStrategyToolResults:
 
         # Check that execution output shows "Out[n]:" (Jupyter-style)
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         # First execute_python is from execute_python (showing "Out[n]: 42")
         assert len(exec_output_events) >= 1
@@ -769,7 +769,7 @@ class TestCodeActStrategyOutAccessor:
 
         # Verify execution output events show correct Out[] indices
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         # Should have 3 execute_python events (one per execute_python call)
         assert len(exec_output_events) == 3
@@ -820,7 +820,7 @@ class TestCodeActStrategyOutAccessor:
 
         # Verify Out[-1] worked correctly in block 3
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         # Should have 3 execution outputs (one per execute_python call)
         assert len(exec_output_events) == 3
@@ -865,7 +865,7 @@ class TestCodeActStrategyOutAccessor:
 
         # Verify block 3 shows the KeyError in execute_python
         history_events = agent_instance.event_manager.values()
-        exec_output_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_output_events = [e for e in history_events if e.event_type == "PythonOutput"]
         assert isinstance(exec_output_events[0], PythonOutput)
         # Find the execute_python with the error (status: error)
         error_outputs = [e for e in exec_output_events if e.execution_status == ResultStatus.ERROR]
@@ -952,7 +952,7 @@ class TestCodeActStrategyErrorHandling:
         # Check that execution event includes error message
         # Note: PythonOutput contains the error directly, not as tool_result
         history_events = agent_instance.event_manager.values()
-        exec_events = [e for e in history_events if e.event_type == "python_output"]
+        exec_events = [e for e in history_events if e.event_type == "PythonOutput"]
 
         assert len(exec_events) >= 1
         exec_event = exec_events[0]
@@ -1003,17 +1003,17 @@ class TestCodeActStrategyEventSequence:
         event_types = [e.event_type for e in events]
 
         # Architecture: ToolResult is nested in ToolCallEvent.result (no separate tool_result events)
-        # Sequence: task -> tool_call -> python_output -> tool_call
+        # Sequence: Task -> ToolCallEvent -> PythonOutput -> ToolCallEvent
         assert event_types == [
-            "task",
-            "tool_call",
-            "python_output",
-            "tool_call",
-        ], f"Expected ['task', 'tool_call', 'python_output', 'tool_call'], got {event_types}"
+            "Task",
+            "ToolCallEvent",
+            "PythonOutput",
+            "ToolCallEvent",
+        ], f"Expected ['Task', 'ToolCallEvent', 'PythonOutput', 'ToolCallEvent'], got {event_types}"
 
         # Verify first ToolCallEvent has correct data (execute_python)
         tool_call_event = events[1]
-        assert tool_call_event.event_type == "tool_call"
+        assert tool_call_event.event_type == "ToolCallEvent"
         assert tool_call_event.tool_call_id == "call_abc123"
         assert tool_call_event.name == "execute_python"
         assert "code" in tool_call_event.arguments
@@ -1024,12 +1024,12 @@ class TestCodeActStrategyEventSequence:
 
         # Verify execute_python event contains the deferred output
         exec_output_event = events[2]
-        assert exec_output_event.event_type == "python_output"
+        assert exec_output_event.event_type == "PythonOutput"
         assert exec_output_event.tool_call_id == "call_abc123"
 
         # Verify second ToolCallEvent is return_result
         return_call_event = events[3]
-        assert return_call_event.event_type == "tool_call"
+        assert return_call_event.event_type == "ToolCallEvent"
         assert return_call_event.name == "return_result"
         assert return_call_event.result is not None
 
@@ -1065,7 +1065,7 @@ class TestCodeActStrategyEventSequence:
 
         # Verify no empty LLMOutput events remain (they should be removed when tool calls are made)
         for i in range(len(event_types) - 1):
-            if event_types[i] == "llm_output" and event_types[i + 1] == "tool_call":
+            if event_types[i] == "LLMOutput" and event_types[i + 1] == "ToolCallEvent":
                 # Check if it's an empty assistant event
                 if not events[i].content:
                     pytest.fail(
@@ -1104,17 +1104,17 @@ class TestCodeActStrategyEventSequence:
         events = agent_instance.event_manager.values()
         event_types = [e.event_type for e in events]
 
-        # Exact sequence: task → synthetic(tool_call + python_output) → return_result tool_call
-        assert event_types == ["task", "tool_call", "python_output", "tool_call"], (
-            f"Expected ['task', 'tool_call', 'python_output', 'tool_call'], got: {event_types}"
+        # Exact sequence: Task → synthetic(ToolCallEvent + PythonOutput) → return_result ToolCallEvent
+        assert event_types == ["Task", "ToolCallEvent", "PythonOutput", "ToolCallEvent"], (
+            f"Expected ['Task', 'ToolCallEvent', 'PythonOutput', 'ToolCallEvent'], got: {event_types}"
         )
 
         # No error event should be added for a text-only response
-        assert "error" not in event_types
+        assert "Error" not in event_types
 
-        # Find the synthetic tool call (first tool_call, not the final return_result)
+        # Find the synthetic tool call (first ToolCallEvent, not the final return_result)
         synthetic = events[1]
-        assert synthetic.event_type == "tool_call"
+        assert synthetic.event_type == "ToolCallEvent"
         assert synthetic.metadata.get("synthetic") is True
         assert synthetic.name == "execute_python"
 
@@ -1132,7 +1132,7 @@ class TestCodeActStrategyEventSequence:
 
         # The PythonOutput should be linked to the same synthetic tool call
         python_output = events[2]
-        assert python_output.event_type == "python_output"
+        assert python_output.event_type == "PythonOutput"
         assert python_output.tool_call_id == synthetic.tool_call_id
 
     @pytest.mark.asyncio
@@ -1175,7 +1175,9 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         synthetic_calls = [
-            e for e in events if e.event_type == "tool_call" and e.metadata.get("synthetic") is True
+            e
+            for e in events
+            if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
         ]
         assert len(synthetic_calls) == 1
 
@@ -1213,9 +1215,9 @@ class TestCodeActStrategyEventSequence:
         all_events = agent_instance.event_manager.values()
         event_types = [e.event_type for e in all_events]
         # Should produce an error event, NOT a synthetic tool_call
-        assert "error" in event_types, f"Expected error event, got: {event_types}"
+        assert "Error" in event_types, f"Expected error event, got: {event_types}"
         synthetic_calls = [
-            e for e in all_events if e.event_type == "tool_call" and e.metadata.get("synthetic")
+            e for e in all_events if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic")
         ]
         assert len(synthetic_calls) == 0, (
             f"Whitespace-only response should not create synthetic events, got: {synthetic_calls}"
@@ -1258,7 +1260,7 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         exec_calls = [
-            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+            e for e in events if e.event_type == "ToolCallEvent" and e.name == "execute_python"
         ]
         assert len(exec_calls) == 1
         code = exec_calls[0].arguments["code"]
@@ -1294,7 +1296,7 @@ class TestCodeActStrategyEventSequence:
 
         # Error events should have been added for the empty responses
         all_events = agent_instance.event_manager.values()
-        error_events = [e for e in all_events if e.event_type == "error"]
+        error_events = [e for e in all_events if e.event_type == "Error"]
         assert len(error_events) >= 1, (
             f"Expected at least 1 error event for empty response, got: "
             f"{[e.event_type for e in all_events]}"
@@ -1330,18 +1332,18 @@ class TestCodeActStrategyEventSequence:
         event_types = [e.event_type for e in events]
 
         # Architecture: ToolResult is nested in ToolCallEvent.result (no separate tool_result events)
-        # Sequence: task -> (tool_call -> python_output) x2 -> tool_call
+        # Sequence: Task -> (ToolCallEvent -> PythonOutput) x2 -> ToolCallEvent
         assert event_types == [
-            "task",
-            "tool_call",
-            "python_output",
-            "tool_call",
-            "python_output",
-            "tool_call",
+            "Task",
+            "ToolCallEvent",
+            "PythonOutput",
+            "ToolCallEvent",
+            "PythonOutput",
+            "ToolCallEvent",
         ], f"Expected correct sequence with nested results, got {event_types}"
 
         # Verify each ToolCallEvent has nested result
-        tool_call_events = [e for e in events if e.event_type == "tool_call"]
+        tool_call_events = [e for e in events if e.event_type == "ToolCallEvent"]
         for tc in tool_call_events:
             assert tc.result is not None, (
                 f"ToolCallEvent {tc.tool_call_id} should have nested result"
@@ -1379,7 +1381,7 @@ class TestCodeActStrategyEventSequence:
         assert result == "done"
 
         events = agent_instance.event_manager.values()
-        tool_calls = [e for e in events if e.event_type == "tool_call"]
+        tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
 
         # First tool call should have reasoning prepended to the code
         first_tc = tool_calls[0]
@@ -1413,7 +1415,7 @@ class TestCodeActStrategyEventSequence:
 
         # The return_result tool call should have no reasoning prepended
         events = agent_instance.event_manager.values()
-        tool_calls = [e for e in events if e.event_type == "tool_call"]
+        tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
         final_tc = tool_calls[0]
         code = final_tc.arguments.get("code", "")
         assert not code.startswith("reasoning("), (
@@ -1449,7 +1451,7 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         exec_calls = [
-            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+            e for e in events if e.event_type == "ToolCallEvent" and e.name == "execute_python"
         ]
         # First execute_python should have reasoning prepended
         assert exec_calls[0].arguments["code"].startswith("reasoning("), (
@@ -2204,7 +2206,7 @@ class TestCodeActReturnTypeInspection:
 
         # First tool call should succeed: type is at module level so in exec_globals
         history_events = agent_instance.event_manager.values()
-        execute_python_events = [e for e in history_events if e.event_type == "python_output"]
+        execute_python_events = [e for e in history_events if e.event_type == "PythonOutput"]
         assert len(execute_python_events) >= 2
         llm_first_event = execute_python_events[1]
         assert isinstance(llm_first_event, PythonOutput)
@@ -2256,7 +2258,7 @@ class TestCodeActReturnTypeInspection:
         # Verify help() returned doc-like output (not an error)
         # With deferred output pattern, actual content is in execute_python events
         history_events = agent_instance.event_manager.values()
-        execute_python_events = [e for e in history_events if e.event_type == "python_output"]
+        execute_python_events = [e for e in history_events if e.event_type == "PythonOutput"]
         first_event = execute_python_events[0]
         assert isinstance(first_event, PythonOutput)
         # Should not be an error status
@@ -2304,7 +2306,7 @@ class TestCodeActReturnTypeInspection:
 
         # First execution should succeed: type is at module level so in exec_globals
         history_events = agent_instance.event_manager.values()
-        execute_python_events = [e for e in history_events if e.event_type == "python_output"]
+        execute_python_events = [e for e in history_events if e.event_type == "PythonOutput"]
         first_exec = execute_python_events[0]
         assert isinstance(first_exec, PythonOutput)
         assert first_exec.execution_status != ResultStatus.ERROR

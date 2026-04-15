@@ -69,7 +69,7 @@ class TestEventManagerAdd:
         """add() should emit to registered handlers."""
         manager = EventManager()
         handler = MagicMock()
-        manager.on("task", handler)
+        manager.on("Task", handler)
 
         event = Task(prompt="Hello")
         manager.add(event)
@@ -82,7 +82,7 @@ class TestEventManagerAdd:
         """add(record=False) should still emit to handlers."""
         manager = EventManager()
         handler = MagicMock()
-        manager.on("task", handler)
+        manager.on("Task", handler)
 
         event = Task(prompt="Ephemeral")
         manager.add(event, record=False)
@@ -110,7 +110,7 @@ class TestEventManagerOn:
         manager = EventManager()
         handler = MagicMock()
 
-        manager.on("task", handler)
+        manager.on("Task", handler)
         manager.add(Task(prompt="Test"))
 
         handler.assert_called_once()
@@ -121,8 +121,8 @@ class TestEventManagerOn:
         handler1 = MagicMock()
         handler2 = MagicMock()
 
-        manager.on("task", handler1)
-        manager.on("task", handler2)
+        manager.on("Task", handler1)
+        manager.on("Task", handler2)
         manager.add(Task(prompt="Test"))
 
         handler1.assert_called_once()
@@ -135,8 +135,8 @@ class TestEventManagerOn:
         llm_output_handler = MagicMock()
 
         # Register handlers by event_type
-        manager.on("task", task_handler)
-        manager.on("llm_output", llm_output_handler)
+        manager.on("Task", task_handler)
+        manager.on("LLMOutput", llm_output_handler)
 
         manager.add(Task(prompt="Question"))
         manager.add(LLMOutput(content="Answer"))  # Uses LLMOutput via alias
@@ -149,7 +149,7 @@ class TestEventManagerOn:
         manager = EventManager()
         handler = MagicMock()
 
-        unsubscribe = manager.on("task", handler)
+        unsubscribe = manager.on("Task", handler)
         unsubscribe()
 
         manager.add(Task(prompt="Test"))

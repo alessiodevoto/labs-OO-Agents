@@ -240,11 +240,9 @@ class Session:
     def _attach_agent(self, agent: "Agent") -> None:
         """Subscribe to agent events for real-time streaming display."""
         self._loop = asyncio.get_running_loop()
-        self._unsubscribe_fns.append(agent.event_manager.on("reasoning", self._on_reasoning))
-        self._unsubscribe_fns.append(agent.event_manager.on("tool_call", self._on_tool_call))
-        self._unsubscribe_fns.append(
-            agent.event_manager.on("python_output", self._on_python_output)
-        )
+        self._unsubscribe_fns.append(agent.event_manager.on("Reasoning", self._on_reasoning))
+        self._unsubscribe_fns.append(agent.event_manager.on("ToolCallEvent", self._on_tool_call))
+        self._unsubscribe_fns.append(agent.event_manager.on("PythonOutput", self._on_python_output))
 
     def _detach_agent(self) -> None:
         for fn in self._unsubscribe_fns:

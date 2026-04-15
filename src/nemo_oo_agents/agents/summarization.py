@@ -150,8 +150,8 @@ class SummarizationAgent(Agent):
         if self.target_event_manager is None:
             raise ValueError("Cannot install: target_event_manager is None")
 
-        self._unsub_before = self.target_event_manager.on("before_turn", self._handle_before_turn)
-        self._unsub_after = self.target_event_manager.on("after_turn", self._handle_after_turn)
+        self._unsub_before = self.target_event_manager.on("BeforeTurn", self._handle_before_turn)
+        self._unsub_after = self.target_event_manager.on("AfterTurn", self._handle_after_turn)
 
     @hidden
     def _uninstall(self) -> None:

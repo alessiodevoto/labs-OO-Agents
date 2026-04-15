@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from context_blocks import Event, EventBase, EventStatus, Metadata
+from context_blocks.events import _EVENT_REGISTRY
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -41,19 +42,33 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
-# Unwrap Event = Annotated[UserEvent | AssistantEvent | ToolCallEvent, Field(...)]
+# Unwrap Event = UserEvent | AssistantEvent | ToolCallEvent
 # to get the concrete types. This stays in sync with the Event union automatically.
-_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(typing.get_args(Event)[0])
+_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(Event)
 if len(_CONTEXT_BLOCKS_TYPES) < 3:
     raise AssertionError(
         f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "
         "If Event's structure changed, update the get_args unwrap in sqlite.py."
     )
 
-# All event types pre-registered for deserialization.
-# context_blocks types are derived from the Event union above (stays in sync automatically).
-# nemo_oo_agents types are listed explicitly here.
+# All core event types for deserialization, keyed by their registry name
+# (class name, or explicit event_type default if non-empty).
+# These are also present in _EVENT_REGISTRY, but we keep a snapshot here
+# to seed per-instance registries and to validate at import time.
 _CORE_TYPES: dict[str, type[EventBase]] = {}
+
+
+def _registry_key(cls: type[EventBase]) -> str:
+    """Derive the registry key for an EventBase subclass.
+
+    Uses the explicit ``event_type`` field default if non-empty,
+    otherwise falls back to ``cls.__name__``.
+    """
+    fi = cls.model_fields.get("event_type")
+    default = fi.default if fi is not None and isinstance(fi.default, str) else ""
+    return default if default else cls.__name__
+
+
 for _cls in (
     *_CONTEXT_BLOCKS_TYPES,
     Task,
@@ -67,7 +82,7 @@ for _cls in (
     BeforeTurn,
     AfterTurn,
 ):
-    _key: str = _cls.model_fields["event_type"].default  # type: ignore[assignment]
+    _key: str = _registry_key(_cls)
     if _key in _CORE_TYPES:
         raise AssertionError(
             f"Duplicate event_type key {_key!r} in _CORE_TYPES: "
@@ -139,10 +154,11 @@ class SQLiteEventBackend:
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
 
-        Adds *cls* to the per-instance registry keyed by its ``event_type``
-        default.  Logs a warning if the key already maps to a different class.
+        Adds *cls* to the per-instance registry keyed by its registry name
+        (class name, or explicit event_type default).  Logs a warning if the
+        key already maps to a different class.
         """
-        event_type = cls.model_fields["event_type"].default
+        event_type = _registry_key(cls)
         existing = self._registry.get(event_type)
         if existing is not None and existing is not cls:
             logger.warning(
@@ -165,6 +181,9 @@ class SQLiteEventBackend:
         raw = json.loads(data)
         event_type = raw.get("event_type", "")
         cls = self._registry.get(event_type)
+        if cls is None:
+            # Fall back to the global auto-registration registry
+            cls = _EVENT_REGISTRY.get(event_type)
         if cls is None:
             logger.warning("Unknown event_type %r, falling back to Metadata", event_type)
             return Metadata.model_validate(raw)

@@ -9,7 +9,7 @@ Rendering: Events are rendered using pformat(event). Fields with repr=False
 are excluded from LLM context.
 
 Each event class has:
-- event_type: Literal field for discriminator (repr=False, excluded from display)
+- event_type: Auto-derived from class name (repr=False, excluded from display)
 - id: Unique identifier (repr=False, excluded from display)
 - metadata: Arbitrary metadata dict (repr=False, excluded from display)
 - _role: ClassVar for provider role (USER/ASSISTANT/TOOL)
@@ -17,14 +17,25 @@ Each event class has:
 - timestamp: Creation time
 """
 
+import logging
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from context_blocks.roles import Role
+
+_logger = logging.getLogger(__name__)
+
+# === Global Event Registry ===
+
+# Mapping of event_type string -> EventBase subclass.
+# Populated automatically by EventBase.__init_subclass__.
+# Backends (e.g. SQLiteEventBackend) use this as a fallback for deserialization.
+_EVENT_REGISTRY: dict[str, type["EventBase"]] = {}
+
 
 # === Enums ===
 
@@ -50,15 +61,69 @@ class EventBase(BaseModel):
     """Base class for all events.
 
     Subclasses define:
-    - event_type: Literal field for union discriminator (repr=False)
+    - event_type: Auto-derived from class name (repr=False), or explicit override
     - _role: ClassVar for provider role
     - Public fields which are rendered via pformat()
+
+    Auto-registration: When a subclass is defined, ``__init_subclass__``
+    automatically derives ``event_type`` from the class name (e.g.
+    ``MyCustomEvent`` -> ``"MyCustomEvent"``) if the subclass does not
+    explicitly define one.  The class is also added to the global
+    ``_EVENT_REGISTRY`` (unless the class name starts with ``_``).
     """
 
     _role: ClassVar[Role] = Role.USER
 
-    # Discriminator field - excluded from repr
-    event_type: str = Field(default="event", repr=False, description="Event type discriminator")
+    # Discriminator field - excluded from repr.
+    # Default is "" (empty); model_post_init fills it with cls.__name__ if unset.
+    event_type: str = Field(default="", repr=False, description="Event type discriminator")
+
+    def model_post_init(self, __context: Any) -> None:
+        """Auto-derive event_type from class name when not explicitly set."""
+        super().model_post_init(__context)
+        if not self.event_type:
+            self.event_type = type(self).__name__
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Register subclass in global registry.
+
+        Uses ``__pydantic_init_subclass__`` (not ``__init_subclass__``) because
+        Pydantic has fully built the model by this point — each subclass has its
+        own ``model_fields`` dict and compiled schema.
+
+        Registration only — ``model_post_init`` handles auto-deriving
+        ``event_type`` at instance creation time.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # Determine the registry key.
+        # If the subclass explicitly declares event_type with a non-empty
+        # default, use that value. Otherwise use the class name.
+        own_annotations = cls.__dict__.get("__annotations__", {})
+        has_explicit = "event_type" in own_annotations
+
+        if has_explicit:
+            fi = cls.model_fields.get("event_type")
+            default = fi.default if fi is not None and isinstance(fi.default, str) else ""
+            event_type_str = default if default else cls.__name__
+        else:
+            event_type_str = cls.__name__
+
+        # Skip registration for private/internal classes (names starting with _)
+        if cls.__name__.startswith("_"):
+            return
+
+        # Register in global registry with collision warning
+        existing = _EVENT_REGISTRY.get(event_type_str)
+        if existing is not None and existing is not cls:
+            _logger.warning(
+                "Event type %r collision: %s overwrites %s in global registry",
+                event_type_str,
+                cls.__name__,
+                existing.__name__,
+            )
+        _EVENT_REGISTRY[event_type_str] = cls
 
     # Fields excluded from repr (not shown to LLM)
     id: str = Field(
@@ -86,7 +151,6 @@ class EventBase(BaseModel):
 class UserEvent(EventBase):
     """User message event."""
 
-    event_type: Literal["user_message"] = Field(default="user_message", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     content: Annotated[str, Field(description="Message content")]
@@ -95,7 +159,6 @@ class UserEvent(EventBase):
 class AssistantEvent(EventBase):
     """Assistant response event."""
 
-    event_type: Literal["assistant_message"] = Field(default="assistant_message", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     content: Annotated[str, Field(description="Response content from the assistant")]
@@ -126,7 +189,6 @@ class ToolCallEvent(EventBase):
     - Access result via self.events[n].result
     """
 
-    event_type: Literal["tool_call"] = Field(default="tool_call", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     tool_call_id: Annotated[str, Field(description="Unique identifier for this tool call")]
@@ -147,13 +209,22 @@ class Metadata(EventBase):
     persists to storage but is never included in LLM context.
 
     The core ``Event`` union does not include ``Metadata`` subtypes.
-    Each consumer registers their subtypes with the event manager via
-    ``event_manager.register_event_type(MyMetadata)``.  The event manager
-    then uses registered types for deserialization; unknown subtypes fall
-    back to plain ``Metadata`` (fields preserved in the raw JSON column).
+    Subtypes are **auto-registered** via ``__pydantic_init_subclass__``
+    in the global ``_EVENT_REGISTRY``, so backends (e.g. SQLite) can
+    deserialize them without manual ``register_event_type()`` calls.
+
+    The ``event_type`` is auto-derived from the class name directly
+    (e.g. ``MyMetadata`` -> ``"MyMetadata"``).  Override explicitly if
+    you need a custom name.
 
     Example::
 
+        class TUISessionStart(Metadata):
+            model: str = ""
+            working_dir: str = ""
+            # event_type auto-derived as "TUISessionStart"
+
+        # Or with explicit event_type:
         class TUISessionStart(Metadata):
             event_type: Literal["tui_session_start"] = "tui_session_start"
             model: str = ""
@@ -162,13 +233,10 @@ class Metadata(EventBase):
 
     model_config = {"extra": "allow"}
 
-    event_type: str = Field(default="metadata", repr=False)
+    event_type: str = Field(default="", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
 
-# === Discriminated Union ===
+# === Union of context-blocks event types ===
 
-Event = Annotated[
-    UserEvent | AssistantEvent | ToolCallEvent,
-    Field(discriminator="event_type"),
-]
+Event = UserEvent | AssistantEvent | ToolCallEvent

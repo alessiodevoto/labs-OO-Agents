@@ -43,7 +43,7 @@ async def test_agent_can_define_and_use_class():
     assert llm.call_count == 1
 
     # No errors should have been recorded
-    errors = [e for e in a.event_manager.values() if e.event_type == "error"]
+    errors = [e for e in a.event_manager.values() if e.event_type == "Error"]
     assert errors == []
 
 
@@ -62,7 +62,7 @@ async def test_pure_python_class_definition_no_errors():
     a = TestAgent()
     await a.summarize_batch(["abcdef", "ghijkl"])
 
-    errors = [e for e in a.event_manager.values() if e.event_type == "error"]
+    errors = [e for e in a.event_manager.values() if e.event_type == "Error"]
     assert not any("class" in (e.content or "").lower() for e in errors)
 
 
@@ -112,5 +112,5 @@ async def test_class_defined_in_turn1_survives_to_turn2():
     assert result == ["buy milk", "buy eggs"]
     assert llm.call_count == 2
 
-    errors = [e for e in a.event_manager.values() if e.event_type == "error"]
+    errors = [e for e in a.event_manager.values() if e.event_type == "Error"]
     assert errors == []

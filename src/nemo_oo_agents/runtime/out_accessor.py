@@ -54,7 +54,7 @@ class OutAccessor:
         """
         if self.event_manager is None:
             return []
-        events = self.event_manager.filter(type="python_output")
+        events = self.event_manager.filter(type="PythonOutput")
         return [e for e in events if isinstance(e, PythonOutput) and e.value is not None]
 
     def _get_event_by_index(self, index: int, events: list[PythonOutput]) -> PythonOutput:
