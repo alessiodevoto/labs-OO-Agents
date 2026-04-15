@@ -15,6 +15,7 @@ The runner:
 2. Runs it on the instruction inside the container.
 3. Emits OTel traces to ``/logs/artifacts/traces/`` (Harbor's artifact path).
 4. Writes result metadata JSON to ``/logs/agent/``.
+5. Writes answer text to ``/app/answer.txt`` for Harbor's verifier.
 
 TODO (gl-8): Auto-detect and publish to OTLP endpoint when available.
 """
@@ -38,6 +39,7 @@ logger = logging.getLogger("nemo_oo_agents_benchmarks.runner")
 LOGS_DIR = Path("/logs/agent")
 ARTIFACTS_DIR = Path("/logs/artifacts")
 TRACES_DIR = ARTIFACTS_DIR / "traces"
+ANSWER_FILE = Path("/app/answer.txt")
 
 # System prompt for SWEBench tasks
 _SWEBENCH_SYSTEM_PROMPT = (
@@ -49,6 +51,15 @@ _SWEBENCH_SYSTEM_PROMPT = (
     "'testbed' is pre-activated with all dependencies installed.  Use the "
     "available shell and file tools to navigate, understand, and fix the code."
 )
+
+# Agent types that use SWEBench tools
+_SWEBENCH_AGENT_TYPES = {"swebench/basic", "swebench/opt1"}
+
+# Agent types that run generic tasks (DABStep, MemBench, etc.)
+_GENERIC_AGENT_TYPES = {"baseline"}
+
+# Agent types that run their own input parsing (DABStep-specific)
+_DABSTEP_AGENT_TYPES = {"dabstep"}
 
 
 def _setup_logging() -> None:
@@ -112,9 +123,107 @@ def _write_result(result: dict[str, Any], model: str, agent_type: str) -> None:
     logger.info("Result written → %s", out)
 
 
+def _write_answer(result: dict[str, Any]) -> None:
+    """Write the agent's answer to /app/answer.txt for Harbor's verifier."""
+    answer = result.get("answer") or result.get("response", "")
+    if not answer:
+        logger.warning("No answer to write to %s", ANSWER_FILE)
+        return
+    try:
+        ANSWER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ANSWER_FILE.write_text(str(answer))
+        logger.info("Answer written → %s", ANSWER_FILE)
+    except OSError as e:
+        logger.warning("Could not write answer file %s: %s", ANSWER_FILE, e)
+
+
+async def _run_swebench(
+    agent: Any, instruction: str, model: str, agent_type: str, api_base: str | None
+) -> int:
+    """Run a SWEBench agent with environment tools."""
+    from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
+
+    tools = SWEBenchLocalTools()
+    agent.swebench = tools
+    if hasattr(agent, "feedback") and agent.feedback is not None:
+        agent.feedback.swebench = tools
+
+    task_input = {
+        "system_prompt": _SWEBENCH_SYSTEM_PROMPT,
+        "problem_statement": instruction,
+        "response_format": "diff",
+        "environment_tools": ["swebench"],
+    }
+
+    logger.info("Running SWEBench agent %s (model=%s)...", agent_type, model)
+    result = await agent._run_evaluation(task_input)
+    _write_result(result, model, agent_type)
+
+    return 0 if result.get("success") else 1
+
+
+async def _run_generic(
+    agent: Any, instruction: str, model: str, agent_type: str
+) -> int:
+    """Run a generic baseline agent on any task.
+
+    The instruction (from instruction.md) is passed as the full task description.
+    The agent uses execute_python() to interact with the container filesystem.
+    """
+    task_input = {
+        "user_message": instruction,
+    }
+
+    logger.info("Running generic agent %s (model=%s)...", agent_type, model)
+    result = await agent._run_evaluation(task_input)
+    _write_result(result, model, agent_type)
+    _write_answer(result)
+
+    return 0 if result.get("success") else 1
+
+
+async def _run_dabstep(
+    agent: Any, instruction: str, model: str, agent_type: str
+) -> int:
+    """Run the DABStep-specific agent.
+
+    Parses the question and guidelines from the instruction and provides
+    the data directory location.
+    """
+    # Extract question from instruction (instruction.md has full task description)
+    # The DABStep instruction.md format: "Here is the question you need to answer: {question}"
+    import re
+
+    question_match = re.search(
+        r"Here is the question you need to answer:\s*(.+?)(?:\n\nHere are the guidelines|$)",
+        instruction,
+        re.DOTALL,
+    )
+    guidelines_match = re.search(
+        r"Here are the guidelines you MUST follow.*?:\s*(.+?)(?:\n\n|$)",
+        instruction,
+        re.DOTALL,
+    )
+
+    question = question_match.group(1).strip() if question_match else instruction
+    guidelines = guidelines_match.group(1).strip() if guidelines_match else ""
+
+    task_input = {
+        "question": question,
+        "data_dir": "/app/data",
+        "guidelines": guidelines,
+    }
+
+    logger.info("Running DABStep agent %s (model=%s)...", agent_type, model)
+    result = await agent._run_evaluation(task_input)
+    _write_result(result, model, agent_type)
+    _write_answer(result)
+
+    return 0 if result.get("success") else 1
+
+
 async def _run(instruction: str, model: str, agent_type: str, api_base: str | None) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
-    from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
     from unifiedllm import get_llm_client
 
     # Build LLM client — honour env-var overrides for local vLLM deployments.
@@ -128,34 +237,24 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
 
     llm_client = get_llm_client(model, **llm_overrides)
 
-    # Instantiate agent and tools.
+    # Instantiate agent.
     AgentClass = _import_agent_class(agent_type)
     agent: Any = AgentClass(llm=llm_client)
-    tools = SWEBenchLocalTools()
-    agent.swebench = tools
-    # opt1 creates a FeedbackAgent in _run_evaluation; pre-wire tools there too
-    # if the agent already has a feedback attribute (e.g. from a previous run).
-    if hasattr(agent, "feedback") and agent.feedback is not None:
-        agent.feedback.swebench = tools
 
-    task_input = {
-        "system_prompt": _SWEBENCH_SYSTEM_PROMPT,
-        "problem_statement": instruction,
-        "response_format": "diff",
-        "environment_tools": ["swebench"],
-    }
-
-    logger.info("Running agent %s on task (model=%s)...", agent_type, model)
-    result = await agent._run_evaluation(task_input)
-
-    _write_result(result, model, agent_type)
-
-    if result.get("success"):
-        logger.info("Agent completed successfully.")
-        return 0
+    # Route to the appropriate run function based on agent type.
+    if agent_type in _SWEBENCH_AGENT_TYPES:
+        exit_code = await _run_swebench(agent, instruction, model, agent_type, api_base)
+    elif agent_type in _DABSTEP_AGENT_TYPES:
+        exit_code = await _run_dabstep(agent, instruction, model, agent_type)
     else:
-        logger.error("Agent reported failure: %s", result.get("error", "(no error message)"))
-        return 1
+        # Generic / baseline agent — pass instruction as user_message
+        exit_code = await _run_generic(agent, instruction, model, agent_type)
+
+    if exit_code == 0:
+        logger.info("Agent completed successfully.")
+    else:
+        logger.error("Agent reported failure.")
+    return exit_code
 
 
 @click.command()
