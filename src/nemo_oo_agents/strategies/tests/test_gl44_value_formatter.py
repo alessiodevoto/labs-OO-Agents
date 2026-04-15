@@ -139,4 +139,3 @@ class TestFormatParametersTcParam:
         call = _make_call(args=(42,))
         result = call.format_parameters_as_code(tc=None)
         assert "42" in result
-
