@@ -161,7 +161,7 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
 @click.command()
 @click.option("--instruction", required=True, help="Task instruction / problem statement")
 @click.option("--model", required=True, help="Model name in litellm format")
-@click.option("--agent-type", default="basic", show_default=True, help="Agent variant to run")
+@click.option("--agent-type", default="baseline", show_default=True, help="Agent variant to run")
 @click.option("--api-base", default=None, help="Override API base URL")
 def main(instruction: str, model: str, agent_type: str, api_base: str | None) -> None:
     """Run a nemo-oo-agents agent on a task inside a Harbor container."""
