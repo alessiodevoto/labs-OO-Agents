@@ -14,6 +14,8 @@ def find_project_root() -> Path:
     """Walk up from this file to find the project root (where pyproject.toml lives).
 
     Falls back to the current working directory if no pyproject.toml is found.
+    Uses a local implementation to keep CLI startup fast (avoids importing
+    the heavy nemo_oo_agents core package at module level).
     """
     current = Path(__file__).resolve()
     for parent in current.parents:

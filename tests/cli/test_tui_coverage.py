@@ -195,21 +195,35 @@ class TestConfigOverrides:
         assert cfg.tui.default_model == DEFAULT_MODEL
 
 
-class TestConfigEnvVars:
-    def test_env_model_override(self):
-        with patch.dict("os.environ", {"AGENT006_MODEL": "env-model"}):
+class TestConfigFile:
+    def test_config_file_model_override(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[tui]\nmodel = "file-model"\n')
+        with patch(
+            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"model": "file-model"}
+        ):
             cfg = Config.load()
-        assert cfg.tui.default_model == "env-model"
+        assert cfg.tui.default_model == "file-model"
 
-    def test_env_trace_dir_override(self, tmp_path):
-        with patch.dict("os.environ", {"AGENT006_TRACE_DIR": str(tmp_path)}):
+    def test_config_file_trace_dir_override(self, tmp_path):
+        trace_dir = str(tmp_path / "traces")
+        with patch(
+            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"trace": trace_dir}
+        ):
             cfg = Config.load()
-        assert cfg.tui.trace_dir == tmp_path
+        assert cfg.tui.trace_dir == Path(trace_dir)
 
-    def test_explicit_override_beats_env(self):
-        with patch.dict("os.environ", {"AGENT006_MODEL": "env-model"}):
+    def test_explicit_override_beats_config_file(self):
+        with patch(
+            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"model": "file-model"}
+        ):
             cfg = Config.load(model="explicit-model")
         assert cfg.tui.default_model == "explicit-model"
+
+    def test_missing_config_file_uses_defaults(self, tmp_path):
+        with patch("nemo_oo_agents_cli.tui.config._load_config_file", return_value={}):
+            cfg = Config.load()
+        assert cfg.tui.default_model == DEFAULT_MODEL
 
 
 class TestSetNested:
@@ -1331,7 +1345,7 @@ class TestTUIConsoleSpinner:
 # tui/splash.py
 # ===========================================================================
 
-from nemo_oo_agents_cli.tui.splash import AGENT006_ASCII, show_splash  # noqa: E402
+from nemo_oo_agents_cli.tui.splash import NEMO_OO_ASCII, show_splash  # noqa: E402
 
 
 class TestShowSplash:
@@ -1356,7 +1370,7 @@ class TestShowSplash:
         assert mock_console.print.call_count == 1
 
     def test_ascii_art_constant(self):
-        assert "Agent" in AGENT006_ASCII or "_" in AGENT006_ASCII
+        assert "Agent" in NEMO_OO_ASCII or "_" in NEMO_OO_ASCII
 
 
 # ===========================================================================

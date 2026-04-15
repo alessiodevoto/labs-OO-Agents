@@ -3270,6 +3270,7 @@ dependencies = [
     { name = "click" },
     { name = "context-blocks" },
     { name = "ipython" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "unifiedllm" },
 ]
@@ -3458,6 +3459,7 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'tui'", specifier = ">=2.0.0" },
     { name = "pandas", marker = "extra == 'tui-optional'", specifier = ">=3.0.2" },
     { name = "pillow", marker = "extra == 'bigcodebench'", specifier = ">=10.0.0" },
+    { name = "platformdirs", specifier = ">=4.9.4" },
     { name = "plotly", marker = "extra == 'tui'", specifier = ">=5.0.0" },
     { name = "plotly", marker = "extra == 'tui-optional'", specifier = ">=6.6.0" },
     { name = "prettytable", marker = "extra == 'bigcodebench'", specifier = ">=3.10.0" },

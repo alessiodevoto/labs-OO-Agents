@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Shared bootstrap for terminal and web frontends.
 
 Both ``main.py`` (terminal) and ``web/server.py`` call ``bootstrap()`` to
@@ -38,6 +40,39 @@ class BootstrapResult:
     messages: list[Output] = field(default_factory=list)
 
 
+_CONFIG_TOML_TEMPLATE = """\
+# NeMo OO Agents TUI — project-local configuration
+# Place this file at .nemo_oo_agents/config.toml to override defaults.
+# All keys are optional; omit any you don't want to change.
+
+[tui]
+# LLM model (from unifiedllm registry)
+# model = "{default_model}"
+
+# Write trace files to this directory (relative to project root).
+# Omit or comment out to use OTLP auto-probe only (no files written).
+# trace = ".nemo_oo_agents/traces"
+
+# Show agent Python code execution panels
+# python = false
+
+# Vi keybindings in the prompt input
+# vi = false
+"""
+
+
+def _scaffold_project_dir(config: "Config") -> None:
+    """Create .nemo_oo_agents/ and write a config.toml template on first run."""
+    from nemo_oo_agents.paths import get_project_dir
+
+    project_dir = get_project_dir()
+    project_dir.mkdir(exist_ok=True)
+
+    config_path = project_dir / "config.toml"
+    if not config_path.exists():
+        config_path.write_text(_CONFIG_TOML_TEMPLATE.format(default_model=config.tui.default_model))
+
+
 async def bootstrap(
     config: "Config",
     *,
@@ -75,6 +110,11 @@ async def bootstrap(
             session_id=None,
             messages=[],
         )
+
+    # ------------------------------------------------------------------
+    # Project directory — scaffold .nemo_oo_agents/ on first run
+    # ------------------------------------------------------------------
+    _scaffold_project_dir(config)
 
     # ------------------------------------------------------------------
     # Tracing
@@ -242,7 +282,7 @@ async def bootstrap(
             if _rich_events:
                 _replay_wp = _WP()  # no event_manager — replay only, don't re-store
                 for _ev in _rich_events:
-                    _replay_wp._post(_ev.payload)
+                    _replay_wp._post(_ev.payload)  # type: ignore[union-attr]
         except Exception as _e:
             messages.append(TextOutput(f"Could not replay rich content: {_e}", "warning"))
 

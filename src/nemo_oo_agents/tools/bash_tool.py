@@ -43,36 +43,6 @@ class BashResult:
         return self.return_code == 0
 
 
-# Default SRT settings for sandboxed bash commands
-DEFAULT_SRT_SETTINGS = {
-    "network": {
-        "allowedDomains": [
-            "github.com",
-            "*.github.com",
-            "api.openai.com",
-            "api.anthropic.com",
-            "generativelanguage.googleapis.com",
-        ],
-        "deniedDomains": [],
-    },
-    "filesystem": {
-        "denyRead": [],
-        "allowWrite": [".", "traces/", "tui/", "/tmp/"],
-        "denyWrite": [".env", ".git/hooks/", ".git/config"],
-    },
-}
-
-
-def _get_srt_settings_path() -> Path:
-    """Get path to SRT settings file, creating if needed."""
-    import json
-
-    settings_path = Path(".srt-settings.json")
-    if not settings_path.exists():
-        settings_path.write_text(json.dumps(DEFAULT_SRT_SETTINGS, indent=2))
-    return settings_path.resolve()
-
-
 class BashTool:
     """Execute shell commands with timeout, output capture, and optional SRT sandbox.
 
@@ -143,10 +113,10 @@ class BashTool:
 
     def _wrap_with_srt(self, command: str) -> str:
         """Wrap a command with SRT sandbox."""
-        settings_path = self.config.srt_settings or _get_srt_settings_path()
-        srt_cmd = self._srt_path or "srt"  # Fallback to "srt" if path not found (shouldn't happen)
-        # Use shell quoting for the command
-        return f"{shlex.quote(srt_cmd)} --settings {shlex.quote(str(settings_path))} {shlex.quote(command)}"
+        srt_cmd = self._srt_path or "srt"
+        if self.config.srt_settings:
+            return f"{shlex.quote(srt_cmd)} --settings {shlex.quote(str(self.config.srt_settings))} {shlex.quote(command)}"
+        return f"{shlex.quote(srt_cmd)} {shlex.quote(command)}"
 
     async def run(
         self,
@@ -327,7 +297,7 @@ class FileTool:
 
         # Use heredoc for writing (handles multi-line content)
         # Use a unique delimiter to avoid conflicts with content
-        delimiter = "EOF_AGENT006_WRITE"
+        delimiter = "EOF_NEMO_OO_WRITE"
         cmd = f"cat > {shlex.quote(path)} << '{delimiter}'\n{content}\n{delimiter}"
 
         result = await self.bash.run(cmd)

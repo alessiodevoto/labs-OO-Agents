@@ -14,7 +14,7 @@ from rich.text import Text
 
 from .theme import SPLASH_BORDER, SPLASH_TAGLINE, SPLASH_TITLE
 
-AGENT006_ASCII = r"""               _   __     __  ___
+NEMO_OO_ASCII = r"""               _   __     __  ___
               / | / /__  /  |/  /___
              /  |/ / _ \/ /|_/ / __ \
             / /|  /  __/ /  / / /_/ /
@@ -36,7 +36,7 @@ def show_splash(console: Console, delay: float = 0.8) -> None:
         console: Rich console instance
         delay: How long to pause after showing splash (seconds)
     """
-    title = Text(AGENT006_ASCII, style=f"bold {SPLASH_TITLE}")
+    title = Text(NEMO_OO_ASCII, style=f"bold {SPLASH_TITLE}")
     tagline = Align.center(Text("licensed to vibe", style=f"italic {SPLASH_TAGLINE}"))
 
     panel = Panel(

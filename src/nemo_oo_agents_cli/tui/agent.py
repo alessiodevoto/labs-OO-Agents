@@ -27,29 +27,29 @@ import os
 
 # Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
 try:
-    import numpy as np  # noqa: F401
+    import numpy as np  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import pandas as pd  # noqa: F401
+    import pandas as pd  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import plotly.express as px  # noqa: F401
-    import plotly.graph_objects as go  # noqa: F401
-    from plotly.subplots import make_subplots  # noqa: F401
+    import plotly.express as px  # noqa: F401  # type: ignore[import-untyped]
+    import plotly.graph_objects as go  # noqa: F401  # type: ignore[import-untyped]
+    from plotly.subplots import make_subplots  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import scipy  # noqa: F401
+    import scipy  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
 try:
-    import sklearn  # noqa: F401
+    import sklearn  # noqa: F401  # type: ignore[import-untyped]
 except ImportError:
     pass
 
@@ -273,7 +273,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         ...
 
 
-class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
+class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     """You are NeMo OO Agents, a development assistant running in a terminal.
 
     Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
@@ -334,9 +334,17 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         self._phase: str = "idle"
         self._workflow_state: dict = {}
 
-        self.bash = BashTool(working_dir=config.working_dir)
+        from nemo_oo_agents.config.tool_configs import BashConfig
+        from nemo_oo_agents.paths import get_project_dir
+
+        _project_dir = get_project_dir()
+        _srt = _project_dir / "srt_settings.json"
+        self.bash = BashTool(
+            working_dir=config.working_dir,
+            config=BashConfig(srt_settings=_srt if _srt.exists() else None),
+        )
         self.files = FileTool(self.bash)
-        self.libs = LibraryWriting(self)
+        self.libs = LibraryWriting(self, path=_project_dir / "libs")
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
@@ -346,7 +354,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
 
-    @hidden
     def get_summarization_status(self) -> dict:
         """Get current summarization status.
 

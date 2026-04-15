@@ -6,7 +6,7 @@ Hydra-like config: structured dataclass with Config.load(**overrides).
 
 Resolution order (last wins):
     1. Dataclass defaults
-    2. Environment variables (_ENV map)
+    2. Config file (.nemo_oo_agents/config.toml, [tui] section)
     3. Keyword overrides from CLI args (_OVERRIDES map)
 
 Usage:
@@ -21,7 +21,6 @@ Usage:
 """
 
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal
@@ -82,7 +81,7 @@ class TUIConfig:
     # Default LLM model (from unifiedllm registry)
     default_model: str = DEFAULT_MODEL
 
-    # Trace output directory (None = OTLP auto-probe only; set via --trace for file output)
+    # Trace output directory (None = OTLP auto-probe only; set via --trace to write files)
     trace_dir: Path | None = None
 
     # Vi keybindings in prompt_toolkit input
@@ -132,27 +131,21 @@ class Config:
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)
     _STORE_TRUE_FLAGS: ClassVar[set[str]] = {"no_splash", "no_trace", "vi", "python"}
 
-    # ── Environment variable mapping ──────────────────────────────────
-    _ENV: ClassVar[dict] = {
-        "AGENT006_MODEL": "tui.default_model",
-        "AGENT006_TRACE_DIR": ("tui.trace_dir", Path),
-    }
-
     @classmethod
     def load(cls, **overrides) -> "Config":
-        """Build config: defaults → env vars → overrides.
+        """Build config: defaults → config file → overrides.
 
+        Config file: .nemo_oo_agents/config.toml (project-local, optional).
         Accepts any keyword argument matching _OVERRIDES keys.
         Unknown keys are silently ignored, so you can pass ``**vars(args)``
         from argparse directly.
         """
         cfg = cls()
 
-        # Layer 2: environment variables
-        for env_key, target in cls._ENV.items():
-            val = os.environ.get(env_key)
-            if val is not None:
-                _set_nested(cfg, *_unpack_target(target, val))
+        # Layer 2: project-local config file (.nemo_oo_agents/config.toml)
+        for key, val in _load_config_file().items():
+            if key in cls._OVERRIDES:
+                _set_nested(cfg, *_unpack_target(cls._OVERRIDES[key], val))
 
         # Layer 3: explicit overrides (highest priority)
         for key, target in cls._OVERRIDES.items():
@@ -187,6 +180,24 @@ class Config:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
+
+def _load_config_file() -> dict:
+    """Load .nemo_oo_agents/config.toml and return its [tui] section as a flat dict."""
+    import tomllib
+
+    from nemo_oo_agents.paths import get_project_dir
+
+    config_path = get_project_dir("config.toml")
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("tui", {})
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        logger.warning("Failed to load config file %s: %s", config_path, e)
+        return {}
 
 
 def _unpack_target(target, value):

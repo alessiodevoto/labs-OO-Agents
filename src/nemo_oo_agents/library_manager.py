@@ -21,7 +21,7 @@ class LibraryManager:
     Each subdirectory containing a pyproject.toml is imported and set as
     ``agent.<lib_name>``. Supports hot-reload after edits via reload().
 
-        mgr = LibraryManager.install(agent)
+        mgr = LibraryManager.install(agent, libs_dir=Path("libs"))
         # agent.stats, agent.utils, ... are now set
 
         mgr.reload()              # reload every installed library
@@ -35,10 +35,9 @@ class LibraryManager:
         self._installed: list[str] = []
 
     @classmethod
-    def install(cls, agent: Any, *, libs_dir: Path | None = None) -> LibraryManager:
+    def install(cls, agent: Any, *, libs_dir: Path) -> LibraryManager:
         """Scan libs_dir and attach all libraries to *agent*. Returns the manager."""
-        libs_path = libs_dir or (Path.home() / ".nemo_oo_agents" / type(agent).__name__ / "libs")
-        manager = cls(agent, libs_path)
+        manager = cls(agent, libs_dir)
         manager._scan()
         return manager
 

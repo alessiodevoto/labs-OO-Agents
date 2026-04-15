@@ -29,11 +29,14 @@ import pytest
 
 def _reset_module_state():
     """Reset module-level globals to clean state between tests."""
+    from pathlib import Path
+
     import nemo_oo_agents.runtime.debug_handler as dh
 
     dh._pending_llm_calls.clear()
     dh._llm_call_counter = 0
     dh._handler_installed = False
+    dh._dump_dir = Path(".")
 
 
 # ---------------------------------------------------------------------------
@@ -341,31 +344,16 @@ class TestGetDebugDumpPath:
         assert path.name.startswith("debug_dump_")
         assert path.suffix == ".txt"
 
-    def test_creates_directory(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import _get_debug_dump_path
+    def test_uses_dump_dir(self, tmp_path):
+        import nemo_oo_agents.runtime.debug_handler as dh
 
-        cache_dir = tmp_path / "cache"
-        with patch.dict("os.environ", {"XDG_CACHE_HOME": str(cache_dir)}):
-            path = _get_debug_dump_path()
-
-        assert (cache_dir / "nemo_oo_agents").exists()
-        assert path.parent == cache_dir / "nemo_oo_agents"
-
-    def test_uses_home_cache_by_default(self):
-        from nemo_oo_agents.runtime.debug_handler import _get_debug_dump_path
-
-        env = {k: v for k, v in os.environ.items() if k != "XDG_CACHE_HOME"}
-        with patch.dict("os.environ", env, clear=True):
-            path = _get_debug_dump_path()
-        # Should be under ~/.cache/nemo_oo_agents/
-        assert "nemo_oo_agents" in str(path)
-
-    def test_xdg_cache_home_respected(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import _get_debug_dump_path
-
-        with patch.dict("os.environ", {"XDG_CACHE_HOME": str(tmp_path)}):
-            path = _get_debug_dump_path()
-        assert path.parent == tmp_path / "nemo_oo_agents"
+        original = dh._dump_dir
+        try:
+            dh._dump_dir = tmp_path
+            path = dh._get_debug_dump_path()
+            assert path.parent == tmp_path
+        finally:
+            dh._dump_dir = original
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +614,12 @@ class TestInstallDebugHandler:
         ):
             dh.install_debug_handler()
         assert dh._handler_installed is False
+
+    def test_dump_dir_arg_sets_module_state(self, tmp_path):
+        import nemo_oo_agents.runtime.debug_handler as dh
+
+        dh.install_debug_handler(dump_dir=tmp_path)
+        assert dh._dump_dir == tmp_path
 
 
 # ---------------------------------------------------------------------------
