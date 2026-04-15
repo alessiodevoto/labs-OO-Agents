@@ -1175,7 +1175,9 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         synthetic_calls = [
-            e for e in events if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
+            e
+            for e in events
+            if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
         ]
         assert len(synthetic_calls) == 1
 
