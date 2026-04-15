@@ -16,7 +16,6 @@ dependencies = [
     "context-blocks",
     "ipython>=9.12.0",
     "platformdirs>=4.9.4",
-    "wtf-issues[gitlab]",
 ]
 
 [project.scripts]

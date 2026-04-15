@@ -42,6 +42,7 @@ class SummarizationConfig:
     max_tokens: int = 100_000
     window_size: int = 50
     preserve_recent: int = 10
+    target_chars: int = 4000
 
 
 @dataclass

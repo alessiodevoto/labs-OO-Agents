@@ -365,6 +365,9 @@ def build_registry(
     """Build the CommandRegistry from bootstrap results + frontend."""
     from .commands import CommandRegistry
 
+    # Propagate skills_dirs to the agent so Doer subagents can discover them
+    result.agent._skills_dirs = result.config.tui.skills_dirs  # type: ignore[attr-defined]
+
     return CommandRegistry(
         config=result.config.tui,
         agent=result.agent,

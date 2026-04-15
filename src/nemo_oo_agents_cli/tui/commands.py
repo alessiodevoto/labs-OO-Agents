@@ -233,7 +233,7 @@ class ClearCommand(Command):
 
         result = CommandResult.ok(
             ClearScreen(),
-            _RichReplayPayload(payload={"kind": "clear"}),
+            _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[arg-type]
             TextOutput("Started new session. Previous session saved.", "success"),
         )
         result.new_session_manager = new_sm
@@ -347,8 +347,8 @@ class ThemeCommand(Command):
 
         # Replace the base theme in Rich Console's ThemeStack
         # We can't just push - we need to replace the base entry
-        if hasattr(self.frontend, "_console") and hasattr(self.frontend._console, "console"):
-            console = self.frontend._console.console
+        if hasattr(self.frontend, "_console") and hasattr(self.frontend._console, "console"):  # type: ignore[attr-defined]
+            console = self.frontend._console.console  # type: ignore[attr-defined]
             new_theme = theme_module.create_theme()
 
             # Directly replace the base theme in the stack
@@ -750,6 +750,80 @@ class SkillsCommand(Command):
             return CommandResult.ok(TextOutput(f"Skill `{skill_id}` deactivated", "success"))
         except Exception as e:
             return CommandResult.err(f"Failed to deactivate `{skill_id}`: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Todo commands
+# ---------------------------------------------------------------------------
+
+
+class TodoCommand(Command):
+    required_capabilities: ClassVar[frozenset[str]] = frozenset({"todo"})
+
+    @property
+    def name(self) -> str:
+        return "todo"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/todo": "Show all todos",
+            "/todo <id>": "Show a single todo item",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) > 1:
+            return False, "Usage: /todo [id]"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        todo_mgr = getattr(self.agent, "todo", None)
+        if todo_mgr is None:
+            return CommandResult.err("Agent has no todo manager.")
+
+        if not args:
+            # Show all todos
+            todos = todo_mgr.list_todos()
+            if not todos:
+                return CommandResult.ok(TextOutput("(no todos)", "status"))
+            rows = []
+            icons = {"open": "○", "done": "✓", "blocked": "●"}
+            for t in todos:
+                effective = t.status
+                if t.status == "open" and t.is_blocked(todo_mgr._todos):
+                    effective = "blocked"
+                icon = icons.get(effective, "?")
+                deps = ", ".join(t.deps) if t.deps else ""
+                rows.append([f"{icon} {t.id}", t.title, effective, deps])
+            done = sum(1 for t in todos if t.status == "done")
+            return CommandResult.ok(
+                TableOutput(
+                    columns=["ID", "Title", "Status", "Deps"],
+                    rows=rows,
+                    title=f"Todos ({done}/{len(todos)} done)",
+                )
+            )
+
+        # Show a single todo
+        todo_id = args[0]
+        t = todo_mgr.get(todo_id)
+        if t is None:
+            return CommandResult.err(f"Todo {todo_id!r} not found.")
+        effective = t.status
+        if t.status == "open" and t.is_blocked(todo_mgr._todos):
+            effective = "blocked"
+        lines = [
+            f"**[{t.id}]** {t.title}",
+            f"Status: {effective}",
+        ]
+        if t.deps:
+            lines.append(f"Deps: {', '.join(t.deps)}")
+        if t.vars:
+            lines.append(f"Vars: {t.vars}")
+        if t.notes:
+            lines.append(f"Notes: {t.notes}")
+        lines.append(f"Created: {t.created_at}")
+        return CommandResult.ok(TextOutput("\n".join(lines), "info"))
 
 
 # ---------------------------------------------------------------------------
@@ -1156,7 +1230,7 @@ class SessionCommand(Command):
 
             result = CommandResult.ok(
                 ClearScreen(),
-                _RichReplayPayload(payload={"kind": "clear"}),
+                _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[arg-type]
                 TextOutput("Started new session. History cleared.", "success"),
             )
             result.new_session_manager = new_sm
@@ -1211,6 +1285,7 @@ class CommandRegistry:
         "history": HistoryCommand,
         "mcp": MCPCommand,
         "skills": SkillsCommand,
+        "todo": TodoCommand,
         "sandbox": SandboxCommand,
         "python": PythonCommand,
         "session": SessionCommand,

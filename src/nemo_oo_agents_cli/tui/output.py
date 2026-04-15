@@ -62,6 +62,16 @@ class HelpOutput:
 
 
 @dataclass
+class UserMessage:
+    """The user's submitted input, echoed with styling after submission."""
+
+    content: str
+
+    def to_json(self) -> dict:
+        return {"type": "user_message", "content": self.content}
+
+
+@dataclass
 class AgentMessage:
     """A markdown-formatted message produced by the agent via ``message()``."""
 

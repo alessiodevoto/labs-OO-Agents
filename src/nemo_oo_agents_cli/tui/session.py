@@ -123,8 +123,36 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     except Exception:
         pass
 
+    loop = asyncio.get_running_loop()
+
+    # Helper: run coroutines or thread-bound sync calls on the event loop thread.
+    # IPython runs in an executor thread, so direct access to thread-bound objects
+    # (SQLite, etc.) fails.  This dispatches everything to the event loop thread.
+    def run(obj):
+        """Execute on the event loop thread.
+
+        Coroutine:  run(agent.respond("hi"))
+        Callable:   run(lambda: agent.events.get("356"))
+        """
+        if asyncio.iscoroutine(obj):
+            f = asyncio.run_coroutine_threadsafe(obj, loop)
+        elif callable(obj):
+
+            async def _w():
+                result = obj()
+                if asyncio.iscoroutine(result):
+                    return await result
+                return result
+
+            f = asyncio.run_coroutine_threadsafe(_w(), loop)
+        else:
+            raise TypeError(f"Expected coroutine or callable, got {type(obj)}")
+        return f.result(timeout=300)
+
     ns["self"] = agent
     ns["agent"] = agent  # convenience alias
+    ns["loop"] = loop  # event loop for run_coroutine_threadsafe
+    ns["run"] = run  # dispatch to event loop thread
     ns["asyncio"] = asyncio
     ns["typing"] = _typing
     ns["Annotated"] = _typing.Annotated
@@ -139,7 +167,8 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     banner = (
         "\n\x1b[1;35m[NeMo OO Agents IPython]\x1b[0m\n"
         "  \x1b[2m'self' and 'agent' refer to the agent — same namespace as agent-generated code.\x1b[0m\n"
-        '  \x1b[2mExample: await agent.respond("hello")  |  doc(self)  |  self.bash\x1b[0m\n'
+        "  \x1b[2mrun() dispatches to the event loop thread (needed for SQLite, async calls).\x1b[0m\n"
+        '  \x1b[2mExamples: run(agent.respond("hi"))  |  run(lambda: agent.events.get("356"))\x1b[0m\n'
         "  \x1b[2mCtrl+D to return to TUI.\x1b[0m\n"
     )
 
@@ -152,7 +181,6 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
             colors="neutral",
         )
 
-    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _embed)
 
 
@@ -240,6 +268,7 @@ class Session:
     def _attach_agent(self, agent: "Agent") -> None:
         """Subscribe to agent events for real-time streaming display."""
         self._loop = asyncio.get_running_loop()
+        self._install_exception_handler(self._loop)
         self._unsubscribe_fns.append(agent.event_manager.on("Reasoning", self._on_reasoning))
         self._unsubscribe_fns.append(agent.event_manager.on("ToolCallEvent", self._on_tool_call))
         self._unsubscribe_fns.append(agent.event_manager.on("PythonOutput", self._on_python_output))
@@ -251,9 +280,126 @@ class Session:
             except Exception:
                 pass
         self._unsubscribe_fns.clear()
+        self._restore_exception_handler()
+
+    # ------------------------------------------------------------------
+    # Event loop exception handler (replaces prompt_toolkit's broken one)
+    # ------------------------------------------------------------------
+
+    def _install_exception_handler(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Replace the event loop exception handler with one that shows useful info.
+
+        prompt_toolkit's handler prints ``context.get("exception")`` but never
+        prints ``context.get("message")``, so when asyncio fires an exception
+        context without an ``exception`` key (e.g. "Task was destroyed but it
+        is pending!") the user sees the useless ``Exception None``.
+        """
+        self._prev_exception_handler = loop.get_exception_handler()
+
+        import logging
+        import traceback as _tb
+
+        _log = logging.getLogger("nemo_oo_agents.tui")
+
+        def _handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+            msg = context.get("message", "")
+            exc = context.get("exception")
+            # Log the full context for post-mortem debugging
+            _log.warning("asyncio exception: %s (exception=%r)", msg, exc)
+            if exc and hasattr(exc, "__traceback__"):
+                _log.debug("".join(_tb.format_exception(type(exc), exc, exc.__traceback__)))
+
+        loop.set_exception_handler(_handler)
+
+    def _restore_exception_handler(self) -> None:
+        prev = getattr(self, "_prev_exception_handler", None)
+        if self._loop is not None:
+            try:
+                self._loop.set_exception_handler(prev)
+            except Exception:
+                pass
 
     def _clear_streaming_state(self) -> None:
         self._pending_code.clear()
+
+    def _print_input_rule(self) -> None:
+        """Print a horizontal rule before the input prompt with session info right-aligned."""
+        from .theme import COLORS
+
+        console = getattr(getattr(self.frontend, "_console", None), "console", None)
+        if console is None:
+            return
+
+        label = ""
+        if self._session_manager is not None:
+            sm = self._session_manager
+            short_id = (sm.session_id or "")[:8]
+            name = sm.name
+            if name and short_id:
+                label = f"{name} \\[{short_id}]"
+            elif short_id:
+                label = f"\\[{short_id}]"
+
+        from rich.rule import Rule
+
+        if label:
+            console.print(
+                Rule(
+                    title=f"[{COLORS['overlay1']}]{label}[/]",
+                    style=COLORS["surface1"],
+                    align="right",
+                )
+            )
+        else:
+            console.print(Rule(style=COLORS["surface1"]))
+
+    # ------------------------------------------------------------------
+    # Exit diagnostics
+    # ------------------------------------------------------------------
+
+    def _dump_exit_diagnostics(self) -> None:
+        """Print pending tasks, threads, and subprocesses on exit for debugging hangs."""
+        import sys
+        import threading
+
+        lines: list[str] = []
+
+        # Pending asyncio tasks
+        try:
+            pending = [t for t in asyncio.all_tasks() if not t.done()]
+            if pending:
+                lines.append(f"Pending asyncio tasks ({len(pending)}):")
+                for t in pending:
+                    coro = t.get_coro()
+                    name = getattr(coro, "__qualname__", str(coro))
+                    lines.append(f"  - {t.get_name()}: {name}")
+        except RuntimeError:
+            pass
+
+        # Non-daemon threads still alive
+        alive = [
+            t
+            for t in threading.enumerate()
+            if t.is_alive() and not t.daemon and t != threading.main_thread()
+        ]
+        if alive:
+            lines.append(f"Live non-daemon threads ({len(alive)}):")
+            for t in alive:
+                lines.append(f"  - {t.name} (ident={t.ident})")
+
+        # Background tasks tracked by this session
+        bg = [t for t in self._background_tasks if not t.done()]
+        if bg:
+            lines.append(f"Background session tasks ({len(bg)}):")
+            for t in bg:
+                lines.append(f"  - {t.get_name()}")
+
+        if lines:
+            sys.stderr.write("\n\033[2m[exit diagnostics]\n")
+            for line in lines:
+                sys.stderr.write(f"  {line}\n")
+            sys.stderr.write("\033[0m\n")
+            sys.stderr.flush()
 
     # ------------------------------------------------------------------
     # Agent event callbacks (moved from _AgentStreamMixin)
@@ -353,6 +499,7 @@ class Session:
 
         try:
             while True:
+                self._print_input_rule()
                 prompt = _build_prompt(self.config)
                 try:
                     user_input = await self.frontend.get_input(prompt)
@@ -431,9 +578,14 @@ class Session:
                 TextOutput("Interrupted by the user. Exiting TUI...", "warning")
             )
         finally:
+            self._dump_exit_diagnostics()
             self.frontend.close()
             self._detach_agent()
             if self._session_manager is not None:
+                # Sync todo state before snapshot so it persists across sessions
+                todo = getattr(self.agent, "todo", None)
+                if todo is not None and hasattr(todo, "to_dict"):
+                    self.agent._todo_state = todo.to_dict()  # type: ignore[attr-defined]
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
                     try:
