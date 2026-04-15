@@ -394,7 +394,8 @@ class TestEventManagerRegisterEventType:
         with pytest.raises(TypeError, match="Expected an EventBase subclass"):
             em.register_event_type(str)  # type: ignore[arg-type]
 
-    def test_register_eventbase_with_empty_event_type_raises(self):
+    def test_register_eventbase_with_empty_default_succeeds(self):
+        """Empty event_type default is normal — model_post_init derives the value at instance time."""
         from pydantic import Field
 
         from nemo_oo_agents.events import EventBase
@@ -404,8 +405,10 @@ class TestEventManagerRegisterEventType:
             event_type: str = Field(default="", repr=False)  # type: ignore[assignment]
 
         em = EventManager()
-        with pytest.raises(ValueError, match="event_type"):
-            em.register_event_type(_EmptyTypeEvent)
+        # Should succeed — registry key derived from cls.__name__
+        em.register_event_type(_EmptyTypeEvent)
+        # Instance gets event_type from model_post_init
+        assert _EmptyTypeEvent().event_type == "_EmptyTypeEvent"
 
 
 class TestEventManagerSetEventQuery:

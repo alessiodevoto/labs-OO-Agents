@@ -51,10 +51,24 @@ if len(_CONTEXT_BLOCKS_TYPES) < 3:
         "If Event's structure changed, update the get_args unwrap in sqlite.py."
     )
 
-# All event types pre-registered for deserialization.
-# context_blocks types are derived from the Event union above (stays in sync automatically).
-# nemo_oo_agents types are listed explicitly here.
+# All core event types for deserialization, keyed by their registry name
+# (class name, or explicit event_type default if non-empty).
+# These are also present in _EVENT_REGISTRY, but we keep a snapshot here
+# to seed per-instance registries and to validate at import time.
 _CORE_TYPES: dict[str, type[EventBase]] = {}
+
+
+def _registry_key(cls: type[EventBase]) -> str:
+    """Derive the registry key for an EventBase subclass.
+
+    Uses the explicit ``event_type`` field default if non-empty,
+    otherwise falls back to ``cls.__name__``.
+    """
+    fi = cls.model_fields.get("event_type")
+    default = fi.default if fi is not None and isinstance(fi.default, str) else ""
+    return default if default else cls.__name__
+
+
 for _cls in (
     *_CONTEXT_BLOCKS_TYPES,
     Task,
@@ -68,7 +82,7 @@ for _cls in (
     BeforeTurn,
     AfterTurn,
 ):
-    _key: str = _cls.model_fields["event_type"].default  # type: ignore[assignment]
+    _key: str = _registry_key(_cls)
     if _key in _CORE_TYPES:
         raise AssertionError(
             f"Duplicate event_type key {_key!r} in _CORE_TYPES: "
@@ -140,10 +154,11 @@ class SQLiteEventBackend:
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
 
-        Adds *cls* to the per-instance registry keyed by its ``event_type``
-        default.  Logs a warning if the key already maps to a different class.
+        Adds *cls* to the per-instance registry keyed by its registry name
+        (class name, or explicit event_type default).  Logs a warning if the
+        key already maps to a different class.
         """
-        event_type = cls.model_fields["event_type"].default
+        event_type = _registry_key(cls)
         existing = self._registry.get(event_type)
         if existing is not None and existing is not cls:
             logger.warning(

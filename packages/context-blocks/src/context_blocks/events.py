@@ -74,47 +74,44 @@ class EventBase(BaseModel):
 
     _role: ClassVar[Role] = Role.USER
 
-    # Discriminator field - excluded from repr
-    event_type: str = Field(default="event", repr=False, description="Event type discriminator")
+    # Discriminator field - excluded from repr.
+    # Default is "" (empty); model_post_init fills it with cls.__name__ if unset.
+    event_type: str = Field(default="", repr=False, description="Event type discriminator")
+
+    def model_post_init(self, __context: Any) -> None:
+        """Auto-derive event_type from class name when not explicitly set."""
+        super().model_post_init(__context)
+        if not self.event_type:
+            self.event_type = type(self).__name__
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
-        """Auto-derive event_type and register subclass in global registry.
+        """Register subclass in global registry.
 
         Uses ``__pydantic_init_subclass__`` (not ``__init_subclass__``) because
         Pydantic has fully built the model by this point — each subclass has its
         own ``model_fields`` dict and compiled schema.
+
+        Registration only — ``model_post_init`` handles auto-deriving
+        ``event_type`` at instance creation time.
         """
         super().__pydantic_init_subclass__(**kwargs)
 
-        # Determine whether the subclass explicitly defines event_type.
-        # Check the subclass's own __annotations__ (not inherited).
+        # Determine the registry key.
+        # If the subclass explicitly declares event_type with a non-empty
+        # default, use that value. Otherwise use the class name.
         own_annotations = cls.__dict__.get("__annotations__", {})
         has_explicit = "event_type" in own_annotations
 
-        if not has_explicit:
-            # Auto-derive event_type from class name (use cls.__name__ directly)
-            derived = cls.__name__
-            # At this point cls has its own model_fields dict (not shared
-            # with parent), so mutation is safe.
+        if has_explicit:
             fi = cls.model_fields.get("event_type")
-            if fi is not None:
-                fi.default = derived
-            # Rebuild so the compiled schema uses the new default.
-            cls.model_rebuild(force=True)
-            event_type_str = derived
+            default = fi.default if fi is not None and isinstance(fi.default, str) else ""
+            event_type_str = default if default else cls.__name__
         else:
-            # Explicit field: Pydantic has already processed it, so we can
-            # safely read from model_fields.
-            fi = cls.model_fields.get("event_type")
-            event_type_str = fi.default if fi is not None and isinstance(fi.default, str) else cls.__name__
+            event_type_str = cls.__name__
 
         # Skip registration for private/internal classes (names starting with _)
         if cls.__name__.startswith("_"):
-            return
-
-        # Skip registration for base classes without meaningful event_type
-        if event_type_str == "event":
             return
 
         # Register in global registry with collision warning
@@ -236,7 +233,7 @@ class Metadata(EventBase):
 
     model_config = {"extra": "allow"}
 
-    event_type: str = Field(default="metadata", repr=False)
+    event_type: str = Field(default="", repr=False)
     _role: ClassVar[Role] = Role.METADATA
 
 

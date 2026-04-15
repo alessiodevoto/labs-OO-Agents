@@ -168,20 +168,14 @@ class EventManager:
         reading from storage.
 
         Args:
-            cls: An EventBase subclass with a ``Literal`` ``event_type`` field.
+            cls: An EventBase subclass. The registry key is derived from the
+                class name or an explicit ``event_type`` field default.
 
         Raises:
             TypeError: If *cls* is not an EventBase subclass.
-            ValueError: If *cls* has no ``event_type`` field or its default is
-                not a non-empty string.
         """
         if not (isinstance(cls, type) and issubclass(cls, EventBase)):
             raise TypeError(f"Expected an EventBase subclass, got {cls!r}")
-        field_info = cls.model_fields.get("event_type")
-        if field_info is None or not isinstance(field_info.default, str) or not field_info.default:
-            raise ValueError(
-                f"{cls.__name__} must define an event_type field with a non-empty string default"
-            )
         self._backend.register_event_type(cls)
 
     def on(self, event_type: str, handler: EventHandler) -> Callable[[], None]:
