@@ -82,8 +82,6 @@ class TestFormatParametersTcParam:
     """format_parameters_as_code(tc=TruncationConfig(...)) uses pformat with structural limits."""
 
     def _make_call(self, **kwargs):
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-
         return CurrentCall(
             id="test-id",
             method_name="test",
@@ -142,5 +140,3 @@ class TestFormatParametersTcParam:
         result = call.format_parameters_as_code(tc=None)
         assert "42" in result
 
-
-from nemo_oo_agents.strategies.current_call import CurrentCall  # noqa: E402
