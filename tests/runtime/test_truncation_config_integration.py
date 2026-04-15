@@ -304,5 +304,8 @@ class TestTokenBudgetIntegration:
             async def answer(self, question: str) -> str: ...
 
         agent = TestAgent()
-        with pytest.raises(RuntimeError, match="count_tokens"):
+        # The RuntimeError may be wrapped in GenerationError by the retry loop
+        from nemo_oo_agents.errors import GenerationError
+
+        with pytest.raises((RuntimeError, GenerationError), match="count_tokens"):
             await agent.answer("hello")

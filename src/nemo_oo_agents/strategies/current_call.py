@@ -112,9 +112,7 @@ class CurrentCall:
             data = "test"
             threshold = 0.5
         """
-        from agentdoc import safe_pformat as _safe_pformat
-
-        fmt = value_formatter if value_formatter is not None else _safe_pformat
+        fmt = value_formatter if value_formatter is not None else repr
 
         if not self.signature:
             # No signature available: format positional args as arg_0, arg_1, … then kwargs.

@@ -511,32 +511,39 @@ class TestReflexionStrategyResultFormatting:
 
     def test_format_result_simple_value(self):
         """_format_result_for_reflection should handle simple values."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
         from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
+        tc = DEFAULT_TRUNCATION_CONFIG
 
-        assert strategy._format_result_for_reflection(42) == "42"
-        assert strategy._format_result_for_reflection("hello") == "'hello'"
-        assert strategy._format_result_for_reflection([1, 2, 3]) == "[1, 2, 3]"
+        assert strategy._format_result_for_reflection(42, tc) == "42"
+        # safe_pformat returns raw string (no quotes) for strings
+        assert strategy._format_result_for_reflection("hello", tc) == "hello"
+        assert strategy._format_result_for_reflection([1, 2, 3], tc) == "[1, 2, 3]"
 
     def test_format_result_none(self):
         """_format_result_for_reflection should handle None."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
         from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
-        result = strategy._format_result_for_reflection(None)
+        result = strategy._format_result_for_reflection(None, DEFAULT_TRUNCATION_CONFIG)
         assert "None" in result
         assert "no value" in result.lower()
 
     def test_format_result_truncates_long_output(self):
         """_format_result_for_reflection should truncate very long results."""
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
         from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
+        # Use a small max_block_chars so truncation kicks in
+        tc = TruncationConfig(max_block_chars=1000)
         long_result = "x" * 3000
-        formatted = strategy._format_result_for_reflection(long_result)
+        formatted = strategy._format_result_for_reflection(long_result, tc)
 
-        assert len(formatted) < 2100  # Max 2000 + some overhead
+        assert len(formatted) < 2100  # bounded output
         assert "truncated" in formatted.lower()
 
 
@@ -653,6 +660,13 @@ def mock_runtime():
         def event_manager(self):
             """Event manager."""
             return self._events
+
+        @property
+        def truncation_config(self):
+            """Truncation configuration."""
+            from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+            return DEFAULT_TRUNCATION_CONFIG
 
         async def generate(self, *, tools=None, output_model=None, **kwargs):
             response = MagicMock(content="", reasoning=None, usage={})

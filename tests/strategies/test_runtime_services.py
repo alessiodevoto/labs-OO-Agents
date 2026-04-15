@@ -32,6 +32,10 @@ class TestRuntimeServicesProtocol:
             def event_manager(self):
                 return None
 
+            @property
+            def truncation_config(self):
+                return None
+
             async def generate(self, messages, tools=None, **kwargs):
                 return None
 
@@ -169,6 +173,10 @@ class TestRuntimeServicesComplete:
             def event_manager(self):
                 return None
 
+            @property
+            def truncation_config(self):
+                return None
+
             async def generate(self, messages, tools=None, **kwargs):
                 return None
 
@@ -201,6 +209,10 @@ class TestRuntimeServicesComplete:
 
             @property
             def event_manager(self):
+                return None
+
+            @property
+            def truncation_config(self):
                 return None
 
             async def generate(self, messages, tools=None, **kwargs):

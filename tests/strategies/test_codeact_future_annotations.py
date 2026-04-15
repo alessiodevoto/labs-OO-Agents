@@ -156,7 +156,11 @@ class TestReturnValueValidatorPEP563:
         setattr(agent, method_name, method_fn)
 
         class FakeRuntime:
-            pass
+            @property
+            def truncation_config(self):
+                from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+                return DEFAULT_TRUNCATION_CONFIG
 
         rt = FakeRuntime()
         rt.agent = agent
@@ -421,7 +425,11 @@ class TestGetTypeHintsFallback:
         agent.solve = fn
 
         class FakeRuntime:
-            pass
+            @property
+            def truncation_config(self):
+                from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+                return DEFAULT_TRUNCATION_CONFIG
 
         rt = FakeRuntime()
         rt.agent = agent
