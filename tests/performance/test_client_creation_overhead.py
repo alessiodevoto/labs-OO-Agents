@@ -1,5 +1,6 @@
 """Performance tests to validate client reuse benefits."""
 
+import logging
 import time
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.strategies import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
+
+logger = logging.getLogger(__name__)
 
 
 def _resp(content: str) -> LLMResponse:
@@ -61,7 +64,9 @@ async def test_no_overhead_from_repeated_calls():
 
     # Log timing for visibility, but don't assert on it — wall-clock thresholds
     # are inherently flaky on shared CI runners.
-    print(f"100 calls completed in {elapsed:.3f}s (avg {elapsed / 100 * 1000:.2f}ms per call)")
+    logger.debug(
+        "100 calls completed in %.3fs (avg %.2fms per call)", elapsed, elapsed / 100 * 1000
+    )
 
     # Verify all calls actually happened
     assert fake_llm.call_count == 100, "All 100 calls should have been made"
@@ -77,7 +82,7 @@ async def test_client_creation_is_one_time_cost():
     agent_instance = PerformanceAgent(llm=fake_llm)
     init_time = time.time() - start
 
-    print(f"Agent creation time (with injected client): {init_time * 1000:.2f}ms")
+    logger.debug("Agent creation time (with injected client): %.2fms", init_time * 1000)
 
     # Client should exist and be the injected one
     assert agent_instance._llm is fake_llm
