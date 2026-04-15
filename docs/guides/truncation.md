@@ -462,6 +462,13 @@ generated code string so the LLM learns the `pprint()` API.
 ]
 ```
 
+**Note on numpy/pandas:** The element-aware `... N items not shown ...` format only
+applies to Python containers (`list`, `dict`, `tuple`, `set`). numpy arrays have no
+`__dict__`, so pformat falls back to `repr()`, which uses numpy's own internal
+truncation (`[0 1 ... 98 99]`). pandas DataFrames have `__dict__` and are formatted
+as structured instances (`DataFrame(field=val, ...)`) — not as a table. The
+`max_string` cap applies after the fact to cap the repr output for both.
+
 ---
 
 ### 7. Validation / argument error values — `codeact_errors.py`, `generated_code.py`, `predict.py:230`
@@ -486,16 +493,59 @@ doesn't need to reproduce the value — it needs to understand the type mismatch
 42
 ```
 
-**Wrong type — 200-item list (`max_length` fires):**
+**Wrong type — 200-item list (`max_length` fires, head=25 items, tail=25 items):**
 ```
 [
     0,
     1,
-    ...
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
     24,
     ... 150 items not shown ...
     175,
-    ...
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
     199,
 ]
 ```
@@ -509,11 +559,54 @@ doesn't need to reproduce the value — it needs to understand the type mismatch
             'scores': [
                 0,
                 1,
-                ...
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
                 24,
                 ... 50 items not shown ...
                 75,
-                ...
+                76,
+                77,
+                78,
+                79,
+                80,
+                81,
+                82,
+                83,
+                84,
+                85,
+                86,
+                87,
+                88,
+                89,
+                90,
+                91,
+                92,
+                93,
+                94,
+                95,
+                96,
+                97,
+                98,
                 99,
             ],
         },
@@ -535,7 +628,8 @@ doesn't need to reproduce the value — it needs to understand the type mismatch
 produces wrong output with no indication of failure. Failing loudly forces the
 caller to chunk, summarise, or explicitly raise the limit.
 
-**Mechanism:** `TruncatingStringIO` for measurement; `ValueError` on overflow.  
+**Mechanism:** `TruncatingStringIO` for measurement (repr for non-strings; string
+fast-path uses `len()` directly to skip the `repr()` allocation); `ValueError` on overflow.  
 **Parameters:** `limit=PredictConfig.max_param_chars` (default 200 K).
 Demo below uses limit=10 K to show the firing behaviour.
 
@@ -613,16 +707,24 @@ truncation as the backstop.
 analyze this document carefully
 ```
 
-**200-item list — 500 K cap does not fire; block truncation is the effective limit:**
+**200-item list — neither cap fires (1,693 chars; well under both limits):**
+
+`safe_pformat` has no element-wise `max_length`, so all items appear. At 1,693 chars
+this is well under the 500 K safe_pformat cap and the 20 K block truncation limit —
+no truncation fires at all. Both caps exist for extreme inputs (> 500 K single value,
+or > 20 K total block).
+
 ```
 [
     0,
     1,
     2,
+    3,
     ...
     199,
 ]
 ```
+_(abbreviated for readability — all 200 items appear)_
 
 ---
 
@@ -633,8 +735,12 @@ analyze this document carefully
 
 **Where:** The body of a `ResolvedBlock` passed to the summarization agent.
 
-**Why:** Summarization requires the full event content to produce an accurate
-summary.
+**Why:** Current safety net. Events arriving at the summarizer should ideally be
+pre-truncated at the source (stdout/stderr are capped at capture time; LLM
+responses are bounded by max_tokens). The `safe_pformat` here protects against
+cases where a raw `value` field (e.g. a large Python return value) was never
+bounded. **Design intent:** once all events are guaranteed pre-truncated, this
+site should be removed.
 
 **Mechanism:** Char-cap (single layer).  
 **Parameters:** `max_chars=self._truncation.max_block_chars` (20 K default).

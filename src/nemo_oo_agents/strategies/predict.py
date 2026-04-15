@@ -310,6 +310,9 @@ class PredictStrategy(GenerationStrategy):
         was_truncated — the same mechanism used throughout the formatting pipeline.
         repr() matches the conservative lower bound of what format_parameters_as_code
         puts into the prompt (safe_pformat can produce larger output for complex objects).
+
+        String fast-path: plain strings skip the repr() allocation.  len(s) ≤ len(repr(s))
+        always, so a string that already exceeds the limit certainly has an oversized repr.
         """
         from agentdoc import TruncatingStringIO
         from nemo_oo_agents.strategies.current_call import _parse_param_names
@@ -333,6 +336,16 @@ class PredictStrategy(GenerationStrategy):
             named += list(call.kwargs.items())
 
         for name, value in named:
+            # Fast path for strings: avoids repr() allocation for large inputs.
+            # len(s) ≤ len(repr(s)) always, so if the string itself exceeds limit
+            # its repr certainly does too.
+            if isinstance(value, str) and len(value) > limit:
+                raise ValueError(
+                    f"PredictStrategy: parameter '{name}' is {len(value):,} chars, "
+                    f"exceeding max_param_chars={limit:,}. "
+                    f"Chunk or summarise the input before calling this method, "
+                    f"or raise PredictConfig(max_param_chars=...) if the size is intentional."
+                )
             stream = TruncatingStringIO(limit=limit)
             stream.write(repr(value))
             if stream.was_truncated:
