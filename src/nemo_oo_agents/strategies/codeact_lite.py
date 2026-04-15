@@ -165,9 +165,7 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
                 # Tool response: merge PythonOutput content if available
                 py_out_block = python_outputs.get(event.tool_call_id)
                 if py_out_block and py_out_block.event:
-                    content = plain_event_content(
-                        py_out_block.event, max_chars=self._max_chars
-                    )
+                    content = plain_event_content(py_out_block.event, max_chars=self._max_chars)
                 elif event.result is not None:
                     content = event.result.content
                 else:

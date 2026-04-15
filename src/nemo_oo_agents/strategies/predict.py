@@ -224,7 +224,12 @@ class PredictStrategy(GenerationStrategy):
                         for field in ["content", "reasoning", "raw", "text", "message"]:
                             val = getattr(llm_response, field, "<missing>")
                             if val != "<missing>":
-                                val_repr = pformat(val, max_length=tc.max_pprint_elements, max_string=tc.max_pprint_string, max_depth=tc.max_pprint_depth)
+                                val_repr = pformat(
+                                    val,
+                                    max_length=tc.max_pprint_elements,
+                                    max_string=tc.max_pprint_string,
+                                    max_depth=tc.max_pprint_depth,
+                                )
                                 response_info.append(f"{field}={val_repr}")
                         if response_info:
                             raw_response_content = (

@@ -29,7 +29,12 @@ from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, T
 
 def _pformat(value: Any, tc: TruncationConfig) -> str:
     """Format a value using truncation config's pprint settings."""
-    return pformat(value, max_length=tc.max_pprint_elements, max_string=tc.max_pprint_string, max_depth=tc.max_pprint_depth)
+    return pformat(
+        value,
+        max_length=tc.max_pprint_elements,
+        max_string=tc.max_pprint_string,
+        max_depth=tc.max_pprint_depth,
+    )
 
 
 @dataclass(frozen=True)
@@ -411,7 +416,9 @@ class ReturnValueValidator:
         # Handle both plain types (list, dict) and parameterized generics (list[str], dict[str, int])
         origin = self._get_origin(unwrapped_type)
         if origin in self._BASIC_TYPES or unwrapped_type in self._BASIC_TYPES:
-            return self._validate_basic_type(value, unwrapped_type, method_name, runtime.truncation_config)
+            return self._validate_basic_type(
+                value, unwrapped_type, method_name, runtime.truncation_config
+            )
 
         return value
 
@@ -530,7 +537,9 @@ class ReturnValueValidator:
         # For parameterized generics, validate element types
         type_args = get_args(return_type)
         if type_args and origin is not None:
-            return self._validate_generic_elements(value, origin, type_args, method_name, truncation_config)
+            return self._validate_generic_elements(
+                value, origin, type_args, method_name, truncation_config
+            )
 
         return value
 
@@ -543,6 +552,7 @@ class ReturnValueValidator:
         truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
     ) -> Any:
         """Validate elements of parameterized generic types like list[str], dict[str, int]."""
+
         def fmt(v: Any) -> str:
             return _pformat(v, truncation_config)
 
@@ -735,7 +745,9 @@ class ArgumentValidator:
                 continue
 
             expected_type = hints[param_name]
-            self._validate_type(param_name, value, expected_type, method_name, signature_str, truncation_config)
+            self._validate_type(
+                param_name, value, expected_type, method_name, signature_str, truncation_config
+            )
 
     def _validate_type(
         self,

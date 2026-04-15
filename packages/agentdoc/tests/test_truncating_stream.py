@@ -47,19 +47,19 @@ class TestTailRoll:
     def test_overflow_goes_to_tail(self):
         # limit=10, so head=5, tail=5
         buf = TruncatingStringIO(limit=10)
-        buf.write("A" * 5)   # fills head
+        buf.write("A" * 5)  # fills head
         buf.write("B" * 10)  # overflow: tail keeps last 5 = "BBBBB"
         assert buf.was_truncated
         value = buf.getvalue()
         assert value.startswith("<truncated-output>")
-        assert "AAAAA" in value   # head
-        assert "BBBBB" in value   # tail
+        assert "AAAAA" in value  # head
+        assert "BBBBB" in value  # tail
 
     def test_tail_rolls_oldest_first(self):
         buf = TruncatingStringIO(limit=10)  # head=5, tail=5
-        buf.write("A" * 5)   # fills head
-        buf.write("B" * 5)   # fills tail
-        buf.write("C" * 5)   # evicts Bs, tail = "CCCCC"
+        buf.write("A" * 5)  # fills head
+        buf.write("B" * 5)  # fills tail
+        buf.write("C" * 5)  # evicts Bs, tail = "CCCCC"
         assert buf.was_truncated
         value = buf.getvalue()
         assert "CCCCC" in value
@@ -67,7 +67,7 @@ class TestTailRoll:
 
     def test_custom_tail_chars(self):
         buf = TruncatingStringIO(limit=20, tail_chars=15)
-        buf.write("A" * 5)    # head_limit = 5
+        buf.write("A" * 5)  # head_limit = 5
         buf.write("B" * 100)  # tail keeps last 15
         assert buf.was_truncated
         value = buf.getvalue()
@@ -93,7 +93,7 @@ class TestWasTruncated:
     def test_multiple_writes_cumulative(self):
         buf = TruncatingStringIO(limit=10)
         buf.write("x" * 6)
-        buf.write("y" * 6)   # total 12 > 10
+        buf.write("y" * 6)  # total 12 > 10
         assert buf.was_truncated
 
 
@@ -146,6 +146,7 @@ class TestGetvalueFormat:
 class TestAgentdocPublicExport:
     def test_importable_from_agentdoc(self):
         from agentdoc import TruncatingStringIO as T
+
         assert T is TruncatingStringIO
 
     def test_has_chars_written(self):

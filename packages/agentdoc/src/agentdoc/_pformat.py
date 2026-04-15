@@ -159,21 +159,25 @@ def _pformat(
     # Use match statement for clean dispatch on Info types and Python objects
     match _object:
         case TypeInfo():
-            _stream.write(_format_type_info(
-                _object,
-                concise=concise,
-                type_depth=inline_depth,
-                max_length=max_length,
-                indent=_indent,
-                context_obj=None,
-            ))
+            _stream.write(
+                _format_type_info(
+                    _object,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    max_length=max_length,
+                    indent=_indent,
+                    context_obj=None,
+                )
+            )
         case CallableInfo():
-            _stream.write(_format_callable_info(
-                _object,
-                concise=concise,
-                type_depth=inline_depth,
-                indent=_indent,
-            ))
+            _stream.write(
+                _format_callable_info(
+                    _object,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    indent=_indent,
+                )
+            )
         case ModuleInfo():
             _stream.write(_format_module_info(_object, concise=concise, indent=_indent))
         case _ if _object.__class__.__name__ == "Environment" and hasattr(_object, "render"):
@@ -183,14 +187,16 @@ def _pformat(
             from agentdoc._structured import extract_type_info
 
             type_info = extract_type_info(_object)
-            _stream.write(_format_type_info(
-                type_info,
-                concise=concise,
-                type_depth=inline_depth,
-                max_length=max_length,
-                indent=_indent,
-                context_obj=_object,  # Pass the original type for discovery
-            ))
+            _stream.write(
+                _format_type_info(
+                    type_info,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    max_length=max_length,
+                    indent=_indent,
+                    context_obj=_object,  # Pass the original type for discovery
+                )
+            )
         case _ if inspect.ismodule(_object):
             from agentdoc.registry import get_module_info_extractor
 
@@ -206,13 +212,15 @@ def _pformat(
             from agentdoc._structured import extract_callable_info
 
             callable_info = extract_callable_info(_object)
-            _stream.write(_format_callable_info(
-                callable_info,
-                concise=concise,
-                type_depth=inline_depth,
-                indent=_indent,
-                context_obj=_object,  # Pass the function/method for type discovery
-            ))
+            _stream.write(
+                _format_callable_info(
+                    callable_info,
+                    concise=concise,
+                    type_depth=inline_depth,
+                    indent=_indent,
+                    context_obj=_object,  # Pass the function/method for type discovery
+                )
+            )
         case _ if _is_structured_instance(_object):
             # Instance of a structured type
             if instance_mode == "type":
@@ -274,24 +282,28 @@ def _pformat(
                         type_info = extract_type_info(obj_type)
                     values = _extract_instance_values(_object, type_info)
 
-                _stream.write(_format_type_info(
-                    type_info,
-                    concise=concise,
-                    type_depth=inline_depth,
-                    max_length=max_length,
-                    indent=_indent,
-                    context_obj=obj_type,
-                    instance_values=values,
-                ))
+                _stream.write(
+                    _format_type_info(
+                        type_info,
+                        concise=concise,
+                        type_depth=inline_depth,
+                        max_length=max_length,
+                        indent=_indent,
+                        context_obj=obj_type,
+                        instance_values=values,
+                    )
+                )
             else:
                 # Show repr-style (for pprint())
-                _stream.write(_format_instance_repr(
-                    _object,
-                    max_length=max_length,
-                    max_string=max_string,
-                    max_depth=max_depth,
-                    indent=_indent,
-                ))
+                _stream.write(
+                    _format_instance_repr(
+                        _object,
+                        max_length=max_length,
+                        max_string=max_string,
+                        max_depth=max_depth,
+                        indent=_indent,
+                    )
+                )
         case _:
             # Regular value - use truncation formatting
             _format_value(
@@ -1203,14 +1215,16 @@ def _format_value(
 
     # Structured instances (dataclass, Pydantic, etc.) - format recursively
     if _is_structured_instance(_object):
-        _stream.write(_format_nested_instance(
-            _object,
-            max_length=max_length,
-            max_string=max_string,
-            max_depth=max_depth,
-            depth=depth,
-            indent=indent,
-        ))
+        _stream.write(
+            _format_nested_instance(
+                _object,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                depth=depth,
+                indent=indent,
+            )
+        )
         return
 
     # Fallback to repr for other types
@@ -1237,8 +1251,16 @@ def _format_value_to_str(
 ) -> str:
     """Convenience wrapper: call ``_format_value`` into an ``io.StringIO`` and return the string."""
     tmp = io.StringIO()
-    _format_value(_object, tmp, max_length=max_length, max_string=max_string, max_depth=max_depth,
-                  expand_all=expand_all, depth=depth, indent=indent)
+    _format_value(
+        _object,
+        tmp,
+        max_length=max_length,
+        max_string=max_string,
+        max_depth=max_depth,
+        expand_all=expand_all,
+        depth=depth,
+        indent=indent,
+    )
     return tmp.getvalue()
 
 
@@ -1345,7 +1367,7 @@ def _format_dict(
 
     if max_length is not None and len(all_items) > max_length:
         n_head = (max_length + 1) // 2  # ceiling half
-        n_tail = max_length - n_head      # floor half
+        n_tail = max_length - n_head  # floor half
         dropped = len(all_items) - n_head - n_tail
         tail_items = all_items[-n_tail:] if n_tail > 0 else []
         head_items = all_items[:n_head]
@@ -1464,7 +1486,7 @@ def _format_sequence(
     if max_length is not None and len(all_items) > max_length:
         if is_ordered:
             n_head = (max_length + 1) // 2  # ceiling half
-            n_tail = max_length - n_head      # floor half
+            n_tail = max_length - n_head  # floor half
             dropped = len(all_items) - n_head - n_tail
             tail_items = all_items[-n_tail:] if n_tail > 0 else []
             head_items = all_items[:n_head]

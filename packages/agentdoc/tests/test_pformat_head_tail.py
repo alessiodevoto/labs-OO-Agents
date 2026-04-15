@@ -79,7 +79,7 @@ class TestListHeadTail:
         """max_length=2: first item (head) and last item (tail) shown."""
         items = list(range(100))
         result = pformat(items, max_length=2)
-        assert "0" in result   # head
+        assert "0" in result  # head
         assert "99" in result  # tail
 
     def test_list_brackets_are_balanced(self):

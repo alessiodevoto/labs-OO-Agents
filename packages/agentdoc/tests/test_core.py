@@ -826,7 +826,7 @@ class TestLargeValueTruncation:
         result = _pformat_to_str(huge_list, max_length=10, max_string=500, max_depth=3)
 
         assert "items not shown" in result  # head+tail notice
-        assert "99999" in result            # tail item visible
+        assert "99999" in result  # tail item visible
         assert len(result) < 2000
 
     def test_doc_on_object_with_huge_repr(self):

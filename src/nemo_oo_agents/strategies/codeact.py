@@ -1445,7 +1445,9 @@ Standard Python builtins and agent instance (`self`) are available."""
             session.record_error()
             # Pass actual value for better "Got: {...}" error messages
             actual_value = normalized_args.get("result") if normalized_args else None
-            error_msg = format_validation_error(e, return_type, actual_value, runtime.truncation_config)
+            error_msg = format_validation_error(
+                e, return_type, actual_value, runtime.truncation_config
+            )
             logger.debug(f"[CODEACT] return_result validation failed: {e}")
 
             if session.is_exhausted():

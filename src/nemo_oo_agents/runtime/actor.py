@@ -45,7 +45,6 @@ from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 logger = logging.getLogger(__name__)
 
 
-
 # Suppress SyntaxWarning for invalid escape sequences (e.g. '\s' instead of r'\s')
 # in LLM-generated code.  The string value is identical either way, so the warning
 # is pure noise — and showing it to the LLM just wastes a turn trying to "fix" it.

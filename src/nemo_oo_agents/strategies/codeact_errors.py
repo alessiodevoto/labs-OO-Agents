@@ -58,7 +58,11 @@ def _format_pydantic_error(
     if len(errors) == 1:
         # Single error - format concisely
         return _format_single_error(
-            errors[0], return_type, type_hint, actual_value=actual_value, truncation_config=truncation_config
+            errors[0],
+            return_type,
+            type_hint,
+            actual_value=actual_value,
+            truncation_config=truncation_config,
         )
 
     # Multiple errors - list them

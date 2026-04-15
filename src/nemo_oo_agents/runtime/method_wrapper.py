@@ -92,6 +92,7 @@ def create_agent_method_wrapper(
                 _tc = args[0].truncation_config
             else:
                 from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
                 _tc = DEFAULT_TRUNCATION_CONFIG
 
             ArgumentValidator().validate(original_func, args, kwargs, _tc)

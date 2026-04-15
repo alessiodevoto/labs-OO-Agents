@@ -19,6 +19,7 @@ class TestGl74ReturnedValueCap:
 
     def _make_result(self, returned_value):
         from nemo_oo_agents.events import ExecutionResult
+
         return ExecutionResult(stdout="", stderr="", returned_value=returned_value)
 
     def test_small_return_value_serializes_to_valid_json(self):
@@ -55,7 +56,7 @@ class TestGl74ReturnedValueCap:
         rv = parsed.get("returned_value", "")
         assert "Output too large" in rv
         assert "START" in rv  # head preserved
-        assert "END" in rv    # tail preserved
+        assert "END" in rv  # tail preserved
 
     def test_post_json_slicing_gone_output_is_valid_json(self):
         # TDD: will fail until Change 4 is implemented
@@ -70,6 +71,7 @@ class TestGl74ReturnedValueCap:
 
     def test_none_returned_value_not_in_output(self):
         from nemo_oo_agents.events import ExecutionResult
+
         result = ExecutionResult(stdout="", stderr="")
         serialized = self.hooks._safe_serialize_execution_result(result)
         parsed = json.loads(serialized)

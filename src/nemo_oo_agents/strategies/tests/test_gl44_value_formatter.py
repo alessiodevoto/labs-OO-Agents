@@ -39,9 +39,7 @@ class TestFormatParametersValueFormatter:
         # TDD: will fail until Change 5 is implemented
         received = []
         call = _make_call(args=([1, 2, 3],))
-        call.format_parameters_as_code(
-            value_formatter=lambda v: (received.append(v), repr(v))[1]
-        )
+        call.format_parameters_as_code(value_formatter=lambda v: (received.append(v), repr(v))[1])
         assert [1, 2, 3] in received
 
     def test_formatter_applied_to_kwargs(self):

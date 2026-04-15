@@ -42,6 +42,6 @@ class TestPformatRemovesBudgetParams:
         # max_length is purely structural — shows head+tail, no char budget.
         items = list(range(100))
         result = pformat(items, max_length=10)
-        assert "0" in result   # head
+        assert "0" in result  # head
         assert "99" in result  # tail
         assert "not shown" in result  # element-level notice, not "... +N more"
