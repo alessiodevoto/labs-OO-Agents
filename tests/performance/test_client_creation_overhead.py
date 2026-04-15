@@ -38,7 +38,7 @@ class PerformanceAgent(Agent, llm=_TEST_LLM):
 
 @pytest.mark.asyncio
 async def test_no_overhead_from_repeated_calls():
-    """Test that repeated calls don't create overhead from client instantiation."""
+    """Test that repeated calls reuse the same client — no per-call recreation."""
 
     # Create 100 fake responses - REPL-style
     responses = [_resp("pass") for i in range(100)]
@@ -46,24 +46,22 @@ async def test_no_overhead_from_repeated_calls():
 
     agent_instance = PerformanceAgent(llm=fake_llm)
 
-    # Verify client is created once
+    # Verify client is set once at init
     initial_client = agent_instance._llm
     assert initial_client is fake_llm
 
-    # Time 100 calls
+    # Run 100 calls, asserting client identity is preserved on every call.
+    # This is the deterministic check: if the client were recreated per call,
+    # `agent._llm is initial_client` would fail.
     start = time.time()
     for _i in range(100):
         await agent_instance.task()
-        # Verify client hasn't changed
         assert agent_instance._llm is initial_client
     elapsed = time.time() - start
 
-    # Should be fast (no client creation overhead)
-    # ~50-60ms per call is normal (context building, AST parsing, event management)
-    # A genuine regression (client creation per call) would be 30s+
-    # Use 30s threshold to handle slow CI machines (observed ~22s on loaded runners)
-    assert elapsed < 30.0, f"100 calls took {elapsed}s - too slow, likely creating clients"
-    print(f"✅ 100 calls completed in {elapsed:.3f}s (avg {elapsed / 100 * 1000:.2f}ms per call)")
+    # Log timing for visibility, but don't assert on it — wall-clock thresholds
+    # are inherently flaky on shared CI runners.
+    print(f"100 calls completed in {elapsed:.3f}s (avg {elapsed / 100 * 1000:.2f}ms per call)")
 
     # Verify all calls actually happened
     assert fake_llm.call_count == 100, "All 100 calls should have been made"
