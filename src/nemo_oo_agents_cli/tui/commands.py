@@ -794,11 +794,11 @@ class TodoCommand(Command):
                     effective = "blocked"
                 icon = icons.get(effective, "?")
                 deps = ", ".join(t.deps) if t.deps else ""
-                rows.append([f"{icon} {t.id}", t.title, effective, deps])
+                rows.append([icon, t.id, t.title, effective, deps])
             done = sum(1 for t in todos if t.status == "done")
             return CommandResult.ok(
                 TableOutput(
-                    columns=["ID", "Title", "Status", "Deps"],
+                    columns=["", "ID", "Title", "Status", "Deps"],
                     rows=rows,
                     title=f"Todos ({done}/{len(todos)} done)",
                 )
