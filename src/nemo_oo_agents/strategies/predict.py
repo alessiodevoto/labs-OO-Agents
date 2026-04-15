@@ -167,10 +167,28 @@ class PredictStrategy(GenerationStrategy):
         # PredictStrategy is single-shot — a truncated input produces silently wrong output.
         self._assert_param_sizes(call)
 
+        # Build task prompt first so we can check its size before adding it to events.
+        task_prompt = await self._build_task_message(runtime, original_call=call)
+
+        # Guard against silent truncation in context blocks.
+        # max_block_chars caps how much of the Task event the LLM sees — if the
+        # task prompt exceeds this limit, the input is silently cropped, producing
+        # wrong output with no indication.  Fail loudly instead.
+        tc = runtime.truncation_config
+        if len(task_prompt) > tc.max_block_chars:
+            raise ValueError(
+                f"PredictStrategy: task prompt for '{call.method_name}' is "
+                f"{len(task_prompt):,} chars but max_block_chars is "
+                f"{tc.max_block_chars:,}. The prompt would be silently truncated, "
+                f"producing wrong output. Raise the limit with "
+                f"@strategy(PredictStrategy(), truncation=TruncationConfig("
+                f"max_block_chars={len(task_prompt) + 1000})) or reduce the input size."
+            )
+
         # Add task event (with media attachments if any)
         runtime.event_manager.add(
             Task(
-                prompt=await self._build_task_message(runtime, original_call=call),
+                prompt=task_prompt,
                 images=media_blocks,
             )
         )
