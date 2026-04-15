@@ -18,7 +18,6 @@ Each event class has:
 """
 
 import logging
-import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, ClassVar, Literal
@@ -36,21 +35,6 @@ _logger = logging.getLogger(__name__)
 # Populated automatically by EventBase.__init_subclass__.
 # Backends (e.g. SQLiteEventBackend) use this as a fallback for deserialization.
 _EVENT_REGISTRY: dict[str, type["EventBase"]] = {}
-
-
-def _camel_to_snake(name: str) -> str:
-    """Convert CamelCase class name to snake_case event_type string.
-
-    Examples:
-        UserMessage -> user_message
-        LLMOutput   -> llm_output
-        HTTPError   -> http_error
-        Simple      -> simple
-    """
-    # Handle consecutive uppercase (LLM -> llm, not l_l_m)
-    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
-    return s.lower()
 
 
 # === Enums ===
@@ -82,10 +66,10 @@ class EventBase(BaseModel):
     - Public fields which are rendered via pformat()
 
     Auto-registration: When a subclass is defined, ``__init_subclass__``
-    automatically derives ``event_type`` from the class name (CamelCase ->
-    snake_case) if the subclass does not explicitly define one.  The class
-    is also added to the global ``_EVENT_REGISTRY`` (unless the class name
-    starts with ``_``).
+    automatically derives ``event_type`` from the class name (e.g.
+    ``MyCustomEvent`` -> ``"MyCustomEvent"``) if the subclass does not
+    explicitly define one.  The class is also added to the global
+    ``_EVENT_REGISTRY`` (unless the class name starts with ``_``).
     """
 
     _role: ClassVar[Role] = Role.USER
@@ -109,8 +93,8 @@ class EventBase(BaseModel):
         has_explicit = "event_type" in own_annotations
 
         if not has_explicit:
-            # Auto-derive event_type from class name
-            derived = _camel_to_snake(cls.__name__)
+            # Auto-derive event_type from class name (use cls.__name__ directly)
+            derived = cls.__name__
             # At this point cls has its own model_fields dict (not shared
             # with parent), so mutation is safe.
             fi = cls.model_fields.get("event_type")
@@ -123,10 +107,7 @@ class EventBase(BaseModel):
             # Explicit field: Pydantic has already processed it, so we can
             # safely read from model_fields.
             fi = cls.model_fields.get("event_type")
-            if fi is not None and isinstance(fi.default, str):
-                event_type_str = fi.default
-            else:
-                event_type_str = _camel_to_snake(cls.__name__)
+            event_type_str = fi.default if fi is not None and isinstance(fi.default, str) else cls.__name__
 
         # Skip registration for private/internal classes (names starting with _)
         if cls.__name__.startswith("_"):
@@ -238,15 +219,16 @@ class Metadata(EventBase):
     in the global ``_EVENT_REGISTRY``, so backends (e.g. SQLite) can
     deserialize them without manual ``register_event_type()`` calls.
 
-    The ``event_type`` is auto-derived from the class name (CamelCase
-    to snake_case).  Override explicitly if you need a custom name.
+    The ``event_type`` is auto-derived from the class name directly
+    (e.g. ``MyMetadata`` -> ``"MyMetadata"``).  Override explicitly if
+    you need a custom name.
 
     Example::
 
         class TUISessionStart(Metadata):
             model: str = ""
             working_dir: str = ""
-            # event_type auto-derived as "tui_session_start"
+            # event_type auto-derived as "TUISessionStart"
 
         # Or with explicit event_type:
         class TUISessionStart(Metadata):

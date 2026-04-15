@@ -1,7 +1,7 @@
-"""Tests for Phase 2: Event auto-registration via __init_subclass__.
+"""Tests for Event auto-registration via __init_subclass__.
 
-Auto-derive event_type from class name (CamelCase -> snake_case) and
-auto-register EventBase subclasses in a global registry.
+Auto-derive event_type from class name (cls.__name__) and auto-register
+EventBase subclasses in a global registry.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata, _camel_to_snake
+from context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata
 
 
 @pytest.fixture(autouse=True)
@@ -23,63 +23,36 @@ def _restore_event_registry():
 
 
 # ---------------------------------------------------------------------------
-# _camel_to_snake edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestCamelToSnake:
-    """Test the CamelCase -> snake_case conversion utility."""
-
-    @pytest.mark.parametrize(
-        "input_str,expected",
-        [
-            ("Simple", "simple"),
-            ("UserMessage", "user_message"),
-            ("LLMOutput", "llm_output"),
-            ("HTTPError", "http_error"),
-            ("HTTP", "http"),
-            ("HTMLParser", "html_parser"),
-            ("ParseHTML", "parse_html"),
-            ("A", "a"),
-            ("task", "task"),
-            ("Event2D", "event2_d"),
-        ],
-    )
-    def test_camel_to_snake(self, input_str, expected):
-        assert _camel_to_snake(input_str) == expected
-
-
-# ---------------------------------------------------------------------------
 # Auto-derived event_type
 # ---------------------------------------------------------------------------
 
 
 class TestAutoDerivedEventType:
-    """Test that subclasses without explicit event_type get snake_case name."""
+    """Test that subclasses without explicit event_type get cls.__name__."""
 
     def test_auto_derived_simple(self):
-        """A subclass without explicit event_type gets its class name as snake_case."""
+        """A subclass without explicit event_type gets its class name directly."""
 
         class MyCustomEvent(EventBase):
             pass
 
-        assert MyCustomEvent().event_type == "my_custom_event"
+        assert MyCustomEvent().event_type == "MyCustomEvent"
 
     def test_auto_derived_with_acronym(self):
-        """Acronyms are handled correctly in auto-derivation."""
+        """Acronyms are preserved as-is in auto-derivation."""
 
         class GPUMetrics(EventBase):
             pass
 
-        assert GPUMetrics().event_type == "gpu_metrics"
+        assert GPUMetrics().event_type == "GPUMetrics"
 
     def test_auto_derived_metadata_subclass(self):
-        """Metadata subclass without explicit event_type gets auto-derived name."""
+        """Metadata subclass without explicit event_type gets class name directly."""
 
         class SessionInfo(Metadata):
             model_name: str = ""
 
-        assert SessionInfo().event_type == "session_info"
+        assert SessionInfo().event_type == "SessionInfo"
 
 
 class TestExplicitEventTypePreserved:
@@ -120,8 +93,8 @@ class TestRegistryPopulated:
         class RegistryTestEvent(EventBase):
             pass
 
-        assert "registry_test_event" in _EVENT_REGISTRY
-        assert _EVENT_REGISTRY["registry_test_event"] is RegistryTestEvent
+        assert "RegistryTestEvent" in _EVENT_REGISTRY
+        assert _EVENT_REGISTRY["RegistryTestEvent"] is RegistryTestEvent
 
     def test_explicit_event_type_registered_under_explicit_key(self):
         """Explicit event_type uses the explicit value as registry key."""
@@ -141,8 +114,8 @@ class TestRegistryPopulated:
         class MetaRegistryTest(Metadata):
             pass
 
-        assert "meta_registry_test" in _EVENT_REGISTRY
-        assert _EVENT_REGISTRY["meta_registry_test"] is MetaRegistryTest
+        assert "MetaRegistryTest" in _EVENT_REGISTRY
+        assert _EVENT_REGISTRY["MetaRegistryTest"] is MetaRegistryTest
 
 
 # ---------------------------------------------------------------------------
@@ -168,44 +141,43 @@ class TestCollisionWarning:
         # Last-registered wins
         assert _EVENT_REGISTRY["collision_test_type"] is CollisionB
 
-    def test_auto_derived_collision_with_explicit(self, caplog):
-        """Auto-derived name collides with a later explicit event_type of the same value."""
+    def test_explicit_overrides_auto_derived(self, caplog):
+        """Explicit event_type collides with an auto-derived class name."""
 
         class WidgetStatus(EventBase):
             value: int = 0
 
-        # "widget_status" is now auto-registered.
-        assert _EVENT_REGISTRY["widget_status"] is WidgetStatus
+        # "WidgetStatus" is now auto-registered.
+        assert _EVENT_REGISTRY["WidgetStatus"] is WidgetStatus
 
         with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
 
             class UnrelatedName(EventBase):
-                event_type: str = "widget_status"
+                event_type: str = "WidgetStatus"
                 value: int = 99
 
-        assert any("widget_status" in record.message for record in caplog.records)
+        assert any("WidgetStatus" in record.message for record in caplog.records)
         # Last-registered wins
-        assert _EVENT_REGISTRY["widget_status"] is UnrelatedName
+        assert _EVENT_REGISTRY["WidgetStatus"] is UnrelatedName
 
-    def test_auto_derived_collision_both_implicit(self, caplog):
-        """Two classes whose names auto-derive to the same snake_case trigger a warning.
+    def test_two_explicit_same_value_collide(self, caplog):
+        """Two classes with the same explicit event_type trigger a warning."""
 
-        HTTPSError -> https_error, HttpsError -> https_error.
-        """
-
-        class HTTPSError(EventBase):
+        class AlphaEvent(EventBase):
+            event_type: str = "shared_type"
             code: int = 0
 
-        assert _EVENT_REGISTRY.get("https_error") is HTTPSError
+        assert _EVENT_REGISTRY.get("shared_type") is AlphaEvent
 
         with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
 
-            class HttpsError(EventBase):  # intentional name for collision test
+            class BetaEvent(EventBase):
+                event_type: str = "shared_type"
                 code: int = 1
 
-        assert any("https_error" in record.message for record in caplog.records)
+        assert any("shared_type" in record.message for record in caplog.records)
         # Last-registered wins
-        assert _EVENT_REGISTRY["https_error"] is HttpsError
+        assert _EVENT_REGISTRY["shared_type"] is BetaEvent
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +194,7 @@ class TestPrivateClassSkipped:
             pass
 
         # _InternalEvent should NOT be in the registry
-        assert "_internal_event" not in _EVENT_REGISTRY
+        assert "_InternalEvent" not in _EVENT_REGISTRY
 
     def test_private_still_gets_event_type(self):
         """Private classes still get auto-derived event_type, just not registered."""
@@ -230,7 +202,7 @@ class TestPrivateClassSkipped:
         class _HelperEvent(EventBase):
             pass
 
-        assert _HelperEvent().event_type == "_helper_event"
+        assert _HelperEvent().event_type == "_HelperEvent"
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +334,7 @@ class TestSQLiteBackendUsesRegistry:
         assert retrieved is not None
         assert isinstance(retrieved, CustomPayload)
         assert retrieved.payload == "test_data"
-        assert retrieved.event_type == "custom_payload"
+        assert retrieved.event_type == "CustomPayload"
 
     def test_auto_registered_metadata_subclass_sqlite_roundtrip(self, sqlite_conn):
         """Auto-registered Metadata subclass survives SQLite round-trip."""
