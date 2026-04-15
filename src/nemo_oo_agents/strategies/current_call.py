@@ -8,10 +8,13 @@ Captures all context needed by strategies to generate code for a method call.
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, get_type_hints
+from typing import TYPE_CHECKING, Any, get_type_hints
 from uuid import uuid4
 
 from nemo_oo_agents.ellipsis_detection import get_pre_ellipsis_code
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.truncation_config import TruncationConfig
 
 
 def _parse_param_names(signature: str) -> list[str]:
@@ -91,6 +94,8 @@ class CurrentCall:
     def format_parameters_as_code(
         self,
         value_formatter: Callable[[Any], str] | None = None,
+        *,
+        tc: "TruncationConfig | None" = None,
     ) -> str:
         """Format method parameters as Python variable assignments.
 
@@ -99,8 +104,12 @@ class CurrentCall:
 
         Args:
             value_formatter: Optional callable to format each parameter value.
-                Defaults to ``repr``.  Pass ``truncating_pformat`` to cap large values
-                before embedding in prompts.
+                When provided, takes precedence over ``tc``.
+                When both are None, defaults to ``repr``.
+            tc: Optional TruncationConfig.  When provided (and ``value_formatter``
+                is None), uses ``pformat`` with the config's structural limits
+                (``max_pprint_elements``, ``max_pprint_string``, ``max_pprint_depth``).
+                This matches how ``InspectInputsPrefill`` formats parameter values.
 
         Returns:
             Formatted parameter assignments (e.g., "data = 'test'\\nthreshold = 0.5")
@@ -112,7 +121,22 @@ class CurrentCall:
             data = "test"
             threshold = 0.5
         """
-        fmt = value_formatter if value_formatter is not None else repr
+        if value_formatter is not None:
+            fmt = value_formatter
+        elif tc is not None:
+            from agentdoc import pformat
+
+            _tc = tc  # capture for closure
+
+            def fmt(v: Any) -> str:
+                return pformat(
+                    v,
+                    max_length=_tc.max_pprint_elements,
+                    max_string=_tc.max_pprint_string,
+                    max_depth=_tc.max_pprint_depth,
+                )
+        else:
+            fmt = repr
 
         if not self.signature:
             # No signature available: format positional args as arg_0, arg_1, … then kwargs.

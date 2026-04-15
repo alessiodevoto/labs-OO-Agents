@@ -316,7 +316,7 @@ class PredictStrategy(GenerationStrategy):
         {original_call.docstring}
 
         ## Input parameters:
-        {original_call.format_parameters_as_code()}
+        {original_call.format_parameters_as_code(tc=tc)}
 
         Perform the task and return the result directly.
         """

@@ -105,6 +105,7 @@ class TemplateStrategy(GenerationStrategy):
         context = {
             "self": runtime.agent,  # For {self.xxx} expressions
             "call": call,  # For {call.xxx} expressions
+            "tc": runtime.truncation_config,  # For {original_call.format_parameters_as_code(tc=tc)}
             **call.kwargs,  # Method parameters as variables
         }
 

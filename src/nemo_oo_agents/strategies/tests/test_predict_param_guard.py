@@ -250,3 +250,100 @@ class TestPredictPromptSizeGuard:
 
         # Should mention TruncationConfig with max_block_chars= in the suggestion
         assert "max_block_chars=" in str(exc_info.value)
+
+
+class TestPredictPromptSizeGuardImages:
+    """Images on Task are repr=False — excluded from text rendering.
+
+    The guard fires solely on len(task_prompt), which is the exact same
+    value that PlainBlockFormatter would truncate at for a Task event.
+    Image content blocks bypass the text truncation pipeline entirely —
+    they are attached to the LLM message *after* formatting via the
+    provider-level _append_images path, not through format_event.
+
+    Consequence: the guard is exact for the text portion regardless of
+    whether images are present.  There is no "XML wrapper overhead" gap
+    because format_event never includes the images field.
+    """
+
+    def test_task_images_excluded_from_plain_formatter(self):
+        """Task.images has repr=False — image data never appears in formatted text."""
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+
+        big_image = {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64," + "A" * 10_000},
+        }
+        task = Task(prompt="Analyze this image.", images=[big_image])
+        text = PlainBlockFormatter().format_event(task)
+
+        # Image bytes must NOT appear in the text block
+        assert "AAAAAAA" not in text
+        assert "image_url" not in text
+        # Prompt is the only content
+        assert text == "Analyze this image."
+
+    def test_format_event_output_length_matches_guard_threshold(self):
+        """len(format_event(task)) == len(task.prompt) — guard threshold is exact."""
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+
+        prompt = "Describe the scene in detail."
+        big_image = {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64," + "B" * 50_000},
+        }
+        task = Task(prompt=prompt, images=[big_image])
+        formatted = PlainBlockFormatter().format_event(task, max_chars=100_000)
+
+        # The formatted output is exactly the prompt — no XML wrapper, no image overhead
+        assert formatted == prompt
+        assert len(formatted) == len(prompt)
+
+    def test_guard_fires_on_text_regardless_of_images_being_tiny(self):
+        """Guard fires when task_prompt > max_block_chars even if images are small.
+
+        The guard correctly ignores image size — it checks text chars only.
+        When len(task_prompt) > max_block_chars, format_event shows a
+        <truncated-output> notice, confirming the prompt was cropped.
+        """
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+
+        long_prompt = "x" * 2000
+        small_image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
+        task = Task(prompt=long_prompt, images=[small_image])
+        max_block_chars = 500
+
+        # Guard condition: len(task_prompt) > max_block_chars → guard would fire
+        assert len(long_prompt) > max_block_chars
+
+        # Confirm: format_event truncates the prompt (produces a truncation notice)
+        formatted = PlainBlockFormatter().format_event(task, max_chars=max_block_chars)
+        assert "<truncated-output>" in formatted  # truncation visible in output
+        assert "image_url" not in formatted  # images still excluded from text
+
+    def test_no_gap_for_prompt_within_limit(self):
+        """When len(task_prompt) <= max_block_chars, format_event does NOT truncate.
+
+        This confirms the guard is tight: passing the guard guarantees no truncation
+        of the text content, even when images are attached.
+        """
+        from nemo_oo_agents.events import Task
+        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+
+        prompt = "Short prompt."
+        big_image = {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64," + "C" * 100_000},
+        }
+        task = Task(prompt=prompt, images=[big_image])
+        max_block_chars = 500
+
+        # Guard would pass: len(prompt) < max_block_chars
+        assert len(prompt) <= max_block_chars
+
+        # format_event does not truncate either
+        formatted = PlainBlockFormatter().format_event(task, max_chars=max_block_chars)
+        assert formatted == prompt  # no truncation
