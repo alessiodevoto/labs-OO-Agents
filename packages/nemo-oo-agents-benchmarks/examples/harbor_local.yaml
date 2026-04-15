@@ -1,4 +1,4 @@
-# Harbor config for running nemo-oo-agents-harbor locally with Apptainer.
+# Harbor config for running nemo-oo-agents-benchmarks locally with Apptainer.
 #
 # Prerequisites — see README.md "Local development setup":
 #   1. sudo apt install apptainer

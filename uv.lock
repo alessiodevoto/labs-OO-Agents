@@ -24,7 +24,7 @@ members = [
     "evaluation",
     "mcp-nemo-oo-agents",
     "nemo-oo-agents",
-    "nemo-oo-agents-harbor",
+    "nemo-oo-agents-benchmarks",
     "nemo-oo-agents-viewer",
     "openinference-instrumentation-nemo-oo-agents",
     "trace-explorer",
@@ -2818,11 +2818,11 @@ bigcodebench = [
     { name = "xlwt" },
     { name = "xmltodict" },
 ]
-harbor = [
-    { name = "nemo-oo-agents-harbor" },
-]
 mcp = [
     { name = "mcp-nemo-oo-agents" },
+]
+nemo-oo-agents-benchmarks = [
+    { name = "nemo-oo-agents-benchmarks" },
 ]
 sandbox = [
     { name = "openshell" },
@@ -2924,7 +2924,7 @@ requires-dist = [
     { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
     { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
     { name = "nemo-oo-agents", extras = ["tui"], marker = "extra == 'term'" },
-    { name = "nemo-oo-agents-harbor", marker = "extra == 'harbor'", editable = "packages/nemo-oo-agents-harbor" },
+    { name = "nemo-oo-agents-benchmarks", marker = "extra == 'nemo-oo-agents-benchmarks'", editable = "packages/nemo-oo-agents-benchmarks" },
     { name = "nemo-oo-agents-viewer", marker = "extra == 'viewer'", editable = "packages/nemo-oo-agents-viewer" },
     { name = "nltk", marker = "extra == 'bigcodebench'", specifier = ">=3.8.0" },
     { name = "numpy", marker = "extra == 'bigcodebench'", specifier = ">=1.24.0" },
@@ -2983,7 +2983,7 @@ requires-dist = [
     { name = "xlwt", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
     { name = "xmltodict", marker = "extra == 'bigcodebench'", specifier = ">=0.13.0" },
 ]
-provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "term", "harbor", "bigcodebench", "tui-optional"]
+provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "term", "nemo-oo-agents-benchmarks", "bigcodebench", "tui-optional"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3020,18 +3020,20 @@ trace-viewer = [
 ]
 
 [[package]]
-name = "nemo-oo-agents-harbor"
+name = "nemo-oo-agents-benchmarks"
 version = "0.1.0"
-source = { editable = "packages/nemo-oo-agents-harbor" }
+source = { editable = "packages/nemo-oo-agents-benchmarks" }
 dependencies = [
     { name = "click" },
     { name = "nemo-oo-agents" },
+    { name = "pandas" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
     { name = "nemo-oo-agents", editable = "." },
+    { name = "pandas", specifier = ">=2.0.0" },
 ]
 
 [[package]]

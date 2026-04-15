@@ -1,12 +1,13 @@
 [project]
-name = "nemo-oo-agents-harbor"
+name = "nemo-oo-agents-benchmarks"
 version = "0.1.0"
-description = "Harbor benchmark runner for nemo-oo-agents"
+description = "Benchmark agents for nemo-oo-agents (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) with Harbor runner wiring"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.12"
 dependencies = [
     "nemo_oo_agents",
     "click>=8.1.0",
+    "pandas>=2.0.0",
 ]
 
 # System dependency (not pip-installable):
@@ -20,9 +21,9 @@ dependencies = [
 #       3p/harbor-nemo
 #   uv pip install -e 3p/harbor-nemo
 #
-# harbor_agent.py (NemoOoAgentsHarborAgent) requires harbor at import time.
+# harbor_agent.py (NemoOoAgentsBenchmarksHarborAgent) requires harbor at import time.
 # Install the host package too so Harbor can find harbor_agent.py via import_path:
-#   uv pip install -e packages/nemo-oo-agents-harbor
+#   uv pip install -e packages/nemo-oo-agents-benchmarks
 #
 # See README.md → "Local development setup" for the full walkthrough.
 
@@ -31,7 +32,7 @@ dependencies = [
 #   uv pip install -e 3p/harbor-nemo
 
 [project.scripts]
-nemo-harbor = "nemo_oo_agents_harbor.runner:main"
+nemo-harbor = "nemo_oo_agents_benchmarks.runner:main"
 
 [tool.uv.sources]
 nemo_oo_agents = { workspace = true }
@@ -41,4 +42,4 @@ requires = ["uv_build>=0.9.11,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["nemo_oo_agents_harbor"]
+module-name = ["nemo_oo_agents_benchmarks"]

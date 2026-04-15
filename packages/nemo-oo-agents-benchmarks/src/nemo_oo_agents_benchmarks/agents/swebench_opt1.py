@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-SWEBench optimised agent (opt1) for nemo-oo-agents-harbor.
+SWEBench optimised agent (opt1) for nemo-oo-agents-benchmarks.
 
 Multi-phase pipeline:
   1. Understand — repo overview + clarify issue + root-cause analysis

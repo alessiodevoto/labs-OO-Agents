@@ -31,7 +31,7 @@ mcp-nemo-oo-agents = { workspace = true }
 eval_pipeline = { workspace = true }
 evaluation = { workspace = true }
 trace_explorer = { workspace = true }
-nemo-oo-agents-harbor = { workspace = true }
+nemo-oo-agents-benchmarks = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -50,7 +50,7 @@ members = [
     "packages/trace_explorer",
     "util/eval_pipeline",
     "packages/evaluation",
-    "packages/nemo-oo-agents-harbor",
+    "packages/nemo-oo-agents-benchmarks",
 ]
 
 
@@ -84,8 +84,8 @@ term = [
     "uvicorn[standard]>=0.34.0",
     "ptyprocess>=0.7.0",
 ]
-harbor = [
-    "nemo-oo-agents-harbor",
+nemo-oo-agents-benchmarks = [
+    "nemo-oo-agents-benchmarks",
 ]
 # nexus = [
 #     "nvidia-nat-nexus",  # TODO: update once published to PyPI
