@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Skill
+from nemo_oo_agents.storage.markers import snapshotable
 
 
 class Todo(BaseModel):
@@ -35,6 +36,7 @@ class Todo(BaseModel):
         return False
 
 
+@snapshotable
 class TodoManager(Skill):
     """In-memory todo manager with dependency and variable support.
 
@@ -50,6 +52,8 @@ class TodoManager(Skill):
         self.todo.done(t1.id)
         print(self.todo.status())
     """
+
+    __nosnapshot__ = False  # Override Skill's __nosnapshot__ = True
 
     def __init__(self, state: dict | None = None) -> None:
         self._todos: dict[str, Todo] = {}

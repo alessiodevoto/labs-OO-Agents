@@ -335,8 +335,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     bash: Annotated[BashTool, nosnapshot]
     files: Annotated[FileTool, nosnapshot]
     libs: Annotated[LibraryWriting, nosnapshot]
-    todo: Annotated[TodoManager, nosnapshot]
-    _todo_state: Annotated[dict, hidden]  # JSON-safe snapshot of todo list
+    todo: TodoManager
     _skills_dirs: Annotated[list, hidden, nosnapshot]
     _summarizers: Annotated[list, hidden, nosnapshot]
 
@@ -376,9 +375,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         )
         self.files = FileTool(self.bash)
         self.libs = LibraryWriting(self, path=_project_dir / "libs")
-        # Restore todo state from snapshot if available, otherwise start fresh
-        self._todo_state: dict = getattr(self, "_todo_state", {})
-        self.todo = TodoManager(state=self._todo_state or None)
+        self.todo = TodoManager()
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)

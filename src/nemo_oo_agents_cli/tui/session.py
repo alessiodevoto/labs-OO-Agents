@@ -582,10 +582,6 @@ class Session:
             self.frontend.close()
             self._detach_agent()
             if self._session_manager is not None:
-                # Sync todo state before snapshot so it persists across sessions
-                todo = getattr(self.agent, "todo", None)
-                if todo is not None and hasattr(todo, "to_dict"):
-                    self.agent._todo_state = todo.to_dict()  # type: ignore[attr-defined]
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
                     try:
