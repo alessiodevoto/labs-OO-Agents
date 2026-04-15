@@ -1104,17 +1104,17 @@ class TestCodeActStrategyEventSequence:
         events = agent_instance.event_manager.values()
         event_types = [e.event_type for e in events]
 
-        # Exact sequence: task → synthetic(tool_call + python_output) → return_result tool_call
-        assert event_types == ["task", "tool_call", "python_output", "tool_call"], (
-            f"Expected ['task', 'tool_call', 'python_output', 'tool_call'], got: {event_types}"
+        # Exact sequence: Task → synthetic(ToolCallEvent + PythonOutput) → return_result ToolCallEvent
+        assert event_types == ["Task", "ToolCallEvent", "PythonOutput", "ToolCallEvent"], (
+            f"Expected ['Task', 'ToolCallEvent', 'PythonOutput', 'ToolCallEvent'], got: {event_types}"
         )
 
         # No error event should be added for a text-only response
-        assert "error" not in event_types
+        assert "Error" not in event_types
 
-        # Find the synthetic tool call (first tool_call, not the final return_result)
+        # Find the synthetic tool call (first ToolCallEvent, not the final return_result)
         synthetic = events[1]
-        assert synthetic.event_type == "tool_call"
+        assert synthetic.event_type == "ToolCallEvent"
         assert synthetic.metadata.get("synthetic") is True
         assert synthetic.name == "execute_python"
 
@@ -1132,7 +1132,7 @@ class TestCodeActStrategyEventSequence:
 
         # The PythonOutput should be linked to the same synthetic tool call
         python_output = events[2]
-        assert python_output.event_type == "python_output"
+        assert python_output.event_type == "PythonOutput"
         assert python_output.tool_call_id == synthetic.tool_call_id
 
     @pytest.mark.asyncio
@@ -1175,7 +1175,7 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         synthetic_calls = [
-            e for e in events if e.event_type == "tool_call" and e.metadata.get("synthetic") is True
+            e for e in events if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
         ]
         assert len(synthetic_calls) == 1
 
@@ -1213,9 +1213,9 @@ class TestCodeActStrategyEventSequence:
         all_events = agent_instance.event_manager.values()
         event_types = [e.event_type for e in all_events]
         # Should produce an error event, NOT a synthetic tool_call
-        assert "error" in event_types, f"Expected error event, got: {event_types}"
+        assert "Error" in event_types, f"Expected error event, got: {event_types}"
         synthetic_calls = [
-            e for e in all_events if e.event_type == "tool_call" and e.metadata.get("synthetic")
+            e for e in all_events if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic")
         ]
         assert len(synthetic_calls) == 0, (
             f"Whitespace-only response should not create synthetic events, got: {synthetic_calls}"
@@ -1258,7 +1258,7 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         exec_calls = [
-            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+            e for e in events if e.event_type == "ToolCallEvent" and e.name == "execute_python"
         ]
         assert len(exec_calls) == 1
         code = exec_calls[0].arguments["code"]
@@ -1294,7 +1294,7 @@ class TestCodeActStrategyEventSequence:
 
         # Error events should have been added for the empty responses
         all_events = agent_instance.event_manager.values()
-        error_events = [e for e in all_events if e.event_type == "error"]
+        error_events = [e for e in all_events if e.event_type == "Error"]
         assert len(error_events) >= 1, (
             f"Expected at least 1 error event for empty response, got: "
             f"{[e.event_type for e in all_events]}"
@@ -1379,7 +1379,7 @@ class TestCodeActStrategyEventSequence:
         assert result == "done"
 
         events = agent_instance.event_manager.values()
-        tool_calls = [e for e in events if e.event_type == "tool_call"]
+        tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
 
         # First tool call should have reasoning prepended to the code
         first_tc = tool_calls[0]
@@ -1413,7 +1413,7 @@ class TestCodeActStrategyEventSequence:
 
         # The return_result tool call should have no reasoning prepended
         events = agent_instance.event_manager.values()
-        tool_calls = [e for e in events if e.event_type == "tool_call"]
+        tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
         final_tc = tool_calls[0]
         code = final_tc.arguments.get("code", "")
         assert not code.startswith("reasoning("), (
@@ -1449,7 +1449,7 @@ class TestCodeActStrategyEventSequence:
 
         events = agent_instance.event_manager.values()
         exec_calls = [
-            e for e in events if e.event_type == "tool_call" and e.name == "execute_python"
+            e for e in events if e.event_type == "ToolCallEvent" and e.name == "execute_python"
         ]
         # First execute_python should have reasoning prepended
         assert exec_calls[0].arguments["code"].startswith("reasoning("), (
