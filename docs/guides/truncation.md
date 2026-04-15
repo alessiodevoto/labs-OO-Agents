@@ -161,17 +161,20 @@ vvvvvvvvvvvvvvvvvvvvvvvvvvv',
 
 ---
 
-### 3. `Out[n]` repr — `out_accessor.py:144`
+### 3. `Out` repr — `out_accessor.py:144`
 
-**What:** Each individual `Out[n]` value when agent-generated code evaluates `Out`
-(the output accumulator) as an expression or calls `print(Out)`.
+**What:** The combined display of all recorded outputs when agent-generated code
+evaluates `Out` as an expression or calls `print(Out)`.
 
 **Where:** The `__repr__` of `OutAccessor` — shown in the REPL output that lands
-in the LLM's message. The LLM uses `Out[n]` to reference specific prior results;
-it doesn't need to read the full value here.
+in the LLM's message.
 
 **Why:** `Out` accumulates all cell outputs. Reprinting every full value would
-flood the REPL context with redundant data.
+flood the REPL context with redundant data. Each entry is capped so the LLM
+sees the shape of each result without being overwhelmed.
+
+**Note:** `Out[n]` indexing returns the raw Python value untruncated —
+truncation only applies to the combined `repr(Out)` display.
 
 **Mechanism:** Char-cap per item.  
 **Parameters:** `max_chars=500` (hardcoded — intentionally small; this is a quick
@@ -364,17 +367,25 @@ generated code string so the LLM learns the `pprint()` API.
 [0, 1, 2, 3, 4]
 ```
 
-**200-item list — `max_length` fires:**
+**200-item list of ints, max_length=50 — `max_length` fires (inline format for simple scalars):**
+```
+[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, ... 150 items not shown ..., 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199]
+```
+
+**30-item list of dicts, max_length=10 — multi-line format for complex objects:**
 ```
 [
-    0,
-    1,
-    ...
-    24,
-    ... 150 items not shown ...
-    175,
-    ...
-    199,
+    {'id': 0, 'name': 'item_0'},
+    {'id': 1, 'name': 'item_1'},
+    {'id': 2, 'name': 'item_2'},
+    {'id': 3, 'name': 'item_3'},
+    {'id': 4, 'name': 'item_4'},
+    ... 20 items not shown ...
+    {'id': 25, 'name': 'item_25'},
+    {'id': 26, 'name': 'item_26'},
+    {'id': 27, 'name': 'item_27'},
+    {'id': 28, 'name': 'item_28'},
+    {'id': 29, 'name': 'item_29'},
 ]
 ```
 
@@ -393,15 +404,58 @@ generated code string so the LLM learns the `pprint()` API.
 [
     {
         'name': 'Alice',
-        'bio': 'xxxxxxxxxxxxxxxxx...'+300,
+        'bio': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'+300,
         'scores': [
             0,
             1,
-            ...
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
             24,
             ... 30 items not shown ...
             55,
-            ...
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
             79,
         ],
     },
