@@ -794,11 +794,11 @@ class TestSQLiteModuleLevelAssertions:
 
         from nemo_oo_agents.events import Task
 
-        # Patch Task's event_type default to collide with Message's "message" key.
+        # Patch Task's event_type default to collide with Message's "Message" key.
         # When sqlite.py module reloads, it iterates all event classes
         # and will find the duplicate.
         original_default = Task.model_fields["event_type"].default
-        Task.model_fields["event_type"].default = "message"  # collides with Message
+        Task.model_fields["event_type"].default = "Message"  # collides with Message
         try:
             with pytest.raises(AssertionError, match="Duplicate event_type key"):
                 import nemo_oo_agents.storage.sqlite as sqlite_mod
@@ -937,7 +937,7 @@ class TestWebPublisherMethods:
         from nemo_oo_agents.tools.web_publisher import RichOutput
 
         ro = RichOutput(payload={"kind": "html", "html": "<b>hi</b>"})
-        assert ro.event_type == "rich_output"
+        assert ro.event_type == "RichOutput"
         assert ro.payload["kind"] == "html"
 
     def test_post_stores_event_when_event_manager_present(self):

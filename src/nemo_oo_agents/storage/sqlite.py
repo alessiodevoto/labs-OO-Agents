@@ -42,9 +42,9 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
-# Unwrap Event = Annotated[UserEvent | AssistantEvent | ToolCallEvent, Field(...)]
+# Unwrap Event = UserEvent | AssistantEvent | ToolCallEvent
 # to get the concrete types. This stays in sync with the Event union automatically.
-_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(typing.get_args(Event)[0])
+_CONTEXT_BLOCKS_TYPES: tuple[type[EventBase], ...] = typing.get_args(Event)
 if len(_CONTEXT_BLOCKS_TYPES) < 3:
     raise AssertionError(
         f"Failed to unwrap context_blocks Event union; got {_CONTEXT_BLOCKS_TYPES!r}. "

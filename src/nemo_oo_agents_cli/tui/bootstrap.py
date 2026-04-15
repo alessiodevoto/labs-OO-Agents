@@ -278,11 +278,12 @@ async def bootstrap(
             from nemo_oo_agents.tools.web_publisher import WebPublisher as _WP
 
             agent.event_manager.register_event_type(RichOutput)
-            _rich_events = agent.event_manager.filter(type="rich_output")
+            _rich_events = agent.event_manager.filter(type="RichOutput")
             if _rich_events:
                 _replay_wp = _WP()  # no event_manager — replay only, don't re-store
                 for _ev in _rich_events:
-                    _replay_wp._post(_ev.payload)  # type: ignore[union-attr]
+                    if isinstance(_ev, RichOutput):
+                        _replay_wp._post(_ev.payload)
         except Exception as _e:
             messages.append(TextOutput(f"Could not replay rich content: {_e}", "warning"))
 

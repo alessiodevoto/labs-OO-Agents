@@ -164,7 +164,7 @@ async def test_function_body_extraction_when_wrapped_in_function_definition():
 
     # Verify history was updated with unpacked code
     history_events = agent_instance.event_manager.values()
-    assistant_events = [e for e in history_events if e.event_type == "llm_output"]
+    assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
 
     # Should have at least one assistant event
     assert len(assistant_events) >= 1
@@ -226,7 +226,7 @@ async def find_negative_sentiment(self) -> str:
 
     # Verify history was updated with unpacked code
     history_events = agent_instance.event_manager.values()
-    assistant_events = [e for e in history_events if e.event_type == "llm_output"]
+    assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
 
     # Should have at least one assistant event
     assert len(assistant_events) >= 1

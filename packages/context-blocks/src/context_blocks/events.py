@@ -9,7 +9,7 @@ Rendering: Events are rendered using pformat(event). Fields with repr=False
 are excluded from LLM context.
 
 Each event class has:
-- event_type: Literal field for discriminator (repr=False, excluded from display)
+- event_type: Auto-derived from class name (repr=False, excluded from display)
 - id: Unique identifier (repr=False, excluded from display)
 - metadata: Arbitrary metadata dict (repr=False, excluded from display)
 - _role: ClassVar for provider role (USER/ASSISTANT/TOOL)
@@ -20,7 +20,7 @@ Each event class has:
 import logging
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -61,7 +61,7 @@ class EventBase(BaseModel):
     """Base class for all events.
 
     Subclasses define:
-    - event_type: Literal field for union discriminator (repr=False)
+    - event_type: Auto-derived from class name (repr=False), or explicit override
     - _role: ClassVar for provider role
     - Public fields which are rendered via pformat()
 
@@ -154,7 +154,6 @@ class EventBase(BaseModel):
 class UserEvent(EventBase):
     """User message event."""
 
-    event_type: Literal["user_message"] = Field(default="user_message", repr=False)
     _role: ClassVar[Role] = Role.USER
 
     content: Annotated[str, Field(description="Message content")]
@@ -163,7 +162,6 @@ class UserEvent(EventBase):
 class AssistantEvent(EventBase):
     """Assistant response event."""
 
-    event_type: Literal["assistant_message"] = Field(default="assistant_message", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     content: Annotated[str, Field(description="Response content from the assistant")]
@@ -194,7 +192,6 @@ class ToolCallEvent(EventBase):
     - Access result via self.events[n].result
     """
 
-    event_type: Literal["tool_call"] = Field(default="tool_call", repr=False)
     _role: ClassVar[Role] = Role.ASSISTANT
 
     tool_call_id: Annotated[str, Field(description="Unique identifier for this tool call")]
@@ -243,9 +240,6 @@ class Metadata(EventBase):
     _role: ClassVar[Role] = Role.METADATA
 
 
-# === Discriminated Union ===
+# === Union of context-blocks event types ===
 
-Event = Annotated[
-    UserEvent | AssistantEvent | ToolCallEvent,
-    Field(discriminator="event_type"),
-]
+Event = UserEvent | AssistantEvent | ToolCallEvent

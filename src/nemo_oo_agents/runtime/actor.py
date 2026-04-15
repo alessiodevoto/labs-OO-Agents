@@ -253,8 +253,8 @@ class ActorRuntime:
             agent: Agent instance to manage
 
         For callbacks on LLM output, use:
-            agent.event_manager.on("message", handler)
-            agent.event_manager.on("reasoning", handler)
+            agent.event_manager.on("Message", handler)
+            agent.event_manager.on("Reasoning", handler)
         """
         # Agent instance
         self.agent: Any = agent

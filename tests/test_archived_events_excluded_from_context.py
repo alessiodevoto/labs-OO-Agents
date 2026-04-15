@@ -165,7 +165,7 @@ def test_phase_events_with_type_query_on_real_event_manager(event_manager):
     blocks = _phase_events([], em, agent_event_query=EventQuery(type="Task"))
 
     assert len(blocks) == 2
-    assert all(b.event.event_type == "task" for b in blocks)
+    assert all(b.event.event_type == "Task" for b in blocks)
 
 
 def test_phase_events_query_does_not_include_archived_events(event_manager):

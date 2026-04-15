@@ -837,7 +837,7 @@ class TestSQLiteEventBackendDeserialization:
         import json
 
         raw = json.dumps(
-            {"event_type": "message", "id": "test-id", "status": "active", "content": "hi"}
+            {"event_type": "Message", "id": "test-id", "status": "active", "content": "hi"}
         )
         event = backend._deserialize(raw)
         assert isinstance(event, Message)
@@ -875,7 +875,7 @@ class TestSQLiteEventBackendRegisterEventType:
         backend, _ = _make_backend()
 
         class FakeMessage(EventBase):
-            event_type: str = "message"  # Same as Message!
+            event_type: str = "Message"  # Same as Message!
             content: str = ""
 
         with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.storage.sqlite"):

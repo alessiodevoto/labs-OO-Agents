@@ -216,9 +216,9 @@ class TestExistingEventsStillWork:
     def test_context_blocks_events(self):
         from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
 
-        assert UserEvent(content="hi").event_type == "user_message"
-        assert AssistantEvent(content="hi").event_type == "assistant_message"
-        assert ToolCallEvent(tool_call_id="t", name="n", arguments={}).event_type == "tool_call"
+        assert UserEvent(content="hi").event_type == "UserEvent"
+        assert AssistantEvent(content="hi").event_type == "AssistantEvent"
+        assert ToolCallEvent(tool_call_id="t", name="n", arguments={}).event_type == "ToolCallEvent"
 
     def test_nemo_events(self):
         from nemo_oo_agents.events import (
@@ -234,28 +234,28 @@ class TestExistingEventsStillWork:
             Task,
         )
 
-        assert Task(prompt="x").event_type == "task"
-        assert Message(content="x").event_type == "message"
-        assert Reasoning(content="x").event_type == "reasoning"
-        assert Error(content="x").event_type == "error"
-        assert Feedback(content="x").event_type == "feedback"
-        assert LLMOutput(content="x").event_type == "llm_output"
+        assert Task(prompt="x").event_type == "Task"
+        assert Message(content="x").event_type == "Message"
+        assert Reasoning(content="x").event_type == "Reasoning"
+        assert Error(content="x").event_type == "Error"
+        assert Feedback(content="x").event_type == "Feedback"
+        assert LLMOutput(content="x").event_type == "LLMOutput"
         assert (
             PythonOutput(
                 tool_call_id="t", execution_status="complete", execution_count=1
             ).event_type
-            == "python_output"
+            == "PythonOutput"
         )
-        assert Summary(summary_tag="1..2", replaced_range=(1, 2)).event_type == "summary"
+        assert Summary(summary_tag="1..2", replaced_range=(1, 2)).event_type == "Summary"
         assert (
             BeforeTurn(method_name="m", strategy="s", generation_id="g", turn_number=1).event_type
-            == "before_turn"
+            == "BeforeTurn"
         )
         assert (
             AfterTurn(
                 method_name="m", strategy="s", generation_id="g", turn_number=1, is_final=False
             ).event_type
-            == "after_turn"
+            == "AfterTurn"
         )
 
     def test_tui_events(self):
@@ -266,15 +266,15 @@ class TestExistingEventsStillWork:
             TUIUserInput,
         )
 
-        assert TUISessionStart().event_type == "tui_session_start"
-        assert TUISessionRename().event_type == "tui_session_rename"
-        assert TUIUserInput().event_type == "tui_user_input"
-        assert TUIAgentMessage().event_type == "tui_agent_message"
+        assert TUISessionStart().event_type == "TUISessionStart"
+        assert TUISessionRename().event_type == "TUISessionRename"
+        assert TUIUserInput().event_type == "TUIUserInput"
+        assert TUIAgentMessage().event_type == "TUIAgentMessage"
 
     def test_rich_output_event(self):
         from nemo_oo_agents.tools.web_publisher import RichOutput
 
-        assert RichOutput().event_type == "rich_output"
+        assert RichOutput().event_type == "RichOutput"
 
     def test_core_events_in_registry(self):
         """All core event types should be in the global registry."""
@@ -291,16 +291,16 @@ class TestExistingEventsStillWork:
             Task,
         )
 
-        assert _EVENT_REGISTRY.get("task") is Task
-        assert _EVENT_REGISTRY.get("message") is Message
-        assert _EVENT_REGISTRY.get("reasoning") is Reasoning
-        assert _EVENT_REGISTRY.get("error") is Error
-        assert _EVENT_REGISTRY.get("feedback") is Feedback
-        assert _EVENT_REGISTRY.get("llm_output") is LLMOutput
-        assert _EVENT_REGISTRY.get("python_output") is PythonOutput
-        assert _EVENT_REGISTRY.get("summary") is Summary
-        assert _EVENT_REGISTRY.get("before_turn") is BeforeTurn
-        assert _EVENT_REGISTRY.get("after_turn") is AfterTurn
+        assert _EVENT_REGISTRY.get("Task") is Task
+        assert _EVENT_REGISTRY.get("Message") is Message
+        assert _EVENT_REGISTRY.get("Reasoning") is Reasoning
+        assert _EVENT_REGISTRY.get("Error") is Error
+        assert _EVENT_REGISTRY.get("Feedback") is Feedback
+        assert _EVENT_REGISTRY.get("LLMOutput") is LLMOutput
+        assert _EVENT_REGISTRY.get("PythonOutput") is PythonOutput
+        assert _EVENT_REGISTRY.get("Summary") is Summary
+        assert _EVENT_REGISTRY.get("BeforeTurn") is BeforeTurn
+        assert _EVENT_REGISTRY.get("AfterTurn") is AfterTurn
 
 
 # ---------------------------------------------------------------------------

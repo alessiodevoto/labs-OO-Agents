@@ -660,7 +660,7 @@ class PurePythonStrategy(CompositeStrategy):
             # Find the most recent generated code event and update it
             recent_events = runtime.event_manager.filter(limit=20)
             for event in reversed(recent_events):
-                if event.event_type == "llm_output":
+                if event.event_type == "LLMOutput":
                     runtime.event_manager.update(event.id, content=extracted_code)
                     logger.debug(f"[PURE_PYTHON] Updated event {event.id} with unpacked code")
                     break

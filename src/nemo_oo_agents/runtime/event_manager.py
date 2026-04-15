@@ -188,7 +188,7 @@ class EventManager:
         """Subscribe to events of a specific type.
 
         Args:
-            event_type: Event type (e.g., "task", "llm_output", "error")
+            event_type: Event type (e.g., "Task", "LLMOutput", "Error")
                        or "*" for all events.
             handler: Callback function receiving Event.
 
@@ -356,7 +356,7 @@ class EventManager:
         """Filter events with AND semantics.
 
         Args:
-            type: Event type filter (e.g., "task", "python_output")
+            type: Event type filter (e.g., "Task", "PythonOutput")
             call_id: Call ID filter (matches metadata.call_id)
             query: Text search (case-insensitive substring, or regex if regex=True)
             regex: If True, treat query as regex pattern

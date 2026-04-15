@@ -213,7 +213,7 @@ class TestPurePythonStrategyExecute:
 
         # Get all assistant events from history
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "llm_output"]
+        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
 
         # Should have 2 assistant events (one per LLM call)
         assert len(assistant_events) >= 2
@@ -328,7 +328,7 @@ return x + 1
 
         # Check history - the assistant message should have CLEAN code (no fences)
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "llm_output"]
+        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
 
         assert len(assistant_events) >= 1
         stored_code = assistant_events[0].content
@@ -442,7 +442,7 @@ return x * 2
 
         # Verify the error feedback was clear about XML tags
         history_events = agent_instance.event_manager.values()
-        error_events = [e for e in history_events if e.event_type == "error"]
+        error_events = [e for e in history_events if e.event_type == "Error"]
 
         assert len(error_events) >= 1
         error_content = error_events[0].content
@@ -567,7 +567,7 @@ return x + 1
 
         # Check history - should have clean code without XML tags
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "llm_output"]
+        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
 
         assert len(assistant_events) >= 1
         stored_code = assistant_events[0].content

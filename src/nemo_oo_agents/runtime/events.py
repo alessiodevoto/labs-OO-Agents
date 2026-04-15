@@ -27,12 +27,12 @@ class EventsApi(Skill):
 
     Query:
         events.query(limit=50)                      # recent 50
-        events.query(type="task")                   # all task events
-        events.query(type="python_output")          # execution outputs
+        events.query(type="Task")                   # all task events
+        events.query(type="PythonOutput")           # execution outputs
         events.query(call_id="abc123")              # events for one call
         events.query(query="error")                 # text search
         events.query(query="error.*db", regex=True) # regex search
-        events.query(type="task", call_id="abc")    # combined (AND)
+        events.query(type="Task", call_id="abc")    # combined (AND)
 
     Access by tag:
         events.get("5")                             # by tag, None if missing
@@ -46,13 +46,13 @@ class EventsApi(Skill):
 
     Examples:
         # Find the last error
-        errors = events.query(type="error", limit=1)
+        errors = events.query(type="Error", limit=1)
 
         # Get all outputs from current call
-        outputs = events.query(type="python_output", call_id=call_id)
+        outputs = events.query(type="PythonOutput", call_id=call_id)
 
         # Check if a specific task was done
-        tasks = events.query(type="task", query="summarise")
+        tasks = events.query(type="Task", query="summarise")
 
     Load this library:
         doc(self.events)
@@ -76,7 +76,7 @@ class EventsApi(Skill):
         chronological order, with limit taking the most recent.
 
         Args:
-            type: Event type filter (e.g., "task", "python_output", "tool_call")
+            type: Event type filter (e.g., "Task", "PythonOutput", "ToolCallEvent")
             call_id: Call ID filter (matches metadata.call_id)
             query: Text search (case-insensitive substring, or regex if regex=True)
             regex: If True, treat query as regex pattern
@@ -87,12 +87,12 @@ class EventsApi(Skill):
 
         Examples:
             events.query(limit=50)                      # Recent 50
-            events.query(type="task")                   # All task events
-            events.query(type="python_output")          # Execution outputs
+            events.query(type="Task")                   # All task events
+            events.query(type="PythonOutput")           # Execution outputs
             events.query(call_id="abc123")              # Events for call
             events.query(query="error")                 # Text search
             events.query(query="error.*db", regex=True) # Regex search
-            events.query(type="task", call_id="abc")    # Combined (ANDed)
+            events.query(type="Task", call_id="abc")    # Combined (ANDed)
         """
         return self._manager.filter(
             type=type,

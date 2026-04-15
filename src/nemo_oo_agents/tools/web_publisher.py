@@ -1,8 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """WebPublisher — push rich content to the web terminal side-channel."""
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
@@ -24,7 +26,6 @@ class RichOutput(Metadata):
     browser, reconstructing the rich content panel.
     """
 
-    event_type: Literal["rich_output"] = "rich_output"
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

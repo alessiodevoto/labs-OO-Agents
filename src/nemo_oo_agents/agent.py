@@ -98,8 +98,8 @@ class Agent(metaclass=AgentMeta):
         agent.events  — EventsApi: query past events by type, tag, or text
 
     For dev callbacks on LLM output:
-        agent.event_manager.on("message", my_handler)
-        agent.event_manager.on("reasoning", my_handler)
+        agent.event_manager.on("Message", my_handler)
+        agent.event_manager.on("Reasoning", my_handler)
     """
 
     # Framework attributes — hidden from LLM, excluded from snapshots

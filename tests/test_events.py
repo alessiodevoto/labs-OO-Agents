@@ -20,66 +20,66 @@ class TestEventTypes:
         from nemo_oo_agents.events import Task
 
         event = Task(prompt="Do something")
-        assert event.event_type == "task"
+        assert event.event_type == "Task"
         assert event.prompt == "Do something"
         # Backward compat alias
         event2 = Task(prompt="Test")
-        assert event2.event_type == "task"
+        assert event2.event_type == "Task"
 
     def test_message_event(self):
         """Message for user-facing messages."""
         from nemo_oo_agents.events import Message
 
         event = Message(content="Hello!")
-        assert event.event_type == "message"
+        assert event.event_type == "Message"
         assert event.content == "Hello!"
         # Backward compat alias
         event2 = Message(content="Test")
-        assert event2.event_type == "message"
+        assert event2.event_type == "Message"
 
     def test_reasoning_event(self):
         """Reasoning for chain-of-thought."""
         from nemo_oo_agents.events import Reasoning
 
         event = Reasoning(content="Let me think...")
-        assert event.event_type == "reasoning"
+        assert event.event_type == "Reasoning"
         assert event.content == "Let me think..."
         # Backward compat alias
         event2 = Reasoning(content="Test")
-        assert event2.event_type == "reasoning"
+        assert event2.event_type == "Reasoning"
 
     def test_error_event(self):
         """Error for execution errors."""
         from nemo_oo_agents.events import Error
 
         event = Error(content="SyntaxError: invalid")
-        assert event.event_type == "error"
+        assert event.event_type == "Error"
         assert event.content == "SyntaxError: invalid"
         # Backward compat alias
         event2 = Error(content="Test")
-        assert event2.event_type == "error"
+        assert event2.event_type == "Error"
 
     def test_feedback_event(self):
         """Feedback for execution feedback."""
         from nemo_oo_agents.events import Feedback
 
         event = Feedback(content="Code executed. Output: 42")
-        assert event.event_type == "feedback"
+        assert event.event_type == "Feedback"
         assert event.content == "Code executed. Output: 42"
         # Backward compat alias
         event2 = Feedback(content="Test")
-        assert event2.event_type == "feedback"
+        assert event2.event_type == "Feedback"
 
     def test_llm_output_event(self):
         """LLMOutput for LLM responses."""
         from nemo_oo_agents.events import LLMOutput
 
         event = LLMOutput(content="def foo(): pass")
-        assert event.event_type == "llm_output"
+        assert event.event_type == "LLMOutput"
         assert event.content == "def foo(): pass"
         # Verify event_type
         event2 = LLMOutput(content="Test")
-        assert event2.event_type == "llm_output"
+        assert event2.event_type == "LLMOutput"
 
     def test_tag_property_returns_event_position(self):
         """tag property returns event position (set by EventManager)."""
@@ -98,7 +98,7 @@ class TestEventTypes:
 
         event = Task(prompt="test")
         d = event.model_dump()
-        assert d["event_type"] == "task"
+        assert d["event_type"] == "Task"
         assert d["prompt"] == "test"
 
     def test_event_has_metadata(self):
@@ -211,7 +211,7 @@ class TestPythonOutputEvent:
             execution_status=ResultStatus.COMPLETE,
         )
         assert isinstance(event, PythonOutput)
-        assert event.event_type == "python_output"
+        assert event.event_type == "PythonOutput"
 
 
 class TestSummaryEvent:
@@ -226,7 +226,7 @@ class TestSummaryEvent:
             replaced_range=(2, 40),
             children_tags=["2", "3", "4"],
         )
-        assert summary.event_type == "summary"
+        assert summary.event_type == "Summary"
         # tag is None until EventManager sets it
         assert summary.tag is None
         # EventManager sets tag = summary_tag
@@ -281,7 +281,7 @@ class TestSummaryEvent:
             doc='Use self.events["2..4"].children_tags',
         )
         d = summary.model_dump()
-        assert d["event_type"] == "summary"
+        assert d["event_type"] == "Summary"
         assert d["summary_tag"] == "2..4"
         assert d["replaced_range"] == (2, 4)
         assert d["children_tags"] == ["2", "3", "4"]
