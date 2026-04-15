@@ -25,9 +25,6 @@ from context_blocks.formatter import OpenAIProviderFormatter
 from context_blocks.models import Role
 from context_blocks.scoped import ScopedContext
 from context_blocks.utils import safe_pformat
-
-# Default cap when no TruncationConfig is available (matches TruncationConfig.max_block_chars default).
-_DEFAULT_MAX_CHARS = 20_000
 from nemo_oo_agents.events import (
     Error,
     Feedback,
@@ -39,6 +36,9 @@ from nemo_oo_agents.events import (
 )
 from nemo_oo_agents.runtime.event_query import EventQuery
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
+
+# Default cap when no TruncationConfig is available (matches TruncationConfig.max_block_chars default).
+_DEFAULT_MAX_CHARS = 20_000
 
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import RuntimeServices

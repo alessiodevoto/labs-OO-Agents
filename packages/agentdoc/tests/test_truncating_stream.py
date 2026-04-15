@@ -6,7 +6,6 @@ Covers: head fill, tail roll, was_truncated, chars_written, getvalue format,
 empty writes, exact-limit writes, custom tail_chars, and re-export path.
 """
 
-import pytest
 from agentdoc._truncating_stream import TruncatingStringIO
 
 

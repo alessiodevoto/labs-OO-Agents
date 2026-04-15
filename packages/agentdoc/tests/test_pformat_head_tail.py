@@ -13,8 +13,6 @@ collect tail without materialising the full sequence).
 
 import re
 
-import pytest
-
 from agentdoc import pformat
 
 

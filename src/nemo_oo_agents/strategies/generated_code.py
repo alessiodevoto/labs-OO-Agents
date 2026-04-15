@@ -19,18 +19,17 @@ import types
 from dataclasses import dataclass, field
 from typing import Any, get_type_hints
 
-from agentdoc import pformat
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
+from pydantic.errors import PydanticSchemaGenerationError
 
+from agentdoc import pformat
 from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
 
 
 def _pformat(value: Any, tc: TruncationConfig) -> str:
     """Format a value using truncation config's pprint settings."""
     return pformat(value, max_length=tc.max_pprint_elements, max_string=tc.max_pprint_string, max_depth=tc.max_pprint_depth)
-
-from pydantic import TypeAdapter
-from pydantic import ValidationError as PydanticValidationError
-from pydantic.errors import PydanticSchemaGenerationError
 
 
 @dataclass(frozen=True)

@@ -6,8 +6,6 @@ Change 2 of truncation-2.0: safe_pformat delegates to TruncatingStringIO
 for head+tail truncation, producing valid prose output instead of mid-repr slices.
 """
 
-import pytest
-
 from agentdoc import safe_pformat
 
 
@@ -42,7 +40,8 @@ class TestSafePformatUsesTruncatingStringIO:
     def test_notice_format_matches_truncating_string_io(self):
         # TDD: will fail until Change 2 is implemented
         # TruncatingStringIO.getvalue() format:
-        # "Output too large (N chars). Showing first X and last Y chars.\n\n<head>\n\n... Z chars not shown ...\n\n<tail>"
+        # "Output too large (N chars). Showing first X and last Y chars.
+        #  \n\n<head>\n\n... Z chars not shown ...\n\n<tail>"
         big = "a" * 10_000
         result = safe_pformat(big, max_chars=100)
         assert "Output too large" in result

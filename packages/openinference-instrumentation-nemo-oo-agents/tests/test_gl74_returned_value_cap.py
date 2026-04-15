@@ -8,7 +8,6 @@ the post-JSON string slicing that produces invalid JSON on large return values.
 
 import json
 
-import pytest
 from openinference_instrumentation_nemo_oo_agents._hooks_impl import OpenInferenceHooks
 
 

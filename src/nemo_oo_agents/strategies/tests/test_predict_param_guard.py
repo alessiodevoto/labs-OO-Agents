@@ -9,8 +9,8 @@ Oversized params must raise ValueError with a clear message rather than truncati
 import pytest
 
 from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.strategies.predict import PredictStrategy
 from nemo_oo_agents.strategies.current_call import CurrentCall
+from nemo_oo_agents.strategies.predict import PredictStrategy
 
 
 def _make_call(args=(), kwargs=None, signature=None):

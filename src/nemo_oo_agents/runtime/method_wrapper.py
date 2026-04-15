@@ -28,9 +28,6 @@ from nemo_oo_agents.runtime.context_vars import (
 )
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
-# Protocol import for isinstance() checks - RuntimeServices is @runtime_checkable
-from nemo_oo_agents.strategies.base import RuntimeServices
-
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import GenerationStrategy
 

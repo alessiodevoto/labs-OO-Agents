@@ -7,7 +7,6 @@ set but the LLM has no count_tokens, a RuntimeError is raised pointing the user 
 char_approximate_token_counter as an explicit opt-in.
 """
 
-import pytest
 from unittest.mock import Mock
 
 
@@ -60,6 +59,7 @@ class TestNoSilentFallback:
         """RuntimeError message guides the user to the explicit opt-in."""
         # We verify the error text by directly inspecting the actor source.
         import inspect
+
         import nemo_oo_agents.runtime.actor as actor_mod
         source = inspect.getsource(actor_mod)
         assert "char_approximate_token_counter" in source, (

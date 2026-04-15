@@ -6,8 +6,6 @@ Change 5 of truncation-2.0: format_parameters_as_code(value_formatter=callable)
 allows PredictStrategy to cap large parameter values before embedding in prompts.
 """
 
-import pytest
-
 from nemo_oo_agents.strategies.current_call import CurrentCall
 
 

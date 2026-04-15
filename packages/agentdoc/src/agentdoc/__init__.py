@@ -117,11 +117,9 @@ def pformat(
     # console and indent_guides are intentionally ignored for Rich compatibility
     del console, indent_guides
 
-    stream: io.StringIO | TruncatingStringIO
-    if max_chars is not None:
-        stream = TruncatingStringIO(limit=max_chars)
-    else:
-        stream = io.StringIO()
+    stream: io.StringIO | TruncatingStringIO = (
+        TruncatingStringIO(limit=max_chars) if max_chars is not None else io.StringIO()
+    )
 
     _pformat(
         obj,

@@ -14,7 +14,6 @@ from pydantic_core import ErrorDetails
 
 from agentdoc import pformat
 from agentdoc.visibility import is_hidden_field
-
 from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
 
 

@@ -17,7 +17,16 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, get_type_hints
 from uuid import uuid4
 
+from pydantic import BaseModel
+
+from agentdoc import TruncatingStringIO
 from agentdoc.introspect import methods, variables
+from context_blocks import (
+    DynamicContext,
+    ResolvedBlock,
+    render_context,
+)
+from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import TruncationConfig
@@ -25,14 +34,6 @@ if TYPE_CHECKING:
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
-from pydantic import BaseModel
-
-from context_blocks import (
-    DynamicContext,
-    ResolvedBlock,
-    render_context,
-)
-from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 from nemo_oo_agents.events import ExecutionSignal, LLMOutput
 from nemo_oo_agents.runtime.context_vars import (
     _in_exec_middleware,
@@ -40,7 +41,6 @@ from nemo_oo_agents.runtime.context_vars import (
     _parent_agent_var,
 )
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
-from agentdoc import TruncatingStringIO
 
 logger = logging.getLogger(__name__)
 
@@ -1679,9 +1679,6 @@ class ActorRuntime:
         llm_client = call_llm or plan_llm or getattr(self.agent, "_llm", None)
         if llm_client is None:
             raise RuntimeError(f"No LLM client available for {method_name}")
-
-        # Resolve token counter once per call — used later in _render_context_for_turn.
-        tc = self.truncation_config
 
         # Mark that we're in a generation session
         # This allows nested ellipsis method calls to execute inline without deadlocking

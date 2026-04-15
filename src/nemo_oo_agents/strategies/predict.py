@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from agentdoc import pformat, safe_pformat
+from agentdoc import pformat
 from agentdoc.visibility import is_hidden_field
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
