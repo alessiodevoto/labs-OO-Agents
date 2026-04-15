@@ -10,7 +10,10 @@ Covers:
 
 import logging
 
+import pytest
+
 from nemo_oo_agents import Agent
+from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 from unifiedllm import FakeLLMClient
 
@@ -68,3 +71,21 @@ class TestAgentSnapshotRestore:
         snap.restore(agent)
 
         assert not hasattr(agent, "process")
+
+
+class _UnsupportedThing:
+    """A plain class with no serialization support."""
+
+    pass
+
+
+class TestFromAgentAttributeErrorContext:
+    """Test that attribute serialization errors include the attribute name."""
+
+    def test_attribute_serialization_error_includes_name(self):
+        """from_agent() wraps attribute serialization errors with the attribute name."""
+        agent = _SimpleAgent()
+        agent.bad_attr = _UnsupportedThing()  # type: ignore[attr-defined]
+
+        with pytest.raises(SerializationError, match="Attribute 'bad_attr'.*not serializable"):
+            AgentSnapshot.from_agent(agent)

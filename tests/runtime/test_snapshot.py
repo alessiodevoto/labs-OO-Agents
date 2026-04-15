@@ -1,8 +1,10 @@
 """Tests for agent snapshot serialization."""
 
+import json
 from typing import Annotated
 
 import pytest
+from pydantic import BaseModel
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.errors.storage import SerializationError
@@ -21,6 +23,13 @@ fake_llm = FakeLLMClient()
 
 class SimpleAgent(Agent, llm=fake_llm):
     pass
+
+
+class SnapshotResult(BaseModel):
+    """A typed result for integration testing typed attribute snapshots."""
+
+    status: str
+    score: int
 
 
 @pytest.fixture
@@ -97,17 +106,17 @@ class TestSnapshotRoundtrip:
         assert "cache" not in snap["attributes"]
 
     def test_non_serializable_attr_raises(self, agent):
-        """Non-JSON-serializable user attributes raise SerializationError."""
+        """Non-serializable user attributes raise SerializationError."""
         agent.bad = object()
 
-        with pytest.raises(SerializationError, match="not JSON-serializable"):
+        with pytest.raises(SerializationError, match="Cannot serialize"):
             snapshot_to_json(agent)
 
     def test_non_serializable_context_raises(self, agent):
-        """Non-JSON-serializable static context values raise SerializationError."""
+        """Non-serializable static context values raise SerializationError."""
         agent.context_manager["bad"] = object()
 
-        with pytest.raises(SerializationError, match="not JSON-serializable"):
+        with pytest.raises(SerializationError, match="not serializable"):
             snapshot_to_json(agent)
 
     def test_methods_roundtrip(self, agent):
@@ -252,3 +261,38 @@ class TestAgentSnapshot:
         snapshot_from_json(snap1, agent3)
         assert agent3.score == 1
         assert "added_later" not in agent3.context_manager
+
+
+class TestSnapshotWithTypedAttributes:
+    """Integration tests for typed attributes through the full snapshot pipeline."""
+
+    def test_snapshot_with_pydantic_attribute_json_roundtrip(self):
+        """Typed attributes survive snapshot -> JSON string -> snapshot -> restore.
+
+        Exercises the full pipeline including type_allowlist persistence.
+        """
+        agent = SimpleAgent()
+        agent.result = SnapshotResult(status="done", score=99)
+        agent.context_manager["summary"] = "all good"
+
+        # 1. Agent -> snapshot dict (exercises serialize + model_dump)
+        snap_dict = snapshot_to_json(agent)
+
+        # 2. Snapshot dict -> JSON string -> back to dict
+        #    (proves the blob is truly JSON-serializable)
+        json_str = json.dumps(snap_dict)
+        restored_dict = json.loads(json_str)
+
+        # 3. Verify type_allowlist survived JSON roundtrip
+        assert len(restored_dict["type_allowlist"]) > 0
+        result_fqn = f"{SnapshotResult.__module__}.SnapshotResult"
+        assert result_fqn in restored_dict["type_allowlist"]
+
+        # 4. Dict -> agent restore
+        agent2 = SimpleAgent()
+        snapshot_from_json(restored_dict, agent2)
+
+        assert isinstance(agent2.result, SnapshotResult)
+        assert agent2.result.status == "done"
+        assert agent2.result.score == 99
+        assert agent2.context_manager["summary"] == "all good"

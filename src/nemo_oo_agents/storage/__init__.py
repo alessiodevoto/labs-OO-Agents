@@ -5,16 +5,21 @@
 from nemo_oo_agents.storage.in_memory import InMemoryStorageManager
 from nemo_oo_agents.storage.json_snapshot import snapshot_from_json, snapshot_to_json
 from nemo_oo_agents.storage.manager import StorageManager
-from nemo_oo_agents.storage.markers import nosnapshot
+from nemo_oo_agents.storage.markers import nosnapshot, snapshotable
+from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
 __all__ = [
     "AgentSnapshot",
     "InMemoryStorageManager",
+    "SKIP",
     "SQLiteStorageManager",
     "StorageManager",
+    "deserialize",
     "nosnapshot",
+    "serialize",
+    "snapshotable",
     "snapshot_from_json",
     "snapshot_to_json",
 ]

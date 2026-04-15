@@ -8,16 +8,16 @@ Pydantic models provide validation and JSON serialization out of the box.
 
 from __future__ import annotations
 
-import json
 import logging
 import types
 from typing import Any, Final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer, field_validator
 
 from context_blocks import DynamicContext
 from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_value
+from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
 
 SNAPSHOT_VERSION: Final = 1
 
@@ -58,6 +58,19 @@ class AgentSnapshot(BaseModel):
     event_manager: EventManagerState = EventManagerState()
     methods: dict[str, str] = {}
     attributes: dict[str, Any] = {}
+    type_allowlist: set[str] = set()
+
+    @field_serializer("type_allowlist")
+    @classmethod
+    def _serialize_allowlist(cls, v: set[str]) -> list[str]:
+        return sorted(v)
+
+    @field_validator("type_allowlist", mode="before")
+    @classmethod
+    def _validate_allowlist(cls, v: Any) -> set[str]:
+        if isinstance(v, (list, tuple)):
+            return set(v)
+        return v
 
     @staticmethod
     def from_agent(agent: Any) -> AgentSnapshot:
@@ -73,18 +86,21 @@ class AgentSnapshot(BaseModel):
             SerializationError: If a context block value or user attribute is
                 not JSON-serializable.
         """
+        all_allowlist: set[str] = set()
+
         context_blocks: list[StaticContextBlock | DynamicContextBlock] = []
         for key, value in agent.context_manager._raw_items():
             if isinstance(value, DynamicContext):
                 context_blocks.append(DynamicContextBlock(key=key, expr=value.expr))
             else:
                 try:
-                    json.dumps(value)
-                except (TypeError, ValueError) as exc:
+                    serialized, allowlist = serialize(value)
+                    all_allowlist |= allowlist
+                except SerializationError as exc:
                     raise SerializationError(
-                        f"Context block {key!r} is not JSON-serializable: {exc}"
+                        f"Context block {key!r} is not serializable: {exc}"
                     ) from exc
-                context_blocks.append(StaticContextBlock(key=key, value=value))
+                context_blocks.append(StaticContextBlock(key=key, value=serialized))
 
         em_state = EventManagerState(
             next_tag_num=agent.event_manager._next_tag_num,
@@ -108,16 +124,15 @@ class AgentSnapshot(BaseModel):
             if callable(attr_value):
                 continue
             try:
-                json.dumps(attr_value)
-            except (TypeError, ValueError) as exc:
-                type_name = type(attr_value).__name__
+                serialized, allowlist = serialize(attr_value)
+                all_allowlist |= allowlist
+            except SerializationError as exc:
                 raise SerializationError(
-                    f"Attribute {attr_name!r} (type: {type_name}) is not JSON-serializable.\n"
-                    f"To fix, either:\n"
-                    f"  1. Mark the field as non-persistent: {attr_name}: Annotated[{type_name}, nosnapshot]\n"
-                    f"  2. Ensure all nested values are JSON primitives (str, int, float, bool, list, dict, None)"
+                    f"Attribute {attr_name!r} is not serializable: {exc}"
                 ) from exc
-            attributes[attr_name] = attr_value
+            if serialized is SKIP:
+                continue
+            attributes[attr_name] = serialized
 
         return AgentSnapshot(
             version=SNAPSHOT_VERSION,
@@ -125,6 +140,7 @@ class AgentSnapshot(BaseModel):
             event_manager=em_state,
             methods=methods,
             attributes=attributes,
+            type_allowlist=all_allowlist,
         )
 
     def restore(self, agent: Any) -> None:
@@ -150,7 +166,7 @@ class AgentSnapshot(BaseModel):
             if isinstance(block, DynamicContextBlock):
                 agent.context_manager.set_dynamic(block.key, block.expr)
             else:
-                agent.context_manager[block.key] = block.value
+                agent.context_manager[block.key] = deserialize(block.value, self.type_allowlist)
 
         # Use the higher of the snapshot value and the backend's actual max tag,
         # because events may have been added after the snapshot was saved (e.g.
@@ -185,4 +201,4 @@ class AgentSnapshot(BaseModel):
             agent._defined_methods_registry = dict(self.methods)
 
         for attr_name, attr_value in self.attributes.items():
-            setattr(agent, attr_name, attr_value)
+            setattr(agent, attr_name, deserialize(attr_value, self.type_allowlist))

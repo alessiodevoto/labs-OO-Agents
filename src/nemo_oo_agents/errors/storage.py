@@ -16,6 +16,17 @@ class SerializationError(NemoOOAgentsError):
     pass
 
 
+class DeserializationError(NemoOOAgentsError):
+    """Error deserializing agent state from a snapshot.
+
+    Raised when a serialized value cannot be restored — e.g., the
+    envelope references a class not in the allowlist, the class
+    cannot be imported, or the data doesn't match the expected format.
+    """
+
+    pass
+
+
 class SnapshotNotFoundError(NemoOOAgentsError):
     """Snapshot ID not found in storage.
 

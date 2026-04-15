@@ -102,6 +102,7 @@ class NemoOOAgentsRuntimeError(NemoOOAgentsError):
 
 # Serialization / Storage Errors
 from nemo_oo_agents.errors.storage import (  # noqa: E402, I001
+    DeserializationError as DeserializationError,
     SerializationError as SerializationError,
     SnapshotNotFoundError as SnapshotNotFoundError,
     StorageNotConfiguredError as StorageNotConfiguredError,
