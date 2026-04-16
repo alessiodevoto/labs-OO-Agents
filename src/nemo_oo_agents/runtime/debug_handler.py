@@ -27,6 +27,7 @@ LLM Call Tracking:
 
 import faulthandler
 import linecache
+import logging
 import os
 import signal
 import sys
@@ -37,6 +38,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Registry for tracking pending LLM calls
 # Key: unique call ID, Value: dict with metadata (model, start_time, prompt_tokens, etc.)
@@ -306,7 +309,12 @@ def install_debug_handler(dump_dir: Path | None = None):
         return
 
     # Enable basic faulthandler for segfaults etc.
-    faulthandler.enable()
+    # Best-effort: skip when stderr lacks a real file descriptor (Textual TUI,
+    # Jupyter notebooks, or any host that replaces sys.stderr).
+    try:
+        faulthandler.enable()
+    except (RuntimeError, AttributeError, OSError) as exc:
+        logger.debug("faulthandler.enable() skipped: %s", exc)
 
     # Install SIGUSR2 handler (less commonly used than SIGUSR1)
     try:
