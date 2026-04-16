@@ -5,8 +5,6 @@
 Provides persistent storage using stdlib sqlite3 — no new dependencies.
 """
 
-from __future__ import annotations
-
 import fcntl
 import json
 import logging
@@ -17,7 +15,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from context_blocks import Event, EventBase, EventStatus, Metadata
 from context_blocks.events import _EVENT_REGISTRY
@@ -190,7 +188,7 @@ class SQLiteEventBackend:
         return cls.model_validate(raw)
 
     def _serialize(self, event: EventBase) -> str:
-        return event.model_dump_json()
+        return str(event.model_dump_json())
 
     # -- EventBackend protocol --
 
@@ -231,7 +229,7 @@ class SQLiteEventBackend:
         event = self._deserialize(row[0])
         for key, value in fields.items():
             if key == "metadata":
-                event.metadata.update(value)  # type: ignore[arg-type]
+                event.metadata.update(typing.cast(dict, value))
             elif hasattr(event, key):
                 setattr(event, key, value)
         new_data = self._serialize(event)
@@ -297,7 +295,7 @@ class SQLiteEventBackend:
         ).fetchone()
         if row is None:
             return None
-        return row[0]
+        return str(row[0])
 
     def clear(self) -> None:
         with self._conn:
@@ -323,11 +321,11 @@ class SQLiteEventBackend:
             FROM events
             """
         ).fetchone()
-        return row[0]
+        return int(row[0])
 
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
-        return row[0]
+        return int(row[0])
 
 
 class SessionAlreadyActiveError(Exception):
@@ -386,10 +384,10 @@ class SQLiteStorageManager:
             raise
 
     @property
-    def event_manager(self) -> EventManager:
+    def event_manager(self) -> "EventManager":
         return self._event_manager
 
-    def save_snapshot(self, agent: Agent) -> str:
+    def save_snapshot(self, agent: "Agent") -> str:
         snapshot = AgentSnapshot.from_agent(agent)
         data = snapshot_to_dict(snapshot)
         snapshot_id = str(uuid.uuid4())
@@ -401,7 +399,7 @@ class SQLiteStorageManager:
             )
         return snapshot_id
 
-    def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
+    def restore_snapshot(self, snapshot_id: str, agent: "Agent") -> None:
         from nemo_oo_agents.errors.storage import SnapshotNotFoundError
 
         row = self._conn.execute(
@@ -432,7 +430,7 @@ class SQLiteStorageManager:
             return None
         return datetime.fromisoformat(row[0])
 
-    def restore_latest_snapshot(self, agent: Agent) -> bool:
+    def restore_latest_snapshot(self, agent: "Agent") -> bool:
         """Restore the most recent snapshot into agent.
 
         Args:
@@ -462,7 +460,7 @@ class SQLiteStorageManager:
                 os.close(self._lock_fd)
                 self._lock_fd = None
 
-    def __enter__(self) -> SQLiteStorageManager:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:

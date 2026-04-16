@@ -60,7 +60,7 @@ try:
     )
 except ImportError:
     # httpx not available - define a base exception class for timeout detection
-    _HTTPX_TIMEOUT_EXCEPTIONS = (TimeoutError,)
+    _HTTPX_TIMEOUT_EXCEPTIONS = (TimeoutError,)  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from nemo_oo_agents.runtime.event_manager import EventManager
@@ -84,7 +84,7 @@ class GenerationSession:
     task_event_id: str = ""
     out_accessor: Any = field(default=None)  # OutAccessor instance, created lazily
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize OutAccessor for Jupyter-style Out[n] access."""
         from nemo_oo_agents.runtime.out_accessor import OutAccessor
 
@@ -578,9 +578,9 @@ class PurePythonStrategy(CompositeStrategy):
             return code, False
 
         # Find the target method function definition
-        target_method_node = None
-        helper_method_nodes = []
-        other_nodes = []
+        target_method_node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+        helper_method_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        other_nodes: list[ast.stmt] = []
 
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

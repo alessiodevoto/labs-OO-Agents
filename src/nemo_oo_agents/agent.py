@@ -3,7 +3,7 @@
 """Agent base class."""
 
 import logging
-from typing import TYPE_CHECKING, Annotated, Any, NamedTuple
+from typing import TYPE_CHECKING, Annotated, Any, NamedTuple, cast
 from uuid import uuid4
 
 from agentdoc import hidden
@@ -106,7 +106,7 @@ class Agent(metaclass=AgentMeta):
     # Framework attributes — hidden from LLM, excluded from snapshots
     runtime: Annotated["ActorRuntime", hidden, nosnapshot]
     _storage: Annotated["StorageManager", hidden, nosnapshot]
-    event_manager: Annotated["EventManager", hidden, nosnapshot]  # type: ignore[assignment]
+    event_manager: Annotated["EventManager", hidden, nosnapshot]  # pyright: ignore[reportRedeclaration]
     context_manager: Annotated["ContextManager", hidden, nosnapshot]
     event_query: Annotated["EventQuery | None", hidden, nosnapshot]
     render_config: Annotated["RenderConfig", hidden, nosnapshot]
@@ -135,7 +135,7 @@ class Agent(metaclass=AgentMeta):
         execution: "ExecutionConfig | None" = None,
         context: "dict[str, str | DynamicContext | None] | None" = None,
         event_query: "EventQuery | None" = None,
-        **kwargs,
+        **kwargs: Any,
     ):
         """Configure agent class with metaclass.
 
@@ -159,17 +159,17 @@ class Agent(metaclass=AgentMeta):
             cls._framework_blocks = dict(cls._framework_blocks)
 
         if llm is not INHERIT:
-            cls._agent_llm = llm
+            cls._agent_llm = llm  # type: ignore[attr-defined]
         if truncation is not None:
-            cls._agent_truncation = truncation
+            cls._agent_truncation = truncation  # type: ignore[attr-defined]
         if context is not None:
-            cls._agent_context_blocks = context
+            cls._agent_context_blocks = context  # type: ignore[attr-defined]
         if event_query is not None:
-            cls._agent_event_query = event_query
+            cls._agent_event_query = event_query  # type: ignore[attr-defined]
 
         from nemo_oo_agents.config.execution_config import ExecutionConfig as _EC
 
-        cls._execution_config = execution or _EC()
+        cls._execution_config = execution or _EC()  # type: ignore[attr-defined]
 
     def __init__(
         self,
@@ -225,7 +225,7 @@ class Agent(metaclass=AgentMeta):
 
         # Resolve LLM client with cascading resolution
         instance_llm = None if llm is INHERIT else llm
-        self._llm = self._resolve_llm(instance_llm)  # type: ignore[arg-type]
+        self._llm = self._resolve_llm(instance_llm)
 
         # Resolve and store truncation config (with merge semantics)
         self._truncation = self._resolve_truncation(truncation)
@@ -307,7 +307,7 @@ class Agent(metaclass=AgentMeta):
         # 2. Class hierarchy (getattr walks the MRO automatically)
         class_llm = getattr(self.__class__, "_agent_llm", None)
         if class_llm is not None:
-            return class_llm
+            return cast("UnifiedLLM", class_llm)
 
         # 3. Runtime parent propagation
         parent = _parent_agent_var.get()
@@ -386,7 +386,7 @@ class Agent(metaclass=AgentMeta):
         # Check class-level
         class_event_query = getattr(self.__class__, "_agent_event_query", None)
         if class_event_query is not None:
-            return class_event_query
+            return cast("EventQuery", class_event_query)
 
         # No event query specified
         return None
@@ -397,7 +397,7 @@ class Agent(metaclass=AgentMeta):
         """Agent ID."""
         return self._agent_id
 
-    @property
+    @property  # type: ignore[no-redef]
     def event_manager(self) -> "EventManager":
         """Event manager — owned by the StorageManager."""
         return self._storage.event_manager
@@ -462,7 +462,7 @@ class Agent(metaclass=AgentMeta):
                 continue
             seen_names.add(name)
             all_methods.append(extract_callable_info(value))
-        for name, value in inspect.getmembers(cls, predicate=inspect.ismethod):
+        for name, value in inspect.getmembers(cls, predicate=inspect.ismethod):  # type: ignore[assignment]
             if name.startswith("__") and name.endswith("__"):
                 continue
             if name in seen_names:

@@ -6,8 +6,6 @@ Thin wrappers around Pydantic's built-in serialization.
 The model types and extraction/restoration logic live in ``snapshot``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
@@ -24,8 +22,6 @@ def snapshot_from_dict(data: dict[str, Any]) -> AgentSnapshot:
 
 
 # -- Convenience functions (agent ↔ JSON dict in one step) --
-
-
 def snapshot_to_json(agent: Any) -> dict[str, Any]:
     """Serialize agent state to a JSON-serializable dict.
 

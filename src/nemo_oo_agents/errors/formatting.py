@@ -91,7 +91,7 @@ def _adjust_line_numbers(text: str, offset: int) -> str:
     if offset <= 0:
         return text
 
-    def adjust_match(match: re.Match) -> str:
+    def adjust_match(match: re.Match[str]) -> str:
         prefix = match.group(1)
         line_num = int(match.group(2))
         adjusted = max(1, line_num - offset)  # Never go below line 1

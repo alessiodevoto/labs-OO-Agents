@@ -10,8 +10,6 @@ Having this in one place eliminates duplication and ensures consistent behavior
 for context variable management, tracing hooks, and execution routing.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -33,13 +31,13 @@ if TYPE_CHECKING:
 
 
 def create_agent_method_wrapper(
-    original_func: Callable,
+    original_func: Callable[..., Any],
     *,
     needs_generation: bool,
     needs_tracing: bool,
-    strategy: GenerationStrategy | None,
+    strategy: "GenerationStrategy | None",
     cached_source_code: str | None = None,
-) -> Callable:
+) -> Callable[..., Any]:
     """Create a wrapper for an agent method with unified behavior.
 
     This wrapper handles:
@@ -164,7 +162,7 @@ def create_agent_method_wrapper(
                 has_agent_mw = bool(em._middleware.get("agent_call"))
 
                 # Shared dispatch logic used by both middleware and fast path.
-                async def _dispatch(a: tuple, kw: dict) -> Any:
+                async def _dispatch(a: tuple[Any, ...], kw: dict[str, Any]) -> Any:
                     if needs_generation:
                         if _in_generation_session.get():
                             return await runtime._execute_task(wrapper, a, kw)
@@ -251,7 +249,7 @@ def create_agent_method_wrapper(
                         exception=exception_caught,
                     )
 
-        elif needs_generation and args and isinstance(args[0], RuntimeServices):
+        elif needs_generation and args and isinstance(args[0], RuntimeServices):  # pyright: ignore[reportPossiblyUnboundVariable]
             # === Strategy method path ===
             # First argument implements RuntimeServices Protocol
             runtime = args[0]

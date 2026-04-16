@@ -6,8 +6,6 @@
 Pydantic models provide validation and JSON serialization out of the box.
 """
 
-from __future__ import annotations
-
 import logging
 import types
 from typing import Any, Final, Literal
@@ -73,7 +71,7 @@ class AgentSnapshot(BaseModel):
         return v
 
     @staticmethod
-    def from_agent(agent: Any) -> AgentSnapshot:
+    def from_agent(agent: Any) -> "AgentSnapshot":
         """Extract serializable state from an agent.
 
         Args:

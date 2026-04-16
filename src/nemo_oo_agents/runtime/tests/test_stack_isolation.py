@@ -28,7 +28,7 @@ class TestStackIsolation:
     """Test that runtime stacks are isolated between async contexts."""
 
     @pytest.mark.asyncio
-    async def test_generation_id_stack_isolation(self):
+    async def test_generation_id_stack_isolation(self) -> None:
         """Generation ID stacks should be isolated between concurrent async contexts.
 
         This test simulates parallel agent method calls that each push to the
@@ -39,17 +39,17 @@ class TestStackIsolation:
 
         # Create a mock agent
         class MockAgent:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.event_manager = None
 
         agent = MockAgent()
         runtime = ActorRuntime(agent)
 
-        results = {}
+        results: dict[str, dict[str, object]] = {}
         context_a_pushed = asyncio.Event()
         context_b_checked = asyncio.Event()
 
-        async def context_a():
+        async def context_a() -> None:
             # Push a generation ID using copy-on-write helper
             _push_generation_id("gen_id_from_context_a")
 
@@ -68,7 +68,7 @@ class TestStackIsolation:
             # Clean up using copy-on-write helper
             _pop_generation_id()
 
-        async def context_b():
+        async def context_b() -> None:
             # Wait for context A to push
             await context_a_pushed.wait()
 
@@ -93,7 +93,7 @@ class TestStackIsolation:
         )
 
     @pytest.mark.asyncio
-    async def test_agent_call_stack_isolation(self):
+    async def test_agent_call_stack_isolation(self) -> None:
         """Agent call stacks should be isolated between concurrent async contexts.
 
         This test simulates parallel agent method calls that each push to the
@@ -104,17 +104,17 @@ class TestStackIsolation:
 
         # Create a mock agent
         class MockAgent:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.event_manager = None
 
         agent = MockAgent()
         runtime = ActorRuntime(agent)
 
-        results = {}
+        results: dict[str, dict[str, object]] = {}
         context_a_pushed = asyncio.Event()
         context_b_checked = asyncio.Event()
 
-        async def context_a():
+        async def context_a() -> None:
             # Push a call ID using copy-on-write helper
             _push_agent_call_id("call_id_from_context_a")
 
@@ -133,7 +133,7 @@ class TestStackIsolation:
             # Clean up using copy-on-write helper
             _pop_agent_call_id()
 
-        async def context_b():
+        async def context_b() -> None:
             # Wait for context A to push
             await context_a_pushed.wait()
 
@@ -158,13 +158,13 @@ class TestStackIsolation:
         )
 
     @pytest.mark.asyncio
-    async def test_same_context_sees_its_own_stack(self):
+    async def test_same_context_sees_its_own_stack(self) -> None:
         """Within the same async context, stack operations should be consistent."""
         from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.event_manager = None
 
         agent = MockAgent()
@@ -189,23 +189,23 @@ class TestStackIsolation:
         _pop_agent_call_id()
 
     @pytest.mark.asyncio
-    async def test_multiple_concurrent_contexts_isolated(self):
+    async def test_multiple_concurrent_contexts_isolated(self) -> None:
         """Multiple concurrent contexts should each have their own stack tracking."""
         from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # Create a mock agent
         class MockAgent:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.event_manager = None
 
         agent = MockAgent()
         runtime = ActorRuntime(agent)
 
-        results = {}
+        results: dict[str, dict[str, object]] = {}
         all_started = asyncio.Event()
         start_count = 0
 
-        async def push_and_check(context_name: str, gen_id: str, call_id: str):
+        async def push_and_check(context_name: str, gen_id: str, call_id: str) -> None:
             nonlocal start_count
 
             # Push our IDs using copy-on-write helpers

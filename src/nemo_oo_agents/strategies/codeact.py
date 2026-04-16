@@ -21,6 +21,7 @@ import inspect
 import json
 import logging
 import types
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from typing import (
@@ -153,7 +154,7 @@ class CodeActSession:
     session_locals: dict[str, Any] = field(default_factory=dict)
     out_accessor: Any = field(default=None)  # OutAccessor instance, created lazily
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize OutAccessor for Jupyter-style Out[n] access."""
         from nemo_oo_agents.runtime.out_accessor import OutAccessor
 
@@ -189,13 +190,13 @@ class CodeActSession:
     @asynccontextmanager
     async def turn(
         self,
-        event_manager,
-        call_method_name,
-        strategy_name,
-        generation_id,
-        parent_generation_id,
-        turn_number,
-    ):
+        event_manager: Any,
+        call_method_name: str,
+        strategy_name: str,
+        generation_id: str,
+        parent_generation_id: str | None,
+        turn_number: int,
+    ) -> AsyncIterator[_TurnState]:
         """Emit BeforeTurn/AfterTurn around a turn body, yielding _TurnState."""
         event_manager.add(
             BeforeTurn(
@@ -230,7 +231,7 @@ class CodeActSession:
             )
 
 
-def _iter_agent_attrs(agent: Any):
+def _iter_agent_attrs(agent: Any) -> Iterator[Any]:
     """Yield non-hidden attribute values from an agent (class then instance)."""
     from agentdoc.visibility import is_hidden_field
 
@@ -305,7 +306,7 @@ class CodeActStrategy(CompositeStrategy):
         self.config = config or _CC()
         self.error_formatter = error_formatter
 
-    def _build_sampling_kwargs(self) -> dict:
+    def _build_sampling_kwargs(self) -> dict[str, Any]:
         """Build sampling kwargs for llm calls, excluding None values."""
         return {
             k: v
@@ -322,7 +323,7 @@ class CodeActStrategy(CompositeStrategy):
         """Strategy name."""
         return "CODEACT"
 
-    def _get_truncation_config(self, runtime: RuntimeServices):
+    def _get_truncation_config(self, runtime: RuntimeServices) -> Any:
         """Get truncation config from runtime's agent.
 
         Args:
@@ -849,7 +850,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
     async def _process_tool_calls(
         self,
-        tool_calls: list,
+        tool_calls: list[Any],
         runtime: RuntimeServices,
         builtins: dict[str, Any],
         session: CodeActSession,
@@ -1379,7 +1380,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             if "result" not in args and len(args) > 0:
                 # LLM passed direct fields (e.g., sum=100, mean=20)
                 # Wrap them as the result value
-                normalized_args: dict[str, Any] = {"result": args}
+                normalized_args = {"result": args}
             else:
                 # Already has "result" key, use as-is
                 normalized_args = args

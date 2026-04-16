@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """LibraryWriting — create and edit persistent code libraries for agents."""
 
-from __future__ import annotations
-
 import ast
 import inspect
 import re
 import sys
 import textwrap
 import types
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -331,7 +330,7 @@ class LibraryWriting(Skill):
 
         return LintReport(errors=errors, warnings=warnings)
 
-    def _lint_pyproject(self, deps: list[str]) -> LintReport:
+    def _lint_pyproject(self, deps: Sequence[str]) -> LintReport:
         """Check declared dependencies against agent's importable modules."""
         importable = self._importable_modules()
         warnings = [
@@ -345,11 +344,7 @@ class LibraryWriting(Skill):
         """Get the set of module names visible in the agent's module namespace."""
         agent_module = inspect.getmodule(type(self._agent))
         ns = agent_module.__dict__ if agent_module else {}
-        return {
-            getattr(obj, "__name__", None)
-            for obj in ns.values()
-            if isinstance(obj, types.ModuleType)
-        } - {None}  # type: ignore[arg-type]
+        return {obj.__name__ for obj in ns.values() if isinstance(obj, types.ModuleType)}
 
     def _get_declared_deps(self, lib_name: str) -> set[str]:
         """Parse declared dependencies from the library's pyproject.toml."""
@@ -358,7 +353,7 @@ class LibraryWriting(Skill):
             return set()
         return set(self._parse_pyproject_deps(pyproject_path.read_text()))
 
-    def _parse_pyproject_deps(self, content: str) -> list[str]:
+    def _parse_pyproject_deps(self, content: str) -> Sequence[str]:
         """Extract dependency names from pyproject.toml content."""
         m = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
         if not m:

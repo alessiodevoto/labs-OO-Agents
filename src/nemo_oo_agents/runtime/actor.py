@@ -14,7 +14,7 @@ import types
 import warnings
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, get_type_hints
+from typing import TYPE_CHECKING, Any, cast, get_type_hints
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -31,11 +31,10 @@ from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 if TYPE_CHECKING:
     from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
-    from nemo_oo_agents.events import ExecutionResult
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
-from nemo_oo_agents.events import ExecutionSignal, LLMOutput
+from nemo_oo_agents.events import ExecutionResult, ExecutionSignal, LLMOutput
 from nemo_oo_agents.runtime.context_vars import (
     _in_exec_middleware,
     _in_generation_session,
@@ -375,7 +374,7 @@ class ActorRuntime:
     async def generate(
         self,
         *,
-        tools: list[dict] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         output_model: type | None = None,
         **kwargs: Any,
     ) -> tuple[Any, str]:
@@ -559,7 +558,7 @@ class ActorRuntime:
                     "execute_python middleware returned without setting ctx.result. "
                     "Short-circuiting middleware must set ctx.result before returning."
                 )
-            return ep_ctx.result
+            return cast(ExecutionResult, ep_ctx.result)
 
         # If we are in re-entry (recursive call from _core_exec above), clear
         # our id from the guard so that nested generation methods called during
@@ -570,7 +569,7 @@ class ActorRuntime:
         if in_reentry:
             _in_exec_middleware.set(_in_exec_middleware.get() - {mid})
 
-        from nemo_oo_agents.events import _NO_RETURN, ExecutionResult
+        from nemo_oo_agents.events import _NO_RETURN
 
         # Generate execution ID and call hooks
         execution_id = str(uuid4())
@@ -586,10 +585,10 @@ class ActorRuntime:
         )
 
         result: ExecutionResult | None = None
-        stdout_token: contextvars.Token | None = None  # Track for cleanup in finally
-        stderr_token: contextvars.Token | None = None
-        stdin_token: contextvars.Token | None = None
-        media_token: contextvars.Token | None = None
+        stdout_token: contextvars.Token[Any] | None = None  # Track for cleanup in finally
+        stderr_token: contextvars.Token[Any] | None = None
+        stdin_token: contextvars.Token[Any] | None = None
+        media_token: contextvars.Token[Any] | None = None
         # Set parent agent context for LLM inheritance by subagents
         parent_token = _parent_agent_var.set(self.agent)
         try:
@@ -741,7 +740,7 @@ class ActorRuntime:
             # Block stdin reads for this async task (prevents hangs from input(), etc.)
             stdin_token = _block_stdin_var.set(True)
             # Media capture buffer for show() calls (images, audio, files)
-            media_buffer: list[dict] = []
+            media_buffer: list[dict[str, Any]] = []
             media_token = _media_buffer_var.set(media_buffer)
 
             # Install stream wrappers around the CURRENT sys.stdout/sys.stderr/sys.stdin
@@ -913,7 +912,7 @@ class ActorRuntime:
                                 pass
                 else:
                     # Original mode: separate function defs from other statements
-                    func_defs: list[ast.stmt] = [
+                    func_defs = [
                         n
                         for n in tree.body
                         if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -1314,12 +1313,13 @@ class ActorRuntime:
             if isinstance(result, subprocess.CompletedProcess):
                 if isinstance(result.stdout, str) and result.stdout:
                     return result.stdout
-                elif isinstance(result.stderr, str) and result.stderr:
+                if isinstance(result.stderr, str) and result.stderr:
                     return result.stderr
-                elif result.returncode is not None:
-                    return f"[exit code: {result.returncode}]"
-                else:
-                    return "[command completed]"
+                # returncode is int per typeshed, but mocks/edge cases may pass None
+                returncode: int | None = cast(int | None, result.returncode)
+                if returncode is not None:
+                    return f"[exit code: {returncode}]"
+                return "[command completed]"
 
             return result
 
@@ -1592,7 +1592,7 @@ class ActorRuntime:
 
         # NOTE: agent_call_id is pushed/popped by the decorator (decorators.py/metaclass.py)
         # before/after calling _call_plan. The ContextVar is inherited by the task.
-        async def _execute_with_event():
+        async def _execute_with_event() -> Any:
             return await self._execute_task(method, args, kwargs)
 
         # Return asyncio.Task directly (caller decides when to await)
@@ -2036,8 +2036,8 @@ async def {name}({params_str}) -> {return_type}:
     async def _prepare_context(
         self,
         method: Any,
-        call_args: tuple = (),
-        call_kwargs: dict | None = None,
+        call_args: tuple[Any, ...] = (),
+        call_kwargs: dict[str, Any] | None = None,
     ) -> list[ResolvedBlock]:
         """Gather all blocks, resolve DynamicContext values, return list[ResolvedBlock].
 
@@ -2104,7 +2104,7 @@ async def {name}({params_str}) -> {return_type}:
                     return result
                 from context_blocks.utils import truncating_pformat
 
-                return truncating_pformat(result, max_chars=tc.max_block_chars)
+                return str(truncating_pformat(result, max_chars=tc.max_block_chars))
             return value
 
         build_result = await build_context(
@@ -2131,8 +2131,8 @@ async def {name}({params_str}) -> {return_type}:
     async def _build_messages(
         self,
         method: Any,
-        call_args: tuple = (),
-        call_kwargs: dict | None = None,
+        call_args: tuple[Any, ...] = (),
+        call_kwargs: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Build messages for LLM API.
 

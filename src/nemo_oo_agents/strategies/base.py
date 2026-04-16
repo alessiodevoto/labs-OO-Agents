@@ -284,8 +284,8 @@ class GenerationStrategy(ABC, metaclass=AgentMeta):
     async def call_with_instrumentation(
         self,
         callable_obj: Any,
-        args: tuple,
-        kwargs: dict,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         *,
         runtime: RuntimeServices,
         method_name: str,

@@ -18,8 +18,6 @@ The only side effect (updating ContextApi's resolved cache) is performed
 by the caller in _prepare_context(), not by build_context() itself.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -42,8 +40,6 @@ ResolveFunc = Callable[[str, "str | DynamicContext"], Coroutine[Any, Any, "str |
 # ---------------------------------------------------------------------------
 # Pure list helpers — always return new lists, never mutate inputs
 # ---------------------------------------------------------------------------
-
-
 async def _apply_overrides(
     blocks: list[ResolvedBlock],
     overrides: dict[str, str | DynamicContext | None],
@@ -113,11 +109,9 @@ async def _apply_overrides(
 # ---------------------------------------------------------------------------
 # Block reordering — applied after all content phases, before events
 # ---------------------------------------------------------------------------
-
-
 def _reorder_blocks(
     blocks: list[ResolvedBlock],
-    strategy: GenerationStrategy | None,
+    strategy: "GenerationStrategy | None",
 ) -> list[ResolvedBlock]:
     """Reorder system blocks according to strategy.get_block_order().
 
@@ -149,8 +143,6 @@ def _reorder_blocks(
 # ---------------------------------------------------------------------------
 # Result type for build_context — separates blocks from resolved cache
 # ---------------------------------------------------------------------------
-
-
 class BuildResult(NamedTuple):
     """Result of build_context(): resolved blocks + cache for ContextApi."""
 
@@ -161,21 +153,19 @@ class BuildResult(NamedTuple):
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
-
-
 async def build_context(
     *,
-    framework_blocks: dict[str, FrameworkBlock],
-    context_manager: ContextManager,
+    framework_blocks: "dict[str, FrameworkBlock]",
+    context_manager: "ContextManager",
     event_manager: Any,
-    strategy: GenerationStrategy | None,
+    strategy: "GenerationStrategy | None",
     resolve_fn: ResolveFunc,
     decorator_context: dict[str, Any] | None = None,
     scoped_context: dict[str, Any] | None = None,
-    runtime_event_query: EventQuery | None = None,
-    decorator_event_query: EventQuery | None = None,
-    scoped_event_query: EventQuery | None = None,
-    agent_event_query: EventQuery | None = None,
+    runtime_event_query: "EventQuery | None" = None,
+    decorator_event_query: "EventQuery | None" = None,
+    scoped_event_query: "EventQuery | None" = None,
+    agent_event_query: "EventQuery | None" = None,
     current_call_id: str | None = None,
     pre_format_chars: int | None = None,
 ) -> BuildResult:
@@ -243,7 +233,7 @@ async def build_context(
 
 async def _phase_framework_blocks(
     blocks: list[ResolvedBlock],
-    framework_blocks: dict[str, FrameworkBlock],
+    framework_blocks: "dict[str, FrameworkBlock]",
     resolve_fn: ResolveFunc,
 ) -> list[ResolvedBlock]:
     """Add framework blocks (system_prompt, self-doc, etc.)."""
@@ -265,7 +255,7 @@ async def _phase_framework_blocks(
 
 async def _phase_persistent_blocks(
     blocks: list[ResolvedBlock],
-    context_manager: ContextManager,
+    context_manager: "ContextManager",
     resolve_fn: ResolveFunc,
     pre_format_chars: int | None = None,
 ) -> tuple[list[ResolvedBlock], dict[str, Any]]:
@@ -308,7 +298,7 @@ async def _phase_persistent_blocks(
 
 async def _phase_strategy_overrides(
     blocks: list[ResolvedBlock],
-    strategy: GenerationStrategy | None,
+    strategy: "GenerationStrategy | None",
     resolve_fn: ResolveFunc,
 ) -> list[ResolvedBlock]:
     """Apply strategy.get_block_overrides()."""
@@ -370,10 +360,10 @@ def _phase_events(
     blocks: list[ResolvedBlock],
     event_manager: Any,
     *,
-    runtime_event_query: EventQuery | None = None,
-    scoped_event_query: EventQuery | None = None,
-    decorator_event_query: EventQuery | None = None,
-    agent_event_query: EventQuery | None = None,
+    runtime_event_query: "EventQuery | None" = None,
+    scoped_event_query: "EventQuery | None" = None,
+    decorator_event_query: "EventQuery | None" = None,
+    agent_event_query: "EventQuery | None" = None,
     current_call_id: str | None = None,
 ) -> list[ResolvedBlock]:
     """Convert events to ResolvedBlocks with appropriate roles.

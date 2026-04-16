@@ -38,8 +38,6 @@ Logger hierarchy (all children of ``nemo_oo_agents``)::
     nemo_oo_agents.skill_manager       Skill discovery
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 from typing import IO

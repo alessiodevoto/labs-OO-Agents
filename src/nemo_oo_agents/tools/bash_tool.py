@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from __future__ import annotations
 
 import asyncio
 import difflib
@@ -60,7 +59,7 @@ class BashTool:
     def __init__(
         self,
         working_dir: str | Path = ".",
-        config: BashConfig | None = None,
+        config: "BashConfig | None" = None,
     ) -> None:
         """Initialize bash tool.
 
@@ -91,9 +90,6 @@ class BashTool:
 
     def _check_srt_available(self) -> bool:
         """Check if SRT sandbox runtime is available and functional."""
-        if self._srt_path is None:
-            return False
-
         # Verify it can at least show help (confirms it's the right tool)
         try:
             result = subprocess.run(
@@ -341,7 +337,7 @@ class FileTool:
         if count == 0:
             # Try fuzzy matching
             lines, search_lines = content.split("\n"), search_block.split("\n")
-            best_ratio, best_match_raw, best_line = 0, "", 0
+            best_ratio, best_match_raw, best_line = 0.0, "", 0
 
             for i in range(len(lines) - len(search_lines) + 1):
                 section = "\n".join(lines[i : i + len(search_lines)])

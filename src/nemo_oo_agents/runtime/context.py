@@ -8,6 +8,7 @@ by default. Subclasses opt in by calling spec(self, "context", hidden=False) in 
 ContextApi wraps agent.context_manager (ContextManager) — the state always lives there.
 """
 
+from collections.abc import Iterator, KeysView
 from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents.runtime.context_manager import ContextManager
@@ -76,10 +77,10 @@ class ContextApi(Skill):
     def __len__(self) -> int:
         return len(self._context)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._context)
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return block keys."""
         return self._context.keys()
 

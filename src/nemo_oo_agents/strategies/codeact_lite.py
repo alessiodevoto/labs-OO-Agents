@@ -103,7 +103,7 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
 # ---------------------------------------------------------------------------
 
 
-class PlainProviderFormatter(OpenAIProviderFormatter):
+class PlainProviderFormatter(OpenAIProviderFormatter):  # type: ignore[misc]  # untyped base class from context_blocks
     """Provider formatter that renders clean messages without XML tags or type wrappers.
 
     Handles three changes compared to OpenAIProviderFormatter:
@@ -126,8 +126,8 @@ class PlainProviderFormatter(OpenAIProviderFormatter):
         self,
         context: str,
         message_blocks: list[ResolvedBlock],
-    ) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": context}]
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = [{"role": "system", "content": context}]
 
         # Index PythonOutput blocks by tool_call_id for merging
         python_outputs: dict[str, ResolvedBlock] = {}

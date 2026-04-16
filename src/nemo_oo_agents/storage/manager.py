@@ -9,8 +9,6 @@ agents for full persistence support. It centralizes persistable events, includin
 See docs/plans/2026-03-10-serialization.md for the full design.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -47,7 +45,7 @@ class StorageManager(Protocol):
     """
 
     @property
-    def event_manager(self) -> EventManager:
+    def event_manager(self) -> "EventManager":
         """The EventManager for this storage.
 
         Owns the EventBackend and provides the full event pipeline
@@ -56,7 +54,7 @@ class StorageManager(Protocol):
         """
         ...
 
-    def save_snapshot(self, agent: Agent) -> str:
+    def save_snapshot(self, agent: "Agent") -> str:
         """Save a snapshot of agent state.
 
         The implementation reads the agent's internals directly and
@@ -77,7 +75,7 @@ class StorageManager(Protocol):
         """
         ...
 
-    def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
+    def restore_snapshot(self, snapshot_id: str, agent: "Agent") -> None:
         """Restore agent state from a previously saved snapshot.
 
         The implementation reads the snapshot from storage and applies

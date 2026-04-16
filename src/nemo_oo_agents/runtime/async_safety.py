@@ -97,10 +97,10 @@ def _safe_as_completed(
 
 
 # Apply patches at import time - they only activate when _in_agent_context is True
-concurrent.futures.Future.result = _safe_future_result
-concurrent.futures.Future.exception = _safe_future_exception
-concurrent.futures.wait = _safe_wait
-concurrent.futures.as_completed = _safe_as_completed
+concurrent.futures.Future.result = _safe_future_result  # type: ignore[method-assign]
+concurrent.futures.Future.exception = _safe_future_exception  # type: ignore[method-assign]
+concurrent.futures.wait = _safe_wait  # type: ignore[assignment]
+concurrent.futures.as_completed = _safe_as_completed  # type: ignore[assignment]
 
 
 @contextmanager

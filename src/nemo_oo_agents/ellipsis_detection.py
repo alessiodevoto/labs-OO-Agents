@@ -10,8 +10,6 @@ Functions:
     get_pre_ellipsis_code: Extract setup code before `...`
 """
 
-from __future__ import annotations
-
 import ast
 import inspect
 import textwrap

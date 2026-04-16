@@ -22,8 +22,6 @@ Design constraints:
   module so ``filter_module_globals`` exposes the caller's types to generated code.
 """
 
-from __future__ import annotations
-
 import inspect
 import sys
 import types
@@ -54,7 +52,7 @@ def _get_agent_cls(module_name: str) -> type:
     class _StandaloneAgent:
         """Minimal agent stub: no framework blocks, fresh state per call."""
 
-        _framework_blocks: ClassVar[dict] = {}  # no system_prompt, no self-doc
+        _framework_blocks: ClassVar[dict[str, Any]] = {}  # no system_prompt, no self-doc
         event_query = None
         _execution_config = None
 
@@ -74,7 +72,7 @@ def _get_agent_cls(module_name: str) -> type:
     return cls
 
 
-def _make_adapter(func: Callable, strategy: Any = None) -> Callable:
+def _make_adapter(func: Callable[..., Any], strategy: Any = None) -> Callable[..., Any]:
     """Create a method-like adapter (with *self*) from a standalone function.
 
     ActorRuntime._execute_with_generation expects a method whose first parameter
@@ -95,8 +93,7 @@ def _make_adapter(func: Callable, strategy: Any = None) -> Callable:
 
     # Template coroutine with an ellipsis body — has_ellipsis_body detects this.
     # We swap in func's module globals so get_type_hints resolves annotations there.
-    async def _tmpl(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[return]
-        ...
+    async def _tmpl(self: Any, *args: Any, **kwargs: Any) -> Any: ...
 
     if func.__module__ not in sys.modules:
         raise RuntimeError(
@@ -106,12 +103,12 @@ def _make_adapter(func: Callable, strategy: Any = None) -> Callable:
     func_globals = vars(sys.modules[func.__module__])
     adapted = types.FunctionType(_tmpl.__code__, func_globals, func.__name__)
 
-    adapted.__doc__ = func.__doc__  # type: ignore[attr-defined]
-    adapted.__name__ = func.__name__  # type: ignore[attr-defined]
-    adapted.__qualname__ = func.__qualname__  # type: ignore[attr-defined]
-    adapted.__annotations__ = dict(func.__annotations__)  # type: ignore[attr-defined]
+    adapted.__doc__ = func.__doc__
+    adapted.__name__ = func.__name__
+    adapted.__qualname__ = func.__qualname__
+    adapted.__annotations__ = dict(func.__annotations__)
     adapted.__signature__ = new_sig  # type: ignore[attr-defined]
-    adapted.__module__ = func.__module__  # type: ignore[attr-defined]
+    adapted.__module__ = func.__module__
 
     # Metadata that _execute_with_generation reads off the method object
     adapted._plan_llm = getattr(func, "_plan_llm", None)  # type: ignore[attr-defined]
@@ -125,10 +122,10 @@ def _make_adapter(func: Callable, strategy: Any = None) -> Callable:
 
 
 def create_standalone_wrapper(
-    func: Callable,
+    func: Callable[..., Any],
     strategy: Any,
     llm: Any,
-) -> Callable:
+) -> Callable[..., Any]:
     """Wrap a standalone generation function so it can be called directly.
 
     Each invocation creates a fresh agent stub (no shared state, history resets).

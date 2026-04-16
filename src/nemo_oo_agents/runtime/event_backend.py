@@ -12,7 +12,7 @@ The EventManager uses a backend for storage while handling:
 """
 
 from collections.abc import Iterator
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from context_blocks import EventBase, EventStatus
 
@@ -88,7 +88,7 @@ class EventBackend(Protocol):
         """
         ...
 
-    def update(self, tag: str, **fields) -> bool:
+    def update(self, tag: str, **fields: Any) -> bool:
         """Update fields on an event.
 
         Args:
@@ -243,7 +243,7 @@ class InMemoryBackend:
                 return event
         return None
 
-    def update(self, tag: str, **fields) -> bool:
+    def update(self, tag: str, **fields: Any) -> bool:
         event = self.get(tag)
         if event is None:
             return False

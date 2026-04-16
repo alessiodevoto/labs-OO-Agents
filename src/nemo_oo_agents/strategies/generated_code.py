@@ -11,8 +11,6 @@ Key invariants:
   `ActorRuntime.execute_code()` to avoid NameError surprises (e.g. missing asyncio).
 """
 
-from __future__ import annotations
-
 import ast
 import inspect
 import types
@@ -364,7 +362,7 @@ def _type_name(t: Any) -> str:
         return origin_name
 
     if hasattr(t, "__name__"):
-        return t.__name__
+        return str(t.__name__)
     return str(t)
 
 
@@ -547,7 +545,7 @@ class ReturnValueValidator:
         self,
         value: Any,
         origin: type,
-        type_args: tuple,
+        type_args: tuple[Any, ...],
         method_name: str,
         truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
     ) -> Any:

@@ -34,10 +34,12 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from types import FrameType
+from typing import IO, Any
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ def register_llm_call(
     model: str,
     prompt_tokens: int | None = None,
     endpoint: str | None = None,
-    **extra_metadata,
+    **extra_metadata: Any,
 ) -> str:
     """Register a pending LLM call for debug tracking.
 
@@ -92,8 +94,8 @@ def llm_call_context(
     model: str,
     prompt_tokens: int | None = None,
     endpoint: str | None = None,
-    **extra_metadata,
-):
+    **extra_metadata: Any,
+) -> Generator[str, None, None]:
     """Context manager for tracking LLM calls.
 
     Usage:
@@ -112,10 +114,11 @@ def llm_call_context(
         unregister_llm_call(call_id)
 
 
-def _dump_pending_llm_calls(file=None):
+def _dump_pending_llm_calls(file: IO[str] | None = None) -> None:
     """Dump information about pending LLM calls."""
     if file is None:
         file = sys.stderr
+    assert file is not None
 
     file.write("\n" + "=" * 60 + "\n")
     file.write("PENDING LLM CALLS\n")
@@ -169,7 +172,7 @@ _LLM_STACK_PATTERNS = [
 ]
 
 
-def _detect_llm_in_stack(frame) -> list[str]:
+def _detect_llm_in_stack(frame: FrameType | None) -> list[str]:
     """Analyze stack frames to detect if we're in an LLM call.
 
     Returns list of detected LLM-related contexts.
@@ -203,10 +206,11 @@ def _get_debug_dump_path() -> Path:
     return _dump_dir / f"debug_dump_{os.getpid()}.txt"
 
 
-def _dump_cell_code(file=None):
+def _dump_cell_code(file: IO[str] | None = None) -> None:
     """Dump all Cell code registered in linecache."""
     if file is None:
         file = sys.stderr
+    assert file is not None
 
     file.write("\n" + "=" * 60 + "\n")
     file.write("REGISTERED CELL CODE (from linecache)\n")
@@ -232,7 +236,7 @@ def _dump_cell_code(file=None):
     file.flush()
 
 
-def _debug_signal_handler(signum, frame):
+def _debug_signal_handler(signum: int, frame: FrameType | None) -> None:
     """Handle SIGUSR2 by dumping debug information."""
     # Write to both stderr and a debug file for reliability
     debug_file_path = _get_debug_dump_path()
@@ -243,6 +247,7 @@ def _debug_signal_handler(signum, frame):
     try:
         with open(debug_file_path, "w") as debug_file:
             for file in [sys.stderr, debug_file]:
+                assert file is not None
                 file.write("\n")
                 file.write("=" * 60 + "\n")
                 file.write(f"DEBUG DUMP at {datetime.now().isoformat()}\n")
@@ -290,7 +295,7 @@ _handler_installed = False
 _dump_dir: Path = Path(".")
 
 
-def install_debug_handler(dump_dir: Path | None = None):
+def install_debug_handler(dump_dir: Path | None = None) -> None:
     """Install SIGUSR2 handler for debug dumps.
 
     Safe to call multiple times - only installs once.
@@ -325,10 +330,11 @@ def install_debug_handler(dump_dir: Path | None = None):
         pass
 
 
-def dump_debug_info(file=None):
+def dump_debug_info(file: IO[str] | None = None) -> None:
     """Manually dump debug info (for programmatic use)."""
     if file is None:
         file = sys.stderr
+    assert file is not None
 
     file.write("\n--- Manual debug dump ---\n")
     _dump_pending_llm_calls(file)

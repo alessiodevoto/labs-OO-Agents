@@ -6,8 +6,6 @@ The @strategy decorator is used to override generation strategies on specific me
 Agent configuration is done via class-level parameters: class MyAgent(Agent, llm=llm)
 """
 
-from __future__ import annotations
-
 import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
@@ -25,11 +23,11 @@ R = TypeVar("R")
 
 
 def strategy(
-    strategy_instance: GenerationStrategyABC | None = None,
+    strategy_instance: "GenerationStrategyABC | None" = None,
     context: ScopedContext | None = None,
     *,
-    llm: UnifiedLLM | None = None,
-    truncation: TruncationConfig | None = None,
+    llm: "UnifiedLLM | None" = None,
+    truncation: "TruncationConfig | None" = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Strategy decorator for agent methods.
 
@@ -110,7 +108,7 @@ def strategy(
             if needs_gen:
                 from nemo_oo_agents.standalone import create_standalone_wrapper
 
-                return create_standalone_wrapper(func, strat, llm)  # type: ignore[return-value]
+                return create_standalone_wrapper(func, strat, llm)
             return func  # type: ignore[return-value]  # non-generation standalone: nothing to wrap
 
         from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper

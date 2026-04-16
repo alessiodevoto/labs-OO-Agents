@@ -2,20 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Skill — base class and wrapper for agent-loadable capabilities."""
 
-from __future__ import annotations
-
 import re
 import shlex
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel
 
+
 # ---------------------------------------------------------------------------
 # SKILL.md frontmatter parsing
 # ---------------------------------------------------------------------------
-
-
 class _SkillProperties(BaseModel):
     name: str
     description: str
@@ -47,7 +45,7 @@ def _find_skill_md(skill_dir: Path) -> Path | None:
     return matches.get("SKILL.md") or matches.get("skill.md")
 
 
-def _parse_frontmatter(content: str) -> tuple[dict, str]:
+def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """Parse SKILL.md frontmatter compatible with Claude Code's lenient behaviour.
 
     Strategy: try ``yaml.safe_load`` on the whole block first — it handles
@@ -205,7 +203,7 @@ class Skill:
     # They shouldn't be serialized in snapshots — mark them as nosnapshot.
     __nosnapshot__ = True
 
-    def __init__(self, obj=None, *, content: str | None = None):
+    def __init__(self, obj: Any = None, *, content: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
         if n_given > 1:
             raise ValueError("Skill() accepts exactly one of: obj, content")
@@ -214,9 +212,9 @@ class Skill:
 
         if obj is not None:
             self._skill_obj = obj
-            self.__class__ = type("Skill", (Skill,), {"__doc__": obj.__doc__ or ""})  # type: ignore[misc]
+            self.__class__ = type("Skill", (Skill,), {"__doc__": obj.__doc__ or ""})  # pyright: ignore[reportAttributeAccessIssue]
         elif content is not None:
-            self.__class__ = type("Skill", (Skill,), {"__doc__": content})  # type: ignore[misc]
+            self.__class__ = type("Skill", (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
 
     def __dir__(self) -> list[str]:
         # Forward dir() to wrapped object so the LLM can discover its attributes.
@@ -236,13 +234,13 @@ class TextSkill(Skill):
         docstring = f"{description}\n---\n{body}"
         class_name = "".join(word.capitalize() for word in skill_id.split("-"))
         self._skill_path = Path(path)
-        self.__class__ = type(  # type: ignore[misc]  # pyright: ignore[reportAttributeAccessIssue]
+        self.__class__ = type(  # pyright: ignore[reportAttributeAccessIssue]
             class_name, (TextSkill,), {"__doc__": docstring, "_id": id or skill_id}
         )
 
     @property
     def id(self) -> str:
-        return type(self)._id  # type: ignore[attr-defined]
+        return str(type(self)._id)  # pyright: ignore[reportAttributeAccessIssue]  # _id set dynamically in __init__
 
     @property
     def description(self) -> str:
