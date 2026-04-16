@@ -29,6 +29,7 @@ from context_blocks import (
 from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 
 if TYPE_CHECKING:
+    from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.events import ExecutionResult
     from nemo_oo_agents.runtime.event_query import EventQuery
@@ -285,8 +286,6 @@ class ActorRuntime:
         # NOTE: This is an instance attribute, not a ContextVar. Under concurrent
         # asyncio.gather on the same agent, the last write wins. For per-task
         # isolation, read stats from the on_messages_built hook's context_stats kwarg.
-        from context_blocks.models import ContextWindowStats
-
         self._last_context_stats: ContextWindowStats | None = None
 
     @property

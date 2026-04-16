@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from context_blocks.models import ContextWindowStats
 from nemo_oo_agents_cli.tui.commands import CommandHandler, CommandRegistry
 from nemo_oo_agents_cli.tui.output import (
     ClearScreen,
@@ -161,8 +162,6 @@ async def test_context_command_no_stats(handler, mock_agent):
 @pytest.mark.asyncio
 async def test_context_command_with_stats(handler, mock_agent):
     """Test /context with stats available — shows formatted output."""
-    from context_blocks.models import ContextWindowStats
-
     mock_agent.context_stats = ContextWindowStats(
         context_blocks_tokens=8_000,
         context_blocks_count=5,
