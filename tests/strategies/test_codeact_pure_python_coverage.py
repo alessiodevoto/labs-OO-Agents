@@ -4081,7 +4081,7 @@ class TestPurePythonCauseChain:
         assert result == 42
         # Verify the error event had the cause chain
         events = agent.runtime.event_manager.values()
-        error_events = [e for e in events if e.event_type == "error"]
+        error_events = [e for e in events if e.event_type == "Error"]
         assert any("<-" in e.content for e in error_events), (
             "Expected ' <- ' cause chain in error message"
         )
