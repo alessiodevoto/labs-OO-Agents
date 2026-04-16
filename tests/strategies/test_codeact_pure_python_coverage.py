@@ -1421,7 +1421,7 @@ class TestPurePythonRunPrefill:
     @pytest.mark.asyncio
     async def test_run_prefill_success_emits_python_output_not_feedback(self):
         """Successful prefill should emit PythonOutput (not Feedback)."""
-        from nemo_oo_agents.events import ExecutionResult, Feedback, LLMOutput, PythonOutput
+        from nemo_oo_agents.events import ExecutionResult, PythonOutput
 
         class SimplePrefill:
             def get_code(self, call, config=None):
