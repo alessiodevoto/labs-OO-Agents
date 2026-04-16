@@ -3,12 +3,12 @@
 """LibraryWriting — create and edit persistent code libraries for agents."""
 
 import ast
-import builtins
 import inspect
 import re
 import sys
 import textwrap
 import types
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -330,7 +330,7 @@ class LibraryWriting(Skill):
 
         return LintReport(errors=errors, warnings=warnings)
 
-    def _lint_pyproject(self, deps: builtins.list[str]) -> LintReport:
+    def _lint_pyproject(self, deps: Sequence[str]) -> LintReport:
         """Check declared dependencies against agent's importable modules."""
         importable = self._importable_modules()
         warnings = [
@@ -353,7 +353,7 @@ class LibraryWriting(Skill):
             return set()
         return set(self._parse_pyproject_deps(pyproject_path.read_text()))
 
-    def _parse_pyproject_deps(self, content: str) -> builtins.list[str]:
+    def _parse_pyproject_deps(self, content: str) -> Sequence[str]:
         """Extract dependency names from pyproject.toml content."""
         m = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
         if not m:
