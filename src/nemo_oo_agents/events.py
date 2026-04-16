@@ -23,7 +23,8 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from context_blocks import EventBase, ResultStatus
+from context_blocks import EventBase as EventBase
+from context_blocks import ResultStatus as ResultStatus
 from context_blocks.models import Role
 
 # Sentinel value to distinguish "no return" from "return None"
@@ -53,20 +54,20 @@ class ExecutionSignal(BaseException):
 # === NeMo OO Agents-specific events ===
 
 
-class Task(EventBase):
+class Task(EventBase):  # type: ignore[misc]
     """Task prompt event - added at start of generation."""
 
     _role: ClassVar[Role] = Role.USER
 
     prompt: Annotated[str, Field(description="Task prompt describing what to do")]
-    images: list[dict] = Field(
+    images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,
         description="Multimodal content blocks (images, audio, files) attached to this task",
     )
 
 
-class Message(EventBase):
+class Message(EventBase):  # type: ignore[misc]
     """User-facing message from generated code via message()."""
 
     _role: ClassVar[Role] = Role.ASSISTANT
@@ -74,7 +75,7 @@ class Message(EventBase):
     content: Annotated[str, Field(description="User-facing message content")]
 
 
-class Reasoning(EventBase):
+class Reasoning(EventBase):  # type: ignore[misc]
     """Chain-of-thought from generated code via reasoning()."""
 
     _role: ClassVar[Role] = Role.ASSISTANT
@@ -82,7 +83,7 @@ class Reasoning(EventBase):
     content: Annotated[str, Field(description="Chain-of-thought reasoning content")]
 
 
-class Error(EventBase):
+class Error(EventBase):  # type: ignore[misc]
     """Error for LLM retry."""
 
     _role: ClassVar[Role] = Role.USER
@@ -90,7 +91,7 @@ class Error(EventBase):
     content: Annotated[str, Field(description="Error message for LLM retry")]
 
 
-class Feedback(EventBase):
+class Feedback(EventBase):  # type: ignore[misc]
     """Execution feedback when target method not yet defined."""
 
     _role: ClassVar[Role] = Role.USER
@@ -98,7 +99,7 @@ class Feedback(EventBase):
     content: Annotated[str, Field(description="Execution feedback content")]
 
 
-class LLMOutput(EventBase):
+class LLMOutput(EventBase):  # type: ignore[misc]
     """Raw LLM output - code (PURE_PYTHON), JSON (STRUCTURED_OUTPUT), or tool calls (CODEACT)."""
 
     _role: ClassVar[Role] = Role.ASSISTANT
@@ -106,7 +107,7 @@ class LLMOutput(EventBase):
     content: Annotated[str, Field(description="LLM response content (code or JSON)")]
 
 
-class PythonOutput(EventBase):
+class PythonOutput(EventBase):  # type: ignore[misc]
     """Output from execute_python - appears as user message in events.
 
     This event captures the actual output from code execution, separate from
@@ -141,7 +142,7 @@ class PythonOutput(EventBase):
         repr=False,
         description="Summary of variables captured from execution (available in subsequent executions)",
     )
-    images: list[dict] = Field(
+    images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,
         description="Image content blocks captured via show() during execution",
@@ -150,7 +151,7 @@ class PythonOutput(EventBase):
     model_config = {"arbitrary_types_allowed": True}
 
 
-class BeforeTurn(EventBase):
+class BeforeTurn(EventBase):  # type: ignore[misc]
     """Event emitted before each LLM generation turn.
 
     This event is emitted before every call to runtime.generate(), which happens
@@ -173,7 +174,7 @@ class BeforeTurn(EventBase):
     ]
 
 
-class AfterTurn(EventBase):
+class AfterTurn(EventBase):  # type: ignore[misc]
     """Event emitted after each LLM generation turn.
 
     Symmetric with BeforeTurn. Emitted after every generation turn completes.
@@ -208,7 +209,7 @@ class AfterTurn(EventBase):
     )
 
 
-class Summary(EventBase):
+class Summary(EventBase):  # type: ignore[misc]
     """Collapsed events - with optional summary text.
 
     Represents a range of events that have been archived and optionally summarized.
@@ -275,7 +276,7 @@ class ExecutionResult(BaseModel):
     signal: ExecutionSignal | None = Field(
         default=None, description="Control flow signal (not an error), e.g. return_result()"
     )
-    defined_methods: dict[str, Callable] = Field(
+    defined_methods: dict[str, Callable[..., Any]] = Field(
         default_factory=dict, description="Methods defined during execution", exclude=True
     )
     returned_value: Any = Field(default=_NO_RETURN, description="Value returned by code")
@@ -287,7 +288,7 @@ class ExecutionResult(BaseModel):
         description="Local variables captured for REPL-style persistence",
         exclude=True,
     )
-    images: list[dict] = Field(
+    images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,
         description="Image content blocks captured via show() during execution",

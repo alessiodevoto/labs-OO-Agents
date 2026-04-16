@@ -65,7 +65,7 @@ async def _get_task_prompt(runtime: Any, strategy: Any, call: Any) -> str:
         if template:
             result = await runtime.expand_variables(template, {"original_call": call})
             if result:
-                return result
+                return str(result)
     return call.docstring or "(no docstring)"
 
 

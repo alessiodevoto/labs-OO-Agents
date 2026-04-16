@@ -35,7 +35,9 @@ class AgentMeta(ABCMeta):
     This makes the metaclass work on any class, not just Agent/Strategy.
     """
 
-    def __new__(mcs, name: str, bases: tuple, namespace: dict, **kwargs) -> type:
+    def __new__(
+        mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any], **kwargs: Any
+    ) -> type:
         """Create new class with auto-wrapped methods.
 
         Args:
@@ -82,7 +84,7 @@ class AgentMeta(ABCMeta):
         return cls
 
     @staticmethod
-    def _should_generate(method_name: str, method_obj: Callable) -> bool:
+    def _should_generate(method_name: str, method_obj: Callable[..., Any]) -> bool:
         """Check if method needs LLM generation.
 
         Args:
@@ -95,7 +97,9 @@ class AgentMeta(ABCMeta):
         return has_ellipsis_body(method_obj)
 
     @staticmethod
-    def _should_trace(method_name: str, method_obj: Callable, should_trace_class: bool) -> bool:
+    def _should_trace(
+        method_name: str, method_obj: Callable[..., Any], should_trace_class: bool
+    ) -> bool:
         """Check if method should be traced.
 
         When should_trace_class is True, all async methods are traced
@@ -118,7 +122,7 @@ class AgentMeta(ABCMeta):
         return True
 
     @staticmethod
-    def _resolve_strategy(method_obj: Callable) -> Any:
+    def _resolve_strategy(method_obj: Callable[..., Any]) -> Any:
         """Get strategy from @strategy decorator or default.
 
         Args:
@@ -136,7 +140,7 @@ class AgentMeta(ABCMeta):
         return None
 
     @staticmethod
-    def _validate_reserved_parameters(func: Callable) -> None:
+    def _validate_reserved_parameters(func: Callable[..., Any]) -> None:
         """Validate that generation method doesn't use reserved parameter names."""
         sig = inspect.signature(func)
         reserved = {"reasoning"}
@@ -147,7 +151,7 @@ class AgentMeta(ABCMeta):
             )
 
     @staticmethod
-    def _extract_source_code(func: Callable) -> str | None:
+    def _extract_source_code(func: Callable[..., Any]) -> str | None:
         """Extract source code from function, returning None if unavailable."""
         try:
             return inspect.getsource(func)
@@ -156,11 +160,11 @@ class AgentMeta(ABCMeta):
 
     @staticmethod
     def _create_wrapper(
-        original_func: Callable,
+        original_func: Callable[..., Any],
         needs_generation: bool,
         needs_tracing: bool,
         strategy: Any,
-    ) -> Callable:
+    ) -> Callable[..., Any]:
         """Create wrapper for async methods (generation or tracing-only).
 
         Delegates to the shared wrapper logic in method_wrapper.py.
@@ -202,7 +206,7 @@ class AgentMeta(ABCMeta):
         return wrapper
 
 
-def no_trace(func: Callable) -> Callable:
+def no_trace(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to opt-out of tracing for public methods.
 
     Use this decorator on public async methods that should NOT be traced,

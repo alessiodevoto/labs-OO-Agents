@@ -57,14 +57,14 @@ if TYPE_CHECKING:
     )
 
 try:
-    import nat_nexus  # type: ignore[import]
-    from nat_nexus import LLMRequest  # type: ignore[import]
+    import nat_nexus  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]
+    from nat_nexus import LLMRequest  # pyright: ignore[reportMissingImports]
 
     _HAS_NAT_NEXUS = True
 except ImportError:
     _HAS_NAT_NEXUS = False
-    nat_nexus = None  # type: ignore[assignment]
-    LLMRequest = None  # type: ignore[assignment,misc]
+    nat_nexus = None
+    LLMRequest = None
 
 _INSTALL_MSG = "nat_nexus is required for Nexus integration. Install with: uv sync --extra nexus"
 
@@ -110,7 +110,8 @@ async def nexus_llm_middleware(
     # ('dict' object has no attribute 'name') inside Nexus's native pipeline.
     # The old hooks-based integration avoided this because it intercepted at
     # unifiedllm's layer, where api_params never contained a tools key.
-    request = LLMRequest({}, safe_params)  # type: ignore[misc]
+    assert LLMRequest is not None
+    request = LLMRequest({}, safe_params)
 
     captured_ctx: LLMCallContext | None = None
 
@@ -157,7 +158,7 @@ async def nexus_llm_middleware(
             return raw.model_dump(mode="json")
         # Pydantic response (e.g. passed directly)
         if hasattr(resp, "model_dump"):
-            return resp.model_dump(mode="json")  # type: ignore[union-attr]
+            return resp.model_dump(mode="json")  # pyright: ignore[reportAttributeAccessIssue]
         # Fallback: manual serialization from unifiedllm.LLMResponse dataclass.
         if hasattr(resp, "assistant_message"):
             result: dict[str, Any] = {"message": resp.assistant_message}
@@ -173,7 +174,7 @@ async def nexus_llm_middleware(
     # (ATIF export, event subscribers) but the caller always receives
     # the original response.  Conditional-execution guardrails that
     # reject raise GuardrailRejected, which propagates naturally.
-    await nat_nexus.llm.execute(model_name, request, _wrapper, model_name=model_name)  # type: ignore[union-attr]
+    await nat_nexus.llm.execute(model_name, request, _wrapper, model_name=model_name)
 
     if captured_ctx is not None:
         return captured_ctx
@@ -202,7 +203,7 @@ async def nexus_tool_middleware(
         "code": ctx.code,
         **{k: v for k, v in ctx.params.items() if k in ("tool_call_id", "timeout")},
     }
-    codec = nat_nexus.typed.BestEffortAnyCodec()  # type: ignore[union-attr]
+    codec = nat_nexus.typed.BestEffortAnyCodec()
 
     captured_ctx: ExecutePythonContext | None = None
 
@@ -249,7 +250,7 @@ async def nexus_tool_middleware(
     # (ATIF export, event subscribers) but the caller always receives
     # the original result.  Conditional-execution guardrails that reject
     # raise GuardrailRejected, which propagates naturally.
-    await nat_nexus.tools.execute("execute_python", args, _wrapper)  # type: ignore[union-attr]
+    await nat_nexus.tools.execute("execute_python", args, _wrapper)
 
     if captured_ctx is not None:
         return captured_ctx
@@ -273,12 +274,12 @@ async def nexus_agent_call_middleware(
     assert nat_nexus is not None
 
     scope_name = f"{type(ctx.agent).__name__}.{ctx.method_name}"
-    handle = nat_nexus.scope.push(scope_name, nat_nexus.ScopeType.Function)  # type: ignore[union-attr]
+    handle = nat_nexus.scope.push(scope_name, nat_nexus.ScopeType.Function)
     try:
         return await nxt(ctx)
     finally:
         try:
-            nat_nexus.scope.pop(handle)  # type: ignore[union-attr]
+            nat_nexus.scope.pop(handle)
         except Exception:
             _logger.debug("nexus_agent_call_middleware: scope.pop() failed", exc_info=True)
 
@@ -340,9 +341,10 @@ async def nexus_scope(
 
     uninstall = install_nexus(agent.event_manager)
     try:
-        with nat_nexus.scope.scope(  # type: ignore[union-attr]
+        assert nat_nexus is not None
+        with nat_nexus.scope.scope(
             scope_name,
-            nat_nexus.ScopeType.Agent,  # type: ignore[union-attr]
+            nat_nexus.ScopeType.Agent,
         ) as handle:
             yield handle
     finally:

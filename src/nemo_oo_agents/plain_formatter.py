@@ -19,7 +19,7 @@ from context_blocks.utils import truncating_pformat
 _DEFAULT_MAX_CHARS = 20_000
 
 
-class PlainBlockFormatter(XMLBlockFormatter):
+class PlainBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]
     """Renders system blocks as XML (same as XMLBlockFormatter) but serializes
     conversation events as plain text with no XML wrapper.
 
@@ -39,7 +39,7 @@ class PlainBlockFormatter(XMLBlockFormatter):
         """Serialize event fields not marked repr=False as plain XML elements."""
 
         def render(value: object) -> str:
-            return truncating_pformat(value, max_chars=max_chars)
+            return str(truncating_pformat(value, max_chars=max_chars))
 
         def is_empty(value: object) -> bool:
             return value is None or value == ""

@@ -111,7 +111,11 @@ class EventManager:
         # Middleware engine — initialized here, methods defined below.
         # Uses lazy import of middleware types to avoid circular dependency
         # (middleware.py imports Agent which imports runtime/__init__ which imports us).
-        self._middleware: dict[str, list] = {"agent_call": [], "llm_call": [], "execute_python": []}
+        self._middleware: dict[str, list[Any]] = {
+            "agent_call": [],
+            "llm_call": [],
+            "execute_python": [],
+        }
         self._middleware_id: int = next(_em_id_counter)
 
     # === Core Methods ===
@@ -157,7 +161,7 @@ class EventManager:
 
             return tag
 
-        return event.id
+        return str(event.id)
 
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
@@ -440,7 +444,7 @@ class EventManager:
 
     # === Mutation Methods ===
 
-    def update(self, key: str, **fields) -> bool:
+    def update(self, key: str, **fields: Any) -> bool:
         """Update event fields. Does NOT re-emit to handlers.
 
         Args:

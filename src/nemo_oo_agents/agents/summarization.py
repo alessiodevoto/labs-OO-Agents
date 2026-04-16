@@ -62,7 +62,7 @@ class SummarizationAgent(Agent):
     """
 
     # Event manager whose events will be summarized. Wired automatically by the parent Agent.
-    targetevent_manager: Annotated[EventManager | None, hidden] = None
+    target_event_manager: Annotated[EventManager | None, hidden] = None
 
     # Config must be set by subclasses (TokenBudgetSummarizer, MethodSummarizer set self.config
     # in __init__). The base class provides this sentinel to prevent AttributeError if a
@@ -70,14 +70,14 @@ class SummarizationAgent(Agent):
     config: Annotated[Any, hidden] = None
 
     # Background task state
-    _pending_task: Annotated[asyncio.Task | None, hidden]
+    _pending_task: Annotated[asyncio.Task[Any] | None, hidden]
     _pending_range: Annotated[tuple[str, str] | None, hidden]
     _pending_summary: Annotated[str | None, hidden]
     _unsub_before: Annotated[Callable[[], None] | None, hidden]
     _unsub_after: Annotated[Callable[[], None] | None, hidden]
 
     @classmethod
-    def install(cls, agent: Agent, **kwargs) -> SummarizationAgent:
+    def install(cls, agent: Agent, **kwargs: Any) -> SummarizationAgent:
         """Install this summarizer on an agent.
 
         The summarizer is stored on the agent, so you don't need to keep
@@ -106,7 +106,7 @@ class SummarizationAgent(Agent):
 
         return summarizer
 
-    def __init__(self, agent: Agent, **kwargs):
+    def __init__(self, agent: Agent, **kwargs: Any) -> None:
         """Initialize summarization agent attached to a parent agent.
 
         Prefer using the `install()` class method instead of direct construction.
@@ -129,7 +129,7 @@ class SummarizationAgent(Agent):
         super().__init__(**kwargs)
 
         # Background task state
-        self._pending_task: asyncio.Task | None = None
+        self._pending_task: asyncio.Task[Any] | None = None
         self._pending_range: tuple[str, str] | None = None
         self._pending_summary: str | None = None
 
@@ -434,7 +434,7 @@ class SummarizationAgent(Agent):
 # =============================================================================
 
 
-def context_budget(llm, percent: float = 0.8, fallback: int = 100_000) -> int:
+def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> int:
     """Calculate token budget as percentage of LLM context limit.
 
     Args:
@@ -476,7 +476,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
 
     @classmethod
     def install(
-        cls, agent: Agent, *, config: TokenBudgetConfig | None = None, **kwargs
+        cls, agent: Agent, *, config: TokenBudgetConfig | None = None, **kwargs: Any
     ) -> SummarizationAgent:
         """Install with a TokenBudgetConfig.
 
@@ -493,7 +493,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
             )
         return super().install(agent, config=config, **kwargs)
 
-    def __init__(self, agent: Agent, **kwargs):
+    def __init__(self, agent: Agent, **kwargs: Any) -> None:
         from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig as _TBC
 
         config = kwargs.pop("config", None)
@@ -503,7 +503,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
     @hidden
     def _should_summarize(self, event: AfterTurn) -> bool:
         """Trigger when over token budget."""
-        return self._estimate_tokens() > self.config.max_tokens
+        return bool(self._estimate_tokens() > self.config.max_tokens)
 
     @hidden
     def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
@@ -535,7 +535,7 @@ class MethodSummarizer(SummarizationAgent):
 
     @classmethod
     def install(
-        cls, agent: Agent, *, config: MethodSummarizerConfig | None = None, **kwargs
+        cls, agent: Agent, *, config: MethodSummarizerConfig | None = None, **kwargs: Any
     ) -> SummarizationAgent:
         """Install with a MethodSummarizerConfig.
 
@@ -552,7 +552,7 @@ class MethodSummarizer(SummarizationAgent):
             )
         return super().install(agent, config=config, **kwargs)
 
-    def __init__(self, agent: Agent, **kwargs):
+    def __init__(self, agent: Agent, **kwargs: Any) -> None:
         from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig as _MSC
 
         config = kwargs.pop("config", None)

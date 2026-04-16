@@ -334,7 +334,7 @@ def _format_single_error(
     return f"return_result({field}=...) - '{path}': {msg}"
 
 
-def _format_error_path(loc: tuple) -> str:
+def _format_error_path(loc: tuple[Any, ...]) -> str:
     """Format error location as readable path like 'items[0].name' or '[2]'."""
     if not loc:
         return "value"
@@ -361,7 +361,7 @@ def get_type_hint_str(return_type: Any) -> str:
     # Handle typing generics like list[int], dict[str, Any]
     origin = getattr(return_type, "__origin__", None)
     if origin is not None:
-        args = getattr(return_type, "__args__", ())
+        args: tuple[Any, ...] = getattr(return_type, "__args__", ())
         if origin is list:
             if args:
                 return f"list[{get_type_hint_str(args[0])}]"

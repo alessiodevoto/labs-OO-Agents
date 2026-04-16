@@ -18,6 +18,7 @@ Cache lifecycle for DynamicContext blocks:
     self.context["key"]         → returns cached value from _dynamic_cache
 """
 
+from collections.abc import ItemsView, Iterator, KeysView
 from typing import Any
 
 from context_blocks import DynamicContext
@@ -132,14 +133,14 @@ class ContextManager:
     def __len__(self) -> int:
         return len(self._blocks)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._blocks)
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return block keys."""
         return self._blocks.keys()
 
-    def _raw_items(self):
+    def _raw_items(self) -> ItemsView[str, Any]:
         """Return raw key-value pairs including DynamicContext markers.
 
         Internal method for context_builder — not part of the LLM-facing API.

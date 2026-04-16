@@ -46,7 +46,7 @@ class LibrarySkill(Skill):
         # Store path as string for JSON serializability (snapshot support)
         object.__setattr__(self, "_lib_path", str(path))
         super().__init__(content=description)
-        self.__class__ = type(lib_name, (LibrarySkill,), {"__doc__": description})  # type: ignore[assignment]
+        self.__class__ = type(lib_name, (LibrarySkill,), {"__doc__": description})  # pyright: ignore[reportAttributeAccessIssue]
 
     @property
     def path(self) -> Path:

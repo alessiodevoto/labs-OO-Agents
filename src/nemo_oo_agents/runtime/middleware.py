@@ -84,7 +84,7 @@ class AgentCallContext(BaseModel):
 
     agent: Agent | None = None
     method_name: str = ""
-    args: tuple = ()
+    args: tuple[Any, ...] = ()
     kwargs: dict[str, Any] = {}
     result: Any = _AGENT_RESULT_NOT_SET
 

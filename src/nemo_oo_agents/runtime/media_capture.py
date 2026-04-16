@@ -20,7 +20,7 @@ import io
 from typing import Any
 
 # Task-local media buffer for async-safe capture
-_media_buffer_var: contextvars.ContextVar[list[dict] | None] = contextvars.ContextVar(
+_media_buffer_var: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
     "media_buffer", default=None
 )
 
@@ -28,7 +28,7 @@ _media_buffer_var: contextvars.ContextVar[list[dict] | None] = contextvars.Conte
 MAX_ATTACHMENTS_PER_EXECUTION = 5
 
 
-def media_to_content_block(media: Any) -> dict:
+def media_to_content_block(media: Any) -> dict[str, Any]:
     """Convert a Media object to a LiteLLM-compatible content block.
 
     Uses LiteLLM's universal formats. Provider-specific conversion
@@ -41,7 +41,7 @@ def media_to_content_block(media: Any) -> dict:
         raise TypeError(f"Expected Media (Image/Audio/File), got {type(media).__name__}")
 
     if isinstance(media, Image):
-        image_url_dict: dict = {"url": media.data_url}
+        image_url_dict: dict[str, Any] = {"url": media.data_url}
         # Add format hint — used by Anthropic/Bedrock/Vertex AI, ignored by OpenAI
         if media.media_type and media.media_type != "application/octet-stream":
             image_url_dict["format"] = media.media_type
@@ -81,15 +81,17 @@ def show(obj: Any) -> None:
     """
     from nemo_oo_agents.media import Media
 
+    block: dict[str, Any]
     if isinstance(obj, Media):
         block = media_to_content_block(obj)
     else:
-        block = _try_auto_convert(obj)
-        if block is None:
+        converted = _try_auto_convert(obj)
+        if converted is None:
             raise TypeError(
                 f"show() expects Image, Audio, File, PIL.Image, or matplotlib Figure, "
                 f"got {type(obj).__name__}"
             )
+        block = converted
 
     buf = _media_buffer_var.get()
     if buf is not None:
@@ -102,7 +104,7 @@ def show(obj: Any) -> None:
         print(f"[show() called outside execution context, not captured: {obj}]")
 
 
-def _try_auto_convert(obj: Any) -> dict | None:
+def _try_auto_convert(obj: Any) -> dict[str, Any] | None:
     """Try to convert a non-Media object to a content block.
 
     Supports PIL.Image.Image and matplotlib.figure.Figure via lazy imports.
@@ -118,7 +120,7 @@ def _try_auto_convert(obj: Any) -> dict | None:
 _to_content_block = _try_auto_convert
 
 
-def _try_pil_to_content_block(obj: Any) -> dict | None:
+def _try_pil_to_content_block(obj: Any) -> dict[str, Any] | None:
     """Convert a PIL Image to an image_url content block, or None."""
     try:
         from PIL import Image as PILImage  # type: ignore[import-not-found]
@@ -136,7 +138,7 @@ def _try_pil_to_content_block(obj: Any) -> dict | None:
     return None
 
 
-def _try_matplotlib_to_content_block(obj: Any) -> dict | None:
+def _try_matplotlib_to_content_block(obj: Any) -> dict[str, Any] | None:
     """Convert a matplotlib Figure to an image_url content block, or None."""
     try:
         from matplotlib.figure import Figure  # type: ignore[import-not-found]

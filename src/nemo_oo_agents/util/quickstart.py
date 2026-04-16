@@ -5,7 +5,9 @@ Provides some quickstart settings to get you started with some reasonable defaul
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -25,7 +27,7 @@ llm = get_llm_client(MODEL)
 
 
 # Decorator for running example entry points
-def autorun(func):
+def autorun(func: Callable[[], Any]) -> Callable[[], Any]:
     print("\n\nEXAMPLE OUTPUT:")
     asyncio.run(func())
     return func
@@ -40,7 +42,7 @@ class Artwork:
         self.artist = artist
         self._appraised_value = appraised_value
 
-    def get_appraisal(self) -> dict:
+    def get_appraisal(self) -> dict[str, Any]:
         """Get the appraisal details including current market value."""
         return {
             "title": self.title,

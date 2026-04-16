@@ -100,7 +100,7 @@ class SkillManager:
                 skill_dir = skill_md.parent
                 try:
                     skill = TextSkill(path=skill_dir)
-                    skills[skill.id] = skill  # type: ignore[index]
+                    skills[skill.id] = skill
                 except Exception:
                     logger.warning(f"Skipped {skill_dir}: failed to load SKILL.md", exc_info=True)
         return skills

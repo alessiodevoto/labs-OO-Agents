@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from nemo_oo_agents.runtime.event_manager import EventManager
 
 
-class RichOutput(Metadata):
+class RichOutput(Metadata):  # type: ignore[misc]
     """Rich content published by the agent — stored in session history, never shown to LLM.
 
     Each payload is a dict with at least a ``kind`` field (``"plotly"``,

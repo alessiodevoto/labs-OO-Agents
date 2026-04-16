@@ -465,8 +465,8 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
             return False
 
         # Check children
-        for child in ast.iter_child_nodes(node):
-            if self._has_exit_in_subtree(child, check_break):
+        for subnode in ast.iter_child_nodes(node):
+            if self._has_exit_in_subtree(subnode, check_break):
                 return True
 
         return False

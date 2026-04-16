@@ -190,7 +190,7 @@ class SQLiteEventBackend:
         return cls.model_validate(raw)
 
     def _serialize(self, event: EventBase) -> str:
-        return event.model_dump_json()
+        return str(event.model_dump_json())
 
     # -- EventBackend protocol --
 
@@ -231,7 +231,7 @@ class SQLiteEventBackend:
         event = self._deserialize(row[0])
         for key, value in fields.items():
             if key == "metadata":
-                event.metadata.update(value)  # type: ignore[arg-type]
+                event.metadata.update(typing.cast(dict, value))
             elif hasattr(event, key):
                 setattr(event, key, value)
         new_data = self._serialize(event)
@@ -297,7 +297,7 @@ class SQLiteEventBackend:
         ).fetchone()
         if row is None:
             return None
-        return row[0]
+        return str(row[0])
 
     def clear(self) -> None:
         with self._conn:
@@ -323,11 +323,11 @@ class SQLiteEventBackend:
             FROM events
             """
         ).fetchone()
-        return row[0]
+        return int(row[0])
 
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
-        return row[0]
+        return int(row[0])
 
 
 class SessionAlreadyActiveError(Exception):

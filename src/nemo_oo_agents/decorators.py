@@ -110,7 +110,7 @@ def strategy(
             if needs_gen:
                 from nemo_oo_agents.standalone import create_standalone_wrapper
 
-                return create_standalone_wrapper(func, strat, llm)  # type: ignore[return-value]
+                return create_standalone_wrapper(func, strat, llm)
             return func  # type: ignore[return-value]  # non-generation standalone: nothing to wrap
 
         from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper

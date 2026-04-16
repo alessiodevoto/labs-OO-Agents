@@ -4,6 +4,7 @@
 
 import contextvars
 import io
+from collections.abc import Iterator
 from typing import Any
 
 # Task-local flag to block stdin reads (prevents hangs from input(), sys.stdin.read(), etc.)
@@ -150,7 +151,7 @@ class BlockedStdinWrapper:
         self._check_blocked()
         return self._original.readlines(hint)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate over stdin lines (blocked when in agent code execution)."""
         self._check_blocked()
         return iter(self._original)

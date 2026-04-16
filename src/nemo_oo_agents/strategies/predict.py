@@ -17,7 +17,7 @@ basic types (str, int, bool, dict, list), Optional[T], and nested models.
 import json
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
@@ -194,7 +194,7 @@ class PredictStrategy(GenerationStrategy):
         )
 
         # Collect all failed attempts for span attributes (added at the end)
-        failed_attempts: list[dict] = []
+        failed_attempts: list[dict[str, Any]] = []
 
         # Validation retry loop
         for attempt in range(1, self.config.max_retries + 1):
@@ -446,7 +446,7 @@ class PredictStrategy(GenerationStrategy):
             logger.warning(f"[PREDICT] Failed to extract raw from LLMResponse: {e}")
             return f"(error extracting: {e})"
 
-    def _add_all_failed_attempts_to_span(self, failed_attempts: list[dict]) -> None:
+    def _add_all_failed_attempts_to_span(self, failed_attempts: list[dict[str, Any]]) -> None:
         """Add all failed attempt info to current OpenTelemetry span.
 
         This is called once at the end of the retry loop with all collected failures.
@@ -582,7 +582,7 @@ class PredictStrategy(GenerationStrategy):
 
         return response, event_id
 
-    def _parse_llm_response(self, llm_response: Any, method_name: str) -> dict:
+    def _parse_llm_response(self, llm_response: Any, method_name: str) -> dict[str, Any]:
         """Parse LLM response into a dict for validation.
 
         This method may throw JSONDecodeError if the response cannot be parsed.
@@ -714,10 +714,10 @@ class PredictStrategy(GenerationStrategy):
                 else:
                     public_fields[name] = (ann, default)
             public_name = f"{return_type.__name__}Public"
-            public_model = create_model(public_name, **public_fields)
+            public_model = create_model(public_name, **cast(dict[str, Any], public_fields))
             public_model.model_rebuild(_types_namespace=vars(__import__("typing")))
-            public_model._agentdoc_original_model = return_type  # type: ignore[attr-defined]
-            return public_model
+            public_model._agentdoc_original_model = return_type  # pyright: ignore[reportAttributeAccessIssue]
+            return public_model  # type: ignore[no-any-return]
 
         # For dict and list types, use RootModel so LLM returns value directly
         # (not wrapped in {"value": ...})
@@ -737,7 +737,7 @@ class PredictStrategy(GenerationStrategy):
             inner_type = args[0] if args else Any
 
             # Create a RootModel for the list type
-            list_type = list[inner_type]
+            list_type = list[inner_type]  # type: ignore[valid-type]
 
             class ListRootModel(RootModel[list_type]):
                 pass

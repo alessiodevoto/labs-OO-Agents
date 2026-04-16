@@ -89,6 +89,7 @@ def is_from_blocked_module(obj: Any, blocked_modules: frozenset[str]) -> bool:
     module like "io" were added, since builtins like open() have
     __module__="io".
     """
+    module_name: str | None
     if isinstance(obj, types.ModuleType):
         module_name = obj.__name__
     else:

@@ -9,6 +9,8 @@ written against an older API that had an explicit ``visible`` context manager.
 
 from __future__ import annotations
 
+from typing import Literal
+
 
 class _Visible:
     """No-op context manager — everything is visible by default."""
@@ -16,7 +18,7 @@ class _Visible:
     def __enter__(self) -> _Visible:
         return self
 
-    def __exit__(self, *_: object) -> bool:
+    def __exit__(self, *_: object) -> Literal[False]:
         return False
 
     def __repr__(self) -> str:
