@@ -31,11 +31,10 @@ from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 if TYPE_CHECKING:
     from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
-    from nemo_oo_agents.events import ExecutionResult
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
-from nemo_oo_agents.events import ExecutionSignal, LLMOutput
+from nemo_oo_agents.events import ExecutionResult, ExecutionSignal, LLMOutput
 from nemo_oo_agents.runtime.context_vars import (
     _in_exec_middleware,
     _in_generation_session,
@@ -523,7 +522,6 @@ class ActorRuntime:
         in_reentry = mid in _in_exec_middleware.get()
 
         if em._middleware.get("execute_python") and not in_reentry:
-            from nemo_oo_agents.events import ExecutionResult
             from nemo_oo_agents.runtime.middleware import ExecutePythonContext
 
             ep_params: dict[str, Any] = {
@@ -571,7 +569,7 @@ class ActorRuntime:
         if in_reentry:
             _in_exec_middleware.set(_in_exec_middleware.get() - {mid})
 
-        from nemo_oo_agents.events import _NO_RETURN, ExecutionResult
+        from nemo_oo_agents.events import _NO_RETURN
 
         # Generate execution ID and call hooks
         execution_id = str(uuid4())
