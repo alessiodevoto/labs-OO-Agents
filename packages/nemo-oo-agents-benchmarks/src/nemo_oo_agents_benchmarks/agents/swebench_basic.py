@@ -25,6 +25,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SYSTEM_PROMPT = (
+    "You are a software engineer working inside a pre-configured repository "
+    "container.  Your task is to make changes to non-test files in order to "
+    "fix the issue described in the problem statement in a way that is general "
+    "and consistent with the codebase.\n\n"
+    "The repository is checked out at /testbed.  A conda environment named "
+    "'testbed' is pre-activated with all dependencies installed.  Use the "
+    "available shell and file tools to navigate, understand, and fix the code."
+)
+
 
 class SWEBenchBasicAgent(
     Agent,
@@ -41,18 +51,24 @@ class SWEBenchBasicAgent(
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner.
 
-        Populates context from *task_input* then delegates to :meth:`solve_task`.
+        Accepts the unified runner interface ``{"user_message": instruction}``
+        as well as the legacy field-by-field format.
         """
-        self.instructions = task_input.get("system_prompt", "")
+        if "user_message" in task_input:
+            # Unified interface from the benchmark-agnostic runner.
+            self.instructions = _SYSTEM_PROMPT
+            self.problem_statement = task_input["user_message"]
+            self.response_format = "diff"
+            self.initial_observation = ""
+        else:
+            self.instructions = task_input.get("system_prompt", "")
+            self.initial_observation = task_input.get("initial_observation", "")
+            self.problem_statement = task_input.get("problem_statement", "")
+            self.response_format = task_input.get("response_format", "")
+
         self.context["instructions"] = self.instructions
-
-        self.initial_observation = task_input.get("initial_observation", "")
         self.context["initial_observation"] = self.initial_observation
-
-        self.problem_statement = task_input.get("problem_statement", "")
         self.context["problem_statement"] = self.problem_statement
-
-        self.response_format = task_input.get("response_format", "")
         self.context["response_format"] = self.response_format
 
         try:

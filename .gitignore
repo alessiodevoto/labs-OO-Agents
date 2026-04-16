@@ -340,6 +340,9 @@ experiments/evaluation-ablations/task_temp/
 # DABStep experiment outputs (top-level scratch directory)
 /dabstep/
 
+# Harbor generated task directories (regenerated via `harbor adapter run`)
+util/harbor/tasks/
+
 # OpenSkills workspace files
 .openskills/
 

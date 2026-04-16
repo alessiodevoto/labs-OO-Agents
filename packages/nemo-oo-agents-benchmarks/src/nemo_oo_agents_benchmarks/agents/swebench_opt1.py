@@ -28,6 +28,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SYSTEM_PROMPT = (
+    "You are a software engineer working inside a pre-configured repository "
+    "container.  Your task is to make changes to non-test files in order to "
+    "fix the issue described in the problem statement in a way that is general "
+    "and consistent with the codebase.\n\n"
+    "The repository is checked out at /testbed.  A conda environment named "
+    "'testbed' is pre-activated with all dependencies installed.  Use the "
+    "available shell and file tools to navigate, understand, and fix the code."
+)
+
 
 # ---------------------------------------------------------------------------
 # Structured output models
@@ -249,10 +259,25 @@ class SWEBenchOpt1Agent(Agent, llm=FakeLLMClient()):
         self._llm = llm
 
     async def _run_evaluation(self, task_input: dict) -> dict:
-        """Entry point called by the Harbor runner."""
+        """Entry point called by the Harbor runner.
+
+        Accepts the unified runner interface ``{"user_message": instruction}``
+        as well as the legacy field-by-field format.
+        """
         from agentdoc import doc
 
-        self.instructions = task_input.get("system_prompt", "")
+        if "user_message" in task_input:
+            # Unified interface from the benchmark-agnostic runner.
+            self.instructions = _SYSTEM_PROMPT
+            problem_statement = task_input["user_message"]
+            self.response_format = "diff"
+            self.initial_observation = ""
+        else:
+            self.instructions = task_input.get("system_prompt", "")
+            problem_statement = task_input.get("problem_statement", "")
+            self.response_format = task_input.get("response_format", "")
+            self.initial_observation = task_input.get("initial_observation", "")
+
         self.context["instructions"] = self.instructions
 
         tool_doc = (
@@ -261,13 +286,8 @@ class SWEBenchOpt1Agent(Agent, llm=FakeLLMClient()):
         )
         self.context["tool_instructions"] = tool_doc
 
-        self.initial_observation = task_input.get("initial_observation", "")
         self.context["initial_observation"] = self.initial_observation
-
-        self.response_format = task_input.get("response_format", "")
         self.context["response_format"] = self.response_format
-
-        problem_statement = task_input.get("problem_statement", "")
         self.feedback = FeedbackAgent(llm=self._llm, swebench=self.swebench)
 
         try:

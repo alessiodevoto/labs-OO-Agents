@@ -5,16 +5,20 @@ Harbor agent runner for nemo-oo-agents — executed inside the Harbor container.
 
 Harbor invokes this as a CLI process::
 
-    python -m nemo_oo_agents_benchmarks \\
+    nemo-harbor \\
         --instruction '...' \\
         --model 'anthropic/claude-opus-4-6' \\
-        --agent-type basic
+        --agent-type baseline
 
-The runner:
-1. Instantiates the nemo-oo-agents agent for the given task type.
-2. Runs it on the instruction inside the container.
-3. Emits OTel traces to ``/logs/artifacts/traces/`` (Harbor's artifact path).
-4. Writes result metadata JSON to ``/logs/agent/``.
+The runner is benchmark-agnostic. Its only jobs are:
+
+1. Instantiate the right agent class from ``--agent-type``.
+2. Inject container tools if requested via ``--tools`` (e.g. ``swebench``).
+3. Call ``agent._run_evaluation({"user_message": instruction})``.
+4. Write ``result.json`` to ``/logs/agent/`` and answer text to ``/app/answer.txt``.
+
+Benchmark-specific logic (system prompts, instruction parsing, data paths) lives
+inside each agent class, not here.
 
 TODO (gl-8): Auto-detect and publish to OTLP endpoint when available.
 """
@@ -38,17 +42,7 @@ logger = logging.getLogger("nemo_oo_agents_benchmarks.runner")
 LOGS_DIR = Path("/logs/agent")
 ARTIFACTS_DIR = Path("/logs/artifacts")
 TRACES_DIR = ARTIFACTS_DIR / "traces"
-
-# System prompt for SWEBench tasks
-_SWEBENCH_SYSTEM_PROMPT = (
-    "You are a software engineer working inside a pre-configured repository "
-    "container.  Your task is to make changes to non-test files in order to "
-    "fix the issue described in the problem statement in a way that is general "
-    "and consistent with the codebase.\n\n"
-    "The repository is checked out at /testbed.  A conda environment named "
-    "'testbed' is pre-activated with all dependencies installed.  Use the "
-    "available shell and file tools to navigate, understand, and fix the code."
-)
+ANSWER_FILE = Path("/app/answer.txt")
 
 
 def _setup_logging() -> None:
@@ -112,9 +106,28 @@ def _write_result(result: dict[str, Any], model: str, agent_type: str) -> None:
     logger.info("Result written → %s", out)
 
 
-async def _run(instruction: str, model: str, agent_type: str, api_base: str | None) -> int:
+def _write_answer(result: dict[str, Any]) -> None:
+    """Write the agent's answer to /app/answer.txt for Harbor's verifier."""
+    answer = result.get("answer") or result.get("response", "")
+    if not answer:
+        logger.warning("No answer to write to %s", ANSWER_FILE)
+        return
+    try:
+        ANSWER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ANSWER_FILE.write_text(str(answer))
+        logger.info("Answer written → %s", ANSWER_FILE)
+    except OSError as e:
+        logger.warning("Could not write answer file %s: %s", ANSWER_FILE, e)
+
+
+async def _run(
+    instruction: str,
+    model: str,
+    agent_type: str,
+    tools: frozenset[str],
+    api_base: str | None,
+) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
-    from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
     from unifiedllm import get_llm_client
 
     # Build LLM client — honour env-var overrides for local vLLM deployments.
@@ -128,33 +141,32 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
 
     llm_client = get_llm_client(model, **llm_overrides)
 
-    # Instantiate agent and tools.
+    # Instantiate agent.
     AgentClass = _import_agent_class(agent_type)
     agent: Any = AgentClass(llm=llm_client)
-    tools = SWEBenchLocalTools()
-    agent.swebench = tools
-    # opt1 creates a FeedbackAgent in _run_evaluation; pre-wire tools there too
-    # if the agent already has a feedback attribute (e.g. from a previous run).
-    if hasattr(agent, "feedback") and agent.feedback is not None:
-        agent.feedback.swebench = tools
 
-    task_input = {
-        "system_prompt": _SWEBENCH_SYSTEM_PROMPT,
-        "problem_statement": instruction,
-        "response_format": "diff",
-        "environment_tools": ["swebench"],
-    }
+    # Inject container tools if requested.
+    if "swebench" in tools:
+        from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
 
-    logger.info("Running agent %s on task (model=%s)...", agent_type, model)
-    result = await agent._run_evaluation(task_input)
+        swebench_tools = SWEBenchLocalTools()
+        agent.swebench = swebench_tools
+        if hasattr(agent, "feedback") and agent.feedback is not None:
+            agent.feedback.swebench = swebench_tools
 
+    # All agents share the same interface: {"user_message": instruction}.
+    # Benchmark-specific parsing (system prompts, data paths, etc.) happens
+    # inside the agent's _run_evaluation method.
+    logger.info("Running agent %s (model=%s)...", agent_type, model)
+    result = await agent._run_evaluation({"user_message": instruction})
     _write_result(result, model, agent_type)
+    _write_answer(result)
 
     if result.get("success"):
         logger.info("Agent completed successfully.")
         return 0
     else:
-        logger.error("Agent reported failure: %s", result.get("error", "(no error message)"))
+        logger.error("Agent reported failure.")
         return 1
 
 
@@ -162,13 +174,20 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
 @click.option("--instruction", required=True, help="Task instruction / problem statement")
 @click.option("--model", required=True, help="Model name in litellm format")
 @click.option("--agent-type", default="baseline", show_default=True, help="Agent variant to run")
+@click.option(
+    "--tools",
+    default="",
+    help="Comma-separated tool sets to inject (e.g. 'swebench')",
+)
 @click.option("--api-base", default=None, help="Override API base URL")
-def main(instruction: str, model: str, agent_type: str, api_base: str | None) -> None:
+def main(instruction: str, model: str, agent_type: str, tools: str, api_base: str | None) -> None:
     """Run a nemo-oo-agents agent on a task inside a Harbor container."""
     _setup_logging()
     logger.info("nemo-oo-agents-benchmarks runner starting")
     logger.info("  model:      %s", model)
     logger.info("  agent_type: %s", agent_type)
+    if tools:
+        logger.info("  tools:      %s", tools)
     if api_base:
         logger.info("  api_base:   %s", api_base)
 
@@ -183,8 +202,10 @@ def main(instruction: str, model: str, agent_type: str, api_base: str | None) ->
 
     _setup_tracing()
 
+    tool_set = frozenset(t.strip() for t in tools.split(",") if t.strip())
+
     try:
-        exit_code = asyncio.run(_run(instruction, model, agent_type, api_base))
+        exit_code = asyncio.run(_run(instruction, model, agent_type, tool_set, api_base))
     except Exception as e:
         logger.exception("Runner failed with unhandled exception: %s", e)
         exit_code = 1

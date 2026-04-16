@@ -4,52 +4,163 @@ The code that runs **inside** a Harbor/Apptainer container when solving benchmar
 
 ---
 
-## Architecture
+## Preliminaries
 
-There are two distinct layers separated by the container boundary.
+### Harbor
 
-### Outside the container — Harbor
+[Harbor](https://github.com/harbor-framework/harbor) is an open-source framework
+for evaluating and optimizing AI agents against standard benchmarks. It runs
+arbitrary agents (Claude Code, OpenHands, Aider, etc.) against benchmarks such as
+SWEBench, Terminal Bench, DABStep, and ~70 others in isolated containers, scores
+results, and supports parallel execution and RL rollout generation.
 
-[Harbor](https://github.com/harbor-framework/harbor) is an open-source framework for evaluating and optimizing AI agents and language models, built by the Terminal Bench authors. It runs arbitrary agents (Claude Code, OpenHands, Aider, etc.) against standard benchmarks (Terminal Bench, SWEBench, Aider Polyglot, ~50 others) in isolated containers, scores results, and supports parallel execution and RL rollout generation.
-
-The NVIDIA fork adds Apptainer environment support and ECS Fargate — needed for the pre-built SWEBench SIF images on DFW Lustre. Our `NemoOoAgents` adapter lives there (see [Harbor MR !7](https://gitlab-master.nvidia.com/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor/-/merge_requests/7)).
+The NVIDIA fork (`core_evals_frameworks/harbor` on gitlab-master) adds Apptainer
+environment support — needed for the pre-built SWEBench SIF images on DFW Lustre.
+Our `NemoOoAgents` adapter lives there (see [Harbor MR !7](https://gitlab-master.nvidia.com/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor/-/merge_requests/7)).
 
 From this package's perspective, Harbor:
 
-1. Pulls a per-task benchmark SIF image (a pre-configured container environment).
-2. Starts it via Apptainer, mounts `/logs`, runs `setup.sh`.
-3. Clones this repo into the container and installs it.
-4. Fires `python -m nemo_oo_agents_benchmarks --instruction '...' --model '...'` and waits.
+1. Selects a per-task container image (pre-configured benchmark environment).
+2. Starts it via Docker or Apptainer, mounts `/logs`, runs any setup steps.
+3. Clones this repo into the container and installs it via `uv sync`.
+4. Fires `nemo-harbor --instruction '...' --model '...' --agent-type '...'` and waits.
+5. Reads `/app/answer.txt` and `/logs/verifier/reward.txt` to score the result.
 
-Harbor's HTTP sidecar lets the *orchestrator* (on the host) send exec and file commands into the container. That channel is host→container. The agent process running *inside* the container cannot use it.
+Harbor's HTTP sidecar lets the orchestrator (on the host) send exec and file
+commands into the container. That channel is host→container. The agent process
+running *inside* the container cannot use it. **This package contains only the
+code that runs inside the container.**
 
-This package contains only the code that runs **inside** the container.
+---
 
-### Inside the container — this package
+## Architecture
 
-Once Harbor fires up the container and calls `python -m nemo_oo_agents_benchmarks`, this package is on its own. Three files own the work:
-
-| File | Responsibility |
-|------|---------------|
-| `runner.py` | Entry point. Wires the LLM client, picks the agent class, runs `_run_evaluation`, writes `result.json` to `/logs/agent/` and OTel traces to `/logs/artifacts/traces/`. |
-| `tools.py` | Gives the agent shell access and direct file I/O against `/testbed`. Not duplicating Harbor's sidecar — that's host→container; this is agent→filesystem. |
-| `agents/swebench_basic.py` | Single CodeAct loop (250 iterations). Simple and fast. |
-| `agents/swebench_opt1.py` | Multi-phase pipeline: clarify → root-cause → implement → FeedbackAgent review loop (3×). Higher quality, more tokens. |
+There are two boundaries: the host/container boundary (Harbor's domain) and the
+container/agent boundary (this package's domain).
 
 ```
-Harbor (host)
-    │  clone + install nemo-oo-agents-benchmarks
-    │  python -m nemo_oo_agents_benchmarks --instruction ... --model ...
-    ▼
-Container (/testbed = benchmark repo; path is benchmark-specific)
-    runner.py
-    ├── SWEBenchLocalTools   (shell + file I/O against /testbed)
-    └── SWEBenchBasicAgent or SWEBenchOpt1Agent
-            │  CodeAct loop — calls tools, edits files, runs tests
-            ▼
-        /logs/agent/result.json
-        /logs/artifacts/traces/*.jsonl
+┌─ HOST ──────────────────────────────────────────────────────────────┐
+│                                                                     │
+│  harbor run --config dabstep_baseline.yaml                         │
+│       │                                                             │
+│       │  uses NemoOoAgents plugin (3p/harbor-nemo/)                │
+│       │    install():  git clone + uv sync inside container        │
+│       │    run():      nemo-harbor --instruction "..." \           │
+│       │                            --model "..." \                 │
+│       │                            --agent-type baseline           │
+│       │                                                             │
+│  task folder (self-contained)                                       │
+│  ├── instruction.md   ← complete prompt; tells agent where          │
+│  │                      data is, what to answer, where to write    │
+│  ├── task.toml        ← container image, timeouts, metadata        │
+│  ├── environment/     ← Dockerfile or Apptainer .def               │
+│  └── tests/test.sh    ← reads /app/answer.txt, writes reward       │
+│                                                                     │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │  container boundary
+┌─ CONTAINER ─────────────────▼───────────────────────────────────────┐
+│                                                                     │
+│  nemo-harbor --instruction "..." --model "..." --agent-type "..."  │
+│       │                                                             │
+│  runner.py  (thin shim)                                            │
+│       ├── inject tools if needed (e.g. SWEBenchLocalTools)         │
+│       └── agent._run_evaluation({                                  │
+│                "user_message": instruction,                         │
+│                "environment_tools": [...]   # empty for most       │
+│            })                                                       │
+│                   │                                                 │
+│                   ▼                                                 │
+│  agents/                                                            │
+│  ├── baseline.py       CodeAct REPL, no tools assumed              │
+│  ├── dabstep.py        parses question/guidelines internally,      │
+│  │                     3-phase pipeline                             │
+│  ├── swebench_basic.py CodeAct + self.swebench tools               │
+│  ├── swebench_opt1.py  multi-phase + self.swebench tools           │
+│  ├── tau_bench.py      multi-turn customer service                 │
+│  └── (stubs)           locomo, terminal_bench_1/2                  │
+│                   │                                                 │
+│                   ▼                                                 │
+│  /app/answer.txt          ← read by tests/test.sh                  │
+│  /logs/agent/result.json                                            │
+│  /logs/artifacts/traces/  ← OTel JSONL                             │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+### The task is self-contained
+
+`instruction.md` is a complete, standalone prompt. It tells the agent:
+- what role to play and what data to access
+- exactly what question to answer
+- what format the answer must be in
+- where to write it (`/app/answer.txt`)
+
+The runner passes it verbatim as `{"user_message": instruction}`. Every agent
+accepts that same interface. Benchmark-specific parsing (e.g. extracting
+question and guidelines for DABStep's 3-phase pipeline) happens inside the
+agent, not in the runner.
+
+### NemoOoAgents — the Harbor plugin
+
+`nemo_oo_agents.py` lives in Harbor's codebase (`3p/harbor-nemo/`), not here.
+It is Harbor's plugin for our agent: it defines how to install this package
+inside a container and what CLI command to run. From this package's perspective
+it is invisible — this package only knows it will be called via `nemo-harbor`.
+
+### runner.py — the container-boundary shim
+
+`runner.py` is the `nemo-harbor` CLI entry point. Its only jobs are:
+
+1. Instantiate the right agent class from `--agent-type`.
+2. Inject tools if requested via `--tools` (e.g. `SWEBenchLocalTools` for
+   SWEBench tasks).
+3. Call `agent._run_evaluation({"user_message": instruction, ...})`.
+4. Write `result.json` and `/app/answer.txt`.
+
+It has no benchmark-specific logic. The benchmark is encoded in
+`instruction.md`; the agent handles it.
+
+### tools.py — container filesystem access
+
+`SWEBenchLocalTools` gives the agent shell access and direct file I/O against
+`/testbed`. This is distinct from Harbor's HTTP sidecar (host→container); this
+is agent→filesystem inside the container.
+
+---
+
+## Agent types
+
+All agents accept the same input interface:
+
+```python
+await agent._run_evaluation({"user_message": instruction})
+```
+
+| `--agent-type`     | Description |
+|--------------------|-------------|
+| `baseline`         | General-purpose CodeAct agent. No benchmark-specific logic. Use this for smoke tests against any benchmark. |
+| `dabstep`          | 3-phase pipeline (RulesLawyer → compute_answer → SolutionVerifier). Parses question/guidelines from `user_message` internally. |
+| `swebench/basic`   | Single CodeAct loop with `SWEBenchLocalTools`. Requires `--tools swebench`. |
+| `swebench/opt1`    | Multi-phase: clarify → root-cause → implement → FeedbackAgent review. Requires `--tools swebench`. |
+| `tau-bench`        | Multi-turn customer service agent. |
+| `terminal-bench-1` | Stub (see gl-16). |
+| `terminal-bench-2` | Stub (see gl-15). |
+| `locomo`           | Stub (see gl-14). |
+
+Any agent can run against any benchmark — the task's `instruction.md` is the
+only benchmark-specific input.
+
+---
+
+## Container path conventions
+
+| Path | Purpose |
+|------|---------|
+| `/app/answer.txt` | Agent writes its final answer here. Read by `tests/test.sh`. |
+| `/app/data/` | Benchmark data directory (DABStep, etc.). Defined per task. |
+| `/testbed` | Benchmark repository (SWEBench). Pre-configured conda env `testbed`. |
+| `/logs/agent/` | `nemo_oo_agents_benchmarks.log` + `result.json` |
+| `/logs/artifacts/traces/` | OTel JSONL trace files |
 
 ---
 
@@ -62,141 +173,71 @@ uv pip install -e packages/nemo-oo-agents-benchmarks
 
 ---
 
-## Local development setup
+## Running locally (without Harbor/Apptainer)
 
-### 1. Install Apptainer (system dependency)
+Use `util/harbor/run_dabstep.py` as a reference. It uses `eval_pipeline` to
+run agents directly against benchmark tasks without a container:
 
 ```bash
-sudo apt install apptainer
-apptainer --version   # expect 1.4.x
+# Run 5 DABStep tasks (requires DABStep data at ~/.cache/dabstep/data/context/)
+uv run python util/harbor/run_dabstep.py --tasks 5 --model openai/gpt-4o
 ```
 
-For other distros see <https://apptainer.org/docs/admin/main/installation.html>.
+---
 
-### 2. Install Harbor
+## Setting up Harbor (for container runs)
 
-Use the `rcabral/apptainer-agent006-nemo` branch (adds Apptainer support + `NemoOoAgents` adapter; see [Harbor MR !7](https://gitlab-master.nvidia.com/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor/-/merge_requests/7)):
+### 1. Install Harbor
+
+Harbor v0.4.0 is mirrored at `3p/harbor-nemo/` (upstream:
+[harbor-framework/harbor](https://github.com/harbor-framework/harbor),
+NVIDIA fork:
+[core_evals_frameworks/harbor](https://gitlab-master.nvidia.com/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor)).
 
 ```bash
-mkdir -p 3p
-git clone \
-    --branch rcabral/apptainer-agent006-nemo \
-    ssh://git@gitlab-master.nvidia.com:12051/rcabral/harbor.git \
-    3p/harbor-nemo
-
 uv pip install -e 3p/harbor-nemo
-harbor --help
+harbor --version   # expect 0.4.0
 ```
 
-> **Note:** Access requires membership in the `dl/JoC` GitLab group.
+### 2. Get benchmark container images
 
-### 3. Get benchmark SIF images
-
-The example below uses SWEBench; substitute the appropriate image source for other benchmarks.
-
-**Option A — copy from DFW Lustre** (fastest):
+**DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files):
 
 ```bash
-# SWEBench container map: 3p/swe/pfurgale/swe_instance_container_map.jsonl
-scp <dfw-login>:/path/to/sympy__sympy-19346.sif ~/benchmark_images/
+apptainer build --fakeroot 3p/sif_cache/dabstep.sif 3p/dabstep.def
 ```
 
-**Option B — pull from Docker Hub**:
+**SWEBench** — copy from DFW Lustre or pull from Docker Hub:
 
 ```bash
-mkdir -p ~/benchmark_images
-apptainer build ~/benchmark_images/sympy__sympy-19346.sif \
+apptainer build ~/sif_cache/sympy__sympy-19346.sif \
     docker://swebench/sweb.eval.x86_64.sympy__sympy-19346:latest
 ```
 
-> SIF images are 1–4 GB each. Cache them on fast local storage, not NFS.
+### 3. Generate task directories
 
-### 4. Create task directories
-
-Harbor expects one directory per benchmark task instance:
-
-```
-tasks/sympy__sympy-19346/
-    instruction.md
-    task.toml
-    tests/
-        test.sh
-        config.json
-    environment/
-        files/
-            setup.sh
-```
-
-**`task.toml`**:
-
-```toml
-[metadata]
-difficulty = "hard"
-category   = "debugging"
-tags       = ["swe-bench"]
-
-[verifier]
-timeout_sec = 3000
-
-[agent]
-timeout_sec = 3000
-
-[environment]
-build_timeout_sec = 1800.0
-cpus    = 1
-memory  = "4G"
-storage = "10G"
-docker_image = "/absolute/path/to/sympy__sympy-19346.sif"
-```
-
-**`environment/files/setup.sh`** — installs the Harbor sidecar into the testbed env:
+Task directories are not stored in git — they are generated on demand from
+Harbor's public benchmark adapters (which read from HuggingFace).
 
 ```bash
-#!/bin/bash
-source /opt/miniconda3/bin/activate testbed 2>/dev/null || true
-pip install --quiet uvicorn fastapi
+# DABStep — generates task dirs under ./tasks/dabstep/
+harbor adapter run --adapter dabstep
+
+# SWEBench — generates task dirs under ./tasks/swebench/
+harbor adapter run --adapter swebench
 ```
 
-For SWEBench, task directories can be auto-generated from a JSONL + container map using `create_harbor_tasks.py` in `agent006/experiments/sft_datagen/generate/`. Harbor also has built-in adapters for many benchmarks (`harbor adapter run --adapter swebench`).
+Harbor ships adapters for ~70 public benchmarks (DABStep, SWEBench, GAIA,
+BFCL, etc.) in `3p/harbor-nemo/adapters/`. These are from the public
+[harbor-framework/harbor](https://github.com/harbor-framework/harbor)
+repository — not NVIDIA-internal.
 
-### 5. Run
+### 4. Run
 
 ```bash
 export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-harbor run --config examples/harbor_local.yaml
+harbor run --config util/harbor/dabstep_baseline.yaml
 ```
 
-Monitor logs while running:
-
-```bash
-tail -f /tmp/harbor_jobs/*/trials/*/logs/agent/nemo_oo_agents_benchmarks.log
-```
-
----
-
-## Agent types
-
-| `--agent-type` | Description |
-|----------------|-------------|
-| `basic`        | Single CodeAct loop, 250 iterations. Simple and fast. |
-| `opt1`         | Clarify → root-cause → implement → FeedbackAgent review (3×). Higher quality, more tokens. |
-
----
-
-## Container path conventions
-
-| Path | Purpose |
-|------|---------|
-| `/testbed` | Benchmark repository. SWEBench uses `/testbed` with a `testbed` conda env; other benchmarks may differ. |
-| `/logs/agent/` | `nemo_oo_agents_benchmarks.log` + `result.json` |
-| `/logs/artifacts/traces/` | OTel JSONL trace files |
-
----
-
-## Related issues
-
-- gl-5: Wire package into workspace root dependencies
-- gl-8: Auto-detect and publish to OTLP endpoint when available
-- gl-21: Run 5 SWEBench Verified tasks end-to-end
