@@ -5,7 +5,6 @@
 import contextlib
 import difflib
 import inspect
-import json
 import os
 import time
 from contextvars import ContextVar
@@ -327,7 +326,7 @@ class OpenInferenceHooks:
             span.set_status(Status(StatusCode.OK))
             # Capture the generation result
             try:
-                span.set_attribute("generation.result", self._safe_serialize(result, max_length=5000))
+                span.set_attribute("generation.result", self._safe_serialize(result))
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -434,7 +433,7 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             try:
-                span.set_attribute("result", self._safe_serialize_execution_result(result))
+                span.set_attribute("result", self._safe_serialize(result))
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -586,7 +585,7 @@ class OpenInferenceHooks:
 
         # Serialize arguments
         with contextlib.suppress(Exception):
-            span.set_attribute("tool.arguments", self._safe_serialize(arguments, max_length=5000))
+            span.set_attribute("tool.arguments", self._safe_serialize(arguments))
 
         # Add generation_id for correlation with LLM turns
         if generation_id:
@@ -641,7 +640,7 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             try:
-                span.set_attribute("tool.result", self._safe_serialize(result, max_length=5000))
+                span.set_attribute("tool.result", self._safe_serialize(result))
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -734,105 +733,20 @@ class OpenInferenceHooks:
         return None
 
     @staticmethod
-    def _safe_serialize_execution_result(result: Any) -> str:
-        """Serialize an ExecutionResult for trace spans, bounding returned_value.
+    def _safe_serialize(obj: Any, max_chars: int = 50_000) -> str:
+        """Serialize an object to string for trace span attributes.
 
-        Uses truncating_pformat on returned_value so a 100 MB return value
-        doesn't blow up OTLP payloads.  Other fields (stdout, stderr)
-        are already bounded by TruncatingStringIO.
+        Delegates to ``truncating_pformat`` which handles all types (primitives,
+        Pydantic models, dicts, lists) and enforces a hard ``max_chars``
+        cap with head+tail truncation.
+
+        Trace span attributes are NOT visible to the agent — the agent sees
+        rendered, truncated context blocks.  These attributes exist only for
+        human inspection in the trace viewer, so a 50 K cap is generous.
         """
-        if hasattr(result, "model_dump"):
-            # Use has_return to check for real return value (exclude _NO_RETURN sentinel).
-            has_return = getattr(result, "has_return", False)
-            d = result.model_dump(exclude_none=True)
-            if not has_return:
-                d.pop("returned_value", None)
-        elif isinstance(result, dict):
-            d = result
-        else:
-            return str(result)[:50_000]
+        from agentdoc import truncating_pformat
 
-        # Bound returned_value before JSON serialization so the JSON is always valid.
-        rv = d.get("returned_value")
-        if rv is not None:
-            d["returned_value"] = truncating_pformat(rv, max_chars=50_000)
-
-        return json.dumps(d, default=str)
-
-    def _safe_serialize(self, obj: Any, max_length: int | None = None) -> str:
-        """Safely serialize an object to string for trace span attributes.
-
-        No truncation — traces must faithfully record what the agent produced.
-        Agent-facing truncation is done upstream by truncating_pformat / block-level
-        limits; by the time a value reaches a trace span it is already the
-        bounded representation the agent actually saw.
-
-        The ``max_length`` parameter is accepted for API compatibility but
-        ignored.  Pass ``max_length=None`` (the default) in all new call sites.
-        """
-        _ = max_length
         try:
-            if obj is None:
-                return "null"
-            if isinstance(obj, str | int | float | bool):
-                result = str(obj)
-            elif isinstance(obj, list | tuple):
-                # Recursively serialize Pydantic models in lists/tuples
-                serialized_items = []
-                for item in obj:
-                    if hasattr(item, "model_dump"):
-                        try:
-                            item_dict = item.model_dump(exclude_none=True)
-                            item_dict["__class__"] = item.__class__.__name__
-                            serialized_items.append(item_dict)
-                        except Exception:
-                            serialized_items.append(str(item))
-                    else:
-                        serialized_items.append(item)
-                result = json.dumps(serialized_items, default=str)
-            elif isinstance(obj, dict):
-                result = json.dumps(obj, default=str)
-            else:
-                # Check if it's a Pydantic model
-                if hasattr(obj, "model_dump"):
-                    try:
-                        # Convert to dict, excluding non-serializable fields
-                        obj_dict = obj.model_dump(exclude_none=True)
-                        # Filter out callable values (like bound methods) and
-                        # sentinel objects (e.g. _NO_RETURN = object()) that are
-                        # not JSON-serializable and leak as "<object object at 0x...>"
-                        filtered_dict = {
-                            k: (
-                                None
-                                if type(v) is object  # sentinel object()
-                                else f"<function {getattr(v, '__name__', 'unknown')}>"
-                                if callable(v)
-                                else v
-                            )
-                            for k, v in obj_dict.items()
-                        }
-                        # Also handle dict values that contain callables or sentinels
-                        for k, v in filtered_dict.items():
-                            if isinstance(v, dict):
-                                filtered_dict[k] = {
-                                    dk: (
-                                        None
-                                        if type(dv) is object
-                                        else f"<function {getattr(dv, '__name__', 'unknown')}>"
-                                        if callable(dv)
-                                        else dv
-                                    )
-                                    for dk, dv in v.items()
-                                }
-                        # Add class name for better UI display
-                        filtered_dict["__class__"] = obj.__class__.__name__
-                        result = json.dumps(filtered_dict, default=str)
-                    except Exception:
-                        # Fallback to string if model_dump fails
-                        result = str(obj)
-                else:
-                    result = str(obj)
-
-            return result
+            return truncating_pformat(obj, max_chars=max_chars)
         except Exception:
             return "<unserializable>"
