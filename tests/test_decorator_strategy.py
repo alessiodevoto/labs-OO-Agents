@@ -57,6 +57,7 @@ class TestStrategyDecoratorValidation:
 
     def test_strategy_on_implemented_method_is_allowed(self):
         """@strategy on implemented method is allowed (acts as entry point marker)."""
+
         # This should NOT raise - @strategy on implemented methods is valid
         @strategy(PurePythonStrategy())
         async def has_body(self) -> str:
