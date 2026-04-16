@@ -1,7 +1,8 @@
 """Targeted unit tests for previously uncovered modules.
 
 Covers:
-- nemo_oo_agents.strategies.experimental (factory functions with FutureWarning)
+- nemo_oo_agents.experimental (factory functions with FutureWarning)
+- nemo_oo_agents.strategies.experimental (backward-compat re-export)
 - nemo_oo_agents.llm (re-exports from unifiedllm)
 - nemo_oo_agents._visible (_Visible context manager)
 - nemo_oo_agents_cli.commands._template (Click command)
@@ -19,7 +20,7 @@ import pytest
 from click.testing import CliRunner
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents.strategies.experimental
+# nemo_oo_agents.experimental (canonical path)
 # ---------------------------------------------------------------------------
 
 
@@ -27,7 +28,7 @@ class TestExperimentalStrategies:
     """Factory functions for experimental strategies emit FutureWarning."""
 
     def test_pure_python_strategy_warns(self):
-        from nemo_oo_agents.strategies.experimental import PurePythonStrategy
+        from nemo_oo_agents.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = PurePythonStrategy()
@@ -39,7 +40,7 @@ class TestExperimentalStrategies:
         assert isinstance(strategy, _Real)
 
     def test_codeact_lite_strategy_warns(self):
-        from nemo_oo_agents.strategies.experimental import CodeActLiteStrategy
+        from nemo_oo_agents.experimental import CodeActLiteStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = CodeActLiteStrategy()
@@ -51,7 +52,7 @@ class TestExperimentalStrategies:
         assert isinstance(strategy, _Real)
 
     def test_reflexion_strategy_warns(self):
-        from nemo_oo_agents.strategies.experimental import ReflexionStrategy
+        from nemo_oo_agents.experimental import ReflexionStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = ReflexionStrategy()
@@ -63,13 +64,13 @@ class TestExperimentalStrategies:
         assert isinstance(strategy, _Real)
 
     def test_warning_message_contains_alternatives(self):
-        from nemo_oo_agents.strategies.experimental import PurePythonStrategy
+        from nemo_oo_agents.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning, match="CodeActStrategy"):
             PurePythonStrategy()
 
     def test_pure_python_strategy_kwargs_forwarded(self):
-        from nemo_oo_agents.strategies.experimental import PurePythonStrategy
+        from nemo_oo_agents.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning):
             strategy = PurePythonStrategy(max_iterations=5)
@@ -77,11 +78,22 @@ class TestExperimentalStrategies:
         assert strategy.max_iterations == 5
 
     def test_all_exports(self):
-        import nemo_oo_agents.strategies.experimental as exp
+        import nemo_oo_agents.experimental as exp
 
         assert "PurePythonStrategy" in exp.__all__
         assert "CodeActLiteStrategy" in exp.__all__
         assert "ReflexionStrategy" in exp.__all__
+
+    def test_strategies_experimental_still_works(self):
+        """nemo_oo_agents.strategies.experimental is a backward-compat re-export."""
+        from nemo_oo_agents.strategies.experimental import PurePythonStrategy
+
+        with pytest.warns(FutureWarning, match="experimental"):
+            strategy = PurePythonStrategy()
+
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy as _Real
+
+        assert isinstance(strategy, _Real)
 
 
 # ---------------------------------------------------------------------------

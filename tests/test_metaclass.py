@@ -6,7 +6,8 @@ from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.config.strategy_config import ReflexionConfig
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.metaclass import no_trace
-from nemo_oo_agents.strategies import PurePythonStrategy, ReflexionStrategy
+from nemo_oo_agents.strategies import ReflexionStrategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()

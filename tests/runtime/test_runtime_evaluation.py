@@ -145,7 +145,7 @@ class TestDocIncludesCurrentMethod:
         prefixes for KV caching. Hiding it caused cache misses because the
         document changed on every call.
         """
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         captured_doc = None
 
@@ -184,7 +184,7 @@ class TestDocIncludesCurrentMethod:
         This is the core KV cache property: the document must not change between
         calls just because a different method is executing.
         """
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         docs: list[str] = []
 
@@ -219,7 +219,7 @@ class TestDocIncludesCurrentMethod:
     @pytest.mark.asyncio
     async def test_doc_shows_sole_method(self):
         """Test doc(self) shows the method even when it is the only one on the agent."""
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         captured_doc = None
 
@@ -460,7 +460,7 @@ class TestDocstringExpansionWithArgs:
     @pytest.mark.asyncio
     async def test_docstring_expands_with_args(self):
         """Test that {placeholders} in docstrings expand using call args."""
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         captured_docstring = None
 
@@ -489,7 +489,7 @@ class TestDocstringExpansionWithArgs:
     @pytest.mark.asyncio
     async def test_docstring_expands_with_kwargs(self):
         """Test that docstrings expand with keyword arguments."""
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         captured_docstring = None
 
@@ -515,7 +515,7 @@ class TestDocstringExpansionWithArgs:
     @pytest.mark.asyncio
     async def test_docstring_silent_on_missing_vars(self):
         """Test that missing variables don't cause errors (silent mode)."""
-        from nemo_oo_agents.strategies import PurePythonStrategy
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         captured_docstring = None
 

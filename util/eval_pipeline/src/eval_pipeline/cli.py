@@ -111,9 +111,9 @@ def get_strategy_instance(strategy_name: str):
         CodeActLiteStrategy,
         CodeActStrategy,
         PredictStrategy,
-        PurePythonStrategy,
         ReflexionStrategy,
     )
+    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
     strategies = {
         "pure_python": PurePythonStrategy,

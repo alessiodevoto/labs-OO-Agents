@@ -211,9 +211,13 @@ class TestPurePythonStrategyExecute:
         # Verify result is correct
         assert result == 15
 
-        # Get all assistant events from history
+        # Get LLM-generated events (exclude synthetic prefill events)
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
+        assistant_events = [
+            e
+            for e in history_events
+            if e.event_type == "LLMOutput" and not (e.metadata or {}).get("prefill")
+        ]
 
         # Should have 2 assistant events (one per LLM call)
         assert len(assistant_events) >= 2
@@ -328,7 +332,11 @@ return x + 1
 
         # Check history - the assistant message should have CLEAN code (no fences)
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
+        assistant_events = [
+            e
+            for e in history_events
+            if e.event_type == "LLMOutput" and not (e.metadata or {}).get("prefill")
+        ]
 
         assert len(assistant_events) >= 1
         stored_code = assistant_events[0].content
@@ -567,7 +575,11 @@ return x + 1
 
         # Check history - should have clean code without XML tags
         history_events = agent_instance.event_manager.values()
-        assistant_events = [e for e in history_events if e.event_type == "LLMOutput"]
+        assistant_events = [
+            e
+            for e in history_events
+            if e.event_type == "LLMOutput" and not (e.metadata or {}).get("prefill")
+        ]
 
         assert len(assistant_events) >= 1
         stored_code = assistant_events[0].content

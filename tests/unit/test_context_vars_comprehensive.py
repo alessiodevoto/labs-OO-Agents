@@ -554,10 +554,10 @@ class TestDefaultStrategyVarGlobalPattern:
     def test_set_override_is_visible(self):
         """set_default_strategy() overrides the default for the current context."""
         from nemo_oo_agents.strategies import (
-            PurePythonStrategy,
             get_default_strategy,
             set_default_strategy,
         )
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         set_default_strategy(PurePythonStrategy())
         try:
@@ -569,10 +569,10 @@ class TestDefaultStrategyVarGlobalPattern:
         """set_default_strategy(None) restores the CodeActStrategy default."""
         from nemo_oo_agents.strategies import (
             CodeActStrategy,
-            PurePythonStrategy,
             get_default_strategy,
             set_default_strategy,
         )
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         set_default_strategy(PurePythonStrategy())
         set_default_strategy(None)
@@ -588,10 +588,10 @@ class TestDefaultStrategyVarGlobalPattern:
         """
         from nemo_oo_agents.strategies import (
             CodeActStrategy,
-            PurePythonStrategy,
             get_default_strategy,
             set_default_strategy,
         )
+        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
         saw_in_task: list = []
         task_done = asyncio.Event()

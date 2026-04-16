@@ -1,52 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Experimental strategies — not actively maintained.
+"""Experimental strategies — re-exported from nemo_oo_agents.experimental.
 
-These strategies are importable but not part of the recommended API.
-Importing any of them is silent; instantiating emits a FutureWarning.
+Prefer the canonical import path:
+    from nemo_oo_agents.experimental import PurePythonStrategy
 
-Usage:
-    from nemo_oo_agents.strategies.experimental import PurePythonStrategy
-    strategy = PurePythonStrategy()  # FutureWarning emitted here
+This module exists for backward compatibility.
 """
 
-import warnings
-from typing import Any
-
-
-def _warn_experimental(name: str) -> None:
-    warnings.warn(
-        f"{name} is experimental and not actively maintained. "
-        f"Use CodeActStrategy or PredictStrategy instead. "
-        f"Experimental strategies may be removed in a future release.",
-        FutureWarning,
-        stacklevel=3,
-    )
-
-
-def PurePythonStrategy(*args: Any, **kwargs: Any) -> Any:
-    """Create a PurePythonStrategy instance (experimental, emits FutureWarning)."""
-    _warn_experimental("PurePythonStrategy")
-    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy as _Cls
-
-    return _Cls(*args, **kwargs)
-
-
-def CodeActLiteStrategy(*args: Any, **kwargs: Any) -> Any:
-    """Create a CodeActLiteStrategy instance (experimental, emits FutureWarning)."""
-    _warn_experimental("CodeActLiteStrategy")
-    from nemo_oo_agents.strategies.codeact_lite import CodeActLiteStrategy as _Cls
-
-    return _Cls(*args, **kwargs)
-
-
-def ReflexionStrategy(*args: Any, **kwargs: Any) -> Any:
-    """Create a ReflexionStrategy instance (experimental, emits FutureWarning)."""
-    _warn_experimental("ReflexionStrategy")
-    from nemo_oo_agents.strategies.reflexion import ReflexionStrategy as _Cls
-
-    return _Cls(*args, **kwargs)
-
+from nemo_oo_agents.experimental import CodeActLiteStrategy, PurePythonStrategy, ReflexionStrategy
 
 __all__ = [
     "CodeActLiteStrategy",

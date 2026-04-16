@@ -613,10 +613,10 @@ class ActorRuntime:
                 CodeActStrategy,
                 CompositeStrategy,
                 PredictStrategy,
-                PurePythonStrategy,
                 ReflexionStrategy,
                 TemplateStrategy,
             )
+            from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
             exec_globals.update(
                 {

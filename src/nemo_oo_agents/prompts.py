@@ -84,8 +84,8 @@ def _get_prefill(strategy: Any, call: Any) -> tuple[str | None, str | None]:
         return InspectInputsPrefill().get_code(call), pre_ellipsis
 
     if isinstance(strategy, PurePythonStrategy):
-        user_prefill = getattr(strategy, "prefill", None)
-        return (user_prefill.get_code(call) if user_prefill else None), pre_ellipsis
+        # PurePythonStrategy always has a prefill (InspectInputsPrefill by default)
+        return strategy.prefill.get_code(call), pre_ellipsis
 
     return None, pre_ellipsis
 
