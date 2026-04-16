@@ -5,17 +5,20 @@ Harbor agent runner for nemo-oo-agents — executed inside the Harbor container.
 
 Harbor invokes this as a CLI process::
 
-    python -m nemo_oo_agents_benchmarks \\
+    nemo-harbor \\
         --instruction '...' \\
         --model 'anthropic/claude-opus-4-6' \\
-        --agent-type basic
+        --agent-type baseline
 
-The runner:
-1. Instantiates the nemo-oo-agents agent for the given task type.
-2. Runs it on the instruction inside the container.
-3. Emits OTel traces to ``/logs/artifacts/traces/`` (Harbor's artifact path).
-4. Writes result metadata JSON to ``/logs/agent/``.
-5. Writes answer text to ``/app/answer.txt`` for Harbor's verifier.
+The runner is benchmark-agnostic. Its only jobs are:
+
+1. Instantiate the right agent class from ``--agent-type``.
+2. Inject container tools if requested via ``--tools`` (e.g. ``swebench``).
+3. Call ``agent._run_evaluation({"user_message": instruction})``.
+4. Write ``result.json`` to ``/logs/agent/`` and answer text to ``/app/answer.txt``.
+
+Benchmark-specific logic (system prompts, instruction parsing, data paths) lives
+inside each agent class, not here.
 
 TODO (gl-8): Auto-detect and publish to OTLP endpoint when available.
 """
@@ -40,26 +43,6 @@ LOGS_DIR = Path("/logs/agent")
 ARTIFACTS_DIR = Path("/logs/artifacts")
 TRACES_DIR = ARTIFACTS_DIR / "traces"
 ANSWER_FILE = Path("/app/answer.txt")
-
-# System prompt for SWEBench tasks
-_SWEBENCH_SYSTEM_PROMPT = (
-    "You are a software engineer working inside a pre-configured repository "
-    "container.  Your task is to make changes to non-test files in order to "
-    "fix the issue described in the problem statement in a way that is general "
-    "and consistent with the codebase.\n\n"
-    "The repository is checked out at /testbed.  A conda environment named "
-    "'testbed' is pre-activated with all dependencies installed.  Use the "
-    "available shell and file tools to navigate, understand, and fix the code."
-)
-
-# Agent types that use SWEBench tools
-_SWEBENCH_AGENT_TYPES = {"swebench/basic", "swebench/opt1"}
-
-# Agent types that run generic tasks (DABStep, MemBench, etc.)
-_GENERIC_AGENT_TYPES = {"baseline"}
-
-# Agent types that run their own input parsing (DABStep-specific)
-_DABSTEP_AGENT_TYPES = {"dabstep"}
 
 
 def _setup_logging() -> None:
@@ -137,92 +120,13 @@ def _write_answer(result: dict[str, Any]) -> None:
         logger.warning("Could not write answer file %s: %s", ANSWER_FILE, e)
 
 
-async def _run_swebench(
-    agent: Any, instruction: str, model: str, agent_type: str, api_base: str | None
+async def _run(
+    instruction: str,
+    model: str,
+    agent_type: str,
+    tools: frozenset[str],
+    api_base: str | None,
 ) -> int:
-    """Run a SWEBench agent with environment tools."""
-    from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
-
-    tools = SWEBenchLocalTools()
-    agent.swebench = tools
-    if hasattr(agent, "feedback") and agent.feedback is not None:
-        agent.feedback.swebench = tools
-
-    task_input = {
-        "system_prompt": _SWEBENCH_SYSTEM_PROMPT,
-        "problem_statement": instruction,
-        "response_format": "diff",
-        "environment_tools": ["swebench"],
-    }
-
-    logger.info("Running SWEBench agent %s (model=%s)...", agent_type, model)
-    result = await agent._run_evaluation(task_input)
-    _write_result(result, model, agent_type)
-
-    return 0 if result.get("success") else 1
-
-
-async def _run_generic(
-    agent: Any, instruction: str, model: str, agent_type: str
-) -> int:
-    """Run a generic baseline agent on any task.
-
-    The instruction (from instruction.md) is passed as the full task description.
-    The agent uses execute_python() to interact with the container filesystem.
-    """
-    task_input = {
-        "user_message": instruction,
-    }
-
-    logger.info("Running generic agent %s (model=%s)...", agent_type, model)
-    result = await agent._run_evaluation(task_input)
-    _write_result(result, model, agent_type)
-    _write_answer(result)
-
-    return 0 if result.get("success") else 1
-
-
-async def _run_dabstep(
-    agent: Any, instruction: str, model: str, agent_type: str
-) -> int:
-    """Run the DABStep-specific agent.
-
-    Parses the question and guidelines from the instruction and provides
-    the data directory location.
-    """
-    # Extract question from instruction (instruction.md has full task description)
-    # The DABStep instruction.md format: "Here is the question you need to answer: {question}"
-    import re
-
-    question_match = re.search(
-        r"Here is the question you need to answer:\s*(.+?)(?:\n\nHere are the guidelines|$)",
-        instruction,
-        re.DOTALL,
-    )
-    guidelines_match = re.search(
-        r"Here are the guidelines you MUST follow.*?:\s*(.+?)(?:\n\n|$)",
-        instruction,
-        re.DOTALL,
-    )
-
-    question = question_match.group(1).strip() if question_match else instruction
-    guidelines = guidelines_match.group(1).strip() if guidelines_match else ""
-
-    task_input = {
-        "question": question,
-        "data_dir": "/app/data",
-        "guidelines": guidelines,
-    }
-
-    logger.info("Running DABStep agent %s (model=%s)...", agent_type, model)
-    result = await agent._run_evaluation(task_input)
-    _write_result(result, model, agent_type)
-    _write_answer(result)
-
-    return 0 if result.get("success") else 1
-
-
-async def _run(instruction: str, model: str, agent_type: str, api_base: str | None) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
     from unifiedllm import get_llm_client
 
@@ -241,33 +145,49 @@ async def _run(instruction: str, model: str, agent_type: str, api_base: str | No
     AgentClass = _import_agent_class(agent_type)
     agent: Any = AgentClass(llm=llm_client)
 
-    # Route to the appropriate run function based on agent type.
-    if agent_type in _SWEBENCH_AGENT_TYPES:
-        exit_code = await _run_swebench(agent, instruction, model, agent_type, api_base)
-    elif agent_type in _DABSTEP_AGENT_TYPES:
-        exit_code = await _run_dabstep(agent, instruction, model, agent_type)
-    else:
-        # Generic / baseline agent — pass instruction as user_message
-        exit_code = await _run_generic(agent, instruction, model, agent_type)
+    # Inject container tools if requested.
+    if "swebench" in tools:
+        from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
 
-    if exit_code == 0:
+        swebench_tools = SWEBenchLocalTools()
+        agent.swebench = swebench_tools
+        if hasattr(agent, "feedback") and agent.feedback is not None:
+            agent.feedback.swebench = swebench_tools
+
+    # All agents share the same interface: {"user_message": instruction}.
+    # Benchmark-specific parsing (system prompts, data paths, etc.) happens
+    # inside the agent's _run_evaluation method.
+    logger.info("Running agent %s (model=%s)...", agent_type, model)
+    result = await agent._run_evaluation({"user_message": instruction})
+    _write_result(result, model, agent_type)
+    _write_answer(result)
+
+    if result.get("success"):
         logger.info("Agent completed successfully.")
+        return 0
     else:
         logger.error("Agent reported failure.")
-    return exit_code
+        return 1
 
 
 @click.command()
 @click.option("--instruction", required=True, help="Task instruction / problem statement")
 @click.option("--model", required=True, help="Model name in litellm format")
 @click.option("--agent-type", default="baseline", show_default=True, help="Agent variant to run")
+@click.option(
+    "--tools",
+    default="",
+    help="Comma-separated tool sets to inject (e.g. 'swebench')",
+)
 @click.option("--api-base", default=None, help="Override API base URL")
-def main(instruction: str, model: str, agent_type: str, api_base: str | None) -> None:
+def main(instruction: str, model: str, agent_type: str, tools: str, api_base: str | None) -> None:
     """Run a nemo-oo-agents agent on a task inside a Harbor container."""
     _setup_logging()
     logger.info("nemo-oo-agents-benchmarks runner starting")
     logger.info("  model:      %s", model)
     logger.info("  agent_type: %s", agent_type)
+    if tools:
+        logger.info("  tools:      %s", tools)
     if api_base:
         logger.info("  api_base:   %s", api_base)
 
@@ -282,8 +202,10 @@ def main(instruction: str, model: str, agent_type: str, api_base: str | None) ->
 
     _setup_tracing()
 
+    tool_set = frozenset(t.strip() for t in tools.split(",") if t.strip())
+
     try:
-        exit_code = asyncio.run(_run(instruction, model, agent_type, api_base))
+        exit_code = asyncio.run(_run(instruction, model, agent_type, tool_set, api_base))
     except Exception as e:
         logger.exception("Runner failed with unhandled exception: %s", e)
         exit_code = 1

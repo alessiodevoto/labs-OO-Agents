@@ -248,6 +248,24 @@ class DABStepInput:
 
     @classmethod
     def from_dict(cls, d: dict) -> DABStepInput:
+        if "user_message" in d:
+            # Unified runner interface: parse question/guidelines from instruction.md text.
+            msg = d["user_message"]
+            q_match = re.search(
+                r"Here is the question you need to answer:\s*(.+?)(?:\n\nHere are the guidelines|$)",
+                msg,
+                re.DOTALL,
+            )
+            g_match = re.search(
+                r"Here are the guidelines you MUST follow.*?:\s*(.+?)(?:\n\n|$)",
+                msg,
+                re.DOTALL,
+            )
+            return cls(
+                question=q_match.group(1).strip() if q_match else msg,
+                data_dir=d.get("data_dir", "/app/data"),
+                guidelines=g_match.group(1).strip() if g_match else "",
+            )
         return cls(
             question=d.get("question", ""),
             data_dir=d.get("data_dir", ""),

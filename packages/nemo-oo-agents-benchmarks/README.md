@@ -4,6 +4,35 @@ The code that runs **inside** a Harbor/Apptainer container when solving benchmar
 
 ---
 
+## Preliminaries
+
+### Harbor
+
+[Harbor](https://github.com/harbor-framework/harbor) is an open-source framework
+for evaluating and optimizing AI agents against standard benchmarks. It runs
+arbitrary agents (Claude Code, OpenHands, Aider, etc.) against benchmarks such as
+SWEBench, Terminal Bench, DABStep, and ~70 others in isolated containers, scores
+results, and supports parallel execution and RL rollout generation.
+
+The NVIDIA fork (`core_evals_frameworks/harbor` on gitlab-master) adds Apptainer
+environment support — needed for the pre-built SWEBench SIF images on DFW Lustre.
+Our `NemoOoAgents` adapter lives there (see [Harbor MR !7](https://gitlab-master.nvidia.com/dl/JoC/competitive_evaluation/core_evals_frameworks/harbor/-/merge_requests/7)).
+
+From this package's perspective, Harbor:
+
+1. Selects a per-task container image (pre-configured benchmark environment).
+2. Starts it via Docker or Apptainer, mounts `/logs`, runs any setup steps.
+3. Clones this repo into the container and installs it via `uv sync`.
+4. Fires `nemo-harbor --instruction '...' --model '...' --agent-type '...'` and waits.
+5. Reads `/app/answer.txt` and `/logs/verifier/reward.txt` to score the result.
+
+Harbor's HTTP sidecar lets the orchestrator (on the host) send exec and file
+commands into the container. That channel is host→container. The agent process
+running *inside* the container cannot use it. **This package contains only the
+code that runs inside the container.**
+
+---
+
 ## Architecture
 
 There are two boundaries: the host/container boundary (Harbor's domain) and the
@@ -192,10 +221,10 @@ Harbor's public benchmark adapters (which read from HuggingFace).
 
 ```bash
 # DABStep — generates task dirs under ./tasks/dabstep/
-harbor adapter run --adapter dabstep --n 5
+harbor adapter run --adapter dabstep
 
 # SWEBench — generates task dirs under ./tasks/swebench/
-harbor adapter run --adapter swebench --n 5
+harbor adapter run --adapter swebench
 ```
 
 Harbor ships adapters for ~70 public benchmarks (DABStep, SWEBench, GAIA,
@@ -212,15 +241,3 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 harbor run --config util/harbor/dabstep_baseline.yaml
 ```
 
----
-
-## Related issues
-
-- gl-5: Wire package into workspace root dependencies
-- gl-8: Auto-detect and publish to OTLP endpoint when available
-- gl-15: Terminal Bench 2 agent
-- gl-16: Terminal Bench 1 agent
-- gl-21: Run 5 SWEBench Verified tasks end-to-end
-- gl-22: BaselineAgent
-- gl-23: Tau Bench multi-turn Harbor support
-- gl-27: DABStep smoke test via eval_pipeline + Harbor infrastructure

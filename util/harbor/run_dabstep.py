@@ -1,10 +1,9 @@
 """
-Run 5 DABStep tasks via eval_pipeline using the baseline agent.
+Run DABStep tasks via eval_pipeline using the baseline agent.
 
-This script is the local substitute for Harbor + Apptainer when containers
-are not available.  It uses the same nemo-oo-agents-benchmarks runner
-infrastructure (BaselineAgent + DABStep scorer) as the Harbor runner, but
-executes directly without a container.
+Harbor is the canonical way to run benchmark evaluations.  This script
+runs the same agent code against the same benchmark tasks without a container,
+making it faster to iterate on agent changes locally.
 
 Usage:
     uv run python util/harbor/run_dabstep.py [--tasks 5] [--model MODEL]
