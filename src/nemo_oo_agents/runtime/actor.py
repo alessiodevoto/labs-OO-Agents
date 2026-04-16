@@ -29,6 +29,7 @@ from context_blocks import (
 from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 
 if TYPE_CHECKING:
+    from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.events import ExecutionResult
     from nemo_oo_agents.runtime.event_query import EventQuery
@@ -281,6 +282,12 @@ class ActorRuntime:
 
         # render_context for prompt generation (dead simple: takes pre-resolved blocks)
 
+        # Most recent context window utilization stats (updated each _build_messages call).
+        # NOTE: This is an instance attribute, not a ContextVar. Under concurrent
+        # asyncio.gather on the same agent, the last write wins. For per-task
+        # isolation, read stats from the on_messages_built hook's context_stats kwarg.
+        self._last_context_stats: ContextWindowStats | None = None
+
     @property
     def _agent_call_stack(self) -> tuple[str | None, ...]:
         """Agent call stack for method call tracking (per async context).
@@ -433,6 +440,7 @@ class ActorRuntime:
                     method_name=self._current_method.__name__,
                     messages=ctx.messages,
                     generation_id=current_generation_id or "",
+                    context_stats=self._last_context_stats,
                 )
                 om = ctx.params.get("output_model", None)
                 call_params = {k: v for k, v in ctx.params.items() if k != "output_model"}
@@ -458,6 +466,7 @@ class ActorRuntime:
                 method_name=self._current_method.__name__,
                 messages=messages,
                 generation_id=current_generation_id or "",
+                context_stats=self._last_context_stats,
             )
             response = await llm_client.acall(
                 messages,
@@ -2157,7 +2166,7 @@ async def {name}({params_str}) -> {return_type}:
             pass  # openinference instrumentation is an optional extra
         except Exception as exc:  # noqa: BLE001
             logger.debug("Failed to set context blocks for journal: %s", exc)
-        return render_context(
+        result = render_context(
             blocks,
             block_formatter=self.agent.render_config.block_formatter,
             provider_formatter=self.agent.render_config.provider_formatter,
@@ -2167,3 +2176,5 @@ async def {name}({params_str}) -> {return_type}:
             count_tokens=count_tokens,
             pre_format_limit=tc.max_block_chars,
         )
+        self._last_context_stats = result.stats
+        return result.output

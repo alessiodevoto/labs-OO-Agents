@@ -28,7 +28,7 @@ class TestRenderContextBasic:
             [],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         assert len(result) == 1
         assert result[0]["role"] == "system"
@@ -42,7 +42,7 @@ class TestRenderContextBasic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         assert len(result) == 1
         system_content = result[0]["content"]
@@ -64,7 +64,7 @@ class TestRenderContextBasic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         system_content = result[0]["content"]
         assert "expr=\"self.context['notes']\"" in system_content
@@ -81,7 +81,7 @@ class TestRenderContextBasic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         system_content = result[0]["content"]
         assert "<persona" in system_content
@@ -100,7 +100,7 @@ class TestRenderContextBasic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         assert len(result) == 2
         assert result[0]["role"] == "system"
@@ -118,7 +118,7 @@ class TestRenderContextBasic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         assert len(result) == 3  # system + user + assistant
         assert result[2]["role"] == "assistant"
@@ -138,7 +138,7 @@ class TestRenderContextTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             block_limit=100,
-        )
+        ).output
 
         system_content = result[0]["content"]
         # Should be meaningfully shorter: block_limit=100 + XML tag overhead
@@ -156,7 +156,7 @@ class TestRenderContextTruncation:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         system_content = result[0]["content"]
         assert "A" * 1000 in system_content
@@ -179,7 +179,7 @@ class TestRenderContextMarkdown:
             blocks,
             block_formatter=MarkdownBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         system_content = result[0]["content"]
         assert "# Instructions" in system_content
@@ -200,7 +200,7 @@ class TestRenderContextAnthropic:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=AnthropicProviderFormatter(),
-        )
+        ).output
 
         assert isinstance(result, dict)
         assert "system" in result
@@ -236,7 +236,7 @@ class TestRenderContextToolCalls:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         # System + assistant (tool_calls) + tool (result)
         assert len(result) == 3
@@ -300,14 +300,14 @@ class TestRenderContextNoMutation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             block_limit=100,
-        )
+        ).output
 
         result2 = render_context(
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             block_limit=100,
-        )
+        ).output
 
         assert result1 == result2
 
@@ -521,7 +521,7 @@ class TestRenderContextEventSerialization:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         # Content must appear in the user message
         user_msg = result[1]
@@ -548,7 +548,7 @@ class TestRenderContextEventSerialization:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             block_limit=50,  # per-block limit
-        )
+        ).output
 
         # Content should be truncated (not the original 200+ chars)
         user_msg = result[1]
@@ -574,7 +574,7 @@ class TestRenderContextEventSerialization:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         # Tool call should appear as assistant tool_calls message, not as a user message
         msgs = result[1:]
@@ -592,7 +592,7 @@ class TestRenderContextEventSerialization:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-        )
+        ).output
 
         user_msg = result[1]
         assert user_msg["role"] == "user"
@@ -631,7 +631,7 @@ class TestCountTokens:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             count_tokens=None,
-        )
+        ).output
         assert result is not None
 
     def test_uses_count_tokens_for_context_limit(self):

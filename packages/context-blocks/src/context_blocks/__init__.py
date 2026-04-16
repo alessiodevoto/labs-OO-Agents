@@ -40,12 +40,13 @@ from context_blocks.formatter import (
 )
 from context_blocks.models import (
     BlockMetadata,
+    ContextWindowStats,
     DynamicContext,
     ResolvedBlock,
     Role,
 )
 from context_blocks.render_config import RenderConfig
-from context_blocks.renderer import format_message_content, render_context
+from context_blocks.renderer import RenderResult, format_message_content, render_context
 from context_blocks.scoped import ScopedContext
 
 __all__ = [
@@ -54,8 +55,10 @@ __all__ = [
     "ResolvedBlock",
     "Role",
     "BlockMetadata",
+    "ContextWindowStats",
     # Renderer
     "render_context",
+    "RenderResult",
     "format_message_content",
     # Format type enum and constants
     "FormatType",

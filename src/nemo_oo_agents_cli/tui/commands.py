@@ -894,6 +894,31 @@ class SandboxCommand(Command):
 
 
 # ---------------------------------------------------------------------------
+# Context command
+# ---------------------------------------------------------------------------
+
+
+class ContextCommand(Command):
+    """Show context window utilization stats."""
+
+    @property
+    def name(self) -> str:
+        return "context"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/context": "Show context window utilization"}
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        stats = getattr(self.agent, "context_stats", None)
+        if stats is None:
+            return CommandResult.ok(
+                TextOutput("No context stats yet — run a generation first.", "info")
+            )
+        return CommandResult.ok(TextOutput(stats.format(), "info"))
+
+
+# ---------------------------------------------------------------------------
 # Compact command
 # ---------------------------------------------------------------------------
 
@@ -1277,6 +1302,7 @@ class CommandRegistry:
         "quit": ExitCommand,
         "clear": ClearCommand,
         "compact": CompactCommand,
+        "context": ContextCommand,
         "edit": EditCommand,
         "model": ModelCommand,
         "models": ModelsCommand,

@@ -22,7 +22,7 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 # Export agent and decorators
 
 from agentdoc import hidden  # noqa: E402
-from context_blocks import DynamicContext  # noqa: E402
+from context_blocks import ContextWindowStats, DynamicContext  # noqa: E402
 from nemo_oo_agents._logging import enable_logging  # noqa: E402
 from nemo_oo_agents._visible import visible  # noqa: E402
 from nemo_oo_agents.agent import Agent  # noqa: E402
@@ -78,6 +78,7 @@ from unifiedllm import LLMResponse  # noqa: E402
 __all__ = [
     "__version__",
     # Types
+    "ContextWindowStats",  # Re-exported from context_blocks
     "DynamicContext",  # Re-exported from context_blocks
     "EventQuery",  # Event filtering configuration
     "ContextApi",  # LLM-facing context API wrapper (Skill)

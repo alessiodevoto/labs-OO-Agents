@@ -14,6 +14,7 @@ from nemo_oo_agents.storage.markers import nosnapshot
 
 if TYPE_CHECKING:
     from agentdoc.ext import TypeInfo
+    from context_blocks.models import ContextWindowStats
     from context_blocks.render_config import RenderConfig
     from nemo_oo_agents.config.execution_config import ExecutionConfig
     from nemo_oo_agents.config.truncation_config import TruncationConfig
@@ -400,6 +401,12 @@ class Agent(metaclass=AgentMeta):
     def event_manager(self) -> "EventManager":
         """Event manager — owned by the StorageManager."""
         return self._storage.event_manager
+
+    @property
+    @hidden
+    def context_stats(self) -> "ContextWindowStats | None":
+        """Most recent context window utilization stats, or None before first generation."""
+        return self.runtime._last_context_stats
 
     @hidden
     def _system_prompt(self) -> str:
