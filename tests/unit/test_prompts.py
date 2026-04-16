@@ -4,7 +4,6 @@ import pytest
 
 import nemo_oo_agents
 from nemo_oo_agents import Agent, CodeActStrategy, PromptData, strategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from nemo_oo_agents.prompts import (
     _get_prefill,
     _get_task_prompt,
@@ -13,6 +12,7 @@ from nemo_oo_agents.prompts import (
     render_prompt_data,
 )
 from nemo_oo_agents.strategies.current_call import CurrentCall
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
