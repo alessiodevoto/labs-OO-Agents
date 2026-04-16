@@ -187,10 +187,21 @@ apptainer build ~/sif_cache/sympy__sympy-19346.sif \
 
 ### 3. Generate task directories
 
+Task directories are not stored in git — they are generated on demand from
+Harbor's public benchmark adapters (which read from HuggingFace).
+
 ```bash
-# DABStep (5 tasks, dev split)
-uv run python util/harbor/generate_dabstep_tasks.py --tasks 5
+# DABStep — generates task dirs under ./tasks/dabstep/
+harbor adapter run --adapter dabstep --n 5
+
+# SWEBench — generates task dirs under ./tasks/swebench/
+harbor adapter run --adapter swebench --n 5
 ```
+
+Harbor ships adapters for ~70 public benchmarks (DABStep, SWEBench, GAIA,
+BFCL, etc.) in `3p/harbor-nemo/adapters/`. These are from the public
+[harbor-framework/harbor](https://github.com/harbor-framework/harbor)
+repository — not NVIDIA-internal.
 
 ### 4. Run
 
