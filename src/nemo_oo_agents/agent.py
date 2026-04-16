@@ -117,13 +117,25 @@ class Agent(metaclass=AgentMeta):
     context: Annotated["ContextApi", hidden, nosnapshot]
     events: Annotated["EventsApi", hidden, nosnapshot]
 
+    # Class-level framework attrs — hidden from LLM (gl-78).
+    # _abc_impl is injected by CPython's ABCMeta; the rest are set in
+    # __init_subclass__.  Annotating them here makes is_hidden_field() find
+    # them via MRO so _iter_agent_attrs skips them.
+    _abc_impl: Annotated[Any, hidden]
+    _enable_tracing: Annotated[bool, hidden]
+    _execution_config: Annotated["ExecutionConfig", hidden]
+    _agent_llm: Annotated["UnifiedLLM | _InheritSentinel", hidden]
+    _agent_truncation: Annotated["TruncationConfig", hidden]
+    _agent_context_blocks: Annotated["dict[str, str | DynamicContext | None]", hidden]
+    _agent_event_query: Annotated["EventQuery | None", hidden]
+
     # Enable tracing for Agent classes (convention for metaclass)
-    _enable_tracing = True
+    _enable_tracing = True  # type: ignore[assignment]
 
     # Framework context blocks — managed by _prepare_context(), protected from LLM mutation.
     # These use DynamicContext() so they are re-evaluated each LLM turn.
     # Each subclass gets its own copy via __init_subclass__, so mutations stay local.
-    _framework_blocks: dict[str, "FrameworkBlock"] = {
+    _framework_blocks: Annotated[dict[str, "FrameworkBlock"], hidden] = {
         "system_prompt": FrameworkBlock(DynamicContext("self._system_prompt()")),
         "self": FrameworkBlock(DynamicContext("doc(self)")),
     }

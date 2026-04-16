@@ -2049,6 +2049,10 @@ Standard Python builtins and agent instance (`self`) are available."""
         skills_nemo_oo_agents), their classes won't be in the module's imports. This discovers
         them from the agent's attributes and makes them available for doc()/isinstance().
 
+        Discovered types are added to ``context`` (which feeds exec_globals) but NOT
+        written to ``agent_module.__dict__`` — mutating the module is a side effect
+        that permanently pollutes the namespace (gl-78).
+
         Package-agnostic: works for any class, not just known packages.
         """
         try:
@@ -2062,7 +2066,6 @@ Standard Python builtins and agent instance (`self`) are available."""
                     continue
 
                 context[name] = cls
-                agent_module.__dict__[name] = cls
                 seen.add(name)
         except Exception:
             pass  # Convenience feature — never break execution
