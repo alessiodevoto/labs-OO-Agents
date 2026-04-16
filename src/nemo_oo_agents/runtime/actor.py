@@ -1315,7 +1315,11 @@ class ActorRuntime:
                     return result.stdout
                 if isinstance(result.stderr, str) and result.stderr:
                     return result.stderr
-                return f"[exit code: {result.returncode}]"
+                # returncode is int per typeshed, but mocks/edge cases may pass None
+                returncode: int | None = cast(int | None, result.returncode)
+                if returncode is not None:
+                    return f"[exit code: {returncode}]"
+                return "[command completed]"
 
             return result
 
