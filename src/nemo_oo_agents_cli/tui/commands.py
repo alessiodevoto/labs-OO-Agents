@@ -132,6 +132,7 @@ class Command(abc.ABC):
         self.config = config
         self.agent: Any = agent
         self.session_manager = session_manager
+        self._registry: Any = kwargs.get("registry")
 
     @abc.abstractmethod
     async def execute(self, args: list[str]) -> "CommandResult":
@@ -231,11 +232,14 @@ class ClearCommand(Command):
             except Exception:
                 pass
 
-        result = CommandResult.ok(
+        outputs: list[Output] = [
             ClearScreen(),
-            _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[arg-type]
-            TextOutput("Started new session. Previous session saved.", "success"),
-        )
+            _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[list-item]
+        ]
+        if self._registry and self._registry.startup_info:
+            outputs.append(self._registry.startup_info)
+        outputs.append(TextOutput("Started new session. Previous session saved.", "success"))
+        result = CommandResult(success=True, outputs=outputs)
         result.new_session_manager = new_sm
         return result
 
@@ -245,17 +249,34 @@ class ModelCommand(Command):
     def name(self) -> str:
         return "model"
 
-    @classmethod
-    def help_text(cls) -> dict[str, str]:
-        return {"/model": "Show current model"}
-
-    async def execute(self, args: list[str]) -> "CommandResult":
-        return CommandResult.ok(TextOutput(f"Current model: {self.config.default_model}", "info"))
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        short = self.config.default_model.split("/")[-1] if hasattr(self, "config") else "?"
+        return {
+            "/model [name]": f"Switch model (currently {short})",
+        }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if len(args) > 0:
-            return False, "Usage: /model  (to switch, use /switch)"
+        if len(args) > 1:
+            return False, "Usage: /model [name]"
         return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args:
+            return CommandResult.ok(
+                TextOutput(f"Current model: {self.config.default_model}", "info")
+            )
+
+        from unifiedllm import MODELS, get_llm_client
+
+        selected = args[0]
+        if selected not in MODELS:
+            return CommandResult.err(f"Unknown model: {selected}. Use /models to see available.")
+        self.config.default_model = selected
+        try:
+            self.agent._llm = get_llm_client(selected)
+        except Exception as e:
+            return CommandResult.err(f"Failed to switch model: {e}")
+        return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
 class ModelsCommand(Command):
@@ -272,7 +293,7 @@ class ModelsCommand(Command):
 
         rows: list[list[str]] = []
         for model_name in sorted(MODELS.keys()):
-            marker = "\u2192" if model_name == self.config.default_model else ""
+            marker = "\u25c0" if model_name == self.config.default_model else ""
             rows.append([model_name, marker])
 
         return CommandResult.ok(
@@ -280,7 +301,7 @@ class ModelsCommand(Command):
                 title="Available Models",
                 columns=["Model", ""],
                 rows=rows,
-                footer="Use /switch to change",
+                footer="Use /model <name> to switch",
             )
         )
 
@@ -328,19 +349,30 @@ class ThemeCommand(Command):
     def name(self) -> str:
         return "theme"
 
-    @classmethod
-    def help_text(cls) -> dict[str, str]:
-        return {"/theme <mocha|latte|vsdark|vslight>": "Switch color theme"}
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        from . import theme as theme_module
+
+        current = theme_module.get_theme() if hasattr(self, "config") else "?"
+        return {
+            "/theme [name]": f"Switch theme (currently {current})",
+        }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if len(args) != 1:
-            return False, f"Usage: /theme <{'|'.join(self.THEMES)}>"
-        if args[0].lower() not in self.THEMES:
+        if len(args) > 1:
+            return False, f"Usage: /theme [{'|'.join(self.THEMES)}]"
+        if len(args) == 1 and args[0].lower() not in self.THEMES:
             return False, f"Theme must be one of: {', '.join(self.THEMES)}"
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
         from . import theme as theme_module
+
+        if not args:
+            current = theme_module.get_theme()
+            others = ", ".join(t for t in self.THEMES if t != current)
+            return CommandResult.ok(
+                TextOutput(f"Current theme: {current}  (available: {others})", "info")
+            )
 
         name = args[0].lower()
         theme_module.set_theme(name)
@@ -356,6 +388,10 @@ class ThemeCommand(Command):
             # the COLORS dict at creation time
             console._theme_stack._entries[0] = new_theme.styles
             console._theme_stack.get = console._theme_stack._entries[-1].get
+
+        # Rebuild prompt_toolkit style for the new theme
+        if hasattr(self.frontend, "_input_handler") and self.frontend._input_handler is not None:  # type: ignore[attr-defined]
+            self.frontend._input_handler.refresh_style()  # type: ignore[attr-defined]
 
         return CommandResult.ok(TextOutput(f"Switched to {name} theme", "success"))
 
@@ -1016,7 +1052,7 @@ class PythonCommand(Command):
 
 
 class EditCommand(Command):
-    """Open a file in $EDITOR (TUI) or Monaco (web) and show the diff on save."""
+    """Open a file in $EDITOR and show the diff on save."""
 
     @property
     def name(self) -> str:
@@ -1025,7 +1061,7 @@ class EditCommand(Command):
     @classmethod
     def help_text(cls) -> dict[str, str]:
         return {
-            "/edit <file>": "Open file in $EDITOR (TUI) or Monaco editor (web) \u2014 shows diff on save",
+            "/edit <file>": "Open file in $EDITOR \u2014 shows diff on save",
         }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
@@ -1228,11 +1264,14 @@ class SessionCommand(Command):
                 except Exception:
                     pass
 
-            result = CommandResult.ok(
+            outputs: list[Output] = [
                 ClearScreen(),
-                _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[arg-type]
-                TextOutput("Started new session. History cleared.", "success"),
-            )
+                _RichReplayPayload(payload={"kind": "clear"}),  # type: ignore[list-item]
+            ]
+            if self._registry and self._registry.startup_info:
+                outputs.append(self._registry.startup_info)
+            outputs.append(TextOutput("Started new session. History cleared.", "success"))
+            result = CommandResult(success=True, outputs=outputs)
             result.new_session_manager = new_sm
             return result
 
@@ -1306,6 +1345,7 @@ class CommandRegistry:
         self.skills_dirs = skills_dirs
         self.mcp_file = mcp_file
         self.session_manager = session_manager
+        self.startup_info: Output | None = None  # set by main after bootstrap
         self._commands: dict[str, Command] = self._register()
         self._user_skills: dict[str, _UserSkill] = self._discover_user_skills()
         self._auto_install_skills()
@@ -1432,7 +1472,11 @@ class CommandRegistry:
         for cmd_cls in cls._command_classes.values():
             if cmd_cls not in seen:
                 seen.add(cmd_cls)
-                commands.update(cmd_cls.help_text())
+                try:
+                    commands.update(cmd_cls.help_text())
+                except TypeError:
+                    # Instance-method help_text() overrides can't be called on the class
+                    pass
         return commands
 
     def get_active_help(self) -> dict[str, str]:
@@ -1442,7 +1486,7 @@ class CommandRegistry:
             cls = type(cmd)
             if cls not in seen:
                 seen.add(cls)
-                commands.update(cls.help_text())
+                commands.update(cmd.help_text())
         for skill in self._user_skills.values():
             key, desc = skill.help_entry()
             commands[key] = desc

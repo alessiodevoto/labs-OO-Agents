@@ -132,6 +132,11 @@ MODELS: dict[str, dict[str, Any]] = {
         "endpoint": NVIDIA_ENDPOINT,
         "api_key_env": NVIDIA_API_KEY_ENV,
     },
+    "aws/anthropic/bedrock-claude-opus-4-6": {
+        "context_window": 1_000_000,
+        "endpoint": NVIDIA_ENDPOINT,
+        "api_key_env": NVIDIA_API_KEY_ENV,
+    },
     "aws/anthropic/claude-haiku-4-5-v1": {
         "context_window": 200_000,
         "endpoint": NVIDIA_ENDPOINT,

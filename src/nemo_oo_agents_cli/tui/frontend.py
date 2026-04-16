@@ -210,25 +210,29 @@ class TerminalFrontend:
 
     def _overwrite_input(self, prompt: str, text: str) -> None:
         """Replace prompt_toolkit's input line(s) with a styled version."""
+        import math
         import sys
 
+        from rich.padding import Padding
+        from rich.text import Text
+
         c = self._console.console
-        width = c.size.width
-        # Count lines to erase: input lines + 1 for the prompt line
-        input_lines = text.count("\n") + 1
-        # Move cursor up and clear each line
-        for _ in range(input_lines):
+        width = c.size.width or 80
+        # Count visual rows: each logical line may wrap across multiple terminal rows.
+        # The first line includes the prompt prefix (e.g. "❯ ").
+        lines = text.split("\n")
+        visual_rows = 0
+        for i, line in enumerate(lines):
+            display_len = len(line) + (len(prompt) if i == 0 else 0)
+            visual_rows += max(1, math.ceil(display_len / width))
+        # Move cursor up and clear each visual row
+        for _ in range(visual_rows):
             sys.stdout.write("\033[A\033[2K")
         sys.stdout.flush()
-        # Write edge-to-edge background using ANSI: set bg color, pad to full width
-        bg = COLORS["surface2"]  # e.g. "#585b70"
-        fg = COLORS["text"]  # e.g. "#cdd6f4"
-        # Convert hex to RGB for ANSI 24-bit color
-        br, bg_, bb = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-        fr, fg_, fb = int(fg[1:3], 16), int(fg[3:5], 16), int(fg[5:7], 16)
-        line = f" {text} ".ljust(width)
-        sys.stdout.write(f"\033[38;2;{fr};{fg_};{fb}m\033[48;2;{br};{bg_};{bb}m{line}\033[0m\n")
-        sys.stdout.flush()
+        # Padding with background style — fills full width, no border
+        content = Text(text, style=f"{COLORS['rosewater']} on {COLORS['surface0']}")
+        padded = Padding(content, (0, 1), style=f"on {COLORS['surface0']}", expand=True)
+        c.print(padded)
 
     def _render_text(self, output: TextOutput) -> None:
         lvl = output.level

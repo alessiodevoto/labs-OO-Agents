@@ -154,7 +154,8 @@ async def main(
         await frontend.render(msg)
 
     # Startup info panel
-    await frontend.render(build_startup_info(result))
+    _startup_info = build_startup_info(result)
+    await frontend.render(_startup_info)
 
     # Show resumed session history (interleaved with any rich content)
     if result.resumed and result.session_id is not None:
@@ -188,6 +189,7 @@ async def main(
 
     # Wire frontend → registry → session
     registry = build_registry(result, frontend)
+    registry.startup_info = _startup_info
     frontend.init_input(registry)  # terminal-specific: prompt_toolkit completions
     session = build_session(result, frontend, registry)
     await session.run()

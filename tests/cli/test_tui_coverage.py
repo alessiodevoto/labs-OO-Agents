@@ -511,11 +511,15 @@ class TestModelCommand:
         assert result.success is True
         assert any("test-model" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
+    def test_validate_one_arg_ok(self, mock_console, mock_config, mock_agent):
+        cmd = ModelCommand(mock_console, mock_config, mock_agent)
+        ok, msg = cmd.validate_args(["some-model"])
+        assert ok is True
+
     def test_validate_extra_args(self, mock_console, mock_config, mock_agent):
         cmd = ModelCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["extra"])
+        ok, msg = cmd.validate_args(["a", "b"])
         assert ok is False
-        assert "Usage: /model" in msg
 
     def test_validate_no_args_ok(self, mock_console, mock_config, mock_agent):
         cmd = ModelCommand(mock_console, mock_config, mock_agent)

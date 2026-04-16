@@ -70,7 +70,7 @@ class Completer:
             return self._theme_completions(text)
 
         # Model completion
-        if lower.startswith("/switch "):
+        if lower.startswith("/switch ") or lower.startswith("/model "):
             return self._model_completions(text)
 
         # Skill ID completion for /skills activate and /skills deactivate
@@ -133,7 +133,9 @@ class Completer:
         except Exception:
             return []
 
-        prefix = "/switch "
+        # Detect which command triggered this
+        lower = text.lower()
+        prefix = "/model " if lower.startswith("/model ") else "/switch "
         partial = text[len(prefix) :]
         items = []
         for name in sorted(MODELS.keys()):
