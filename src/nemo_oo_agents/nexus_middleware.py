@@ -30,8 +30,6 @@ Requirements:
     ``ImportError`` with install instructions.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -79,12 +77,10 @@ _NON_SERIALIZABLE_KEYS: frozenset[str] = frozenset({"tools", "output_model"})
 # ---------------------------------------------------------------------------
 # Middleware functions
 # ---------------------------------------------------------------------------
-
-
 async def nexus_llm_middleware(
-    ctx: LLMCallContext,
-    nxt: LLMCallNext,
-) -> LLMCallContext:
+    ctx: "LLMCallContext",
+    nxt: "LLMCallNext",
+) -> "LLMCallContext":
     """Route LLM calls through the Nexus LLM pipeline.
 
     Strips sensitive keys, wraps the call through ``nat_nexus.llm.execute()``,
@@ -188,9 +184,9 @@ async def nexus_llm_middleware(
 
 
 async def nexus_tool_middleware(
-    ctx: ExecutePythonContext,
-    nxt: ExecutePythonNext,
-) -> ExecutePythonContext:
+    ctx: "ExecutePythonContext",
+    nxt: "ExecutePythonNext",
+) -> "ExecutePythonContext":
     """Route code execution through the Nexus tool pipeline.
 
     Extracts the meaningful return value from ``ExecutionResult``, serializes
@@ -262,9 +258,9 @@ async def nexus_tool_middleware(
 
 
 async def nexus_agent_call_middleware(
-    ctx: AgentCallContext,
-    nxt: AgentCallNext,
-) -> AgentCallContext:
+    ctx: "AgentCallContext",
+    nxt: "AgentCallNext",
+) -> "AgentCallContext":
     """Wrap each agent method call in a Nexus Function scope.
 
     Pushes a ``ScopeType.Function`` scope named ``"AgentClass.method_name"``
@@ -287,9 +283,7 @@ async def nexus_agent_call_middleware(
 # ---------------------------------------------------------------------------
 # Install / uninstall helpers
 # ---------------------------------------------------------------------------
-
-
-def install_nexus(event_manager: EventManager) -> Callable[[], None]:
+def install_nexus(event_manager: "EventManager") -> Callable[[], None]:
     """Register Nexus middleware on an event manager.
 
     Returns an uninstall function that removes both middleware.

@@ -6,13 +6,10 @@ EventQuery provides a declarative way to specify event filtering that mirrors
 the event_manager.filter() API. It can be used at agent, decorator, and runtime levels.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Self
 
-if TYPE_CHECKING:
-    from nemo_oo_agents.events import EventBase
+from context_blocks import EventBase as EventBase
 
 
 @dataclass(frozen=True)
@@ -53,7 +50,7 @@ class EventQuery:
     limit: int | None = None
 
     @classmethod
-    def current_call(cls, limit: int | None = None) -> EventQuery:
+    def current_call(cls, limit: int | None = None) -> Self:
         """Filter to events from the current method call only.
 
         This is the primary use case for method-scoped event filtering.
@@ -70,7 +67,7 @@ class EventQuery:
         return cls(call_id="current", limit=limit)
 
     @classmethod
-    def by_type(cls, event_type: str, limit: int | None = None) -> EventQuery:
+    def by_type(cls, event_type: str, limit: int | None = None) -> Self:
         """Filter to specific event type(s).
 
         Args:
@@ -80,7 +77,7 @@ class EventQuery:
         return cls(type=event_type, limit=limit)
 
     @classmethod
-    def last_n(cls, n: int) -> EventQuery:
+    def last_n(cls, n: int) -> Self:
         """Get the last N events only.
 
         Args:

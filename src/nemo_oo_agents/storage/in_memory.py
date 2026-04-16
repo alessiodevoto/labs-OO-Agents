@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """In-memory StorageManager — no persistence, drop-in for current behavior."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from nemo_oo_agents.runtime.event_backend import InMemoryBackend
@@ -31,7 +29,7 @@ class InMemoryStorageManager:
     def event_manager(self) -> EventManager:
         return self._event_manager
 
-    def save_snapshot(self, agent: Agent) -> str:
+    def save_snapshot(self, agent: "Agent") -> str:
         from nemo_oo_agents.errors.storage import StorageNotConfiguredError
 
         raise StorageNotConfiguredError(
@@ -39,7 +37,7 @@ class InMemoryStorageManager:
             "Pass a persistent StorageManager to enable save/restore."
         )
 
-    def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
+    def restore_snapshot(self, snapshot_id: str, agent: "Agent") -> None:
         from nemo_oo_agents.errors.storage import StorageNotConfiguredError
 
         raise StorageNotConfiguredError(

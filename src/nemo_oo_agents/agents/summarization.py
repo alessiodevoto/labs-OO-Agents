@@ -21,8 +21,6 @@ Example:
     TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=80_000))
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from collections.abc import Callable
@@ -62,7 +60,7 @@ class SummarizationAgent(Agent):
     """
 
     # Event manager whose events will be summarized. Wired automatically by the parent Agent.
-    target_event_manager: Annotated[EventManager | None, hidden] = None
+    target_event_manager: Annotated["EventManager | None", hidden] = None
 
     # Config must be set by subclasses (TokenBudgetSummarizer, MethodSummarizer set self.config
     # in __init__). The base class provides this sentinel to prevent AttributeError if a
@@ -77,7 +75,7 @@ class SummarizationAgent(Agent):
     _unsub_after: Annotated[Callable[[], None] | None, hidden]
 
     @classmethod
-    def install(cls, agent: Agent, **kwargs: Any) -> SummarizationAgent:
+    def install(cls, agent: Agent, **kwargs: Any) -> "SummarizationAgent":
         """Install this summarizer on an agent.
 
         The summarizer is stored on the agent, so you don't need to keep
@@ -171,12 +169,12 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
-    def _handle_before_turn(self, event: EventBase) -> None:
+    def _handle_before_turn(self, event: "EventBase") -> None:
         """Apply any pending summary before the next turn."""
         self._apply_pending_summary()
 
     @hidden
-    def _handle_after_turn(self, event: EventBase) -> None:
+    def _handle_after_turn(self, event: "EventBase") -> None:
         """Check if summarization needed and schedule it.
 
         Flow:
@@ -209,7 +207,7 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
-    def _should_summarize(self, event: AfterTurn) -> bool:
+    def _should_summarize(self, event: "AfterTurn") -> bool:
         """Decide if summarization is needed.
 
         Override in subclasses to implement policy logic.
@@ -223,7 +221,7 @@ class SummarizationAgent(Agent):
         return False
 
     @hidden
-    def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
+    def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Compute the range of events to summarize.
 
         Override in subclasses to implement policy logic.
@@ -335,7 +333,7 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
-    def _get_events_in_range(self, start_tag: str, end_tag: str) -> list[tuple[str, EventBase]]:
+    def _get_events_in_range(self, start_tag: str, end_tag: str) -> list[tuple[str, "EventBase"]]:
         """Get events between start_tag and end_tag (inclusive).
 
         Use this in generated code to programmatically investigate raw events.
@@ -432,8 +430,6 @@ class SummarizationAgent(Agent):
 # =============================================================================
 # Helper Functions
 # =============================================================================
-
-
 def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> int:
     """Calculate token budget as percentage of LLM context limit.
 
@@ -457,8 +453,6 @@ def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> i
 # =============================================================================
 # Example Summarizers (Good Defaults)
 # =============================================================================
-
-
 class TokenBudgetSummarizer(SummarizationAgent):
     """Summarize when event count exceeds token budget.
 
@@ -476,7 +470,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
 
     @classmethod
     def install(
-        cls, agent: Agent, *, config: TokenBudgetConfig | None = None, **kwargs: Any
+        cls, agent: Agent, *, config: "TokenBudgetConfig | None" = None, **kwargs: Any
     ) -> SummarizationAgent:
         """Install with a TokenBudgetConfig.
 
@@ -501,12 +495,12 @@ class TokenBudgetSummarizer(SummarizationAgent):
         super().__init__(agent, **kwargs)
 
     @hidden
-    def _should_summarize(self, event: AfterTurn) -> bool:
+    def _should_summarize(self, event: "AfterTurn") -> bool:
         """Trigger when over token budget."""
         return bool(self._estimate_tokens() > self.config.max_tokens)
 
     @hidden
-    def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
+    def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Summarize oldest events, preserving recent ones."""
         if self.target_event_manager is None:
             return None
@@ -535,7 +529,7 @@ class MethodSummarizer(SummarizationAgent):
 
     @classmethod
     def install(
-        cls, agent: Agent, *, config: MethodSummarizerConfig | None = None, **kwargs: Any
+        cls, agent: Agent, *, config: "MethodSummarizerConfig | None" = None, **kwargs: Any
     ) -> SummarizationAgent:
         """Install with a MethodSummarizerConfig.
 
@@ -560,7 +554,7 @@ class MethodSummarizer(SummarizationAgent):
         super().__init__(agent, **kwargs)
 
     @hidden
-    def _should_summarize(self, event: AfterTurn) -> bool:
+    def _should_summarize(self, event: "AfterTurn") -> bool:
         """Trigger on method completion."""
         if not event.is_final:
             return False
@@ -572,7 +566,7 @@ class MethodSummarizer(SummarizationAgent):
         return True
 
     @hidden
-    def _compute_range(self, event: AfterTurn) -> tuple[str, str] | None:
+    def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Summarize all events from this method invocation (including children).
 
         Uses call_id from event metadata to find the range. Child method calls
@@ -606,7 +600,7 @@ class MethodSummarizer(SummarizationAgent):
         return (first_tag, last_tag)  # type: ignore[return-value]
 
     @hidden
-    def _is_root_call(self, event: AfterTurn) -> bool:
+    def _is_root_call(self, event: "AfterTurn") -> bool:
         """Check if this is a root (top-level) method call."""
         # Root calls typically don't have a parent generation context
         # This is a heuristic - could be refined based on actual context

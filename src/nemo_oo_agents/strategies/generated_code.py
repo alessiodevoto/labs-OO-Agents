@@ -11,8 +11,6 @@ Key invariants:
   `ActorRuntime.execute_code()` to avoid NameError surprises (e.g. missing asyncio).
 """
 
-from __future__ import annotations
-
 import ast
 import inspect
 import types

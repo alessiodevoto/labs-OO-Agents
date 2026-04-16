@@ -6,8 +6,6 @@ Single source of truth for blocked modules, blocked calls, and restricted module
 Consumed by CodeActConfig (defaults), exec_globals stripping, and BlockingCallValidator.
 """
 
-from __future__ import annotations
-
 import types
 from typing import Any
 

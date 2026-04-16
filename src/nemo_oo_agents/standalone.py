@@ -22,8 +22,6 @@ Design constraints:
   module so ``filter_module_globals`` exposes the caller's types to generated code.
 """
 
-from __future__ import annotations
-
 import inspect
 import sys
 import types

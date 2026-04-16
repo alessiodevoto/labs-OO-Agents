@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """SkillManager — discover and install Skills on an agent."""
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from nemo_oo_agents.skill import Skill, TextSkill
 
@@ -30,17 +28,17 @@ class SkillManager:
     skill = TextSkill(path=Path("skills/git-workflow"))
     """
 
-    def __init__(self, agent: Agent, skills_dirs: list[Path]) -> None:
+    def __init__(self, agent: "Agent", skills_dirs: list[Path]) -> None:
         self.agent = agent
         self.skills_dirs = skills_dirs
 
     @classmethod
     def install(
         cls,
-        agent: Agent,
+        agent: "Agent",
         *,
         skills_dir: Path | list[Path] | str = Path("."),
-    ) -> SkillManager:
+    ) -> Self:
         """Scan *skills_dir* and attach each skill as an instance attribute on *agent*.
 
         Each subdirectory containing a SKILL.md becomes ``agent.<dir_name>``

@@ -17,8 +17,6 @@ Usage:
     validator.validate(code, context)  # Raises ValidationError on failure
 """
 
-from __future__ import annotations
-
 # =============================================================================
 # Error Code Registry
 # =============================================================================
@@ -69,8 +67,6 @@ __all__ = [
 # =============================================================================
 # Data Classes
 # =============================================================================
-
-
 @dataclass
 class ValidationIssue:
     """Single validation issue with location and severity."""
@@ -360,8 +356,6 @@ class _SecurityVisitor(ast.NodeVisitor):
 # =============================================================================
 # REPL Policy Validator
 # =============================================================================
-
-
 class REPLPolicyValidator:
     """Validates REPL-style coding conventions.
 
@@ -563,8 +557,6 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
 # =============================================================================
 # Class Assignment Validator
 # =============================================================================
-
-
 class ClassAssignmentValidator:
     """Detect dangerous class attribute assignments like ClassName.method = ...
 
@@ -813,8 +805,6 @@ class _ClassAssignmentVisitor(ast.NodeVisitor):
 # =============================================================================
 # Blocking Call Validator
 # =============================================================================
-
-
 class BlockingCallValidator:
     """Validates code for blocking calls that would freeze the event loop.
 
@@ -979,8 +969,6 @@ class _BlockingCallVisitor(ast.NodeVisitor):
 # =============================================================================
 # Unified Code Validator
 # =============================================================================
-
-
 class UnifiedCodeValidator:
     """Orchestrates multiple validators with consistent error handling.
 
@@ -1098,8 +1086,6 @@ class UnifiedCodeValidator:
 # =============================================================================
 # Import Pre-processing
 # =============================================================================
-
-
 def strip_redundant_imports(code: str, available_names: set[str]) -> str:
     """Remove import statements where all imported names are already in scope.
 
@@ -1213,8 +1199,6 @@ def strip_redundant_imports(code: str, available_names: set[str]) -> str:
 # =============================================================================
 # Convenience Functions
 # =============================================================================
-
-
 def validate_code(
     code: str,
     *,

@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from __future__ import annotations
 
 import asyncio
 import difflib
@@ -60,7 +59,7 @@ class BashTool:
     def __init__(
         self,
         working_dir: str | Path = ".",
-        config: BashConfig | None = None,
+        config: "BashConfig | None" = None,
     ) -> None:
         """Initialize bash tool.
 

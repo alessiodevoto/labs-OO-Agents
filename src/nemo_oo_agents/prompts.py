@@ -10,18 +10,15 @@ state and real arguments — without triggering an actual LLM call:
     await nemo_oo_agents.print_prompt(agent.analyze, my_data)
 """
 
-from __future__ import annotations
-
 import inspect
 import sys
 from dataclasses import dataclass
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
 # PromptData
 # ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class PromptData:
     """All prompt sections for a single agent method call."""
@@ -48,8 +45,6 @@ class PromptData:
 # ---------------------------------------------------------------------------
 # Task prompt
 # ---------------------------------------------------------------------------
-
-
 async def _get_task_prompt(runtime: Any, strategy: Any, call: Any) -> str:
     """Build the task prompt text for *strategy* and *call*.
 
@@ -72,8 +67,6 @@ async def _get_task_prompt(runtime: Any, strategy: Any, call: Any) -> str:
 # ---------------------------------------------------------------------------
 # Prefill
 # ---------------------------------------------------------------------------
-
-
 def _get_prefill(strategy: Any, call: Any) -> tuple[str | None, str | None]:
     """Return ``(inspect_code, pre_ellipsis_code)`` for *strategy* and *call*.
 
@@ -100,8 +93,6 @@ def _get_prefill(strategy: Any, call: Any) -> tuple[str | None, str | None]:
 # ---------------------------------------------------------------------------
 # Core builder
 # ---------------------------------------------------------------------------
-
-
 async def _build_prompt_data_from_agent(
     agent: Any,
     wrapper: Any,
@@ -153,8 +144,6 @@ async def _build_prompt_data_from_agent(
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
-
-
 def render_prompt_data(data: PromptData) -> str:
     """Format *data* as a human-readable plain-text string."""
     parts: list[str] = []
@@ -191,8 +180,6 @@ def render_prompt_data(data: PromptData) -> str:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
 async def build_prompt_data(method: Any, /, *args: Any, **kwargs: Any) -> PromptData:
     """Build prompt data for *method* without printing.
 

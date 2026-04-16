@@ -10,8 +10,6 @@ Having this in one place eliminates duplication and ensures consistent behavior
 for context variable management, tracing hooks, and execution routing.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -37,7 +35,7 @@ def create_agent_method_wrapper(
     *,
     needs_generation: bool,
     needs_tracing: bool,
-    strategy: GenerationStrategy | None,
+    strategy: "GenerationStrategy | None",
     cached_source_code: str | None = None,
 ) -> Callable[..., Any]:
     """Create a wrapper for an agent method with unified behavior.

@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """LibraryManager — scan, load, and hot-reload persistent agent libraries."""
 
-from __future__ import annotations
-
 import inspect
 import logging
 import sys
@@ -35,7 +33,7 @@ class LibraryManager:
         self._installed: list[str] = []
 
     @classmethod
-    def install(cls, agent: Any, *, libs_dir: Path) -> LibraryManager:
+    def install(cls, agent: Any, *, libs_dir: Path) -> "LibraryManager":
         """Scan libs_dir and attach all libraries to *agent*. Returns the manager."""
         manager = cls(agent, libs_dir)
         manager._scan()

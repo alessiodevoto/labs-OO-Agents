@@ -5,7 +5,7 @@ Provides some quickstart settings to get you started with some reasonable defaul
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,7 +27,7 @@ llm = get_llm_client(MODEL)
 
 
 # Decorator for running example entry points
-def autorun(func: Callable[[], Any]) -> Callable[[], Any]:
+def autorun(func: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Coroutine[Any, Any, Any]]:
     print("\n\nEXAMPLE OUTPUT:")
     asyncio.run(func())
     return func

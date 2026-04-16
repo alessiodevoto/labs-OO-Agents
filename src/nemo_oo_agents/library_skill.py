@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """LibrarySkill — documentation handle for a persistent agent library."""
 
-from __future__ import annotations
-
 import ast
 import importlib
 import sys

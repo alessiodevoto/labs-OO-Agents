@@ -21,7 +21,7 @@ import inspect
 import json
 import logging
 import types
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from typing import (
@@ -231,7 +231,7 @@ class CodeActSession:
             )
 
 
-def _iter_agent_attrs(agent: Any) -> Any:
+def _iter_agent_attrs(agent: Any) -> Iterator[Any]:
     """Yield non-hidden attribute values from an agent (class then instance)."""
     from agentdoc.visibility import is_hidden_field
 

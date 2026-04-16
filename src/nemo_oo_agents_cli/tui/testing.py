@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test utilities for TUI integration testing.
 
 ``TestFrontend`` implements the ``Frontend`` protocol with scripted inputs
@@ -15,8 +17,6 @@ Example usage::
 
     assert any(isinstance(o, HelpOutput) for o in frontend.outputs)
 """
-
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
@@ -43,7 +43,7 @@ class TestFrontend:
         self.outputs: list[Output] = []
         self._connected: bool = True
 
-    async def render(self, output: Output) -> None:
+    async def render(self, output: "Output") -> None:
         self.outputs.append(output)
 
     async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:

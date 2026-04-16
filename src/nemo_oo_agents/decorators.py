@@ -6,8 +6,6 @@ The @strategy decorator is used to override generation strategies on specific me
 Agent configuration is done via class-level parameters: class MyAgent(Agent, llm=llm)
 """
 
-from __future__ import annotations
-
 import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
@@ -25,11 +23,11 @@ R = TypeVar("R")
 
 
 def strategy(
-    strategy_instance: GenerationStrategyABC | None = None,
+    strategy_instance: "GenerationStrategyABC | None" = None,
     context: ScopedContext | None = None,
     *,
-    llm: UnifiedLLM | None = None,
-    truncation: TruncationConfig | None = None,
+    llm: "UnifiedLLM | None" = None,
+    truncation: "TruncationConfig | None" = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Strategy decorator for agent methods.
 

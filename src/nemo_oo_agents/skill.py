@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Skill — base class and wrapper for agent-loadable capabilities."""
 
-from __future__ import annotations
-
 import re
 import shlex
 from pathlib import Path
@@ -12,11 +10,10 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
+
 # ---------------------------------------------------------------------------
 # SKILL.md frontmatter parsing
 # ---------------------------------------------------------------------------
-
-
 class _SkillProperties(BaseModel):
     name: str
     description: str

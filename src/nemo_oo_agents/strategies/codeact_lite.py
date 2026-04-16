@@ -103,7 +103,7 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
 # ---------------------------------------------------------------------------
 
 
-class PlainProviderFormatter(OpenAIProviderFormatter):  # type: ignore[misc]
+class PlainProviderFormatter(OpenAIProviderFormatter):  # type: ignore[misc]  # untyped base class from context_blocks
     """Provider formatter that renders clean messages without XML tags or type wrappers.
 
     Handles three changes compared to OpenAIProviderFormatter:
