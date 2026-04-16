@@ -1,0 +1,61 @@
+# Harbor config for running nemo-oo-agents-benchmarks with the baseline agent on Terminal Bench.
+#
+# Uses Apptainer + Terminal Bench task images from GHCR (ghcr.io/laude-institute/t-bench/).
+# Apptainer resolves the image from each task's Dockerfile FROM line.
+#
+# NOTE: The Apptainer environment uses the base image only — Dockerfile RUN steps
+# (task-specific installs) are not executed. Tasks may fail their test scripts, but
+# the agent execution + trace/reward capture pipeline is fully verified.  For
+# production runs where full environment correctness matters, use Docker or build
+# task-specific SIFs from the Dockerfiles.
+#
+# Prerequisites:
+#   1. apptainer installed
+#   2. Harbor installed: uv pip install -e 3p/harbor-nemo
+#   3. Terminal Bench tasks generated:
+#      harbor task migrate \
+#        --input ~/.cache/terminal-bench/tasks \
+#        --output util/harbor/tasks/terminal_bench
+#      (or use the 5-task smoke-test set already in util/harbor/tasks/terminal_bench/)
+#   4. Set env vars:
+#      export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
+#      export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# Run (5 tasks):
+#   harbor run --config util/harbor/terminal_bench_baseline.yaml
+#
+# Run (all tasks, once full dataset is migrated):
+#   harbor run --config util/harbor/terminal_bench_baseline.yaml \
+#     --path util/harbor/tasks/terminal_bench
+
+jobs_dir: /tmp/harbor_jobs/terminal_bench_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1   # Run 1 task at a time (image pulls can be slow)
+  quiet: false
+
+# Terminal Bench uses per-task Dockerfiles based on ghcr.io/laude-institute/t-bench/ images.
+# Apptainer pulls the FROM image from GHCR and caches it as a .sif file.
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: false
+    apptainer_image_cache_dir: 3p/sif_cache
+    # Forward API keys into the container
+    env_passthrough: ANTHROPIC_API_KEY,OPENAI_API_KEY,NVIDIA_API_KEY
+
+agents:
+  - name: nemo-oo-agents
+    model_name: anthropic/claude-sonnet-4-6
+    kwargs:
+      agent_type: baseline
+
+datasets:
+  # 5-task smoke-test set: acl-permissions-inheritance, adaptive-rejection-sampler,
+  # add-benchmark-lm-eval-harness, analyze-access-logs, cancel-async-tasks
+  - path: util/harbor/tasks/terminal_bench
