@@ -11,10 +11,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from context_blocks.models import ContextWindowStats
+from context_blocks.renderer import RenderResult
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+
+# Minimal stats object for mocking render_context return values
+_EMPTY_STATS = ContextWindowStats(
+    context_blocks_tokens=0,
+    context_blocks_count=0,
+    events_tokens=0,
+    events_count=0,
+    total_tokens=0,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -831,7 +842,7 @@ class TestBuildMessagesOpeninferenceErrors:
             # Patch the import to raise ImportError
             with patch(
                 "nemo_oo_agents.runtime.actor.render_context",
-                return_value=[],
+                return_value=RenderResult(output=[], stats=_EMPTY_STATS),
             ):
                 with patch.dict(
                     "sys.modules",
@@ -876,7 +887,7 @@ class TestBuildMessagesOpeninferenceErrors:
             ):
                 with patch(
                     "nemo_oo_agents.runtime.actor.render_context",
-                    return_value=[],
+                    return_value=RenderResult(output=[], stats=_EMPTY_STATS),
                 ):
                     # Should not raise — the Exception is caught
                     await runtime._build_messages(method)

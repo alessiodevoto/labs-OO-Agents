@@ -76,7 +76,7 @@ class TestRenderContextTruncation:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
-        )
+        ).output
 
         assert "x" * 50000 in result["context"]
         assert "truncation" not in result["context"].lower()
@@ -91,7 +91,7 @@ class TestRenderContextTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=20000,
-        )
+        ).output
 
         # Prose format: "Output too large (30,000 chars). Showing first 10,000 and last 10,000 chars."
         assert "Output too large (30,000 chars)" in result["context"]
@@ -108,7 +108,7 @@ class TestRenderContextTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=1000,
-        )
+        ).output
 
         context = result["context"]
         assert "<persona" in context
@@ -131,7 +131,7 @@ class TestRenderContextTruncation:
             block_formatter=MarkdownBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=1000,
-        )
+        ).output
 
         assert "Output too large" in result["context"]
         assert "chars not shown" in result["context"]
@@ -149,7 +149,7 @@ class TestRenderContextTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=10000,
-        )
+        ).output
 
         context = result["context"]
 
@@ -180,7 +180,7 @@ class TestEventBlockTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=1000,
-        )
+        ).output
 
         msg = result["messages"][0]
         assert msg.content.count("x") == 1000  # head(500) + tail(500)
@@ -198,7 +198,7 @@ class TestEventBlockTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=1000,
-        )
+        ).output
 
         msg = result["messages"][0]
         assert msg.content == "short"
@@ -216,7 +216,7 @@ class TestEventBlockTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=MockProviderFormatter(),
             block_limit=2000,
-        )
+        ).output
 
         # System block truncated at 2000 (head=1000, tail=1000)
         assert "Output too large (5,000 chars)" in result["context"]
@@ -247,7 +247,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=1000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         # Small block survives (it's first)
@@ -272,7 +272,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=10000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         assert context.count("#") == 100
@@ -298,7 +298,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=1000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         assert "big_data" in context
@@ -318,7 +318,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=1000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         assert "self.context.pop(" in context
@@ -338,7 +338,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=500,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         # Only tiny block survives (first in order)
@@ -365,7 +365,7 @@ class TestContextTotalLimit:
             block_limit=3000,
             context_limit=20000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         assert context.count("#") == 3000
@@ -386,7 +386,7 @@ class TestContextTotalLimit:
             provider_formatter=MockProviderFormatter(),
             context_limit=1000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         first_pos = context.find("<first")
@@ -413,7 +413,7 @@ class TestEventTotalLimit:
             provider_formatter=MockProviderFormatter(),
             event_limit=7000,
             count_tokens=len,
-        )
+        ).output
 
         messages = result["messages"]
         # Oldest event should be dropped (3004 chars), leaving mid + new (~6008)
@@ -434,7 +434,7 @@ class TestEventTotalLimit:
             provider_formatter=MockProviderFormatter(),
             event_limit=10000,
             count_tokens=len,
-        )
+        ).output
 
         messages = result["messages"]
         assert len(messages) == 2
@@ -453,7 +453,7 @@ class TestEventTotalLimit:
             provider_formatter=MockProviderFormatter(),
             event_limit=200,
             count_tokens=len,
-        )
+        ).output
 
         messages = result["messages"]
         assert len(messages) == 1
@@ -475,7 +475,7 @@ class TestEventTotalLimit:
             context_limit=5000,
             event_limit=6000,
             count_tokens=len,
-        )
+        ).output
 
         context = result["context"]
         # Small system block survives, big one is dropped

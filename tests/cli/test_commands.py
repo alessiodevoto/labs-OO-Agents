@@ -143,6 +143,45 @@ async def test_models_command_output(handler):
 
 
 # ============================================================================
+# Context Command Tests - Input/Output
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_context_command_no_stats(handler, mock_agent):
+    """Test /context before any generation — shows info message."""
+    mock_agent.context_stats = None
+    result = await handler.handle("/context")
+
+    assert result.success is True
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("No context stats yet" in o.content for o in text_outputs)
+
+
+@pytest.mark.asyncio
+async def test_context_command_with_stats(handler, mock_agent):
+    """Test /context with stats available — shows formatted output."""
+    from context_blocks.models import ContextWindowStats
+
+    mock_agent.context_stats = ContextWindowStats(
+        context_blocks_tokens=8_000,
+        context_blocks_count=5,
+        events_tokens=4_000,
+        events_count=20,
+        total_tokens=12_000,
+        max_context_tokens=32_000,
+        max_event_tokens=20_000,
+    )
+    result = await handler.handle("/context")
+
+    assert result.success is True
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("Context usage:" in o.content for o in text_outputs)
+    assert any("Context blocks:" in o.content for o in text_outputs)
+    assert any("Events:" in o.content for o in text_outputs)
+
+
+# ============================================================================
 # History Command Tests - Input/Output
 # ============================================================================
 

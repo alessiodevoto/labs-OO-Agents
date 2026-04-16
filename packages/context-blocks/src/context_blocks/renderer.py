@@ -12,12 +12,19 @@ message formatting produce new ResolvedBlock instances via model_copy().
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from context_blocks.events import ToolCallEvent
 from context_blocks.formatter import FORMAT_PLAIN, FORMAT_XML, BlockFormatter, ProviderFormatter
-from context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from context_blocks.models import BlockMetadata, ContextWindowStats, ResolvedBlock, Role
 from context_blocks.utils import camel_to_snake, truncate_content
+
+
+class RenderResult(NamedTuple):
+    """Result of render_context(): provider output + utilization stats."""
+
+    output: Any
+    stats: ContextWindowStats
 
 
 def format_message_content(block: ResolvedBlock, format_type: str) -> str:
@@ -95,7 +102,7 @@ def _apply_context_total_limit(
     blocks: list[ResolvedBlock],
     total_limit: int,
     count_fn: Callable[[str], int],
-) -> list[ResolvedBlock]:
+) -> tuple[list[ResolvedBlock], int]:
     """Drop context blocks until total content fits within budget.
 
     Two-pass strategy:
@@ -107,11 +114,11 @@ def _apply_context_total_limit(
     This preserves framework essentials and strategy configuration,
     sacrificing user-populated context data first.
 
-    Returns new list — never mutates input.
+    Returns (new_blocks, dropped_count) — never mutates input.
     """
     total = sum(count_fn(b.content) for b in blocks)
     if total <= total_limit:
-        return blocks
+        return blocks, 0
 
     to_drop: set[int] = set()
     dropped: list[tuple[str, str | None, int]] = []
@@ -156,24 +163,24 @@ def _apply_context_total_limit(
         metadata=BlockMetadata(truncated=True),
     )
 
-    return [*surviving, summary_block]
+    return [*surviving, summary_block], len(to_drop)
 
 
 def _apply_event_total_limit(
     blocks: list[ResolvedBlock],
     total_limit: int,
     count_fn: Callable[[str], int],
-) -> list[ResolvedBlock]:
+) -> tuple[list[ResolvedBlock], int]:
     """Drop oldest events until total content fits within budget.
 
     Events are ordered chronologically — oldest first. When over budget,
     we drop from the front (oldest) to preserve recent context.
 
-    Returns new list — never mutates input.
+    Returns (new_blocks, dropped_count) — never mutates input.
     """
     total = sum(count_fn(b.content) for b in blocks)
     if total <= total_limit:
-        return blocks
+        return blocks, 0
 
     # Drop oldest events (from the front) until we fit.
     # Use a running total to avoid O(n²) recomputation.
@@ -182,7 +189,7 @@ def _apply_event_total_limit(
         total -= count_fn(blocks[start].content)
         start += 1
 
-    return blocks[start:]
+    return blocks[start:], start
 
 
 def render_context(
@@ -195,8 +202,8 @@ def render_context(
     event_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
     pre_format_limit: int | None = None,
-) -> Any:
-    """Render resolved blocks into provider-specific output.
+) -> RenderResult:
+    """Render resolved blocks into provider-specific output with utilization stats.
 
     Never mutates input blocks — truncation and message formatting
     produce new instances via model_copy().
@@ -219,7 +226,8 @@ def render_context(
             None uses the formatter default.
 
     Returns:
-        Provider-specific output (list[dict] for OpenAI, dict for Anthropic).
+        RenderResult with .output (provider-specific: list[dict] for OpenAI,
+        dict for Anthropic) and .stats (ContextWindowStats).
     """
     if count_tokens is None and (context_limit is not None or event_limit is not None):
         raise ValueError(
@@ -239,8 +247,9 @@ def render_context(
     system_blocks = _truncate_blocks(system_blocks, block_limit, formatter_type)
 
     # Apply context total limit — drop blocks from the end first
+    context_blocks_dropped = 0
     if context_limit is not None:
-        system_blocks = _apply_context_total_limit(system_blocks, context_limit, count_fn)
+        system_blocks, context_blocks_dropped = _apply_context_total_limit(system_blocks, context_limit, count_fn)
 
     # Format system blocks into context string
     context_str = block_formatter.format(system_blocks)
@@ -263,8 +272,25 @@ def render_context(
     message_blocks = _truncate_blocks(message_blocks, block_limit, formatter_type)
 
     # Apply event total limit — drop oldest events first
+    events_dropped = 0
     if event_limit is not None:
-        message_blocks = _apply_event_total_limit(message_blocks, event_limit, count_fn)
+        message_blocks, events_dropped = _apply_event_total_limit(message_blocks, event_limit, count_fn)
+
+    # Compute stats after truncation, before provider formatting
+    context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
+    events_tokens = sum(count_fn(b.content) for b in message_blocks)
+
+    stats = ContextWindowStats(
+        context_blocks_tokens=context_blocks_tokens,
+        context_blocks_count=len(system_blocks),
+        events_tokens=events_tokens,
+        events_count=len(message_blocks),
+        total_tokens=context_blocks_tokens + events_tokens,
+        max_context_tokens=context_limit,
+        max_event_tokens=event_limit,
+        context_blocks_dropped=context_blocks_dropped,
+        events_dropped=events_dropped,
+    )
 
     # Pre-format message blocks with metadata wrapping (before provider assembly)
     # Tool-call blocks are skipped — they carry the original event, not string content.
@@ -276,4 +302,5 @@ def render_context(
         formatted_messages.append(block)
 
     # Assemble system prompt + messages via provider formatter
-    return provider_formatter.format(context_str, formatted_messages)
+    output = provider_formatter.format(context_str, formatted_messages)
+    return RenderResult(output=output, stats=stats)
