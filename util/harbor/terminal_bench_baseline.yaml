@@ -12,10 +12,9 @@
 # Prerequisites:
 #   1. apptainer installed
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
-#   3. Terminal Bench tasks generated:
-#      harbor task migrate \
-#        --input ~/.cache/terminal-bench/tasks \
-#        --output util/harbor/tasks/terminal_bench
+#   3. Terminal Bench tasks generated via the harbor adapter (harbor MR !8):
+#      python 3p/harbor-nemo/adapters/terminal_bench/run_adapter.py \
+#        --output-dir util/harbor/tasks/terminal_bench
 #      (or use the 5-task smoke-test set already in util/harbor/tasks/terminal_bench/)
 #   4. Set env vars:
 #      export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
