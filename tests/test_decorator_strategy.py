@@ -4,6 +4,7 @@ TDD: Write tests first, then implement to make them pass.
 """
 
 from nemo_oo_agents import strategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
 
 class TestStrategyDecoratorWithInstances:
@@ -11,8 +12,6 @@ class TestStrategyDecoratorWithInstances:
 
     def test_strategy_accepts_strategy_instance(self):
         """@strategy should accept a strategy instance."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-
         strat = PurePythonStrategy(max_iterations=5)
 
         @strategy(strat)
@@ -25,8 +24,6 @@ class TestStrategyDecoratorWithInstances:
 
     def test_strategy_instance_used_directly(self):
         """Strategy instance should be stored directly (not converted to enum)."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-
         strat = PurePythonStrategy(max_retries=2)
 
         @strategy(strat)
@@ -45,8 +42,6 @@ class TestStrategyDecoratorWithInstances:
 
     def test_strategy_config_preserved(self):
         """Strategy's configuration should be preserved."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-
         strat = PurePythonStrategy(max_iterations=7, max_retries=4)
 
         @strategy(strat)
@@ -62,8 +57,6 @@ class TestStrategyDecoratorValidation:
 
     def test_strategy_on_implemented_method_is_allowed(self):
         """@strategy on implemented method is allowed (acts as entry point marker)."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-
         # This should NOT raise - @strategy on implemented methods is valid
         @strategy(PurePythonStrategy())
         async def has_body(self) -> str:
