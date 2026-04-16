@@ -203,10 +203,10 @@ class TestModelCommand:
         assert any("openai/gpt-4o" in t for t in frontend.text_contents())
 
     @pytest.mark.asyncio
-    async def test_model_with_args_returns_error(self, tmp_path):
-        session, frontend, _, _ = _make_session(tmp_path, ["/model extra-arg", "/exit"])
+    async def test_model_with_unknown_arg_returns_error(self, tmp_path):
+        session, frontend, _, _ = _make_session(tmp_path, ["/model nonexistent-model", "/exit"])
         await session.run()
-        assert any("Usage" in t for t in frontend.text_contents())
+        assert any("Unknown model" in t for t in frontend.text_contents())
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ class TestModelsCommand:
             await session.run()
         tables = frontend.outputs_of(TableOutput)
         rows_flat = [cell for row in tables[0].rows for cell in row]
-        assert "→" in rows_flat
+        assert "\u25c0" in rows_flat
 
 
 # ---------------------------------------------------------------------------
@@ -292,10 +292,10 @@ class TestThemeCommand:
         assert any("badtheme" in t or "Theme must" in t for t in frontend.text_contents())
 
     @pytest.mark.asyncio
-    async def test_theme_no_args(self, tmp_path):
+    async def test_theme_no_args_shows_current(self, tmp_path):
         session, frontend, _, _ = _make_session(tmp_path, ["/theme", "/exit"])
         await session.run()
-        assert any("Usage" in t for t in frontend.text_contents())
+        assert any("Current theme" in t or "mocha" in t for t in frontend.text_contents())
 
 
 # ---------------------------------------------------------------------------

@@ -202,6 +202,11 @@ class TUIInputHandler:
             vi_mode=vi_mode,
         )
 
+    def refresh_style(self) -> None:
+        """Rebuild prompt_toolkit style from current theme colors."""
+        self.style = create_prompt_style()
+        self.session.style = self.style
+
     async def get_input(self, prompt: str = "You: ") -> str:
         """Get input from user with history and completion.
 

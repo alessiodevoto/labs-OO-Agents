@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default model - Claude Sonnet 4.5
-DEFAULT_MODEL = "aws/anthropic/bedrock-claude-sonnet-4-5-v1"
+# Default model - Claude Opus 4.6
+DEFAULT_MODEL = "aws/anthropic/bedrock-claude-opus-4-6"
 
 
 @dataclass
