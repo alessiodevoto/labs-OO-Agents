@@ -125,7 +125,7 @@ _LOCAL_EXPORTER_TYPES: tuple[type, ...] = (
 )
 
 
-def _probe_otlp_endpoint(endpoint: str, timeout: float = 0.5) -> bool:
+def probe_otlp_endpoint(endpoint: str, timeout: float = 0.5) -> bool:
     """Check whether the OTLP endpoint is reachable.
 
     Returns ``True`` if the server responds (any HTTP status), ``False`` on
@@ -134,6 +134,9 @@ def _probe_otlp_endpoint(endpoint: str, timeout: float = 0.5) -> bool:
 
     Uses GET /api/eval/health instead of POSTing to the traces endpoint so we
     don't accidentally create ``unknown_*`` sessions in the viewer's store.
+
+    Useful for external callers (e.g. the Harbor runner) that need to decide
+    whether to send traces live vs. fall back to file export.
     """
     base = endpoint.rstrip("/").removesuffix("/v1/traces").removesuffix("/v1")
     health_url = f"{base}/api/eval/health"
@@ -339,7 +342,7 @@ def _default_exporters() -> list[SpanExporter] | None:
     explicit_endpoint = os.getenv("OTLP_ENDPOINT")
     endpoint = explicit_endpoint or "http://localhost:5001/v1/traces"
 
-    if _probe_otlp_endpoint(endpoint):
+    if probe_otlp_endpoint(endpoint):
         return [exporters_mod.journal(endpoint=endpoint)]
 
     _probe_failed = True
@@ -419,6 +422,7 @@ __all__ = [
     "OtlpJsonHttpExporter",
     "enable_tracing",
     "exporters",
+    "probe_otlp_endpoint",
     "set_session",
     "get_session",
     "flush_traces",
