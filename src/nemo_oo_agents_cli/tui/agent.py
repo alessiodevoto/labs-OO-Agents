@@ -149,7 +149,7 @@ async def _orchestrate(agent: "TUIAgent", user_message: str) -> "RespondResult":
 
     if intent.task_type == "feature":
         agent._phase = "brainstorming"
-        spec = await agent.brainstorm(user_message)
+        spec = await agent._legacy_brainstorm(user_message)
         if not spec.complete:
             return RespondResult.WAIT_FOR_USER_INPUT
         await _proceed_to_plan(agent, spec)
@@ -171,7 +171,7 @@ async def _orchestrate(agent: "TUIAgent", user_message: str) -> "RespondResult":
 
 async def _continue_brainstorm(agent: "TUIAgent", user_message: str) -> None:
     """Resume brainstorming with user's answer."""
-    spec = await agent.brainstorm(user_message)
+    spec = await agent._legacy_brainstorm(user_message)
     if not spec.complete:
         return
     await _proceed_to_plan(agent, spec)
@@ -568,7 +568,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     @hidden
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15)))
-    async def brainstorm(self, request: str) -> BrainstormResult:
+    async def _legacy_brainstorm(self, request: str) -> BrainstormResult:
         """Explore requirements for: {request}
 
         Your job is to understand what to build BEFORE writing any code.
