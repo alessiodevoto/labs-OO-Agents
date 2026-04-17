@@ -733,6 +733,30 @@ class OpenInferenceHooks:
         return None
 
     @staticmethod
+    def _safe_serialize_execution_result(result: Any, max_chars: int = 50_000) -> str:
+        """Serialize an ExecutionResult to JSON, capping returned_value *before* encoding.
+
+        Unlike post-JSON slicing (``json_str[:50000]``), this approach always
+        produces valid JSON because truncation happens on the Python value, not
+        on the serialised string.
+        """
+        import json
+
+        data: dict[str, Any] = {}
+        if hasattr(result, "stdout"):
+            data["stdout"] = truncating_pformat(result.stdout, max_chars=max_chars)
+        if hasattr(result, "stderr"):
+            data["stderr"] = truncating_pformat(result.stderr, max_chars=max_chars)
+        if hasattr(result, "returned_value"):
+            rv = result.returned_value
+            # Check for _NO_RETURN sentinel or None
+            if rv is None or (hasattr(rv, "__class__") and rv.__class__.__name__ == "object"):
+                data["returned_value"] = None
+            else:
+                data["returned_value"] = truncating_pformat(rv, max_chars=max_chars)
+        return json.dumps(data)
+
+    @staticmethod
     def _safe_serialize(obj: Any, max_chars: int = 50_000) -> str:
         """Serialize an object to string for trace span attributes.
 
