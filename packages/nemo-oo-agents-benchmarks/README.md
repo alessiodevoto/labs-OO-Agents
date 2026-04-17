@@ -164,6 +164,51 @@ only benchmark-specific input.
 
 ---
 
+## Tracing
+
+The runner emits OTel spans for every agent run.  Where they go depends on
+whether the local viewer is reachable.
+
+### Local development (viewer running)
+
+Start the viewer before launching Harbor:
+
+```bash
+uv run nemo oo start-dev          # Terminal 1 — viewer on http://localhost:5001
+harbor run --config util/harbor/dabstep_baseline.yaml   # Terminal 2
+```
+
+The runner probes `localhost:5001` at startup.  Apptainer shares the host
+network namespace, so the probe resolves to your host viewer.  If it responds,
+spans are streamed live via the journal exporter.  Each session in the viewer
+will have `eval.model` and `eval.agent_type` as resource attributes.
+
+> **Note:** individual tasks are not yet distinguishable by name in the session
+> list — all runs with the same model/agent type look identical.  A `--task-id`
+> flag is tracked in gl-39.
+
+### Remote / datacenter runs (no viewer)
+
+The probe fails silently (0.5 s timeout) and traces fall back to JSONL in
+`/logs/artifacts/traces/`.  Import them into your local viewer after the job
+completes:
+
+```bash
+nemo oo import-harbor /path/to/harbor/jobs/my-job/
+```
+
+### Docker containers
+
+Docker doesn't share the host network, so `localhost` inside the container
+doesn't reach the host viewer.  Set `OTLP_ENDPOINT` explicitly:
+
+```bash
+export OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces
+harbor run --config ...
+```
+
+---
+
 ## Installation
 
 ```bash
