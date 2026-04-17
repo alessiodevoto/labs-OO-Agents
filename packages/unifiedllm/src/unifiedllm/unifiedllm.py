@@ -907,7 +907,11 @@ class CompletionClient(UnifiedLLM):
         Initialize CompletionClient.
 
         Args:
-            model: The model identifier (e.g., "gpt-4o-mini", "nvidia_nim/...")
+            model: The model identifier. Registry model names (e.g.,
+                   "aws/anthropic/bedrock-claude-sonnet-4-5-v1",
+                   "nvidia/meta/llama-3.3-70b-instruct") are resolved
+                   automatically — endpoint and API key come from the registry.
+                   Direct litellm names (e.g., "openai/gpt-4o") pass through as-is.
             retry_config: Optional retry configuration for API-level retries.
                          Handles 429, 500, timeouts, etc. Set retry_on_empty_content=True
                          to also retry when reasoning models return empty content.
@@ -920,6 +924,27 @@ class CompletionClient(UnifiedLLM):
                 Note: Do NOT manually add cache_control to message content when using this.
             **config: Additional configuration passed to litellm (api_key, api_base, etc.)
         """
+        # Auto-resolve registry models — if the name is in the registry and the
+        # caller hasn't already supplied api_base/api_key, apply the registry config.
+        if "api_base" not in config and "api_key" not in config:
+            import os
+
+            from .registry import MODELS, NVIDIA_API_KEY_ENV, NVIDIA_ENDPOINT
+
+            reg = MODELS.get(model)
+            if reg is not None:
+                api_base = reg.get("endpoint", NVIDIA_ENDPOINT)
+                api_key = os.getenv(reg.get("api_key_env", NVIDIA_API_KEY_ENV))
+                model = f"openai/{reg.get('model_name', model)}"
+                config.setdefault("drop_params", True)
+                if api_key:
+                    config.setdefault("api_key", api_key)
+                if api_base:
+                    config.setdefault("api_base", api_base)
+                for key in ("temperature", "top_p", "max_tokens"):
+                    if key in reg:
+                        config.setdefault(key, reg[key])
+
         super().__init__(model, **config)
         self.retry_config = retry_config
         self._http_config = http_config or HttpConfig()

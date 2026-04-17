@@ -46,11 +46,13 @@ environment:
     apptainer_fakeroot: false
     apptainer_image_cache_dir: 3p/sif_cache
     # Forward API keys into the container
-    env_passthrough: ANTHROPIC_API_KEY,OPENAI_API_KEY,NVIDIA_API_KEY
+    # Do NOT include OPENAI_API_KEY: the runner passes it as api_key override which
+    # overrides the registry lookup for NVIDIA gateway models (NVIDIA_INTERNAL_API_KEY).
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY
 
 agents:
   - name: nemo-oo-agents
-    model_name: anthropic/claude-sonnet-4-6
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: baseline
 

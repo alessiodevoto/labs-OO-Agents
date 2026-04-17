@@ -244,7 +244,24 @@ uv pip install -e 3p/harbor-nemo
 harbor --version   # expect 0.4.0
 ```
 
-### 2. Get benchmark container images
+### 2. Configure Apptainer (one-time, requires sudo)
+
+On Ubuntu 24.04, AppArmor restricts unprivileged user namespace creation.
+Apptainer needs its `starter-suid` binary to be setuid root:
+
+```bash
+sudo cp /usr/lib/x86_64-linux-gnu/apptainer/bin/starter \
+        /usr/lib/x86_64-linux-gnu/apptainer/bin/starter-suid
+sudo chmod u+s /usr/lib/x86_64-linux-gnu/apptainer/bin/starter-suid
+```
+
+Verify it works:
+
+```bash
+apptainer exec docker://ubuntu:22.04 echo "hello"
+```
+
+### 3. Get benchmark container images
 
 **SIF storage** — SIF files are large binaries (100 MB–10 GB) and are stored
 **outside** the git worktree to avoid per-branch duplication and git bloat.
@@ -279,7 +296,7 @@ apptainer pull ~/.cache/harbor/sif/sympy__sympy-19346.sif \
     docker://swebench/sweb.eval.x86_64.sympy__sympy-19346:latest
 ```
 
-### 3. Generate task directories
+### 4. Generate task directories
 
 Task directories are not stored in git — they are generated on demand from
 Harbor's public benchmark adapters (which read from HuggingFace).
@@ -297,7 +314,7 @@ BFCL, etc.) in `3p/harbor-nemo/adapters/`. These are from the public
 [harbor-framework/harbor](https://github.com/harbor-framework/harbor)
 repository — not NVIDIA-internal.
 
-### 4. Run
+### 5. Run
 
 ```bash
 export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"

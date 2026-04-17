@@ -173,6 +173,7 @@ async def main(n_tasks: int = 5, model_name: str = "anthropic/claude-sonnet-4-6"
         sys.exit(1)
 
     llm_client = CompletionClient(model=model_name)
+
     evaluator = Evaluator(
         models={"baseline": llm_client},
         output_dir=str(REPO_ROOT / ".development/docs/evaluation"),
