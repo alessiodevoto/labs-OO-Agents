@@ -354,7 +354,7 @@ async def test_hard_rich_ansi_preserved_in_output():
     agent.queue(step)
     async with TUIHarness(agent=agent) as h:
         await h.submit_async("go")
-        await h.wait_for(lambda: "\x1b[" in h.capture_output())
+        await h.wait_for(lambda: "\x1b[" in h.capture_output_ansi())
 
 
 async def test_hard_spinner_and_session_label_in_status():

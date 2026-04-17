@@ -511,11 +511,13 @@ class Session:
         bang dispatch route through the existing CommandHandler and
         ``_handle_bang`` via TUIApplication's callback hooks.
 
-        NOTE: minimal viable cut-over. It reuses ``_attach_agent``,
-        ``_handle_bang``, ``_handler.handle``, and ``_agent_turn`` as-is
-        so parity with the old path is mostly automatic. Auto-naming
-        and snapshot teardown mirror ``run()``.
+        Rendering is redirected: the frontend's Rich ``Console`` is
+        rewired to write its ANSI output into the app's scrollback
+        instead of stdout, so prompt_toolkit's layout isn't clobbered
+        by direct writes.
         """
+        from rich.console import Console
+
         from .output import TextOutput
         from .tui_application import TUIApplication
 
@@ -554,6 +556,45 @@ class Session:
             await self._handle_bang("!" + body)
 
         app = TUIApplication(agent=self.agent, on_command=_on_command, on_bang=_on_bang)
+
+        # Redirect the Rich console into the app's scrollback so every
+        # TerminalFrontend render path (activity lines, code previews,
+        # bash output, markdown, rules) lands inside prompt_toolkit's
+        # layout instead of stdout.
+        class _AppStream:
+            def write(self, text: str) -> int:
+                if text:
+                    app.append_output(text)
+                return len(text)
+
+            def flush(self) -> None:
+                return None
+
+            def isatty(self) -> bool:
+                return True
+
+        stream = _AppStream()
+        from .theme import CATPPUCCIN_THEME
+
+        new_console = Console(
+            file=stream,  # type: ignore[arg-type]
+            force_terminal=True,
+            color_system="256",
+            width=120,
+            theme=CATPPUCCIN_THEME,
+        )
+        if hasattr(self.frontend, "_console"):
+            # Swap the underlying Rich Console for one that writes to app.
+            self.frontend._console.console = new_console  # type: ignore[attr-defined]
+
+        # Wire agent.message() → app output with a Rich-rendered markdown block.
+        if hasattr(self.agent, "_render_message"):
+            from rich.markdown import Markdown
+
+            def _render_msg(text: str) -> None:
+                new_console.print(Markdown(str(text)))
+
+            self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
         try:
             await app.run_async()

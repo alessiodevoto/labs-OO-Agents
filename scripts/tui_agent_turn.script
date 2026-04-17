@@ -1,0 +1,14 @@
+# Wait for TUI to boot, ask the agent a trivial question, type-ahead,
+# capture while the agent is still working, then again after it settles.
+SLEEP 7
+CAPTURE
+TYPE say "hi" in one word
+KEY enter
+SLEEP 0.5
+TYPE queued-while-working
+CAPTURE
+SLEEP 4
+CAPTURE
+SLEEP 8
+CAPTURE
+KEY c-d

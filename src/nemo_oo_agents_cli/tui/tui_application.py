@@ -16,6 +16,7 @@ behaviour test needed it.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -24,12 +25,23 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, Window
-from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .queue_state import QueueState
+
+# CSI + OSC stripper for the plain-text view of output_buffer. We keep
+# the original ANSI in _output_ansi; tests that assert on buffer text
+# don't want escape sequences in their comparisons.
+_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
 
 PROMPT_MARKER = "❯ "
 
@@ -83,9 +95,13 @@ class TUIApplication:
         self._on_bang = on_bang
         self.state = QueueState()
 
-        # Output window: append-only scrollback. Tests read ``.text``; the
-        # real impl feeds ANSI-rendered Rich output here.
+        # Output scrollback. Two parallel stores:
+        #   * ``output_buffer`` — plain-text view, used by tests and by
+        #     callers that want a printable transcript. ANSI stripped.
+        #   * ``_output_ansi`` — raw ANSI chunks rendered into the live
+        #     TUI via FormattedTextControl so Rich styling survives.
         self.output_buffer = Buffer(read_only=False)
+        self._output_ansi: list[str] = []
 
         # Input window: where user keystrokes land.
         self._completer = _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
@@ -119,6 +135,32 @@ class TUIApplication:
 
         kb = self._build_key_bindings()
 
+        # Output: render ANSI so Rich styling round-trips through the app.
+        # Callable re-evaluates on each draw; we append to _output_ansi.
+        def _output_formatted():
+            return ANSI("".join(self._output_ansi))
+
+        output_window = Window(
+            FormattedTextControl(_output_formatted, focusable=False),
+            wrap_lines=True,
+        )
+
+        # Queue window: shown only while state.messages / state.commands
+        # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
+        def _queue_formatted():
+            lines = []
+            for msg in self.state.messages:
+                for line in msg.split("\n"):
+                    lines.append(("class:queue", f"│ {line}\n"))
+            for cmd in self.state.commands:
+                lines.append(("class:queue", f"│ {cmd}\n"))
+            return lines
+
+        queue_window = ConditionalContainer(
+            Window(FormattedTextControl(_queue_formatted, focusable=False), height=None),
+            filter=Condition(lambda: bool(self.state.messages or self.state.commands)),
+        )
+
         input_window = Window(
             BufferControl(
                 self.input_buffer,
@@ -127,17 +169,17 @@ class TUIApplication:
             wrap_lines=True,
         )
         self._input_window = input_window
+
+        # Status line at the bottom — shows spinner + session label.
+        def _status_formatted():
+            text = self.status_text()
+            return [("class:status", text)] if text else []
+
+        status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
+
         self._app = Application(
             layout=Layout(
-                HSplit(
-                    [
-                        Window(
-                            BufferControl(self.output_buffer, focusable=False),
-                            wrap_lines=True,
-                        ),
-                        input_window,
-                    ]
-                ),
+                HSplit([output_window, queue_window, input_window, status_window]),
                 focused_element=input_window,
             ),
             key_bindings=kb,
@@ -304,16 +346,23 @@ class TUIApplication:
     def append_output(self, text: str) -> None:
         """Append ``text`` to the output scrollback.
 
-        Accepts plain strings or strings with embedded ANSI. No parsing
-        — the terminal renderer handles it.
+        ANSI-bearing strings render styled via the output Window's
+        FormattedTextControl. The plain ``output_buffer`` keeps a
+        stripped copy for tests and transcript consumers.
         """
         if not text:
             return
+        self._output_ansi.append(text)
+        stripped = _strip_ansi(text)
         existing = self.output_buffer.text
         joined = (
-            existing + text if not existing or existing.endswith("\n") else existing + "\n" + text
+            existing + stripped
+            if not existing or existing.endswith("\n")
+            else existing + "\n" + stripped
         )
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
+        if self._app.is_running:
+            self._app.invalidate()
 
     # ── surface the harness (and real callers) rely on ----------------
 

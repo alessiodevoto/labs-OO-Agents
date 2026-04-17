@@ -253,6 +253,12 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
         assert self.app is not None
         return self.app.output_buffer.text
 
+    def capture_output_ansi(self) -> str:
+        """Raw (ANSI-bearing) output. ``capture_output`` strips ANSI; this
+        preserves it so ``\\x1b[`` round-trip tests can assert styling."""
+        assert self.app is not None
+        return "".join(self.app._output_ansi)
+
     def capture_queued(self) -> list[str]:
         assert self.app is not None
         return list(self.app.state.messages) + list(self.app.state.commands)
