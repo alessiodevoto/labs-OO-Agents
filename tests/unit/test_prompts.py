@@ -3,7 +3,7 @@
 import pytest
 
 import nemo_oo_agents
-from nemo_oo_agents import Agent, CodeActStrategy, PromptData, PurePythonStrategy, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, PromptData, strategy
 from nemo_oo_agents.prompts import (
     _get_prefill,
     _get_task_prompt,
@@ -12,6 +12,7 @@ from nemo_oo_agents.prompts import (
     render_prompt_data,
 )
 from nemo_oo_agents.strategies.current_call import CurrentCall
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
@@ -133,11 +134,13 @@ class TestGetPrefill:
         inspect_code, _ = _get_prefill(strategy_obj, call)
         assert inspect_code is None
 
-    def test_pure_python_no_user_prefill(self):
-        strategy_obj = PurePythonStrategy()  # no prefill= configured
+    def test_pure_python_has_inspect_prefill_by_default(self):
+        strategy_obj = PurePythonStrategy()  # InspectInputsPrefill by default
         call = CurrentCall(id="c9", method_name="transform", decorator="plan", kwargs={"items": []})
         inspect_code, _ = _get_prefill(strategy_obj, call)
-        assert inspect_code is None
+        assert inspect_code is not None
+        assert "items" in inspect_code
+        assert "pprint" in inspect_code
 
     def test_other_strategy_no_inspect_prefill(self):
         """Unknown strategy produces no inspect_prefill but preserves pre_ellipsis."""

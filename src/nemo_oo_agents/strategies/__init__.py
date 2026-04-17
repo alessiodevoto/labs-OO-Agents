@@ -15,7 +15,6 @@ from nemo_oo_agents.strategies.composite import CompositeStrategy
 from nemo_oo_agents.strategies.current_call import CurrentCall
 from nemo_oo_agents.strategies.predict import PredictStrategy
 from nemo_oo_agents.strategies.prefill import InspectInputsPrefill, Prefill
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 from nemo_oo_agents.strategies.template import TemplateStrategy
 
@@ -85,7 +84,6 @@ __all__ = [
     "CurrentCall",
     "CompositeStrategy",
     "TemplateStrategy",
-    "PurePythonStrategy",
     "CodeActStrategy",
     "CodeActLiteStrategy",
     "ReflexionStrategy",

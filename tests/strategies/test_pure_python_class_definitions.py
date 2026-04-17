@@ -8,7 +8,7 @@ and can actually use the defined class to produce results.
 import pytest
 
 from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient
 
 # Code where the LLM defines a helper class and uses it to compute the result.

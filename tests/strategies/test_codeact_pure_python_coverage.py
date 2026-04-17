@@ -1171,7 +1171,7 @@ class TestPurePythonInit:
         """Valid prefill plugin should be accepted."""
 
         class ValidPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return "x = 1"
 
         strat = PurePythonStrategy(prefill=ValidPrefill())
@@ -1228,6 +1228,40 @@ class TestPurePythonExecuteErrors:
         assert result == 99
 
     @pytest.mark.asyncio
+    async def test_xml_format_error_removes_malformed_event(self):
+        """XMLFormatError should remove the malformed LLMOutput event."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(PurePythonStrategy(max_iterations=10, max_retries=3))
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        # First response triggers XMLFormatError, second succeeds
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("<tool_code><code>return 42</code></tool_code>"),
+                _resp("return 99"),
+            ]
+        )
+        agent = TestAgent(llm=fake_llm)
+
+        # Spy on event_manager.remove to verify it's called
+        removed_ids = []
+        original_remove = agent.runtime.event_manager.remove
+
+        def spy_remove(key):
+            removed_ids.append(key)
+            return original_remove(key)
+
+        with patch.object(agent.runtime.event_manager, "remove", side_effect=spy_remove):
+            result = await agent.compute()
+
+        assert result == 99
+        # At least one event was removed (the malformed XML response)
+        assert len(removed_ids) >= 1
+
+    @pytest.mark.asyncio
     async def test_empty_code_response_records_error(self):
         """Empty code response should record error and continue."""
 
@@ -1246,6 +1280,45 @@ class TestPurePythonExecuteErrors:
         agent = TestAgent(llm=fake_llm)
         result = await agent.compute()
         assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_empty_response_removes_event(self):
+        """Empty response should call event_manager.remove() to clean up the LLMOutput."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(PurePythonStrategy(max_iterations=10, max_retries=3))
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        call_count = 0
+
+        async def patched_generate_code(self_strat, runtime, session):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return "", "empty_evt_id"
+            return "return 42", "ok_evt_id"
+
+        fake_llm = FakeLLMClient(scripted_responses=[_resp("return 42")])
+        agent = TestAgent(llm=fake_llm)
+
+        # Spy on event_manager.remove to track calls
+        removed_ids = []
+        original_remove = agent.runtime.event_manager.remove
+
+        def spy_remove(key):
+            removed_ids.append(key)
+            return original_remove(key)
+
+        with (
+            patch.object(PurePythonStrategy, "_generate_code", patched_generate_code),
+            patch.object(agent.runtime.event_manager, "remove", side_effect=spy_remove),
+        ):
+            result = await agent.compute()
+
+        assert result == 42
+        assert "empty_evt_id" in removed_ids
 
     @pytest.mark.asyncio
     async def test_api_error_exhausts_retries(self):
@@ -1300,22 +1373,11 @@ class TestPurePythonRunPrefill:
     """Tests for _run_prefill."""
 
     @pytest.mark.asyncio
-    async def test_run_prefill_no_prefill_configured_returns_early(self):
-        """_run_prefill returns early when no prefill configured (line 467)."""
-        strat = PurePythonStrategy()  # No prefill
-        rt = MagicMock()
-        call = MagicMock()
-        builtins = {}
-        session = GenerationSession(max_iterations=5, max_retries=3, target_method_name="test")
-        result = await strat._run_prefill(rt, call, builtins, session)
-        assert result is None
-
-    @pytest.mark.asyncio
     async def test_run_prefill_prefill_returns_no_code(self):
         """_run_prefill returns early when prefill returns None code (lines 471-472)."""
 
         class NoPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return None
 
         strat = PurePythonStrategy(prefill=NoPrefill())
@@ -1331,7 +1393,7 @@ class TestPurePythonRunPrefill:
         """_run_prefill with execution error should log but not fail (line 521)."""
 
         class ErrorPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return "x = 1"
 
         strat = PurePythonStrategy(prefill=ErrorPrefill())
@@ -1355,6 +1417,42 @@ class TestPurePythonRunPrefill:
 
         await strat._run_prefill(rt, call, builtins, session)
         # No exception raised - prefill errors are non-fatal
+
+    @pytest.mark.asyncio
+    async def test_run_prefill_success_emits_python_output_not_feedback(self):
+        """Successful prefill should emit PythonOutput (not Feedback)."""
+        from nemo_oo_agents.events import ExecutionResult, PythonOutput
+
+        class SimplePrefill:
+            def get_code(self, call, config=None):
+                return "print('hello')"
+
+        strat = PurePythonStrategy(prefill=SimplePrefill())
+        rt = MagicMock()
+        rt.event_manager = MagicMock()
+        added_events = []
+        rt.event_manager.add = MagicMock(side_effect=lambda e, **kw: added_events.append(e))
+        call = MagicMock()
+        call.method_name = "test"
+        builtins = {}
+        session = GenerationSession(max_iterations=5, max_retries=3, target_method_name="test")
+
+        ok_result = ExecutionResult(
+            stdout="hello", error=None, defined_methods={}, has_return=False
+        )
+        strat._execute_code = AsyncMock(return_value=ok_result)
+
+        await strat._run_prefill(rt, call, builtins, session)
+
+        # Should have LLMOutput then PythonOutput (not Feedback)
+        event_types = [type(e).__name__ for e in added_events]
+        assert "LLMOutput" in event_types
+        assert "PythonOutput" in event_types
+        assert "Feedback" not in event_types
+
+        # PythonOutput should have prefill metadata
+        py_out = [e for e in added_events if isinstance(e, PythonOutput)][0]
+        assert py_out.metadata.get("prefill") is True
 
 
 # ---------------------------------------------------------------------------
@@ -1580,6 +1678,93 @@ class TestPurePythonFinalizeSuccess:
         assert success is False
         assert validated is None
 
+    @pytest.mark.asyncio
+    async def test_finalize_success_value_error_returns_false(self):
+        """ValueError during validation returns (False, None)."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(PurePythonStrategy())
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        strat = PurePythonStrategy()
+        agent = TestAgent(llm=_TEST_LLM)
+        rt = MagicMock()
+        rt.agent = agent
+        rt.event_manager = MagicMock()
+        rt.truncation_config = MagicMock()
+
+        from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+
+        call = CurrentCall(
+            id="call_1",
+            method_name="compute",
+            decorator="strategy",
+            signature="(self) -> int",
+            docstring="Compute.",
+            args=(),
+            kwargs={},
+        )
+        result = ExecutionResult(
+            stdout="", error=None, defined_methods={}, has_return=True, returned_value="wrong"
+        )
+        session = GenerationSession(max_iterations=5, max_retries=3, target_method_name="compute")
+
+        with patch.object(ReturnValueValidator, "validate", side_effect=ValueError("bad value")):
+            success, validated = await strat._finalize_success(rt, result, call, session)
+        assert success is False
+        assert validated is None
+
+    @pytest.mark.asyncio
+    async def test_finalize_success_pydantic_validation_error_returns_false(self):
+        """PydanticValidationError during validation returns (False, None)."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(PurePythonStrategy())
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        strat = PurePythonStrategy()
+        agent = TestAgent(llm=_TEST_LLM)
+        rt = MagicMock()
+        rt.agent = agent
+        rt.event_manager = MagicMock()
+        rt.truncation_config = MagicMock()
+
+        from nemo_oo_agents.events import ExecutionResult
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+
+        call = CurrentCall(
+            id="call_1",
+            method_name="compute",
+            decorator="strategy",
+            signature="(self) -> int",
+            docstring="Compute.",
+            args=(),
+            kwargs={},
+        )
+        result = ExecutionResult(
+            stdout="", error=None, defined_methods={}, has_return=True, returned_value="wrong"
+        )
+        session = GenerationSession(max_iterations=5, max_retries=3, target_method_name="compute")
+
+        # Create a real PydanticValidationError
+        class M(BaseModel):
+            x: int
+
+        try:
+            M(x="bad")
+        except ValidationError as e:
+            with patch.object(ReturnValueValidator, "validate", side_effect=e):
+                success, validated = await strat._finalize_success(rt, result, call, session)
+        assert success is False
+        assert validated is None
+
 
 # ---------------------------------------------------------------------------
 # PurePythonStrategy._strip_xml_wrapper - error paths (lines 995-1000, 1023-1026)
@@ -1627,42 +1812,43 @@ class TestPurePythonStripXmlWrapper:
 
 
 # ---------------------------------------------------------------------------
-# PurePythonStrategy._format_validation_error (lines 1068-1088)
+# format_validation_error from codeact_errors (shared between CodeAct and PurePython)
 # ---------------------------------------------------------------------------
 
 
-class TestPurePythonFormatValidationError:
-    """Tests for _format_validation_error."""
+class TestFormatValidationErrorShared:
+    """Tests for format_validation_error (used by both CodeAct and PurePython)."""
 
     def test_json_decode_error(self):
-        """Should format JSONDecodeError (lines 1070-1074)."""
-        strat = PurePythonStrategy()
+        """Should format JSONDecodeError."""
+        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+
         try:
             json.loads("invalid json")
         except json.JSONDecodeError as e:
-            result = strat._format_validation_error(e, dict)
-        assert "Could not parse response as JSON" in result
+            result = format_validation_error(e, dict)
+        assert "Could not parse" in result
 
     def test_pydantic_validation_error(self):
-        """Should format PydanticValidationError with field details (lines 1076-1086)."""
+        """Should format PydanticValidationError with field details."""
+        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
 
         class MyModel(BaseModel):
             x: int
             y: str
 
-        strat = PurePythonStrategy()
         try:
             MyModel(x="not_int", y=123)
         except ValidationError as e:
-            result = strat._format_validation_error(e, MyModel)
-        assert "Pydantic validation failed" in result
+            result = format_validation_error(e, MyModel)
+        assert "x" in result  # field name is present
 
     def test_generic_error(self):
-        """Should format generic exception (line 1088)."""
-        strat = PurePythonStrategy()
+        """Should format generic exception."""
+        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+
         err = RuntimeError("something broke")
-        result = strat._format_validation_error(err, str)
-        assert "Validation error" in result
+        result = format_validation_error(err, str)
         assert "something broke" in result
 
 
@@ -1765,7 +1951,7 @@ class TestPurePythonPrefillSuccess:
         """Prefill with output should send feedback to LLM."""
 
         class PrintPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return "print('inspecting inputs')"
 
         class TestAgent(Agent, llm=_TEST_LLM):
@@ -2984,7 +3170,7 @@ class TestPurePythonPrefillExceptionPath:
         """Prefill exception should be caught and logged, not abort (lines 236-238)."""
 
         class ErrorPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return "some_code"
 
         class TestAgent(Agent, llm=_TEST_LLM):
@@ -3673,7 +3859,7 @@ class TestPurePythonPrefillWithHelpers:
         """Prefill continuation should show defined helper methods (line 507)."""
 
         class HelperPrefill:
-            def get_code(self, call):
+            def get_code(self, call, config=None):
                 return "async def helper(self):\n    return 42"
 
         class TestAgent(Agent, llm=_TEST_LLM):
@@ -3722,7 +3908,7 @@ class TestPurePythonTimeoutError:
             if call_count == 1:
                 # Raise the first exception type from _HTTPX_TIMEOUT_EXCEPTIONS
                 raise _HTTPX_TIMEOUT_EXCEPTIONS[0]("connection timeout")
-            return "return 42"
+            return "return 42", "fake_event_id"
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
@@ -3772,7 +3958,7 @@ class TestPurePythonValidationErrorInGenerate:
                     M(x="bad")
                 except ValidationError:
                     raise
-            return "return 42"
+            return "return 42", "fake_event_id"
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
@@ -3812,7 +3998,7 @@ class TestPurePythonGeneralExceptionInGenerate:
             call_count += 1
             if call_count == 1:
                 raise ConnectionError("API not available")
-            return "return 42"
+            return "return 42", "fake_event_id"
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
@@ -3856,6 +4042,83 @@ class TestPurePythonGeneralExceptionExhaustsRetries:
         with patch.object(PurePythonStrategy, "_generate_code", always_fails_generate):
             with pytest.raises(GenerationError):
                 await agent.compute()
+
+
+# ---------------------------------------------------------------------------
+# Pure Python - cause chain in LLM API error messages
+# ---------------------------------------------------------------------------
+
+
+class TestPurePythonCauseChain:
+    """Tests for __cause__/__context__ chain in LLM API error messages."""
+
+    @pytest.mark.asyncio
+    async def test_chained_exception_produces_cause_chain(self):
+        """Error message should include ' <- ' chain from __cause__."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(PurePythonStrategy(max_iterations=10, max_retries=3))
+            async def compute(self) -> int:
+                """Compute."""
+                ...
+
+        call_count = 0
+
+        async def patched_generate_code(self_strat, runtime, session):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                inner = ValueError("connection reset")
+                raise RuntimeError("LLM call failed") from inner
+            return "return 42", "fake_event_id"
+
+        fake_llm = FakeLLMClient(scripted_responses=[_resp("return 42")])
+        agent = TestAgent(llm=fake_llm)
+
+        with patch.object(PurePythonStrategy, "_generate_code", patched_generate_code):
+            result = await agent.compute()
+
+        assert result == 42
+        # Verify the error event had the cause chain
+        events = agent.runtime.event_manager.values()
+        error_events = [e for e in events if e.event_type == "Error"]
+        assert any("<-" in e.content for e in error_events), (
+            "Expected ' <- ' cause chain in error message"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pure Python - continuation feedback includes stderr
+# ---------------------------------------------------------------------------
+
+
+class TestPurePythonContinuationFeedbackStderr:
+    """Tests for stderr inclusion in _send_continuation_feedback via format_output."""
+
+    @pytest.mark.asyncio
+    async def test_send_continuation_feedback_includes_stderr_via_format_output(self):
+        """Stderr output should appear in continuation feedback (via format_output)."""
+        strat = PurePythonStrategy()
+        rt = MagicMock()
+        rt.event_manager = MagicMock()
+        rt.event_manager.add = MagicMock(return_value="evt1")
+        strat.continuation_prompt = AsyncMock(return_value="Continue...")
+
+        from nemo_oo_agents.events import ExecutionResult
+
+        result = ExecutionResult(
+            stdout="normal output",
+            stderr="warning: deprecation",
+            error=None,
+            defined_methods={},
+        )
+        await strat._send_continuation_feedback(rt, result, "compute")
+        feedback_event = rt.event_manager.add.call_args[0][0]
+        # Stderr is included via format_output(fenced=True), not as a separate block
+        assert "warning: deprecation" in feedback_event.content
+        assert "normal output" in feedback_event.content
+        # Should NOT be duplicated — stderr appears exactly once
+        assert feedback_event.content.count("warning: deprecation") == 1
 
 
 # ---------------------------------------------------------------------------

@@ -484,7 +484,13 @@ class TestPurePythonTimeoutRetryExhaustion:
 
 
 class TestPurePythonValidationRetryExhaustion:
-    """Repeated validation errors exhaust retries and raise GenerationError."""
+    """Repeated validation errors exhaust retries and raise GenerationError.
+
+    Note: PydanticValidationError from _generate_code is treated as a generic
+    LLM API error (the dedicated handler was removed because _generate_code
+    cannot actually raise PydanticValidationError). Validation errors from
+    return-value checking are handled in _finalize_success instead.
+    """
 
     @pytest.mark.asyncio
     async def test_validation_error_exhausts_retries(self):
@@ -521,7 +527,8 @@ class TestPurePythonValidationRetryExhaustion:
             new_callable=AsyncMock,
             side_effect=validation_err,
         ):
-            with pytest.raises(GenerationError, match="validation failed"):
+            # Falls through to generic except Exception handler → "LLM API error"
+            with pytest.raises(GenerationError, match="LLM API error"):
                 await agent.compute()
 
 

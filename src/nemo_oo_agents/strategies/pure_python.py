@@ -38,6 +38,7 @@ from nemo_oo_agents.events import (
     Task,
 )
 from nemo_oo_agents.strategies.base import RuntimeServices
+from nemo_oo_agents.strategies.codeact_errors import format_validation_error
 from nemo_oo_agents.strategies.composite import CompositeStrategy
 from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
@@ -145,7 +146,11 @@ class PurePythonStrategy(CompositeStrategy):
         max_retries: int = 3,
         prefill: "Prefill | None" = None,
     ):
-        if prefill is not None and not callable(getattr(prefill, "get_code", None)):
+        if prefill is None:
+            from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
+
+            prefill = InspectInputsPrefill()
+        elif not callable(getattr(prefill, "get_code", None)):
             raise ValueError("Prefill plugin must implement get_code(call) -> str | None")
         self.max_iterations = max_iterations
         self.max_retries = max_retries
@@ -154,6 +159,12 @@ class PurePythonStrategy(CompositeStrategy):
     @property
     def name(self) -> str:
         return "PURE_PYTHON"
+
+    def _get_truncation_config(self, runtime: RuntimeServices):
+        """Get truncation config from runtime's agent, same as CodeActStrategy."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+
+        return getattr(runtime.agent, "_truncation", DEFAULT_TRUNCATION_CONFIG)
 
     def get_block_overrides(self) -> dict[str, str | DynamicContext | None]:
         return {
@@ -269,8 +280,9 @@ class PurePythonStrategy(CompositeStrategy):
 
             try:
                 code: str | None = None
+                generate_event_id: str | None = None
                 try:
-                    code = await self._generate_code(runtime, session)
+                    code, generate_event_id = await self._generate_code(runtime, session)
                 except _HTTPX_TIMEOUT_EXCEPTIONS as e:
                     # Catch httpx timeout exceptions and preserve them
                     session.record_error()
@@ -303,45 +315,36 @@ class PurePythonStrategy(CompositeStrategy):
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise session.build_failure_error() from None
-                except PydanticValidationError as e:
-                    session.record_error()
-                    formatted_error = self._format_validation_error(e, call.return_type)
-                    error_msg = (
-                        f"Response validation error (attempt {session.error_count}/{session.max_retries}):\n"
-                        f"{formatted_error}"
-                    )
-                    runtime.event_manager.add(Error(content=error_msg))
-                    logger.warning(
-                        f"[PURE_PYTHON] Validation error (iter={session.iteration}, err={session.error_count}): {e}"
-                    )
-                    turn_exception = type(e).__name__
-
-                    if session.is_exhausted():
-                        turn_final = True
-                        turn_exception = "GenerationError"
-                        raise GenerationError(
-                            f"Response validation failed after {session.max_retries} retries.\n"
-                            f"Last error:\n{formatted_error}"
-                        ) from e
                 except Exception as e:
                     # Catch other LLM API errors (rate limits, connection errors, etc.)
                     session.record_error()
+                    error_name = type(e).__name__
+                    cause_parts = []
+                    exc: BaseException | None = e
+                    seen_ids: set[int] = set()
+                    while exc is not None and id(exc) not in seen_ids:
+                        seen_ids.add(id(exc))
+                        cause_parts.append(f"{type(exc).__name__}: {exc}")
+                        exc = exc.__cause__ or exc.__context__
+                    cause_chain = " <- ".join(cause_parts)
                     error_msg = (
                         f"LLM API error (attempt {session.error_count}/{session.max_retries}): "
-                        f"{type(e).__name__}: {e}"
+                        f"{cause_chain}"
                     )
                     runtime.event_manager.add(Error(content=error_msg))
                     logger.warning(
-                        f"[PURE_PYTHON] LLM API error (iter={session.iteration}, err={session.error_count}): {e}"
+                        f"[PURE_PYTHON] LLM API error (iter={session.iteration}, err={session.error_count}): "
+                        f"{cause_chain}",
+                        exc_info=True,
                     )
-                    turn_exception = type(e).__name__
+                    turn_exception = error_name
 
                     if session.is_exhausted():
                         turn_final = True
                         turn_exception = "GenerationError"
                         raise GenerationError(
                             f"LLM API error after {session.max_retries} retries. "
-                            f"Original error: {type(e).__name__}: {e}"
+                            f"Original error: {error_name}: {e}"
                         ) from e
 
                 # Skip rest of turn if code generation failed (caught exception above)
@@ -350,6 +353,9 @@ class PurePythonStrategy(CompositeStrategy):
 
                 if not code:
                     session.record_error()
+                    # Remove the empty assistant event — some APIs reject empty content
+                    if generate_event_id is not None:
+                        runtime.event_manager.remove(generate_event_id)
                     await self._send_empty_response_error(runtime, call.method_name)
                     continue
 
@@ -468,7 +474,8 @@ class PurePythonStrategy(CompositeStrategy):
         if not self.prefill:
             return
 
-        code = self.prefill.get_code(call)
+        truncation_config = self._get_truncation_config(runtime)
+        code = self.prefill.get_code(call, config=truncation_config)
         if not code:
             logger.debug("[PURE_PYTHON] Prefill returned no code, skipping")
             return
@@ -499,22 +506,17 @@ class PurePythonStrategy(CompositeStrategy):
                 f"[PURE_PYTHON] Prefill captured locals: {list(result.captured_locals.keys())}"
             )
 
-        # Send continuation feedback (if no error) - same format as normal execution
+        # Emit PythonOutput for the prefill execution result (mirrors normal turn event sequence)
         if not result.error:
-            feedback_parts = []
-            output_text = result.format_output(fenced=True)
-            if output_text:
-                feedback_parts.append(output_text)
-            if result.defined_methods:
-                feedback_parts.append(
-                    f"Helper methods defined: {list(result.defined_methods.keys())}"
-                )
-            feedback_msg = await self.continuation_prompt(runtime, method=call.method_name)
-            feedback_parts.append(feedback_msg)
-
             runtime.event_manager.add(
-                Feedback(
-                    content="\n\n".join(feedback_parts),
+                PythonOutput(
+                    tool_call_id="",
+                    execution_count=0,  # prefill runs before iteration 1
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    value=result.returned_value if result.has_return else None,
+                    explicit_return=result.explicit_return,
+                    execution_status=ResultStatus.COMPLETE,
                     metadata={"prefill": True, "prefill_type": "inspect_inputs"},
                 )
             )
@@ -522,7 +524,16 @@ class PurePythonStrategy(CompositeStrategy):
             # Prefill error - log but don't fail (LLM can still proceed)
             logger.warning(f"[PURE_PYTHON] Prefill execution error: {result.error}")
 
-    async def _generate_code(self, runtime: RuntimeServices, session: GenerationSession) -> str:
+    async def _generate_code(
+        self, runtime: RuntimeServices, session: GenerationSession
+    ) -> tuple[str, str]:
+        """Generate code from the LLM.
+
+        Returns:
+            (code, event_id): code ready for execution (with reasoning calls, without
+            fences/XML), and the event_id of the LLMOutput event so the caller can
+            remove it if empty (some APIs reject empty assistant messages).
+        """
         logger.debug(
             f"[PURE_PYTHON] Loop iteration: iter={session.iteration}/{session.max_iterations}, "
             f"err={session.error_count}/{session.max_retries}"
@@ -536,7 +547,8 @@ class PurePythonStrategy(CompositeStrategy):
         try:
             code = self._strip_wrappers(raw_code)
         except XMLFormatError as e:
-            # XML format error - record and re-raise for caller to handle
+            # Remove the malformed LLMOutput — some APIs reject empty/malformed content
+            runtime.event_manager.remove(event_id)
             runtime.event_manager.add(Error(content=f"**Format Error**: {e}"))
             raise
 
@@ -555,7 +567,7 @@ class PurePythonStrategy(CompositeStrategy):
         )
 
         # Return code without fences/XML for execution (but with reasoning calls for processing)
-        return code
+        return code, event_id
 
     def _extract_function_body_if_wrapped(
         self,
@@ -788,9 +800,12 @@ class PurePythonStrategy(CompositeStrategy):
             )
             logger.info("[PURE_PYTHON] Method executed successfully")
             return (True, validated_result)
-        except TypeError as e:
+        except (PydanticValidationError, ValueError, TypeError) as e:
             session.record_error()
-            runtime.event_manager.add(Error(content=f"Return type validation error:\n{e}"))
+            error_msg = format_validation_error(
+                e, call.return_type, result_to_validate, runtime.truncation_config
+            )
+            runtime.event_manager.add(Error(content=f"Return type validation error:\n{error_msg}"))
             return (False, None)
 
     async def _send_empty_response_error(self, runtime: RuntimeServices, method_name: str) -> None:
@@ -865,9 +880,6 @@ class PurePythonStrategy(CompositeStrategy):
         """
         # Your task
         {original_call.docstring}
-
-        ## Input parameters:
-        {original_call.format_parameters_as_code(tc=tc)}
 
         *Important*:
         - If you are not just returning the result directly (using return <result>), explain using `reasoning()` why you cannot do that and then perform the task (in the same turn).
@@ -1039,41 +1051,6 @@ class PurePythonStrategy(CompositeStrategy):
 
         tree.body = new_body
         return ast.unparse(tree)
-
-    def _format_validation_error(self, error: Exception, return_type: Any) -> str:
-        """Format validation error for LLM feedback.
-
-        Uses .errors() for full details without truncation.
-        See: https://github.com/pydantic/pydantic/discussions/7733
-
-        Args:
-            error: The validation exception
-            return_type: The expected return type (for context)
-
-        Returns:
-            Formatted error string with actionable field-level details
-        """
-        import json
-
-        if isinstance(error, json.JSONDecodeError):
-            return (
-                f"Could not parse response as JSON: {error}\n"
-                "Ensure your response is valid JSON matching the return type."
-            )
-
-        if isinstance(error, PydanticValidationError):
-            error_details = []
-            for err in error.errors():
-                location = " -> ".join(str(loc) for loc in err["loc"])
-                msg = err["msg"]
-                error_type = err["type"]
-                error_details.append(f"  - Field `{location}`: {msg} (type: {error_type})")
-            return (
-                "Pydantic validation failed:\n" + "\n".join(error_details) + "\n\n"
-                "Ensure your response includes all required fields with correct types."
-            )
-
-        return f"Validation error: {error}"
 
     def _format_error(self, error: Exception, code: str | None = None) -> str:
         """Format an error for LLM feedback.

@@ -7,7 +7,7 @@ import json  # noqa: F401 — for LLM exec_globals (visible by default)
 import pytest
 
 from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 

@@ -5,7 +5,7 @@ import asyncio
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.runtime.actor import ActorRuntime
-from nemo_oo_agents.strategies import PurePythonStrategy
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 from unifiedllm import FakeLLMClient, LLMResponse
 
 

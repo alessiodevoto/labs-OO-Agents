@@ -16,12 +16,12 @@ import pytest
 from nemo_oo_agents import (
     Agent,
     CodeActStrategy,
-    PurePythonStrategy,
     ReflexionStrategy,
     get_default_strategy,
     set_default_strategy,
 )
 from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
 
 class TestGetDefaultStrategy:

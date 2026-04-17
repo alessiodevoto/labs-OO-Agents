@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agentdoc._pformat import _pformat
+from agentdoc import pformat as _pformat
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.strategies import PredictStrategy
 

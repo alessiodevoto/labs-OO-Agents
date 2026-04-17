@@ -67,7 +67,6 @@ from nemo_oo_agents.strategies import (  # noqa: E402
     GenerationStrategy,
     InspectInputsPrefill,
     PredictStrategy,
-    PurePythonStrategy,
     ReflexionStrategy,
     get_default_strategy,
     set_default_strategy,
@@ -87,7 +86,6 @@ __all__ = [
     "LLMResponse",  # Re-exported from unifiedllm
     # Strategies
     "GenerationStrategy",
-    "PurePythonStrategy",
     "CodeActStrategy",
     "CodeActLiteStrategy",
     "ReflexionStrategy",
