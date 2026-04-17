@@ -502,6 +502,78 @@ class Session:
     # Public entry point
     # ------------------------------------------------------------------
 
+    async def run_plan_c(self) -> None:
+        """Plan-C REPL: drive the single long-lived ``TUIApplication``.
+
+        Replaces the ``prompt_async`` + ``typeahead_loop`` loop in
+        ``run()`` with a one-Application architecture so there is no
+        handoff race that drops keystrokes between turns. Command and
+        bang dispatch route through the existing CommandHandler and
+        ``_handle_bang`` via TUIApplication's callback hooks.
+
+        NOTE: minimal viable cut-over. It reuses ``_attach_agent``,
+        ``_handle_bang``, ``_handler.handle``, and ``_agent_turn`` as-is
+        so parity with the old path is mostly automatic. Auto-naming
+        and snapshot teardown mirror ``run()``.
+        """
+        from .output import TextOutput
+        from .tui_application import TUIApplication
+
+        self._attach_agent(self.agent)
+
+        async def _on_command(text: str) -> None:
+            result = await self._handler.handle(text)
+            if result.new_session_manager is not None:
+                self._swap_session_manager(result.new_session_manager)
+            if (
+                result.compact_done
+                and self._first_message
+                and self._session_manager
+                and not self._session_manager.user_named
+            ):
+                _t = asyncio.create_task(self._auto_name_session(self._first_message))
+                self._background_tasks.add(_t)
+                _t.add_done_callback(self._background_tasks.discard)
+            if result.exit:
+                app.exit()
+                return
+            if result.agent_message is not None:
+                msg = result.agent_message
+                if self._session_manager is not None:
+                    self._session_manager.record_user(msg)
+                if self._first_message is None:
+                    self._first_message = text
+                    if self._session_manager is not None and not self._session_manager.user_named:
+                        _t = asyncio.create_task(self._auto_name_session(text))
+                        self._background_tasks.add(_t)
+                        _t.add_done_callback(self._background_tasks.discard)
+                await self._agent_turn(msg)
+
+        async def _on_bang(body: str) -> None:
+            # _handle_bang expects the leading ``!``; put it back.
+            await self._handle_bang("!" + body)
+
+        app = TUIApplication(agent=self.agent, on_command=_on_command, on_bang=_on_bang)
+
+        try:
+            await app.run_async()
+        except (KeyboardInterrupt, EOFError):
+            await self.frontend.render(
+                TextOutput("Interrupted by the user. Exiting TUI...", "warning")
+            )
+        finally:
+            self._dump_exit_diagnostics()
+            self.frontend.close()
+            self._detach_agent()
+            if self._session_manager is not None:
+                storage = getattr(self.agent, "_storage", None)
+                if storage is not None and hasattr(storage, "save_snapshot"):
+                    try:
+                        storage.save_snapshot(self.agent)
+                    except Exception:
+                        pass
+                self._session_manager.close()
+
     async def run(self) -> None:
         """Run the REPL until the user exits or EOF."""
         from .output import TextOutput
