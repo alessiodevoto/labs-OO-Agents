@@ -41,14 +41,12 @@ pytestmark = pytest.mark.asyncio
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 
-@XFAIL
 async def test_baseline_prompt_visible_at_startup():
     """The app renders the prompt marker and the cursor lives on the input line."""
     async with TUIHarness() as h:
         await h.wait_for(lambda: h.app.prompt_char_visible())  # new API
 
 
-@XFAIL
 async def test_baseline_enter_submits_to_agent():
     async with TUIHarness() as h:
         await h.type_keys("hello world")
@@ -56,7 +54,6 @@ async def test_baseline_enter_submits_to_agent():
         await h.wait_for(lambda: h.agent.messages_received == ["hello world"])
 
 
-@XFAIL
 async def test_baseline_agent_message_renders_to_output():
     agent = FakeAgent()
 
@@ -70,7 +67,6 @@ async def test_baseline_agent_message_renders_to_output():
         await h.wait_output_contains("Hi there!")
 
 
-@XFAIL
 async def test_baseline_input_buffer_cleared_after_submit():
     async with TUIHarness() as h:
         await h.type_keys("something")
@@ -91,7 +87,6 @@ async def test_baseline_ctrl_d_exits():
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 
-@XFAIL
 async def test_input_shift_enter_inserts_newline():
     async with TUIHarness() as h:
         await h.type_keys("line1")
@@ -110,7 +105,6 @@ async def test_input_backspace_deletes_char():
         await h.wait_input_equals("ab")
 
 
-@XFAIL
 async def test_input_history_up_on_empty_buffer():
     """With no queue, Up on an empty buffer recalls the previous submission."""
     async with TUIHarness() as h:
@@ -121,7 +115,6 @@ async def test_input_history_up_on_empty_buffer():
         await h.wait_input_equals("first")
 
 
-@XFAIL
 async def test_input_cursor_home_and_end():
     async with TUIHarness() as h:
         await h.type_keys("abc")

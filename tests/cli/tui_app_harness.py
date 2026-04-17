@@ -91,7 +91,12 @@ class FakeAgent:
         self.messages_received: list[str] = []
         self.block = asyncio.Event()
         self.block.set()  # default: respond returns immediately
-        self.emit: Callable[[Any], None] | None = None  # set by harness
+        self.emit: Callable[[str], None] | None = None  # set by app
+
+    def emit_message(self, text: str) -> None:
+        """Convenience: emit a chunk of text to the app's output scrollback."""
+        if self.emit is not None:
+            self.emit(text)
 
     async def respond(self, user_message: str) -> Any:
         self.messages_received.append(user_message)
