@@ -102,6 +102,13 @@ class TestRecording:
         m = HarnessMetrics()
         m.gpt4o_double_quote_fix()
         assert m.gpt4o_double_quote_fix_count == 1
+        assert m.gpt4o_double_quote_fix_previews == []
+
+    def test_gpt4o_double_quote_fix_with_preview(self):
+        m = HarnessMetrics()
+        m.gpt4o_double_quote_fix('"x = 1\\n"')
+        assert m.gpt4o_double_quote_fix_count == 1
+        assert m.gpt4o_double_quote_fix_previews == ['"x = 1\\n"']
 
     def test_variable_ref_resolved(self):
         m = HarnessMetrics()
@@ -374,7 +381,7 @@ def _populate_all_fields(m: HarnessMetrics) -> None:
     m.text_to_synthetic()
     m.content_prepended_as_reasoning()
     m.empty_response()
-    m.gpt4o_double_quote_fix()
+    m.gpt4o_double_quote_fix('"x\\n"')
     m.variable_ref_resolved("x")
     m.json_auto_parsed("json")
     m.args_normalized()

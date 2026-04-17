@@ -752,10 +752,9 @@ class ActorRuntime:
             # 3. Strip redundant imports (from typing import Literal, etc.)
             from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
 
-            code_before_imports = code
-            code = strip_redundant_imports(code, set(exec_globals.keys()))
-            if code != code_before_imports:
-                hm.import_stripped("redundant imports removed")
+            code, stripped_imports = strip_redundant_imports(code, set(exec_globals.keys()))
+            for stmt in stripped_imports:
+                hm.import_stripped(stmt)
 
             # Validate code if requested (unified validator handles all checks)
             with get_harness_metrics().timer("time_code_validation"):

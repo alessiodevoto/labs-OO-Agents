@@ -1093,7 +1093,7 @@ class UnifiedCodeValidator:
 # =============================================================================
 # Import Pre-processing
 # =============================================================================
-def strip_redundant_imports(code: str, available_names: set[str]) -> str:
+def strip_redundant_imports(code: str, available_names: set[str]) -> tuple[str, list[str]]:
     """Remove import statements where all imported names are already in scope.
 
     LLMs habitually prepend imports (``from typing import Literal``,
@@ -1105,11 +1105,15 @@ def strip_redundant_imports(code: str, available_names: set[str]) -> str:
     present in ``available_names``.  Imports that bring genuinely new names
     are left untouched (and will be caught by the security validator if
     the module is forbidden).
+
+    Returns:
+        Tuple of (cleaned_code, stripped_statements) where stripped_statements
+        is a list of the full original import source lines that were removed.
     """
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        return code
+        return code, []
 
     indices_to_remove: set[int] = set()
 
@@ -1133,7 +1137,19 @@ def strip_redundant_imports(code: str, available_names: set[str]) -> str:
                 indices_to_remove.add(i)
 
     if not indices_to_remove:
-        return code
+        return code, []
+
+    # Collect the original source text for each stripped import (for telemetry).
+    source_lines_for_stmts = code.splitlines()
+    stripped_statements: list[str] = []
+    for i, node in enumerate(tree.body):
+        if i in indices_to_remove:
+            # Reconstruct the import statement from its source line range.
+            start = node.lineno - 1
+            end = (node.end_lineno or node.lineno) - 1
+            stmt_lines = source_lines_for_stmts[start : end + 1]
+            # Strip leading/trailing whitespace for a clean record.
+            stripped_statements.append("\n".join(stmt_lines).strip())
 
     # Collect the 1-based line numbers covered by each removed import node.
     # Use lineno/end_lineno so multi-line imports are fully removed.
@@ -1200,7 +1216,7 @@ def strip_redundant_imports(code: str, available_names: set[str]) -> str:
             pass  # pure import line — drop it
         else:
             result_parts.append(line)
-    return "".join(result_parts)
+    return "".join(result_parts), stripped_statements
 
 
 # =============================================================================

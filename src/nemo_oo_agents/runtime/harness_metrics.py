@@ -122,6 +122,7 @@ class HarnessMetrics(BaseModel):
     content_prepended_as_reasoning_count: int = 0
     empty_response_count: int = 0
     gpt4o_double_quote_fix_count: int = 0
+    gpt4o_double_quote_fix_previews: list[str] = Field(default_factory=list)
     variable_refs_resolved: list[str] = Field(default_factory=list)
     json_auto_parse_methods: list[str] = Field(default_factory=list)
     args_normalized_count: int = 0
@@ -222,8 +223,12 @@ class HarnessMetrics(BaseModel):
     def empty_response(self) -> None:
         self.empty_response_count += 1
 
-    def gpt4o_double_quote_fix(self) -> None:
+    def gpt4o_double_quote_fix(self, original_preview: str = "") -> None:
         self.gpt4o_double_quote_fix_count += 1
+        if original_preview:
+            self._append(
+                self.gpt4o_double_quote_fix_previews, original_preview, _MAX_CODE_PREVIEW_CHARS
+            )
 
     def variable_ref_resolved(self, var_name: str) -> None:
         self._append(self.variable_refs_resolved, var_name)
@@ -522,6 +527,13 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "GPT-4o double-quote fixes",
         "Response Format Fixups",
         lambda m: m.gpt4o_double_quote_fix_count,
+    ),
+    SchemaEntry(
+        "harness.gpt4o_double_quote_fix.previews",
+        "GPT-4o double-quote fix previews",
+        "Response Format Fixups",
+        lambda m: m.gpt4o_double_quote_fix_previews,
+        True,
     ),
     SchemaEntry(
         "harness.variable_ref_resolved.count",

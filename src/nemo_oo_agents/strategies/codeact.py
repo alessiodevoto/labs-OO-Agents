@@ -1402,7 +1402,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 result_val = normalized_args["result"]
                 if result_val.startswith('"') and result_val.endswith('"') and "\\n" in result_val:
                     # Unwrap the extra quotes and decode escaped characters
-                    get_harness_metrics().gpt4o_double_quote_fix()
+                    get_harness_metrics().gpt4o_double_quote_fix(result_val)
                     normalized_args["result"] = result_val[1:-1].encode().decode("unicode_escape")
 
             # Create wrapper model: class ReturnResultModel(BaseModel): result: T
