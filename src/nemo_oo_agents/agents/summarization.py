@@ -62,6 +62,10 @@ class SummarizationAgent(Agent):
     # Event manager whose events will be summarized. Wired automatically by the parent Agent.
     target_event_manager: Annotated["EventManager | None", hidden] = None
 
+    # Parent agent. Used to read runtime-computed context stats for accurate
+    # token counting — see _estimate_tokens(). Hidden from the LLM.
+    _target_agent: Annotated["Agent | None", hidden] = None
+
     # Config must be set by subclasses (TokenBudgetSummarizer, MethodSummarizer set self.config
     # in __init__). The base class provides this sentinel to prevent AttributeError if a
     # subclass forgets to set it or if the base is instantiated directly.
@@ -118,6 +122,7 @@ class SummarizationAgent(Agent):
         # Inherit LLM from parent agent unless explicitly provided
         kwargs.setdefault("llm", agent._llm)
         self.target_event_manager = agent.event_manager
+        self._target_agent = agent
 
         # Extract annotated class attributes from kwargs (max_tokens, preserve_recent, etc.)
         for name in list(kwargs.keys()):
@@ -405,25 +410,43 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _estimate_tokens(self) -> int:
-        """Estimate total tokens in target event manager."""
+        """Estimate total tokens in the parent agent's next prompt.
+
+        Prefers the runtime's authoritative count from the most recent
+        ``_build_messages()`` call — the same number the LLM sees. This
+        reflects events *and* context blocks (system prompt, dynamic
+        blocks, etc.), with the real provider formatter applied, so it
+        matches what actually ships to the model.
+
+        Falls back to rendering events through the summarizer's own
+        markdown formatter only when no generation has happened yet
+        (``agent.context_stats is None`` — e.g. a brand-new session's
+        very first call, before any ``_build_messages()`` has run).
+        """
+        agent = self._target_agent
+        if agent is not None:
+            stats = getattr(agent, "context_stats", None)
+            if stats is not None:
+                return stats.total_tokens
+
         if self.target_event_manager is None:
             return 0
 
-        # Render all active events to markdown for token estimation
+        # Fallback path — no stats yet. Uses the summarizer's own markdown
+        # render, which undercounts the real prompt (misses context blocks
+        # and doesn't apply the provider formatter's tool-call expansion)
+        # but is better than zero.
         tags = self.target_event_manager.keys()
         if not tags:
             return 0
 
-        # Render using the same method we use for summarization
         first_tag = tags[0]
         last_tag = tags[-1]
         rendered = self._render_range_to_markdown(first_tag, last_tag)
 
-        # Use LLM's count_tokens if available
         if self._llm and hasattr(self._llm, "count_tokens"):
             return self._llm.count_tokens(rendered)
 
-        # Fallback: chars / 4 heuristic
         return len(rendered) // 4
 
 

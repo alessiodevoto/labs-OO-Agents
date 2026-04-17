@@ -138,6 +138,49 @@ class TestSummarizationAgentBase:
         # chars/4 heuristic should give roughly 125-200 tokens
         assert tokens > 0
 
+    def test_estimate_tokens_prefers_runtime_stats(self, test_agent):
+        """_estimate_tokens uses agent.context_stats.total_tokens when set.
+
+        The summarizer's own markdown render undercounts the real prompt
+        (misses context blocks, skips provider-formatter tool-call expansion).
+        The runtime's ContextWindowStats reflects what actually ships to the
+        LLM — events + context blocks, with the real formatter applied — so
+        the summarizer must defer to it when it's available.
+        """
+        from nemo_oo_agents import ContextWindowStats
+
+        # Populate events AND runtime stats. Stats report a much bigger number
+        # than the events alone, mirroring the production discrepancy (context
+        # blocks + formatter overhead).
+        for _ in range(3):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=5_000,
+            context_blocks_count=1,
+            events_tokens=195_000,
+            events_count=3,
+            total_tokens=200_000,
+        )
+
+        summarizer = SummarizationAgent(test_agent)
+        assert summarizer._estimate_tokens() == 200_000  # events + blocks
+
+    def test_estimate_tokens_falls_back_before_first_build(self, test_agent):
+        """Before the first _build_messages, context_stats is None.
+
+        The summarizer falls back to its own markdown-render estimate so a
+        brand-new session can still emit a (less accurate) number.
+        """
+        for _ in range(3):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        # context_stats is None by default on a freshly built agent.
+        assert test_agent.context_stats is None
+
+        summarizer = SummarizationAgent(test_agent)
+        assert summarizer._estimate_tokens() > 0
+
 
 # =============================================================================
 # TokenBudgetSummarizer Tests
