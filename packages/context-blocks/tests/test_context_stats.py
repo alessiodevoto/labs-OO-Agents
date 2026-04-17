@@ -452,8 +452,27 @@ class TestContextWindowStatsFormat:
         assert "Events:" in text
         assert "200 tokens" in text
         assert "8 events" in text
-        # No percentages without limits
+        # No percentages without any limits
         assert "%" not in text
+
+    def test_format_model_context_window(self):
+        """With model_context_window but no per-category limits, total shows percentage."""
+        stats = ContextWindowStats(
+            context_blocks_tokens=8_200,
+            context_blocks_count=6,
+            events_tokens=4_250,
+            events_count=18,
+            total_tokens=12_450,
+            model_context_window=200_000,
+        )
+        text = stats.format()
+        assert "Context usage: 12,450 / 200,000 tokens (6.2%)" in text
+        # No percentages on individual lines without per-category limits
+        assert "Context blocks: 8,200 tokens" in text
+        assert "Events:" in text
+        assert "4,250 tokens" in text
+        # Only one percentage (the total line)
+        assert text.count("%") == 1
 
     def test_format_with_limits(self):
         """With limits, shows usage/limit and percentages."""
