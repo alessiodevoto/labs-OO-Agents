@@ -238,6 +238,14 @@ name = get_input("Enter: ")
             with pytest.raises(ValidationError, match="__builtins__.*forbidden"):
                 validator.validate(code, default_context)
 
+        def test_reject_dunder_dict_attr(
+            self, validator: UnifiedCodeValidator, default_context: ValidationContext
+        ):
+            """obj.__dict__ exposes the raw attribute dictionary, bypassing visibility controls."""
+            code = "x = self.__dict__"
+            with pytest.raises(ValidationError, match="__dict__.*forbidden"):
+                validator.validate(code, default_context)
+
         def test_reject_recursive_self_call(self, validator: UnifiedCodeValidator):
             """Calling the method being generated causes infinite recursion."""
             context = ValidationContext(
@@ -538,6 +546,14 @@ class TestSecurityValidatorAdditionalRejects:
         """delattr() with dunder names is dangerous."""
         code = "delattr(obj, '__dict__')"
         with pytest.raises(ValidationError, match="delattr.*dunder|__dict__.*forbidden"):
+            validator.validate(code, default_context)
+
+    def test_reject_getattr_with_dunder(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        """getattr() with dunder names bypasses direct attribute access checks."""
+        code = "d = getattr(obj, '__dict__')"
+        with pytest.raises(ValidationError, match="getattr.*dunder|__dict__.*forbidden"):
             validator.validate(code, default_context)
 
     def test_allow_setattr_with_normal_name(
