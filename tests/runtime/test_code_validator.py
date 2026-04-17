@@ -548,6 +548,14 @@ class TestSecurityValidatorAdditionalRejects:
         with pytest.raises(ValidationError, match="delattr.*dunder|__dict__.*forbidden"):
             validator.validate(code, default_context)
 
+    def test_reject_getattr_with_dunder(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        """getattr() with dunder names bypasses direct attribute access checks."""
+        code = "d = getattr(obj, '__dict__')"
+        with pytest.raises(ValidationError, match="getattr.*dunder|__dict__.*forbidden"):
+            validator.validate(code, default_context)
+
     def test_allow_setattr_with_normal_name(
         self, validator: UnifiedCodeValidator, default_context: ValidationContext
     ):

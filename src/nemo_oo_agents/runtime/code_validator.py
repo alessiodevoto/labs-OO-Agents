@@ -231,8 +231,8 @@ class _SecurityVisitor(ast.NodeVisitor):
                         code="E001",
                     )
                 )
-            # Check setattr/delattr with dunder names
-            elif func_name in ("setattr", "delattr"):
+            # Check setattr/delattr/getattr with dunder names
+            elif func_name in ("setattr", "delattr", "getattr"):
                 self._check_attr_modification_with_dunder(node, func_name)
 
         # Check for forbidden self.method() calls (prevents recursion)
