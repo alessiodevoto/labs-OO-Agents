@@ -390,6 +390,9 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
     def visit_While(self, node: ast.While) -> Any:
         """Check for infinite loops (while True without break/return)."""
         if self._is_infinite_loop(node) and not self._has_exit_statement(node):
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().infinite_loop()
             self.issues.append(
                 ValidationIssue(
                     line=node.lineno,
@@ -492,6 +495,9 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
 
         # Check if already awaited or in a gather-friendly context
         if not self._is_awaited_or_gathered(node):
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().missing_await(method_name)
             self.issues.append(
                 ValidationIssue(
                     line=node.lineno,

@@ -27,6 +27,7 @@ from agentdoc.visibility import is_hidden_field
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Error, Task
+from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
 from nemo_oo_agents.strategies.template import TemplateStrategy
 
@@ -263,6 +264,8 @@ class PredictStrategy(GenerationStrategy):
                     f"[PREDICT attempt={attempt}] Validation/parsing failed: "
                     f"{type(e).__name__}: {e}, raw_len={len(raw_response_content)}"
                 )
+
+                get_harness_metrics().predict_retry(f"{type(e).__name__}: {str(e)[:200]}")
 
                 # Collect failed attempt info (will add to span at the end)
                 failed_attempts.append(
@@ -528,6 +531,7 @@ class PredictStrategy(GenerationStrategy):
         if match:
             # Extract the content between tags
             inner_content = match.group(2).strip()
+            get_harness_metrics().xml_wrapper_stripped(match.group(1))
             logger.debug(
                 f"[PREDICT] Stripped XML wrapper <{match.group(1)}>, "
                 f"extracted {len(inner_content)} chars"
@@ -540,6 +544,7 @@ class PredictStrategy(GenerationStrategy):
 
         if simple_match:
             inner_content = simple_match.group(2).strip()
+            get_harness_metrics().xml_wrapper_stripped(simple_match.group(1))
             logger.debug(
                 f"[PREDICT] Stripped simple XML wrapper <{simple_match.group(1)}>, "
                 f"extracted {len(inner_content)} chars"
@@ -608,6 +613,7 @@ class PredictStrategy(GenerationStrategy):
             source = "content"
         elif llm_response.reasoning:
             # Only use reasoning as fallback - some models might put JSON there
+            get_harness_metrics().record_content_to_reasoning_fallback()
             content_to_parse = llm_response.reasoning
             source = "reasoning (fallback)"
         else:

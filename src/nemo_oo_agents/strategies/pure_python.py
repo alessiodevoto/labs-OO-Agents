@@ -37,6 +37,7 @@ from nemo_oo_agents.events import (
     Reasoning,
     Task,
 )
+from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.strategies.base import RuntimeServices
 from nemo_oo_agents.strategies.codeact_errors import format_validation_error
 from nemo_oo_agents.strategies.composite import CompositeStrategy
@@ -931,9 +932,11 @@ class PurePythonStrategy(CompositeStrategy):
         """
         result = code
         max_iterations = 5  # Prevent infinite loops on malformed input
+        iterations_used = 0
 
         for _ in range(max_iterations):
             previous = result
+            iterations_used += 1
 
             # Try stripping markdown fences
             result = self._strip_code_fences(result)
@@ -944,6 +947,9 @@ class PurePythonStrategy(CompositeStrategy):
             # If nothing changed, we're done
             if result == previous:
                 break
+
+        if iterations_used > 1:
+            get_harness_metrics().nested_wrapper_iteration(iterations_used)
 
         return result
 
@@ -967,6 +973,8 @@ class PurePythonStrategy(CompositeStrategy):
         match = re.match(fence_pattern, stripped, re.DOTALL)
 
         if match:
+            fence_match = re.match(r"^(```(?:\w*))", stripped)
+            get_harness_metrics().fence_removal(fence_match.group(1) if fence_match else "```")
             return match.group(1).strip()
 
         return code
@@ -1028,6 +1036,7 @@ class PurePythonStrategy(CompositeStrategy):
                     "Return plain Python code only, without any XML or HTML markup."
                 )
 
+        get_harness_metrics().xml_wrapper_stripped(tag_name)
         logger.debug(
             f"[PURE_PYTHON] Stripped XML wrapper tag <{tag_name}> from LLM output "
             f"(original={len(stripped)} chars, extracted={len(inner_content)} chars)"
@@ -1042,12 +1051,17 @@ class PurePythonStrategy(CompositeStrategy):
             return code
 
         new_body = []
+        stripped_count = 0
         for node in tree.body:
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                 func = node.value.func
                 if isinstance(func, ast.Name) and func.id == "reasoning":
+                    stripped_count += 1
                     continue
             new_body.append(node)
+
+        if stripped_count > 0:
+            get_harness_metrics().reasoning_call_stripped(stripped_count)
 
         tree.body = new_body
         return ast.unparse(tree)

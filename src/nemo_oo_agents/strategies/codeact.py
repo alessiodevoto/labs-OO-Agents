@@ -50,6 +50,7 @@ from nemo_oo_agents.events import (
     Reasoning,
     Task,
 )
+from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 from nemo_oo_agents.strategies.base import RuntimeServices
 from nemo_oo_agents.strategies.codeact_errors import format_validation_error
@@ -115,6 +116,7 @@ def _prepend_reasoning(tool_calls: list[ToolCall], text: str) -> list[ToolCall]:
                 args["code"] = f"reasoning({preview!r})\n{original_code}"
                 tc = replace(tc, arguments=json.dumps(args))
                 prepended = True
+                get_harness_metrics().content_prepended_as_reasoning()
             except json.JSONDecodeError:
                 logger.debug(
                     "[CODEACT] _prepend_reasoning: skipping execute_python with unparseable arguments (tool_call_id=%s)",
@@ -590,17 +592,19 @@ Standard Python builtins and agent instance (`self`) are available."""
         )
 
         # Build builtins for code execution
-        builtins = self._build_builtins(runtime, call)
+        _init_hm = get_harness_metrics()
+        with _init_hm.timer("time_session_init"):
+            builtins = self._build_builtins(runtime, call)
 
-        # Build both tools
-        execute_python_tool = self._build_execute_python_tool()
-        return_result_tool = self._build_return_result_tool(return_type, call.method_name)
-        tools = [execute_python_tool, return_result_tool]
+            # Build both tools
+            execute_python_tool = self._build_execute_python_tool()
+            return_result_tool = self._build_return_result_tool(return_type, call.method_name)
+            tools = [execute_python_tool, return_result_tool]
 
-        # Use the task event's tag as the call ID so the LLM sees a stable reference
-        object.__setattr__(call, "id", str(runtime.event_manager._next_tag_num))
-        task_content = await self._build_task_message(runtime, original_call=call)
-        runtime.event_manager.add(Task(prompt=task_content))
+            # Use the task event's tag as the call ID so the LLM sees a stable reference
+            object.__setattr__(call, "id", str(runtime.event_manager._next_tag_num))
+            task_content = await self._build_task_message(runtime, original_call=call)
+            runtime.event_manager.add(Task(prompt=task_content))
 
         logger.info(
             f"[CODEACT] Starting session for {call.method_name}: "
@@ -609,7 +613,8 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Run prefill (always enabled - inspects inputs with truncation)
         try:
-            await self._run_prefill(runtime, call, builtins, session)
+            with _init_hm.timer("time_prefill"):
+                await self._run_prefill(runtime, call, builtins, session)
         except Exception as e:
             logger.warning(f"[CODEACT] Prefill error (continuing): {e}")
             runtime.event_manager.add(Error(content=f"Prefill error: {e}"))
@@ -678,6 +683,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         f"LLM API error (attempt {session.error_count}/{session.max_retries}): "
                         f"{cause_chain}"
                     )
+                    get_harness_metrics().llm_api_error(cause_chain[:500])
                     runtime.event_manager.add(Error(content=error_msg))
                     logger.warning(
                         f"[CODEACT] LLM API error (iter={session.iteration}, err={session.error_count}): "
@@ -764,6 +770,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                                 metadata={"synthetic": True, "synthetic_type": "text_response"},
                             )
                         )
+                        get_harness_metrics().text_to_synthetic()
                         logger.debug(
                             f"[CODEACT] Text-only response ({len(text)} chars) converted to synthetic reasoning() call."
                         )
@@ -771,6 +778,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     # Whitespace-only content falls through to the empty-response error handler.
 
                 # Empty response - error
+                get_harness_metrics().empty_response()
                 session.record_error()
                 # Remove the empty assistant event - APIs reject empty content
                 runtime.event_manager.remove(event_id)
@@ -969,6 +977,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     else None
                 )
                 if translated_code is not None:
+                    get_harness_metrics().tool_call_translated(tool_call.name)
                     logger.debug(
                         f"[CODEACT] Translated tool call '{tool_call.name}' -> execute_python"
                     )
@@ -1027,15 +1036,19 @@ Standard Python builtins and agent instance (`self`) are available."""
         import re
 
         # Strip leading/trailing whitespace first
-        code = code.strip()
+        original = code.strip()
 
         # Remove leading markdown code fence (```python, ```py, ``` etc.)
-        code = re.sub(r"^```(?:python|py)?\s*\n?", "", code)
+        code = re.sub(r"^```(?:python|py)?\s*\n?", "", original)
 
         # Remove trailing markdown code fence
         code = re.sub(r"\n?```\s*$", "", code)
 
-        return code.strip()
+        code = code.strip()
+        if code != original:
+            leading = re.match(r"^(```(?:python|py)?)", original)
+            get_harness_metrics().fence_removal(leading.group(1) if leading else "```")
+        return code
 
     @staticmethod
     def _handle_block_syntax_error(
@@ -1050,6 +1063,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         so the LLM can fix it, and record an iteration (not an error
         retry, since retrying with the bad block would just fail again).
         """
+        get_harness_metrics().block_syntax_error(f"block '{e.key}': {e.original_error}")
         logger.warning(f"[CODEACT] Block syntax error in block '{e.key}': {e.original_error}")
 
         # Remove the bad block so subsequent attempts can proceed
@@ -1144,12 +1158,19 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Execute the code (pass tool_call.id for trace correlation)
         # Nested agent calls may add their events to the event manager during this execution
-        result = await self._execute_code(
-            runtime, code, builtins, session, method_name, tool_call_id=tool_call.id
-        )
+        with get_harness_metrics().timer("time_code_execution"):
+            result = await self._execute_code(
+                runtime, code, builtins, session, method_name, tool_call_id=tool_call.id
+            )
 
         # Determine final status
         final_status = ResultStatus.ERROR if result.error else ResultStatus.COMPLETE
+
+        # Track execute_python outcome
+        hm = get_harness_metrics()
+        hm.exec_python(success=not result.error)
+        if result.error:
+            hm.exec_error(type(result.error).__name__, str(result.error)[:500], session.iteration, code[:200])
 
         # Update ToolCallEvent with final status
         runtime.event_manager.update(
@@ -1257,6 +1278,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                             images=result.images,
                         )
                     )
+                    get_harness_metrics().explicit_return_completed()
                     logger.info("[CODEACT] Auto-completed task from explicit return statement")
                     return ("TASK_COMPLETE", validated)
                 # Validation failed - continue with normal flow
@@ -1380,7 +1402,8 @@ Standard Python builtins and agent instance (`self`) are available."""
             if "result" not in args and len(args) > 0:
                 # LLM passed direct fields (e.g., sum=100, mean=20)
                 # Wrap them as the result value
-                normalized_args = {"result": args}
+                get_harness_metrics().args_normalized()
+                normalized_args: dict[str, Any] = {"result": args}
             else:
                 # Already has "result" key, use as-is
                 normalized_args = args
@@ -1392,6 +1415,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 result_val = normalized_args["result"]
                 if result_val.startswith('"') and result_val.endswith('"') and "\\n" in result_val:
                     # Unwrap the extra quotes and decode escaped characters
+                    get_harness_metrics().gpt4o_double_quote_fix()
                     normalized_args["result"] = result_val[1:-1].encode().decode("unicode_escape")
 
             # Create wrapper model: class ReturnResultModel(BaseModel): result: T
@@ -1413,6 +1437,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 # calling return_result(results) from within execute_python code.
                 # Resolve the variable from the session namespace if it exists.
                 if result_str.isidentifier() and result_str in session.session_locals:
+                    get_harness_metrics().variable_ref_resolved(result_str)
                     logger.debug(
                         "[CODEACT] Resolved variable reference %r from session locals "
                         "in return_result tool call",
@@ -1443,6 +1468,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         except (PydanticValidationError, ValueError, TypeError, json.JSONDecodeError) as e:
             exception = e
+            get_harness_metrics().validation_error(type(e).__name__, str(e)[:500])
             session.record_error()
             # Pass actual value for better "Got: {...}" error messages
             actual_value = normalized_args.get("result") if normalized_args else None
@@ -1487,13 +1513,17 @@ Standard Python builtins and agent instance (`self`) are available."""
         if stripped.startswith(("{", "[")):
             # Try JSON first (more strict)
             try:
-                return json.loads(value)
+                parsed = json.loads(value)
+                get_harness_metrics().json_auto_parsed("json")
+                return parsed
             except json.JSONDecodeError:
                 pass
 
             # Try Python literal syntax (handles single quotes, etc.)
             try:
-                return ast.literal_eval(value)
+                parsed = ast.literal_eval(value)
+                get_harness_metrics().json_auto_parsed("literal_eval")
+                return parsed
             except (ValueError, SyntaxError):
                 pass  # Not valid Python literal, return as-is
 
@@ -1799,6 +1829,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         Each prefill step appears as a separate code execution in events,
         helping the LLM understand that variables persist across turns.
         """
+        get_harness_metrics().prefill(prefill_type)
         logger.debug(f"[CODEACT] Running prefill ({prefill_type}) for {method_name}")
 
         # Create synthetic tool call

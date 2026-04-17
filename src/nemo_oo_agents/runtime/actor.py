@@ -9,6 +9,7 @@ import inspect
 import io
 import linecache
 import logging
+from contextlib import contextmanager
 import tokenize
 import types
 import warnings
@@ -31,6 +32,7 @@ from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 if TYPE_CHECKING:
     from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
@@ -40,9 +42,71 @@ from nemo_oo_agents.runtime.context_vars import (
     _in_generation_session,
     _parent_agent_var,
 )
+from nemo_oo_agents.runtime.harness_metrics import (
+    get_harness_metrics,
+    restore_harness_metrics,
+    start_harness_metrics,
+)
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _harness_metrics_lifecycle(should_trace: bool):
+    """Start harness metrics + unifiedllm bridge, flush/restore on exit.
+
+    Yields hm (a HarnessMetrics instance, or None if should_trace is False).
+    """
+    _hm, _prev_hm = start_harness_metrics() if should_trace else (None, None)
+    _llm_cb_token = None
+    if _hm is not None:
+        try:
+            from unifiedllm.unifiedllm import _llm_metrics_callback
+
+            _llm_cb_token = _llm_metrics_callback.set(
+                _make_llm_metrics_bridge(_hm)
+            )
+        except ImportError:
+            pass
+    try:
+        yield _hm
+    finally:
+        if _hm is not None:
+            try:
+                _hm.flush_to_span()
+            finally:
+                restore_harness_metrics(_prev_hm)
+        if _llm_cb_token is not None:
+            try:
+                from unifiedllm.unifiedllm import _llm_metrics_callback
+
+                _llm_metrics_callback.reset(_llm_cb_token)
+            except ImportError:
+                pass
+
+
+def _make_llm_metrics_bridge(hm: "HarnessMetrics") -> Callable[[str, Any], None]:
+    """Create a callback that bridges unifiedllm metric events to HarnessMetrics."""
+    _dispatch: dict[str, Callable[[Any], None]] = {
+        "think_tag_extracted": lambda _: hm.record_think_tag_extracted(),
+        "malformed_think_tag_fixed": lambda _: hm.record_malformed_think_tag(),
+        "json_fence_removed": lambda _: hm.record_json_fence_removed(),
+        "json_control_chars_removed": lambda _: hm.record_json_control_chars_removed(),
+        "json_escape_fixed": lambda _: hm.record_json_escape_fixed(),
+        "json_nested_extraction": lambda _: hm.record_json_nested_extraction(),
+        "json_double_decoded": lambda _: hm.record_json_double_decoded(),
+        "reasoning_as_structured_output": lambda _: hm.record_reasoning_as_structured_output(),
+    }
+
+    def bridge(event: str, detail: Any = None) -> None:
+        handler = _dispatch.get(event)
+        if handler:
+            handler(detail)
+        else:
+            logger.debug("[HARNESS_METRICS] Unknown LLM metric event: %s", event)
+
+    return bridge
 
 
 # Suppress SyntaxWarning for invalid escape sequences (e.g. '\s' instead of r'\s')
@@ -65,11 +129,18 @@ def _strip_blocked_modules(
 
     if not blocked_modules:
         return exec_globals
-    return {
+    filtered = {
         name: obj
         for name, obj in exec_globals.items()
         if not is_from_blocked_module(obj, blocked_modules)
     }
+    removed_count = len(exec_globals) - len(filtered)
+    if removed_count > 0:
+        hm = get_harness_metrics()
+        removed = set(exec_globals) - set(filtered)
+        for name in removed:
+            hm.blocked_module_removed(name)
+    return filtered
 
 
 # Context variables for current generation context (per-task, not per-runtime)
@@ -399,12 +470,13 @@ class ActorRuntime:
         if self._current_method is None:
             raise RuntimeError("generate() called with no current method context")
 
-        # Build messages from context + events
+        # Build messages from context + events (timers inside _build_messages)
         messages = await self._build_messages(
             self._current_method,
             call_args=self._current_call.args if self._current_call else (),
             call_kwargs=self._current_call.kwargs if self._current_call else {},
         )
+        _gen_hm = get_harness_metrics()
 
         # Get LLM client from context var (set by _execute_with_generation)
         llm_client = _current_llm_var.get()
@@ -414,65 +486,66 @@ class ActorRuntime:
         current_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
 
         # --- Middleware: llm_call -------------------------------------------
+        _gen_hm.record_turn()
         em = self.event_manager
         has_mw = bool(em._middleware.get("llm_call"))
+        with _gen_hm.timer("time_llm_call"):
+            if has_mw:
+                from nemo_oo_agents.runtime.middleware import LLMCallContext
 
-        if has_mw:
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+                params: dict[str, Any] = {**kwargs, "tools": tools or []}
+                if output_model is not None:
+                    params["output_model"] = output_model
+                ctx = LLMCallContext(
+                    messages=messages,
+                    params=params,
+                    agent=self.agent,
+                    runtime=self,
+                )
 
-            params: dict[str, Any] = {**kwargs, "tools": tools or []}
-            if output_model is not None:
-                params["output_model"] = output_model
-            ctx = LLMCallContext(
-                messages=messages,
-                params=params,
-                agent=self.agent,
-                runtime=self,
-            )
+                async def _core_llm(ctx: LLMCallContext) -> LLMCallContext:
+                    # Tracing hook fires AFTER middleware pre-processing,
+                    # so it sees the final (possibly modified) messages.
+                    call_before_hook(
+                        "on_messages_built",
+                        agent=self.agent,
+                        method_name=self._current_method.__name__,
+                        messages=ctx.messages,
+                        generation_id=current_generation_id or "",
+                        context_stats=self._last_context_stats,
+                    )
+                    om = ctx.params.get("output_model", None)
+                    call_params = {k: v for k, v in ctx.params.items() if k != "output_model"}
+                    ctx.response = await llm_client.acall(
+                        ctx.messages,
+                        output_model=om,
+                        **call_params,
+                    )
+                    return ctx
 
-            async def _core_llm(ctx: LLMCallContext) -> LLMCallContext:
-                # Tracing hook fires AFTER middleware pre-processing,
-                # so it sees the final (possibly modified) messages.
+                ctx = await em.run_middleware("llm_call", ctx, _core_llm)
+                response = ctx.response
+                if response is None:
+                    raise RuntimeError(
+                        "llm_call middleware returned without setting ctx.response. "
+                        "Short-circuiting middleware must set ctx.response before returning."
+                    )
+            else:
+                # Fast path — no middleware registered
                 call_before_hook(
                     "on_messages_built",
                     agent=self.agent,
                     method_name=self._current_method.__name__,
-                    messages=ctx.messages,
+                    messages=messages,
                     generation_id=current_generation_id or "",
                     context_stats=self._last_context_stats,
                 )
-                om = ctx.params.get("output_model", None)
-                call_params = {k: v for k, v in ctx.params.items() if k != "output_model"}
-                ctx.response = await llm_client.acall(
-                    ctx.messages,
-                    output_model=om,
-                    **call_params,
+                response = await llm_client.acall(
+                    messages,
+                    tools=tools or [],
+                    output_model=output_model,
+                    **kwargs,
                 )
-                return ctx
-
-            ctx = await em.run_middleware("llm_call", ctx, _core_llm)
-            response = ctx.response
-            if response is None:
-                raise RuntimeError(
-                    "llm_call middleware returned without setting ctx.response. "
-                    "Short-circuiting middleware must set ctx.response before returning."
-                )
-        else:
-            # Fast path — no middleware registered
-            call_before_hook(
-                "on_messages_built",
-                agent=self.agent,
-                method_name=self._current_method.__name__,
-                messages=messages,
-                generation_id=current_generation_id or "",
-                context_stats=self._last_context_stats,
-            )
-            response = await llm_client.acall(
-                messages,
-                tools=tools or [],
-                output_model=output_model,
-                **kwargs,
-            )
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -672,51 +745,55 @@ class ActorRuntime:
             # when those names are already pre-loaded in exec_globals.
             from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
 
+            code_before_imports = code
             code = strip_redundant_imports(code, set(exec_globals.keys()))
+            if code != code_before_imports:
+                get_harness_metrics().import_stripped("redundant imports removed")
 
             # Validate code if requested (unified validator handles all checks)
-            if validate:
-                try:
-                    from nemo_oo_agents.runtime.code_validator import (
-                        UnifiedCodeValidator,
-                        ValidationContext,
-                    )
+            with get_harness_metrics().timer("time_code_validation"):
+                if validate:
+                    try:
+                        from nemo_oo_agents.runtime.code_validator import (
+                            UnifiedCodeValidator,
+                            ValidationContext,
+                        )
 
-                    # Prevent recursive calls to the method currently being generated
-                    forbidden_self_calls: set[str] = set()
-                    current_call = self._current_call
-                    if current_call and hasattr(current_call, "method_name"):
-                        forbidden_self_calls = {current_call.method_name}
+                        # Prevent recursive calls to the method currently being generated
+                        forbidden_self_calls: set[str] = set()
+                        current_call = self._current_call
+                        if current_call and hasattr(current_call, "method_name"):
+                            forbidden_self_calls = {current_call.method_name}
 
-                    # Build importable_modules from actual module names (not aliases)
-                    # e.g., 'import pandas as pd' means 'pandas' is importable, not 'os'
-                    importable_modules: set[str] = set()
-                    for obj in exec_globals.values():
-                        if isinstance(obj, types.ModuleType):
-                            actual_name = getattr(obj, "__name__", None)
-                            if actual_name:
-                                importable_modules.add(actual_name)
+                        # Build importable_modules from actual module names (not aliases)
+                        # e.g., 'import pandas as pd' means 'pandas' is importable, not 'os'
+                        importable_modules: set[str] = set()
+                        for obj in exec_globals.values():
+                            if isinstance(obj, types.ModuleType):
+                                actual_name = getattr(obj, "__name__", None)
+                                if actual_name:
+                                    importable_modules.add(actual_name)
 
-                    # Create validation context
-                    context = ValidationContext(
-                        code=code,
-                        agent_class=type(self.agent),
-                        available_names=set(exec_globals.keys()),
-                        importable_modules=importable_modules,
-                        forbidden_self_calls=forbidden_self_calls,
-                        execution_count=execution_count,
-                        agent=self.agent,
-                        exec_globals=exec_globals,
-                    )
+                        # Create validation context
+                        context = ValidationContext(
+                            code=code,
+                            agent_class=type(self.agent),
+                            available_names=set(exec_globals.keys()),
+                            importable_modules=importable_modules,
+                            forbidden_self_calls=forbidden_self_calls,
+                            execution_count=execution_count,
+                            agent=self.agent,
+                            exec_globals=exec_globals,
+                        )
 
-                    # Run unified validation (security, blocking calls, REPL policy)
-                    validator = UnifiedCodeValidator(
-                        restrictions=effective_restrictions,
-                    )
-                    validator.validate(code, context)
-                except Exception as e:
-                    result = ExecutionResult(stdout="", error=e, defined_methods={})
-                    return result
+                        # Run unified validation (security, blocking calls, REPL policy)
+                        validator = UnifiedCodeValidator(
+                            restrictions=effective_restrictions,
+                        )
+                        validator.validate(code, context)
+                    except Exception as e:
+                        result = ExecutionResult(stdout="", error=e, defined_methods={})
+                        return result
 
             # Set up stdout/stderr capture BEFORE ast.parse/compile so that
             # SyntaxWarnings (e.g. invalid escape sequences in LLM-generated code)
@@ -800,6 +877,7 @@ class ActorRuntime:
                         code_lines[last_line_no - 1] = f"{indent}return {stripped}"
                         code = "\n".join(code_lines)
                         implicit_return_added = True
+                        get_harness_metrics().implicit_return()
 
             returned_value = _NO_RETURN
             captured_locals: dict[str, Any] = {}
@@ -1132,28 +1210,29 @@ class ActorRuntime:
         result = None
         exception_caught = None
 
-        try:
-            # Execute nested strategy directly (we're already in a generation session)
-            result = await strategy.execute(self, call)
-            return result
-        except Exception as e:
-            exception_caught = e
-            raise
-        finally:
-            # Pop generation_id from stack using copy-on-write semantics
-            _pop_generation_id()
+        with _harness_metrics_lifecycle(should_trace):
+            try:
+                # Execute nested strategy directly (we're already in a generation session)
+                result = await strategy.execute(self, call)
+                return result
+            except Exception as e:
+                exception_caught = e
+                raise
+            finally:
+                # Pop generation_id from stack using copy-on-write semantics
+                _pop_generation_id()
 
-            # Call after generation hook
-            if should_trace:
-                call_after_hook(
-                    "after_generation",
-                    hook_context,
-                    agent=self.agent,
-                    method_name=call.method_name,
-                    result=result,
-                    exception=exception_caught,
-                    generation_id=generation_id,
-                )
+                # Call after generation hook
+                if should_trace:
+                    call_after_hook(
+                        "after_generation",
+                        hook_context,
+                        agent=self.agent,
+                        method_name=call.method_name,
+                        result=result,
+                        exception=exception_caught,
+                        generation_id=generation_id,
+                    )
 
     def get_generation_id(self) -> str | None:
         """Get the current generation session ID (RuntimeServices protocol).
@@ -1750,6 +1829,10 @@ class ActorRuntime:
         result = None
         exception_caught = None
 
+        # Start harness metrics + unifiedllm bridge (cleaned up in finally below)
+        _hm_ctx = _harness_metrics_lifecycle(should_trace)
+        _hm_ctx.__enter__()
+
         # Dispatch to appropriate executor based on strategy
         try:
             # NOTE: agent_call_id is pushed by the decorator (decorators.py/metaclass.py)
@@ -1893,6 +1976,9 @@ class ActorRuntime:
                     exception=exception_caught,
                     generation_id=generation_id,
                 )
+
+            # Flush harness metrics and restore
+            _hm_ctx.__exit__(None, None, None)
 
             # Restore previous context variable value
             # (handles nested generation sessions correctly)
@@ -2140,7 +2226,9 @@ async def {name}({params_str}) -> {return_type}:
         then render_context() to format them using the agent's configured
         block and provider formatters.
         """
-        blocks = await self._prepare_context(method, call_args, call_kwargs)
+        hm = get_harness_metrics()
+        with hm.timer("time_prepare_context"):
+            blocks = await self._prepare_context(method, call_args, call_kwargs)
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
         need_token_counter = tc.max_context_tokens is not None or tc.max_event_tokens is not None
@@ -2166,15 +2254,16 @@ async def {name}({params_str}) -> {return_type}:
             pass  # openinference instrumentation is an optional extra
         except Exception as exc:  # noqa: BLE001
             logger.debug("Failed to set context blocks for journal: %s", exc)
-        result = render_context(
-            blocks,
-            block_formatter=self.agent.render_config.block_formatter,
-            provider_formatter=self.agent.render_config.provider_formatter,
-            block_limit=tc.max_block_chars,
-            context_limit=tc.max_context_tokens,
-            event_limit=tc.max_event_tokens,
-            count_tokens=count_tokens,
-            pre_format_limit=tc.max_block_chars,
-        )
+        with hm.timer("time_render_context"):
+            result = render_context(
+                blocks,
+                block_formatter=self.agent.render_config.block_formatter,
+                provider_formatter=self.agent.render_config.provider_formatter,
+                block_limit=tc.max_block_chars,
+                context_limit=tc.max_context_tokens,
+                event_limit=tc.max_event_tokens,
+                count_tokens=count_tokens,
+                pre_format_limit=tc.max_block_chars,
+            )
         self._last_context_stats = result.stats
         return result.output
