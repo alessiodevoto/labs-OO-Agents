@@ -384,6 +384,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # Show todo progress to the LLM every turn
         self.context.set_dynamic("todo_status", "self.todo.status()")
 
+        # Show context-window usage to the LLM every turn (lets the agent
+        # decide when to call /compact). Value is from the PREVIOUS turn's
+        # render, so the very first respond() call sees an empty string.
+        self.context.set_dynamic(
+            "context_usage",
+            "self.context_stats.format() if self.context_stats else ''",
+        )
+
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
