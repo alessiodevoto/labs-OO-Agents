@@ -8,11 +8,16 @@ making it faster to iterate on agent changes locally.
 Agents:
   baseline  — CodeAct REPL, no benchmark-specific logic (default: openai/gpt-4o)
   dabstep   — 3-phase pipeline (RulesLawyer → compute_answer → SolutionVerifier)
-              (default: nvidia_nim/deepseek-ai/deepseek-v3.2)
+              (default: anthropic/claude-opus-4-6)
   both      — run baseline then dabstep and print a comparison table
 
+Task source (--tasks-file):
+  Default: agent006 ground truth JSON (450 tasks, all levels)
+  Override with any JSON file containing [{task_id, question, guidelines, answer, level}]
+  Use --tasks N to limit to first N tasks (0 = all, the default)
+
 Usage:
-    uv run python util/harbor/run_dabstep.py [--tasks 10] [--agent both]
+    uv run python util/harbor/run_dabstep.py [--tasks 0] [--agent dabstep]
 
 See gl-27: Smoke test: run 5 DABStep tasks via Harbor
 """
@@ -21,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import math
 import os
 import re
@@ -42,9 +48,13 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "packages/nemo-oo-agents-benchmarks/src"))
 sys.path.insert(0, str(REPO_ROOT / "util/eval_pipeline/src"))
 
-from difflib import SequenceMatcher  # noqa: E402
+# Default ground truth: agent006 repo 450-task JSON (same source as historical results)
+_AGENT006_ROOT = REPO_ROOT.parent / "agent006"
+DEFAULT_TASKS_FILE = (
+    _AGENT006_ROOT / ".worktrees/memory-ci/experiments/dabstep-analysis/dabstep_full_450_tasks.json"
+)
 
-from datasets import load_dataset  # type: ignore[import]  # noqa: E402
+from difflib import SequenceMatcher  # noqa: E402
 
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
 from unifiedllm import CompletionClient  # noqa: E402
@@ -234,17 +244,24 @@ async def _run_agent(
 
 
 async def main(
-    n_tasks: int = 10,
+    n_tasks: int = 0,
     baseline_model: str = "openai/gpt-4o",
-    dabstep_model: str = "openai/gpt-4o",
+    dabstep_model: str = "anthropic/claude-opus-4-6",
     agent_type: str = "both",
+    tasks_file: Path = DEFAULT_TASKS_FILE,
 ) -> None:
     from nemo_oo_agents_benchmarks.agents.baseline import BaselineAgent
     from nemo_oo_agents_benchmarks.agents.dabstep import DABStepAgent
 
-    # Load DABStep dev tasks
-    ds = load_dataset("adyen/DABstep", name="tasks", split="dev")
-    tasks = [dict(row) for row in ds][:n_tasks]
+    # Load tasks from ground truth JSON (matches historical agent006 results)
+    if not tasks_file.exists():
+        print(f"ERROR: Tasks file not found: {tasks_file}")
+        print(
+            "Set --tasks-file to a JSON file with [{task_id, question, guidelines, answer, level}]"
+        )
+        sys.exit(1)
+    all_tasks = json.loads(tasks_file.read_text())
+    tasks = all_tasks if n_tasks == 0 else all_tasks[:n_tasks]
 
     data_dir = str(Path(os.path.expanduser("~/.cache/dabstep/data/context")))
     if not Path(data_dir).exists():
@@ -271,7 +288,8 @@ async def main(
         for t in tasks
     ]
 
-    print(f"\nDABStep smoke test — {n_tasks} tasks from dev split")
+    n_actual = len(tasks)
+    print(f"\nDABStep — {n_actual} tasks from {tasks_file.name}")
     print(f"Data dir: {data_dir}\n")
 
     results_baseline = None
@@ -289,7 +307,7 @@ async def main(
         print(f"[{idx}/{total_steps}] BaselineAgent  model={baseline_model}")
         baseline_client = CompletionClient(model=baseline_model)
         results_baseline = await _run_agent(
-            BaselineAgent, "baseline", baseline_client, eval_data, n_tasks, "baseline"
+            BaselineAgent, "baseline", baseline_client, eval_data, n_actual, "baseline"
         )
         _print_run("BaselineAgent", baseline_model, results_baseline)
 
@@ -298,7 +316,7 @@ async def main(
         print(f"\n[{idx}/{total_steps}] DABStepAgent   model={dabstep_model}")
         dabstep_client = CompletionClient(model=dabstep_model)
         results_dabstep = await _run_agent(
-            DABStepAgent, "dabstep", dabstep_client, eval_data, n_tasks, "dabstep"
+            DABStepAgent, "dabstep", dabstep_client, eval_data, n_actual, "dabstep"
         )
         _print_run("DABStepAgent", dabstep_model, results_dabstep)
 
@@ -314,13 +332,24 @@ async def main(
     if results_dabstep:
         pct = f"{results_dabstep.passed}/{results_dabstep.total} = {results_dabstep.pass_rate:.0f}%"
         print(f"{'DABStepAgent':<22} {dabstep_model:<40} {pct}")
-    print(f"{'agent006 DABStepAgent':<22} {'Claude 3.5/4 (historical)':<40} 70–80%")
+    print(f"{'agent006 DABStepAgent':<22} {'Claude 3.5/4 (historical, 450 tasks)':<40} 70–80%")
     print()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run DABStep smoke test via eval_pipeline")
-    parser.add_argument("--tasks", type=int, default=10, help="Number of tasks (default: 10)")
+    parser = argparse.ArgumentParser(description="Run DABStep eval via eval_pipeline")
+    parser.add_argument(
+        "--tasks",
+        type=int,
+        default=0,
+        help="Number of tasks to run (default: 0 = all)",
+    )
+    parser.add_argument(
+        "--tasks-file",
+        type=Path,
+        default=DEFAULT_TASKS_FILE,
+        help="JSON file with [{task_id, question, guidelines, answer, level}] (default: agent006 450-task ground truth)",
+    )
     parser.add_argument(
         "--model",
         default="openai/gpt-4o",
@@ -328,8 +357,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dabstep-model",
-        default="openai/gpt-4o",
-        help="Model for DABStepAgent (default: openai/gpt-4o)",
+        default="anthropic/claude-opus-4-6",
+        help="Model for DABStepAgent (default: anthropic/claude-opus-4-6)",
     )
     parser.add_argument(
         "--agent",
@@ -344,5 +373,6 @@ if __name__ == "__main__":
             baseline_model=args.model,
             dabstep_model=args.dabstep_model,
             agent_type=args.agent,
+            tasks_file=args.tasks_file,
         )
     )
