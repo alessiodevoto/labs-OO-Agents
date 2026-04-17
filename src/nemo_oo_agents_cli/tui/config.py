@@ -164,30 +164,51 @@ class Config:
         if overrides.get("no_trace"):
             cfg.tui.trace_dir = None
 
-        # --skills-dir appends to existing list
+        # ── Skills-dirs ordering ──────────────────────────────────────
+        # Intentional precedence (first wins in SkillManager.install):
+        #   1. --skills-dir from the CLI / env (user-explicit)
+        #   2. Entry-point discovery (package-provided, e.g. wtf-issues)
+        #   3. Default locations (~/.claude/commands, etc.) as fallback
+        #
+        # Before this ordering, ~/.claude/commands/wtf-status could shadow
+        # a newer Python-based skill shipped by wtf-issues in its
+        # skills-nemo/ directory — first-scan wins semantics meant the
+        # user's explicit --skills-dir value lost to a defaulted
+        # grab-bag.
+        explicit: list[Path] = []
+        entry_point: list[Path] = []
+
         extra_skills = overrides.get("skills_dir")
         if extra_skills:
-            dirs = extra_skills if isinstance(extra_skills, list) else list(extra_skills)
+            # Accept a single str/Path OR a list/tuple of them. The bare
+            # fallback ``list(x)`` would iterate *characters* when given a
+            # lone string, producing nonsense paths.
+            if isinstance(extra_skills, (str, Path)):
+                dirs: list = [extra_skills]
+            elif isinstance(extra_skills, (list, tuple)):
+                dirs = list(extra_skills)
+            else:
+                dirs = list(extra_skills)  # last-resort: any other iterable
             for d in dirs:
                 p = Path(d)
-                if p not in cfg.tui.skills_dirs:
-                    cfg.tui.skills_dirs.append(p)
+                if p not in explicit:
+                    explicit.append(p)
 
-        # ── Post-processing ───────────────────────────────────────────
-        # Auto-discover skill dirs registered via entry points
-        # (e.g. wtf-issues registers nemo_oo_tui.skills_dirs → its skills-nemo/)
         try:
             from importlib.metadata import entry_points as _entry_points
 
             for _ep in _entry_points(group="nemo_oo_tui.skills_dirs"):
                 try:
                     _d = Path(str(_ep.load()()))
-                    if _d not in cfg.tui.skills_dirs:
-                        cfg.tui.skills_dirs.append(_d)
+                    if _d not in entry_point and _d not in explicit:
+                        entry_point.append(_d)
                 except Exception:
                     pass
         except Exception:
             pass
+
+        defaults = [d for d in cfg.tui.skills_dirs if d not in explicit and d not in entry_point]
+        cfg.tui.skills_dirs = explicit + entry_point + defaults
 
         # Filter skills dirs to existing directories
         cfg.tui.skills_dirs = [d for d in cfg.tui.skills_dirs if d.exists()]

@@ -324,6 +324,25 @@ class Session:
     def _clear_streaming_state(self) -> None:
         self._pending_code.clear()
 
+    def _context_usage_label(self) -> str:
+        """Compact ``"ctx N%"`` label from the most recent ContextWindowStats.
+
+        Returns an empty string if no generation has run yet, or if the
+        agent/runtime can't supply a bounded context window (no max).
+        """
+        stats = getattr(self.agent, "context_stats", None)
+        if stats is None:
+            return ""
+        max_context = stats.max_context_tokens
+        max_event = stats.max_event_tokens
+        if not (max_context and max_event):
+            return ""
+        max_total = max_context + max_event
+        if max_total <= 0:
+            return ""
+        pct = stats.total_tokens / max_total * 100
+        return f"ctx {pct:.0f}%"
+
     def _print_input_rule(self) -> None:
         """Print a horizontal rule before the input prompt with session info right-aligned."""
         from .theme import COLORS
@@ -332,15 +351,21 @@ class Session:
         if console is None:
             return
 
-        label = ""
+        segments: list[str] = []
+        usage = self._context_usage_label()
+        if usage:
+            segments.append(usage)
+
         if self._session_manager is not None:
             sm = self._session_manager
             short_id = (sm.session_id or "")[:8]
             name = sm.name
             if name and short_id:
-                label = f"{name} \\[{short_id}]"
+                segments.append(f"{name} \\[{short_id}]")
             elif short_id:
-                label = f"\\[{short_id}]"
+                segments.append(f"\\[{short_id}]")
+
+        label = " · ".join(segments)
 
         from rich.rule import Rule
 
