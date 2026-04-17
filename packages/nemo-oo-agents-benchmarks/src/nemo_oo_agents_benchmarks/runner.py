@@ -60,22 +60,45 @@ def _setup_logging() -> None:
     )
 
 
-def _setup_tracing() -> None:
-    """Enable OTel tracing to the Harbor artifact directory.
+def _setup_tracing(model: str, agent_type: str) -> None:
+    """Enable OTel tracing, publishing live to the viewer if reachable.
 
-    TODO (gl-8): Also detect a local OTLP endpoint and publish in real time
-    when reachable (e.g. nemo-oo-agents trace viewer already running locally).
-    Falls back to JSONL file export when no endpoint is reachable.
+    Detection order:
+    1. Probe ``OTLP_ENDPOINT`` env var, or ``http://localhost:5001`` by default.
+    2. If reachable → stream spans via the journal exporter with ``eval.model``
+       and ``eval.agent_type`` injected as resource attributes so the viewer can
+       display them without a separate ``import-harbor`` step.
+    3. If unreachable → fall back to JSONL files in the Harbor artifact
+       directory (``/logs/artifacts/traces/``), importable later via
+       ``nemo_oo_agents import-harbor``.
+
+    Note: Apptainer containers share the host network namespace, so
+    ``localhost:5001`` inside the container resolves to the developer's host.
+    For Docker containers set ``OTLP_ENDPOINT=http://host.docker.internal:5001``.
     """
     try:
-        from openinference_instrumentation_nemo_oo_agents import enable_tracing
+        from openinference_instrumentation_nemo_oo_agents import (
+            _probe_otlp_endpoint,
+            enable_tracing,
+        )
         from openinference_instrumentation_nemo_oo_agents import exporters as nemo_exporters
-
-        TRACES_DIR.mkdir(parents=True, exist_ok=True)
-        enable_tracing(exporters=[nemo_exporters.jsonl(TRACES_DIR)])
-        logger.info("OTel tracing enabled → %s", TRACES_DIR)
     except ImportError:
         logger.warning("openinference_instrumentation_nemo_oo_agents not available, no tracing")
+        return
+
+    endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")
+
+    if _probe_otlp_endpoint(endpoint):
+        logger.info("OTLP endpoint reachable (%s) — streaming traces live", endpoint)
+        enable_tracing(
+            exporters=[nemo_exporters.journal(endpoint=endpoint)],
+            extra_resource_attrs={"eval.model": model, "eval.agent_type": agent_type},
+        )
+        logger.info("OTel tracing enabled → %s", endpoint)
+    else:
+        TRACES_DIR.mkdir(parents=True, exist_ok=True)
+        enable_tracing(exporters=[nemo_exporters.jsonl(TRACES_DIR)])
+        logger.info("OTel tracing enabled → %s (OTLP not reachable)", TRACES_DIR)
 
 
 def _import_agent_class(agent_type: str) -> type:
@@ -200,7 +223,7 @@ def main(instruction: str, model: str, agent_type: str, tools: str, api_base: st
         )
         sys.exit(1)
 
-    _setup_tracing()
+    _setup_tracing(model=model, agent_type=agent_type)
 
     tool_set = frozenset(t.strip() for t in tools.split(",") if t.strip())
 
