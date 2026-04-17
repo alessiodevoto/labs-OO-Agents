@@ -238,6 +238,14 @@ name = get_input("Enter: ")
             with pytest.raises(ValidationError, match="__builtins__.*forbidden"):
                 validator.validate(code, default_context)
 
+        def test_reject_dunder_dict_attr(
+            self, validator: UnifiedCodeValidator, default_context: ValidationContext
+        ):
+            """obj.__dict__ exposes the raw attribute dictionary, bypassing visibility controls."""
+            code = "x = self.__dict__"
+            with pytest.raises(ValidationError, match="__dict__.*forbidden"):
+                validator.validate(code, default_context)
+
         def test_reject_recursive_self_call(self, validator: UnifiedCodeValidator):
             """Calling the method being generated causes infinite recursion."""
             context = ValidationContext(

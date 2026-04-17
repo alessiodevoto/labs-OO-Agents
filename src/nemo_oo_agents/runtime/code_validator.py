@@ -137,6 +137,7 @@ DANGEROUS_DUNDER_ATTRS = frozenset(
         "__globals__",
         "__code__",
         "__builtins__",
+        "__dict__",
     }
 )
 
