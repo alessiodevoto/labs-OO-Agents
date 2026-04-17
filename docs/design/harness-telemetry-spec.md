@@ -343,7 +343,7 @@ finally:
 ### codeact.py
 | Location | Metric |
 |----------|--------|
-| `_sanitize_code` | `fence_removal` |
+| fence stripping (via `strip_code_fences` in `_handle_execute_python`) | `fence_removal` |
 | `_prepend_reasoning` | `content_prepended_as_reasoning` |
 | Text-to-synthetic path | `text_to_synthetic` |
 | Empty response path | `empty_responses` |
@@ -369,7 +369,7 @@ finally:
 ### pure_python.py
 | Location | Metric |
 |----------|--------|
-| `_strip_code_fences` | `fence_removal` |
+| `_strip_code_fences` (delegates to shared `strip_code_fences`) | `fence_removal` |
 | `_strip_xml_wrapper` | `xml_wrappers_stripped` |
 | `_strip_wrappers` (nested) | `nested_wrapper_iterations` |
 | `_strip_reasoning_calls` | `reasoning_calls_stripped` |

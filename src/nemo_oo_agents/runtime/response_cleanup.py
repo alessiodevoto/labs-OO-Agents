@@ -31,8 +31,15 @@ def strip_code_fences(code: str) -> tuple[str, str | None]:
         or None if no fences were found.
     """
     stripped = code.strip()
-    fence_pattern = r"^(```\w*)\s*\n?(.*?)\n?```$"
+    # ```lang\nCODE\n``` — lang is \w* (word chars only); any trailing junk on
+    # the opening line (e.g. " 3" in "```python 3") is consumed up to the newline.
+    fence_pattern = r"^(```\w*)[^\n]*\n(.*?)\n?```$"
     match = re.match(fence_pattern, stripped, re.DOTALL)
+    if match:
+        return match.group(2).strip(), match.group(1)
+    # Fall back to inline form without newline (e.g. "```x```")
+    inline_pattern = r"^(```\w*)\s*(.*?)\s*```$"
+    match = re.match(inline_pattern, stripped, re.DOTALL)
     if match:
         return match.group(2).strip(), match.group(1)
     return code, None
@@ -58,8 +65,9 @@ def strip_xml_wrapper(content: str) -> tuple[str, str | None]:
     if not content.startswith("<"):
         return content, None
 
-    # Single pattern handles both with-attributes and without-attributes cases
-    pattern = r"^<([a-zA-Z_][\w-]*)(?:\s[^>]*)?>(.+)</\1>$"
+    # Single pattern handles both with-attributes and without-attributes cases.
+    # Use .* (not .+) so empty-content tags <tag></tag> still match.
+    pattern = r"^<([a-zA-Z_][\w-]*)(?:\s[^>]*)?>(.*)</\1>$"
     match = re.match(pattern, content, re.DOTALL)
     if match:
         return match.group(2).strip(), match.group(1)

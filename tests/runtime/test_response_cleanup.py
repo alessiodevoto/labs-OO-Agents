@@ -63,6 +63,26 @@ class TestStripCodeFences:
         assert cleaned == "x = 1"
         assert token == "```python"
 
+    def test_strips_junk_on_opening_line(self):
+        """Trailing chars after language tag (e.g. '```python 3') should not leak into code."""
+        code = "```python 3\nx = 1\n```"
+        cleaned, token = strip_code_fences(code)
+        assert cleaned == "x = 1"
+        assert token == "```python"
+
+    def test_strips_crlf_line_endings(self):
+        """Windows line endings should work."""
+        code = "```python\r\nx = 1\r\n```"
+        cleaned, token = strip_code_fences(code)
+        assert "x = 1" in cleaned
+        assert token == "```python"
+
+    def test_closing_only_fence_not_stripped(self):
+        code = "x = 1\n```"
+        cleaned, token = strip_code_fences(code)
+        assert cleaned == code
+        assert token is None
+
 
 class TestStripXmlWrapper:
     """Test strip_xml_wrapper shared function."""
@@ -125,3 +145,22 @@ class TestStripXmlWrapper:
         inner, tag = strip_xml_wrapper("")
         assert inner == ""
         assert tag is None
+
+    def test_empty_content_still_strips(self):
+        """Empty content <tag></tag> should still match and return ''."""
+        inner, tag = strip_xml_wrapper("<tag></tag>")
+        assert inner == ""
+        assert tag == "tag"
+
+    def test_self_closing_tag_not_stripped(self):
+        """<tag/> self-closing syntax should not match the open/close pattern."""
+        inner, tag = strip_xml_wrapper("<tag/>")
+        assert inner == "<tag/>"
+        assert tag is None
+
+    def test_nested_strips_only_outermost(self):
+        """strip_xml_wrapper returns the raw inner content — callers handle nesting."""
+        content = "<outer><inner>x</inner></outer>"
+        inner, tag = strip_xml_wrapper(content)
+        assert inner == "<inner>x</inner>"
+        assert tag == "outer"

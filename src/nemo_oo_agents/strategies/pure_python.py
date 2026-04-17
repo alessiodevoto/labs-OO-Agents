@@ -935,27 +935,16 @@ class PurePythonStrategy(CompositeStrategy):
         Raises:
             XMLFormatError: If problematic nested/multiple XML tags are detected.
         """
+        # 3 iterations is enough for any legitimate nesting (e.g. fence-in-XML
+        # or XML-in-fence requires at most 2 passes; +1 to detect fixed point).
         result = code
-        max_iterations = 5  # Prevent infinite loops on malformed input
-        iterations_used = 0
-
-        for _ in range(max_iterations):
+        for i in range(3):
             previous = result
-            iterations_used += 1
-
-            # Try stripping markdown fences
-            result = self._strip_code_fences(result)
-
-            # Try stripping XML wrapper
-            result = self._strip_xml_wrapper(result)
-
-            # If nothing changed, we're done
+            result = self._strip_xml_wrapper(self._strip_code_fences(result))
             if result == previous:
+                if i > 0:
+                    get_harness_metrics().nested_wrapper_iteration(i + 1)
                 break
-
-        if iterations_used > 1:
-            get_harness_metrics().nested_wrapper_iteration(iterations_used)
-
         return result
 
     def _strip_code_fences(self, code: str) -> str:

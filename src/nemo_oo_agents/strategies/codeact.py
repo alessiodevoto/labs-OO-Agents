@@ -1091,6 +1091,15 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         code = args.get("code", "")
 
+        # Strip markdown fences early — validator and helper binding below
+        # run ast.parse() which fails on fenced input. (runtime.execute_code
+        # also strips fences as a safety net for non-CodeAct code paths.)
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
+        code, fence_token = strip_code_fences(code)
+        if fence_token:
+            get_harness_metrics().fence_removal(fence_token)
+
         if not code.strip():
             session.record_error()
             # Update ToolCallEvent with error result
