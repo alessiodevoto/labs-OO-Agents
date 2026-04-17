@@ -58,6 +58,7 @@ with hidden:
     from unifiedllm import FakeLLMClient, UnifiedLLM
 
     from .config import AgentConfig, SummarizationConfig
+    from .doer import DoerAgent
 
 with hidden:
     from .models import (
@@ -349,24 +350,35 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     # TODOs
 
     Use ``self.todo`` for work with three or more distinct steps, or when
-    the user will want to watch progress. Mark each done as you complete it —
-    don't batch. Don't use it for trivial one-step tasks.
+    the user will want to watch progress. Don't use it for trivial one-step
+    tasks.
+
+    **Check items off the moment they're done — every time, without
+    exception.** The instant a step finishes successfully, and *before*
+    starting the next one, call ``self.todo.done(t.id)``. Do not batch
+    completions at the end of the turn. Do not wait until "everything is
+    done" to catch up. The user watches ``<todo_status>`` update live —
+    stale in-progress items make it look like you're stuck or lost, even
+    when you're making progress.
+
+    If a step fails, leave it open. Only mark it done after you've actually
+    fixed the failure. Partial credit is a lie you're telling yourself.
 
     Inline execution:
         t = self.todo.add("Explore the codebase")
         result = await self.do_it(t.id, t.title, t.notes)
 
     Delegate to a Doer subagent (isolates context, good for complex items):
-        dk = dict(llm=self._llm, bash=self.bash, files=self.files, todo=self.todo, skills_dirs=self._skills_dirs)
-        result = await DoerAgent(**dk).execute(t.id, t.title, t.notes)
+        t = self.todo.add("Run the full test suite and triage failures")
+        result = await self.make_doer().execute(t.id, t.title, t.notes)
 
-    Parallel when todos are independent:
+    Parallel when todos are independent (each doer gets its own context):
         t1 = self.todo.add("Fix module A")
         t2 = self.todo.add("Fix module B")
         t3 = self.todo.add("Run tests", deps=[t1.id, t2.id])
         r1, r2 = await asyncio.gather(
-            DoerAgent(**dk).execute(t1.id, t1.title, t1.notes),
-            DoerAgent(**dk).execute(t2.id, t2.title, t2.notes),
+            self.make_doer().execute(t1.id, t1.title, t1.notes),
+            self.make_doer().execute(t2.id, t2.title, t2.notes),
         )
 
     The ``<todo_status>`` context block shows current progress every turn.
@@ -518,6 +530,21 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             "max_tokens": max_tokens,
             "preserve_recent": preserve_recent,
         }
+
+    def make_doer(self) -> "DoerAgent":
+        """Build a fresh ``DoerAgent`` wired with this agent's tools and skills.
+
+        Each doer has its own context window, so the parent's context doesn't
+        fill up with the doer's scratch work. Call ``.execute(todo_id, title,
+        notes)`` to run a single todo item to completion.
+        """
+        return DoerAgent(
+            llm=self._llm,
+            bash=self.bash,
+            files=self.files,
+            todo=self.todo,
+            skills_dirs=self._skills_dirs,
+        )
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def do_it(self, todo_id: str, todo_title: str, todo_notes: str) -> str:
@@ -683,9 +710,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
         Call return_result(RespondResult.STOP_WORK) when completely done.
-
-        When orchestrator mode is enabled (config.orchestrator=True), routes
-        through workflow phases. Otherwise uses a single CodeAct strategy.
         """
         if self._config.orchestrator:
             return await _orchestrate(self, user_message)

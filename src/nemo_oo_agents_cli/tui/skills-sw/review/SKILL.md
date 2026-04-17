@@ -119,14 +119,6 @@ for lens, instr in reviewers:
     review_todos.append((lens, instr, rt.id))
     self.todo.comment(umbrella.id, f"👁 dispatched {lens} reviewer: {rt.id}")
 
-dk = dict(
-    llm=self._llm,
-    bash=self.bash,
-    files=self.files,
-    todo=self.todo,
-    skills_dirs=self._skills_dirs,
-)
-
 async def _run_reviewer(lens: str, instr: str, todo_id: str):
     prompt = REVIEW_PROMPT_TEMPLATE.format(
         lens=lens,
@@ -140,7 +132,7 @@ async def _run_reviewer(lens: str, instr: str, todo_id: str):
         n_commits=len(commits),
         diff=diff,
     )
-    summary = await DoerAgent(**dk).execute(
+    summary = await self.make_doer().execute(
         todo_id,
         f"Review ({lens})",
         prompt,
