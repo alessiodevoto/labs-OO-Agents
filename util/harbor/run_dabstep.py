@@ -183,12 +183,14 @@ When you have computed the final answer, use `return_result(answer)` where answe
 
 
 def _extract_answer(output: object) -> str:
+    """Extract the answer string from an agent output dict or raw value."""
     if isinstance(output, dict):
         return str(output.get("response") or output.get("answer") or "")
     return str(output or "")
 
 
 def _print_run(label: str, model: str, results: object) -> None:
+    """Print per-task pass/fail and overall score for one agent run."""
     print(f"\n{'=' * 60}")
     print(f"{label}  ({model})")
     print(f"{'=' * 60}")
@@ -207,6 +209,7 @@ async def _run_agent(
     n_tasks: int,
     label: str,
 ) -> object:
+    """Run one agent class against eval_data and return the Evaluator results."""
     evaluator = Evaluator(
         models={model_id: llm_client},
         output_dir=str(REPO_ROOT / ".development/docs/evaluation"),
@@ -274,16 +277,25 @@ async def main(
     results_baseline = None
     results_dabstep = None
 
+    steps = []
     if agent_type in ("baseline", "both"):
-        print(f"[1/2] BaselineAgent  model={baseline_model}")
+        steps.append("baseline")
+    if agent_type in ("dabstep", "both"):
+        steps.append("dabstep")
+    total_steps = len(steps)
+
+    if "baseline" in steps:
+        idx = steps.index("baseline") + 1
+        print(f"[{idx}/{total_steps}] BaselineAgent  model={baseline_model}")
         baseline_client = CompletionClient(model=baseline_model)
         results_baseline = await _run_agent(
             BaselineAgent, "baseline", baseline_client, eval_data, n_tasks, "baseline"
         )
         _print_run("BaselineAgent", baseline_model, results_baseline)
 
-    if agent_type in ("dabstep", "both"):
-        print(f"\n[2/2] DABStepAgent   model={dabstep_model}")
+    if "dabstep" in steps:
+        idx = steps.index("dabstep") + 1
+        print(f"\n[{idx}/{total_steps}] DABStepAgent   model={dabstep_model}")
         dabstep_client = CompletionClient(model=dabstep_model)
         results_dabstep = await _run_agent(
             DABStepAgent, "dabstep", dabstep_client, eval_data, n_tasks, "dabstep"
@@ -294,15 +306,15 @@ async def main(
     print(f"\n{'=' * 60}")
     print("COMPARISON")
     print(f"{'=' * 60}")
-    print(f"{'Agent':<20} {'Model':<40} {'Score'}")
-    print(f"{'-' * 20} {'-' * 40} {'-' * 10}")
+    print(f"{'Agent':<22} {'Model':<40} {'Score'}")
+    print(f"{'-' * 22} {'-' * 40} {'-' * 10}")
     if results_baseline:
         pct = f"{results_baseline.passed}/{results_baseline.total} = {results_baseline.pass_rate:.0f}%"
-        print(f"{'BaselineAgent':<20} {baseline_model:<40} {pct}")
+        print(f"{'BaselineAgent':<22} {baseline_model:<40} {pct}")
     if results_dabstep:
         pct = f"{results_dabstep.passed}/{results_dabstep.total} = {results_dabstep.pass_rate:.0f}%"
-        print(f"{'DABStepAgent':<20} {dabstep_model:<40} {pct}")
-    print(f"{'agent006 DABStepAgent':<20} {'Claude 3.5/4 (historical)':<40} 70–80%")
+        print(f"{'DABStepAgent':<22} {dabstep_model:<40} {pct}")
+    print(f"{'agent006 DABStepAgent':<22} {'Claude 3.5/4 (historical)':<40} 70–80%")
     print()
 
 
