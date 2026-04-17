@@ -16,6 +16,7 @@ behaviour test needed it.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from prompt_toolkit.application import Application
@@ -57,8 +58,29 @@ class _PrefixCompleter(Completer):
 class TUIApplication:
     """Owns a single, long-lived ``prompt_toolkit.Application`` for the TUI."""
 
-    def __init__(self, agent: Any = None) -> None:
+    def __init__(
+        self,
+        agent: Any = None,
+        *,
+        on_command: Callable[[str], Awaitable[None] | None] | None = None,
+        on_bang: Callable[[str], Awaitable[None] | None] | None = None,
+    ) -> None:
+        """
+        Args:
+            agent: Object with an async ``respond(user_message)`` method.
+            on_command: Called with the raw slash text (e.g. ``"/help"``)
+                whenever the user submits one. Session wires this to its
+                CommandRegistry. If omitted, commands still land in
+                ``commands_dispatched()`` for introspection but nothing
+                runs.
+            on_bang: Called with the bang body (e.g. ``"echo hi"`` for
+                ``!echo hi``). Session wires this to run_in_terminal +
+                bash. If omitted, bang commands are only recorded in
+                ``last_bang_command()``.
+        """
         self.agent = agent
+        self._on_command = on_command
+        self._on_bang = on_bang
         self.state = QueueState()
 
         # Output window: append-only scrollback. Tests read ``.text``; the
@@ -207,12 +229,23 @@ class TUIApplication:
 
         if text.startswith("/"):
             self._commands_dispatched.append(text)
+            self._fire(self._on_command, text)
             return
         if text.startswith("!"):
-            self._last_bang_command = text[1:].strip()
+            body = text[1:].strip()
+            self._last_bang_command = body
+            self._fire(self._on_bang, body)
             return
 
         self._launch_agent(text)
+
+    def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
+        """Call a user callback; schedule it if it returned a coroutine."""
+        if cb is None:
+            return
+        result = cb(arg)
+        if asyncio.iscoroutine(result):
+            asyncio.ensure_future(result)
 
     def _history_navigate(self, direction: int) -> None:
         """Move the history cursor by ``direction`` (-1=older, +1=newer)."""

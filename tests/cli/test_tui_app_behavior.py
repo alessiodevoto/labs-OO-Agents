@@ -138,6 +138,76 @@ async def test_commands_slash_dispatches_without_calling_agent():
         assert h.agent.messages_received == []
 
 
+async def test_commands_slash_fires_on_command_callback():
+    """Session wires ``on_command`` to route slash submissions into its
+    CommandRegistry; this test pins the hook contract."""
+    from nemo_oo_agents_cli.tui.tui_application import TUIApplication
+
+    received: list[str] = []
+    from prompt_toolkit.application import create_app_session
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from .tui_app_harness import FakeAgent
+
+    agent = FakeAgent()
+    with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+        app = TUIApplication(agent=agent, on_command=received.append)
+        import asyncio as _a
+
+        run_task = _a.create_task(app.run_async())
+        # wait for ready
+        for _ in range(200):
+            if app.is_running:
+                break
+            await _a.sleep(0.01)
+        pipe.send_text("/help\r")
+        for _ in range(200):
+            if received:
+                break
+            await _a.sleep(0.01)
+        assert received == ["/help"]
+        app.exit()
+        try:
+            await _a.wait_for(run_task, 2.0)
+        except (TimeoutError, _a.CancelledError):
+            run_task.cancel()
+
+
+async def test_commands_bang_fires_on_bang_callback_with_stripped_body():
+    """``on_bang`` receives the body without the leading ``!``."""
+    from nemo_oo_agents_cli.tui.tui_application import TUIApplication
+
+    received: list[str] = []
+    from prompt_toolkit.application import create_app_session
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from .tui_app_harness import FakeAgent
+
+    agent = FakeAgent()
+    with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+        app = TUIApplication(agent=agent, on_bang=received.append)
+        import asyncio as _a
+
+        run_task = _a.create_task(app.run_async())
+        for _ in range(200):
+            if app.is_running:
+                break
+            await _a.sleep(0.01)
+        pipe.send_text("!echo hi\r")
+        for _ in range(200):
+            if received:
+                break
+            await _a.sleep(0.01)
+        assert received == ["echo hi"]
+        app.exit()
+        try:
+            await _a.wait_for(run_task, 2.0)
+        except (TimeoutError, _a.CancelledError):
+            run_task.cancel()
+
+
 async def test_commands_tab_completion_for_slash():
     async with TUIHarness() as h:
         await h.type_keys("/he")
