@@ -8,7 +8,7 @@ making it faster to iterate on agent changes locally.
 Agents:
   baseline  — CodeAct REPL, no benchmark-specific logic (default: openai/gpt-4o)
   dabstep   — 3-phase pipeline (RulesLawyer → compute_answer → SolutionVerifier)
-              (default: anthropic/claude-opus-4-6)
+              (default: aws/anthropic/bedrock-claude-opus-4-6 via NVIDIA_INTERNAL_API_KEY)
   both      — run baseline then dabstep and print a comparison table
 
 Task source (--tasks-file):
@@ -58,6 +58,7 @@ from difflib import SequenceMatcher  # noqa: E402
 
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
 from unifiedllm import CompletionClient  # noqa: E402
+from unifiedllm.registry import get_llm_client  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # DABStep fuzzy scorer (adapted from harbor's scorer.py)
@@ -239,6 +240,22 @@ async def _run_agent(
 
 
 # ---------------------------------------------------------------------------
+# Client factory — registry models (aws/*, nvidia/*, azure/*) go through
+# get_llm_client() which resolves endpoint + API key automatically.
+# Plain litellm model strings (openai/*, anthropic/*) use CompletionClient.
+# ---------------------------------------------------------------------------
+
+_REGISTRY_PREFIXES = ("aws/", "nvidia/", "azure/")
+
+
+def _make_client(model: str) -> CompletionClient:
+    """Return a CompletionClient for model, using the registry when appropriate."""
+    if any(model.startswith(p) for p in _REGISTRY_PREFIXES):
+        return get_llm_client(model)
+    return CompletionClient(model=model)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -246,7 +263,7 @@ async def _run_agent(
 async def main(
     n_tasks: int = 0,
     baseline_model: str = "openai/gpt-4o",
-    dabstep_model: str = "anthropic/claude-opus-4-6",
+    dabstep_model: str = "aws/anthropic/bedrock-claude-opus-4-6",
     agent_type: str = "both",
     tasks_file: Path = DEFAULT_TASKS_FILE,
 ) -> None:
@@ -305,7 +322,7 @@ async def main(
     if "baseline" in steps:
         idx = steps.index("baseline") + 1
         print(f"[{idx}/{total_steps}] BaselineAgent  model={baseline_model}")
-        baseline_client = CompletionClient(model=baseline_model)
+        baseline_client = _make_client(baseline_model)
         results_baseline = await _run_agent(
             BaselineAgent, "baseline", baseline_client, eval_data, n_actual, "baseline"
         )
@@ -314,7 +331,7 @@ async def main(
     if "dabstep" in steps:
         idx = steps.index("dabstep") + 1
         print(f"\n[{idx}/{total_steps}] DABStepAgent   model={dabstep_model}")
-        dabstep_client = CompletionClient(model=dabstep_model)
+        dabstep_client = _make_client(dabstep_model)
         results_dabstep = await _run_agent(
             DABStepAgent, "dabstep", dabstep_client, eval_data, n_actual, "dabstep"
         )
@@ -357,8 +374,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dabstep-model",
-        default="anthropic/claude-opus-4-6",
-        help="Model for DABStepAgent (default: anthropic/claude-opus-4-6)",
+        default="aws/anthropic/bedrock-claude-opus-4-6",
+        help="Model for DABStepAgent (default: aws/anthropic/bedrock-claude-opus-4-6 via NVIDIA internal)",
     )
     parser.add_argument(
         "--agent",
