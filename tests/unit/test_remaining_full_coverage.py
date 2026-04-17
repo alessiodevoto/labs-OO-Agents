@@ -280,34 +280,6 @@ class TestSummarizationNoneGuards:
         result = summarizer._render_range_to_markdown("t1", "t5")
         assert result == ""
 
-    def test_estimate_tokens_none_guard(self):
-        """Line 414: _estimate_tokens returns 0 if target_event_manager is None."""
-        summarizer = self._make_summarizer()
-        summarizer.target_event_manager = None
-        result = summarizer._estimate_tokens()
-        assert result == 0
-
-    def test_estimate_tokens_empty_tags(self):
-        """Line 419: _estimate_tokens returns 0 if tags list is empty."""
-        summarizer = self._make_summarizer()
-        # Mock keys() to return empty list
-        summarizer.target_event_manager.keys = MagicMock(return_value=[])  # type: ignore[union-attr]
-        result = summarizer._estimate_tokens()
-        assert result == 0
-
-    def test_estimate_tokens_chars_div_4_fallback(self):
-        """Line 431: chars//4 fallback when LLM has no count_tokens method."""
-        summarizer = self._make_summarizer()
-        # Add an event to give non-empty tags
-        from nemo_oo_agents.events import Message
-
-        summarizer.target_event_manager.add(Message(content="hello world"))  # type: ignore[union-attr]
-        # Ensure _llm has no count_tokens
-        summarizer._llm = MagicMock(spec=[])  # spec=[] means no attributes
-        result = summarizer._estimate_tokens()
-        assert result >= 0
-        assert isinstance(result, int)
-
     def test_token_budget_compute_range_none_guard(self):
         """Line 514: TokenBudgetSummarizer._compute_range returns None when target_event_manager is None."""
         summarizer = self._make_summarizer()

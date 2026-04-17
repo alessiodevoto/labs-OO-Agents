@@ -410,44 +410,18 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _estimate_tokens(self) -> int:
-        """Estimate total tokens in the parent agent's next prompt.
+        """Prompt tokens from the most recent ``_build_messages()`` call.
 
-        Prefers the runtime's authoritative count from the most recent
-        ``_build_messages()`` call — the same number the LLM sees. This
-        reflects events *and* context blocks (system prompt, dynamic
-        blocks, etc.), with the real provider formatter applied, so it
-        matches what actually ships to the model.
-
-        Falls back to rendering events through the summarizer's own
-        markdown formatter only when no generation has happened yet
-        (``agent.context_stats is None`` — e.g. a brand-new session's
-        very first call, before any ``_build_messages()`` has run).
+        Reflects what the LLM actually saw — events plus context blocks,
+        with the real provider formatter applied. Zero before any
+        generation has run; ``_should_summarize`` only fires from
+        ``AfterTurn``, which is always after ``_build_messages()``.
         """
         agent = self._target_agent
-        if agent is not None:
-            stats = getattr(agent, "context_stats", None)
-            if stats is not None:
-                return stats.total_tokens
-
-        if self.target_event_manager is None:
+        if agent is None:
             return 0
-
-        # Fallback path — no stats yet. Uses the summarizer's own markdown
-        # render, which undercounts the real prompt (misses context blocks
-        # and doesn't apply the provider formatter's tool-call expansion)
-        # but is better than zero.
-        tags = self.target_event_manager.keys()
-        if not tags:
-            return 0
-
-        first_tag = tags[0]
-        last_tag = tags[-1]
-        rendered = self._render_range_to_markdown(first_tag, last_tag)
-
-        if self._llm and hasattr(self._llm, "count_tokens"):
-            return self._llm.count_tokens(rendered)
-
-        return len(rendered) // 4
+        stats = agent.context_stats
+        return stats.total_tokens if stats else 0
 
 
 # =============================================================================
