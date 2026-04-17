@@ -935,16 +935,18 @@ class PurePythonStrategy(CompositeStrategy):
         Raises:
             XMLFormatError: If problematic nested/multiple XML tags are detected.
         """
-        # 3 iterations is enough for any legitimate nesting (e.g. fence-in-XML
-        # or XML-in-fence requires at most 2 passes; +1 to detect fixed point).
+        # 3 iterations covers any legitimate nesting (fence-in-XML or
+        # XML-in-fence = 2 strip passes; +1 to detect fixed point).
         result = code
+        iters = 0
         for i in range(3):
+            iters = i + 1
             previous = result
             result = self._strip_xml_wrapper(self._strip_code_fences(result))
             if result == previous:
-                if i > 0:
-                    get_harness_metrics().nested_wrapper_iteration(i + 1)
                 break
+        if iters > 1:
+            get_harness_metrics().nested_wrapper_iteration(iters)
         return result
 
     def _strip_code_fences(self, code: str) -> str:
@@ -989,14 +991,15 @@ class PurePythonStrategy(CompositeStrategy):
                 )
             return code
 
-        # Check for nested XML wrapper tags in the extracted content
-        if inner_content.strip().startswith("<") and inner_content.strip().endswith(">"):
-            nested_pattern = r"^\s*<(\w+)(?:\s+[^>]*)?>.*</\1>\s*$"
-            if re.match(nested_pattern, inner_content, re.DOTALL):
-                raise XMLFormatError(
-                    f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
-                    "Return plain Python code only, without any XML or HTML markup."
-                )
+        # Check for nested XML wrapper tags in the extracted content.
+        # Recurse into strip_xml_wrapper: if the inner content is itself
+        # a complete XML wrapper, that's a nesting error.
+        _, nested_tag = strip_xml_wrapper(inner_content)
+        if nested_tag is not None:
+            raise XMLFormatError(
+                f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
+                "Return plain Python code only, without any XML or HTML markup."
+            )
 
         get_harness_metrics().xml_wrapper_stripped(tag_name)
         logger.debug(

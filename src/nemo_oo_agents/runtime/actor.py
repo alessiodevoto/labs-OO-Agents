@@ -738,7 +738,9 @@ class ActorRuntime:
 
             hm = get_harness_metrics()
 
-            # 1. Strip markdown code fences (```python ... ```)
+            # 1. Strip markdown code fences (safety net — CodeAct already strips
+            #    at the tool-call boundary before helper extraction; this covers
+            #    PurePython and any direct execute_code callers).
             code, fence_token = strip_code_fences(code)
             if fence_token:
                 hm.fence_removal(fence_token)

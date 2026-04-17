@@ -31,13 +31,16 @@ def strip_code_fences(code: str) -> tuple[str, str | None]:
         or None if no fences were found.
     """
     stripped = code.strip()
-    # ```lang\nCODE\n``` — lang is \w* (word chars only); any trailing junk on
-    # the opening line (e.g. " 3" in "```python 3") is consumed up to the newline.
-    fence_pattern = r"^(```\w*)[^\n]*\n(.*?)\n?```$"
+    # Multiline form: ```lang\nCODE\n```
+    # The opening line after the lang tag must contain only whitespace before
+    # the newline. This preserves code when the LLM puts code on the same
+    # line as the fence (e.g. "```python print('x')\n```").
+    fence_pattern = r"^(```\w*)[ \t]*\n(.*?)\n?```$"
     match = re.match(fence_pattern, stripped, re.DOTALL)
     if match:
         return match.group(2).strip(), match.group(1)
-    # Fall back to inline form without newline (e.g. "```x```")
+    # Inline form: ```lang CODE``` (no newline) — handles same-line cases
+    # like "```python print('x')```".
     inline_pattern = r"^(```\w*)\s*(.*?)\s*```$"
     match = re.match(inline_pattern, stripped, re.DOTALL)
     if match:

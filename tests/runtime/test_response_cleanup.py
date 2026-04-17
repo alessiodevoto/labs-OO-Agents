@@ -63,9 +63,24 @@ class TestStripCodeFences:
         assert cleaned == "x = 1"
         assert token == "```python"
 
-    def test_strips_junk_on_opening_line(self):
-        """Trailing chars after language tag (e.g. '```python 3') should not leak into code."""
-        code = "```python 3\nx = 1\n```"
+    def test_preserves_code_on_opening_line(self):
+        """Regression: LLMs sometimes put code on the same line as the opening fence.
+        That code must not be silently deleted."""
+        code = "```python print('hello')\n```"
+        cleaned, token = strip_code_fences(code)
+        assert cleaned == "print('hello')"
+        assert token == "```python"
+
+    def test_preserves_code_on_opening_line_multiline(self):
+        code = "```python x = 1\ny = 2\n```"
+        cleaned, token = strip_code_fences(code)
+        assert "x = 1" in cleaned
+        assert "y = 2" in cleaned
+        assert token == "```python"
+
+    def test_inline_form_with_code(self):
+        """Inline form: ```python x = 1``` (no newline between lang and closing)."""
+        code = "```python x = 1```"
         cleaned, token = strip_code_fences(code)
         assert cleaned == "x = 1"
         assert token == "```python"
