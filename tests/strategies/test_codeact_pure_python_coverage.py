@@ -234,28 +234,30 @@ class TestExecutionContext:
 
 
 class TestSanitizeCode:
-    """Tests for _sanitize_code."""
+    """Tests for code fence stripping (now in shared response_cleanup module)."""
 
     def test_sanitize_removes_python_fence(self):
-        """_sanitize_code should strip ```python ... ``` fences."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "```python\nresult = 42\n```"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
+        assert token == "```python"
 
     def test_sanitize_removes_plain_fence(self):
-        """_sanitize_code should strip plain ``` fences."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "```\nresult = 42\n```"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
 
     def test_sanitize_no_fence(self):
-        """_sanitize_code should leave clean code unchanged."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "result = 42"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
+        assert token is None
 
 
 # ---------------------------------------------------------------------------

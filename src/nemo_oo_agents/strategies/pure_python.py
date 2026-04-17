@@ -918,6 +918,11 @@ class PurePythonStrategy(CompositeStrategy):
 
         return builtins
 
+    # ── Post-response cleanup (PurePython) ─────────────────────
+    # Intercept point: strategy-specific response transforms.
+    # Handles nested wrapper stripping and reasoning call removal.
+    # Consider making extensible in the future.
+
     def _strip_wrappers(self, code: str) -> str:
         """Strip all wrapper formats from LLM output.
 
@@ -956,65 +961,38 @@ class PurePythonStrategy(CompositeStrategy):
     def _strip_code_fences(self, code: str) -> str:
         """Strip markdown code fences from LLM output.
 
-        Handles:
-        - ```python ... ```
-        - ``` ... ```
-        - Code with leading/trailing whitespace around fences
-
-        Returns the clean code inside the fences, or original code if no fences found.
+        Delegates to the shared ``strip_code_fences`` function.
         """
-        import re
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
 
-        stripped = code.strip()
-
-        # Match opening fence with optional language tag
-        # Supports: ```python, ```py, ```, etc.
-        fence_pattern = r"^```(?:\w*)\s*\n?(.*?)\n?```$"
-        match = re.match(fence_pattern, stripped, re.DOTALL)
-
-        if match:
-            fence_match = re.match(r"^(```(?:\w*))", stripped)
-            get_harness_metrics().fence_removal(fence_match.group(1) if fence_match else "```")
-            return match.group(1).strip()
-
+        cleaned, fence_token = strip_code_fences(code)
+        if fence_token:
+            get_harness_metrics().fence_removal(fence_token)
+            return cleaned
         return code
 
     def _strip_xml_wrapper(self, code: str) -> str:
-        """Strip XML/HTML wrapper tags from LLM output.
+        """Strip XML/HTML wrapper tags from LLM output (strict mode).
 
-        Some LLMs output code wrapped in XML-like tags such as:
-        - <tool_code>...</tool_code>
-        - <code>...</code>
-        - <python>...</python>
-
-        This method:
-        1. Strips a single outermost XML wrapper tag if present
-        2. Raises XMLFormatError if nested or multiple XML tags are detected
-
-        Returns the clean code inside the wrapper, or original code if no wrapper found.
+        Delegates core matching to the shared ``strip_xml_wrapper`` function.
+        Adds strict error handling for code context: raises XMLFormatError on
+        malformed or nested XML (indicates LLM confusion about output format).
 
         Raises:
-            XMLFormatError: If output contains nested/multiple XML tags that can't be
-                           cleanly stripped (indicates LLM confusion about output format).
+            XMLFormatError: If output contains nested/multiple XML tags.
         """
         import re
 
-        stripped = code.strip()
+        from nemo_oo_agents.runtime.response_cleanup import strip_xml_wrapper
 
-        # Quick check: does it look like it starts with an XML tag?
+        stripped = code.strip()
         if not stripped.startswith("<"):
             return code
 
-        # Pattern to match a single XML wrapper: <tagname ...>content</tagname>
-        # Captures: tag name, any attributes, and inner content
-        # Uses non-greedy matching to get the outermost tag only
-        xml_wrapper_pattern = r"^<(\w+)(?:\s+[^>]*)?>(.+)</\1>$"
-        match = re.match(xml_wrapper_pattern, stripped, re.DOTALL)
+        inner_content, tag_name = strip_xml_wrapper(stripped)
 
-        if not match:
-            # Starts with < but doesn't match wrapper pattern
-            # Could be malformed XML or something else
-            # Check if it contains XML-like tags at all
+        if tag_name is None:
+            # Starts with < but doesn't match wrapper pattern — check for XML-like tags
             if re.search(r"<\w+[^>]*>", stripped):
                 raise XMLFormatError(
                     "You provided XML/HTML tags. This is wrong. You are only allowed to return Python. "
@@ -1022,15 +1000,10 @@ class PurePythonStrategy(CompositeStrategy):
                 )
             return code
 
-        tag_name = match.group(1)
-        inner_content = match.group(2).strip()
-
         # Check for nested XML wrapper tags in the extracted content
-        # Only flag if the ENTIRE inner content is wrapped in another XML tag
-        # (XML strings in Python code like 'return "<config>value</config>"' are fine)
         if inner_content.strip().startswith("<") and inner_content.strip().endswith(">"):
-            nested_wrapper_pattern = r"^\s*<(\w+)(?:\s+[^>]*)?>.*</\1>\s*$"
-            if re.match(nested_wrapper_pattern, inner_content, re.DOTALL):
+            nested_pattern = r"^\s*<(\w+)(?:\s+[^>]*)?>.*</\1>\s*$"
+            if re.match(nested_pattern, inner_content, re.DOTALL):
                 raise XMLFormatError(
                     f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
                     "Return plain Python code only, without any XML or HTML markup."

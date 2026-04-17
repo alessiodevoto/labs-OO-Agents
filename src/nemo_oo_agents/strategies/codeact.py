@@ -702,7 +702,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                 if response is None:
                     continue
 
-                # Tool calls
+                # ── Post-response cleanup (CodeAct) ──────────────────────
+                # Intercept point: strategy-specific response transforms.
+                # Handles text-only→synthetic, reasoning prepend, tool call
+                # translation. Consider making extensible in the future.
                 if response.finish_reason == "tool_calls" and response.tool_calls:
                     tool_calls = response.tool_calls
                     # If the LLM also emitted message content alongside the tool
@@ -1020,36 +1023,6 @@ Standard Python builtins and agent instance (`self`) are available."""
         # All tool calls processed without completion or error-break
         return _ToolCallsResult()
 
-    def _sanitize_code(self, code: str) -> str:
-        """Remove markdown code fences that models sometimes include in generated code.
-
-        Some models (especially when they see markdown in prompts) accidentally include
-        markdown code fence markers like ``` or ```python in their generated code.
-        This strips those artifacts to prevent syntax errors.
-
-        Args:
-            code: Raw code string from LLM
-
-        Returns:
-            Sanitized code with markdown artifacts removed
-        """
-        import re
-
-        # Strip leading/trailing whitespace first
-        original = code.strip()
-
-        # Remove leading markdown code fence (```python, ```py, ``` etc.)
-        code = re.sub(r"^```(?:python|py)?\s*\n?", "", original)
-
-        # Remove trailing markdown code fence
-        code = re.sub(r"\n?```\s*$", "", code)
-
-        code = code.strip()
-        if code != original:
-            leading = re.match(r"^(```(?:python|py)?)", original)
-            get_harness_metrics().fence_removal(leading.group(1) if leading else "```")
-        return code
-
     @staticmethod
     def _handle_block_syntax_error(
         e: BlockSyntaxError,
@@ -1117,9 +1090,6 @@ Standard Python builtins and agent instance (`self`) are available."""
         was called inline, or None if an error occurred.
         """
         code = args.get("code", "")
-
-        # Sanitize code: remove markdown code fences that models sometimes include
-        code = self._sanitize_code(code)
 
         if not code.strip():
             session.record_error()
@@ -1398,6 +1368,12 @@ Standard Python builtins and agent instance (`self`) are available."""
                 return (None, None)  # Success - return None
 
             # Normalize args to always have "result" key
+            # ── Return result normalization ──────────────────────────
+            # Intercept point: normalizes return_result args before
+            # Pydantic validation. Handles args wrapping, GPT-4o
+            # double-quote fix, variable ref resolution, JSON parsing.
+            # Consider making extensible in the future.
+
             # Be flexible: accept both return_result(result=...) and return_result(field1=..., field2=...)
             if "result" not in args and len(args) > 0:
                 # LLM passed direct fields (e.g., sum=100, mean=20)

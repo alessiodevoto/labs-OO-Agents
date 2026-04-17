@@ -180,6 +180,12 @@ def _recursively_parse_json_strings(obj: Any) -> Any:
     return obj
 
 
+# ── Response cleanup: JSON parsing ────────────────────────────────────
+# Intercept point: JSON extraction and cleanup for structured output.
+# Handles fence removal, control char cleanup, escape fixing, nested
+# extraction. Consider making this an extensible pipeline in the future.
+
+
 def extract_and_parse_json(text: str) -> dict[str, Any]:
     """Extract and parse JSON from text, with multiple fallback strategies"""
     original_text = text
@@ -707,7 +713,7 @@ def _extract_xml_tool_calls(content: str) -> list["ToolCall"]:
 
 
 def _extract_think_tags(content: str) -> tuple[str, str | None]:
-    """Extract <think>...</think> tags from content.
+    """Response cleanup: extract <think>...</think> tags from content.
 
     Returns (cleaned_content, reasoning) where:
     - cleaned_content is the content with think tags removed
@@ -967,9 +973,10 @@ class CompletionClient(UnifiedLLM):
                 )
 
         if output_model:
-            # Some reasoning models (e.g. Nemotron) put structured output JSON
-            # in reasoning_content instead of content. Fall back to reasoning
-            # so the JSON can be parsed rather than failing on empty content.
+            # ── Response cleanup: reasoning-as-content fallback ───────
+            # Intercept point: some reasoning models (e.g. Nemotron) put
+            # structured output JSON in reasoning_content instead of content.
+            # Consider making this an extensible transform in the future.
             parseable_content = text_content if text_content else (reasoning or "")
             if not text_content and reasoning:
                 _record_llm_metric("reasoning_as_structured_output")
@@ -1108,9 +1115,10 @@ class CompletionClient(UnifiedLLM):
                 )
 
         if output_model:
-            # Some reasoning models (e.g. Nemotron) put structured output JSON
-            # in reasoning_content instead of content. Fall back to reasoning
-            # so the JSON can be parsed rather than failing on empty content.
+            # ── Response cleanup: reasoning-as-content fallback ───────
+            # Intercept point: some reasoning models (e.g. Nemotron) put
+            # structured output JSON in reasoning_content instead of content.
+            # Consider making this an extensible transform in the future.
             parseable_content = text_content if text_content else (reasoning or "")
             if not text_content and reasoning:
                 _record_llm_metric("reasoning_as_structured_output")

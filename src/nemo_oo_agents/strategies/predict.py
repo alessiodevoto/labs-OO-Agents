@@ -506,53 +506,23 @@ class PredictStrategy(GenerationStrategy):
             logger.debug(f"[PREDICT] Failed to add span attributes: {e}")
 
     def _strip_xml_wrapper(self, content: str | None) -> str:
-        """Strip XML wrapper tags from content if present.
+        """Strip XML wrapper tags from content if present (lenient mode).
 
-        Sometimes the LLM mimics context block format and wraps JSON in tags like:
-        <assistant_message expr="...">{"key": "value"}</assistant_message>
-
-        This extracts just the JSON content between the tags.
-
-        Args:
-            content: Raw string content that may contain XML wrappers
-
-        Returns:
-            Cleaned content with XML tags removed, or original if no tags found
+        Delegates core matching to the shared ``strip_xml_wrapper`` function.
+        Unlike the PurePython version, this does NOT raise on malformed XML —
+        it silently returns the original content.
         """
-        import re
+        from nemo_oo_agents.runtime.response_cleanup import strip_xml_wrapper
 
         content = (content or "").strip()
-
-        # Pattern to match <tag ...>CONTENT</tag> where tag could be assistant_message, etc.
-        # Matches: <tagname any_attributes>CONTENT</tagname>
-        pattern = r"^<([a-zA-Z_][a-zA-Z0-9_-]*)\s[^>]*>(.*)</\1>$"
-        match = re.match(pattern, content, re.DOTALL)
-
-        if match:
-            # Extract the content between tags
-            inner_content = match.group(2).strip()
-            get_harness_metrics().xml_wrapper_stripped(match.group(1))
+        inner_content, tag_name = strip_xml_wrapper(content)
+        if tag_name:
+            get_harness_metrics().xml_wrapper_stripped(tag_name)
             logger.debug(
-                f"[PREDICT] Stripped XML wrapper <{match.group(1)}>, "
+                f"[PREDICT] Stripped XML wrapper <{tag_name}>, "
                 f"extracted {len(inner_content)} chars"
             )
-            return inner_content
-
-        # Also handle simpler case without attributes: <tag>CONTENT</tag>
-        simple_pattern = r"^<([a-zA-Z_][a-zA-Z0-9_-]*)>(.*)</\1>$"
-        simple_match = re.match(simple_pattern, content, re.DOTALL)
-
-        if simple_match:
-            inner_content = simple_match.group(2).strip()
-            get_harness_metrics().xml_wrapper_stripped(simple_match.group(1))
-            logger.debug(
-                f"[PREDICT] Stripped simple XML wrapper <{simple_match.group(1)}>, "
-                f"extracted {len(inner_content)} chars"
-            )
-            return inner_content
-
-        # No XML wrapper found, return as-is
-        return content
+        return inner_content
 
     async def _call_llm_raw(
         self,
@@ -586,6 +556,11 @@ class PredictStrategy(GenerationStrategy):
         )
 
         return response, event_id
+
+    # ── Post-response cleanup (Predict) ────────────────────────
+    # Intercept point: strategy-specific response transforms.
+    # Handles XML wrapper stripping and content-to-reasoning fallback.
+    # Consider making extensible in the future.
 
     def _parse_llm_response(self, llm_response: Any, method_name: str) -> dict[str, Any]:
         """Parse LLM response into a dict for validation.

@@ -730,25 +730,32 @@ class ActorRuntime:
             if builtins:
                 exec_globals.update(builtins)
 
-            # Strip blocked modules and their members from exec_globals.
-            # Default to RestrictionsConfig() so stripping and validation
-            # agree when caller omits the parameter.
+            # ── Pre-execution cleanup ────────────────────────────────────
+            # Intercept point: all code cleanup transforms are bundled here.
+            # Consider making this an extensible middleware point in the future.
             from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+            from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
 
+            hm = get_harness_metrics()
+
+            # 1. Strip markdown code fences (```python ... ```)
+            code, fence_token = strip_code_fences(code)
+            if fence_token:
+                hm.fence_removal(fence_token)
+
+            # 2. Strip blocked modules and their members from exec_globals
             effective_restrictions = restrictions or RestrictionsConfig()
             exec_globals = _strip_blocked_modules(
                 exec_globals, effective_restrictions.blocked_modules
             )
 
-            # Strip redundant imports before validation and execution.
-            # LLMs habitually write ``from typing import Literal`` etc. even
-            # when those names are already pre-loaded in exec_globals.
+            # 3. Strip redundant imports (from typing import Literal, etc.)
             from nemo_oo_agents.runtime.code_validator import strip_redundant_imports
 
             code_before_imports = code
             code = strip_redundant_imports(code, set(exec_globals.keys()))
             if code != code_before_imports:
-                get_harness_metrics().import_stripped("redundant imports removed")
+                hm.import_stripped("redundant imports removed")
 
             # Validate code if requested (unified validator handles all checks)
             with get_harness_metrics().timer("time_code_validation"):
