@@ -1,4 +1,4 @@
-# Rust toolchain (installed for nat_nexus PyO3 build)
+# Rust toolchain (installed for nemo_flow PyO3 build)
 .cargo/
 .rustup/
 
@@ -292,7 +292,7 @@ agents/**/traces/
 .config/
 .local/
 
-# Rust toolchain (installed by rustup for nvidia-nat-nexus build)
+# Rust toolchain (installed by rustup for nemo-flow build)
 .cargo/
 .rustup/
 

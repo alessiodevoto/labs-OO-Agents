@@ -1,34 +1,36 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""NAT Nexus integration via the ``intercept()`` middleware API.
+"""NeMo Flow integration via the ``intercept()`` middleware API.
 
-When ``nat_nexus`` is installed, this module provides two middleware functions
-that route LLM calls and code execution through the Nexus pipeline (guardrails,
-intercepts, event subscribers, ATIF export).
+When ``nemo_flow`` is installed, this module provides three middleware functions
+that route LLM calls, code execution, and agent method calls through the NeMo Flow
+pipeline (guardrails, intercepts, event subscribers, ATIF export).
 
 Usage::
 
-    from nemo_oo_agents.nexus_middleware import install_nexus
+    from nemo_oo_agents.nemo_flow_middleware import install_nemo_flow
 
-    # Inside an async context where nat_nexus scope is active:
-    uninstall = install_nexus(agent.event_manager)
+    # Inside an async context where nemo_flow scope is active:
+    uninstall = install_nemo_flow(agent.event_manager)
     try:
         result = await agent.my_method()
     finally:
         uninstall()
 
-Or use ``nexus_scope()`` which handles install/uninstall automatically::
+Or use ``nemo_flow_scope()`` which handles install/uninstall automatically::
 
-    from nemo_oo_agents.nexus_middleware import nexus_scope
+    from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope
 
-    async with nexus_scope(agent, "my-agent"):
+    async with nemo_flow_scope(agent, "my-agent"):
         result = await agent.my_method()
 
 Requirements:
-    ``nat_nexus`` must be installed (``pip install nvidia-nat-nexus``).
-    If not installed, ``install_nexus()`` and ``nexus_scope()`` raise
+    ``nemo_flow`` must be installed (``uv sync --extra nemo-flow``).
+    If not installed, ``install_nemo_flow()`` and ``nemo_flow_scope()`` raise
     ``ImportError`` with install instructions.
 """
+
+from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Callable
@@ -55,39 +57,62 @@ if TYPE_CHECKING:
     )
 
 try:
-    import nat_nexus  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]
-    from nat_nexus import LLMRequest  # pyright: ignore[reportMissingImports]
+    import nemo_flow  # type: ignore[import]
+    from nemo_flow import LLMRequest  # type: ignore[import]
 
-    _HAS_NAT_NEXUS = True
+    _HAS_NEMO_FLOW = True
 except ImportError:
-    _HAS_NAT_NEXUS = False
-    nat_nexus = None
-    LLMRequest = None
+    _HAS_NEMO_FLOW = False
+    nemo_flow = None  # type: ignore[assignment]
+    LLMRequest = None  # type: ignore[assignment,misc]
 
-_INSTALL_MSG = "nat_nexus is required for Nexus integration. Install with: uv sync --extra nexus"
+_INSTALL_MSG = (
+    "nemo_flow is required for NeMo Flow integration. Install with: uv sync --extra nemo-flow"
+)
 
-# Keys stripped from params before exposing to Nexus guardrails/events.
+# Keys stripped from params before exposing to NeMo Flow guardrails/events.
 _SENSITIVE_KEYS: frozenset[str] = frozenset({"api_key", "api_base", "base_url"})
 
 # Keys that hold non-JSON-serializable objects (Tool instances, Pydantic models).
 # These are converted or removed before constructing LLMRequest.
 _NON_SERIALIZABLE_KEYS: frozenset[str] = frozenset({"tools", "output_model"})
 
+# Keys from LLMRequest.content that map directly to ctx.params.
+# If a NeMo Flow request intercept modifies these, we propagate them.
+# NOTE: "tools" is intentionally excluded — they are non-serializable Tool
+# instances and must not be overwritten with JSON from the Rust boundary.
+_PROPAGATABLE_LLM_PARAMS: frozenset[str] = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "stop",
+        "frequency_penalty",
+        "presence_penalty",
+        "seed",
+    }
+)
+
+# Tool execution args that NeMo Flow intercepts may modify.
+_PROPAGATABLE_TOOL_PARAMS: frozenset[str] = frozenset({"tool_call_id", "timeout"})
+
 
 # ---------------------------------------------------------------------------
 # Middleware functions
 # ---------------------------------------------------------------------------
-async def nexus_llm_middleware(
-    ctx: "LLMCallContext",
-    nxt: "LLMCallNext",
-) -> "LLMCallContext":
-    """Route LLM calls through the Nexus LLM pipeline.
 
-    Strips sensitive keys, wraps the call through ``nat_nexus.llm.execute()``,
+
+async def nemo_flow_llm_middleware(
+    ctx: LLMCallContext,
+    nxt: LLMCallNext,
+) -> LLMCallContext:
+    """Route LLM calls through the NeMo Flow LLM pipeline.
+
+    Strips sensitive keys, wraps the call through ``nemo_flow.llm.execute()``,
     and returns the original ``LLMResponse`` to the caller.  The JSON-serialized
-    response is what flows through Nexus guardrails and ATIF export.
+    response is what flows through NeMo Flow guardrails and ATIF export.
     """
-    assert nat_nexus is not None
+    assert nemo_flow is not None
 
     # Get model name from the agent's LLM client (not in params).
     model_name = ""
@@ -103,31 +128,17 @@ async def nexus_llm_middleware(
     safe_params["messages"] = ctx.messages
     # Tools are excluded via _NON_SERIALIZABLE_KEYS.  Do NOT re-add them:
     # including a "tools" key in request.content triggers an AttributeError
-    # ('dict' object has no attribute 'name') inside Nexus's native pipeline.
+    # ('dict' object has no attribute 'name') inside NeMo Flow's native pipeline.
     # The old hooks-based integration avoided this because it intercepted at
     # unifiedllm's layer, where api_params never contained a tools key.
-    assert LLMRequest is not None
-    request = LLMRequest({}, safe_params)
+    request = LLMRequest({}, safe_params)  # type: ignore[misc]
 
     captured_ctx: LLMCallContext | None = None
-
-    # Keys from LLMRequest.content that map directly to ctx.params.
-    # If a Nexus request intercept modifies these, we propagate them.
-    _PROPAGATABLE_LLM_PARAMS: set[str] = {
-        "temperature",
-        "top_p",
-        "max_tokens",
-        "stop",
-        "frequency_penalty",
-        "presence_penalty",
-        "seed",
-        "tools",
-    }
 
     async def _wrapper(req: Any) -> Any:
         nonlocal captured_ctx
         # Apply request intercept modifications back to ctx.
-        # Nexus request intercepts can transform the LLMRequest (e.g. inject
+        # NeMo Flow request intercepts can transform the LLMRequest (e.g. inject
         # system messages, modify headers).  The modified request is passed
         # here as `req`; we must propagate those changes to ctx so the rest
         # of the nemo_oo_agents middleware chain (and the actual LLM call) sees them.
@@ -142,11 +153,11 @@ async def nexus_llm_middleware(
                     ctx.params[key] = intercepted[key]
         # Call the rest of the middleware chain → eventually hits acall()
         captured_ctx = await nxt(ctx)
-        # Return JSON to Nexus (guardrails, events, ATIF).
+        # Return JSON to NeMo Flow (guardrails, events, ATIF).
         resp = captured_ctx.response
         if resp is None:
             return {}
-        # Prefer the raw litellm ModelResponse (Pydantic) — gives Nexus the
+        # Prefer the raw litellm ModelResponse (Pydantic) — gives NeMo Flow the
         # full OpenAI-style structure matching what the old hooks-based
         # integration returned via captured_response.model_dump(mode="json").
         raw = getattr(resp, "raw_response", None)
@@ -154,7 +165,7 @@ async def nexus_llm_middleware(
             return raw.model_dump(mode="json")
         # Pydantic response (e.g. passed directly)
         if hasattr(resp, "model_dump"):
-            return resp.model_dump(mode="json")  # pyright: ignore[reportAttributeAccessIssue]
+            return resp.model_dump(mode="json")  # type: ignore[union-attr]
         # Fallback: manual serialization from unifiedllm.LLMResponse dataclass.
         if hasattr(resp, "assistant_message"):
             result: dict[str, Any] = {"message": resp.assistant_message}
@@ -165,51 +176,48 @@ async def nexus_llm_middleware(
             return result
         return {}
 
-    # Note: nat_nexus.llm.execute() returns the pre-guardrail response.
-    # Sanitize-response guardrails transform data for Nexus internals
+    # Note: nemo_flow.llm.execute() returns the pre-guardrail response.
+    # Sanitize-response guardrails transform data for NeMo Flow internals
     # (ATIF export, event subscribers) but the caller always receives
     # the original response.  Conditional-execution guardrails that
     # reject raise GuardrailRejected, which propagates naturally.
-    await nat_nexus.llm.execute(model_name, request, _wrapper, model_name=model_name)
+    await nemo_flow.llm.execute(model_name, request, _wrapper, model_name=model_name)  # type: ignore[union-attr]
 
     if captured_ctx is not None:
         return captured_ctx
-    # Nexus guardrails blocked the LLM call (never invoked _wrapper).
+    # NeMo Flow guardrails blocked the LLM call (never invoked _wrapper).
     # Raise an explicit error instead of returning ctx without a response,
     # which would trigger a confusing generic RuntimeError downstream.
     raise RuntimeError(
-        "Nexus guardrail blocked the LLM call — the request was rejected "
-        "before reaching the LLM. Check your Nexus guardrail configuration."
+        "NeMo Flow guardrail blocked the LLM call — the request was rejected "
+        "before reaching the LLM. Check your NeMo Flow guardrail configuration."
     )
 
 
-async def nexus_tool_middleware(
-    ctx: "ExecutePythonContext",
-    nxt: "ExecutePythonNext",
-) -> "ExecutePythonContext":
-    """Route code execution through the Nexus tool pipeline.
+async def nemo_flow_tool_middleware(
+    ctx: ExecutePythonContext,
+    nxt: ExecutePythonNext,
+) -> ExecutePythonContext:
+    """Route code execution through the NeMo Flow tool pipeline.
 
     Extracts the meaningful return value from ``ExecutionResult``, serializes
-    it via ``BestEffortAnyCodec`` for Nexus inspection, and returns the
+    it via ``BestEffortAnyCodec`` for NeMo Flow inspection, and returns the
     original ``ExecutionResult`` to the caller.
     """
-    assert nat_nexus is not None
+    assert nemo_flow is not None
 
     args = {
         "code": ctx.code,
-        **{k: v for k, v in ctx.params.items() if k in ("tool_call_id", "timeout")},
+        **{k: v for k, v in ctx.params.items() if k in _PROPAGATABLE_TOOL_PARAMS},
     }
-    codec = nat_nexus.typed.BestEffortAnyCodec()
+    codec = nemo_flow.typed.BestEffortAnyCodec()  # type: ignore[union-attr]
 
     captured_ctx: ExecutePythonContext | None = None
-
-    # Tool execution args that Nexus intercepts may modify.
-    _PROPAGATABLE_TOOL_PARAMS: set[str] = {"tool_call_id", "timeout"}
 
     async def _wrapper(inner_args: Any) -> Any:
         nonlocal captured_ctx
         # Apply request intercept modifications back to ctx.
-        # Nexus tool request intercepts can transform args (e.g. rewrite code,
+        # NeMo Flow tool request intercepts can transform args (e.g. rewrite code,
         # modify timeout).  The modified args are passed here as `inner_args`;
         # we must propagate changes to ctx so the actual execution sees them.
         if isinstance(inner_args, dict):
@@ -224,7 +232,7 @@ async def nexus_tool_middleware(
         if result is None:
             return codec.to_json(None)
 
-        # Extract meaningful return value (same priority as original _nat_nexus.py)
+        # Extract meaningful return value (same priority as original _nemo_flow.py)
         from nemo_oo_agents.events import _NO_RETURN
 
         rv = getattr(result, "returned_value", _NO_RETURN)
@@ -241,62 +249,64 @@ async def nexus_tool_middleware(
 
         return codec.to_json(rv)
 
-    # Note: nat_nexus.tools.execute() returns the pre-guardrail result.
-    # Sanitize-response guardrails transform data for Nexus internals
+    # Note: nemo_flow.tools.execute() returns the pre-guardrail result.
+    # Sanitize-response guardrails transform data for NeMo Flow internals
     # (ATIF export, event subscribers) but the caller always receives
     # the original result.  Conditional-execution guardrails that reject
     # raise GuardrailRejected, which propagates naturally.
-    await nat_nexus.tools.execute("execute_python", args, _wrapper)
+    await nemo_flow.tools.execute("execute_python", args, _wrapper)  # type: ignore[union-attr]
 
     if captured_ctx is not None:
         return captured_ctx
-    # Nexus guardrails blocked code execution (never invoked _wrapper).
+    # NeMo Flow guardrails blocked code execution (never invoked _wrapper).
     raise RuntimeError(
-        "Nexus guardrail blocked code execution — the request was rejected "
-        "before running. Check your Nexus guardrail configuration."
+        "NeMo Flow guardrail blocked code execution — the request was rejected "
+        "before running. Check your NeMo Flow guardrail configuration."
     )
 
 
-async def nexus_agent_call_middleware(
-    ctx: "AgentCallContext",
-    nxt: "AgentCallNext",
-) -> "AgentCallContext":
-    """Wrap each agent method call in a Nexus Function scope.
+async def nemo_flow_agent_call_middleware(
+    ctx: AgentCallContext,
+    nxt: AgentCallNext,
+) -> AgentCallContext:
+    """Wrap each agent method call in a NeMo Flow Function scope.
 
     Pushes a ``ScopeType.Function`` scope named ``"AgentClass.method_name"``
     before the method executes and pops it after, giving ATIF per-method
     granularity.
     """
-    assert nat_nexus is not None
+    assert nemo_flow is not None
 
     scope_name = f"{type(ctx.agent).__name__}.{ctx.method_name}"
-    handle = nat_nexus.scope.push(scope_name, nat_nexus.ScopeType.Function)
+    handle = nemo_flow.scope.push(scope_name, nemo_flow.ScopeType.Function)  # type: ignore[union-attr]
     try:
         return await nxt(ctx)
     finally:
         try:
-            nat_nexus.scope.pop(handle)
+            nemo_flow.scope.pop(handle)  # type: ignore[union-attr]
         except Exception:
-            _logger.debug("nexus_agent_call_middleware: scope.pop() failed", exc_info=True)
+            _logger.debug("nemo_flow_agent_call_middleware: scope.pop() failed", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
 # Install / uninstall helpers
 # ---------------------------------------------------------------------------
-def install_nexus(event_manager: "EventManager") -> Callable[[], None]:
-    """Register Nexus middleware on an event manager.
 
-    Returns an uninstall function that removes both middleware.
+
+def install_nemo_flow(event_manager: EventManager) -> Callable[[], None]:
+    """Register NeMo Flow middleware on an event manager.
+
+    Returns an uninstall function that removes all three middleware.
 
     Raises:
-        ImportError: If ``nat_nexus`` is not installed.
+        ImportError: If ``nemo_flow`` is not installed.
     """
-    if not _HAS_NAT_NEXUS:
+    if not _HAS_NEMO_FLOW:
         raise ImportError(_INSTALL_MSG)
 
-    unsub_agent = event_manager.intercept(MIDDLEWARE_AGENT_CALL, nexus_agent_call_middleware)
-    unsub_llm = event_manager.intercept(MIDDLEWARE_LLM_CALL, nexus_llm_middleware)
-    unsub_exec = event_manager.intercept(MIDDLEWARE_EXECUTE_PYTHON, nexus_tool_middleware)
+    unsub_agent = event_manager.intercept(MIDDLEWARE_AGENT_CALL, nemo_flow_agent_call_middleware)
+    unsub_llm = event_manager.intercept(MIDDLEWARE_LLM_CALL, nemo_flow_llm_middleware)
+    unsub_exec = event_manager.intercept(MIDDLEWARE_EXECUTE_PYTHON, nemo_flow_tool_middleware)
 
     def uninstall() -> None:
         unsub_agent()
@@ -307,38 +317,37 @@ def install_nexus(event_manager: "EventManager") -> Callable[[], None]:
 
 
 @asynccontextmanager
-async def nexus_scope(
+async def nemo_flow_scope(
     agent: Any,
     scope_name: str,
 ) -> AsyncIterator[Any]:
-    """Async context manager that activates Nexus for an agent.
+    """Async context manager that activates NeMo Flow for an agent.
 
-    Pushes a Nexus scope, installs middleware on the agent's event manager,
+    Pushes a NeMo Flow scope, installs middleware on the agent's event manager,
     and cleans up on exit::
 
-        async with nexus_scope(agent, "research-agent") as handle:
+        async with nemo_flow_scope(agent, "research-agent") as handle:
             result = await agent.research("quantum computing")
             # handle.uuid available for ATIF export
 
     Args:
         agent: The Agent instance whose event_manager will get middleware.
-        scope_name: Human-readable name for the Nexus scope.
+        scope_name: Human-readable name for the NeMo Flow scope.
 
     Yields:
-        The Nexus scope handle (has ``.uuid`` for ATIF correlation).
+        The NeMo Flow scope handle (has ``.uuid`` for ATIF correlation).
 
     Raises:
-        ImportError: If ``nat_nexus`` is not installed.
+        ImportError: If ``nemo_flow`` is not installed.
     """
-    if not _HAS_NAT_NEXUS:
+    if not _HAS_NEMO_FLOW:
         raise ImportError(_INSTALL_MSG)
 
-    uninstall = install_nexus(agent.event_manager)
+    uninstall = install_nemo_flow(agent.event_manager)
     try:
-        assert nat_nexus is not None
-        with nat_nexus.scope.scope(
+        with nemo_flow.scope.scope(  # type: ignore[union-attr]
             scope_name,
-            nat_nexus.ScopeType.Agent,
+            nemo_flow.ScopeType.Agent,  # type: ignore[union-attr]
         ) as handle:
             yield handle
     finally:

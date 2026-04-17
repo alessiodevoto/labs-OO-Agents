@@ -6,7 +6,7 @@ Covers:
 - nemo_oo_agents.llm (re-exports from unifiedllm)
 - nemo_oo_agents._visible (_Visible context manager)
 - nemo_oo_agents_cli.commands._template (Click command)
-- nemo_oo_agents.nexus_middleware (install_nexus, nexus_scope, middleware)
+- nemo_oo_agents.nemo_flow_middleware (install_nemo_flow, nemo_flow_scope, middleware)
 """
 
 from __future__ import annotations
@@ -239,12 +239,12 @@ class TestTemplateCommand:
 
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents.nexus_middleware
+# nemo_oo_agents.nemo_flow_middleware
 # ---------------------------------------------------------------------------
 
 
-def _make_fake_nexus():
-    """Build a MagicMock that looks like nat_nexus."""
+def _make_fake_nemo_flow():
+    """Build a MagicMock that looks like nemo_flow."""
     fake = MagicMock()
     # scope.scope() needs to work as a context manager
     fake_handle = MagicMock()
@@ -255,95 +255,94 @@ def _make_fake_nexus():
 
 
 @contextmanager
-def _nexus_patched():
-    """Patch sys.modules with a fake nat_nexus, reload nexus_middleware, yield module."""
+def _nemo_flow_patched():
+    """Patch sys.modules with a fake nemo_flow, reload nemo_flow_middleware, yield module."""
 
-    fake_nexus, _ = _make_fake_nexus()
+    fake_nemo_flow, _ = _make_fake_nemo_flow()
     fake_llm_request = MagicMock()
 
     # Ensure the module is imported before patching (KeyError if not in sys.modules)
-    import nemo_oo_agents.nexus_middleware as _nm_ensure  # noqa: F811, F401
+    import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F811, F401
 
     with patch.dict(
         sys.modules,
         {
-            "nat_nexus": fake_nexus,
-            "nat_nexus.LLMRequest": fake_llm_request,
+            "nemo_flow": fake_nemo_flow,
+            "nemo_flow.LLMRequest": fake_llm_request,
         },
     ):
-        nm = sys.modules["nemo_oo_agents.nexus_middleware"]
+        nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
         importlib.reload(nm)
         try:
-            yield nm, fake_nexus
+            yield nm, fake_nemo_flow
         finally:
-            pass  # Don't reload here — still inside patch.dict so nat_nexus is present
+            pass  # Don't reload here — still inside patch.dict so nemo_flow is present
 
-    # Reload AFTER patch.dict exits (nat_nexus removed from sys.modules)
+    # Reload AFTER patch.dict exits (nemo_flow removed from sys.modules)
     importlib.reload(nm)
 
 
-class TestNexusMiddlewareWithoutNatNexus:
-    """When nat_nexus is not installed, install_nexus and nexus_scope raise ImportError."""
+class TestNemoFlowMiddlewareWithoutNemoFlow:
+    """When nemo_flow is not installed, install_nemo_flow and nemo_flow_scope raise ImportError."""
 
-    def test_install_nexus_raises_import_error(self):
-        import nemo_oo_agents.nexus_middleware as nm
+    def test_install_nemo_flow_raises_import_error(self, monkeypatch):
+        import nemo_oo_agents.nemo_flow_middleware as nm
 
-        # nat_nexus is NOT installed in test env
-        assert nm._HAS_NAT_NEXUS is False
-        with pytest.raises(ImportError, match="nat_nexus"):
-            nm.install_nexus(MagicMock())
+        monkeypatch.setattr(nm, "_HAS_NEMO_FLOW", False)
+        with pytest.raises(ImportError, match="nemo_flow"):
+            nm.install_nemo_flow(MagicMock())
 
-    async def test_nexus_scope_raises_import_error(self):
-        import nemo_oo_agents.nexus_middleware as nm
+    async def test_nemo_flow_scope_raises_import_error(self, monkeypatch):
+        import nemo_oo_agents.nemo_flow_middleware as nm
 
-        assert nm._HAS_NAT_NEXUS is False
-        with pytest.raises(ImportError, match="nat_nexus"):
-            async with nm.nexus_scope(MagicMock(), "test"):
+        monkeypatch.setattr(nm, "_HAS_NEMO_FLOW", False)
+        with pytest.raises(ImportError, match="nemo_flow"):
+            async with nm.nemo_flow_scope(MagicMock(), "test"):
                 pass
 
 
-class TestNexusMiddlewareWithFakeNatNexus:
-    """Tests with nat_nexus mocked in sys.modules."""
+class TestNemoFlowMiddlewareWithFakeNemoFlow:
+    """Tests with nemo_flow mocked in sys.modules."""
 
-    def test_has_nat_nexus_true_when_patched(self):
-        with _nexus_patched() as (nm, _fake):
-            assert nm._HAS_NAT_NEXUS is True
+    def test_has_nemo_flow_true_when_patched(self):
+        with _nemo_flow_patched() as (nm, _fake):
+            assert nm._HAS_NEMO_FLOW is True
 
-    def test_install_nexus_registers_middleware(self):
-        with _nexus_patched() as (nm, _fake):
+    def test_install_nemo_flow_registers_middleware(self):
+        with _nemo_flow_patched() as (nm, _fake):
             event_manager = MagicMock()
             event_manager.intercept.return_value = MagicMock()
 
-            uninstall = nm.install_nexus(event_manager)
+            uninstall = nm.install_nemo_flow(event_manager)
 
             # intercept should have been called 3 times (agent, llm, execute_python)
             assert event_manager.intercept.call_count == 3
             assert callable(uninstall)
 
-    def test_install_nexus_uninstall_calls_all_unsubs(self):
-        with _nexus_patched() as (nm, _fake):
+    def test_install_nemo_flow_uninstall_calls_all_unsubs(self):
+        with _nemo_flow_patched() as (nm, _fake):
             unsub1 = MagicMock()
             unsub2 = MagicMock()
             unsub3 = MagicMock()
             event_manager = MagicMock()
             event_manager.intercept.side_effect = [unsub1, unsub2, unsub3]
 
-            uninstall = nm.install_nexus(event_manager)
+            uninstall = nm.install_nemo_flow(event_manager)
             uninstall()
 
             unsub1.assert_called_once()
             unsub2.assert_called_once()
             unsub3.assert_called_once()
 
-    async def test_nexus_scope_installs_and_uninstalls(self):
-        with _nexus_patched() as (nm, fake_nexus):
+    async def test_nemo_flow_scope_installs_and_uninstalls(self):
+        with _nemo_flow_patched() as (nm, fake_nemo_flow):
             agent = MagicMock()
             event_manager = MagicMock()
             agent.event_manager = event_manager
             unsub = MagicMock()
             event_manager.intercept.return_value = unsub
 
-            async with nm.nexus_scope(agent, "test-scope"):
+            async with nm.nemo_flow_scope(agent, "test-scope"):
                 # We're inside the scope; intercepts should be installed
                 assert event_manager.intercept.call_count == 3
 
@@ -351,14 +350,14 @@ class TestNexusMiddlewareWithFakeNatNexus:
             assert unsub.call_count == 3
 
     def test_sensitive_keys_constant(self):
-        import nemo_oo_agents.nexus_middleware as nm
+        import nemo_oo_agents.nemo_flow_middleware as nm
 
         assert "api_key" in nm._SENSITIVE_KEYS
         assert "api_base" in nm._SENSITIVE_KEYS
         assert "base_url" in nm._SENSITIVE_KEYS
 
     def test_non_serializable_keys_constant(self):
-        import nemo_oo_agents.nexus_middleware as nm
+        import nemo_oo_agents.nemo_flow_middleware as nm
 
         assert "tools" in nm._NON_SERIALIZABLE_KEYS
         assert "output_model" in nm._NON_SERIALIZABLE_KEYS

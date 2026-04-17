@@ -1,7 +1,7 @@
 # ruff: noqa: F403,F405
-"""Quickstart 13: NAT Nexus integration — guardrails, intercepts, and trajectory export.
+"""Quickstart 13: NeMo Flow integration — guardrails, intercepts, and trajectory export.
 
-NeMo Agent Toolkit Nexus (NAT Nexus) is a multi-language agent runtime that adds
+NeMo Flow is a multi-language agent runtime that adds
 execution scope management, lifecycle events, and a configurable middleware pipeline
 (guardrails/intercepts) to every LLM call and tool execution in NeMo OO Agents.
 
@@ -10,32 +10,30 @@ This example shows how to:
   2. Register a tool conditional-execution guardrail (block dangerous code)
   3. Subscribe to lifecycle events for console logging
   4. Export an ATIF v1.6 trajectory after the run
-  5. Demonstrate nested generation methods (inner LLM+tool calls through Nexus)
-  6. Demonstrate how different return types appear in the Nexus pipeline and ATIF
+  5. Demonstrate nested generation methods (inner LLM+tool calls through NeMo Flow)
+  6. Demonstrate how different return types appear in the NeMo Flow pipeline and ATIF
 
-This version uses the event-middleware integration — Nexus is wired through
+This version uses the event-middleware integration — NeMo Flow is wired through
 ``event_manager.intercept()`` rather than global hooks.
 
 Prerequisites:
-  nat_nexus is a PyO3 extension (Rust core). You need a Rust toolchain first:
+  Install NeMo OO Agents with the nemo-flow extra (prebuilt wheels from GitLab registry):
 
-    # 1. Install Rust (skip if already installed)
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    source ~/.cargo/env
+    # One-time: store GitLab registry credentials
+    uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
 
-    # 2. Install NeMo OO Agents with the nexus extra (builds nat_nexus from source):
-    uv sync --extra nexus
+    uv sync --extra nemo-flow
 
 Usage:
-  uv run python examples/quickstart/13_nexus.py
+  uv run python examples/quickstart/13_nemo_flow.py
 """
 
 import json
 
-import nat_nexus
+import nemo_flow
 from pydantic import BaseModel
 
-from nemo_oo_agents.nexus_middleware import nexus_scope
+from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope
 from nemo_oo_agents.util.quickstart import *
 
 # ---------------------------------------------------------------------------
@@ -48,7 +46,7 @@ class ResearchAgent(Agent, llm=llm):
 
     Demonstrates nested generation: summarize() calls fact_check() which is
     itself a generation method.  Both the outer and inner LLM + tool calls
-    flow through the Nexus middleware pipeline, producing a nested ATIF trace.
+    flow through the NeMo Flow middleware pipeline, producing a nested ATIF trace.
     """
 
     def get_current_year(self) -> int:
@@ -77,7 +75,30 @@ class ResearchAgent(Agent, llm=llm):
 
 
 # ---------------------------------------------------------------------------
-# Return-type demo: shows how different return types appear in Nexus / ATIF
+# Agent that intentionally triggers the guardrail
+# ---------------------------------------------------------------------------
+
+
+class GuardrailDemoAgent(Agent, llm=llm):
+    """Agent whose method is designed to trigger the code-safety guardrail.
+
+    The prompt explicitly instructs the LLM to use os.system(), which the
+    guardrail will block before execution.
+    """
+
+    async def run_shell_command(self) -> str:
+        """Execute os.system('echo hello') and return the output.
+
+        IMPORTANT: You MUST write exactly this code:
+            import os
+            os.system('echo hello')
+            return_result('done')
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Return-type demo: shows how different return types appear in NeMo Flow / ATIF
 # ---------------------------------------------------------------------------
 
 
@@ -89,10 +110,10 @@ class Summary(BaseModel):
 
 
 class ReturnTypeDemoAgent(Agent, llm=llm):
-    """Agent that demonstrates how different return types are serialized by Nexus.
+    """Agent that demonstrates how different return types are serialized by NeMo Flow.
 
     BestEffortAnyCodec is applied to the tool's returned_value before handing
-    it to the Nexus pipeline.  Simple / structured types appear as readable JSON
+    it to the NeMo Flow pipeline.  Simple / structured types appear as readable JSON
     in ATIF and guardrails; complex objects fall back to a pickle blob.
     """
 
@@ -110,7 +131,7 @@ class ReturnTypeDemoAgent(Agent, llm=llm):
         ...
 
     async def return_string(self) -> str:
-        """Return the string 'Hello from Nexus!' via return_result()."""
+        """Return the string 'Hello from NeMo Flow!' via return_result()."""
         ...
 
 
@@ -119,16 +140,20 @@ class ReturnTypeDemoAgent(Agent, llm=llm):
 # ---------------------------------------------------------------------------
 
 
-def _add_tracing_header(name: str, request: nat_nexus.LLMRequest) -> nat_nexus.LLMRequest:
+def _add_tracing_header(
+    name: str,
+    request: nemo_flow.LLMRequest,
+    annotated: nemo_flow.AnnotatedLLMRequest | None,
+) -> tuple[nemo_flow.LLMRequest, nemo_flow.AnnotatedLLMRequest | None]:
     """Inject a custom header into every outgoing LLM request.
 
-    Signature: (name, request) -> LLMRequest per nat_nexus intercept API.
+    Signature: (name, request, annotated) -> (request, annotated) per nemo_flow intercept API.
     """
-    request.headers["X-NemoOO-Trace"] = "nexus-poc"
-    return request
+    request.headers["X-NemoOO-Trace"] = "nemo-flow-poc"
+    return request, annotated
 
 
-nat_nexus.intercepts.register_llm_request(  # type: ignore[attr-defined]
+nemo_flow.intercepts.register_llm_request(  # type: ignore[attr-defined]
     "add-tracing-header",
     1,
     False,
@@ -151,7 +176,7 @@ def _code_safety_check(tool_name: str, args: dict) -> str | None:
     return None  # Allow
 
 
-nat_nexus.guardrails.register_tool_conditional_execution(  # type: ignore[attr-defined]
+nemo_flow.guardrails.register_tool_conditional_execution(  # type: ignore[attr-defined]
     "code-safety",
     10,
     _code_safety_check,
@@ -162,39 +187,37 @@ nat_nexus.guardrails.register_tool_conditional_execution(  # type: ignore[attr-d
 # ---------------------------------------------------------------------------
 
 
-def _log_event(event: nat_nexus.Event) -> None:
-    """Print a one-line summary of every Nexus lifecycle event."""
-    parts = [f"[{event.event_type}]", f"name={event.name!r}"]
-    if event.model_name:
-        parts.append(f"model={event.model_name!r}")
-    if event.input is not None:
-        preview = json.dumps(event.input, default=str)
+def _log_event(event: nemo_flow.Event) -> None:
+    """Print a one-line summary of every NeMo Flow lifecycle event."""
+    parts = [f"[{event.kind}]", f"name={event.name!r}"]
+    model_name = getattr(event, "model_name", None)
+    if model_name:
+        parts.append(f"model={model_name!r}")
+    input_data = getattr(event, "input", None)
+    if input_data is not None:
+        preview = json.dumps(input_data, default=str)
         if len(preview) > 120:
             preview = preview[:117] + "..."
         parts.append(f"input={preview}")
-    print("  NEXUS " + " | ".join(parts))
+    print("  NEMO_FLOW " + " | ".join(parts))
 
 
-nat_nexus.subscribers.register("event-logger", _log_event)  # type: ignore[attr-defined]
+nemo_flow.subscribers.register("event-logger", _log_event)  # type: ignore[attr-defined]
 
 # ---------------------------------------------------------------------------
-# Event capture: collect tool outputs at runtime from Nexus events
+# Event capture: collect tool outputs at runtime from NeMo Flow events
 # ---------------------------------------------------------------------------
 
 _captured_tool_outputs: list[dict] = []
 
 
-def _capture_tool_output(event: nat_nexus.Event) -> None:
+def _capture_tool_output(event: nemo_flow.Event) -> None:
     """Capture tool-call End events and their serialized output for display."""
-    if (
-        str(event.event_type) == "EventType.End"
-        and str(event.scope_type) == "ScopeType.Tool"
-        and event.output is not None
-    ):
+    if isinstance(event, nemo_flow.ToolEndEvent) and event.output is not None:
         _captured_tool_outputs.append({"tool": event.name, "output": event.output})
 
 
-nat_nexus.subscribers.register("tool-output-capture", _capture_tool_output)  # type: ignore[attr-defined]
+nemo_flow.subscribers.register("tool-output-capture", _capture_tool_output)  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -205,40 +228,57 @@ nat_nexus.subscribers.register("tool-output-capture", _capture_tool_output)  # t
 @autorun
 async def main():
     # 4. ATIF exporter — set up here so its lifetime is explicit and scoped to main()
-    exporter = nat_nexus.AtifExporter(
+    exporter = nemo_flow.AtifExporter(
         session_id="qs-13-session",
         agent_name="research-agent",
         agent_version="0.1.0",
     )
     exporter.register("atif-exporter")
 
-    print("Running ResearchAgent under NAT Nexus runtime...\n")
+    print("Running ResearchAgent under NeMo Flow runtime...\n")
 
-    # nexus_scope() installs Nexus middleware (agent_call, llm_call,
+    # nemo_flow_scope() installs NeMo Flow middleware (agent_call, llm_call,
     # execute_python) on the agent's event_manager and wraps everything in a
     # root Agent scope.  All LLM calls and code executions inside this block
-    # go through the Nexus pipeline.
+    # go through the NeMo Flow pipeline.
     agent = ResearchAgent()
-    async with nexus_scope(agent, "research-agent") as root_handle:
+    async with nemo_flow_scope(agent, "research-agent"):
         result = await agent.summarize("recent advances in quantum error correction")
 
     print("\n--- Result ---")
     print(result)
 
     # Note: ATIF v1.6 exports a flat steps[] array — the scope hierarchy
-    # (Agent → Function:summarize → Function:fact_check) tracked by Nexus
+    # (Agent → Function:summarize → Function:fact_check) tracked by NeMo Flow
     # internally is not represented in the exported JSON.
-    trajectory = exporter.export(root_handle.uuid)
-    trajectory_path = "/tmp/nexus_trajectory_research.json"
+    trajectory_json = exporter.export_json()
+    trajectory = json.loads(trajectory_json)
+    trajectory_path = "/tmp/nemo_flow_trajectory_research.json"
     with open(trajectory_path, "w") as f:
         json.dump(trajectory, f, indent=2, default=str)
     print(f"\n--- Research trajectory → {trajectory_path} ---")
 
     # -----------------------------------------------------------------------
-    # Return-type demo: run each method and inspect what Nexus captures
+    # Guardrail demo: prove that the code-safety guardrail blocks execution
     # -----------------------------------------------------------------------
     print("\n" + "=" * 70)
-    print("Return-type demo: how different return types appear in Nexus / ATIF")
+    print("Guardrail demo: code-safety guardrail blocks os.system()")
+    print("=" * 70)
+
+    guardrail_agent = GuardrailDemoAgent()
+    try:
+        async with nemo_flow_scope(guardrail_agent, "guardrail-demo"):
+            await guardrail_agent.run_shell_command()
+        print("\n  ERROR: guardrail did not trigger (unexpected)")
+    except Exception as exc:
+        print(f"\n  BLOCKED by guardrail: {exc}")
+        print("  The code-safety guardrail rejected the os.system() call before execution.")
+
+    # -----------------------------------------------------------------------
+    # Return-type demo: run each method and inspect what NeMo Flow captures
+    # -----------------------------------------------------------------------
+    print("\n" + "=" * 70)
+    print("Return-type demo: how different return types appear in NeMo Flow / ATIF")
     print("=" * 70)
 
     demo_agent = ReturnTypeDemoAgent()
@@ -253,49 +293,49 @@ async def main():
     for method_name, method in demo_cases:
         _captured_tool_outputs.clear()
 
-        async with nexus_scope(demo_agent, f"demo-{method_name}") as handle:
+        async with nemo_flow_scope(demo_agent, f"demo-{method_name}"):
             value = await method()
 
-        traj = exporter.export(handle.uuid)
+        traj = json.loads(exporter.export_json())
 
         # Tool outputs are captured by _capture_tool_output subscriber
         tool_outputs = [o for o in _captured_tool_outputs if o["tool"] == "execute_python"]
-        nexus_output = tool_outputs[-1]["output"] if tool_outputs else None
+        nemo_flow_output = tool_outputs[-1]["output"] if tool_outputs else None
 
         print(f"\n  {method_name}() → Python value: {value!r}")
-        if nexus_output is not None:
-            nexus_view = json.dumps(nexus_output, default=str)
-            if len(nexus_view) > 120:
-                nexus_view = nexus_view[:117] + "..."
-            if isinstance(nexus_output, dict) and "__nv_pickle__" in nexus_output:
+        if nemo_flow_output is not None:
+            nemo_flow_view = json.dumps(nemo_flow_output, default=str)
+            if len(nemo_flow_view) > 120:
+                nemo_flow_view = nemo_flow_view[:117] + "..."
+            if isinstance(nemo_flow_output, dict) and "__nv_pickle__" in nemo_flow_output:
                 tag = "pickle blob (complex type — opaque to guardrails)"
             else:
                 tag = "readable JSON"
-            print(f"  Nexus sees ({tag}): {nexus_view}")
+            print(f"  NeMo Flow sees ({tag}): {nemo_flow_view}")
         else:
-            print("  Nexus sees: (no tool output captured)")
+            print("  NeMo Flow sees: (no tool output captured)")
 
-    demo_traj_path = "/tmp/nexus_trajectory_demo.json"
+    demo_traj_path = "/tmp/nemo_flow_trajectory_demo.json"
     with open(demo_traj_path, "w") as f:
         json.dump(traj, f, indent=2, default=str)
     print(f"\n--- Last demo trajectory → {demo_traj_path} ---")
 
     # Cleanup
     exporter.deregister("atif-exporter")
-    nat_nexus.subscribers.deregister("event-logger")  # type: ignore[attr-defined]
-    nat_nexus.subscribers.deregister("tool-output-capture")  # type: ignore[attr-defined]
-    nat_nexus.intercepts.deregister_llm_request("add-tracing-header")  # type: ignore[attr-defined]
-    nat_nexus.guardrails.deregister_tool_conditional_execution("code-safety")  # type: ignore[attr-defined]
+    nemo_flow.subscribers.deregister("event-logger")  # type: ignore[attr-defined]
+    nemo_flow.subscribers.deregister("tool-output-capture")  # type: ignore[attr-defined]
+    nemo_flow.intercepts.deregister_llm_request("add-tracing-header")  # type: ignore[attr-defined]
+    nemo_flow.guardrails.deregister_tool_conditional_execution("code-safety")  # type: ignore[attr-defined]
 
     print("\n" + "=" * 70)
     print("What happened under the hood:")
-    print("  - nexus_scope() installed middleware on the agent's event_manager")
+    print("  - nemo_flow_scope() installed middleware on the agent's event_manager")
     print("  - agent_call middleware pushed a ScopeType.Function scope per method")
     print("  - Nested generation: summarize() → fact_check() created nested scopes")
-    print("      → Both inner LLM and tool calls flowed through the Nexus pipeline")
-    print("  - Every LLM call went through the Nexus LLM pipeline:")
+    print("      → Both inner LLM and tool calls flowed through the NeMo Flow pipeline")
+    print("  - Every LLM call went through the NeMo Flow LLM pipeline:")
     print("      → add-tracing-header intercept injected X-NemoOO-Trace header")
-    print("  - Every execute_python call went through the Nexus tool pipeline:")
+    print("  - Every execute_python call went through the NeMo Flow tool pipeline:")
     print("      → code-safety guardrail rejected any shell-execution code")
     print("      → returned_value exposed via BestEffortAnyCodec:")
     print("          str / int / dict / list  → native JSON (inspectable)")

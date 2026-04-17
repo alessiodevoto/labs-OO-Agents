@@ -13,7 +13,7 @@ Covers:
 - skill.py: _find_skill_md on non-directory
 - storage/snapshot.py: is_nosnapshot_value continue path
 - storage/sqlite.py: SessionAlreadyActiveError, close-on-connect-failure
-- nexus_middleware.py: model name extraction, _wrapper fallback return
+- nemo_flow_middleware.py: model name extraction, _wrapper fallback return
 - tools/web_publisher.py: RichOutput, WebPublisher methods
 """
 
@@ -813,26 +813,26 @@ class TestSQLiteModuleLevelAssertions:
 
 
 # =============================================================================
-# nexus_middleware.py — model name extraction and _wrapper fallback
+# nemo_flow_middleware.py — model name extraction and _wrapper fallback
 # =============================================================================
 
 
-class TestNexusMiddlewareModelExtraction:
+class TestNemoFlowMiddlewareModelExtraction:
     """Lines 99-101: model_name extracted from ctx.agent._llm.model."""
 
     @pytest.mark.asyncio
     async def test_model_name_from_agent_llm(self):
-        """nexus_llm_middleware extracts model_name from ctx.agent._llm.model."""
-        fake_nexus, _ = _make_fake_nexus_for_test()
+        """nemo_flow_llm_middleware extracts model_name from ctx.agent._llm.model."""
+        fake_nemo_flow, _ = _make_fake_nemo_flow_for_test()
 
-        # Ensure nemo_oo_agents.nexus_middleware is imported
-        import nemo_oo_agents.nexus_middleware as _nm_ensure  # noqa: F401
+        # Ensure nemo_oo_agents.nemo_flow_middleware is imported
+        import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F401
 
         with patch.dict(
             sys.modules,
-            {"nat_nexus": fake_nexus},
+            {"nemo_flow": fake_nemo_flow},
         ):
-            nm = sys.modules["nemo_oo_agents.nexus_middleware"]
+            nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
             importlib.reload(nm)
             try:
                 mock_agent = MagicMock()
@@ -850,24 +850,24 @@ class TestNexusMiddlewareModelExtraction:
                     return c
 
                 # The middleware should extract model_name = "gpt-4-test"
-                # We verify it doesn't crash and nat_nexus.llm.execute is called
+                # We verify it doesn't crash and nemo_flow.llm.execute is called
                 # with the correct model_name
-                await nm.nexus_llm_middleware(ctx, mock_nxt)
-                call_args = fake_nexus.llm.execute.call_args
+                await nm.nemo_flow_llm_middleware(ctx, mock_nxt)
+                call_args = fake_nemo_flow.llm.execute.call_args
                 assert call_args[0][0] == "gpt-4-test"  # first positional arg is model_name
             finally:
                 importlib.reload(nm)
 
 
-class TestNexusWrapperFallbackReturn:
+class TestNemoFlowWrapperFallbackReturn:
     """Line 169: _wrapper returns {} when resp has no recognized attributes."""
 
     @pytest.mark.asyncio
     async def test_wrapper_fallback_empty_dict(self):
         """When resp has no model_dump, raw_response, or assistant_message, return {}."""
-        fake_nexus, _ = _make_fake_nexus_for_test()
+        fake_nemo_flow, _ = _make_fake_nemo_flow_for_test()
 
-        import nemo_oo_agents.nexus_middleware as _nm_ensure  # noqa: F401
+        import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F401
 
         captured_wrapper_result = {}
 
@@ -878,10 +878,10 @@ class TestNexusWrapperFallbackReturn:
             result = await wrapper(request)
             captured_wrapper_result["result"] = result
 
-        fake_nexus.llm.execute = AsyncMock(side_effect=llm_execute_capturing)
+        fake_nemo_flow.llm.execute = AsyncMock(side_effect=llm_execute_capturing)
 
-        with patch.dict(sys.modules, {"nat_nexus": fake_nexus}):
-            nm = sys.modules["nemo_oo_agents.nexus_middleware"]
+        with patch.dict(sys.modules, {"nemo_flow": fake_nemo_flow}):
+            nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
             importlib.reload(nm)
             try:
                 ctx = MagicMock()
@@ -897,14 +897,14 @@ class TestNexusWrapperFallbackReturn:
                     c.response = plain_resp
                     return c
 
-                await nm.nexus_llm_middleware(ctx, mock_nxt)
+                await nm.nemo_flow_llm_middleware(ctx, mock_nxt)
                 assert captured_wrapper_result["result"] == {}
             finally:
                 importlib.reload(nm)
 
 
-def _make_fake_nexus_for_test():
-    """Build a fake nat_nexus module for testing."""
+def _make_fake_nemo_flow_for_test():
+    """Build a fake nemo_flow module for testing."""
     fake = MagicMock()
     fake_handle = MagicMock()
     fake_handle.uuid = "test-uuid"
