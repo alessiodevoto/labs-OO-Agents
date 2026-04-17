@@ -337,7 +337,7 @@ class Session:
         max_event = stats.max_event_tokens
         if max_context and max_event:
             max_total = max_context + max_event
-        elif getattr(stats, "model_context_window", None):
+        elif stats.model_context_window:
             max_total = stats.model_context_window
         else:
             return ""
