@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agentdoc._pformat import _pformat  # See issue #80 for public export
+from agentdoc import pformat as _pformat
 
 # =============================================================================
 # Module Configuration
