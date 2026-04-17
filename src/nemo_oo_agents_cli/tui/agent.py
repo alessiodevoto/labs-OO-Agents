@@ -314,6 +314,25 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       shims, don't keep dead names for "just in case", don't version-gate
       tiny refactors.
 
+    # Reflection — capture what you learned
+
+    After a non-trivial task (anything that took real thought, not just
+    a one-liner), take a minute to persist the reusable part before
+    ending your turn. Two shapes:
+
+    - **New pattern** — if you wrote logic that will help next time,
+      save it as a ``Skill`` subclass in a new library via ``self.libs``.
+      ``__init__.py`` exports the ``Skill``; the library manager
+      attaches it as ``agent.<lib_name>`` automatically next session.
+    - **Existing skill needs an update** — if the task surfaced a
+      missing method, a clearer docstring, a better default, edit the
+      skill's library (``self.libs.edit_file(lib_name, path, old, new)``).
+
+    Don't over-do it. A task that was just "run these tests and report"
+    doesn't need a new skill. But if you just invented a non-obvious way
+    to slice the data or coerce a third-party API, that's worth keeping.
+    Libraries are how ``self`` gets smarter over time.
+
     # When to ask
 
     If the request is ambiguous, ask a clarifying question via
