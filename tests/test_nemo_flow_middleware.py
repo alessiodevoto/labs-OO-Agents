@@ -1,7 +1,7 @@
 # ruff: noqa: E402 — imports after pytest.importorskip are intentional
-"""Tests for Nexus middleware integration (nexus_middleware.py).
+"""Tests for NeMo Flow middleware integration (nemo_flow_middleware.py).
 
-Verifies that LLM and tool calls routed through the Nexus pipeline
+Verifies that LLM and tool calls routed through the NeMo Flow pipeline
 correctly support:
 - LLM request intercepts (HTTP header injection)
 - LLM sanitize-request guardrails (input transformation)
@@ -13,18 +13,18 @@ correctly support:
 
 import pytest
 
-nat_nexus = pytest.importorskip("nat_nexus", reason="nat_nexus not installed")
+nemo_flow = pytest.importorskip("nemo_flow", reason="nemo_flow not installed")
 
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
-from nemo_oo_agents.nexus_middleware import (
-    install_nexus,
-    nexus_agent_call_middleware,
-    nexus_llm_middleware,
-    nexus_scope,
-    nexus_tool_middleware,
+from nemo_oo_agents.nemo_flow_middleware import (
+    install_nemo_flow,
+    nemo_flow_agent_call_middleware,
+    nemo_flow_llm_middleware,
+    nemo_flow_scope,
+    nemo_flow_tool_middleware,
 )
 from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.runtime.middleware import (
@@ -39,9 +39,9 @@ from nemo_oo_agents.runtime.middleware import (
 
 
 @pytest.fixture(autouse=True)
-def _nexus_scope():
-    """Enter a Nexus scope for every test so scope stack is initialised."""
-    with nat_nexus.scope.scope("test-agent", nat_nexus.ScopeType.Agent):
+def _nemo_flow_scope():
+    """Enter a NeMo Flow scope for every test so scope stack is initialised."""
+    with nemo_flow.scope.scope("test-agent", nemo_flow.ScopeType.Agent):
         yield
 
 
@@ -133,19 +133,21 @@ class TestLLMRequestIntercepts:
         """A registered LLM request intercept can inject HTTP headers."""
         captured_headers: dict[str, str] = {}
 
-        def _intercept(name: str, req: nat_nexus.LLMRequest) -> nat_nexus.LLMRequest:
+        def _intercept(
+            name: str, req: nemo_flow.LLMRequest, annotated: nemo_flow.AnnotatedLLMRequest | None
+        ) -> tuple[nemo_flow.LLMRequest, nemo_flow.AnnotatedLLMRequest | None]:
             req.headers["X-Test-Header"] = "test-value"
-            return req
+            return req, annotated
 
-        nat_nexus.intercepts.register_llm_request("test-header", 1, False, _intercept)
+        nemo_flow.intercepts.register_llm_request("test-header", 1, False, _intercept)
         try:
             # Subscriber captures the headers that were on the request
-            def _capture(event: nat_nexus.Event):
-                if str(event.event_type) == "EventType.Start" and event.input is not None:
+            def _capture(event: nemo_flow.Event):
+                if isinstance(event, nemo_flow.LLMStartEvent) and event.input is not None:
                     # The request headers flow through the pipeline
                     captured_headers.update(getattr(event, "headers", {}))
 
-            nat_nexus.subscribers.register("header-spy", _capture)
+            nemo_flow.subscribers.register("header-spy", _capture)
 
             ctx = _make_llm_ctx()
             fake_resp = FakeLLMResponse()
@@ -154,35 +156,37 @@ class TestLLMRequestIntercepts:
                 c.response = fake_resp
                 return c
 
-            result = await nexus_llm_middleware(ctx, nxt)
+            result = await nemo_flow_llm_middleware(ctx, nxt)
 
             # The middleware should have completed successfully
             assert result.response is fake_resp
 
-            nat_nexus.subscribers.deregister("header-spy")
+            nemo_flow.subscribers.deregister("header-spy")
         finally:
-            nat_nexus.intercepts.deregister_llm_request("test-header")
+            nemo_flow.intercepts.deregister_llm_request("test-header")
 
     @pytest.mark.asyncio
     async def test_request_intercept_modifies_messages_propagated_to_nxt(self):
         """A request intercept that modifies messages is propagated to nxt().
 
-        This verifies that the modified LLMRequest from Nexus request intercepts
+        This verifies that the modified LLMRequest from NeMo Flow request intercepts
         is applied back to ctx.messages before calling the rest of the middleware
         chain, so the actual LLM call sees the intercepted messages.
         """
         nxt_saw_messages: list[list] = []
 
-        def _intercept(name: str, req: nat_nexus.LLMRequest) -> nat_nexus.LLMRequest:
-            # Must return a new LLMRequest — Nexus serializes through Rust/JSON,
+        def _intercept(
+            name: str, req: nemo_flow.LLMRequest, annotated: nemo_flow.AnnotatedLLMRequest | None
+        ) -> tuple[nemo_flow.LLMRequest, nemo_flow.AnnotatedLLMRequest | None]:
+            # Must return a new LLMRequest — NeMo Flow serializes through Rust/JSON,
             # so in-place mutations on the original object are lost.
             new_content = dict(req.content)
             msgs = list(new_content.get("messages", []))
             msgs.insert(0, {"role": "system", "content": "INJECTED BY INTERCEPT"})
             new_content["messages"] = msgs
-            return nat_nexus.LLMRequest(req.headers, new_content)
+            return nemo_flow.LLMRequest(req.headers, new_content), annotated
 
-        nat_nexus.intercepts.register_llm_request("test-inject", 1, False, _intercept)
+        nemo_flow.intercepts.register_llm_request("test-inject", 1, False, _intercept)
         try:
             ctx = _make_llm_ctx(messages=[{"role": "user", "content": "hello"}])
 
@@ -192,7 +196,7 @@ class TestLLMRequestIntercepts:
                 c.response = FakeLLMResponse()
                 return c
 
-            await nexus_llm_middleware(ctx, nxt)
+            await nemo_flow_llm_middleware(ctx, nxt)
 
             # nxt() should see the intercepted messages (system msg prepended)
             assert len(nxt_saw_messages) == 1
@@ -201,7 +205,7 @@ class TestLLMRequestIntercepts:
             assert msgs[0]["content"] == "INJECTED BY INTERCEPT"
             assert msgs[1]["content"] == "hello"
         finally:
-            nat_nexus.intercepts.deregister_llm_request("test-inject")
+            nemo_flow.intercepts.deregister_llm_request("test-inject")
 
 
 # ===================================================================
@@ -221,7 +225,7 @@ class TestLLMSanitizeRequest:
             sanitize_called.append(True)
             return req
 
-        nat_nexus.guardrails.register_llm_sanitize_request("test-san-req", 1, _sanitize)
+        nemo_flow.guardrails.register_llm_sanitize_request("test-san-req", 1, _sanitize)
         try:
             ctx = _make_llm_ctx()
 
@@ -229,10 +233,10 @@ class TestLLMSanitizeRequest:
                 c.response = FakeLLMResponse()
                 return c
 
-            await nexus_llm_middleware(ctx, nxt)
+            await nemo_flow_llm_middleware(ctx, nxt)
             assert len(sanitize_called) == 1
         finally:
-            nat_nexus.guardrails.deregister_llm_sanitize_request("test-san-req")
+            nemo_flow.guardrails.deregister_llm_sanitize_request("test-san-req")
 
 
 # ===================================================================
@@ -242,9 +246,9 @@ class TestLLMSanitizeRequest:
 
 class TestLLMSanitizeResponse:
     """Verify LLM sanitize-response guardrails run and transform data for
-    Nexus internals (ATIF, subscribers).
+    NeMo Flow internals (ATIF, subscribers).
 
-    Note: Nexus sanitize-response guardrails do NOT modify the value
+    Note: NeMo Flow sanitize-response guardrails do NOT modify the value
     returned to the caller — they transform data for ATIF export and
     event subscribers only.  The caller always gets the original response.
     """
@@ -260,12 +264,12 @@ class TestLLMSanitizeResponse:
                 msg["content"] = msg["content"].replace("hello", "[REDACTED]")
             return response
 
-        def _spy(event: nat_nexus.Event):
-            if str(event.event_type) == "EventType.End" and event.output is not None:
+        def _spy(event: nemo_flow.Event):
+            if isinstance(event, nemo_flow.LLMEndEvent) and event.output is not None:
                 subscriber_saw.append(event.output)
 
-        nat_nexus.guardrails.register_llm_sanitize_response("test-san-resp", 1, _sanitize)
-        nat_nexus.subscribers.register("resp-spy", _spy)
+        nemo_flow.guardrails.register_llm_sanitize_response("test-san-resp", 1, _sanitize)
+        nemo_flow.subscribers.register("resp-spy", _spy)
         try:
             ctx = _make_llm_ctx()
             fake_resp = FakeLLMResponse(
@@ -277,9 +281,9 @@ class TestLLMSanitizeResponse:
                 c.response = fake_resp
                 return c
 
-            result = await nexus_llm_middleware(ctx, nxt)
+            result = await nemo_flow_llm_middleware(ctx, nxt)
 
-            # Caller gets original (Nexus design: sanitize is for observability)
+            # Caller gets original (NeMo Flow design: sanitize is for observability)
             assert result.response.content == "hello world"
 
             # Subscriber should see the sanitized version
@@ -290,8 +294,8 @@ class TestLLMSanitizeResponse:
             assert isinstance(msg, dict), f"Expected 'message' to be a dict, got {type(msg)}"
             assert msg.get("content") == "[REDACTED] world"
         finally:
-            nat_nexus.guardrails.deregister_llm_sanitize_response("test-san-resp")
-            nat_nexus.subscribers.deregister("resp-spy")
+            nemo_flow.guardrails.deregister_llm_sanitize_response("test-san-resp")
+            nemo_flow.subscribers.deregister("resp-spy")
 
     @pytest.mark.asyncio
     async def test_sanitize_response_without_guardrail_preserves_original(self):
@@ -306,7 +310,7 @@ class TestLLMSanitizeResponse:
             c.response = fake_resp
             return c
 
-        result = await nexus_llm_middleware(ctx, nxt)
+        result = await nemo_flow_llm_middleware(ctx, nxt)
         assert result.response.content == "original text"
 
 
@@ -326,7 +330,7 @@ class TestLLMConditionalExecution:
         def _guardrail(req) -> str | None:
             return "Blocked by test guardrail"
 
-        nat_nexus.guardrails.register_llm_conditional_execution("test-block", 1, _guardrail)
+        nemo_flow.guardrails.register_llm_conditional_execution("test-block", 1, _guardrail)
         try:
             ctx = _make_llm_ctx()
 
@@ -336,12 +340,12 @@ class TestLLMConditionalExecution:
                 return c
 
             with pytest.raises(Exception, match="[Rr]ejected|[Bb]locked"):
-                await nexus_llm_middleware(ctx, nxt)
+                await nemo_flow_llm_middleware(ctx, nxt)
 
             # The actual LLM call should NOT have been made
             assert len(nxt_called) == 0
         finally:
-            nat_nexus.guardrails.deregister_llm_conditional_execution("test-block")
+            nemo_flow.guardrails.deregister_llm_conditional_execution("test-block")
 
     @pytest.mark.asyncio
     async def test_conditional_execution_allows_when_none(self):
@@ -350,7 +354,7 @@ class TestLLMConditionalExecution:
         def _guardrail(req) -> str | None:
             return None  # Allow
 
-        nat_nexus.guardrails.register_llm_conditional_execution("test-allow", 1, _guardrail)
+        nemo_flow.guardrails.register_llm_conditional_execution("test-allow", 1, _guardrail)
         try:
             ctx = _make_llm_ctx()
 
@@ -358,10 +362,10 @@ class TestLLMConditionalExecution:
                 c.response = FakeLLMResponse()
                 return c
 
-            result = await nexus_llm_middleware(ctx, nxt)
+            result = await nemo_flow_llm_middleware(ctx, nxt)
             assert result.response is not None
         finally:
-            nat_nexus.guardrails.deregister_llm_conditional_execution("test-allow")
+            nemo_flow.guardrails.deregister_llm_conditional_execution("test-allow")
 
 
 # ===================================================================
@@ -383,7 +387,7 @@ class TestToolConditionalExecution:
                 return "Dangerous code blocked"
             return None
 
-        nat_nexus.guardrails.register_tool_conditional_execution("test-tool-block", 1, _guardrail)
+        nemo_flow.guardrails.register_tool_conditional_execution("test-tool-block", 1, _guardrail)
         try:
             ctx = _make_exec_ctx(code="os.system('rm -rf /')")
 
@@ -393,11 +397,11 @@ class TestToolConditionalExecution:
                 return c
 
             with pytest.raises(Exception, match="[Rr]ejected|[Bb]locked|[Dd]angerous"):
-                await nexus_tool_middleware(ctx, nxt)
+                await nemo_flow_tool_middleware(ctx, nxt)
 
             assert len(nxt_called) == 0
         finally:
-            nat_nexus.guardrails.deregister_tool_conditional_execution("test-tool-block")
+            nemo_flow.guardrails.deregister_tool_conditional_execution("test-tool-block")
 
     @pytest.mark.asyncio
     async def test_tool_guardrail_allows_safe_code(self):
@@ -406,7 +410,7 @@ class TestToolConditionalExecution:
         def _guardrail(tool_name: str, args: Any) -> str | None:
             return None
 
-        nat_nexus.guardrails.register_tool_conditional_execution("test-tool-allow", 1, _guardrail)
+        nemo_flow.guardrails.register_tool_conditional_execution("test-tool-allow", 1, _guardrail)
         try:
             ctx = _make_exec_ctx(code="x = 42")
 
@@ -414,10 +418,10 @@ class TestToolConditionalExecution:
                 c.result = FakeExecutionResult(returned_value=42)
                 return c
 
-            result = await nexus_tool_middleware(ctx, nxt)
+            result = await nemo_flow_tool_middleware(ctx, nxt)
             assert result.result.returned_value == 42
         finally:
-            nat_nexus.guardrails.deregister_tool_conditional_execution("test-tool-allow")
+            nemo_flow.guardrails.deregister_tool_conditional_execution("test-tool-allow")
 
 
 # ===================================================================
@@ -427,9 +431,9 @@ class TestToolConditionalExecution:
 
 class TestToolSanitizeResponse:
     """Verify tool sanitize-response guardrails run and transform data for
-    Nexus internals (ATIF, subscribers).
+    NeMo Flow internals (ATIF, subscribers).
 
-    Note: Nexus sanitize-response guardrails do NOT modify the value
+    Note: NeMo Flow sanitize-response guardrails do NOT modify the value
     returned to the caller — they transform data for ATIF export and
     event subscribers only.  The caller always gets the original result.
     """
@@ -444,12 +448,12 @@ class TestToolSanitizeResponse:
                 return result.replace("secret", "[REDACTED]")
             return result
 
-        def _spy(event: nat_nexus.Event):
-            if str(event.event_type) == "EventType.End" and event.output is not None:
+        def _spy(event: nemo_flow.Event):
+            if isinstance(event, nemo_flow.ToolEndEvent) and event.output is not None:
                 subscriber_saw.append(event.output)
 
-        nat_nexus.guardrails.register_tool_sanitize_response("test-tool-san", 1, _sanitize)
-        nat_nexus.subscribers.register("tool-resp-spy", _spy)
+        nemo_flow.guardrails.register_tool_sanitize_response("test-tool-san", 1, _sanitize)
+        nemo_flow.subscribers.register("tool-resp-spy", _spy)
         try:
             ctx = _make_exec_ctx(code="x = 'secret data'")
 
@@ -457,17 +461,17 @@ class TestToolSanitizeResponse:
                 c.result = FakeExecutionResult(returned_value="secret data")
                 return c
 
-            result = await nexus_tool_middleware(ctx, nxt)
+            result = await nemo_flow_tool_middleware(ctx, nxt)
 
-            # Caller gets original (Nexus design: sanitize is for observability)
+            # Caller gets original (NeMo Flow design: sanitize is for observability)
             assert result.result.returned_value == "secret data"
 
             # Subscriber should see the sanitized version
             assert len(subscriber_saw) > 0
             assert any("[REDACTED]" in str(o) for o in subscriber_saw)
         finally:
-            nat_nexus.guardrails.deregister_tool_sanitize_response("test-tool-san")
-            nat_nexus.subscribers.deregister("tool-resp-spy")
+            nemo_flow.guardrails.deregister_tool_sanitize_response("test-tool-san")
+            nemo_flow.subscribers.deregister("tool-resp-spy")
 
     @pytest.mark.asyncio
     async def test_tool_sanitize_response_no_guardrail_preserves_original(self):
@@ -478,7 +482,7 @@ class TestToolSanitizeResponse:
             c.result = FakeExecutionResult(returned_value="original")
             return c
 
-        result = await nexus_tool_middleware(ctx, nxt)
+        result = await nemo_flow_tool_middleware(ctx, nxt)
         assert result.result.returned_value == "original"
 
 
@@ -494,7 +498,7 @@ class TestToolRequestIntercepts:
     async def test_tool_request_intercept_modifies_code_propagated_to_nxt(self):
         """A tool request intercept that modifies code is propagated to nxt().
 
-        This verifies that the modified args from Nexus tool request intercepts
+        This verifies that the modified args from NeMo Flow tool request intercepts
         are applied back to ctx.code before calling the rest of the middleware
         chain, so the actual code execution sees the intercepted code.
         """
@@ -505,7 +509,7 @@ class TestToolRequestIntercepts:
                 args["code"] = "# SANDBOXED\n" + args["code"]
             return args
 
-        nat_nexus.intercepts.register_tool_request("test-code-inject", 1, False, _intercept)
+        nemo_flow.intercepts.register_tool_request("test-code-inject", 1, False, _intercept)
         try:
             ctx = _make_exec_ctx(code="x = 42")
 
@@ -514,14 +518,14 @@ class TestToolRequestIntercepts:
                 c.result = FakeExecutionResult(returned_value=42)
                 return c
 
-            await nexus_tool_middleware(ctx, nxt)
+            await nemo_flow_tool_middleware(ctx, nxt)
 
             # nxt() should see the intercepted code
             assert len(nxt_saw_code) == 1
             assert nxt_saw_code[0].startswith("# SANDBOXED\n")
             assert "x = 42" in nxt_saw_code[0]
         finally:
-            nat_nexus.intercepts.deregister_tool_request("test-code-inject")
+            nemo_flow.intercepts.deregister_tool_request("test-code-inject")
 
 
 # ===================================================================
@@ -530,18 +534,18 @@ class TestToolRequestIntercepts:
 
 
 class TestModelNameExtraction:
-    """Verify model_name is correctly extracted and passed to Nexus."""
+    """Verify model_name is correctly extracted and passed to NeMo Flow."""
 
     @pytest.mark.asyncio
     async def test_model_name_from_agent_llm(self):
         """model_name is extracted from agent._llm.model."""
         captured_model: list[str] = []
 
-        def _capture(event: nat_nexus.Event):
+        def _capture(event: nemo_flow.Event):
             if event.model_name:
                 captured_model.append(event.model_name)
 
-        nat_nexus.subscribers.register("model-spy", _capture)
+        nemo_flow.subscribers.register("model-spy", _capture)
         try:
             agent = _make_real_agent(model_name="anthropic/claude-3")
             ctx = _make_llm_ctx(agent=agent)
@@ -550,24 +554,24 @@ class TestModelNameExtraction:
                 c.response = FakeLLMResponse()
                 return c
 
-            await nexus_llm_middleware(ctx, nxt)
+            await nemo_flow_llm_middleware(ctx, nxt)
             assert any("claude-3" in m for m in captured_model)
         finally:
-            nat_nexus.subscribers.deregister("model-spy")
+            nemo_flow.subscribers.deregister("model-spy")
 
 
 # ===================================================================
-# install_nexus / nexus_scope
+# install_nemo_flow / nemo_flow_scope
 # ===================================================================
 
 
-class TestInstallNexusAndScope:
-    """Verify install_nexus() and nexus_scope() lifecycle."""
+class TestInstallNemoFlowAndScope:
+    """Verify install_nemo_flow() and nemo_flow_scope() lifecycle."""
 
-    def test_install_nexus_registers_three_middleware(self):
-        """install_nexus() registers agent_call, llm_call, and execute_python."""
+    def test_install_nemo_flow_registers_three_middleware(self):
+        """install_nemo_flow() registers agent_call, llm_call, and execute_python."""
         em = EventManager()
-        uninstall = install_nexus(em)
+        uninstall = install_nemo_flow(em)
 
         assert len(em._middleware["agent_call"]) == 1
         assert len(em._middleware["llm_call"]) == 1
@@ -580,23 +584,23 @@ class TestInstallNexusAndScope:
         assert len(em._middleware["execute_python"]) == 0
 
     @pytest.mark.asyncio
-    async def test_nexus_scope_yields_handle_with_uuid(self):
-        """nexus_scope() yields a handle whose uuid can be used for ATIF."""
+    async def test_nemo_flow_scope_yields_handle_with_uuid(self):
+        """nemo_flow_scope() yields a handle whose uuid can be used for ATIF."""
         agent = MagicMock()
         agent.event_manager = EventManager()
 
-        async with nexus_scope(agent, "test-scope") as handle:
+        async with nemo_flow_scope(agent, "test-scope") as handle:
             assert hasattr(handle, "uuid")
             assert handle.uuid  # non-empty
 
     @pytest.mark.asyncio
-    async def test_nexus_scope_cleans_up_middleware(self):
-        """nexus_scope() removes middleware on exit."""
+    async def test_nemo_flow_scope_cleans_up_middleware(self):
+        """nemo_flow_scope() removes middleware on exit."""
         agent = MagicMock()
         em = EventManager()
         agent.event_manager = em
 
-        async with nexus_scope(agent, "test-scope"):
+        async with nemo_flow_scope(agent, "test-scope"):
             assert len(em._middleware["llm_call"]) == 1
 
         assert len(em._middleware["llm_call"]) == 0
@@ -612,24 +616,36 @@ class TestATIFExport:
 
     @pytest.mark.asyncio
     async def test_atif_captures_llm_call(self):
-        """An LLM call through nexus middleware appears in the ATIF trajectory."""
-        exporter = nat_nexus.AtifExporter(
+        """An LLM call through NeMo Flow middleware appears in the ATIF trajectory."""
+        exporter = nemo_flow.AtifExporter(
             session_id="test-session",
             agent_name="test-agent",
             agent_version="0.1.0",
         )
         exporter.register("atif-test")
         try:
-            with nat_nexus.scope.scope("atif-test-agent", nat_nexus.ScopeType.Agent) as handle:
+            with nemo_flow.scope.scope("atif-test-agent", nemo_flow.ScopeType.Agent):
                 ctx = _make_llm_ctx()
 
                 async def nxt(c):
                     c.response = FakeLLMResponse()
                     return c
 
-                await nexus_llm_middleware(ctx, nxt)
+                await nemo_flow_llm_middleware(ctx, nxt)
 
-            traj = exporter.export(handle.uuid)
+            traj = exporter.export_json()
+            assert isinstance(traj, str) or isinstance(traj, dict), (
+                f"Unexpected export_json type: {type(traj)}"
+            )
+            # export_json() may return a JSON string or dict; normalize
+            if isinstance(traj, str):
+                import json
+
+                traj = json.loads(traj)
+            # The export may be a single trajectory dict or a list; handle both
+            if isinstance(traj, list):
+                assert len(traj) > 0, "Expected at least one trajectory"
+                traj = traj[0]
             assert traj["schema_version"] == "ATIF-v1.6"
             assert traj["session_id"] == "test-session"
             assert len(traj["steps"]) > 0
@@ -638,50 +654,57 @@ class TestATIFExport:
 
     @pytest.mark.asyncio
     async def test_atif_captures_tool_call(self):
-        """A tool call through nexus middleware appears in the ATIF trajectory."""
-        exporter = nat_nexus.AtifExporter(
+        """A tool call through NeMo Flow middleware appears in the ATIF trajectory."""
+        exporter = nemo_flow.AtifExporter(
             session_id="test-session",
             agent_name="test-agent",
             agent_version="0.1.0",
         )
         exporter.register("atif-test-tool")
         try:
-            with nat_nexus.scope.scope("atif-test-agent", nat_nexus.ScopeType.Agent) as handle:
+            with nemo_flow.scope.scope("atif-test-agent", nemo_flow.ScopeType.Agent):
                 ctx = _make_exec_ctx(code="x = 42")
 
                 async def nxt(c):
                     c.result = FakeExecutionResult(returned_value=42)
                     return c
 
-                await nexus_tool_middleware(ctx, nxt)
+                await nemo_flow_tool_middleware(ctx, nxt)
 
-            traj = exporter.export(handle.uuid)
+            traj = exporter.export_json()
+            if isinstance(traj, str):
+                import json
+
+                traj = json.loads(traj)
+            if isinstance(traj, list):
+                assert len(traj) > 0
+                traj = traj[0]
             assert len(traj["steps"]) > 0
         finally:
             exporter.deregister("atif-test-tool")
 
 
 # ===================================================================
-# nexus_agent_call_middleware (scope push/pop, exception safety)
+# nemo_flow_agent_call_middleware (scope push/pop, exception safety)
 # ===================================================================
 
 
 class TestAgentCallMiddleware:
-    """Verify nexus_agent_call_middleware pushes/pops Nexus scopes correctly."""
+    """Verify nemo_flow_agent_call_middleware pushes/pops NeMo Flow scopes correctly."""
 
     @pytest.mark.asyncio
     async def test_scope_name_format(self):
         """Scope name is formatted as 'ClassName.method_name'."""
         captured_names: list[str] = []
 
-        def _spy(event: nat_nexus.Event):
+        def _spy(event: nemo_flow.Event):
             if (
-                str(event.event_type) == "EventType.Start"
-                and str(event.scope_type) == "ScopeType.Function"
+                isinstance(event, nemo_flow.ScopeStartEvent)
+                and event.scope_type == nemo_flow.ScopeType.Function
             ):
                 captured_names.append(event.name)
 
-        nat_nexus.subscribers.register("scope-name-spy", _spy)
+        nemo_flow.subscribers.register("scope-name-spy", _spy)
         try:
             agent = _make_real_agent()
             ctx = AgentCallContext(
@@ -695,22 +718,22 @@ class TestAgentCallMiddleware:
                 c.result = "done"
                 return c
 
-            await nexus_agent_call_middleware(ctx, nxt)
+            await nemo_flow_agent_call_middleware(ctx, nxt)
             assert len(captured_names) == 1
             assert captured_names[0] == f"{type(agent).__name__}.my_method"
         finally:
-            nat_nexus.subscribers.deregister("scope-name-spy")
+            nemo_flow.subscribers.deregister("scope-name-spy")
 
     @pytest.mark.asyncio
     async def test_scope_pushed_and_popped(self):
         """A Function scope is pushed before nxt() and popped after."""
         events: list[tuple[str, str]] = []
 
-        def _spy(event: nat_nexus.Event):
-            if str(event.scope_type) == "ScopeType.Function":
-                events.append((str(event.event_type), event.name))
+        def _spy(event: nemo_flow.Event):
+            if getattr(event, "scope_type", None) == nemo_flow.ScopeType.Function:
+                events.append((event.kind, event.name))
 
-        nat_nexus.subscribers.register("scope-lifecycle-spy", _spy)
+        nemo_flow.subscribers.register("scope-lifecycle-spy", _spy)
         try:
             agent = _make_real_agent()
             ctx = AgentCallContext(agent=agent, method_name="run", args=(), kwargs={})
@@ -719,25 +742,25 @@ class TestAgentCallMiddleware:
                 c.result = "ok"
                 return c
 
-            await nexus_agent_call_middleware(ctx, nxt)
+            await nemo_flow_agent_call_middleware(ctx, nxt)
 
             # Should see Start then End
             assert len(events) == 2
-            assert events[0][0] == "EventType.Start"
-            assert events[1][0] == "EventType.End"
+            assert events[0][0] == "ScopeStart"
+            assert events[1][0] == "ScopeEnd"
         finally:
-            nat_nexus.subscribers.deregister("scope-lifecycle-spy")
+            nemo_flow.subscribers.deregister("scope-lifecycle-spy")
 
     @pytest.mark.asyncio
     async def test_scope_popped_on_exception(self):
         """Scope is popped even if nxt() raises — no scope leak."""
         events: list[str] = []
 
-        def _spy(event: nat_nexus.Event):
-            if str(event.scope_type) == "ScopeType.Function":
-                events.append(str(event.event_type))
+        def _spy(event: nemo_flow.Event):
+            if getattr(event, "scope_type", None) == nemo_flow.ScopeType.Function:
+                events.append(event.kind)
 
-        nat_nexus.subscribers.register("scope-exc-spy", _spy)
+        nemo_flow.subscribers.register("scope-exc-spy", _spy)
         try:
             agent = _make_real_agent()
             ctx = AgentCallContext(agent=agent, method_name="failing", args=(), kwargs={})
@@ -746,13 +769,13 @@ class TestAgentCallMiddleware:
                 raise ValueError("boom")
 
             with pytest.raises(ValueError, match="boom"):
-                await nexus_agent_call_middleware(ctx, nxt)
+                await nemo_flow_agent_call_middleware(ctx, nxt)
 
             # Scope should still be popped (End event emitted)
-            assert "EventType.Start" in events
-            assert "EventType.End" in events
+            assert "ScopeStart" in events
+            assert "ScopeEnd" in events
         finally:
-            nat_nexus.subscribers.deregister("scope-exc-spy")
+            nemo_flow.subscribers.deregister("scope-exc-spy")
 
     @pytest.mark.asyncio
     async def test_result_passes_through(self):
@@ -764,7 +787,7 @@ class TestAgentCallMiddleware:
             c.result = {"answer": 42}
             return c
 
-        result = await nexus_agent_call_middleware(ctx, nxt)
+        result = await nemo_flow_agent_call_middleware(ctx, nxt)
         assert result.result == {"answer": 42}
 
 
@@ -781,14 +804,11 @@ class TestToolMiddlewareEdgeCases:
         """Tool middleware extracts value from signal.result['result']."""
         subscriber_saw: list[Any] = []
 
-        def _spy(event: nat_nexus.Event):
-            if (
-                str(event.event_type) == "EventType.End"
-                and str(event.scope_type) == "ScopeType.Tool"
-            ):
+        def _spy(event: nemo_flow.Event):
+            if isinstance(event, nemo_flow.ToolEndEvent):
                 subscriber_saw.append(event.output)
 
-        nat_nexus.subscribers.register("signal-spy", _spy)
+        nemo_flow.subscribers.register("signal-spy", _spy)
         try:
             ctx = _make_exec_ctx(code="return_result(99)")
 
@@ -808,30 +828,27 @@ class TestToolMiddlewareEdgeCases:
                 c.result = fake_result
                 return c
 
-            result = await nexus_tool_middleware(ctx, nxt)
+            result = await nemo_flow_tool_middleware(ctx, nxt)
 
             # Caller gets the original ExecutionResult unchanged
             assert result.result is fake_result
 
-            # Nexus subscriber should see the extracted value (99)
+            # NeMo Flow subscriber should see the extracted value (99)
             assert len(subscriber_saw) > 0
             assert any(o == 99 for o in subscriber_saw)
         finally:
-            nat_nexus.subscribers.deregister("signal-spy")
+            nemo_flow.subscribers.deregister("signal-spy")
 
     @pytest.mark.asyncio
     async def test_stdout_fallback_when_no_return_value(self):
         """Tool middleware falls back to stdout when no returned_value or signal."""
         subscriber_saw: list[Any] = []
 
-        def _spy(event: nat_nexus.Event):
-            if (
-                str(event.event_type) == "EventType.End"
-                and str(event.scope_type) == "ScopeType.Tool"
-            ):
+        def _spy(event: nemo_flow.Event):
+            if isinstance(event, nemo_flow.ToolEndEvent):
                 subscriber_saw.append(event.output)
 
-        nat_nexus.subscribers.register("stdout-spy", _spy)
+        nemo_flow.subscribers.register("stdout-spy", _spy)
         try:
             ctx = _make_exec_ctx(code="print('hello')")
 
@@ -847,14 +864,14 @@ class TestToolMiddlewareEdgeCases:
                 c.result = fake_result
                 return c
 
-            result = await nexus_tool_middleware(ctx, nxt)
+            result = await nemo_flow_tool_middleware(ctx, nxt)
             assert result.result is fake_result
 
-            # Nexus should see the stdout value
+            # NeMo Flow should see the stdout value
             assert len(subscriber_saw) > 0
             assert any("hello" in str(o) for o in subscriber_saw)
         finally:
-            nat_nexus.subscribers.deregister("stdout-spy")
+            nemo_flow.subscribers.deregister("stdout-spy")
 
     @pytest.mark.asyncio
     async def test_none_result(self):
@@ -865,7 +882,7 @@ class TestToolMiddlewareEdgeCases:
             c.result = FakeExecutionResult(returned_value=None)
             return c
 
-        result = await nexus_tool_middleware(ctx, nxt)
+        result = await nemo_flow_tool_middleware(ctx, nxt)
         assert result.result is not None
         assert result.result.returned_value is None
 
@@ -883,11 +900,11 @@ class TestLLMMiddlewareEdgeCases:
         """When agent is None, model_name defaults to empty string."""
         captured_model: list[str] = []
 
-        def _spy(event: nat_nexus.Event):
+        def _spy(event: nemo_flow.Event):
             # Capture model_name from all events (even if empty)
             captured_model.append(event.model_name or "")
 
-        nat_nexus.subscribers.register("model-none-spy", _spy)
+        nemo_flow.subscribers.register("model-none-spy", _spy)
         try:
             ctx = _make_llm_ctx(agent=None)
 
@@ -895,31 +912,31 @@ class TestLLMMiddlewareEdgeCases:
                 c.response = FakeLLMResponse()
                 return c
 
-            result = await nexus_llm_middleware(ctx, nxt)
+            result = await nemo_flow_llm_middleware(ctx, nxt)
             assert result.response is not None
             # Should not crash — model_name is empty string
             assert all(m == "" for m in captured_model)
         finally:
-            nat_nexus.subscribers.deregister("model-none-spy")
+            nemo_flow.subscribers.deregister("model-none-spy")
 
 
 # ===================================================================
-# nexus_scope: cleanup on exception
+# nemo_flow_scope: cleanup on exception
 # ===================================================================
 
 
-class TestNexusScopeExceptionSafety:
-    """Verify nexus_scope cleans up middleware when the body raises."""
+class TestNemoFlowScopeExceptionSafety:
+    """Verify nemo_flow_scope cleans up middleware when the body raises."""
 
     @pytest.mark.asyncio
     async def test_middleware_removed_on_exception(self):
-        """nexus_scope() removes middleware even if the body raises."""
+        """nemo_flow_scope() removes middleware even if the body raises."""
         agent = MagicMock()
         em = EventManager()
         agent.event_manager = em
 
         with pytest.raises(RuntimeError, match="test explosion"):
-            async with nexus_scope(agent, "failing-scope"):
+            async with nemo_flow_scope(agent, "failing-scope"):
                 assert len(em._middleware["llm_call"]) == 1
                 raise RuntimeError("test explosion")
 
@@ -955,7 +972,7 @@ class TestAgentCallNoneReturn:
             c.result = None  # method returns None
             return c
 
-        result_ctx = await nexus_agent_call_middleware(ctx, nxt)
+        result_ctx = await nemo_flow_agent_call_middleware(ctx, nxt)
         # None should be preserved, not treated as "not set"
         assert result_ctx.result is None
 
@@ -993,12 +1010,14 @@ class TestLLMRequestInterceptParamPropagation:
         """A request intercept that changes temperature is seen by nxt()."""
         nxt_saw_params: list[dict] = []
 
-        def _intercept(name: str, req: nat_nexus.LLMRequest) -> nat_nexus.LLMRequest:
+        def _intercept(
+            name: str, req: nemo_flow.LLMRequest, annotated: nemo_flow.AnnotatedLLMRequest | None
+        ) -> tuple[nemo_flow.LLMRequest, nemo_flow.AnnotatedLLMRequest | None]:
             new_content = dict(req.content)
             new_content["temperature"] = 0.0
-            return nat_nexus.LLMRequest(req.headers, new_content)
+            return nemo_flow.LLMRequest(req.headers, new_content), annotated
 
-        nat_nexus.intercepts.register_llm_request("test-temp", 1, False, _intercept)
+        nemo_flow.intercepts.register_llm_request("test-temp", 1, False, _intercept)
         try:
             ctx = _make_llm_ctx()
             ctx.params["temperature"] = 0.7  # original value
@@ -1008,24 +1027,26 @@ class TestLLMRequestInterceptParamPropagation:
                 c.response = FakeLLMResponse()
                 return c
 
-            await nexus_llm_middleware(ctx, nxt)
+            await nemo_flow_llm_middleware(ctx, nxt)
 
             assert len(nxt_saw_params) == 1
             assert nxt_saw_params[0]["temperature"] == 0.0
         finally:
-            nat_nexus.intercepts.deregister_llm_request("test-temp")
+            nemo_flow.intercepts.deregister_llm_request("test-temp")
 
     @pytest.mark.asyncio
     async def test_max_tokens_intercept_propagated(self):
         """A request intercept that limits max_tokens is seen by nxt()."""
         nxt_saw_params: list[dict] = []
 
-        def _intercept(name: str, req: nat_nexus.LLMRequest) -> nat_nexus.LLMRequest:
+        def _intercept(
+            name: str, req: nemo_flow.LLMRequest, annotated: nemo_flow.AnnotatedLLMRequest | None
+        ) -> tuple[nemo_flow.LLMRequest, nemo_flow.AnnotatedLLMRequest | None]:
             new_content = dict(req.content)
             new_content["max_tokens"] = 100
-            return nat_nexus.LLMRequest(req.headers, new_content)
+            return nemo_flow.LLMRequest(req.headers, new_content), annotated
 
-        nat_nexus.intercepts.register_llm_request("test-maxtok", 1, False, _intercept)
+        nemo_flow.intercepts.register_llm_request("test-maxtok", 1, False, _intercept)
         try:
             ctx = _make_llm_ctx()
             ctx.params["max_tokens"] = 4096
@@ -1035,11 +1056,11 @@ class TestLLMRequestInterceptParamPropagation:
                 c.response = FakeLLMResponse()
                 return c
 
-            await nexus_llm_middleware(ctx, nxt)
+            await nemo_flow_llm_middleware(ctx, nxt)
 
             assert nxt_saw_params[0]["max_tokens"] == 100
         finally:
-            nat_nexus.intercepts.deregister_llm_request("test-maxtok")
+            nemo_flow.intercepts.deregister_llm_request("test-maxtok")
 
 
 # ===================================================================
@@ -1060,7 +1081,7 @@ class TestToolRequestInterceptParamPropagation:
                 args["timeout"] = 5
             return args
 
-        nat_nexus.intercepts.register_tool_request("test-timeout", 1, False, _intercept)
+        nemo_flow.intercepts.register_tool_request("test-timeout", 1, False, _intercept)
         try:
             ctx = _make_exec_ctx(code="x = 1")
             ctx.params["timeout"] = 30  # original
@@ -1070,8 +1091,8 @@ class TestToolRequestInterceptParamPropagation:
                 c.result = FakeExecutionResult(returned_value=1)
                 return c
 
-            await nexus_tool_middleware(ctx, nxt)
+            await nemo_flow_tool_middleware(ctx, nxt)
 
             assert nxt_saw_params[0]["timeout"] == 5
         finally:
-            nat_nexus.intercepts.deregister_tool_request("test-timeout")
+            nemo_flow.intercepts.deregister_tool_request("test-timeout")

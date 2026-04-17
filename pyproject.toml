@@ -32,7 +32,14 @@ eval_pipeline = { workspace = true }
 evaluation = { workspace = true }
 trace_explorer = { workspace = true }
 nemo-oo-agents-benchmarks = { workspace = true }
+nemo-flow = { url = "https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/files/0e4037d4a503b9d2ca98573238f3683e01c2e50d30cc92540d59ba47ab6577e9/nemo_flow-0.1.0+1ad5d2c0-cp311-abi3-manylinux_2_34_x86_64.whl" }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
+
+[[tool.uv.index]]
+name = "nemo-flow-registry"
+url = "https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/simple"
+explicit = true
+# Auth: uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
 
 [tool.uv]
 # Extra index URLs to search for packages (in addition to PyPI)
@@ -87,9 +94,9 @@ term = [
 nemo-oo-agents-benchmarks = [
     "nemo-oo-agents-benchmarks",
 ]
-# nexus = [
-#     "nvidia-nat-nexus",  # TODO: update once published to PyPI
-# ]
+nemo-flow = [
+    "nemo-flow; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 # BigCodeBench dependencies (libraries used across 1140 benchmark tasks)
 bigcodebench = [
     "llvmlite>=0.46.0",

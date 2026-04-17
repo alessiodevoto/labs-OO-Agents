@@ -2741,6 +2741,14 @@ wheels = [
 ]
 
 [[package]]
+name = "nemo-flow"
+version = "0.1.0+1ad5d2c0"
+source = { url = "https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/files/0e4037d4a503b9d2ca98573238f3683e01c2e50d30cc92540d59ba47ab6577e9/nemo_flow-0.1.0+1ad5d2c0-cp311-abi3-manylinux_2_34_x86_64.whl" }
+wheels = [
+    { url = "https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/files/0e4037d4a503b9d2ca98573238f3683e01c2e50d30cc92540d59ba47ab6577e9/nemo_flow-0.1.0+1ad5d2c0-cp311-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:0e4037d4a503b9d2ca98573238f3683e01c2e50d30cc92540d59ba47ab6577e9" },
+]
+
+[[package]]
 name = "nemo-oo-agents"
 version = "0.1.0"
 source = { editable = "." }
@@ -2820,6 +2828,9 @@ bigcodebench = [
 ]
 mcp = [
     { name = "mcp-nemo-oo-agents" },
+]
+nemo-flow = [
+    { name = "nemo-flow", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 nemo-oo-agents-benchmarks = [
     { name = "nemo-oo-agents-benchmarks" },
@@ -2923,6 +2934,7 @@ requires-dist = [
     { name = "mcp-nemo-oo-agents", marker = "extra == 'mcp'", editable = "packages/mcp-nemo-oo-agents" },
     { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
     { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
+    { name = "nemo-flow", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'nemo-flow'", url = "https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/files/0e4037d4a503b9d2ca98573238f3683e01c2e50d30cc92540d59ba47ab6577e9/nemo_flow-0.1.0+1ad5d2c0-cp311-abi3-manylinux_2_34_x86_64.whl" },
     { name = "nemo-oo-agents", extras = ["tui"], marker = "extra == 'term'" },
     { name = "nemo-oo-agents-benchmarks", marker = "extra == 'nemo-oo-agents-benchmarks'", editable = "packages/nemo-oo-agents-benchmarks" },
     { name = "nemo-oo-agents-viewer", marker = "extra == 'viewer'", editable = "packages/nemo-oo-agents-viewer" },
@@ -2983,7 +2995,7 @@ requires-dist = [
     { name = "xlwt", marker = "extra == 'bigcodebench'", specifier = ">=1.3.0" },
     { name = "xmltodict", marker = "extra == 'bigcodebench'", specifier = ">=0.13.0" },
 ]
-provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "term", "nemo-oo-agents-benchmarks", "bigcodebench", "tui-optional"]
+provides-extras = ["tracing", "viewer", "trace-explorer", "sandbox", "mcp", "tui", "term", "nemo-oo-agents-benchmarks", "nemo-flow", "bigcodebench", "tui-optional"]
 
 [package.metadata.requires-dev]
 dev = [

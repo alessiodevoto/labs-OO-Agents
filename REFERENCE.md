@@ -31,6 +31,7 @@ Quick reference for paths, examples, commands, and configuration.
 | Skills | `examples/quickstart/10_skills.py` |
 | MCP tools | `examples/quickstart/11_mcp.py` |
 | Multimodal (images) | `examples/quickstart/12_multimodal.py` |
+| NeMo Flow integration | `examples/quickstart/13_nemo_flow.py` |
 
 **Advanced** (`examples/advanced/`) — deeper dives into specific features and integrations. Each example is self-contained; read the file docstring for prerequisites.
 
@@ -108,6 +109,46 @@ enable_logging(name="nemo_oo_agents.runtime.actor")        # just the executor
 `logging.config.dictConfig()` as usual — nemo_oo_agents loggers are standard
 `logging.Logger` instances.  The library adds only a `NullHandler` to the
 root logger, so no output appears unless you configure handlers.
+
+## NeMo Flow Integration
+
+Optional integration with [NeMo Flow](https://gitlab-master.nvidia.com/nemo-agent-toolkit/dev/NeMo-Flow) (`nemo_flow`) — a multi-language agent runtime providing guardrails, intercepts, event subscribers, and ATIF trajectory export.
+
+### Quick start
+
+```bash
+# One-time: store GitLab registry credentials
+uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
+
+# Install with NeMo Flow support (prebuilt wheels from GitLab registry)
+uv sync --extra nemo-flow
+```
+
+```python
+from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope
+
+async with nemo_flow_scope(agent, "my-agent") as handle:
+    result = await agent.my_method(...)
+    # handle.uuid available for ATIF export
+```
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/nemo_oo_agents/nemo_flow_middleware.py` | Middleware functions + `install_nemo_flow()` / `nemo_flow_scope()` |
+| `tests/test_nemo_flow_middleware.py` | Integration tests (requires `nemo_flow`) |
+| `examples/quickstart/13_nemo_flow.py` | Full quickstart: guardrails, intercepts, ATIF export |
+
+### Middleware hooks
+
+The integration installs three middleware via `event_manager.intercept()`:
+
+| Middleware | Hook | What it does |
+|------------|------|-------------|
+| `nemo_flow_llm_middleware` | `llm_call` | Routes LLM calls through NeMo Flow LLM pipeline |
+| `nemo_flow_tool_middleware` | `execute_python` | Routes code execution through NeMo Flow tool pipeline |
+| `nemo_flow_agent_call_middleware` | `agent_call` | Wraps each agent method in a NeMo Flow Function scope |
 
 ## Environment Variables
 
