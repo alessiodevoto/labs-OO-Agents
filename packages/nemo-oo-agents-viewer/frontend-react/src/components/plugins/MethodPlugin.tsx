@@ -156,7 +156,7 @@ export function MethodPlugin({ event, viewState, rawJsonOpen, viewControls }: Pl
   const errorMessage = attrs['error.message'] as string | undefined;
 
   let resultDisplay = result ?? '';
-  let resultLang = 'text';
+  let resultLang = 'markdown';
   if (result != null) {
     try {
       const parsed = JSON.parse(result);

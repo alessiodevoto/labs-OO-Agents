@@ -62,6 +62,13 @@ export function CodeBox({
   className = '',
   maxHeight = 'none',
 }: CodeBoxProps) {
+  // Defensive: upstream callers occasionally pass undefined/null/non-string
+  // values (e.g. a missing span attribute). Coerce to string so split()
+  // and subsequent operations never crash.
+  const safeCode = typeof code === 'string' ? code : code == null ? '' : String(code);
+  // If the language isn't registered with highlight.js, skip highlighting
+  // rather than warning/throwing. Falls back to escaped plain text.
+  const highlightable = hljs.getLanguage(language) !== undefined;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -87,7 +94,7 @@ export function CodeBox({
     return () => document.removeEventListener('mousedown', handler);
   }, [searchOpen]);
 
-  const lines = code.split('\n');
+  const lines = safeCode.split('\n');
 
   // Compute matches
   const allMatches: SearchMatch[][] = [];
@@ -150,10 +157,15 @@ export function CodeBox({
   // Highlight code and split into per-line HTML for line-by-line rendering
   const highlightedLines = useRef<string[]>([]);
   if (!searchTerm) {
-    try {
-      const result = hljs.highlight(code, { language });
-      highlightedLines.current = result.value.split('\n');
-    } catch {
+    if (highlightable) {
+      try {
+        const result = hljs.highlight(safeCode, { language });
+        highlightedLines.current = result.value.split('\n');
+      } catch {
+        highlightedLines.current = lines.map(escapeHtml);
+      }
+    } else {
+      // Unknown language (e.g. "text", "yaml") — render as plain text
       highlightedLines.current = lines.map(escapeHtml);
     }
   }
@@ -249,7 +261,7 @@ export function CodeBox({
           </button>
         )}
         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-          <CopyButton text={code} />
+          <CopyButton text={safeCode} />
         </div>
       </div>
       <div ref={contentRef} className="overflow-auto" style={{ maxHeight }}>

@@ -36,7 +36,7 @@ function findHeroContent(attrs: Record<string, unknown>): {
     ['nemo_oo_agents.user_message', 'User Message', 'markdown'],
     ['code', 'Code', 'python'],
     ['result', 'Result', 'json'],
-    ['message', 'Message', 'text'],
+    ['message', 'Message', 'markdown'],
   ];
 
   for (const [attrKey, label, lang] of candidates) {
