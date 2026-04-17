@@ -41,7 +41,7 @@ lint:
       - $UV_CACHE_DIR
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
-    - uv sync --all-extras --no-extra sandbox --no-extra nemo-flow
+    - uv sync --all-extras --no-extra sandbox
   script:
     - echo "Running ruff linting..."
     - uv run ruff check .
@@ -88,7 +88,7 @@ test:
       - $UV_CACHE_DIR
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
-    - uv sync --all-extras --no-extra sandbox --no-extra nemo-flow
+    - uv sync --all-extras --no-extra sandbox
   script:
     # Run all tests (root + packages) - testpaths configured in pyproject.toml
     # Integration tests excluded by default via addopts
@@ -154,7 +154,7 @@ capability-test:
       - $UV_CACHE_DIR
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
-    - uv sync --all-extras --no-extra sandbox --no-extra nemo-flow
+    - uv sync --all-extras --no-extra sandbox
   script:
     - rm -rf results/ci/ capability-results.zip
     # Uses unified config.yaml with single model for CI

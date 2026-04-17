@@ -67,7 +67,8 @@ except ImportError:
     LLMRequest = None  # type: ignore[assignment,misc]
 
 _INSTALL_MSG = (
-    "nemo_flow is required for NeMo Flow integration. Install with: uv sync --extra nemo-flow"
+    "nemo_flow is required for NeMo Flow integration. "
+    "See pyproject.toml for install instructions (private registry, requires auth)."
 )
 
 # Keys stripped from params before exposing to NeMo Flow guardrails/events.
