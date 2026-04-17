@@ -78,8 +78,8 @@ def _setup_tracing(model: str, agent_type: str) -> None:
     """
     try:
         from openinference_instrumentation_nemo_oo_agents import (
-            _probe_otlp_endpoint,
             enable_tracing,
+            probe_otlp_endpoint,
         )
         from openinference_instrumentation_nemo_oo_agents import exporters as nemo_exporters
     except ImportError:
@@ -88,7 +88,7 @@ def _setup_tracing(model: str, agent_type: str) -> None:
 
     endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")
 
-    if _probe_otlp_endpoint(endpoint):
+    if probe_otlp_endpoint(endpoint):
         logger.info("OTLP endpoint reachable (%s) — streaming traces live", endpoint)
         enable_tracing(
             exporters=[nemo_exporters.journal(endpoint=endpoint)],
