@@ -127,3 +127,241 @@ def test_discover_skips_malformed_skill_md(tmp_path, caplog, monkeypatch):
         skills = SkillManager.discover(tmp_path)
     assert skills == {}
     assert "failed to load SKILL.md" in caplog.text
+
+
+# ── Python-file skills ────────────────────────────────────────────────────────
+
+
+def _write_py_skill(
+    base: Path, filename: str, class_name: str, docstring: str = "A python skill"
+) -> Path:
+    """Write a .py file in *base* containing a Skill subclass.
+
+    Subclasses purposefully do NOT call ``super().__init__(content=...)`` —
+    that reassigns ``self.__class__`` to a bare ``Skill`` and strips the
+    subclass's methods (see Skill.__init__). Real-world Python skills keep
+    their methods by omitting the content-init or wrapping an external obj.
+    """
+    path = base / filename
+    path.write_text(
+        f"""
+from nemo_oo_agents.skill import Skill
+
+
+class {class_name}(Skill):
+    '''{docstring}'''
+
+    def hello(self) -> str:
+        return "hi from {class_name}"
+"""
+    )
+    return path
+
+
+def test_install_picks_up_python_skill_file(tmp_path):
+    _write_py_skill(tmp_path, "my_skill.py", "MySkill", "my skill description")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert isinstance(agent.my_skill, Skill)
+    assert agent.my_skill.hello() == "hi from MySkill"
+
+
+def test_python_skill_attr_matches_filename_stem(tmp_path):
+    _write_py_skill(tmp_path, "wtf_pm.py", "WtfProjectManagement")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert hasattr(agent, "wtf_pm")
+    # Not the class-name version:
+    assert not hasattr(agent, "wtf_project_management")
+
+
+def test_python_skill_coexists_with_text_skills(tmp_path):
+    _make_skill_dir(tmp_path, "text-skill", "A text skill")
+    _write_py_skill(tmp_path, "py_skill.py", "PySkill")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert isinstance(agent.text_skill, Skill)
+    assert isinstance(agent.py_skill, Skill)
+
+
+def test_python_skill_skipped_if_attr_already_exists(tmp_path):
+    _write_py_skill(tmp_path, "existing.py", "Existing")
+    sentinel = SampleSkill()
+    agent = make_agent(existing=sentinel)
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert agent.existing is sentinel
+
+
+def test_python_skill_file_without_skill_subclass_ignored(tmp_path):
+    (tmp_path / "not_a_skill.py").write_text("x = 1\n")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert not hasattr(agent, "not_a_skill")
+
+
+def test_python_skill_file_with_import_error_warned_and_skipped(tmp_path, caplog):
+    (tmp_path / "broken.py").write_text("this is not valid python !!!\n")
+    agent = make_agent()
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
+        SkillManager.install(agent, skills_dir=tmp_path)
+    assert not hasattr(agent, "broken")
+    assert "broken" in caplog.text.lower()
+
+
+def test_python_skill_with_required_args_warned_and_skipped(tmp_path, caplog):
+    (tmp_path / "needs_args.py").write_text(
+        """
+from nemo_oo_agents.skill import Skill
+
+
+class NeedsArgs(Skill):
+    '''needs ctor args'''
+    def __init__(self, required_arg):
+        super().__init__(content="x")
+        self.required = required_arg
+"""
+    )
+    agent = make_agent()
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
+        SkillManager.install(agent, skills_dir=tmp_path)
+    assert not hasattr(agent, "needs_args")
+    assert "needs_args" in caplog.text.lower()
+
+
+def test_python_skill_ignores_base_skill_class(tmp_path):
+    """Importing the base ``Skill`` class must not trigger a spurious install.
+
+    Any file that does ``from nemo_oo_agents.skill import Skill`` would end
+    up with the base class in its namespace. The discovery skips ``Skill``
+    and ``TextSkill`` by identity so helper files don't auto-attach those.
+    """
+    (tmp_path / "has_import.py").write_text(
+        """
+from nemo_oo_agents.skill import Skill, TextSkill
+# No own Skill subclass defined here.
+x = 1
+"""
+    )
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert not hasattr(agent, "has_import")
+
+
+def test_python_skill_reexport_is_installed(tmp_path):
+    """A skill file can just re-export a class defined in another module.
+
+    This is the shipping pattern for third-party packages: put
+    ``skills-nemo/xxx.py`` with a one-liner ``from pkg.skill import MySkill``
+    and the discovery picks it up under the filename stem.
+    """
+    # "Other module" — a separate .py that defines the class
+    other = tmp_path / "_defs.py"
+    other.write_text(
+        """
+from nemo_oo_agents.skill import Skill
+
+
+class ExternalSkill(Skill):
+    '''class defined elsewhere'''
+
+    def greet(self):
+        return "external"
+"""
+    )
+
+    # Loader uses importlib on the file directly, so we have to import by
+    # path. Easiest: two separate passes — first install of _defs is skipped
+    # (leading underscore), second file imports from it via sys.path hack.
+    reexport = tmp_path / "external.py"
+    reexport.write_text(
+        f"""
+import importlib.util
+spec = importlib.util.spec_from_file_location('_ext_defs', {str(other)!r})
+_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(_mod)
+ExternalSkill = _mod.ExternalSkill
+"""
+    )
+
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert hasattr(agent, "external")
+    assert agent.external.greet() == "external"
+
+
+def test_python_skill_module_level_instance(tmp_path):
+    """A module-level ``skill`` instance is used verbatim (supports ctor args)."""
+    (tmp_path / "preconfigured.py").write_text(
+        """
+from nemo_oo_agents.skill import Skill
+
+
+class MySkill(Skill):
+    '''My skill'''
+
+    def __init__(self, greeting):
+        self.greeting = greeting
+
+    def say(self):
+        return self.greeting
+
+
+skill = MySkill(greeting="hello there")
+"""
+    )
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert hasattr(agent, "preconfigured")
+    assert agent.preconfigured.say() == "hello there"
+
+
+def test_python_skill_file_with_multiple_skill_subclasses_uses_first(tmp_path, caplog):
+    (tmp_path / "many.py").write_text(
+        """
+from nemo_oo_agents.skill import Skill
+
+
+class FirstSkill(Skill):
+    '''first'''
+    def __init__(self):
+        super().__init__(content="first")
+
+
+class SecondSkill(Skill):
+    '''second'''
+    def __init__(self):
+        super().__init__(content="second")
+"""
+    )
+    agent = make_agent()
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
+        SkillManager.install(agent, skills_dir=tmp_path)
+    assert hasattr(agent, "many")
+    # Warned about extras
+    assert "many" in caplog.text.lower()
+
+
+def test_dunder_init_py_not_treated_as_skill(tmp_path, caplog):
+    """A skills dir containing an __init__.py must not try to import it."""
+    (tmp_path / "__init__.py").write_text("")
+    agent = make_agent()
+    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.skill_manager"):
+        SkillManager.install(agent, skills_dir=tmp_path)
+    # __init__.py must not trigger any "skipped" warnings — it should be
+    # filtered out before we ever try to import it.
+    assert "__init__" not in caplog.text
+
+
+def test_leading_underscore_py_files_ignored(tmp_path):
+    """Files whose names start with _ are treated as private helpers, not skills."""
+    _write_py_skill(tmp_path, "_helper.py", "Helper")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert not hasattr(agent, "_helper")
+
+
+def test_discover_includes_python_skills(tmp_path):
+    _write_py_skill(tmp_path, "tool_x.py", "ToolX", "tool X")
+    skills = SkillManager.discover(tmp_path)
+    assert "tool_x" in skills
+    assert isinstance(skills["tool_x"], Skill)
