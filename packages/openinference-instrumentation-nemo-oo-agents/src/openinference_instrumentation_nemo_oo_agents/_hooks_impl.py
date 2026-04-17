@@ -744,8 +744,6 @@ class OpenInferenceHooks:
         rendered, truncated context blocks.  These attributes exist only for
         human inspection in the trace viewer, so a 50 K cap is generous.
         """
-        from agentdoc import truncating_pformat
-
         try:
             return truncating_pformat(obj, max_chars=max_chars)
         except Exception:
