@@ -98,6 +98,19 @@ class TestStripCodeFences:
         assert cleaned == code
         assert token is None
 
+    def test_language_tag_with_space_junk_falls_through_to_inline(self):
+        """'```python 3\\n...' is a known edge case: the multiline pattern
+        rejects it (non-whitespace after lang tag), the inline pattern then
+        matches with the 'python' lang and leaks the ' 3' into the body.
+
+        This leak is accepted — the priority is to NOT delete real code.
+        This test pins the current behavior."""
+        code = "```python 3\nprint('hello')\n```"
+        cleaned, token = strip_code_fences(code)
+        assert token == "```python"
+        # Key assertion: real code is preserved (no deletion)
+        assert "print('hello')" in cleaned
+
 
 class TestStripXmlWrapper:
     """Test strip_xml_wrapper shared function."""
