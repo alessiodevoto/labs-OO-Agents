@@ -368,8 +368,18 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     - Run **one** thing at a time and observe the result before the next
       step. Don't build giant blocks that stop at the first error.
-    - Variables persist within a method call. Use ``print()`` / ``pprint()``
-      to inspect intermediate state.
+    - **REPL variables persist within a single call to respond(), not
+      across turns.** As soon as you call ``return_result(...)`` and the
+      user comes back, the Python namespace is wiped — any ``x =
+      something`` from the previous turn is gone.
+    - **To carry state across turns, store it on a todo.** ``self.todo``
+      persists (via snapshot) and each todo has a ``vars`` dict:
+          t = self.todo.add("Deep research", foo=42, data={"a": 1})
+          self.todo.set_var(t.id, "progress", 0.25)
+          v = self.todo.get_var(t.id, "progress")   # next turn: 0.25
+      Good for: reproducer steps, partial results, paths the user gave
+      you earlier, anything you'll need after a ``WAIT_FOR_USER_INPUT``.
+    - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
     - End your turn with ``return_result(RespondResult.WAIT_FOR_USER_INPUT)``
