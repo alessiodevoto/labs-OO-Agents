@@ -43,7 +43,13 @@ class ScriptedFrontend:
     async def render(self, output: Output) -> None:  # type: ignore[override]
         self.outputs.append(output)
 
-    async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:
+    async def get_input(
+        self,
+        prompt: str,
+        completions: list[str] | None = None,
+        default: str = "",
+        bottom_toolbar=None,
+    ) -> str:
         if not self._inputs:
             raise EOFError("No more scripted inputs")
         return self._inputs.pop(0)
@@ -53,6 +59,20 @@ class ScriptedFrontend:
 
     async def stop_thinking(self) -> None:
         self._thinking = False
+
+    async def typeahead_loop(self, state) -> None:
+        # Scripted tests never exercise typeahead — return immediately so the
+        # session's _agent_turn can await the agent task and finish.
+        return
+
+    def exit_typeahead(self) -> None:
+        pass
+
+    def invalidate_typeahead(self) -> None:
+        pass
+
+    async def emit_user_message_above_prompt(self, content: str) -> None:
+        pass
 
     @property
     def is_connected(self) -> bool:
