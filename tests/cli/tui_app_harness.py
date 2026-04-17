@@ -94,9 +94,24 @@ class FakeAgent:
         self.emit: Callable[[str], None] | None = None  # set by app
 
     def emit_message(self, text: str) -> None:
-        """Convenience: emit a chunk of text to the app's output scrollback."""
-        if self.emit is not None:
-            self.emit(text)
+        """Render ``text`` as Markdown → ANSI and push to the output buffer.
+
+        Mirrors what the real frontend does with ``AgentMessage`` objects
+        (Rich Markdown renderer), so tests that assert on ANSI presence
+        exercise the same rendering path as production.
+        """
+        if self.emit is None:
+            return
+        import io as _io
+
+        from rich.console import Console
+        from rich.markdown import Markdown
+
+        buf = _io.StringIO()
+        Console(
+            file=buf, force_terminal=True, color_system="256", width=80, legacy_windows=False
+        ).print(Markdown(text))
+        self.emit(buf.getvalue())
 
     async def respond(self, user_message: str) -> Any:
         self.messages_received.append(user_message)
@@ -154,7 +169,16 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         try:
+            # Cancel any pending agent task so FakeAgent.respond() awaiting
+            # on agent.block doesn't get orphaned at teardown.
             if self.app is not None:
+                agent_task = getattr(self.app, "_agent_task", None)
+                if agent_task is not None and not agent_task.done():
+                    agent_task.cancel()
+                    try:
+                        await agent_task
+                    except (asyncio.CancelledError, BaseException):
+                        pass
                 self.app.exit()
             if self._run_task is not None:
                 try:

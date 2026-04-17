@@ -20,6 +20,7 @@ from typing import Any
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
@@ -30,6 +31,27 @@ from prompt_toolkit.layout.processors import BeforeInput
 from .queue_state import QueueState
 
 PROMPT_MARKER = "❯ "
+
+# Minimal default completions so Tab works on a bare TUIApplication.
+# Production wiring replaces this with the real ``CommandRegistry``
+# completer — the interface is just ``Completer.get_completions``.
+_DEFAULT_COMPLETIONS = ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"]
+
+
+class _PrefixCompleter(Completer):
+    """Tiny completer: suggests entries from ``candidates`` when the buffer
+    starts with ``/`` or ``!`` and is a prefix of a candidate."""
+
+    def __init__(self, candidates: list[str]) -> None:
+        self.candidates = candidates
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if not text or text[0] not in "/!":
+            return
+        for cand in self.candidates:
+            if cand.startswith(text) and cand != text:
+                yield Completion(cand, start_position=-len(text))
 
 
 class TUIApplication:
@@ -44,7 +66,8 @@ class TUIApplication:
         self.output_buffer = Buffer(read_only=False)
 
         # Input window: where user keystrokes land.
-        self.input_buffer = Buffer(multiline=True)
+        self._completer = _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
+        self.input_buffer = Buffer(multiline=True, completer=self._completer)
 
         # History — a plain list of submitted strings and a cursor that
         # tracks Up/Down navigation. Simpler than prompt_toolkit's async
@@ -52,6 +75,17 @@ class TUIApplication:
         # and _load_history_task to survive Buffer.reset().
         self._history: list[str] = []
         self._history_cursor: int | None = None
+
+        # Command routing. Slash (/foo) items are appended to
+        # ``_commands_dispatched``; bang (!foo) items set
+        # ``_last_bang_command`` and (in production) run via
+        # ``run_in_terminal``. Tests read both via the accessor methods.
+        self._commands_dispatched: list[str] = []
+        self._last_bang_command: str | None = None
+
+        # Status line fields — surfaced via status_text().
+        self._session_label: str = ""
+        self._spinner_frame: str = "⠋"
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
@@ -95,6 +129,12 @@ class TUIApplication:
 
         @kb.add("c-c")
         def _(event):
+            # If an agent is running, C-c is a hard cancel: kill the
+            # task, keep the buffer (user's work in progress survives).
+            # Otherwise it exits the app.
+            if self.is_thinking() and self._agent_task is not None:
+                self._agent_task.cancel()
+                return
             event.app.exit()
 
         @kb.add("c-d")
@@ -113,33 +153,65 @@ class TUIApplication:
         def _(event):
             event.current_buffer.insert_text("\n")
 
-        # Empty-buffer Up/Down → history navigation. Otherwise
-        # prompt_toolkit's default cursor-up/down behaviour takes over.
+        # Empty-buffer Up: queue pop wins over history — matches the
+        # pre-rewrite typeahead UX (pop the last thing you typed while
+        # the agent was working so you can edit it).
         empty_buffer = Condition(lambda: self.input_buffer.text == "")
 
         @kb.add("up", filter=empty_buffer)
         def _(event):
+            popped = self.state.pop_last_for_edit()
+            if popped is not None:
+                self.input_buffer.text = popped
+                self.input_buffer.cursor_position = len(popped)
+                return
             self._history_navigate(-1)
 
         @kb.add("down", filter=empty_buffer)
         def _(event):
             self._history_navigate(+1)
 
+        # Esc: soft-cancel the agent while preserving the queue. Any
+        # messages already submitted during the turn are delivered as
+        # the next respond() via the done-callback.
+        @kb.add("escape")
+        def _(event):
+            if self.is_thinking() and self._agent_task is not None:
+                self._agent_task.cancel()
+
         return kb
 
     # ── submission pipeline -------------------------------------------
 
     def _on_enter(self) -> None:
-        """Bare Enter submits the current buffer to the agent."""
+        """Bare Enter submits the current buffer.
+
+        When the agent is working, the submission is queued instead —
+        messages collect in ``state.messages``, slash commands in
+        ``state.commands``. Both are flushed when the agent finishes.
+        """
         text = self.input_buffer.text
         if not text.strip():
             self.input_buffer.reset()
             return
-        # De-dupe adjacent entries to match shell-history ergonomics.
         if not self._history or self._history[-1] != text:
             self._history.append(text)
         self._history_cursor = None
         self.input_buffer.reset()
+
+        if self.is_thinking():
+            # QueueState.submit handles the /-vs-message split and appends
+            # successive messages with newlines.
+            self.state.submit(text)
+            return
+
+        if text.startswith("/"):
+            self._commands_dispatched.append(text)
+            return
+        if text.startswith("!"):
+            self._last_bang_command = text[1:].strip()
+            return
+
         self._launch_agent(text)
 
     def _history_navigate(self, direction: int) -> None:
@@ -167,6 +239,32 @@ class TUIApplication:
         if not asyncio.iscoroutine(coro):
             return
         self._agent_task = asyncio.ensure_future(coro)
+        self._agent_task.add_done_callback(self._on_agent_done)
+
+    def _on_agent_done(self, task: asyncio.Task) -> None:
+        """Fired once the agent's respond() returns / errors / is cancelled.
+
+        Drains the type-ahead queue: any ``state.messages`` become the
+        next agent turn (joined with blank lines); ``state.commands``
+        move into ``_commands_dispatched``. If neither is present, we go
+        idle — the buffer is already accepting input from the user.
+        """
+        # Surface errors into output scrollback. Cancellation is not an
+        # error (Esc soft-cancel + Ctrl-C both cancel on purpose).
+        if not task.cancelled():
+            exc = task.exception()
+            if exc is not None:
+                self.append_output(f"Agent error: {exc}")
+
+        if self.state.commands:
+            for cmd in self.state.commands:
+                self._commands_dispatched.append(cmd)
+            self.state.commands.clear()
+
+        if self.state.messages:
+            joined = self.state.as_joined_messages()
+            self.state.messages.clear()
+            self._launch_agent(joined)
 
     # ── output pipeline -----------------------------------------------
 
@@ -205,6 +303,53 @@ class TUIApplication:
         """Current cursor position within the input buffer (0-indexed)."""
         return self.input_buffer.cursor_position
 
+    def is_thinking(self) -> bool:
+        """True while an agent task is live (respond() not yet returned)."""
+        return self._agent_task is not None and not self._agent_task.done()
+
+    def commands_dispatched(self) -> list[str]:
+        """Slash commands the user has submitted, in order."""
+        return list(self._commands_dispatched)
+
+    def last_bang_command(self) -> str | None:
+        """Most recent ``!shell-command`` the user submitted, or None."""
+        return self._last_bang_command
+
+    def completion_candidates(self) -> list[str]:
+        """Completion candidates currently offered for the input buffer text."""
+        from prompt_toolkit.completion import CompleteEvent
+
+        doc = self.input_buffer.document
+        return [
+            c.text if c.start_position == 0 else doc.text_before_cursor + c.text
+            for c in self._completer.get_completions(doc, CompleteEvent())
+        ]
+
     def status_text(self) -> str:
-        """One-line status area text. Empty until Tier-5 lands."""
-        return ""
+        """One-line status area text.
+
+        Shows ``<spinner> thinking...`` while the agent is working and a
+        bracketed session label when one is set. Example::
+
+            ⠋ thinking...    [session-abc]
+        """
+        parts: list[str] = []
+        if self.is_thinking():
+            parts.append(f"{self._spinner_frame} thinking...")
+        if self._session_label:
+            parts.append(f"[{self._session_label}]")
+        return "   ".join(parts)
+
+    def set_session_label(self, label: str) -> None:
+        """Set the bracketed label shown on the right of the status line."""
+        self._session_label = label
+
+    def handle_resize(self, cols: int, rows: int) -> None:
+        """Hint the app to re-layout for a new terminal size.
+
+        prompt_toolkit handles real resize events internally; this hook
+        exists for tests (and callers that want to force a redraw after
+        a non-SIGWINCH layout change).
+        """
+        if self._app.is_running:
+            self._app.invalidate()

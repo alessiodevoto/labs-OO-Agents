@@ -129,7 +129,6 @@ async def test_input_cursor_home_and_end():
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 
-@XFAIL
 async def test_commands_slash_dispatches_without_calling_agent():
     """``/help`` routes to the command registry, not ``agent.respond()``."""
     async with TUIHarness() as h:
@@ -139,7 +138,6 @@ async def test_commands_slash_dispatches_without_calling_agent():
         assert h.agent.messages_received == []
 
 
-@XFAIL
 async def test_commands_tab_completion_for_slash():
     async with TUIHarness() as h:
         await h.type_keys("/he")
@@ -151,7 +149,6 @@ async def test_commands_tab_completion_for_slash():
         )
 
 
-@XFAIL
 async def test_commands_bang_suspends_app_and_runs_shell():
     """``!echo hi`` uses ``run_in_terminal`` so stdout goes to the real tty."""
     async with TUIHarness() as h:
@@ -176,7 +173,6 @@ def _blocking_agent() -> FakeAgent:
     return agent
 
 
-@XFAIL
 async def test_queue_displays_above_prompt_while_agent_working():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -189,7 +185,6 @@ async def test_queue_displays_above_prompt_while_agent_working():
         await h.wait_for(lambda: h.capture_queued() == ["queued-msg"])
 
 
-@XFAIL
 async def test_queue_multiple_enters_collect_messages():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -204,7 +199,6 @@ async def test_queue_multiple_enters_collect_messages():
         await h.wait_for(lambda: h.capture_queued() == ["one\ntwo"])
 
 
-@XFAIL
 async def test_queue_slash_command_while_working_goes_to_commands_slot():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -215,7 +209,6 @@ async def test_queue_slash_command_while_working_goes_to_commands_slot():
         await h.wait_for(lambda: h.app.state.commands == ["/exit"])
 
 
-@XFAIL
 async def test_queue_up_arrow_pops_last_queued_item_when_buffer_empty():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -229,7 +222,6 @@ async def test_queue_up_arrow_pops_last_queued_item_when_buffer_empty():
         assert h.capture_queued() == []
 
 
-@XFAIL
 async def test_queue_delivered_as_next_turn_when_agent_finishes():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -242,7 +234,6 @@ async def test_queue_delivered_as_next_turn_when_agent_finishes():
         await h.wait_for(lambda: agent.messages_received == ["first", "queued"])
 
 
-@XFAIL
 async def test_queue_esc_soft_cancels_and_delivers_queue():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -259,7 +250,6 @@ async def test_queue_esc_soft_cancels_and_delivers_queue():
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 
-@XFAIL
 async def test_hard_ctrl_c_interrupts_and_preserves_buffer():
     """C-c while the agent is working cancels the agent but keeps the buffer."""
     agent = _blocking_agent()
@@ -273,7 +263,6 @@ async def test_hard_ctrl_c_interrupts_and_preserves_buffer():
         assert h.capture_input() == "in-progress"
 
 
-@XFAIL
 async def test_hard_agent_error_shown_in_output():
     agent = FakeAgent()
 
@@ -286,7 +275,6 @@ async def test_hard_agent_error_shown_in_output():
         await h.wait_output_contains("boom")
 
 
-@XFAIL
 async def test_hard_rich_ansi_preserved_in_output():
     agent = FakeAgent()
 
@@ -299,7 +287,6 @@ async def test_hard_rich_ansi_preserved_in_output():
         await h.wait_for(lambda: "\x1b[" in h.capture_output())
 
 
-@XFAIL
 async def test_hard_spinner_and_session_label_in_status():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -310,7 +297,6 @@ async def test_hard_spinner_and_session_label_in_status():
         )
 
 
-@XFAIL
 async def test_hard_terminal_resize_does_not_crash():
     async with TUIHarness() as h:
         h.app.handle_resize(cols=40, rows=20)
@@ -318,7 +304,6 @@ async def test_hard_terminal_resize_does_not_crash():
         await h.wait_input_equals("still works")
 
 
-@XFAIL
 async def test_hard_keystroke_during_agent_finish_not_lost():
     """THE BUG — Plan-C's reason for being.
 
