@@ -1750,13 +1750,13 @@ class TestStripRedundantImports:
 
     def test_strips_from_import_when_all_names_in_scope(self):
         code = "from typing import Literal\nx = Literal['a', 'b']"
-        result = strip_redundant_imports(code, {"Literal", "typing"})
+        result, _ = strip_redundant_imports(code, {"Literal", "typing"})
         assert "from typing" not in result
         assert "Literal['a', 'b']" in result
 
     def test_strips_plain_import_when_name_in_scope(self):
         code = "import asyncio\nawait asyncio.sleep(1)"
-        result = strip_redundant_imports(code, {"asyncio"})
+        result, _ = strip_redundant_imports(code, {"asyncio"})
         assert "import asyncio" not in result
         assert "asyncio.sleep" in result
 
@@ -1764,45 +1764,47 @@ class TestStripRedundantImports:
         """'from strategy import X' where strategy is a function, not a module."""
         code = "from strategy import PredictStrategy, strategy\nx = 1"
         available = {"strategy", "PredictStrategy", "x"}
-        result = strip_redundant_imports(code, available)
+        result, _ = strip_redundant_imports(code, available)
         assert "from strategy" not in result
         assert "x = 1" in result
 
     def test_keeps_import_when_some_names_not_in_scope(self):
         code = "from typing import Literal, TypeVar\nx = 1"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal, TypeVar" in result
 
     def test_keeps_import_when_no_names_in_scope(self):
         code = "import pandas\ndf = pandas.DataFrame()"
-        result = strip_redundant_imports(code, set())
+        result, _ = strip_redundant_imports(code, set())
         assert "import pandas" in result
 
     def test_does_not_strip_star_imports(self):
         code = "from typing import *\nx = 1"
-        result = strip_redundant_imports(code, {"Literal", "typing"})
+        result, _ = strip_redundant_imports(code, {"Literal", "typing"})
         assert "from typing import *" in result
 
     def test_handles_aliased_import(self):
         code = "import numpy as np\nx = np.array([1])"
-        result = strip_redundant_imports(code, {"np"})
+        result, _ = strip_redundant_imports(code, {"np"})
         assert "import numpy" not in result
 
     def test_passes_through_syntax_errors(self):
         code = "this is not valid python {{{"
-        result = strip_redundant_imports(code, {"x"})
+        result, _ = strip_redundant_imports(code, {"x"})
         assert result == code
 
     def test_strips_multiple_redundant_imports(self):
         code = "from typing import Literal\nfrom strategy import strategy\nx = 1"
-        result = strip_redundant_imports(code, {"Literal", "strategy", "typing"})
+        result, _ = strip_redundant_imports(code, {"Literal", "strategy", "typing"})
         assert "from typing" not in result
         assert "from strategy" not in result
         assert "x = 1" in result
 
     def test_preserves_non_import_code(self):
         code = "from typing import Literal\n\n@strategy(PredictStrategy())\nasync def classify(self, t: str) -> Literal['a']:\n    ...\n\nresults = []"
-        result = strip_redundant_imports(code, {"Literal", "typing", "strategy", "PredictStrategy"})
+        result, _ = strip_redundant_imports(
+            code, {"Literal", "typing", "strategy", "PredictStrategy"}
+        )
         assert "from typing" not in result
         assert "@strategy" in result
         assert "results = []" in result
@@ -1812,7 +1814,7 @@ class TestStripRedundantImports:
         # Comments in LLM-generated code are rare but present, and stripped
         # comments corrupt the error-message line numbers shown back to the LLM.
         code = "from typing import Literal\n# explain the logic\nx = 1  # inline note"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "# explain the logic" in result
         assert "# inline note" in result
 
@@ -1821,7 +1823,7 @@ class TestStripRedundantImports:
         # A stripped blank line shifts every subsequent line number, making
         # validation error messages reference wrong lines.
         code = "from typing import Literal\n\nx = 1"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         lines = result.splitlines()
         # Blank line between import and code must survive
         assert lines[0] == ""
@@ -1830,7 +1832,7 @@ class TestStripRedundantImports:
     def test_removes_all_lines_of_multiline_parenthesized_import(self):
         # A parenthesized import spans multiple lines; all of them must be removed.
         code = "from typing import (\n    Literal,\n    Optional,\n)\nx = 1"
-        result = strip_redundant_imports(code, {"Literal", "Optional"})
+        result, _ = strip_redundant_imports(code, {"Literal", "Optional"})
         assert "from typing" not in result
         assert "Literal" not in result
         assert "x = 1" in result
@@ -1838,7 +1840,7 @@ class TestStripRedundantImports:
     def test_removes_all_lines_of_backslash_continuation_import(self):
         # Backslash-continued imports also span multiple AST end_lineno lines.
         code = "from typing import \\\n    Literal\nx = 1"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing" not in result
         assert "Literal" not in result
         assert "x = 1" in result
@@ -1846,21 +1848,21 @@ class TestStripRedundantImports:
     def test_import_only_code_returns_empty(self):
         # Stripping the only statement should return empty string, not crash.
         code = "from typing import Literal\n"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert result.strip() == ""
 
     def test_semicolon_same_line_preserves_non_import_code(self):
         # `from X import Y; real_code` on one line: the import is stripped but
         # the non-import statement on the same line must be preserved.
         code = "from typing import Literal; x = 1"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "x = 1" in result
 
     def test_semicolon_multiple_statements_after_import(self):
         # Multiple non-import statements after a removed import on the same line.
         code = "from typing import Literal; x = 1; y = 2"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "x = 1" in result
         assert "y = 2" in result
@@ -1869,7 +1871,7 @@ class TestStripRedundantImports:
         # `import os; import pandas` where only os is in scope — pandas import
         # is kept, os import is removed, both on same line.
         code = "import os; import pandas"
-        result = strip_redundant_imports(code, {"os"})
+        result, _ = strip_redundant_imports(code, {"os"})
         assert "import os" not in result
         assert "import pandas" in result
 
@@ -1877,7 +1879,7 @@ class TestStripRedundantImports:
         # The non-import statement spans multiple lines but its opening is on
         # the same line as the removed import.
         code = "from typing import Literal; result = (\n    1 + 2\n)"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "result" in result
         assert "1 + 2" in result
@@ -1886,14 +1888,14 @@ class TestStripRedundantImports:
         # Imports inside function bodies are in a nested scope and must never
         # be stripped, even if the name is in exec_globals.
         code = "def foo():\n    from typing import Literal\n    return Literal['a']"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" in result
 
     def test_mid_file_import_is_stripped(self):
         # An import that appears mid-file (not at the top) is still redundant
         # if the name is already in scope and must be stripped.
         code = "x = 1\nfrom typing import Literal\ny = 2"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "x = 1" in result
         assert "y = 2" in result
@@ -1901,7 +1903,7 @@ class TestStripRedundantImports:
     def test_code_before_import_on_same_line(self):
         # Non-import statement appears BEFORE the import on the same line.
         code = "x = 1; from typing import Literal"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "x = 1" in result
 
@@ -1909,7 +1911,7 @@ class TestStripRedundantImports:
         # When kept code shares a line with a removed import, the inline
         # comment that follows the kept statement must be preserved.
         code = "from typing import Literal; x = 1  # important note"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert "from typing import Literal" not in result
         assert "x = 1" in result
         assert "# important note" in result
@@ -1919,7 +1921,7 @@ class TestStripRedundantImports:
         # import, its original multi-line formatting must be preserved —
         # not flattened to a single line by ast.unparse.
         code = "from typing import Literal; result = (\n    1 + 2\n)"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         assert result == "result = (\n    1 + 2\n)"
 
     def test_line_numbers_shift_by_exactly_one_removed_line(self):
@@ -1927,7 +1929,7 @@ class TestStripRedundantImports:
         # that was on line 2 moves to line 1 — shifted by exactly 1, not
         # collapsed to line 1 as ast.unparse would do with the whole file.
         code = "from typing import Literal\nx = 1\ny = 2"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         lines = result.splitlines()
         assert lines[0] == "x = 1"  # was line 2, now line 1
         assert lines[1] == "y = 2"  # was line 3, now line 2
@@ -1936,7 +1938,7 @@ class TestStripRedundantImports:
         # A 4-line parenthesized import is removed; subsequent code shifts
         # by exactly 4 lines, not more.
         code = "from typing import (\n    Literal,\n    Optional,\n)\nx = 1\ny = 2"
-        result = strip_redundant_imports(code, {"Literal", "Optional"})
+        result, _ = strip_redundant_imports(code, {"Literal", "Optional"})
         lines = result.splitlines()
         assert lines[0] == "x = 1"  # was line 5, now line 1
         assert lines[1] == "y = 2"  # was line 6, now line 2
@@ -1944,7 +1946,7 @@ class TestStripRedundantImports:
     def test_lines_before_mid_file_import_keep_original_numbers(self):
         # Lines before a stripped import are unaffected; lines after shift by 1.
         code = "a = 1\nb = 2\nfrom typing import Literal\nc = 3\nd = 4"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         lines = result.splitlines()
         assert lines[0] == "a = 1"  # was line 1, still line 1
         assert lines[1] == "b = 2"  # was line 2, still line 2
@@ -1955,7 +1957,7 @@ class TestStripRedundantImports:
         # Blank lines within the code body are preserved, maintaining
         # the relative line distance between statements.
         code = "from typing import Literal\n\na = 1\n\nb = 2"
-        result = strip_redundant_imports(code, {"Literal"})
+        result, _ = strip_redundant_imports(code, {"Literal"})
         lines = result.splitlines()
         assert lines[0] == ""  # blank line (was line 2, now line 1)
         assert lines[1] == "a = 1"  # was line 3, now line 2

@@ -4465,6 +4465,132 @@ class TraceExplorer:
         }
 
     # =========================================================================
+    # Harness Telemetry
+    # =========================================================================
+
+    def get_harness_telemetry(self, session_id: str | None = None) -> str:
+        """Show harness telemetry for a session or all sessions.
+
+        Extracts harness.* span attributes from generation spans and
+        formats them as a readable table.  The display is driven by
+        ``HarnessMetrics.span_attribute_schema()`` so it stays in sync
+        with the metrics model automatically.
+        """
+        data = self.get_harness_telemetry_data(session_id)
+        if not data or "error" in data:
+            return data.get("error", "No harness telemetry found.") if data else "No harness telemetry found."
+
+        lines: list[str] = []
+        title = data.get("title", "Harness Telemetry")
+        lines.append(title)
+        lines.append("\u2500" * len(title))
+        lines.append("")
+
+        metrics = data.get("metrics", {})
+        if not metrics:
+            lines.append("  (no harness interventions recorded)")
+            return "\n".join(lines)
+
+        # Use the schema to drive display (single source of truth)
+        try:
+            from nemo_oo_agents.runtime.harness_metrics import get_span_schema
+
+            schema = get_span_schema()
+        except ImportError:
+            # Fall back to raw key display if schema not available
+            for key, value in sorted(metrics.items()):
+                lines.append(f"  {key}: {value}")
+            return "\n".join(lines)
+
+        # Group schema entries by category
+        categories: dict[str, list[tuple[str, str, bool]]] = {}
+        for entry in schema:
+            cat = entry.category
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((entry.key, entry.label, entry.is_detail))
+
+        for cat_name, items in categories.items():
+            cat_has_data = False
+            cat_lines: list[str] = []
+            for key, label, is_detail in items:
+                value = metrics.get(key, 0 if not is_detail else [])
+                if is_detail:
+                    continue  # Show details inline with their count
+                if value:
+                    cat_has_data = True
+                    # Find matching detail key
+                    detail_str = ""
+                    for dk, _, did in items:
+                        if did and dk in metrics:
+                            details = metrics[dk]
+                            if isinstance(details, list) and details:
+                                detail_str = f"  [{', '.join(str(d) for d in details[:5])}]"
+                                if len(details) > 5:
+                                    detail_str = detail_str[:-1] + f", ... +{len(details) - 5} more]"
+                            break
+                    cat_lines.append(f"  {label + ':':<35} {value}{detail_str}")
+
+            if cat_has_data:
+                lines.append(f"  {cat_name}")
+                lines.extend(cat_lines)
+                lines.append("")
+
+        prefill = data.get("prefill_type", "")
+        if prefill:
+            lines.append(f"  Prefill: {prefill}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def get_harness_telemetry_data(self, session_id: str | None = None) -> dict[str, Any]:
+        """Structured harness telemetry data.
+
+        Extracts all harness.* attributes from generation spans.
+        Returns a dict with title, metrics (merged from all generation spans), and prefill_type.
+        """
+        # Determine which spans to search
+        if session_id:
+            session = self._find_session(session_id)
+            if not session:
+                return {"error": f"Session not found: {session_id}"}
+            title = f"Harness Telemetry for session {session_id}"
+            gen_spans = [
+                s
+                for s in self._raw_spans
+                if s.get("name") == "generation" and s.get("attributes", {}).get("agent.call_id") == session.call_id
+            ]
+        else:
+            title = "Harness Telemetry (all sessions)"
+            gen_spans = [s for s in self._raw_spans if s.get("name") == "generation"]
+
+        if not gen_spans:
+            return {"title": title, "metrics": {}, "prefill_type": ""}
+
+        # Merge harness.* attributes from all generation spans
+        merged: dict[str, Any] = {}
+        prefill_type = ""
+        for span in gen_spans:
+            attrs = span.get("attributes", {})
+            for key, value in attrs.items():
+                if not key.startswith("harness."):
+                    continue
+                if key == "harness.prefill_type":
+                    prefill_type = value
+                    continue
+
+                if key in merged:
+                    existing = merged[key]
+                    if isinstance(existing, int) and isinstance(value, int):
+                        merged[key] = existing + value
+                    elif isinstance(existing, list) and isinstance(value, list):
+                        merged[key] = existing + value
+                else:
+                    merged[key] = value
+
+        return {"title": title, "metrics": merged, "prefill_type": prefill_type}
+
+    # =========================================================================
     # Search
     # =========================================================================
 
@@ -6372,6 +6498,11 @@ Examples (experiment mode):
         metavar="N",
         help="Select Nth root generation (0-based) when multiple roots exist",
     )
+    parser.add_argument(
+        "--harness",
+        action="store_true",
+        help="Show harness telemetry (model-helping patterns tracked via OTLP spans)",
+    )
 
     args = parser.parse_args()
 
@@ -6501,6 +6632,12 @@ Examples (experiment mode):
             _print_json(trace.get_eval_context_data())
         else:
             print(trace.get_eval_context())
+    elif args.harness:
+        session_id = args.session if args.session else None
+        if args.json:
+            _print_json(trace.get_harness_telemetry_data(session_id))
+        else:
+            print(trace.get_harness_telemetry(session_id))
     elif args.search:
         if args.json:
             _print_json(trace.search_data(args.search))

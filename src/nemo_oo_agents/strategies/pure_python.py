@@ -37,6 +37,7 @@ from nemo_oo_agents.events import (
     Reasoning,
     Task,
 )
+from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.strategies.base import RuntimeServices
 from nemo_oo_agents.strategies.codeact_errors import format_validation_error
 from nemo_oo_agents.strategies.composite import CompositeStrategy
@@ -917,6 +918,11 @@ class PurePythonStrategy(CompositeStrategy):
 
         return builtins
 
+    # ── Post-response cleanup (PurePython) ─────────────────────
+    # Intercept point: strategy-specific response transforms.
+    # Handles nested wrapper stripping and reasoning call removal.
+    # Consider making extensible in the future.
+
     def _strip_wrappers(self, code: str) -> str:
         """Strip all wrapper formats from LLM output.
 
@@ -929,84 +935,62 @@ class PurePythonStrategy(CompositeStrategy):
         Raises:
             XMLFormatError: If problematic nested/multiple XML tags are detected.
         """
+        # Iteration cap rationale: each loop pass runs fence-strip then
+        # xml-strip, so ANY legitimate alternating nest (fence-in-XML,
+        # XML-in-fence, fence-in-XML-in-fence) resolves within 2 passes;
+        # the 3rd pass detects the fixed point. Going higher would only
+        # match malformed input where an LLM produced pathological nesting
+        # deeper than 3 levels — which we want to reject, not strip.
+        #
+        # Count successful strips (not loop iterations) for the metric: a
+        # single wrapper is 1 strip, NOT nesting. Nesting means >= 2 strips.
         result = code
-        max_iterations = 5  # Prevent infinite loops on malformed input
-
-        for _ in range(max_iterations):
+        strip_count = 0
+        for _ in range(3):
             previous = result
-
-            # Try stripping markdown fences
-            result = self._strip_code_fences(result)
-
-            # Try stripping XML wrapper
-            result = self._strip_xml_wrapper(result)
-
-            # If nothing changed, we're done
+            result = self._strip_xml_wrapper(self._strip_code_fences(result))
             if result == previous:
                 break
-
+            strip_count += 1
+        if strip_count > 1:
+            get_harness_metrics().nested_wrapper_iteration(strip_count)
         return result
 
     def _strip_code_fences(self, code: str) -> str:
         """Strip markdown code fences from LLM output.
 
-        Handles:
-        - ```python ... ```
-        - ``` ... ```
-        - Code with leading/trailing whitespace around fences
-
-        Returns the clean code inside the fences, or original code if no fences found.
+        Delegates to the shared ``strip_code_fences`` function.
         """
-        import re
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
 
-        stripped = code.strip()
-
-        # Match opening fence with optional language tag
-        # Supports: ```python, ```py, ```, etc.
-        fence_pattern = r"^```(?:\w*)\s*\n?(.*?)\n?```$"
-        match = re.match(fence_pattern, stripped, re.DOTALL)
-
-        if match:
-            return match.group(1).strip()
-
+        cleaned, fence_token = strip_code_fences(code)
+        if fence_token:
+            get_harness_metrics().fence_removal(fence_token)
+            return cleaned
         return code
 
     def _strip_xml_wrapper(self, code: str) -> str:
-        """Strip XML/HTML wrapper tags from LLM output.
+        """Strip XML/HTML wrapper tags from LLM output (strict mode).
 
-        Some LLMs output code wrapped in XML-like tags such as:
-        - <tool_code>...</tool_code>
-        - <code>...</code>
-        - <python>...</python>
-
-        This method:
-        1. Strips a single outermost XML wrapper tag if present
-        2. Raises XMLFormatError if nested or multiple XML tags are detected
-
-        Returns the clean code inside the wrapper, or original code if no wrapper found.
+        Delegates core matching to the shared ``strip_xml_wrapper`` function.
+        Adds strict error handling for code context: raises XMLFormatError on
+        malformed or nested XML (indicates LLM confusion about output format).
 
         Raises:
-            XMLFormatError: If output contains nested/multiple XML tags that can't be
-                           cleanly stripped (indicates LLM confusion about output format).
+            XMLFormatError: If output contains nested/multiple XML tags.
         """
         import re
 
-        stripped = code.strip()
+        from nemo_oo_agents.runtime.response_cleanup import strip_xml_wrapper
 
-        # Quick check: does it look like it starts with an XML tag?
+        stripped = code.strip()
         if not stripped.startswith("<"):
             return code
 
-        # Pattern to match a single XML wrapper: <tagname ...>content</tagname>
-        # Captures: tag name, any attributes, and inner content
-        # Uses non-greedy matching to get the outermost tag only
-        xml_wrapper_pattern = r"^<(\w+)(?:\s+[^>]*)?>(.+)</\1>$"
-        match = re.match(xml_wrapper_pattern, stripped, re.DOTALL)
+        inner_content, tag_name = strip_xml_wrapper(stripped)
 
-        if not match:
-            # Starts with < but doesn't match wrapper pattern
-            # Could be malformed XML or something else
-            # Check if it contains XML-like tags at all
+        if tag_name is None:
+            # Starts with < but doesn't match wrapper pattern — check for XML-like tags
             if re.search(r"<\w+[^>]*>", stripped):
                 raise XMLFormatError(
                     "You provided XML/HTML tags. This is wrong. You are only allowed to return Python. "
@@ -1014,20 +998,17 @@ class PurePythonStrategy(CompositeStrategy):
                 )
             return code
 
-        tag_name = match.group(1)
-        inner_content = match.group(2).strip()
+        # Check for nested XML wrapper tags in the extracted content.
+        # Recurse into strip_xml_wrapper: if the inner content is itself
+        # a complete XML wrapper, that's a nesting error.
+        _, nested_tag = strip_xml_wrapper(inner_content)
+        if nested_tag is not None:
+            raise XMLFormatError(
+                f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
+                "Return plain Python code only, without any XML or HTML markup."
+            )
 
-        # Check for nested XML wrapper tags in the extracted content
-        # Only flag if the ENTIRE inner content is wrapped in another XML tag
-        # (XML strings in Python code like 'return "<config>value</config>"' are fine)
-        if inner_content.strip().startswith("<") and inner_content.strip().endswith(">"):
-            nested_wrapper_pattern = r"^\s*<(\w+)(?:\s+[^>]*)?>.*</\1>\s*$"
-            if re.match(nested_wrapper_pattern, inner_content, re.DOTALL):
-                raise XMLFormatError(
-                    f"Output contains nested XML tags (<{tag_name}> wrapping another tag). "
-                    "Return plain Python code only, without any XML or HTML markup."
-                )
-
+        get_harness_metrics().xml_wrapper_stripped(tag_name)
         logger.debug(
             f"[PURE_PYTHON] Stripped XML wrapper tag <{tag_name}> from LLM output "
             f"(original={len(stripped)} chars, extracted={len(inner_content)} chars)"
@@ -1042,12 +1023,17 @@ class PurePythonStrategy(CompositeStrategy):
             return code
 
         new_body = []
+        stripped_count = 0
         for node in tree.body:
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                 func = node.value.func
                 if isinstance(func, ast.Name) and func.id == "reasoning":
+                    stripped_count += 1
                     continue
             new_body.append(node)
+
+        if stripped_count > 0:
+            get_harness_metrics().reasoning_call_stripped(stripped_count)
 
         tree.body = new_body
         return ast.unparse(tree)

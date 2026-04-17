@@ -234,28 +234,55 @@ class TestExecutionContext:
 
 
 class TestSanitizeCode:
-    """Tests for _sanitize_code."""
+    """Tests for code fence stripping (now in shared response_cleanup module)."""
 
     def test_sanitize_removes_python_fence(self):
-        """_sanitize_code should strip ```python ... ``` fences."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "```python\nresult = 42\n```"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
+        assert token == "```python"
 
     def test_sanitize_removes_plain_fence(self):
-        """_sanitize_code should strip plain ``` fences."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "```\nresult = 42\n```"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
 
     def test_sanitize_no_fence(self):
-        """_sanitize_code should leave clean code unchanged."""
-        strat = CodeActStrategy()
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
         code = "result = 42"
-        cleaned = strat._sanitize_code(code)
+        cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
+        assert token is None
+
+    def test_fenced_code_parseable_after_strip(self):
+        """Regression: fenced code with helper functions must be parseable
+        after stripping. Prior bug: helper extraction ran ast.parse() on
+        fenced code and failed silently, so helpers weren't pre-bound."""
+        import ast
+
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
+        fenced = "```python\nasync def helper(self, x):\n    return x * 2\n```"
+        cleaned, token = strip_code_fences(fenced)
+        assert token == "```python"
+        # Must be valid Python (HelperMethodManager.apply calls ast.parse)
+        tree = ast.parse(cleaned)
+        assert any(isinstance(n, ast.AsyncFunctionDef) for n in tree.body)
+
+    def test_fenced_code_with_opening_line_code_preserved(self):
+        """Regression: LLMs sometimes emit ```python CODE\n``` on one line.
+        That code must not be silently deleted."""
+        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+
+        code = "```python print('hello')\n```"
+        cleaned, token = strip_code_fences(code)
+        assert cleaned == "print('hello')"
+        assert token == "```python"
 
 
 # ---------------------------------------------------------------------------
