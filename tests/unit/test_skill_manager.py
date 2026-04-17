@@ -365,3 +365,74 @@ def test_discover_includes_python_skills(tmp_path):
     skills = SkillManager.discover(tmp_path)
     assert "tool_x" in skills
     assert isinstance(skills["tool_x"], Skill)
+
+
+def test_python_skill_attr_name_sanitises_hyphens(tmp_path):
+    """A file named my-skill.py attaches as agent.my_skill (valid identifier)."""
+    _write_py_skill(tmp_path, "my-skill.py", "MySkill")
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert hasattr(agent, "my_skill")
+
+
+def test_python_skill_same_stem_in_two_dirs_does_not_collide(tmp_path):
+    """Two ``my_skill.py`` files in different dirs don't overwrite each
+    other's sys.modules entry, and the first-wins semantics holds."""
+    import sys
+
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+    # dir_a defines the skill — this one should win (first scanned)
+    _write_py_skill(dir_a, "dup.py", "FromA")
+    # dir_b also defines a skill with the same file name
+    _write_py_skill(dir_b, "dup.py", "FromB")
+
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=[dir_a, dir_b])
+
+    # attr is attached from dir_a (first dir scanned)
+    assert type(agent.dup).__name__ == "FromA"
+    # And nothing claiming to be a skill module from our loader lingers
+    # in sys.modules (we pop after extracting the instance).
+    assert not any(k.startswith("_nemo_oo_skill_dup_") for k in sys.modules)
+
+
+def test_python_skill_locally_defined_wins_over_reexport(tmp_path):
+    """When a file both imports a Skill and defines its own, the local
+    class wins — matches what the user almost always means."""
+    # External file defining ExternalSkill — referenced via sys.path hack.
+    (tmp_path / "_ext.py").write_text(
+        """
+from nemo_oo_agents.skill import Skill
+
+
+class ExternalSkill(Skill):
+    '''external — imported, not local'''
+    def which(self) -> str:
+        return "external"
+"""
+    )
+
+    (tmp_path / "mixed.py").write_text(
+        f"""
+import importlib.util
+spec = importlib.util.spec_from_file_location('_ext_mod', {str(tmp_path / "_ext.py")!r})
+_m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(_m)
+ExternalSkill = _m.ExternalSkill     # re-exported
+
+from nemo_oo_agents.skill import Skill
+
+
+class LocalSkill(Skill):
+    '''local — defined here, should win'''
+    def which(self) -> str:
+        return "local"
+"""
+    )
+
+    agent = make_agent()
+    SkillManager.install(agent, skills_dir=tmp_path)
+    assert agent.mixed.which() == "local"

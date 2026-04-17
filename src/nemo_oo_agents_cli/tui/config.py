@@ -180,7 +180,15 @@ class Config:
 
         extra_skills = overrides.get("skills_dir")
         if extra_skills:
-            dirs = extra_skills if isinstance(extra_skills, list) else list(extra_skills)
+            # Accept a single str/Path OR a list/tuple of them. The bare
+            # fallback ``list(x)`` would iterate *characters* when given a
+            # lone string, producing nonsense paths.
+            if isinstance(extra_skills, (str, Path)):
+                dirs: list = [extra_skills]
+            elif isinstance(extra_skills, (list, tuple)):
+                dirs = list(extra_skills)
+            else:
+                dirs = list(extra_skills)  # last-resort: any other iterable
             for d in dirs:
                 p = Path(d)
                 if p not in explicit:

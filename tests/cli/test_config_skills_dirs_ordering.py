@@ -84,6 +84,22 @@ def test_explicit_precedes_entry_point(tmp_path, monkeypatch):
     assert dirs.index(explicit) < dirs.index(entry_point)
 
 
+def test_string_skills_dir_not_iterated_as_characters(tmp_path, monkeypatch):
+    """A single string passed as ``skills_dir=`` is treated as one path,
+    not iterated character-by-character (``list("/path")`` → ['/', 'p',
+    'a', …] bug from the pre-fix code)."""
+    explicit = _skill_dir(tmp_path, "single-string")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    # Pass a bare string (not a list) as skills_dir.
+    cfg = Config.load(skills_dir=str(explicit))
+
+    assert explicit in cfg.tui.skills_dirs
+    # No character-fragments should show up
+    assert not any(len(str(d)) == 1 for d in cfg.tui.skills_dirs)
+
+
 def test_same_dir_passed_twice_is_deduped(tmp_path, monkeypatch):
     """A dir passed via --skills-dir and also registered as an entry point
     appears only once (via --skills-dir) in the final list."""
