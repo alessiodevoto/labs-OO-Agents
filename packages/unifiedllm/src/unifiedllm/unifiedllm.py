@@ -40,10 +40,17 @@ _llm_metrics_callback: ContextVar[Callable[[str, Any], None] | None] = ContextVa
 
 
 def _record_llm_metric(event: str, detail: Any = None) -> None:
-    """Fire-and-forget metric recording. No-op if no callback is set."""
+    """Fire-and-forget metric recording. No-op if no callback is set.
+
+    Swallows any exception from the callback — instrumentation must never
+    break the LLM call flow.
+    """
     cb = _llm_metrics_callback.get()
     if cb is not None:
-        cb(event, detail)
+        try:
+            cb(event, detail)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Metric callback failed for event %r: %s", event, e)
 
 
 @contextmanager

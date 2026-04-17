@@ -9,11 +9,11 @@ import inspect
 import io
 import linecache
 import logging
-from contextlib import contextmanager
 import tokenize
 import types
 import warnings
 from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast, get_type_hints
 from uuid import uuid4
@@ -32,8 +32,8 @@ from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 if TYPE_CHECKING:
     from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
-    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
     from nemo_oo_agents.runtime.event_query import EventQuery
+    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
 from nemo_oo_agents.events import ExecutionResult, ExecutionSignal, LLMOutput
@@ -733,8 +733,8 @@ class ActorRuntime:
             # ── Pre-execution cleanup ────────────────────────────────────
             # Intercept point: all code cleanup transforms are bundled here.
             # Consider making this an extensible middleware point in the future.
-            from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
             from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+            from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
             hm = get_harness_metrics()
 
@@ -1986,8 +1986,16 @@ class ActorRuntime:
                     generation_id=generation_id,
                 )
 
-            # Flush harness metrics and restore
-            _hm_ctx.__exit__(None, None, None)
+            # Flush harness metrics and restore. Pass real exception info so
+            # the context manager can chain correctly if its teardown raises.
+            if exception_caught is not None:
+                _hm_ctx.__exit__(
+                    type(exception_caught),
+                    exception_caught,
+                    exception_caught.__traceback__,
+                )
+            else:
+                _hm_ctx.__exit__(None, None, None)
 
             # Restore previous context variable value
             # (handles nested generation sessions correctly)

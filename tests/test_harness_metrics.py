@@ -14,12 +14,12 @@ from nemo_oo_agents.runtime.harness_metrics import (
     _MAX_CODE_PREVIEW_CHARS,
     _MAX_LIST_ITEMS,
     _MAX_STRING_CHARS,
+    _SPAN_SCHEMA,
     ErrorRecord,
     HarnessMetrics,
     SchemaEntry,
     TimingStat,
     _NullMetrics,
-    _SPAN_SCHEMA,
     _truncate,
     get_harness_metrics,
     get_span_schema,
@@ -32,7 +32,7 @@ from nemo_oo_agents.runtime.harness_metrics import (
 @pytest.fixture(autouse=True)
 def _clean_harness_metrics():
     """Ensure harness metrics ContextVar is clean before and after each test."""
-    from nemo_oo_agents.runtime.harness_metrics import _harness_metrics_var, _NULL_METRICS
+    from nemo_oo_agents.runtime.harness_metrics import _NULL_METRICS, _harness_metrics_var
 
     token = _harness_metrics_var.set(_NULL_METRICS)
     yield
@@ -738,7 +738,7 @@ class TestLLMMetricsBridge:
             ("json_double_decoded", "json_double_decoded"),
             ("reasoning_as_structured_output", "reasoning_as_structured_output"),
         ]
-        for event_name, field_name in events_to_test:
+        for event_name, _ in events_to_test:
             bridge(event_name)
 
         data = hm.model_dump()
@@ -755,8 +755,8 @@ class TestLLMMetricsBridge:
 
     def test_end_to_end_callback_to_harness_metrics(self):
         """Full path: set callback via ContextVar, record metric, verify HarnessMetrics."""
-        from unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
         from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge
+        from unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
 
         hm = HarnessMetrics()
         bridge = _make_llm_metrics_bridge(hm)

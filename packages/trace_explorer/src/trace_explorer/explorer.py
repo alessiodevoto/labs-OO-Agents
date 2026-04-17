@@ -4521,7 +4521,7 @@ class TraceExplorer:
                     cat_has_data = True
                     # Find matching detail key
                     detail_str = ""
-                    for dk, dl, did in items:
+                    for dk, _, did in items:
                         if did and dk in metrics:
                             details = metrics[dk]
                             if isinstance(details, list) and details:

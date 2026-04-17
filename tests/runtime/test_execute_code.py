@@ -34,6 +34,7 @@ class TestExecuteCodeFenceStripping:
 
     @pytest.mark.asyncio
     async def test_bare_fenced_code_executes(self, test_agent):
+        """Bare fences (no language tag) are stripped by the safety net."""
         result = await test_agent.runtime.execute_code(
             '```\nprint("bare")\n```'
         )

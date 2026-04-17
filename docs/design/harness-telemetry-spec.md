@@ -316,17 +316,17 @@ def restore_harness_metrics(prev: HarnessMetrics | _NullMetrics) -> None:
 Integration point in `actor.py`:
 
 ```python
-# In _execute_with_generation and execute_nested:
-_hm, _prev_hm = start_harness_metrics() if should_trace else (None, None)
-# ... also set _llm_metrics_callback for unifiedllm bridge ...
-try:
+# In _execute_with_generation and execute_nested, via the
+# _harness_metrics_lifecycle context manager in actor.py which bundles
+# start + unifiedllm bridge setup + flush + restore + bridge teardown:
+with _harness_metrics_lifecycle(should_trace):
     result = await strategy.execute(self, call)
-finally:
-    if _hm is not None:
-        _hm.flush_to_span()
-        restore_harness_metrics(_prev_hm)
-    # ... restore _llm_metrics_callback ...
 ```
+
+The lifecycle helper only starts a fresh ``HarnessMetrics`` when
+``should_trace`` is True. Outside a session, ``get_harness_metrics()``
+still returns the ``_NullMetrics`` singleton (via the ContextVar
+default), so instrumentation call sites never need an ``if`` guard.
 
 ## Instrumentation Points
 

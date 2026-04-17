@@ -9,8 +9,8 @@ not on single-wrapper inputs (R3 bug fix).
 import pytest
 
 from nemo_oo_agents.runtime.harness_metrics import (
-    _harness_metrics_var,
     _NULL_METRICS,
+    _harness_metrics_var,
     start_harness_metrics,
 )
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
