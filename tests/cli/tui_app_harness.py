@@ -184,6 +184,11 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
         self._pipe.send_text(_key_sequence(key))
         await asyncio.sleep(0)
 
+    async def submit_async(self, text: str) -> None:
+        """Type ``text`` and press Enter. Doesn't wait for any side-effect."""
+        await self.type_keys(text)
+        await self.press("enter")
+
     # ── state-polling helpers -----------------------------------------
 
     async def wait_for(
