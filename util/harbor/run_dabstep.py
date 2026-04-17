@@ -1,12 +1,18 @@
 """
-Run DABStep tasks via eval_pipeline using the baseline agent.
+Run DABStep tasks via eval_pipeline.
 
 Harbor is the canonical way to run benchmark evaluations.  This script
 runs the same agent code against the same benchmark tasks without a container,
 making it faster to iterate on agent changes locally.
 
+Agents:
+  baseline  — CodeAct REPL, no benchmark-specific logic (default: openai/gpt-4o)
+  dabstep   — 3-phase pipeline (RulesLawyer → compute_answer → SolutionVerifier)
+              (default: nvidia_nim/deepseek-ai/deepseek-v3.2)
+  both      — run baseline then dabstep and print a comparison table
+
 Usage:
-    uv run python util/harbor/run_dabstep.py [--tasks 5] [--model MODEL]
+    uv run python util/harbor/run_dabstep.py [--tasks 10] [--agent both]
 
 See gl-27: Smoke test: run 5 DABStep tasks via Harbor
 """
@@ -151,12 +157,12 @@ class DABStepScorer:
 
 
 # ---------------------------------------------------------------------------
-# Build task instruction for the baseline agent
+# Build task instruction (Harbor instruction.md format)
 # ---------------------------------------------------------------------------
 
 
 def make_instruction(question: str, guidelines: str, data_dir: str) -> str:
-    """Create baseline-agent instruction mirroring the harbor instruction.md template."""
+    """Create task instruction mirroring the Harbor instruction.md template."""
     return f"""\
 You are an expert data analyst and you will answer factoid questions by referencing files in the data directory: `{data_dir}`
 Don't forget to reference any documentation in the data dir before answering a question.
@@ -172,12 +178,66 @@ When you have computed the final answer, use `return_result(answer)` where answe
 
 
 # ---------------------------------------------------------------------------
+# Per-run helper
+# ---------------------------------------------------------------------------
+
+
+def _extract_answer(output: object) -> str:
+    if isinstance(output, dict):
+        return str(output.get("response") or output.get("answer") or "")
+    return str(output or "")
+
+
+def _print_run(label: str, model: str, results: object) -> None:
+    print(f"\n{'=' * 60}")
+    print(f"{label}  ({model})")
+    print(f"{'=' * 60}")
+    for r in results.results:
+        actual = _extract_answer(r.output)
+        status = "PASS" if r.passed else "FAIL"
+        print(f"  [{status}] got={actual!r}  expected={r.expected!r}")
+    print(f"\n  Score: {results.passed}/{results.total} = {results.pass_rate:.0f}%")
+
+
+async def _run_agent(
+    agent_class: type,
+    model_id: str,
+    llm_client: object,
+    eval_data: list[dict],
+    n_tasks: int,
+    label: str,
+) -> object:
+    evaluator = Evaluator(
+        models={model_id: llm_client},
+        output_dir=str(REPO_ROOT / ".development/docs/evaluation"),
+        name=f"dabstep_{label}_gl27",
+    )
+    evaluator._model_metadata = {
+        model_id: {"id": model_id, "model_name": getattr(llm_client, "model", model_id)},
+    }
+    evaluator.add_test(
+        name=f"dabstep_{label}_{n_tasks}tasks",
+        agent_class=agent_class,
+        method="_run_evaluation",
+        data=eval_data,
+        scorers=[DABStepScorer()],
+    )
+    return await evaluator.run(models=[model_id])
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 
-async def main(n_tasks: int = 5, model_name: str = "openai/gpt-4o") -> None:
+async def main(
+    n_tasks: int = 10,
+    baseline_model: str = "openai/gpt-4o",
+    dabstep_model: str = "openai/gpt-4o",
+    agent_type: str = "both",
+) -> None:
     from nemo_oo_agents_benchmarks.agents.baseline import BaselineAgent
+    from nemo_oo_agents_benchmarks.agents.dabstep import DABStepAgent
 
     # Load DABStep dev tasks
     ds = load_dataset("adyen/DABstep", name="tasks", split="dev")
@@ -186,15 +246,16 @@ async def main(n_tasks: int = 5, model_name: str = "openai/gpt-4o") -> None:
     data_dir = str(Path(os.path.expanduser("~/.cache/dabstep/data/context")))
     if not Path(data_dir).exists():
         print(f"ERROR: DABStep data not found at {data_dir}")
-        print('Run: python -c "from huggingface_hub import hf_hub_download; ..."')
         sys.exit(1)
 
-    # Build eval data
+    # Build eval data — data_dir is passed explicitly so DABStepAgent can use it
+    # without needing to parse it from the instruction text.
     eval_data = [
         {
             "kwargs": {
                 "task_input": {
-                    "user_message": make_instruction(t["question"], t["guidelines"], data_dir)
+                    "user_message": make_instruction(t["question"], t["guidelines"], data_dir),
+                    "data_dir": data_dir,
                 }
             },
             "expected": t["answer"],
@@ -207,59 +268,69 @@ async def main(n_tasks: int = 5, model_name: str = "openai/gpt-4o") -> None:
         for t in tasks
     ]
 
-    llm_client = CompletionClient(model=model_name)
-
-    evaluator = Evaluator(
-        models={"baseline": llm_client},
-        output_dir=str(REPO_ROOT / ".development/docs/evaluation"),
-        name="dabstep_baseline_gl27",
-    )
-
-    # Provide model metadata for proper traceability in output
-    evaluator._model_metadata = {
-        "baseline": {"id": "baseline", "model_name": model_name},
-    }
-
-    evaluator.add_test(
-        name=f"dabstep_baseline_{n_tasks}tasks",
-        agent_class=BaselineAgent,
-        method="_run_evaluation",
-        data=eval_data,
-        scorers=[DABStepScorer()],
-    )
-
-    print(f"\nRunning {n_tasks} DABStep tasks with {model_name} (baseline agent)...")
+    print(f"\nDABStep smoke test — {n_tasks} tasks from dev split")
     print(f"Data dir: {data_dir}\n")
 
-    results = await evaluator.run(models=["baseline"])
+    results_baseline = None
+    results_dabstep = None
 
+    if agent_type in ("baseline", "both"):
+        print(f"[1/2] BaselineAgent  model={baseline_model}")
+        baseline_client = CompletionClient(model=baseline_model)
+        results_baseline = await _run_agent(
+            BaselineAgent, "baseline", baseline_client, eval_data, n_tasks, "baseline"
+        )
+        _print_run("BaselineAgent", baseline_model, results_baseline)
+
+    if agent_type in ("dabstep", "both"):
+        print(f"\n[2/2] DABStepAgent   model={dabstep_model}")
+        dabstep_client = CompletionClient(model=dabstep_model)
+        results_dabstep = await _run_agent(
+            DABStepAgent, "dabstep", dabstep_client, eval_data, n_tasks, "dabstep"
+        )
+        _print_run("DABStepAgent", dabstep_model, results_dabstep)
+
+    # Comparison table
     print(f"\n{'=' * 60}")
-    print(f"RESULTS: {results.summary()}")
-    print(f"Output: {results.output_file}")
-    print(f"{'=' * 60}\n")
-
-    # Per-task breakdown
-    for r in results.results:
-        actual = r.output
-        if isinstance(actual, dict):
-            actual = actual.get("response", "")
-        expected = r.expected
-        status = "PASS" if r.passed else "FAIL"
-        print(f"  [{status}] (got={actual!r} expected={expected!r})")
-
-    # Summary
-    print(f"\nTotal: {results.passed}/{results.total} = {results.pass_rate:.1f}%")
-    print("\nPrevious agent006 DABStepAgent (Claude): 70-80% on full 10-task dev set")
-    print("Note: BaselineAgent expected lower; this run uses", model_name)
+    print("COMPARISON")
+    print(f"{'=' * 60}")
+    print(f"{'Agent':<20} {'Model':<40} {'Score'}")
+    print(f"{'-' * 20} {'-' * 40} {'-' * 10}")
+    if results_baseline:
+        pct = f"{results_baseline.passed}/{results_baseline.total} = {results_baseline.pass_rate:.0f}%"
+        print(f"{'BaselineAgent':<20} {baseline_model:<40} {pct}")
+    if results_dabstep:
+        pct = f"{results_dabstep.passed}/{results_dabstep.total} = {results_dabstep.pass_rate:.0f}%"
+        print(f"{'DABStepAgent':<20} {dabstep_model:<40} {pct}")
+    print(f"{'agent006 DABStepAgent':<20} {'Claude 3.5/4 (historical)':<40} 70–80%")
+    print()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DABStep smoke test via eval_pipeline")
-    parser.add_argument("--tasks", type=int, default=5, help="Number of tasks to run (default: 5)")
+    parser.add_argument("--tasks", type=int, default=10, help="Number of tasks (default: 10)")
     parser.add_argument(
         "--model",
         default="openai/gpt-4o",
-        help="Model name (default: openai/gpt-4o)",
+        help="Model for BaselineAgent (default: openai/gpt-4o)",
+    )
+    parser.add_argument(
+        "--dabstep-model",
+        default="openai/gpt-4o",
+        help="Model for DABStepAgent (default: openai/gpt-4o)",
+    )
+    parser.add_argument(
+        "--agent",
+        default="both",
+        choices=["baseline", "dabstep", "both"],
+        help="Which agent(s) to run (default: both)",
     )
     args = parser.parse_args()
-    asyncio.run(main(n_tasks=args.tasks, model_name=args.model))
+    asyncio.run(
+        main(
+            n_tasks=args.tasks,
+            baseline_model=args.model,
+            dabstep_model=args.dabstep_model,
+            agent_type=args.agent,
+        )
+    )
