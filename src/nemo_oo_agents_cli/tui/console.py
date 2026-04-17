@@ -22,23 +22,32 @@ class TUIConsole:
     def __init__(self) -> None:
         self.console = Console(theme=CATPPUCCIN_THEME)
         self._live_spinner: Live | None = None
+        self._spinner: Spinner | None = None
 
     def start_spinner(self, message: str = "thinking...") -> None:
-        """Start the thinking spinner.
+        """Start the thinking spinner with an empty input prompt.
 
-        Can be stopped with stop_spinner() or by the streaming display
-        when first output arrives.
+        The Live display renders as a Group:
+          <spinner>
+          ❯ █
         """
         if self._live_spinner is not None:
-            return  # Already running
+            return
 
-        spinner = Spinner(
+        from rich.console import Group
+
+        self._spinner = Spinner(
             "dots",
             text=Text(message, style=f"{COLORS['subtext1']}"),
             style=COLORS["mauve"],
         )
+        prompt = Text("\u276f ", style=COLORS["subtext0"])
+        prompt.append(" ", style=f"reverse {COLORS['subtext0']}")
         self._live_spinner = Live(
-            spinner, console=self.console, refresh_per_second=10, transient=True
+            Group(self._spinner, prompt),
+            console=self.console,
+            refresh_per_second=10,
+            transient=True,
         )
         self._live_spinner.start()
 
@@ -47,6 +56,7 @@ class TUIConsole:
         if self._live_spinner is not None:
             self._live_spinner.stop()
             self._live_spinner = None
+            self._spinner = None
 
     def print_agent(self, message: str, *, show_rule: bool = True) -> None:
         """Print an agent response, optionally with the OO ── rule header."""

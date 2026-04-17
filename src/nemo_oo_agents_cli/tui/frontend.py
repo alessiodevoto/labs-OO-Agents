@@ -30,6 +30,7 @@ from .output import (
     Thinking,
     UserMessage,
 )
+from .queue_state import QueueState
 from .theme import COLORS
 
 if TYPE_CHECKING:
@@ -57,13 +58,21 @@ class Frontend(Protocol):
         """Render one structured output object."""
         ...
 
-    async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:
+    async def get_input(
+        self,
+        prompt: str,
+        completions: list[str] | None = None,
+        default: str = "",
+        bottom_toolbar: object = None,
+    ) -> str:
         """Read one line of user input.
 
         Args:
             prompt: The text to display before the cursor.
             completions: Optional list of completion candidates (e.g. model names).
                          When provided the frontend may offer autocomplete.
+            default: Pre-fill the input buffer with this text.
+            bottom_toolbar: Optional callable for a status bar (e.g. spinner).
         """
         ...
 
@@ -90,6 +99,26 @@ class Frontend(Protocol):
         """Clean up frontend resources."""
         ...
 
+    async def typeahead_loop(self, state: QueueState) -> None:
+        """Run a stay-open prompt with a dynamic prefix driven by ``state``.
+
+        Returns when ``exit_typeahead()`` is called. Raises ``KeyboardInterrupt``
+        on Ctrl+C and ``EOFError`` on Ctrl+D.
+        """
+        ...
+
+    def exit_typeahead(self) -> None:
+        """Signal the active typeahead loop to exit (agent finished)."""
+        ...
+
+    def invalidate_typeahead(self) -> None:
+        """Force a redraw of the typeahead prompt (used by spinner tick)."""
+        ...
+
+    async def emit_user_message_above_prompt(self, content: str) -> None:
+        """Commit a queued user message to scrollback above the active prompt."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # TerminalFrontend
@@ -108,6 +137,7 @@ class TerminalFrontend:
         self._config = config
         self._console = TUIConsole()
         self._input_handler = None  # initialised after registry is ready
+        self.patch_stdout_active = False  # set by session during _agent_turn
 
     # ------------------------------------------------------------------
     # Input handler initialisation (needs the command registry)
@@ -144,7 +174,12 @@ class TerminalFrontend:
         elif isinstance(output, HelpOutput):
             self._console.print_help(output.commands)
         elif isinstance(output, AgentMessage):
-            self._console.print_agent(output.content, show_rule=output.show_rule)
+            if self.patch_stdout_active:
+                await self._print_agent_via_run_in_terminal(
+                    output.content, show_rule=output.show_rule
+                )
+            else:
+                self._console.print_agent(output.content, show_rule=output.show_rule)
         elif isinstance(output, CodeExecution):
             self._render_code_execution(output)
         elif isinstance(output, StartupInfo):
@@ -169,7 +204,13 @@ class TerminalFrontend:
         elif isinstance(output, UserMessage):
             self._render_user_message(output)
 
-    async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:
+    async def get_input(
+        self,
+        prompt: str,
+        completions: list[str] | None = None,
+        default: str = "",
+        bottom_toolbar: object = None,
+    ) -> str:
         """Read user input from the terminal.
 
         When *completions* are provided, a temporary PromptSession with
@@ -187,8 +228,10 @@ class TerminalFrontend:
             return (await session.prompt_async(prompt)).strip()
 
         if self._input_handler:
-            result = await self._input_handler.get_input(prompt)
-            if result.strip():
+            result = await self._input_handler.get_input(
+                prompt, default=default, bottom_toolbar=bottom_toolbar
+            )
+            if result.strip() and not self.patch_stdout_active:
                 self._overwrite_input(prompt, result)
             return result
 
@@ -203,6 +246,22 @@ class TerminalFrontend:
 
     async def stop_thinking(self) -> None:
         self._console.stop_spinner()
+
+    async def typeahead_loop(self, state: QueueState) -> None:
+        """Run the stay-open typeahead prompt until exit_typeahead() is called."""
+        if self._input_handler is None:
+            # No interactive handler (tests without init_input, or headless) —
+            # nothing to do; just return so the caller can await the agent.
+            return
+        await self._input_handler.typeahead_loop(state)
+
+    def exit_typeahead(self) -> None:
+        if self._input_handler is not None:
+            self._input_handler.exit_typeahead()
+
+    def invalidate_typeahead(self) -> None:
+        if self._input_handler is not None:
+            self._input_handler.invalidate()
 
     # ------------------------------------------------------------------
     # Internal rendering helpers
@@ -313,23 +372,121 @@ class TerminalFrontend:
             except Exception:
                 pass
 
+    async def _emit_ansi_above_prompt(self, rendered: str) -> None:
+        """Write a pre-rendered ANSI string above the running typeahead prompt.
+
+        Uses prompt_toolkit's ``run_in_terminal`` when a prompt is active
+        (pauses the prompt, writes to the real stdout, resumes). Falls back
+        to a direct write when no prompt is running.
+        """
+        import sys as _sys
+
+        from prompt_toolkit.application import get_app_or_none, run_in_terminal
+
+        if not rendered:
+            return
+
+        def _emit() -> None:
+            stream = _sys.__stdout__ or _sys.stdout
+            stream.write(rendered)
+            stream.flush()
+
+        app = get_app_or_none()
+        if app is None:
+            _emit()
+        else:
+            await run_in_terminal(_emit)
+
+    async def _print_agent_via_run_in_terminal(self, content: str, *, show_rule: bool) -> None:
+        """Render an AgentMessage above the running typeahead prompt.
+
+        Pre-renders Markdown to an ANSI string via a throwaway Rich Console,
+        then writes it to the real stdout inside ``run_in_terminal``.
+        """
+        import io
+        import textwrap
+
+        from rich.console import Console as _Console
+        from rich.markdown import Markdown as _Markdown
+        from rich.rule import Rule as _Rule
+
+        cleaned = content.replace("\u00a0", " ")
+        cleaned = textwrap.dedent(cleaned).strip()
+
+        width = self._console.console.size.width or 100
+        buf = io.StringIO()
+        c = _Console(
+            file=buf,
+            force_terminal=True,
+            color_system="truecolor",
+            width=width,
+        )
+        if show_rule:
+            c.print(_Rule(title="[bold]OO[/bold]", style=COLORS["surface2"], align="left"))
+        c.print(_Markdown(cleaned))
+        await self._emit_ansi_above_prompt(buf.getvalue())
+
+    async def emit_user_message_above_prompt(self, content: str) -> None:
+        """Render a queued user message as a scrollback bar above the prompt.
+
+        Used by the session right before queued type-ahead messages are
+        delivered to the agent. Without this the user sees no record of
+        what they sent — the dynamic │ lines get erased on prompt exit and
+        were never committed to scrollback.
+
+        Styled to match ``_overwrite_input`` (rosewater text on surface0)
+        so a queued message looks identical to a first/between-turn
+        message once it lands in scrollback.
+        """
+        import io
+
+        from rich.console import Console as _Console
+        from rich.padding import Padding as _Padding
+        from rich.text import Text as _Text
+
+        width = self._console.console.size.width or 100
+        for line in content.split("\n"):
+            styled = _Text(line, style=f"{COLORS['rosewater']} on {COLORS['surface0']}")
+            padded = _Padding(styled, (0, 1), style=f"on {COLORS['surface0']}", expand=True)
+            buf = io.StringIO()
+            _Console(file=buf, force_terminal=True, color_system="truecolor", width=width).print(
+                padded
+            )
+            await self._emit_ansi_above_prompt(buf.getvalue())
+
     def _render_activity_line(self, output: ActivityLine) -> None:
-        """Render a live activity preview line (reasoning or code)."""
+        """Render a live activity preview line (reasoning or code).
+
+        Same styling in both paths (patch_stdout active or not): reasoning is
+        dim italic overlay, code is dim subtext with the first-line comment
+        highlighted in normal text colour. Under patch_stdout we render Rich
+        to a string and print it so prompt_toolkit routes it above the prompt.
+        """
         from rich.text import Text
 
-        c = self._console.console
         if output.kind == "reasoning":
-            c.print(Text(output.content, style=f"dim italic {COLORS['overlay1']}"))
+            styled = Text(output.content, style=f"dim italic {COLORS['overlay1']}")
         else:
-            # code preview: bullet + first line(s)
-            text = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
-            # If the first line is a comment, highlight it so intent stands out.
-            # Use "not dim" to override the parent dim so the colour renders white.
+            styled = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
             first_line = output.content.split("\n", 1)[0]
             if first_line.lstrip().startswith("#"):
-                # +2 for "● " prefix
-                text.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
-            c.print(text)
+                styled.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
+
+        if self.patch_stdout_active:
+            import io
+
+            from rich.console import Console as _Console
+
+            width = self._console.console.size.width or 100
+            buf = io.StringIO()
+            _Console(file=buf, force_terminal=True, color_system="truecolor", width=width).print(
+                styled
+            )
+            rendered = buf.getvalue()
+            if rendered:
+                print(rendered, end="", flush=True)
+        else:
+            self._console.console.print(styled)
 
     def _render_user_message(self, output: UserMessage) -> None:
         """Render the user's submitted text with a high-contrast background bar."""

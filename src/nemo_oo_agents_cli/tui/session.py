@@ -240,6 +240,8 @@ class Session:
         self._handler = CommandHandler(registry=registry, frontend=frontend)
         self._session_manager = session_manager
         self._first_message: str | None = None  # first user turn (for auto-naming)
+        self._pending_input: str = ""  # pre-fill next prompt (from interrupted queue)
+        self._pending_commands: list[str] = []  # slash commands queued during agent work
 
         # Streaming state (moved from _AgentStreamMixin)
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -502,7 +504,13 @@ class Session:
                 self._print_input_rule()
                 prompt = _build_prompt(self.config)
                 try:
-                    user_input = await self.frontend.get_input(prompt)
+                    # Process any queued slash commands first
+                    if self._pending_commands:
+                        user_input = self._pending_commands.pop(0)
+                    else:
+                        pending = self._pending_input
+                        self._pending_input = ""
+                        user_input = await self.frontend.get_input(prompt, default=pending)
                 except EOFError:
                     await self.frontend.render(
                         TextOutput("Interrupted by the user. Exiting TUI...", "warning")
@@ -686,147 +694,197 @@ class Session:
     # ------------------------------------------------------------------
 
     async def _agent_turn(self, user_input: str) -> None:
-        import os
-        import select
-        import sys
-        import threading
+        """Run the agent while accepting type-ahead input via a dynamic prompt prefix.
 
-        from prompt_toolkit.input.vt100_parser import Vt100Parser
-        from prompt_toolkit.keys import Keys
+        Architecture:
+        - ``patch_stdout()`` captures agent output so it prints above the prompt.
+        - A single ``frontend.typeahead_loop(state)`` call stays open across
+          multiple Enters (Enter keybinding mutates ``state`` in place — it never
+          exits the prompt). Queued lines and the spinner live in the dynamic
+          prompt prefix, never in terminal scrollback.
+        - When the agent finishes we call ``frontend.exit_typeahead()`` which
+          triggers ``app.exit()`` and the prompt returns cleanly.
+        - A spinner animation task ticks the frame and invalidates the prompt.
+        """
+        from prompt_toolkit.patch_stdout import patch_stdout
 
         from .agent import RespondResult
         from .output import TextOutput
+        from .queue_state import QueueState
 
         self._clear_streaming_state()
 
-        # --- Interrupt detection (set up once for the full turn) ---
-        _interrupted = threading.Event()
-        _ctrl_c_count = 0
-        _force_exit = False
+        state = QueueState()
 
-        def _on_key(key_press) -> None:
-            """Called by Vt100Parser for each decoded key."""
-            nonlocal _ctrl_c_count, _force_exit
-            key = key_press.key
-            if key == Keys.ControlC:
-                _ctrl_c_count += 1
-                _interrupted.set()
-                if _ctrl_c_count >= 2:
-                    _force_exit = True
-                    sys.stderr.write("\r\x1b[2mExiting…\x1b[0m\n")
-                    sys.stderr.flush()
-                else:
-                    sys.stderr.write(
-                        "\r\x1b[2mInterrupting agent… (press Ctrl+C again to exit)\x1b[0m\n"
-                    )
-                    sys.stderr.flush()
-            elif key == Keys.Escape:
-                _interrupted.set()
-                sys.stderr.write("\r\x1b[2mInterrupting agent…\x1b[0m\n")
-                sys.stderr.flush()
+        _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-        parser = Vt100Parser(_on_key)
+        async def _spin() -> None:
+            i = 0
+            while True:
+                state.spinner_frame = _FRAMES[i % len(_FRAMES)]
+                self.frontend.invalidate_typeahead()
+                i += 1
+                await asyncio.sleep(0.08)
 
-        fd = sys.stdin.fileno() if sys.stdin.isatty() else -1
-        _stop_reader = threading.Event()
-        _raw_ctx = None
-
-        if fd >= 0:
-            try:
-                from prompt_toolkit.input.vt100 import raw_mode
-
-                _raw_ctx = raw_mode(fd)
-                _raw_ctx.__enter__()
-
-                def _stdin_reader_thread() -> None:
-                    while not _stop_reader.is_set():
-                        try:
-                            rlist, _, _ = select.select([fd], [], [], 0.1)
-                            if not rlist:
-                                continue
-                            data = os.read(fd, 1024)
-                        except OSError:
-                            if _stop_reader.is_set():
-                                break
-                            continue
-                        if not data:
-                            break
-                        # Treat a bare ESC byte as an immediate interrupt rather
-                        # than feeding it to the parser, which buffers it waiting
-                        # for a possible escape sequence (requiring two presses).
-                        if data == b"\x1b":
-                            _interrupted.set()
-                            sys.stderr.write("\r\x1b[2mInterrupting agent…\x1b[0m\n")
-                            sys.stderr.flush()
-                            continue
-                        parser.feed(data.decode("utf-8", errors="ignore"))
-
-                threading.Thread(target=_stdin_reader_thread, daemon=True).start()
-            except Exception:
-                if _raw_ctx is not None:
-                    try:
-                        _raw_ctx.__exit__(None, None, None)
-                    except Exception:
-                        pass
-                    _raw_ctx = None
-
-        # --- Turn loop: repeat until agent returns STOP_WORK ---
-        current_input = user_input
-        try:
-            await self.frontend.start_thinking()
-            while not _interrupted.is_set():
-                self._agent_has_messaged = False  # first message() of each respond() gets the rule
-
-                task = asyncio.create_task(self.agent.respond(current_input))  # type: ignore[union-attr]
-
-                async def _poll_interrupt(t: asyncio.Task = task) -> None:
-                    while not t.done():
-                        if _interrupted.is_set():
-                            return
-                        if not self.frontend.is_connected:
-                            _interrupted.set()
-                            return
-                        await asyncio.sleep(0.1)
-
-                poll_task = asyncio.create_task(_poll_interrupt())
+        def _update_context_block() -> None:
+            n = len(state.messages)
+            if n > 0:
+                self.agent.context_manager["queued_messages"] = (
+                    f"The user has queued {n} message(s). "
+                    f"Call return_result(RespondResult.WAIT_FOR_USER_INPUT) "
+                    f"to end your turn and receive them."
+                )
+            else:
                 try:
-                    await asyncio.wait({task, poll_task}, return_when=asyncio.FIRST_COMPLETED)
-                finally:
-                    poll_task.cancel()
-                    try:
-                        await poll_task
-                    except asyncio.CancelledError:
-                        pass
+                    del self.agent.context_manager["queued_messages"]
+                except (KeyError, AttributeError):
+                    pass
 
-                if _interrupted.is_set():
-                    task.cancel()
+        current_input = user_input
+
+        if hasattr(self.frontend, "patch_stdout_active"):
+            self.frontend.patch_stdout_active = True  # type: ignore[attr-defined]
+
+        try:
+            # raw=True preserves ANSI escape sequences from Rich output so
+            # coloured activity lines and rendered Markdown display correctly
+            # above the prompt instead of showing as ?[...] control chars.
+            with patch_stdout(raw=True):
+                while True:
+                    self._agent_has_messaged = False
+                    await self.frontend.stop_thinking()  # stop any Rich Live spinner
+
+                    state.thinking = True
+                    _update_context_block()
+
+                    agent_task = asyncio.create_task(
+                        self.agent.respond(current_input)  # type: ignore[union-attr]
+                    )
+                    spinner_task = asyncio.create_task(_spin())
+                    prompt_task = asyncio.create_task(self.frontend.typeahead_loop(state))
+
+                    # Watcher task: when the agent finishes, exit the prompt.
+                    # Using a dedicated task instead of add_done_callback keeps
+                    # ordering deterministic: prompt_task only completes after
+                    # agent_task is done (or after a user interrupt).
+                    async def _watcher(_agent: "asyncio.Task" = agent_task) -> None:
+                        try:
+                            await _agent
+                        except BaseException:
+                            pass
+                        finally:
+                            self.frontend.exit_typeahead()
+
+                    watcher_task = asyncio.create_task(_watcher())
+
+                    interrupted = False
+                    unexpected_exc: BaseException | None = None
                     try:
-                        await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-                    except Exception:  # Suppress all errors during graceful cancellation
-                        pass
-                    if not _force_exit:
+                        try:
+                            await prompt_task
+                        except (KeyboardInterrupt, EOFError):
+                            interrupted = True
+                            if not agent_task.done():
+                                agent_task.cancel()
+                        except BaseException as exc:
+                            # Any other exception from prompt_task must not
+                            # leave agent_task / watcher_task / spinner_task
+                            # orphaned. Remember it so we can surface it after
+                            # cleanup.
+                            unexpected_exc = exc
+                            if not agent_task.done():
+                                agent_task.cancel()
+                    finally:
+                        # Esc (soft cancel): stop the agent, then the logic
+                        # below delivers any queued messages as the next
+                        # respond(), or returns to the between-turn prompt
+                        # if nothing is queued.
+                        esc_cancel = state.cancel_requested
+                        state.cancel_requested = False
+                        if (
+                            esc_cancel
+                            and not interrupted
+                            and unexpected_exc is None
+                            and not agent_task.done()
+                        ):
+                            agent_task.cancel()
+
+                        # Drain watcher + spinner. Watcher awaits agent_task
+                        # (which is done or cancelled). Spinner just ticks.
+                        # Swallow errors — we handled the causal exception
+                        # above.
+                        spinner_task.cancel()
+                        for t in (watcher_task, spinner_task):
+                            try:
+                                await t
+                            except BaseException:
+                                pass
+
+                        state.thinking = False
+
+                    if unexpected_exc is not None:
+                        raise unexpected_exc
+
+                    if interrupted:
+                        pending = state.as_pending_text()
+                        if pending:
+                            self._pending_input = pending
                         await self.frontend.render(TextOutput("Agent interrupted.", "warning"))
-                    break
+                        return
 
-                if task.done():
-                    exc = task.exception()
+                    if esc_cancel:
+                        # Agent cancelled by Esc. Treat queued commands and
+                        # messages the same as a normal WAIT_FOR_USER_INPUT.
+                        for cmd in state.commands:
+                            self._pending_commands.append(cmd)
+                        state.commands.clear()
+                        if state.messages:
+                            joined = state.as_joined_messages()
+                            if hasattr(self.frontend, "emit_user_message_above_prompt"):
+                                await self.frontend.emit_user_message_above_prompt(joined)
+                            current_input = joined
+                            state.clear()
+                            continue
+                        # No queue — end the turn so the user lands at the
+                        # between-turn prompt.
+                        break
+
+                    # At this point the agent task has completed (normally or with error)
+                    if agent_task.cancelled():
+                        break
+
+                    exc = agent_task.exception()
                     if exc is not None:
                         await self.frontend.render(TextOutput(f"Agent error: {exc}", "error"))
                         break
-                    result = task.result()
+
+                    result = agent_task.result()
                     if result is not RespondResult.CONTINUE_WORKING:
+                        # Transfer queued slash commands to the session pending list
+                        for cmd in state.commands:
+                            self._pending_commands.append(cmd)
+                        state.commands.clear()
+                        # Deliver queued messages as next respond()
+                        if state.messages:
+                            joined = state.as_joined_messages()
+                            # Commit the queued message to scrollback so the
+                            # user has a visible record of what was sent.
+                            if hasattr(self.frontend, "emit_user_message_above_prompt"):
+                                await self.frontend.emit_user_message_above_prompt(joined)
+                            current_input = joined
+                            state.clear()
+                            continue
                         break
                     current_input = ""
                     continue
-                break
         finally:
+            state.thinking = False
+            if hasattr(self.frontend, "patch_stdout_active"):
+                self.frontend.patch_stdout_active = False  # type: ignore[attr-defined]
             await self.frontend.stop_thinking()
-            _stop_reader.set()
-            if _raw_ctx is not None:
-                try:
-                    _raw_ctx.__exit__(None, None, None)
-                except Exception:
-                    pass
-
-        if _force_exit:
-            raise KeyboardInterrupt
+            try:
+                del self.agent.context_manager["queued_messages"]
+            except (KeyError, AttributeError):
+                pass
+            if not state.is_empty:
+                self._pending_input = state.as_pending_text()

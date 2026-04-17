@@ -23,6 +23,7 @@ with hidden:
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
+import json  # noqa: F401
 import os
 
 # Optional third-party libraries — visible in REPL (use np, pd, px, go directly)

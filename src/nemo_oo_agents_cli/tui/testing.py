@@ -46,7 +46,13 @@ class TestFrontend:
     async def render(self, output: "Output") -> None:
         self.outputs.append(output)
 
-    async def get_input(self, prompt: str, completions: list[str] | None = None) -> str:
+    async def get_input(
+        self,
+        prompt: str,
+        completions: list[str] | None = None,
+        default: str = "",
+        bottom_toolbar=None,
+    ) -> str:
         if not self._inputs:
             raise EOFError
         return self._inputs.pop(0)
@@ -55,6 +61,20 @@ class TestFrontend:
         pass
 
     async def stop_thinking(self) -> None:
+        pass
+
+    async def typeahead_loop(self, state) -> None:
+        # Scripted tests don't simulate typeahead — return immediately so the
+        # session's _agent_turn can proceed and await the agent task.
+        return
+
+    def exit_typeahead(self) -> None:
+        pass
+
+    def invalidate_typeahead(self) -> None:
+        pass
+
+    async def emit_user_message_above_prompt(self, content: str) -> None:
         pass
 
     @property
