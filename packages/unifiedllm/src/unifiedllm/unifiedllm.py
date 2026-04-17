@@ -34,9 +34,7 @@ except ImportError:
 
 # Optional harness metrics callback — set by the agent framework via ContextVar.
 # No reverse import needed: the callback is injected by actor.py at session start.
-_llm_metrics_callback: ContextVar[Callable[[str, Any], None] | None] = ContextVar(
-    "llm_metrics_callback", default=None
-)
+_llm_metrics_callback: ContextVar[Callable[[str, Any], None] | None] = ContextVar("llm_metrics_callback", default=None)
 
 
 def _record_llm_metric(event: str, detail: Any = None) -> None:

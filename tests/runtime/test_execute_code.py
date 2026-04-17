@@ -26,18 +26,14 @@ class TestExecuteCodeFenceStripping:
     async def test_fenced_code_executes(self, test_agent):
         """execute_code() is the safety-net fence-stripping intercept point.
         Fenced code passed directly (bypassing strategies) must still run."""
-        result = await test_agent.runtime.execute_code(
-            '```python\nprint("hello")\n```'
-        )
+        result = await test_agent.runtime.execute_code('```python\nprint("hello")\n```')
         assert result.success
         assert result.stdout == "hello\n"
 
     @pytest.mark.asyncio
     async def test_bare_fenced_code_executes(self, test_agent):
         """Bare fences (no language tag) are stripped by the safety net."""
-        result = await test_agent.runtime.execute_code(
-            '```\nprint("bare")\n```'
-        )
+        result = await test_agent.runtime.execute_code('```\nprint("bare")\n```')
         assert result.success
         assert result.stdout == "bare\n"
 

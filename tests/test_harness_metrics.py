@@ -633,7 +633,9 @@ class TestErrorRecord:
         assert rec.code_preview == ""
 
     def test_with_all_fields(self):
-        rec = ErrorRecord(error_type="NameError", message="x not defined", turn=5, code_preview="print(x)")
+        rec = ErrorRecord(
+            error_type="NameError", message="x not defined", turn=5, code_preview="print(x)"
+        )
         assert rec.turn == 5
         assert rec.code_preview == "print(x)"
 
@@ -743,7 +745,9 @@ class TestLLMMetricsBridge:
 
         data = hm.model_dump()
         for event_name, field_name in events_to_test:
-            assert data[field_name] == 1, f"Field {field_name} not incremented by event {event_name}"
+            assert data[field_name] == 1, (
+                f"Field {field_name} not incremented by event {event_name}"
+            )
 
     def test_bridge_ignores_unknown_events(self):
         from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge

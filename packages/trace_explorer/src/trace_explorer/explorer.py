@@ -4558,8 +4558,7 @@ class TraceExplorer:
             gen_spans = [
                 s
                 for s in self._raw_spans
-                if s.get("name") == "generation"
-                and s.get("attributes", {}).get("agent.call_id") == session.call_id
+                if s.get("name") == "generation" and s.get("attributes", {}).get("agent.call_id") == session.call_id
             ]
         else:
             title = "Harness Telemetry (all sessions)"

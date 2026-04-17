@@ -64,9 +64,7 @@ def _harness_metrics_lifecycle(should_trace: bool):
         try:
             from unifiedllm.unifiedllm import _llm_metrics_callback
 
-            _llm_cb_token = _llm_metrics_callback.set(
-                _make_llm_metrics_bridge(_hm)
-            )
+            _llm_cb_token = _llm_metrics_callback.set(_make_llm_metrics_bridge(_hm))
         except ImportError:
             pass
     try:

@@ -519,8 +519,7 @@ class PredictStrategy(GenerationStrategy):
         if tag_name:
             get_harness_metrics().xml_wrapper_stripped(tag_name)
             logger.debug(
-                f"[PREDICT] Stripped XML wrapper <{tag_name}>, "
-                f"extracted {len(inner_content)} chars"
+                f"[PREDICT] Stripped XML wrapper <{tag_name}>, extracted {len(inner_content)} chars"
             )
         return inner_content
 

@@ -1149,7 +1149,9 @@ Standard Python builtins and agent instance (`self`) are available."""
         hm = get_harness_metrics()
         hm.exec_python(success=not result.error)
         if result.error:
-            hm.exec_error(type(result.error).__name__, str(result.error)[:500], session.iteration, code[:200])
+            hm.exec_error(
+                type(result.error).__name__, str(result.error)[:500], session.iteration, code[:200]
+            )
 
         # Update ToolCallEvent with final status
         runtime.event_manager.update(

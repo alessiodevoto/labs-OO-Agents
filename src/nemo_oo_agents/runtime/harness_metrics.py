@@ -385,6 +385,7 @@ class HarnessMetrics(BaseModel):
 # Single source of truth for OTLP attribute keys, labels, and categories.
 # Used by both to_span_attributes() and trace_explorer display.
 
+
 def _timing_schema_entries(
     prefix: str,
     label: str,
@@ -393,157 +394,375 @@ def _timing_schema_entries(
 ) -> list[SchemaEntry]:
     """Generate schema entries for a TimingStat field: total, min, max, avg, count, samples."""
     return [
-        SchemaEntry(f"{prefix}.total_s", f"{label} (total)", category,
-                    lambda m, f=stat_fn: round(f(m).total_s, 4) if f(m).count else 0),
-        SchemaEntry(f"{prefix}.min_s", f"{label} (min)", category,
-                    lambda m, f=stat_fn: round(f(m).min_s, 4) if f(m).count else 0),
-        SchemaEntry(f"{prefix}.max_s", f"{label} (max)", category,
-                    lambda m, f=stat_fn: round(f(m).max_s, 4) if f(m).count else 0),
-        SchemaEntry(f"{prefix}.avg_s", f"{label} (avg)", category,
-                    lambda m, f=stat_fn: round(f(m).avg_s, 4) if f(m).count else 0),
-        SchemaEntry(f"{prefix}.count", f"{label} (count)", category,
-                    lambda m, f=stat_fn: f(m).count),
-        SchemaEntry(f"{prefix}.samples", f"{label} (samples)", category,
-                    lambda m, f=stat_fn: f(m).samples, True),
+        SchemaEntry(
+            f"{prefix}.total_s",
+            f"{label} (total)",
+            category,
+            lambda m, f=stat_fn: round(f(m).total_s, 4) if f(m).count else 0,
+        ),
+        SchemaEntry(
+            f"{prefix}.min_s",
+            f"{label} (min)",
+            category,
+            lambda m, f=stat_fn: round(f(m).min_s, 4) if f(m).count else 0,
+        ),
+        SchemaEntry(
+            f"{prefix}.max_s",
+            f"{label} (max)",
+            category,
+            lambda m, f=stat_fn: round(f(m).max_s, 4) if f(m).count else 0,
+        ),
+        SchemaEntry(
+            f"{prefix}.avg_s",
+            f"{label} (avg)",
+            category,
+            lambda m, f=stat_fn: round(f(m).avg_s, 4) if f(m).count else 0,
+        ),
+        SchemaEntry(
+            f"{prefix}.count", f"{label} (count)", category, lambda m, f=stat_fn: f(m).count
+        ),
+        SchemaEntry(
+            f"{prefix}.samples",
+            f"{label} (samples)",
+            category,
+            lambda m, f=stat_fn: f(m).samples,
+            True,
+        ),
     ]
 
 
 _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
     # Code Sanitization
-    SchemaEntry("harness.fence_removal.count", "Fence removals", "Code Sanitization",
-                lambda m: len(m.fence_removals)),
-    SchemaEntry("harness.fence_removal.details", "Fence removal details", "Code Sanitization",
-                lambda m: m.fence_removals, True),
-    SchemaEntry("harness.xml_wrapper_stripped.count", "XML wrappers stripped", "Code Sanitization",
-                lambda m: len(m.xml_wrappers_stripped)),
-    SchemaEntry("harness.xml_wrapper_stripped.details", "XML wrapper details", "Code Sanitization",
-                lambda m: m.xml_wrappers_stripped, True),
-    SchemaEntry("harness.nested_wrapper_iterations", "Nested wrapper iterations", "Code Sanitization",
-                lambda m: m.nested_wrapper_iterations),
-    SchemaEntry("harness.reasoning_calls_stripped", "Reasoning calls stripped", "Code Sanitization",
-                lambda m: m.reasoning_calls_stripped),
-
+    SchemaEntry(
+        "harness.fence_removal.count",
+        "Fence removals",
+        "Code Sanitization",
+        lambda m: len(m.fence_removals),
+    ),
+    SchemaEntry(
+        "harness.fence_removal.details",
+        "Fence removal details",
+        "Code Sanitization",
+        lambda m: m.fence_removals,
+        True,
+    ),
+    SchemaEntry(
+        "harness.xml_wrapper_stripped.count",
+        "XML wrappers stripped",
+        "Code Sanitization",
+        lambda m: len(m.xml_wrappers_stripped),
+    ),
+    SchemaEntry(
+        "harness.xml_wrapper_stripped.details",
+        "XML wrapper details",
+        "Code Sanitization",
+        lambda m: m.xml_wrappers_stripped,
+        True,
+    ),
+    SchemaEntry(
+        "harness.nested_wrapper_iterations",
+        "Nested wrapper iterations",
+        "Code Sanitization",
+        lambda m: m.nested_wrapper_iterations,
+    ),
+    SchemaEntry(
+        "harness.reasoning_calls_stripped",
+        "Reasoning calls stripped",
+        "Code Sanitization",
+        lambda m: m.reasoning_calls_stripped,
+    ),
     # Import Handling
-    SchemaEntry("harness.imports_stripped.count", "Imports stripped", "Import Handling",
-                lambda m: len(m.imports_stripped)),
-    SchemaEntry("harness.imports_stripped.details", "Import details", "Import Handling",
-                lambda m: m.imports_stripped, True),
-    SchemaEntry("harness.blocked_modules_removed.count", "Blocked modules removed", "Import Handling",
-                lambda m: len(m.blocked_modules_removed)),
-    SchemaEntry("harness.blocked_modules_removed.details", "Blocked module details", "Import Handling",
-                lambda m: m.blocked_modules_removed, True),
-
+    SchemaEntry(
+        "harness.imports_stripped.count",
+        "Imports stripped",
+        "Import Handling",
+        lambda m: len(m.imports_stripped),
+    ),
+    SchemaEntry(
+        "harness.imports_stripped.details",
+        "Import details",
+        "Import Handling",
+        lambda m: m.imports_stripped,
+        True,
+    ),
+    SchemaEntry(
+        "harness.blocked_modules_removed.count",
+        "Blocked modules removed",
+        "Import Handling",
+        lambda m: len(m.blocked_modules_removed),
+    ),
+    SchemaEntry(
+        "harness.blocked_modules_removed.details",
+        "Blocked module details",
+        "Import Handling",
+        lambda m: m.blocked_modules_removed,
+        True,
+    ),
     # Response Format Fixups
-    SchemaEntry("harness.text_to_synthetic.count", "Text-to-synthetic reasoning", "Response Format Fixups",
-                lambda m: m.text_to_synthetic_count),
-    SchemaEntry("harness.content_prepended_as_reasoning.count", "Content prepended as reasoning",
-                "Response Format Fixups", lambda m: m.content_prepended_as_reasoning_count),
-    SchemaEntry("harness.empty_response.count", "Empty responses", "Response Format Fixups",
-                lambda m: m.empty_response_count),
-    SchemaEntry("harness.gpt4o_double_quote_fix.count", "GPT-4o double-quote fixes", "Response Format Fixups",
-                lambda m: m.gpt4o_double_quote_fix_count),
-    SchemaEntry("harness.variable_ref_resolved.count", "Variable refs resolved", "Response Format Fixups",
-                lambda m: len(m.variable_refs_resolved)),
-    SchemaEntry("harness.variable_ref_resolved.details", "Variable ref details", "Response Format Fixups",
-                lambda m: m.variable_refs_resolved, True),
-    SchemaEntry("harness.json_auto_parsed.count", "JSON string auto-parsed", "Response Format Fixups",
-                lambda m: len(m.json_auto_parse_methods)),
-    SchemaEntry("harness.json_auto_parsed.methods", "JSON parse methods", "Response Format Fixups",
-                lambda m: m.json_auto_parse_methods, True),
-    SchemaEntry("harness.args_normalized.count", "Args normalized", "Response Format Fixups",
-                lambda m: m.args_normalized_count),
-
+    SchemaEntry(
+        "harness.text_to_synthetic.count",
+        "Text-to-synthetic reasoning",
+        "Response Format Fixups",
+        lambda m: m.text_to_synthetic_count,
+    ),
+    SchemaEntry(
+        "harness.content_prepended_as_reasoning.count",
+        "Content prepended as reasoning",
+        "Response Format Fixups",
+        lambda m: m.content_prepended_as_reasoning_count,
+    ),
+    SchemaEntry(
+        "harness.empty_response.count",
+        "Empty responses",
+        "Response Format Fixups",
+        lambda m: m.empty_response_count,
+    ),
+    SchemaEntry(
+        "harness.gpt4o_double_quote_fix.count",
+        "GPT-4o double-quote fixes",
+        "Response Format Fixups",
+        lambda m: m.gpt4o_double_quote_fix_count,
+    ),
+    SchemaEntry(
+        "harness.variable_ref_resolved.count",
+        "Variable refs resolved",
+        "Response Format Fixups",
+        lambda m: len(m.variable_refs_resolved),
+    ),
+    SchemaEntry(
+        "harness.variable_ref_resolved.details",
+        "Variable ref details",
+        "Response Format Fixups",
+        lambda m: m.variable_refs_resolved,
+        True,
+    ),
+    SchemaEntry(
+        "harness.json_auto_parsed.count",
+        "JSON string auto-parsed",
+        "Response Format Fixups",
+        lambda m: len(m.json_auto_parse_methods),
+    ),
+    SchemaEntry(
+        "harness.json_auto_parsed.methods",
+        "JSON parse methods",
+        "Response Format Fixups",
+        lambda m: m.json_auto_parse_methods,
+        True,
+    ),
+    SchemaEntry(
+        "harness.args_normalized.count",
+        "Args normalized",
+        "Response Format Fixups",
+        lambda m: m.args_normalized_count,
+    ),
     # Tool Call Translation
-    SchemaEntry("harness.tool_call_translated.count", "Tool calls translated", "Tool Call Translation",
-                lambda m: len(m.tool_calls_translated)),
-    SchemaEntry("harness.tool_call_translated.details", "Translated tool details", "Tool Call Translation",
-                lambda m: m.tool_calls_translated, True),
-
+    SchemaEntry(
+        "harness.tool_call_translated.count",
+        "Tool calls translated",
+        "Tool Call Translation",
+        lambda m: len(m.tool_calls_translated),
+    ),
+    SchemaEntry(
+        "harness.tool_call_translated.details",
+        "Translated tool details",
+        "Tool Call Translation",
+        lambda m: m.tool_calls_translated,
+        True,
+    ),
     # Return Value Handling
-    SchemaEntry("harness.explicit_return_auto_completed", "Explicit return auto-completed",
-                "Return Value Handling", lambda m: m.explicit_return_auto_completed),
-    SchemaEntry("harness.implicit_return_transformed", "Implicit return transformed",
-                "Return Value Handling", lambda m: m.implicit_return_transformed),
-
+    SchemaEntry(
+        "harness.explicit_return_auto_completed",
+        "Explicit return auto-completed",
+        "Return Value Handling",
+        lambda m: m.explicit_return_auto_completed,
+    ),
+    SchemaEntry(
+        "harness.implicit_return_transformed",
+        "Implicit return transformed",
+        "Return Value Handling",
+        lambda m: m.implicit_return_transformed,
+    ),
     # Error Recovery
-    SchemaEntry("harness.validation_error.count", "Validation errors", "Error Recovery",
-                lambda m: len(m.validation_errors)),
-    SchemaEntry("harness.validation_error.types", "Validation error types", "Error Recovery",
-                lambda m: [e.error_type for e in m.validation_errors], True),
-    SchemaEntry("harness.predict_retry.count", "Predict retries", "Error Recovery",
-                lambda m: len(m.predict_retries)),
-    SchemaEntry("harness.predict_retry.errors", "Predict retry errors", "Error Recovery",
-                lambda m: m.predict_retries, True),
-    SchemaEntry("harness.block_syntax_error.count", "Block syntax errors", "Error Recovery",
-                lambda m: len(m.block_syntax_errors)),
-    SchemaEntry("harness.block_syntax_error.details", "Block syntax error details", "Error Recovery",
-                lambda m: m.block_syntax_errors, True),
-    SchemaEntry("harness.llm_api_error.count", "LLM API errors", "Error Recovery",
-                lambda m: len(m.llm_api_errors)),
-    SchemaEntry("harness.llm_api_error.details", "LLM API error details", "Error Recovery",
-                lambda m: m.llm_api_errors, True),
-
+    SchemaEntry(
+        "harness.validation_error.count",
+        "Validation errors",
+        "Error Recovery",
+        lambda m: len(m.validation_errors),
+    ),
+    SchemaEntry(
+        "harness.validation_error.types",
+        "Validation error types",
+        "Error Recovery",
+        lambda m: [e.error_type for e in m.validation_errors],
+        True,
+    ),
+    SchemaEntry(
+        "harness.predict_retry.count",
+        "Predict retries",
+        "Error Recovery",
+        lambda m: len(m.predict_retries),
+    ),
+    SchemaEntry(
+        "harness.predict_retry.errors",
+        "Predict retry errors",
+        "Error Recovery",
+        lambda m: m.predict_retries,
+        True,
+    ),
+    SchemaEntry(
+        "harness.block_syntax_error.count",
+        "Block syntax errors",
+        "Error Recovery",
+        lambda m: len(m.block_syntax_errors),
+    ),
+    SchemaEntry(
+        "harness.block_syntax_error.details",
+        "Block syntax error details",
+        "Error Recovery",
+        lambda m: m.block_syntax_errors,
+        True,
+    ),
+    SchemaEntry(
+        "harness.llm_api_error.count",
+        "LLM API errors",
+        "Error Recovery",
+        lambda m: len(m.llm_api_errors),
+    ),
+    SchemaEntry(
+        "harness.llm_api_error.details",
+        "LLM API error details",
+        "Error Recovery",
+        lambda m: m.llm_api_errors,
+        True,
+    ),
     # Content/Reasoning
-    SchemaEntry("harness.think_tags_extracted", "Think tags extracted", "Content/Reasoning",
-                lambda m: m.think_tags_extracted),
-    SchemaEntry("harness.malformed_think_tag_fixed", "Malformed think tag fixed", "Content/Reasoning",
-                lambda m: m.malformed_think_tag_fixed),
-    SchemaEntry("harness.content_to_reasoning_fallback", "Content-to-reasoning fallback",
-                "Content/Reasoning", lambda m: m.content_to_reasoning_fallback),
-    SchemaEntry("harness.reasoning_as_structured_output", "Reasoning as structured output",
-                "Content/Reasoning", lambda m: m.reasoning_as_structured_output),
-
+    SchemaEntry(
+        "harness.think_tags_extracted",
+        "Think tags extracted",
+        "Content/Reasoning",
+        lambda m: m.think_tags_extracted,
+    ),
+    SchemaEntry(
+        "harness.malformed_think_tag_fixed",
+        "Malformed think tag fixed",
+        "Content/Reasoning",
+        lambda m: m.malformed_think_tag_fixed,
+    ),
+    SchemaEntry(
+        "harness.content_to_reasoning_fallback",
+        "Content-to-reasoning fallback",
+        "Content/Reasoning",
+        lambda m: m.content_to_reasoning_fallback,
+    ),
+    SchemaEntry(
+        "harness.reasoning_as_structured_output",
+        "Reasoning as structured output",
+        "Content/Reasoning",
+        lambda m: m.reasoning_as_structured_output,
+    ),
     # JSON Cleanup
-    SchemaEntry("harness.json_fence_removed", "JSON fence removed", "JSON Cleanup",
-                lambda m: m.json_fence_removed),
-    SchemaEntry("harness.json_control_chars_removed", "JSON control chars removed", "JSON Cleanup",
-                lambda m: m.json_control_chars_removed),
-    SchemaEntry("harness.json_escape_fixed", "JSON escape fixed", "JSON Cleanup",
-                lambda m: m.json_escape_fixed),
-    SchemaEntry("harness.json_nested_extraction", "JSON nested extraction", "JSON Cleanup",
-                lambda m: m.json_nested_extraction),
-    SchemaEntry("harness.json_double_decoded", "JSON double-decoded", "JSON Cleanup",
-                lambda m: m.json_double_decoded),
-
+    SchemaEntry(
+        "harness.json_fence_removed",
+        "JSON fence removed",
+        "JSON Cleanup",
+        lambda m: m.json_fence_removed,
+    ),
+    SchemaEntry(
+        "harness.json_control_chars_removed",
+        "JSON control chars removed",
+        "JSON Cleanup",
+        lambda m: m.json_control_chars_removed,
+    ),
+    SchemaEntry(
+        "harness.json_escape_fixed",
+        "JSON escape fixed",
+        "JSON Cleanup",
+        lambda m: m.json_escape_fixed,
+    ),
+    SchemaEntry(
+        "harness.json_nested_extraction",
+        "JSON nested extraction",
+        "JSON Cleanup",
+        lambda m: m.json_nested_extraction,
+    ),
+    SchemaEntry(
+        "harness.json_double_decoded",
+        "JSON double-decoded",
+        "JSON Cleanup",
+        lambda m: m.json_double_decoded,
+    ),
     # Code Execution
-    SchemaEntry("harness.exec_python.total", "Total executions", "Execute Python",
-                lambda m: m.exec_python_total),
-    SchemaEntry("harness.exec_python.success", "Successful", "Execute Python",
-                lambda m: m.exec_python_success),
-    SchemaEntry("harness.exec_error.count", "Errors", "Execute Python",
-                lambda m: len(m.exec_errors)),
-    SchemaEntry("harness.exec_error.types", "Error types", "Execute Python",
-                lambda m: [e.error_type for e in m.exec_errors], True),
-
+    SchemaEntry(
+        "harness.exec_python.total",
+        "Total executions",
+        "Execute Python",
+        lambda m: m.exec_python_total,
+    ),
+    SchemaEntry(
+        "harness.exec_python.success",
+        "Successful",
+        "Execute Python",
+        lambda m: m.exec_python_success,
+    ),
+    SchemaEntry(
+        "harness.exec_error.count", "Errors", "Execute Python", lambda m: len(m.exec_errors)
+    ),
+    SchemaEntry(
+        "harness.exec_error.types",
+        "Error types",
+        "Execute Python",
+        lambda m: [e.error_type for e in m.exec_errors],
+        True,
+    ),
     # Code Validation
-    SchemaEntry("harness.missing_await.count", "Missing awaits detected", "Code Validation",
-                lambda m: len(m.missing_awaits_detected)),
-    SchemaEntry("harness.missing_await.details", "Missing await details", "Code Validation",
-                lambda m: m.missing_awaits_detected, True),
-    SchemaEntry("harness.infinite_loops_detected", "Infinite loops detected", "Code Validation",
-                lambda m: m.infinite_loops_detected),
-
+    SchemaEntry(
+        "harness.missing_await.count",
+        "Missing awaits detected",
+        "Code Validation",
+        lambda m: len(m.missing_awaits_detected),
+    ),
+    SchemaEntry(
+        "harness.missing_await.details",
+        "Missing await details",
+        "Code Validation",
+        lambda m: m.missing_awaits_detected,
+        True,
+    ),
+    SchemaEntry(
+        "harness.infinite_loops_detected",
+        "Infinite loops detected",
+        "Code Validation",
+        lambda m: m.infinite_loops_detected,
+    ),
     # Prefill
-    SchemaEntry("harness.prefill_type", "Prefill type", "Prefill",
-                lambda m: m.prefill_type),
-
+    SchemaEntry("harness.prefill_type", "Prefill type", "Prefill", lambda m: m.prefill_type),
     # Timing — each timer emits total/min/max/avg/count + raw samples
-    *_timing_schema_entries("harness.time.session_init", "Session init", "Timing",
-                           lambda m: m.time_session_init),
-    *_timing_schema_entries("harness.time.prefill", "Prefill", "Timing",
-                           lambda m: m.time_prefill),
-    *_timing_schema_entries("harness.time.prepare_context", "Prepare context", "Timing",
-                           lambda m: m.time_prepare_context),
-    *_timing_schema_entries("harness.time.render_context", "Render context", "Timing",
-                           lambda m: m.time_render_context),
-    *_timing_schema_entries("harness.time.llm_call", "LLM call", "Timing",
-                           lambda m: m.time_llm_call),
-    *_timing_schema_entries("harness.time.code_validation", "Code validation", "Timing",
-                           lambda m: m.time_code_validation),
-    *_timing_schema_entries("harness.time.code_execution", "Code execution", "Timing",
-                           lambda m: m.time_code_execution),
-    SchemaEntry("harness.turn_count", "Turns", "Timing",
-                lambda m: m.turn_count),
+    *_timing_schema_entries(
+        "harness.time.session_init", "Session init", "Timing", lambda m: m.time_session_init
+    ),
+    *_timing_schema_entries("harness.time.prefill", "Prefill", "Timing", lambda m: m.time_prefill),
+    *_timing_schema_entries(
+        "harness.time.prepare_context",
+        "Prepare context",
+        "Timing",
+        lambda m: m.time_prepare_context,
+    ),
+    *_timing_schema_entries(
+        "harness.time.render_context", "Render context", "Timing", lambda m: m.time_render_context
+    ),
+    *_timing_schema_entries(
+        "harness.time.llm_call", "LLM call", "Timing", lambda m: m.time_llm_call
+    ),
+    *_timing_schema_entries(
+        "harness.time.code_validation",
+        "Code validation",
+        "Timing",
+        lambda m: m.time_code_validation,
+    ),
+    *_timing_schema_entries(
+        "harness.time.code_execution", "Code execution", "Timing", lambda m: m.time_code_execution
+    ),
+    SchemaEntry("harness.turn_count", "Turns", "Timing", lambda m: m.turn_count),
 )
 
 
