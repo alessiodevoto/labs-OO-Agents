@@ -472,8 +472,12 @@ class TUIApplication:
             f"queue_cmds={len(self.state.commands)}"
         )
         # Surface errors into output scrollback. Cancellation is not an
-        # error (Esc soft-cancel + Ctrl-C both cancel on purpose).
-        if not task.cancelled():
+        # error (Esc soft-cancel + Ctrl-C both cancel on purpose) but
+        # still emit a visible ack so the user knows the interrupt
+        # landed — the old TUI printed "Agent interrupted." here.
+        if task.cancelled():
+            self.append_output("\x1b[33m✗ Interrupted.\x1b[0m\n")
+        else:
             exc = task.exception()
             if exc is not None:
                 self.append_output(f"Agent error: {exc}")
