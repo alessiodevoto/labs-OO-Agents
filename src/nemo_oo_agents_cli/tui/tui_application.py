@@ -512,15 +512,25 @@ class TUIApplication:
             if exc is not None:
                 self.append_output(f"Agent error: {exc}")
 
-        if self.state.commands:
-            for cmd in self.state.commands:
-                self._commands_dispatched.append(cmd)
-            self.state.commands.clear()
-
-        if self.state.messages:
-            joined = self.state.as_joined_messages()
-            self.state.messages.clear()
-            self._launch_agent(joined)
+        # Drain queued type-ahead items in submission order. Commands
+        # fire via on_command (scheduled); consecutive message items
+        # are joined into a single next-turn input.
+        while self.state.items:
+            kind, text = self.state.items[0]
+            if kind == "cmd":
+                self.state.items.pop(0)
+                self._commands_dispatched.append(text)
+                self._fire(self._on_command, text)
+                continue
+            # Collect all CONSECUTIVE messages — they were submitted
+            # without a command interleaved, so deliver as one turn.
+            msgs: list[str] = []
+            while self.state.items and self.state.items[0][0] == "msg":
+                msgs.append(self.state.items.pop(0)[1])
+            self._launch_agent("\n\n".join(msgs))
+            # Stop draining; the new agent task's on-done callback will
+            # pick up where we left off.
+            return
 
     # ── output pipeline -----------------------------------------------
 
