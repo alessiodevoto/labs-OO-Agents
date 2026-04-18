@@ -329,10 +329,20 @@ class TUIApplication:
 
         @kb.add("tab")
         def _(event):
-            # Explicit Tab trigger — opens the completion menu for the
-            # current buffer. (``create_key_bindings`` auto-opens on /,
-            # but an explicit Tab press is the standard UX.)
-            event.current_buffer.start_completion(select_first=False)
+            # Standard Tab: open the menu if closed, advance to the
+            # next option if already open. start_completion doesn't
+            # advance on repeat presses — complete_next does both.
+            buf = event.current_buffer
+            if buf.complete_state is None:
+                buf.start_completion(select_first=True)
+            else:
+                buf.complete_next()
+
+        @kb.add("s-tab")
+        def _(event):
+            buf = event.current_buffer
+            if buf.complete_state is not None:
+                buf.complete_previous()
 
         # Empty-buffer Up: queue pop wins over history — matches the
         # pre-rewrite typeahead UX (pop the last thing you typed while
