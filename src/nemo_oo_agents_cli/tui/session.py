@@ -679,17 +679,18 @@ class Session:
                 ).print(Markdown(str(text)))
                 rendered = buf.getvalue()
 
-                async def _do() -> None:
-                    # __stdout__ is the untouched fd-level stdout,
-                    # unaffected by ContextVarStream's buffer-var capture.
-                    # run_in_terminal suspends the layout so the write
-                    # doesn't clobber the prompt region.
-                    async def _write() -> None:
-                        out = _s.__stdout__
-                        if out is not None:
-                            out.write(rendered)
-                            out.flush()
+                # Sync write to __stdout__ — unaffected by
+                # ContextVarStream's buffer-var capture (which wraps
+                # sys.stdout during cell execution). run_in_terminal
+                # suspends the layout so the write doesn't clobber
+                # the prompt region.
+                def _write() -> None:
+                    out = _s.__stdout__
+                    if out is not None:
+                        out.write(rendered)
+                        out.flush()
 
+                async def _do() -> None:
                     await run_in_terminal(_write)
 
                 _a.run_coroutine_threadsafe(_do(), loop)
