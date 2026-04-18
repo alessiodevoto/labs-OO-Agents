@@ -493,15 +493,14 @@ class TUIApplication:
     def append_output(self, text: str) -> None:
         """Append ``text`` to the transcript.
 
-        Two sinks:
-
-        * ``output_buffer`` — plain text for tests and programmatic
-          consumers. ANSI stripped.
-        * ``sys.stdout`` — writes above the live prompt region via
-          ``patch_stdout`` (installed around ``app.run_async``). Those
-          writes scroll into the terminal's native scrollback, so the
-          transcript survives past one screen of content — you can
-          scroll up with the mouse/trackpad like in any terminal.
+        * ``output_buffer`` mirrors the plain-text transcript for tests.
+        * The live terminal receives ``text`` via ``run_in_terminal``
+          writing directly to ``sys.__stdout__``, which both bypasses
+          ``nemo_oo_agents``' ContextVarStream stdout-capture (so
+          nothing gets swallowed into the cell's captured stdout) AND
+          uses the same serialisation path as ``_render_message``, so
+          activity lines and message output render in event order
+          instead of racing via ``patch_stdout``'s buffered proxy.
         """
         if not text:
             return
@@ -515,19 +514,40 @@ class TUIApplication:
         )
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
-        # Commit to the terminal scrollback above the active region.
-        # ``self._sink`` is the patch_stdout proxy captured in run_async
-        # — bypasses CodeAct's redirect_stdout so self.message() output
-        # doesn't get swallowed into the cell's captured stdout and
-        # re-emitted as indented "  │ <line>" stdout.
         import sys as _sys
 
-        sink = self._sink if self._sink is not None else _sys.stdout
+        if not self._app.is_running:
+            # Pre-start: before Application.run_async, just write plain.
+            try:
+                _sys.stdout.write(text)
+                _sys.stdout.flush()
+            except Exception:
+                pass
+            return
+
+        # Running — schedule a run_in_terminal that writes to __stdout__
+        # above the prompt. Using the same path as _render_message keeps
+        # event order deterministic.
+        from prompt_toolkit.application import run_in_terminal
+
+        def _write() -> None:
+            out = _sys.__stdout__
+            if out is not None:
+                out.write(text)
+                out.flush()
+
+        async def _do() -> None:
+            await run_in_terminal(_write)
+
         try:
-            sink.write(text)
-            sink.flush()
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(_do(), loop)
         except Exception:
-            pass
+            try:
+                _sys.stdout.write(text)
+                _sys.stdout.flush()
+            except Exception:
+                pass
 
     # ── surface the harness (and real callers) rely on ----------------
 

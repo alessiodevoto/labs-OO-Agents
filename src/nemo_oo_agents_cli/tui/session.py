@@ -48,22 +48,41 @@ def _build_prompt(config: "Config") -> str:
     return "❯ "
 
 
-def _code_preview(code: str, max_lines: int = 2, max_cols: int = 110) -> str:
-    """Return the first meaningful lines of *code* for activity preview.
+def _code_preview(code: str, max_cols: int = 100) -> str:
+    """Return a compact preview of *code* for the activity line.
 
-    Each line is truncated to ``max_cols`` so a very long single statement
-    (e.g. a chained bash command) doesn't wrap into ten visual rows and
-    dominate the scrollback. Ellipsis marks both column and line
-    truncation so the user knows content was elided.
+    Shape:
+      * First line is comment (``#…``): keep the comment (white-styled
+        downstream) AND the next non-blank code line (grey). Max 2.
+      * First line is code: show just that line (grey). Max 1.
+
+    Filters out lines matching ``return_result(...)`` — CodeAct
+    boilerplate the user doesn't care about in a preview. Long lines
+    truncate to ``max_cols`` with an ellipsis.
     """
-    lines = [ln for ln in code.splitlines() if ln.strip()]
-    clipped: list[str] = []
-    for ln in lines[:max_lines]:
-        clipped.append(ln if len(ln) <= max_cols else ln[: max_cols - 1] + "…")
-    preview = "\n".join(clipped)
-    if len(lines) > max_lines:
-        preview += "…"
-    return preview
+    raw = [ln for ln in code.splitlines() if ln.strip()]
+    # Drop the CodeAct-internal return_result(...) scaffolding.
+    lines = [ln for ln in raw if not ln.lstrip().startswith("return_result(")]
+    if not lines:
+        return ""
+
+    def _clip(ln: str) -> str:
+        return ln if len(ln) <= max_cols else ln[: max_cols - 1] + "…"
+
+    first = lines[0]
+    if first.lstrip().startswith("#"):
+        result = [_clip(first)]
+        if len(lines) > 1:
+            result.append(_clip(lines[1]))
+        if len(lines) > 2:
+            result[-1] += "…"
+        return "\n".join(result)
+
+    # No comment — one line only, suffix with … if there was more.
+    clipped = _clip(first)
+    if len(lines) > 1:
+        clipped += "…"
+    return clipped
 
 
 def _retrieve_future_exception(f: concurrent.futures.Future[None]) -> None:
