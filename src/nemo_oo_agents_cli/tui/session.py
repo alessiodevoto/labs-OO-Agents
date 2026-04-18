@@ -497,6 +497,24 @@ class Session:
         if self.show_python and self._loop is not None:
             fut = asyncio.run_coroutine_threadsafe(self.frontend.render(execution), self._loop)
             fut.add_done_callback(_retrieve_future_exception)
+            return
+
+        # show_python=False (default): emit stdout/stderr of the cell as
+        # indented ActivityLines so they appear just below the code
+        # preview that fired a moment ago — ipython-notebook feel.
+        if self._loop is None:
+            return
+        from .output import ActivityLine
+
+        for stream_kind, payload in (("stdout", execution.stdout), ("stderr", execution.stderr)):
+            if not payload:
+                continue
+            for line in str(payload).rstrip("\n").split("\n"):
+                fut = asyncio.run_coroutine_threadsafe(
+                    self.frontend.render(ActivityLine(line, kind=stream_kind)),  # type: ignore[arg-type]
+                    self._loop,
+                )
+                fut.add_done_callback(_retrieve_future_exception)
 
     # ------------------------------------------------------------------
     # Public entry point

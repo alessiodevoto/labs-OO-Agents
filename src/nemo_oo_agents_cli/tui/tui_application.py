@@ -28,8 +28,16 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
-from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
+from prompt_toolkit.layout import (
+    ConditionalContainer,
+    Float,
+    FloatContainer,
+    HSplit,
+    Layout,
+    Window,
+)
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .queue_state import QueueState
@@ -226,11 +234,22 @@ class TUIApplication:
 
         # Order matters: the spinner lives immediately above the prompt
         # so "⠋ thinking..." appears right where the user is looking.
+        # Wrapping the main HSplit in a FloatContainer lets us anchor a
+        # CompletionsMenu float above the input window — without this
+        # float, Tab / auto-trigger generate candidates but nothing is
+        # ever drawn on screen.
+        root_container = FloatContainer(
+            content=HSplit([output_window, queue_window, status_window, input_window]),
+            floats=[
+                Float(
+                    xcursor=True,
+                    ycursor=True,
+                    content=CompletionsMenu(max_height=12, scroll_offset=1),
+                )
+            ],
+        )
         self._app = Application(
-            layout=Layout(
-                HSplit([output_window, queue_window, status_window, input_window]),
-                focused_element=input_window,
-            ),
+            layout=Layout(root_container, focused_element=input_window),
             key_bindings=kb,
             full_screen=False,
         )
