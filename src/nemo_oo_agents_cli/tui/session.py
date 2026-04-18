@@ -569,17 +569,13 @@ class Session:
         self._attach_agent(self.agent)
 
         async def _on_command(text: str) -> None:
-            from rich.text import Text
-
             from .tui_application import _diag as _d
 
-            # Echo the submitted command to scrollback so the user sees
-            # which command produced the output below it. No leading
-            # newline — each emit_text block already gets a trailing
-            # newline from Rich, so prepending another inserts a
-            # redundant blank row (shows up as an empty '❯' on exit).
-            emit_text(Text(f"❯ {text}", style="bold cyan"))
-
+            # No command echo in the transcript: on exit it shows up
+            # as a ghost '❯' above the actual line (interacting oddly
+            # with the live input re-render), and for non-exit commands
+            # the output itself (/help's menu, /model's 'Current
+            # model...') is enough context. Matches the old TUI.
             _d(f"_on_command start text={text!r}")
             try:
                 result = await self._handler.handle(text)
