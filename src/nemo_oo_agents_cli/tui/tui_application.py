@@ -189,12 +189,17 @@ class TUIApplication:
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
         def _queue_formatted():
+            # Iterate the unified items list so messages and commands
+            # appear in submission order — the properties .messages /
+            # .commands filter by kind and would show 'all msgs, then
+            # all cmds' regardless of when each was typed.
             lines = []
-            for msg in self.state.messages:
-                for line in msg.split("\n"):
-                    lines.append(("class:queue", f"│ {line}\n"))
-            for cmd in self.state.commands:
-                lines.append(("class:queue", f"│ {cmd}\n"))
+            for kind, text in self.state.items:
+                if kind == "msg":
+                    for line in text.split("\n"):
+                        lines.append(("class:queue", f"│ {line}\n"))
+                else:
+                    lines.append(("class:queue", f"│ {text}\n"))
             return lines
 
         queue_window = ConditionalContainer(
