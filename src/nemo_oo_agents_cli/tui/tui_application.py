@@ -528,25 +528,43 @@ class TUIApplication:
             if exc is not None:
                 self.append_output(f"Agent error: {exc}")
 
-        # Drain queued type-ahead items in submission order. Commands
-        # fire via on_command (scheduled); consecutive message items
-        # are joined into a single next-turn input.
-        while self.state.items:
-            kind, text = self.state.items[0]
-            if kind == "cmd":
-                self.state.items.pop(0)
-                self._commands_dispatched.append(text)
-                self._fire(self._on_command, text)
-                continue
-            # Collect all CONSECUTIVE messages — they were submitted
-            # without a command interleaved, so deliver as one turn.
-            msgs: list[str] = []
-            while self.state.items and self.state.items[0][0] == "msg":
-                msgs.append(self.state.items.pop(0)[1])
-            self._launch_agent("\n\n".join(msgs))
-            # Stop draining; the new agent task's on-done callback will
-            # pick up where we left off.
+        # Drain ONE queue item serially, then let its completion
+        # callback re-enter this function to drain the next. This
+        # preserves strict submission order: a queued [cmd, msg, msg]
+        # plays as cmd → wait-for-cmd → msg turn → wait-for-agent.
+        self._drain_next()
+
+    def _drain_next(self) -> None:
+        """Pull the next queue item and fire it. Commands schedule an
+        on_command coroutine whose completion re-enters _drain_next;
+        messages launch an agent turn whose _on_agent_done does the
+        same. Order: strict FIFO on ``state.items``."""
+        if not self.state.items:
             return
+
+        kind, text = self.state.items.pop(0)
+
+        if kind == "cmd":
+            self._commands_dispatched.append(text)
+            if self._on_command is None:
+                self._drain_next()
+                return
+            result = self._on_command(text)
+            if asyncio.iscoroutine(result):
+                task = asyncio.ensure_future(result)
+                task.add_done_callback(lambda _t: self._drain_next())
+            else:
+                self._drain_next()
+            return
+
+        # Message — gather any consecutive messages submitted after it
+        # so the whole contiguous text block becomes one agent turn.
+        msgs: list[str] = [text]
+        while self.state.items and self.state.items[0][0] == "msg":
+            msgs.append(self.state.items.pop(0)[1])
+        self._launch_agent("\n\n".join(msgs))
+        # Agent's done callback calls _on_agent_done, which calls
+        # _drain_next again once this turn completes.
 
     # ── output pipeline -----------------------------------------------
 
