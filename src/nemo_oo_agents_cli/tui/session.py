@@ -569,7 +569,15 @@ class Session:
         self._attach_agent(self.agent)
 
         async def _on_command(text: str) -> None:
+            from rich.text import Text
+
             from .tui_application import _diag as _d
+
+            # Echo the submitted command to scrollback so the user sees
+            # which command produced the output below it. The
+            # accept_handler already cleared the input buffer, but the
+            # committed transcript record needs its own emission.
+            emit_text(Text(f"\n❯ {text}", style="bold cyan"))
 
             _d(f"_on_command start text={text!r}")
             try:
@@ -648,6 +656,33 @@ class Session:
             _emit_console.file = buf
             _emit_console.print(renderable)
             app.emit_block(buf.getvalue())
+
+        # Route the frontend's own Rich console through emit_block too,
+        # so slash-command outputs (rendered via frontend.render(...))
+        # land in the block queue instead of the real stdout. This is
+        # what makes /help, /model, /context etc. appear correctly in
+        # the scrollback — without the redirect, their Rich writes
+        # clobber prompt_toolkit's layout at the current cursor.
+        class _EmitStream:
+            def write(self, text: str) -> int:
+                if text:
+                    app.emit_block(text)
+                return len(text)
+
+            def flush(self) -> None:
+                return None
+
+            def isatty(self) -> bool:
+                return True
+
+        if hasattr(self.frontend, "_console"):
+            self.frontend._console.console = _RichConsole(  # type: ignore[attr-defined]
+                file=_EmitStream(),  # type: ignore[arg-type]
+                force_terminal=True,
+                color_system="256",
+                width=120,
+                theme=CATPPUCCIN_THEME,
+            )
 
         # Track whether the agent has already emitted a markdown block
         # this turn — we only want the "OO ─" rule at the START of its
