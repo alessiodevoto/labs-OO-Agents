@@ -613,7 +613,7 @@ class Session:
             await self._handle_bang("!" + body)
 
         from .input_handler import SlashCommandCompleter
-        from .theme import CATPPUCCIN_THEME
+        from .theme import CATPPUCCIN_THEME, COLORS
 
         app = TUIApplication(
             agent=self.agent,
@@ -649,9 +649,15 @@ class Session:
             _emit_console.print(renderable)
             app.emit_block(buf.getvalue())
 
-        # User-message echo: simple "> text" block, emitted in order
-        # with everything else.
+        # Track whether the agent has already emitted a markdown block
+        # this turn — we only want the "OO ─" rule at the START of its
+        # reply block, not before every message() call in a multi-msg
+        # turn. Reset to False when the user submits a new message.
+        agent_has_messaged = {"value": False}
+
         def _on_user_message(text: str) -> None:
+            from rich.text import Text
+
             if self._session_manager is not None:
                 self._session_manager.record_user(text)
             if self._first_message is None:
@@ -660,16 +666,34 @@ class Session:
                     _t = asyncio.create_task(self._auto_name_session(text))
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
-            from rich.text import Text
 
-            emit_text(Text.from_markup(f"\n[bold cyan]>[/bold cyan] {text}"))
+            # Bright-white text on a grey bar, full terminal width.
+            # Using a Rich Text that we pad to width here keeps the
+            # background colour visible across the whole row.
+            try:
+                import shutil
+
+                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
+            except Exception:
+                cols = 120
+            display = f" > {text} "
+            bar = Text(display.ljust(cols), style=f"bold {COLORS['text']} on {COLORS['surface2']}")
+            emit_text(Text(""))  # spacer above
+            emit_text(bar)
+            # New turn → reset the per-turn first-message guard.
+            agent_has_messaged["value"] = False
 
         app._on_user_message = _on_user_message  # late-bound
 
-        # Agent message → markdown block.
+        # Agent message → 'OO ─' rule (once per turn) + markdown block.
         if hasattr(self.agent, "_render_message"):
+            from rich.rule import Rule
+            from rich.text import Text as _RT
 
             def _render_msg(text: str) -> None:
+                if not agent_has_messaged["value"]:
+                    agent_has_messaged["value"] = True
+                    emit_text(Rule(_RT("OO ", style=COLORS["mauve"]), style="dim"))
                 emit_text(Markdown(str(text)))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
@@ -709,7 +733,7 @@ class Session:
             if not preview:
                 return
             first_line = preview.split("\n", 1)[0]
-            styled = Text(f"● {first_line}", style="dim")
+            styled = Text(f"∴ {first_line}", style="dim")
             if first_line.lstrip().startswith("#"):
                 styled.stylize("not dim bold", 0, len(first_line) + 2)
             if "\n" in preview:
