@@ -524,7 +524,20 @@ class Session:
         self._attach_agent(self.agent)
 
         async def _on_command(text: str) -> None:
-            result = await self._handler.handle(text)
+            from .tui_application import _diag as _d
+
+            _d(f"_on_command start text={text!r}")
+            try:
+                result = await self._handler.handle(text)
+            except BaseException as exc:
+                _d(f"_on_command EXC {type(exc).__name__}: {exc}")
+                app.append_output(f"[command error] {type(exc).__name__}: {exc}\n")
+                raise
+            _d(
+                f"_on_command handled exit={result.exit} "
+                f"outputs={len(result.outputs)} "
+                f"agent_message={result.agent_message is not None}"
+            )
             if result.new_session_manager is not None:
                 self._swap_session_manager(result.new_session_manager)
             if (
@@ -567,11 +580,10 @@ class Session:
                     _t = asyncio.create_task(self._auto_name_session(text))
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
-            # Print a "You: <text>" block so the transcript matches the old TUI.
+            # Simple > prefix — the user just wants to see what they typed,
+            # not a whole framed block.
             new_console.print()
-            new_console.rule(style="dim")
-            new_console.print(f"[bold]You:[/bold] {text}")
-            new_console.rule(style="dim")
+            new_console.print(f"[bold cyan]>[/bold cyan] {text}")
 
         from .input_handler import SlashCommandCompleter
 
