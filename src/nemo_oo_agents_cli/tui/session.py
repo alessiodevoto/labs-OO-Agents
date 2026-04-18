@@ -649,9 +649,18 @@ class Session:
         )
 
         def emit_text(renderable) -> None:
-            """Render any Rich renderable / string to ANSI and enqueue."""
-            # Reuse the console by swapping its file each time — cheaper
-            # than constructing a new Console per block.
+            """Render any Rich renderable / string to ANSI and enqueue.
+
+            Width tracks the current terminal so background-bar blocks
+            (e.g. the user-message panel) span the full row.
+            """
+            import shutil
+
+            try:
+                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
+            except Exception:
+                cols = 120
+            _emit_console.width = cols
             buf = _io.StringIO()
             _emit_console.file = buf
             _emit_console.print(renderable)
@@ -702,17 +711,17 @@ class Session:
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
 
-            # Bright-white text on a grey bar, full terminal width.
-            # Using a Rich Text that we pad to width here keeps the
-            # background colour visible across the whole row.
-            try:
-                import shutil
+            # Plain (non-bold) text on a grey background bar that
+            # spans the full terminal width. The prompt glyph matches
+            # the one BeforeInput draws on the live input line.
+            import shutil
 
+            try:
                 cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
             except Exception:
                 cols = 120
-            display = f" > {text} "
-            bar = Text(display.ljust(cols), style=f"bold {COLORS['text']} on {COLORS['surface2']}")
+            display = f" ❯ {text} "
+            bar = Text(display.ljust(cols), style=f"{COLORS['text']} on {COLORS['surface2']}")
             emit_text(Text(""))  # spacer above
             emit_text(bar)
             # New turn → reset the per-turn first-message guard.
