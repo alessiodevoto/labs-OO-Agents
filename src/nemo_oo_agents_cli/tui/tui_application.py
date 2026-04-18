@@ -162,11 +162,15 @@ class TUIApplication:
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
 
-        # Captured at run_async start, once patch_stdout has installed
-        # its proxy. We write through this reference always so CodeAct's
-        # later contextlib.redirect_stdout during code execution can't
-        # swallow self.message() output into the cell's captured stdout.
-        self._sink = None  # type: ignore[var-annotated]
+        # Single producer-many-consumers path for transcript content:
+        # emit_block() enqueues one ANSI chunk; a single background task
+        # (started in run_async) drains the queue in order and writes
+        # each chunk via run_in_terminal → sys.__stdout__. Everything
+        # that used to have its own scheduling (patch_stdout proxy,
+        # direct run_in_terminal in _render_message, etc.) now funnels
+        # through this one queue — no races.
+        self._block_queue: asyncio.Queue[str] | None = None
+        self._consumer_task: asyncio.Task | None = None
 
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
@@ -494,20 +498,22 @@ class TUIApplication:
 
     # ── output pipeline -----------------------------------------------
 
-    def append_output(self, text: str) -> None:
-        """Append ``text`` to the transcript.
+    def emit_block(self, text: str) -> None:
+        """Enqueue one ANSI-bearing block for the transcript.
 
-        * ``output_buffer`` mirrors the plain-text transcript for tests.
-        * The live terminal receives ``text`` via ``run_in_terminal``
-          writing directly to ``sys.__stdout__``, which both bypasses
-          ``nemo_oo_agents``' ContextVarStream stdout-capture (so
-          nothing gets swallowed into the cell's captured stdout) AND
-          uses the same serialisation path as ``_render_message``, so
-          activity lines and message output render in event order
-          instead of racing via ``patch_stdout``'s buffered proxy.
+        This is the ONE public contract for writing to the transcript:
+        all producers (activity lines, code cells, agent markdown,
+        interrupt notices, user echo) call this. A single consumer
+        task drains the queue and writes each block in FIFO order via
+        ``run_in_terminal`` → ``sys.__stdout__``. No races.
+
+        Thread-safe: if called from a non-event-loop context, uses
+        ``call_soon_threadsafe`` to enqueue.
         """
         if not text:
             return
+
+        # Mirror the plain-text transcript for tests.
         self._output_ansi.append(text)
         stripped = _strip_ansi(text)
         existing = self.output_buffer.text
@@ -518,40 +524,25 @@ class TUIApplication:
         )
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
-        import sys as _sys
+        # Enqueue for the consumer. Before the consumer is up (pre
+        # run_async), fall back to a plain stdout write.
+        if self._block_queue is None:
+            import sys as _sys
 
-        if not self._app.is_running:
-            # Pre-start: before Application.run_async, just write plain.
             try:
                 _sys.stdout.write(text)
                 _sys.stdout.flush()
             except Exception:
                 pass
             return
-
-        # Running — schedule a run_in_terminal that writes to __stdout__
-        # above the prompt. Using the same path as _render_message keeps
-        # event order deterministic.
-        from prompt_toolkit.application import run_in_terminal
-
-        def _write() -> None:
-            out = _sys.__stdout__
-            if out is not None:
-                out.write(text)
-                out.flush()
-
-        async def _do() -> None:
-            await run_in_terminal(_write)
-
         try:
             loop = asyncio.get_event_loop()
-            asyncio.run_coroutine_threadsafe(_do(), loop)
-        except Exception:
-            try:
-                _sys.stdout.write(text)
-                _sys.stdout.flush()
-            except Exception:
-                pass
+            loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
+        except RuntimeError:
+            self._block_queue.put_nowait(text)
+
+    # Legacy name — producers written before emit_block call this.
+    append_output = emit_block
 
     # ── surface the harness (and real callers) rely on ----------------
 
@@ -560,26 +551,53 @@ class TUIApplication:
         return self._app.is_running
 
     async def run_async(self) -> None:
-        # patch_stdout diverts sys.stdout writes to run_in_terminal so
-        # append_output's writes land above the active prompt region
-        # and scroll into native terminal history. raw=True preserves
-        # ANSI escape sequences so Rich styling survives.
-        #
-        # We also cache the patched sys.stdout proxy in ``self._sink``
-        # so we can write through it even while CodeAct has swapped
-        # sys.stdout for its own redirect during agent code execution —
-        # otherwise self.message() output would be captured by the cell's
-        # stdout capture and re-emitted as indented stdout.
+        # Start the single-consumer block drainer. It lives for the
+        # life of the app and is cancelled on teardown.
+        self._block_queue = asyncio.Queue()
+        self._consumer_task = asyncio.ensure_future(self._consume_blocks())
+        try:
+            await self._app.run_async()
+        finally:
+            if self._consumer_task is not None:
+                self._consumer_task.cancel()
+                try:
+                    await self._consumer_task
+                except (asyncio.CancelledError, BaseException):
+                    pass
+            self._consumer_task = None
+            self._block_queue = None
+
+    async def _consume_blocks(self) -> None:
+        """Drain ``_block_queue`` forever; write each block above the
+        prompt via ``run_in_terminal`` → ``sys.__stdout__``.
+
+        One consumer, FIFO order, no races. Writing to ``__stdout__``
+        (not ``sys.stdout``) bypasses the framework's ContextVarStream
+        wrapper so ``self.message()`` content never gets captured as
+        cell stdout.
+        """
         import sys as _sys
 
-        from prompt_toolkit.patch_stdout import patch_stdout
+        from prompt_toolkit.application import run_in_terminal
 
-        with patch_stdout(raw=True):
-            self._sink = _sys.stdout
+        assert self._block_queue is not None
+        while True:
+            text = await self._block_queue.get()
+
+            def _write(t: str = text) -> None:
+                out = _sys.__stdout__
+                if out is not None:
+                    out.write(t)
+                    out.flush()
+
             try:
-                await self._app.run_async()
-            finally:
-                self._sink = None
+                await run_in_terminal(_write)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Best-effort — a single failed write shouldn't wedge
+                # the consumer. Fall through and pick up the next block.
+                pass
 
     def exit(self) -> None:
         if self._app.is_running:

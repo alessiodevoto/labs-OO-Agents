@@ -562,7 +562,6 @@ class Session:
         instead of stdout, so prompt_toolkit's layout isn't clobbered
         by direct writes.
         """
-        from rich.console import Console
 
         from .output import TextOutput
         from .tui_application import TUIApplication
@@ -611,13 +610,48 @@ class Session:
                 await self._agent_turn(msg)
 
         async def _on_bang(body: str) -> None:
-            # _handle_bang expects the leading ``!``; put it back.
             await self._handle_bang("!" + body)
 
+        from .input_handler import SlashCommandCompleter
+        from .theme import CATPPUCCIN_THEME
+
+        app = TUIApplication(
+            agent=self.agent,
+            on_command=_on_command,
+            on_bang=_on_bang,
+            completer=SlashCommandCompleter(self.registry),
+        )
+
+        # ── block rendering ──────────────────────────────────────────
+        # emit_text(renderable) = render Rich object to ANSI, enqueue
+        # it onto the app's single-consumer block queue. This is the
+        # ONLY way content reaches the transcript in plan-c. Keeps
+        # every producer on one serialised path — no races.
+        import io as _io
+
+        from rich.console import Console as _RichConsole
+        from rich.markdown import Markdown
+
+        _emit_console = _RichConsole(
+            file=_io.StringIO(),
+            force_terminal=True,
+            color_system="256",
+            width=120,
+            theme=CATPPUCCIN_THEME,
+        )
+
+        def emit_text(renderable) -> None:
+            """Render any Rich renderable / string to ANSI and enqueue."""
+            # Reuse the console by swapping its file each time — cheaper
+            # than constructing a new Console per block.
+            buf = _io.StringIO()
+            _emit_console.file = buf
+            _emit_console.print(renderable)
+            app.emit_block(buf.getvalue())
+
+        # User-message echo: simple "> text" block, emitted in order
+        # with everything else.
         def _on_user_message(text: str) -> None:
-            """Echo the user's just-submitted message into the scrollback,
-            otherwise the user has no visual record of what they typed.
-            Also records to the session manager for persistence parity."""
             if self._session_manager is not None:
                 self._session_manager.record_user(text)
             if self._first_message is None:
@@ -626,95 +660,86 @@ class Session:
                     _t = asyncio.create_task(self._auto_name_session(text))
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
-            # Simple > prefix — the user just wants to see what they typed,
-            # not a whole framed block.
-            new_console.print()
-            new_console.print(f"[bold cyan]>[/bold cyan] {text}")
+            from rich.text import Text
 
-        from .input_handler import SlashCommandCompleter
+            emit_text(Text.from_markup(f"\n[bold cyan]>[/bold cyan] {text}"))
 
-        app = TUIApplication(
-            agent=self.agent,
-            on_command=_on_command,
-            on_bang=_on_bang,
-            on_user_message=_on_user_message,
-            completer=SlashCommandCompleter(self.registry),
-        )
+        app._on_user_message = _on_user_message  # late-bound
 
-        # Redirect the Rich console into the app's scrollback so every
-        # TerminalFrontend render path (activity lines, code previews,
-        # bash output, markdown, rules) lands inside prompt_toolkit's
-        # layout instead of stdout.
-        class _AppStream:
-            def write(self, text: str) -> int:
-                if text:
-                    app.append_output(text)
-                return len(text)
-
-            def flush(self) -> None:
-                return None
-
-            def isatty(self) -> bool:
-                return True
-
-        stream = _AppStream()
-        from .theme import CATPPUCCIN_THEME
-
-        new_console = Console(
-            file=stream,  # type: ignore[arg-type]
-            force_terminal=True,
-            color_system="256",
-            width=120,
-            theme=CATPPUCCIN_THEME,
-        )
-        if hasattr(self.frontend, "_console"):
-            # Swap the underlying Rich Console for one that writes to app.
-            self.frontend._console.console = new_console  # type: ignore[attr-defined]
-
-        # Wire agent.message() → scrollback with a Rich-rendered markdown
-        # block. Must bypass the framework's ContextVarStream wrapper on
-        # sys.stdout, which captures writes into the executing code
-        # cell's stdout buffer — otherwise the rendered Markdown ends up
-        # as indented '  | <line>' stdout instead of a standalone block.
+        # Agent message → markdown block.
         if hasattr(self.agent, "_render_message"):
-            import asyncio as _a
-            import io as _io
-            import sys as _s
-
-            from prompt_toolkit.application import run_in_terminal
-            from rich.console import Console as _RichConsole
-            from rich.markdown import Markdown
-
-            loop = _a.get_running_loop()
 
             def _render_msg(text: str) -> None:
-                buf = _io.StringIO()
-                _RichConsole(
-                    file=buf,
-                    force_terminal=True,
-                    color_system="256",
-                    width=120,
-                    theme=CATPPUCCIN_THEME,
-                ).print(Markdown(str(text)))
-                rendered = buf.getvalue()
-
-                # Sync write to __stdout__ — unaffected by
-                # ContextVarStream's buffer-var capture (which wraps
-                # sys.stdout during cell execution). run_in_terminal
-                # suspends the layout so the write doesn't clobber
-                # the prompt region.
-                def _write() -> None:
-                    out = _s.__stdout__
-                    if out is not None:
-                        out.write(rendered)
-                        out.flush()
-
-                async def _do() -> None:
-                    await run_in_terminal(_write)
-
-                _a.run_coroutine_threadsafe(_do(), loop)
+                emit_text(Markdown(str(text)))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
+
+        # ── replace the default event handlers with plan-c versions ──
+        # Session._attach_agent's handlers schedule frontend.render via
+        # run_coroutine_threadsafe, which means the activity line lands
+        # in the queue LATER than a synchronously-emitted message block.
+        # These sync handlers emit directly, so order matches event
+        # firing order (ToolCall before self.message).
+        self._detach_agent()
+        self._loop = asyncio.get_running_loop()
+
+        def _on_reasoning(event) -> None:
+            from rich.text import Text
+
+            content = getattr(event, "content", "") or ""
+            if content.strip():
+                emit_text(Text(content, style="dim italic"))
+
+        def _on_tool_call(event) -> None:
+            from rich.text import Text
+
+            if getattr(event, "name", "") != "execute_python":
+                return
+            tool_call_id = getattr(event, "tool_call_id", "")
+            arguments = getattr(event, "arguments", {})
+            code = arguments.get("code", "") if isinstance(arguments, dict) else ""
+            if not code:
+                return
+            self._pending_code[tool_call_id] = code
+            preview = (
+                "Inspecting inputs..."
+                if tool_call_id.startswith("prefill_")
+                else _code_preview(code)
+            )
+            if not preview:
+                return
+            first_line = preview.split("\n", 1)[0]
+            styled = Text(f"● {first_line}", style="dim")
+            if first_line.lstrip().startswith("#"):
+                styled.stylize("not dim bold", 0, len(first_line) + 2)
+            if "\n" in preview:
+                styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
+            emit_text(styled)
+
+        def _on_python_output(event) -> None:
+            from rich.text import Text
+
+            tool_call_id = getattr(event, "tool_call_id", "")
+            # Prefill cells print the framework's input-inspection dump
+            # which is noisy and internal — don't show its stdout.
+            if tool_call_id.startswith("prefill_"):
+                self._pending_code.pop(tool_call_id, None)
+                return
+            self._pending_code.pop(tool_call_id, None)
+
+            for kind, payload in (
+                ("stdout", getattr(event, "stdout", None)),
+                ("stderr", getattr(event, "stderr", None)),
+            ):
+                if not payload:
+                    continue
+                style = "dim" if kind == "stdout" else "red"
+                for line in str(payload).rstrip("\n").split("\n"):
+                    emit_text(Text(f"  │ {line}", style=style))
+
+        self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
+        self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
+        self._unsubscribe_fns.append(self.agent.event_manager.on("PythonOutput", _on_python_output))
 
         # Replace Session's logging-based loop exception handler with one
         # that surfaces every swallowed task exception into the scrollback.
