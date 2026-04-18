@@ -299,6 +299,12 @@ class TUIApplication:
             ),
             key_bindings=kb,
             full_screen=False,
+            # When the Application exits (e.g. /exit), erase the live
+            # region so the final screen is just the committed
+            # scrollback. Otherwise the empty ❯ from the input line
+            # gets a final redraw right before exit and appears as a
+            # ghost prompt above '❯ /exit' in the transcript.
+            erase_when_done=True,
         )
 
     # ── key bindings --------------------------------------------------
