@@ -241,10 +241,14 @@ class TUIApplication:
         root_container = FloatContainer(
             content=HSplit([output_window, queue_window, status_window, input_window]),
             floats=[
+                # ycursor=True lets the menu anchor to the input cursor.
+                # Without a max_height cap, prompt_toolkit sizes it to the
+                # available screen space — so on a tall terminal the menu
+                # shows many entries instead of two clipped rows.
                 Float(
                     xcursor=True,
                     ycursor=True,
-                    content=CompletionsMenu(max_height=12, scroll_offset=1),
+                    content=CompletionsMenu(max_height=20, scroll_offset=1),
                 )
             ],
         )
