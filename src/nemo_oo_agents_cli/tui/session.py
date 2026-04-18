@@ -720,22 +720,22 @@ class Session:
             from rich.text import Text
 
             tool_call_id = getattr(event, "tool_call_id", "")
-            # Prefill cells print the framework's input-inspection dump
-            # which is noisy and internal — don't show its stdout.
-            if tool_call_id.startswith("prefill_"):
-                self._pending_code.pop(tool_call_id, None)
-                return
             self._pending_code.pop(tool_call_id, None)
+            if tool_call_id.startswith("prefill_"):
+                return
 
-            for kind, payload in (
-                ("stdout", getattr(event, "stdout", None)),
-                ("stderr", getattr(event, "stderr", None)),
-            ):
-                if not payload:
-                    continue
-                style = "dim" if kind == "stdout" else "red"
-                for line in str(payload).rstrip("\n").split("\n"):
-                    emit_text(Text(f"  │ {line}", style=style))
+            # Preview mode (show_python=False): stdout is for the agent
+            # to reason about; the user sees results via self.message().
+            # Only show stderr so errors don't disappear silently.
+            if self.show_python:
+                for line in str(getattr(event, "stdout", "") or "").rstrip("\n").split("\n"):
+                    if line:
+                        emit_text(Text(f"  │ {line}", style="dim"))
+
+            stderr = str(getattr(event, "stderr", "") or "")
+            if stderr.strip():
+                for line in stderr.rstrip("\n").split("\n"):
+                    emit_text(Text(f"  │ {line}", style="red"))
 
         self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
         self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
