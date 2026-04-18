@@ -28,14 +28,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
-from prompt_toolkit.layout import (
-    ConditionalContainer,
-    Float,
-    FloatContainer,
-    HSplit,
-    Layout,
-    Window,
-)
+from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.layout.processors import BeforeInput
@@ -232,31 +225,29 @@ class TUIApplication:
 
         status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
 
-        # Order matters: the spinner lives immediately above the prompt
-        # so "⠋ thinking..." appears right where the user is looking.
-        # Wrapping the main HSplit in a FloatContainer lets us anchor a
-        # CompletionsMenu float above the input window — without this
-        # float, Tab / auto-trigger generate candidates but nothing is
-        # ever drawn on screen.
-        root_container = FloatContainer(
-            content=HSplit([output_window, queue_window, status_window, input_window]),
-            floats=[
-                # Explicit height tells prompt_toolkit the Float should
-                # be 12 rows tall regardless of what the layout
-                # algorithm thinks is available. bottom=2 anchors
-                # above status+input. xcursor tracks the input column.
-                # Without an explicit height the menu gets clipped to
-                # 1–3 rows even with a generous max_height.
-                Float(
-                    xcursor=True,
-                    bottom=2,
-                    height=12,
-                    content=CompletionsMenu(max_height=12, scroll_offset=1),
-                )
-            ],
+        # Completion menu as a real layout region below the input (not a
+        # Float). Float sizing was getting clipped to 2-3 rows regardless
+        # of max_height / explicit height. Real layout region gets its
+        # full requested height. Only visible while completing.
+        completions_window = ConditionalContainer(
+            CompletionsMenu(max_height=12, scroll_offset=1),
+            filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
+
+        # Order: output / queue / status (spinner) / input / completions.
         self._app = Application(
-            layout=Layout(root_container, focused_element=input_window),
+            layout=Layout(
+                HSplit(
+                    [
+                        output_window,
+                        queue_window,
+                        status_window,
+                        input_window,
+                        completions_window,
+                    ]
+                ),
+                focused_element=input_window,
+            ),
             key_bindings=kb,
             full_screen=False,
         )
