@@ -48,12 +48,21 @@ def _build_prompt(config: "Config") -> str:
     return "❯ "
 
 
-def _code_preview(code: str, max_lines: int = 2) -> str:
-    """Return the first meaningful non-blank lines of *code* for activity preview."""
+def _code_preview(code: str, max_lines: int = 2, max_cols: int = 110) -> str:
+    """Return the first meaningful lines of *code* for activity preview.
+
+    Each line is truncated to ``max_cols`` so a very long single statement
+    (e.g. a chained bash command) doesn't wrap into ten visual rows and
+    dominate the scrollback. Ellipsis marks both column and line
+    truncation so the user knows content was elided.
+    """
     lines = [ln for ln in code.splitlines() if ln.strip()]
-    preview = "\n".join(lines[:max_lines])
+    clipped: list[str] = []
+    for ln in lines[:max_lines]:
+        clipped.append(ln if len(ln) <= max_cols else ln[: max_cols - 1] + "…")
+    preview = "\n".join(clipped)
     if len(lines) > max_lines:
-        preview += "..."
+        preview += "…"
     return preview
 
 

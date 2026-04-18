@@ -186,19 +186,12 @@ class TUIApplication:
             last = lines[-1] if lines else ""
             return Point(x=len(last), y=max(0, len(lines) - 1))
 
-        # Output content — shrinks to what fits. The enclosing HSplit
-        # has align=VerticalAlign.BOTTOM so any slack floats to the top,
-        # not between the banner and the prompt.
-        output_window = Window(
-            FormattedTextControl(
-                _output_formatted,
-                focusable=False,
-                get_cursor_position=_output_cursor_position,
-                show_cursor=False,
-            ),
-            wrap_lines=True,
-            dont_extend_height=True,
-        )
+        # Output scrollback lives in the terminal itself (above the
+        # active region) via patch_stdout + sys.stdout writes — see
+        # ``append_output``. No output Window here on purpose: keeping
+        # the layout tiny preserves the terminal's native scrollback
+        # and mouse-wheel scroll-up to review old turns.
+        del _output_formatted, _output_cursor_position  # keep callables out of layout
 
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
@@ -259,15 +252,14 @@ class TUIApplication:
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # align=VerticalAlign.BOTTOM positions the combined content at
-        # the bottom of whatever height the HSplit is given, so any
-        # slack appears above the banner instead of between the banner
-        # and the prompt.
+        # Active region is just: queued lines (if any) / status line /
+        # input / completions menu (if active). Everything else scrolls
+        # into native terminal history. align=BOTTOM keeps the region
+        # flush to the bottom of whatever height prompt_toolkit reserved.
         self._app = Application(
             layout=Layout(
                 HSplit(
                     [
-                        output_window,
                         queue_window,
                         status_window,
                         input_window,
@@ -501,11 +493,17 @@ class TUIApplication:
     # ── output pipeline -----------------------------------------------
 
     def append_output(self, text: str) -> None:
-        """Append ``text`` to the output scrollback.
+        """Append ``text`` to the transcript.
 
-        ANSI-bearing strings render styled via the output Window's
-        FormattedTextControl. The plain ``output_buffer`` keeps a
-        stripped copy for tests and transcript consumers.
+        Two sinks:
+
+        * ``output_buffer`` — plain text for tests and programmatic
+          consumers. ANSI stripped.
+        * ``sys.stdout`` — writes above the live prompt region via
+          ``patch_stdout`` (installed around ``app.run_async``). Those
+          writes scroll into the terminal's native scrollback, so the
+          transcript survives past one screen of content — you can
+          scroll up with the mouse/trackpad like in any terminal.
         """
         if not text:
             return
@@ -518,8 +516,18 @@ class TUIApplication:
             else existing + "\n" + stripped
         )
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
-        if self._app.is_running:
-            self._app.invalidate()
+
+        # Commit to the terminal scrollback above the active region.
+        # patch_stdout (wrapping run_async in session.py) diverts these
+        # writes via run_in_terminal so they render above the prompt
+        # without clobbering the layout.
+        import sys as _sys
+
+        try:
+            _sys.stdout.write(text)
+            _sys.stdout.flush()
+        except Exception:
+            pass
 
     # ── surface the harness (and real callers) rely on ----------------
 
@@ -528,7 +536,14 @@ class TUIApplication:
         return self._app.is_running
 
     async def run_async(self) -> None:
-        await self._app.run_async()
+        # patch_stdout diverts sys.stdout writes to run_in_terminal so
+        # append_output's writes land above the active prompt region
+        # and scroll into native terminal history. raw=True preserves
+        # ANSI escape sequences so Rich styling survives.
+        from prompt_toolkit.patch_stdout import patch_stdout
+
+        with patch_stdout(raw=True):
+            await self._app.run_async()
 
     def exit(self) -> None:
         if self._app.is_running:
