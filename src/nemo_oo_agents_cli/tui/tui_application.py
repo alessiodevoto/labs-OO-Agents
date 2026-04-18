@@ -97,6 +97,7 @@ class TUIApplication:
         on_bang: Callable[[str], Awaitable[None] | None] | None = None,
         on_user_message: Callable[[str], Awaitable[None] | None] | None = None,
         completer: Completer | None = None,
+        session_label: Callable[[], str] | None = None,
     ) -> None:
         """
         Args:
@@ -118,6 +119,7 @@ class TUIApplication:
         self._on_command = on_command
         self._on_bang = on_bang
         self._on_user_message = on_user_message
+        self._session_label_fn: Callable[[], str] | None = session_label
         self.state = QueueState()
 
         # Output scrollback. Two parallel stores:
@@ -220,6 +222,30 @@ class TUIApplication:
 
         status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
 
+        # Session rule: right above the input, always visible. Shows the
+        # session name + short uuid + context-usage label, right-aligned
+        # on a horizontal rule. Built from formatted text (not a Rich
+        # Rule) so it re-measures with the live terminal width.
+        def _session_rule_formatted():
+            try:
+                import shutil as _sh
+
+                cols = max(_sh.get_terminal_size((120, 24)).columns, 20)
+            except Exception:
+                cols = 120
+            label = self._session_label_fn() if self._session_label_fn is not None else ""
+            if label:
+                dashes = max(cols - len(label) - 1, 1)
+                return [
+                    ("class:rule", "─" * dashes + " "),
+                    ("class:rule.label", label),
+                ]
+            return [("class:rule", "─" * cols)]
+
+        session_rule = Window(
+            FormattedTextControl(_session_rule_formatted, focusable=False), height=1
+        )
+
         # Completion menu as a real layout region below the input.
         # Shrinks to the number of completions (with a 12-row cap) so the
         # HSplit doesn't inflate it with blank space when there are only
@@ -252,19 +278,19 @@ class TUIApplication:
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # Active region: queued lines / status / input / completions.
-        # Each child's preferred height drives the HSplit's preferred
-        # height, which prompt_toolkit reserves in non-fullscreen mode.
-        # Content shrinks naturally as the queue clears, thinking ends,
-        # or completions narrow. No align=VerticalAlign.BOTTOM here:
-        # that flag makes HSplit claim the max height and put content
-        # at the bottom with blanks above — exactly what we don't want.
+        # Active region (top → bottom):
+        #   queued type-ahead lines (only while agent working)
+        #   status (spinner + optional badges)
+        #   session rule — always visible, sits flush against the prompt
+        #   input
+        #   completions (only while completing)
         self._app = Application(
             layout=Layout(
                 HSplit(
                     [
                         queue_window,
                         status_window,
+                        session_rule,
                         input_window,
                         completions_window,
                     ],

@@ -574,10 +574,11 @@ class Session:
             from .tui_application import _diag as _d
 
             # Echo the submitted command to scrollback so the user sees
-            # which command produced the output below it. The
-            # accept_handler already cleared the input buffer, but the
-            # committed transcript record needs its own emission.
-            emit_text(Text(f"\n❯ {text}", style="bold cyan"))
+            # which command produced the output below it. No leading
+            # newline — each emit_text block already gets a trailing
+            # newline from Rich, so prepending another inserts a
+            # redundant blank row (shows up as an empty '❯' on exit).
+            emit_text(Text(f"❯ {text}", style="bold cyan"))
 
             _d(f"_on_command start text={text!r}")
             try:
@@ -623,11 +624,29 @@ class Session:
         from .input_handler import SlashCommandCompleter
         from .theme import CATPPUCCIN_THEME, COLORS
 
+        def _session_label() -> str:
+            """Compose the label shown on the right of the rule just
+            above the input: 'context ctx 20% · name [abc12345]'."""
+            bits: list[str] = []
+            usage = self._context_usage_label()
+            if usage:
+                bits.append(usage)
+            if self._session_manager is not None:
+                sm = self._session_manager
+                short = (sm.session_id or "")[:8]
+                name = sm.name
+                if name and short:
+                    bits.append(f"{name} [{short}]")
+                elif short:
+                    bits.append(f"[{short}]")
+            return " · ".join(bits)
+
         app = TUIApplication(
             agent=self.agent,
             on_command=_on_command,
             on_bang=_on_bang,
             completer=SlashCommandCompleter(self.registry),
+            session_label=_session_label,
         )
 
         # ── block rendering ──────────────────────────────────────────
@@ -706,42 +725,22 @@ class Session:
                 self._session_manager.record_user(text)
             if self._first_message is None:
                 self._first_message = text
-                if self._session_manager is not None and not self._session_manager.user_named:
+                if (
+                    self._session_manager is not None
+                    and not self._session_manager.user_named
+                    and not (self._session_manager.name or "").strip()
+                ):
                     _t = asyncio.create_task(self._auto_name_session(text))
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
 
-            # Right-aligned session rule above the user bar:
-            #   ────────────────────────── session-name [abcd1234]
-            from rich.rule import Rule as _Rule
-
-            segments: list[str] = []
-            usage = self._context_usage_label()
-            if usage:
-                segments.append(usage)
-            if self._session_manager is not None:
-                sm = self._session_manager
-                short = (sm.session_id or "")[:8]
-                name = sm.name
-                if name and short:
-                    segments.append(f"{name} \\[{short}]")
-                elif short:
-                    segments.append(f"\\[{short}]")
-            label = " · ".join(segments)
-            if label:
-                emit_text(
-                    _Rule(
-                        title=f"[{COLORS['overlay1']}]{label}[/]",
-                        style=COLORS["surface1"],
-                        align="right",
-                    )
-                )
-            else:
-                emit_text(_Rule(style=COLORS["surface1"]))
-
-            # Plain (non-bold) text on a grey background bar that
-            # spans the full terminal width. Prompt glyph matches the
-            # one BeforeInput draws on the live input line.
+            # The session rule lives as a live layout row right above
+            # the input (see TUIApplication.session_rule window) — no
+            # need to emit a separate transcript rule per turn.
+            #
+            # User-message bar: plain (non-bold) text on a grey
+            # background bar that spans the full terminal width.
+            # Prompt glyph matches the input line's BeforeInput marker.
             import shutil
 
             try:
