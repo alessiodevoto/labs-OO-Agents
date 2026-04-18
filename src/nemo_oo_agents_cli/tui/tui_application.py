@@ -23,6 +23,7 @@ from typing import Any
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
@@ -167,13 +168,27 @@ class TUIApplication:
 
         kb = self._build_key_bindings()
 
-        # Output: render ANSI so Rich styling round-trips through the app.
-        # Callable re-evaluates on each draw; we append to _output_ansi.
+        # Output: render ANSI so Rich styling round-trips. The Window
+        # needs to auto-follow the bottom so the prompt stays on-screen
+        # as new lines arrive. We accomplish that by giving the control
+        # a cursor position at the very end and letting Window scroll
+        # to follow it.
         def _output_formatted():
             return ANSI("".join(self._output_ansi))
 
+        def _output_cursor_position() -> Point:
+            text = _strip_ansi("".join(self._output_ansi))
+            lines = text.split("\n")
+            last = lines[-1] if lines else ""
+            return Point(x=len(last), y=max(0, len(lines) - 1))
+
         output_window = Window(
-            FormattedTextControl(_output_formatted, focusable=False),
+            FormattedTextControl(
+                _output_formatted,
+                focusable=False,
+                get_cursor_position=_output_cursor_position,
+                show_cursor=False,
+            ),
             wrap_lines=True,
         )
 
