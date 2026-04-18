@@ -30,7 +30,9 @@ from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
-from prompt_toolkit.layout.menus import CompletionsMenu
+from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.margins import ScrollbarMargin
+from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .queue_state import QueueState
@@ -183,6 +185,10 @@ class TUIApplication:
             last = lines[-1] if lines else ""
             return Point(x=len(last), y=max(0, len(lines) - 1))
 
+        # Output content: shrinks to just what fits (dont_extend_height).
+        # A filler Window above takes any remaining vertical space so
+        # content is effectively bottom-aligned — short transcripts
+        # hug the prompt instead of leaving a gap below the banner.
         output_window = Window(
             FormattedTextControl(
                 _output_formatted,
@@ -191,7 +197,9 @@ class TUIApplication:
                 show_cursor=False,
             ),
             wrap_lines=True,
+            dont_extend_height=True,
         )
+        output_filler = Window(height=Dimension(weight=1))
 
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
@@ -225,20 +233,41 @@ class TUIApplication:
 
         status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
 
-        # Completion menu as a real layout region below the input (not a
-        # Float). Float sizing was getting clipped to 2-3 rows regardless
-        # of max_height / explicit height. Real layout region gets its
-        # full requested height. Only visible while completing.
+        # Completion menu as a real layout region below the input.
+        # Shrinks to the number of completions (with a 12-row cap) so the
+        # HSplit doesn't inflate it with blank space when there are only
+        # 1–4 matches. The stock ``CompletionsMenu`` wraps the control in
+        # a Window with ``Dimension(min=1, max=12)`` and no preferred
+        # size — HSplit then gives it the max height, leading to ugly
+        # gaps below the completions when the list is short. We use
+        # ``CompletionsMenuControl`` directly so we can set a dynamic
+        # ``preferred`` height based on the actual completion count.
+        _COMPLETION_MAX = 12
+
+        def _completions_height() -> Dimension:
+            state = self.input_buffer.complete_state
+            n = len(state.completions) if state is not None else 0
+            return Dimension(min=1, max=_COMPLETION_MAX, preferred=min(n or 1, _COMPLETION_MAX))
+
         completions_window = ConditionalContainer(
-            CompletionsMenu(max_height=12, scroll_offset=1),
+            Window(
+                content=CompletionsMenuControl(),
+                width=Dimension(min=8),
+                height=_completions_height,
+                dont_extend_height=True,
+                right_margins=[ScrollbarMargin(display_arrows=True)],
+            ),
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # Order: output / queue / status (spinner) / input / completions.
+        # Order: spacer / output / queue / status / input / completions.
+        # spacer soaks up vertical slack above the output so content
+        # bottom-aligns against the prompt area.
         self._app = Application(
             layout=Layout(
                 HSplit(
                     [
+                        output_filler,
                         output_window,
                         queue_window,
                         status_window,
