@@ -564,6 +564,14 @@ class Session:
         self._attach_agent(self.agent)
 
         async def _on_command(text: str) -> None:
+            # Echo the submitted command to scrollback so exit commands
+            # (which erase the live input region via erase_when_done)
+            # leave a visible record of what the user ran. Styled bold
+            # cyan to visually match the prompt glyph.
+            from rich.text import Text as _RT
+
+            emit_text(_RT(f"❯ {text}", style="bold cyan"))
+
             try:
                 result = await self._handler.handle(text)
             except BaseException as exc:
