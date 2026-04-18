@@ -101,7 +101,10 @@ class TUIApplication:
         self.agent = agent
         self._on_command = on_command
         self._on_bang = on_bang
-        self._on_user_message = on_user_message
+        # Public — Session assigns this after construction too (its
+        # _on_user_message closure needs helpers defined AFTER the app
+        # is built). Treat it as a settable callback, not a hidden slot.
+        self.on_user_message: Callable[[str], Awaitable[None] | None] | None = on_user_message
         self._session_label_fn: Callable[[], str] | None = session_label
         self.state = QueueState()
 
@@ -408,7 +411,7 @@ class TUIApplication:
             self._fire(self._on_bang, body)
             return False
 
-        self._launch_agent(text)
+        self.launch_agent(text)
         return False
 
     def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
@@ -477,14 +480,15 @@ class TUIApplication:
         self.input_buffer.text = self._history[self._history_cursor]
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
-    def _launch_agent(self, user_message: str) -> None:
+    def launch_agent(self, user_message: str) -> None:
         """Kick off ``agent.respond(user_message)`` on the event loop.
 
-        Before invoking the agent we fire ``on_user_message`` so Session
-        can render the user's input into the scrollback (the user wants
-        to see what they typed, not just the agent's reply).
+        Public because Session also calls it when a slash command
+        returns an ``agent_message`` (e.g. ``/compact`` that wants to
+        drive a turn). Fires ``on_user_message`` first so Session
+        renders the user's input to scrollback.
         """
-        self._fire(self._on_user_message, user_message)
+        self._fire(self.on_user_message, user_message)
         if self.agent is None:
             return
         coro = self.agent.respond(user_message)
@@ -562,7 +566,7 @@ class TUIApplication:
         msgs: list[str] = [text]
         while self.state.items and self.state.items[0][0] == "msg":
             msgs.append(self.state.items.pop(0)[1])
-        self._launch_agent("\n\n".join(msgs))
+        self.launch_agent("\n\n".join(msgs))
         # Agent's done callback calls _on_agent_done, which calls
         # _drain_next again once this turn completes.
 

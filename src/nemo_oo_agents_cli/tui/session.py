@@ -592,7 +592,7 @@ class Session:
                 # Slash-command-generated agent turn — feed through the
                 # same path as a typed message so the user bar, session
                 # bookkeeping, and agent dispatch stay consistent.
-                app._launch_agent(result.agent_message)
+                app.launch_agent(result.agent_message)
 
         async def _on_bang(body: str) -> None:
             await self._handle_bang("!" + body)
@@ -737,7 +737,10 @@ class Session:
             # New turn → reset the per-turn first-message guard.
             agent_has_messaged["value"] = False
 
-        app._on_user_message = _on_user_message  # late-bound
+        # Assign the user-message callback after construction because
+        # it closes over emit_text / Text which are defined below. The
+        # attribute is public for exactly this reason.
+        app.on_user_message = _on_user_message
 
         # Messages emitted INSIDE a code cell are buffered and flushed
         # after the cell's PythonOutput event, so markdown lands below
