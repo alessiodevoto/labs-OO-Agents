@@ -192,7 +192,10 @@ class TUIApplication:
             return lines
 
         queue_window = ConditionalContainer(
-            Window(FormattedTextControl(_queue_formatted, focusable=False), height=None),
+            Window(
+                FormattedTextControl(_queue_formatted, focusable=False),
+                dont_extend_height=True,
+            ),
             filter=Condition(lambda: bool(self.state.messages or self.state.commands)),
         )
 
@@ -202,6 +205,7 @@ class TUIApplication:
                 input_processors=[self._prompt_processor],
             ),
             wrap_lines=True,
+            dont_extend_height=True,
         )
         self._input_window = input_window
 
@@ -226,7 +230,12 @@ class TUIApplication:
         def _completions_height() -> Dimension:
             state = self.input_buffer.complete_state
             n = len(state.completions) if state is not None else 0
-            return Dimension(min=1, max=_COMPLETION_MAX, preferred=min(n or 1, _COMPLETION_MAX))
+            exact = min(max(n, 1), _COMPLETION_MAX)
+            # Exact, not a range. Dimension(min=1, max=12) lets HSplit
+            # inflate the window when extra space is available — which
+            # is exactly what causes growing blank gaps between the
+            # prompt and the menu as completions narrow.
+            return Dimension(min=exact, max=exact, preferred=exact)
 
         completions_window = ConditionalContainer(
             Window(
