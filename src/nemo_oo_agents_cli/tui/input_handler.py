@@ -10,16 +10,13 @@ frontend); this module is just the prompt_toolkit adapter.
 from typing import TYPE_CHECKING
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.application import get_app
 from prompt_toolkit.completion import Completer as PtCompleter
 from prompt_toolkit.completion import Completion
-from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 from .completer import Completer
-from .queue_state import QueueState
 from .theme import COLORS
 
 if TYPE_CHECKING:
@@ -150,80 +147,6 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
         text = buffer.text[: buffer.cursor_position]
         if text == "!" or text.startswith("!"):
             buffer.start_completion(select_first=False)
-
-    return bindings
-
-
-def create_typeahead_key_bindings(state: QueueState, vi_mode: bool = False) -> KeyBindings:
-    """Key bindings for the type-ahead prompt used during agent work.
-
-    Differences from the normal input bindings:
-
-    - Enter does NOT call ``validate_and_handle`` (which would exit the prompt).
-      Instead it submits the current buffer text to ``state`` and clears the
-      buffer. The enclosing prompt_async keeps running; it only exits when
-      ``app.exit()`` is called externally (when the agent finishes) or the
-      user presses Ctrl+C / Ctrl+D.
-    - Up on an empty buffer pops the most recent queued item into the buffer
-      for editing (when the queue is non-empty). Otherwise falls through to
-      normal history navigation.
-    """
-    bindings = KeyBindings()
-
-    @bindings.add("enter", eager=True)
-    def _(event):
-        """Submit the current buffer to the queue, then stay in the prompt."""
-        buffer = event.current_buffer
-        text = buffer.text
-        buffer.reset()
-        state.submit(text)
-        event.app.invalidate()
-
-    @bindings.add("c-j")
-    def _(event):
-        """Shift+Enter on iTerm2 sends Ctrl+J — insert a newline."""
-        event.current_buffer.insert_text("\n")
-
-    @bindings.add("escape", "enter")
-    def _(event):
-        """Alt/Option+Enter inserts a newline."""
-        event.current_buffer.insert_text("\n")
-
-    @bindings.add("escape")
-    def _(event):
-        """Esc: cancel the agent, then deliver any queued messages.
-
-        Sets ``state.cancel_requested`` and exits the prompt. The session
-        reads the flag after the prompt returns, cancels the agent task,
-        and delivers whatever is queued as the next ``respond()`` — or
-        returns to the between-turn prompt if the queue is empty.
-
-        Not ``eager=True``: bare Escape is also the prefix for ESC-sequence
-        input (arrow keys, Alt-combinations, CSI sequences). Firing
-        eagerly would eat the prefix and misinterpret every arrow key as
-        Esc-cancel. Without eager, prompt_toolkit waits for the
-        disambiguation timeout (~0.5s) before firing the bare-Esc
-        binding — small delay, correct behaviour.
-        """
-        state.cancel_requested = True
-        event.app.exit(result="")
-
-    def _can_pop_queue() -> bool:
-        try:
-            buffer_empty = not get_app().current_buffer.text
-        except Exception:
-            return False
-        return buffer_empty and not state.is_empty
-
-    @bindings.add("up", filter=Condition(_can_pop_queue))
-    def _(event):
-        """Pop last queued item back into the buffer for editing."""
-        popped = state.pop_last_for_edit()
-        if popped is not None:
-            buffer = event.current_buffer
-            buffer.text = popped
-            buffer.cursor_position = len(popped)
-            event.app.invalidate()
 
     return bindings
 
