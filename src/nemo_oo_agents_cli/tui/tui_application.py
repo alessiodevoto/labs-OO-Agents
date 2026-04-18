@@ -26,7 +26,7 @@ from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
-from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.processors import BeforeInput
@@ -76,6 +76,8 @@ class TUIApplication:
         *,
         on_command: Callable[[str], Awaitable[None] | None] | None = None,
         on_bang: Callable[[str], Awaitable[None] | None] | None = None,
+        on_user_message: Callable[[str], Awaitable[None] | None] | None = None,
+        completer: Completer | None = None,
     ) -> None:
         """
         Args:
@@ -89,10 +91,14 @@ class TUIApplication:
                 ``!echo hi``). Session wires this to run_in_terminal +
                 bash. If omitted, bang commands are only recorded in
                 ``last_bang_command()``.
+            completer: Optional prompt_toolkit ``Completer`` for Tab
+                completion. When omitted a small built-in completer
+                covers ``/help /exit /clear /compact !bash !ipython``.
         """
         self.agent = agent
         self._on_command = on_command
         self._on_bang = on_bang
+        self._on_user_message = on_user_message
         self.state = QueueState()
 
         # Output scrollback. Two parallel stores:
@@ -103,9 +109,16 @@ class TUIApplication:
         self.output_buffer = Buffer(read_only=False)
         self._output_ansi: list[str] = []
 
-        # Input window: where user keystrokes land.
-        self._completer = _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
-        self.input_buffer = Buffer(multiline=True, completer=self._completer)
+        # Input window: where user keystrokes land. A caller (Session)
+        # passes the real CommandRegistry-backed completer; otherwise
+        # fall back to the minimal slash/bang stub.
+        self._completer = completer or _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
+        self.input_buffer = Buffer(
+            multiline=True,
+            completer=self._completer,
+            complete_while_typing=False,
+            accept_handler=self._accept_handler,
+        )
 
         # History — a plain list of submitted strings and a cursor that
         # tracks Up/Down navigation. Simpler than prompt_toolkit's async
@@ -124,6 +137,8 @@ class TUIApplication:
         # Status line fields — surfaced via status_text().
         self._session_label: str = ""
         self._spinner_frame: str = "⠋"
+        self._spinner_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        self._spinner_task: asyncio.Task | None = None
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
@@ -177,9 +192,11 @@ class TUIApplication:
 
         status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
 
+        # Order matters: the spinner lives immediately above the prompt
+        # so "⠋ thinking..." appears right where the user is looking.
         self._app = Application(
             layout=Layout(
-                HSplit([output_window, queue_window, input_window, status_window]),
+                HSplit([output_window, queue_window, status_window, input_window]),
                 focused_element=input_window,
             ),
             key_bindings=kb,
@@ -188,14 +205,21 @@ class TUIApplication:
 
     # ── key bindings --------------------------------------------------
 
-    def _build_key_bindings(self) -> KeyBindings:
+    def _build_key_bindings(self):  # returns KeyBindingsBase (union of KB + merged)
+        from .input_handler import create_key_bindings as _legacy_kb
+
+        # The legacy bindings handle Enter (accept_handler dispatches to
+        # our _accept_handler), Alt+Enter / Ctrl+J (newline), Tab (via
+        # default bindings), and the slash/bang auto-trigger that re-opens
+        # the completion menu as the user types a command.
+        legacy = _legacy_kb(vi_mode=False)
+
         kb = KeyBindings()
 
         @kb.add("c-c")
         def _(event):
-            # If an agent is running, C-c is a hard cancel: kill the
-            # task, keep the buffer (user's work in progress survives).
-            # Otherwise it exits the app.
+            # If an agent is running, C-c cancels the task and keeps the
+            # buffer. Otherwise it exits the app.
             if self.is_thinking() and self._agent_task is not None:
                 self._agent_task.cancel()
                 return
@@ -205,17 +229,12 @@ class TUIApplication:
         def _(event):
             event.app.exit()
 
-        @kb.add("enter")
+        @kb.add("tab")
         def _(event):
-            self._on_enter()
-
-        # Alt+Enter (Esc,Enter) and Ctrl+J both insert a newline without
-        # submitting. Most terminals map "Shift+Enter" to one of these
-        # sequences since true shift+enter has no distinct keycode.
-        @kb.add("escape", "enter")
-        @kb.add("c-j")
-        def _(event):
-            event.current_buffer.insert_text("\n")
+            # Explicit Tab trigger — opens the completion menu for the
+            # current buffer. (``create_key_bindings`` auto-opens on /,
+            # but an explicit Tab press is the standard UX.)
+            event.current_buffer.start_completion(select_first=False)
 
         # Empty-buffer Up: queue pop wins over history — matches the
         # pre-rewrite typeahead UX (pop the last thing you typed while
@@ -243,43 +262,48 @@ class TUIApplication:
             if self.is_thinking() and self._agent_task is not None:
                 self._agent_task.cancel()
 
-        return kb
+        # Merge so our bindings (C-c with is_thinking awareness, Tab
+        # trigger, Esc cancel, empty-buffer Up/Down for queue+history)
+        # override the legacy bindings for the same keys, while legacy
+        # still provides Enter → accept_handler, Alt+Enter newline, and
+        # the slash auto-trigger characters.
+        return merge_key_bindings([legacy, kb])
 
     # ── submission pipeline -------------------------------------------
 
-    def _on_enter(self) -> None:
-        """Bare Enter submits the current buffer.
+    def _accept_handler(self, buffer: Buffer) -> bool:
+        """prompt_toolkit accept_handler — invoked by ``validate_and_handle()``.
 
         When the agent is working, the submission is queued instead —
         messages collect in ``state.messages``, slash commands in
         ``state.commands``. Both are flushed when the agent finishes.
+
+        Returning False tells prompt_toolkit to reset the buffer (clear
+        the text, don't keep it as the working-lines tip).
         """
-        text = self.input_buffer.text
+        text = buffer.text
         if not text.strip():
-            self.input_buffer.reset()
-            return
+            return False
         if not self._history or self._history[-1] != text:
             self._history.append(text)
         self._history_cursor = None
-        self.input_buffer.reset()
 
         if self.is_thinking():
-            # QueueState.submit handles the /-vs-message split and appends
-            # successive messages with newlines.
             self.state.submit(text)
-            return
+            return False
 
         if text.startswith("/"):
             self._commands_dispatched.append(text)
             self._fire(self._on_command, text)
-            return
+            return False
         if text.startswith("!"):
             body = text[1:].strip()
             self._last_bang_command = body
             self._fire(self._on_bang, body)
-            return
+            return False
 
         self._launch_agent(text)
+        return False
 
     def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
         """Call a user callback; schedule it if it returned a coroutine."""
@@ -288,6 +312,29 @@ class TUIApplication:
         result = cb(arg)
         if asyncio.iscoroutine(result):
             asyncio.ensure_future(result)
+
+    def _ensure_spinner_task(self) -> None:
+        """Start a background task cycling the spinner frame while the
+        agent is thinking. Invalidates the app each tick so the status
+        line redraws; exits when ``is_thinking()`` becomes False."""
+        if self._spinner_task is not None and not self._spinner_task.done():
+            return
+
+        async def _animate() -> None:
+            i = 0
+            try:
+                while self.is_thinking():
+                    self._spinner_frame = self._spinner_frames[i % len(self._spinner_frames)]
+                    if self._app.is_running:
+                        self._app.invalidate()
+                    i += 1
+                    await asyncio.sleep(0.08)
+            finally:
+                # Paint once after the agent stops so "thinking…" clears.
+                if self._app.is_running:
+                    self._app.invalidate()
+
+        self._spinner_task = asyncio.ensure_future(_animate())
 
     def _history_navigate(self, direction: int) -> None:
         """Move the history cursor by ``direction`` (-1=older, +1=newer)."""
@@ -307,7 +354,13 @@ class TUIApplication:
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
     def _launch_agent(self, user_message: str) -> None:
-        """Kick off ``agent.respond(user_message)`` on the event loop."""
+        """Kick off ``agent.respond(user_message)`` on the event loop.
+
+        Before invoking the agent we fire ``on_user_message`` so Session
+        can render the user's input into the scrollback (the user wants
+        to see what they typed, not just the agent's reply).
+        """
+        self._fire(self._on_user_message, user_message)
         if self.agent is None:
             return
         coro = self.agent.respond(user_message)
@@ -315,6 +368,7 @@ class TUIApplication:
             return
         self._agent_task = asyncio.ensure_future(coro)
         self._agent_task.add_done_callback(self._on_agent_done)
+        self._ensure_spinner_task()
 
     def _on_agent_done(self, task: asyncio.Task) -> None:
         """Fired once the agent's respond() returns / errors / is cancelled.
@@ -398,14 +452,22 @@ class TUIApplication:
         return self._last_bang_command
 
     def completion_candidates(self) -> list[str]:
-        """Completion candidates currently offered for the input buffer text."""
+        """Completion candidates currently offered for the input buffer text.
+
+        Returns each candidate as the *full* replacement string (i.e. what
+        the buffer would contain if that candidate were applied) — so a
+        Completion(text='/help', start_position=-3) against buffer '/he'
+        reads back as '/help', not '/he/help'.
+        """
         from prompt_toolkit.completion import CompleteEvent
 
         doc = self.input_buffer.document
-        return [
-            c.text if c.start_position == 0 else doc.text_before_cursor + c.text
-            for c in self._completer.get_completions(doc, CompleteEvent())
-        ]
+        before = doc.text_before_cursor
+        result = []
+        for c in self._completer.get_completions(doc, CompleteEvent()):
+            prefix = before[: c.start_position] if c.start_position < 0 else before
+            result.append(prefix + c.text)
+        return result
 
     def status_text(self) -> str:
         """One-line status area text.

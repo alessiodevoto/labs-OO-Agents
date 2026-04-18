@@ -555,7 +555,30 @@ class Session:
             # _handle_bang expects the leading ``!``; put it back.
             await self._handle_bang("!" + body)
 
-        app = TUIApplication(agent=self.agent, on_command=_on_command, on_bang=_on_bang)
+        def _on_user_message(text: str) -> None:
+            """Echo the user's just-submitted message into the scrollback,
+            otherwise the user has no visual record of what they typed.
+            Also records to the session manager for persistence parity."""
+            if self._session_manager is not None:
+                self._session_manager.record_user(text)
+            if self._first_message is None:
+                self._first_message = text
+                if self._session_manager is not None and not self._session_manager.user_named:
+                    _t = asyncio.create_task(self._auto_name_session(text))
+                    self._background_tasks.add(_t)
+                    _t.add_done_callback(self._background_tasks.discard)
+            # Print a "You: <text>" block so the transcript matches the old TUI.
+            new_console.print()
+            new_console.rule(style="dim")
+            new_console.print(f"[bold]You:[/bold] {text}")
+            new_console.rule(style="dim")
+
+        app = TUIApplication(
+            agent=self.agent,
+            on_command=_on_command,
+            on_bang=_on_bang,
+            on_user_message=_on_user_message,
+        )
 
         # Redirect the Rich console into the app's scrollback so every
         # TerminalFrontend render path (activity lines, code previews,
