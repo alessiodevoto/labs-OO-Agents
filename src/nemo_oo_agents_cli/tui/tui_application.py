@@ -156,6 +156,9 @@ class TUIApplication:
         # through this one queue — no races.
         self._block_queue: asyncio.Queue[str] | None = None
         self._consumer_task: asyncio.Task | None = None
+        # Captured in run_async; used by emit_block for thread-safe
+        # enqueue without calling the deprecated asyncio.get_event_loop().
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
@@ -164,10 +167,11 @@ class TUIApplication:
 
         kb = self._build_key_bindings()
 
-        # Output scrollback lives in the terminal itself (above the
-        # active region) via patch_stdout + sys.stdout writes — see
-        # ``append_output``. No output Window in the layout: keeps the
-        # active region tiny and preserves native terminal scrollback.
+        # Output scrollback lives in the terminal itself above the
+        # active region: every ``emit_block`` enqueues a chunk that the
+        # consumer task writes via ``run_in_terminal`` → ``sys.__stdout__``.
+        # No output Window in the layout — keeps the active region tiny
+        # and preserves native terminal scrollback.
 
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
@@ -529,10 +533,26 @@ class TUIApplication:
             if self._on_command is None:
                 self._drain_next()
                 return
-            result = self._on_command(text)
+            try:
+                result = self._on_command(text)
+            except BaseException as exc:
+                # Sync raise must not stall the queue. Surface + continue.
+                self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
+                self._drain_next()
+                return
             if asyncio.iscoroutine(result):
                 task = asyncio.ensure_future(result)
-                task.add_done_callback(lambda _t: self._drain_next())
+
+                def _after(t: asyncio.Task) -> None:
+                    # Retrieve the exception (if any) so asyncio doesn't log
+                    # "Task exception was never retrieved"; then keep draining.
+                    if not t.cancelled():
+                        exc = t.exception()
+                        if exc is not None:
+                            self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
+                    self._drain_next()
+
+                task.add_done_callback(_after)
             else:
                 self._drain_next()
             return
@@ -576,7 +596,7 @@ class TUIApplication:
 
         # Enqueue for the consumer. Before the consumer is up (pre
         # run_async), fall back to a plain stdout write.
-        if self._block_queue is None:
+        if self._block_queue is None or self._loop is None:
             import sys as _sys
 
             try:
@@ -585,11 +605,9 @@ class TUIApplication:
             except Exception:
                 pass
             return
-        try:
-            loop = asyncio.get_event_loop()
-            loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
-        except RuntimeError:
-            self._block_queue.put_nowait(text)
+        # Thread-safe enqueue via the captured loop — put_nowait itself
+        # is NOT thread-safe, so always route through call_soon_threadsafe.
+        self._loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
 
     # Legacy name — producers written before emit_block call this.
     append_output = emit_block
@@ -601,21 +619,47 @@ class TUIApplication:
         return self._app.is_running
 
     async def run_async(self) -> None:
-        # Start the single-consumer block drainer. It lives for the
-        # life of the app and is cancelled on teardown.
+        # Capture the loop once so emit_block can enqueue safely from
+        # any thread without calling the deprecated get_event_loop().
+        self._loop = asyncio.get_running_loop()
         self._block_queue = asyncio.Queue()
         self._consumer_task = asyncio.ensure_future(self._consume_blocks())
         try:
             await self._app.run_async()
         finally:
+            # Drain any blocks queued during teardown (e.g. 'Goodbye!
+            # Stay vibing.' from /exit) straight to the real stdout —
+            # the consumer task's run_in_terminal no longer works once
+            # the app has exited.
+            import sys as _sys
+
+            q = self._block_queue
+            if q is not None:
+                while not q.empty():
+                    try:
+                        chunk = q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    out = _sys.__stdout__
+                    if out is not None:
+                        try:
+                            out.write(chunk)
+                            out.flush()
+                        except Exception:
+                            pass
             if self._consumer_task is not None:
                 self._consumer_task.cancel()
                 try:
                     await self._consumer_task
-                except (asyncio.CancelledError, BaseException):
+                except asyncio.CancelledError:
                     pass
+                except BaseException:
+                    pass
+            if self._spinner_task is not None and not self._spinner_task.done():
+                self._spinner_task.cancel()
             self._consumer_task = None
             self._block_queue = None
+            self._loop = None
 
     async def _consume_blocks(self) -> None:
         """Drain ``_block_queue`` forever; write each block above the

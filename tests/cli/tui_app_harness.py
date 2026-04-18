@@ -260,8 +260,9 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
         return "".join(self.app._output_ansi)
 
     def capture_queued(self) -> list[str]:
+        """Return queued items in submission order."""
         assert self.app is not None
-        return list(self.app.state.messages) + list(self.app.state.commands)
+        return [text for _kind, text in self.app.state.items]
 
     def capture_status(self) -> str:
         assert self.app is not None

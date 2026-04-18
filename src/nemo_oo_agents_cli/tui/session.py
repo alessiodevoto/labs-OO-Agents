@@ -566,17 +566,14 @@ class Session:
         async def _on_command(text: str) -> None:
             # Echo the submitted command to scrollback so exit commands
             # (which erase the live input region via erase_when_done)
-            # leave a visible record of what the user ran. Styled bold
-            # cyan to visually match the prompt glyph.
+            # leave a visible record of what the user ran.
             from rich.text import Text as _RT
 
             emit_text(_RT(f"❯ {text}", style="bold cyan"))
 
-            try:
-                result = await self._handler.handle(text)
-            except BaseException as exc:
-                app.append_output(f"[command error] {type(exc).__name__}: {exc}\n")
-                raise
+            # Errors bubble up to _drain_next's done-callback, which
+            # surfaces them to scrollback and keeps draining.
+            result = await self._handler.handle(text)
             if result.new_session_manager is not None:
                 self._swap_session_manager(result.new_session_manager)
             if (
@@ -742,28 +739,38 @@ class Session:
 
         app._on_user_message = _on_user_message  # late-bound
 
-        # Buffer messages emitted during a code cell — flushed after the
-        # cell's PythonOutput event so message text always lands BELOW
-        # the code/output block. In show_python mode this is essential
-        # (otherwise markdown lands before the '─── oo python ───' rule);
-        # in preview mode it also matches the expected reading order.
+        # Messages emitted INSIDE a code cell are buffered and flushed
+        # after the cell's PythonOutput event, so markdown lands below
+        # the code/output block. Messages emitted OUTSIDE a cell (from
+        # a sub-method, an orchestrator, or at the very end of a turn
+        # after the final cell) render immediately — otherwise they'd
+        # silently accumulate and never appear.
         pending_messages: list[str] = []
+        in_cell = {"value": False}
 
         from rich.rule import Rule as _Rule
         from rich.text import Text as _RT
 
+        def _emit_markdown(text: str) -> None:
+            if not agent_has_messaged["value"]:
+                agent_has_messaged["value"] = True
+                emit_text(_Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
+            emit_text(Markdown(str(text)))
+
         def _flush_messages() -> None:
+            # Flip out of 'in cell' before flushing: a self.message()
+            # that arrives during the flush itself must render inline.
+            in_cell["value"] = False
             while pending_messages:
-                text = pending_messages.pop(0)
-                if not agent_has_messaged["value"]:
-                    agent_has_messaged["value"] = True
-                    emit_text(_Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
-                emit_text(Markdown(str(text)))
+                _emit_markdown(pending_messages.pop(0))
 
         if hasattr(self.agent, "_render_message"):
 
             def _render_msg(text: str) -> None:
-                pending_messages.append(str(text))
+                if in_cell["value"]:
+                    pending_messages.append(str(text))
+                else:
+                    _emit_markdown(str(text))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
@@ -794,6 +801,10 @@ class Session:
             if not code:
                 return
             self._pending_code[tool_call_id] = code
+            # Messages emitted during this cell will be buffered until
+            # _on_python_output flushes them — keeps markdown below the
+            # code/output block.
+            in_cell["value"] = True
             # In show_python mode the full cell (oo python / code / oo
             # stdout / stdout) renders from _on_python_output — no
             # preview teaser needed.

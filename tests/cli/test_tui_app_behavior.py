@@ -304,6 +304,32 @@ async def test_queue_delivered_as_next_turn_when_agent_finishes():
         await h.wait_for(lambda: agent.messages_received == ["first", "queued"])
 
 
+async def test_queue_interleaved_cmd_msg_msg_drains_in_submission_order():
+    """Queue: [text1, /cmd, text2] plays as text1-turn → /cmd → text2-turn."""
+    agent = _blocking_agent()
+    commands_seen: list[str] = []
+    async with TUIHarness(agent=agent) as h:
+        h.app._on_command = commands_seen.append
+        await h.submit_async("first")  # triggers agent, who blocks
+        await h.wait_for(lambda: h.app.is_thinking())
+        # Queue up the rest in order: text, /cmd, text
+        await h.submit_async("queued-text-1")
+        await h.submit_async("/my-cmd")
+        await h.submit_async("queued-text-2")
+        # The queued items must be in submission order
+        assert h.capture_queued() == ["queued-text-1", "/my-cmd", "queued-text-2"]
+        # Let the first turn finish; drain begins.
+        agent.block.set()
+        # After everything drains: first + queued-text-1 → agent, then
+        # /my-cmd fires, then queued-text-2 → agent.
+        await h.wait_for(
+            lambda: (
+                agent.messages_received == ["first", "queued-text-1", "queued-text-2"]
+                and commands_seen == ["/my-cmd"]
+            )
+        )
+
+
 async def test_queue_esc_soft_cancels_and_delivers_queue():
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
