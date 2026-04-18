@@ -23,13 +23,10 @@ from typing import Any
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import Completer, Completion
-from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
-from prompt_toolkit.layout.containers import VerticalAlign
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
@@ -165,6 +162,12 @@ class TUIApplication:
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
 
+        # Captured at run_async start, once patch_stdout has installed
+        # its proxy. We write through this reference always so CodeAct's
+        # later contextlib.redirect_stdout during code execution can't
+        # swallow self.message() output into the cell's captured stdout.
+        self._sink = None  # type: ignore[var-annotated]
+
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
         if hasattr(agent, "emit"):
@@ -172,26 +175,10 @@ class TUIApplication:
 
         kb = self._build_key_bindings()
 
-        # Output: render ANSI so Rich styling round-trips. The Window
-        # needs to auto-follow the bottom so the prompt stays on-screen
-        # as new lines arrive. We accomplish that by giving the control
-        # a cursor position at the very end and letting Window scroll
-        # to follow it.
-        def _output_formatted():
-            return ANSI("".join(self._output_ansi))
-
-        def _output_cursor_position() -> Point:
-            text = _strip_ansi("".join(self._output_ansi))
-            lines = text.split("\n")
-            last = lines[-1] if lines else ""
-            return Point(x=len(last), y=max(0, len(lines) - 1))
-
         # Output scrollback lives in the terminal itself (above the
         # active region) via patch_stdout + sys.stdout writes — see
-        # ``append_output``. No output Window here on purpose: keeping
-        # the layout tiny preserves the terminal's native scrollback
-        # and mouse-wheel scroll-up to review old turns.
-        del _output_formatted, _output_cursor_position  # keep callables out of layout
+        # ``append_output``. No output Window in the layout: keeps the
+        # active region tiny and preserves native terminal scrollback.
 
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
@@ -252,10 +239,13 @@ class TUIApplication:
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # Active region is just: queued lines (if any) / status line /
-        # input / completions menu (if active). Everything else scrolls
-        # into native terminal history. align=BOTTOM keeps the region
-        # flush to the bottom of whatever height prompt_toolkit reserved.
+        # Active region: queued lines / status / input / completions.
+        # Each child's preferred height drives the HSplit's preferred
+        # height, which prompt_toolkit reserves in non-fullscreen mode.
+        # Content shrinks naturally as the queue clears, thinking ends,
+        # or completions narrow. No align=VerticalAlign.BOTTOM here:
+        # that flag makes HSplit claim the max height and put content
+        # at the bottom with blanks above — exactly what we don't want.
         self._app = Application(
             layout=Layout(
                 HSplit(
@@ -265,7 +255,6 @@ class TUIApplication:
                         input_window,
                         completions_window,
                     ],
-                    align=VerticalAlign.BOTTOM,
                 ),
                 focused_element=input_window,
             ),
@@ -518,14 +507,16 @@ class TUIApplication:
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
         # Commit to the terminal scrollback above the active region.
-        # patch_stdout (wrapping run_async in session.py) diverts these
-        # writes via run_in_terminal so they render above the prompt
-        # without clobbering the layout.
+        # ``self._sink`` is the patch_stdout proxy captured in run_async
+        # — bypasses CodeAct's redirect_stdout so self.message() output
+        # doesn't get swallowed into the cell's captured stdout and
+        # re-emitted as indented "  │ <line>" stdout.
         import sys as _sys
 
+        sink = self._sink if self._sink is not None else _sys.stdout
         try:
-            _sys.stdout.write(text)
-            _sys.stdout.flush()
+            sink.write(text)
+            sink.flush()
         except Exception:
             pass
 
@@ -540,10 +531,22 @@ class TUIApplication:
         # append_output's writes land above the active prompt region
         # and scroll into native terminal history. raw=True preserves
         # ANSI escape sequences so Rich styling survives.
+        #
+        # We also cache the patched sys.stdout proxy in ``self._sink``
+        # so we can write through it even while CodeAct has swapped
+        # sys.stdout for its own redirect during agent code execution —
+        # otherwise self.message() output would be captured by the cell's
+        # stdout capture and re-emitted as indented stdout.
+        import sys as _sys
+
         from prompt_toolkit.patch_stdout import patch_stdout
 
         with patch_stdout(raw=True):
-            await self._app.run_async()
+            self._sink = _sys.stdout
+            try:
+                await self._app.run_async()
+            finally:
+                self._sink = None
 
     def exit(self) -> None:
         if self._app.is_running:

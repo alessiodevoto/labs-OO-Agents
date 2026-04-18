@@ -652,12 +652,47 @@ class Session:
             # Swap the underlying Rich Console for one that writes to app.
             self.frontend._console.console = new_console  # type: ignore[attr-defined]
 
-        # Wire agent.message() → app output with a Rich-rendered markdown block.
+        # Wire agent.message() → scrollback with a Rich-rendered markdown
+        # block. Must bypass the framework's ContextVarStream wrapper on
+        # sys.stdout, which captures writes into the executing code
+        # cell's stdout buffer — otherwise the rendered Markdown ends up
+        # as indented '  | <line>' stdout instead of a standalone block.
         if hasattr(self.agent, "_render_message"):
+            import asyncio as _a
+            import io as _io
+            import sys as _s
+
+            from prompt_toolkit.application import run_in_terminal
+            from rich.console import Console as _RichConsole
             from rich.markdown import Markdown
 
+            loop = _a.get_running_loop()
+
             def _render_msg(text: str) -> None:
-                new_console.print(Markdown(str(text)))
+                buf = _io.StringIO()
+                _RichConsole(
+                    file=buf,
+                    force_terminal=True,
+                    color_system="256",
+                    width=120,
+                    theme=CATPPUCCIN_THEME,
+                ).print(Markdown(str(text)))
+                rendered = buf.getvalue()
+
+                async def _do() -> None:
+                    # __stdout__ is the untouched fd-level stdout,
+                    # unaffected by ContextVarStream's buffer-var capture.
+                    # run_in_terminal suspends the layout so the write
+                    # doesn't clobber the prompt region.
+                    async def _write() -> None:
+                        out = _s.__stdout__
+                        if out is not None:
+                            out.write(rendered)
+                            out.flush()
+
+                    await run_in_terminal(_write)
+
+                _a.run_coroutine_threadsafe(_do(), loop)
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
