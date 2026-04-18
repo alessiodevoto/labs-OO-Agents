@@ -45,23 +45,6 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
-# TODO(TUI-DIAG): remove once the plan-c TUI is stable. Writes
-# timestamped breadcrumbs to /tmp/plan-c-trace.log so we can tell which
-# code path fires (or doesn't) during the interactive session without
-# clobbering the rendered layout.
-def _diag(msg: str) -> None:
-    import os as _os
-    import time as _time
-
-    try:
-        with open("/tmp/plan-c-trace.log", "a", encoding="utf-8") as f:
-            f.write(f"{_time.monotonic():.3f} {msg}\n")
-    except Exception:
-        pass
-    # Best-effort — swallow file errors so diagnostics can't wedge the TUI.
-    _ = _os  # retain import for future ad-hoc additions
-
-
 PROMPT_MARKER = "❯ "
 
 # Minimal default completions so Tab works on a bare TUIApplication.
@@ -497,7 +480,6 @@ class TUIApplication:
         can render the user's input into the scrollback (the user wants
         to see what they typed, not just the agent's reply).
         """
-        _diag(f"_launch_agent text={user_message[:60]!r}")
         self._fire(self._on_user_message, user_message)
         if self.agent is None:
             return
@@ -511,17 +493,10 @@ class TUIApplication:
     def _on_agent_done(self, task: asyncio.Task) -> None:
         """Fired once the agent's respond() returns / errors / is cancelled.
 
-        Drains the type-ahead queue: any ``state.messages`` become the
-        next agent turn (joined with blank lines); ``state.commands``
-        move into ``_commands_dispatched``. If neither is present, we go
-        idle — the buffer is already accepting input from the user.
+        Drains the type-ahead queue via ``_drain_next``: commands fire
+        through ``on_command`` (serialised via a completion callback),
+        consecutive messages collect into one next-turn input.
         """
-        _diag(
-            f"_on_agent_done cancelled={task.cancelled()} "
-            f"exc={None if task.cancelled() else task.exception()!r} "
-            f"queue_msgs={len(self.state.messages)} "
-            f"queue_cmds={len(self.state.commands)}"
-        )
         # Surface errors into output scrollback. Cancellation is not an
         # error (Esc soft-cancel + Ctrl-C both cancel on purpose) but
         # still emit a visible ack so the user knows the interrupt

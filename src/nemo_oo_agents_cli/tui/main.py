@@ -12,7 +12,6 @@ The ``main()`` coroutine keeps its original signature so that callers like
 """
 
 import argparse
-import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -194,9 +193,4 @@ async def main(
     frontend.init_input(registry)  # terminal-specific: prompt_toolkit completions
     session = build_session(result, frontend, registry)
 
-    # Plan-C TUI (single long-lived Application, no prompt_async per turn,
-    # no typeahead handoff race). Opt-in via env var until full cut-over.
-    if os.environ.get("NEMO_TUI_PLAN_C"):
-        await session.run_plan_c()
-    else:
-        await session.run()
+    await session.run()

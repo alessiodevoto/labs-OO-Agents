@@ -15,11 +15,11 @@ from prompt_toolkit.completion import Completer as PtCompleter
 from prompt_toolkit.completion import Completion
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import InMemoryHistory
-from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 from .completer import Completer
-from .queue_state import QueueState, render_prompt
+from .queue_state import QueueState
 from .theme import COLORS
 
 if TYPE_CHECKING:
@@ -316,69 +316,3 @@ class TUIInputHandler:
         """Force a redraw of the prompt (used by spinner to update toolbar)."""
         if self.session.app:
             self.session.app.invalidate()
-
-    def exit_typeahead(self) -> None:
-        """Signal the running typeahead prompt to exit (agent finished)."""
-        if self.session.app:
-            try:
-                self.session.app.exit(result="")
-            except Exception:
-                pass
-
-    async def typeahead_loop(self, state: "QueueState") -> None:
-        """Run one prompt_async with a dynamic prefix driven by ``state``.
-
-        Stays open across multiple Enters — each Enter submits to ``state``
-        via the custom key bindings, buffer clears, prompt redraws. Exits
-        when ``exit_typeahead()`` is called externally, or raises
-        ``KeyboardInterrupt`` / ``EOFError`` on Ctrl+C / Ctrl+D.
-
-        The prompt is drawn in a transient region and erased on exit — queued
-        lines, the spinner, and the ❯ cursor never commit to scrollback, so
-        only the agent's output persists.
-        """
-        typeahead_kb = create_typeahead_key_bindings(state, vi_mode=self.vi_mode)
-        merged_kb = merge_key_bindings([self.key_bindings, typeahead_kb])
-
-        # prompt_async(key_bindings=...) *mutates* self.session.key_bindings
-        # and does not restore it on exit. Save and restore ourselves so the
-        # session's default Enter binding (validate_and_handle) is intact for
-        # the next between-turn get_input() — otherwise round-2 Enter would
-        # still run the typeahead submit-to-state binding, silently clearing
-        # the buffer without submitting.
-        #
-        # PromptSession builds its Application in __init__, so ``self.session.app``
-        # is normally set. Guard defensively anyway — if ever None we skip the
-        # erase_when_done tweak and still run the prompt, trading a one-shot
-        # stale-scrollback line for not crashing.
-        app = self.session.app
-        prev_erase = app.erase_when_done if app is not None else None
-        prev_kb = self.session.key_bindings
-        if app is not None:
-            app.erase_when_done = True
-        try:
-            await self.session.prompt_async(
-                message=lambda: render_prompt(state),
-                key_bindings=merged_kb,
-                multiline=True,
-            )
-        finally:
-            if app is not None and prev_erase is not None:
-                app.erase_when_done = prev_erase
-            self.session.key_bindings = prev_kb
-
-    async def get_multiline_input(self, prompt: str = "You: ") -> str:
-        """Get multi-line input (submit with Escape+Enter twice or empty line).
-
-        Args:
-            prompt: The prompt to display
-
-        Returns:
-            Multi-line user input string
-        """
-        result = await self.session.prompt_async(
-            [("class:prompt", prompt)],
-            multiline=True,
-            prompt_continuation=[("class:prompt.continuation", "... ")],
-        )
-        return result.strip()

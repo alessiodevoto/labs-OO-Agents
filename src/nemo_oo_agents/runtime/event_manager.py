@@ -196,22 +196,6 @@ class EventManager:
         self._handlers[event_type].append(handler)
 
         def unsubscribe() -> None:
-            # TODO(TUI-DIAG): remove once the handler-wipe bug (TUI loses
-            # Reasoning/ToolCallEvent/PythonOutput subscriptions mid-session
-            # and activity lines stop appearing) is traced. Every unsubscribe
-            # runs through this closure, so the stack trace tells us who
-            # removed the handlers.
-            import sys as _sys
-            import traceback as _tb
-
-            print(
-                f"\n*** EventManager.unsubscribe fired for event_type={event_type!r} — "
-                f"stack follows (remove after TUI-DIAG bug fixed) ***",
-                file=_sys.__stderr__,
-                flush=True,
-            )
-            _tb.print_stack(file=_sys.__stderr__)
-
             try:
                 self._handlers[event_type].remove(handler)
             except ValueError:
