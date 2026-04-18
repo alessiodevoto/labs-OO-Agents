@@ -268,8 +268,6 @@ class Session:
         self._handler = CommandHandler(registry=registry, frontend=frontend)
         self._session_manager = session_manager
         self._first_message: str | None = None  # first user turn (for auto-naming)
-        self._pending_input: str = ""  # pre-fill next prompt (from interrupted queue)
-        self._pending_commands: list[str] = []  # slash commands queued during agent work
 
         # Streaming state (moved from _AgentStreamMixin)
         self._loop: asyncio.AbstractEventLoop | None = None
