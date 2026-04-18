@@ -161,7 +161,14 @@ def main() -> int:
                 proc.write(seq)
                 _drain(proc, stream, time.monotonic() + 0.1)
             elif cmd_l == "sleep":
-                secs = float(rest)
+                if not rest.strip():
+                    print("[driver] SLEEP requires a duration", file=sys.stderr)
+                    return 2
+                try:
+                    secs = float(rest)
+                except ValueError:
+                    print(f"[driver] SLEEP duration not a number: {rest!r}", file=sys.stderr)
+                    return 2
                 log(f"SLEEP {secs}")
                 _drain(proc, stream, time.monotonic() + secs)
             elif cmd_l == "capture":
@@ -203,8 +210,9 @@ def main() -> int:
                 _drain(proc, stream, time.monotonic() + 0.5)
                 if proc.isalive():
                     proc.terminate(force=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            if not args.quiet:
+                print(f"[driver] cleanup error: {exc}", file=sys.stderr)
         proc.close(force=True) if hasattr(proc, "close") else None
 
     return 0
