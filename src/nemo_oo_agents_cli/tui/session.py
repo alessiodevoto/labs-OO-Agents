@@ -573,11 +573,14 @@ class Session:
             new_console.print(f"[bold]You:[/bold] {text}")
             new_console.rule(style="dim")
 
+        from .input_handler import SlashCommandCompleter
+
         app = TUIApplication(
             agent=self.agent,
             on_command=_on_command,
             on_bang=_on_bang,
             on_user_message=_on_user_message,
+            completer=SlashCommandCompleter(self.registry),
         )
 
         # Redirect the Rich console into the app's scrollback so every

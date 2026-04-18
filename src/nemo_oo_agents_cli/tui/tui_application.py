@@ -306,12 +306,30 @@ class TUIApplication:
         return False
 
     def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
-        """Call a user callback; schedule it if it returned a coroutine."""
+        """Call a user callback; schedule coroutines on the loop.
+
+        Surfaces any exception into the scrollback — without this an
+        unhandled error in on_command / on_bang would disappear into
+        asyncio's default handler and the user would see a no-op.
+        """
         if cb is None:
             return
-        result = cb(arg)
+        try:
+            result = cb(arg)
+        except BaseException as exc:
+            self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
+            return
         if asyncio.iscoroutine(result):
-            asyncio.ensure_future(result)
+            task = asyncio.ensure_future(result)
+
+            def _report(t: asyncio.Task) -> None:
+                if t.cancelled():
+                    return
+                exc = t.exception()
+                if exc is not None:
+                    self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
+
+            task.add_done_callback(_report)
 
     def _ensure_spinner_task(self) -> None:
         """Start a background task cycling the spinner frame while the
