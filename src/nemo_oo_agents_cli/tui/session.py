@@ -734,16 +734,28 @@ class Session:
 
         app._on_user_message = _on_user_message  # late-bound
 
-        # Agent message → 'OO ─' rule (once per turn) + markdown block.
-        if hasattr(self.agent, "_render_message"):
-            from rich.rule import Rule
-            from rich.text import Text as _RT
+        # Buffer messages emitted during a code cell — flushed after the
+        # cell's PythonOutput event so message text always lands BELOW
+        # the code/output block. In show_python mode this is essential
+        # (otherwise markdown lands before the '─── oo python ───' rule);
+        # in preview mode it also matches the expected reading order.
+        pending_messages: list[str] = []
 
-            def _render_msg(text: str) -> None:
+        from rich.rule import Rule as _Rule
+        from rich.text import Text as _RT
+
+        def _flush_messages() -> None:
+            while pending_messages:
+                text = pending_messages.pop(0)
                 if not agent_has_messaged["value"]:
                     agent_has_messaged["value"] = True
-                    emit_text(Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
+                    emit_text(_Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
                 emit_text(Markdown(str(text)))
+
+        if hasattr(self.agent, "_render_message"):
+
+            def _render_msg(text: str) -> None:
+                pending_messages.append(str(text))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
@@ -774,6 +786,11 @@ class Session:
             if not code:
                 return
             self._pending_code[tool_call_id] = code
+            # In show_python mode the full cell (oo python / code / oo
+            # stdout / stdout) renders from _on_python_output — no
+            # preview teaser needed.
+            if self.show_python:
+                return
             preview = (
                 "Inspecting inputs..."
                 if tool_call_id.startswith("prefill_")
@@ -784,8 +801,6 @@ class Session:
             first_line = preview.split("\n", 1)[0]
             styled = Text(f"∴ {first_line}", style="dim")
             if first_line.lstrip().startswith("#"):
-                # Comment first-line: brighten to full text colour but
-                # keep regular weight (not bold).
                 styled.stylize("not dim", 0, len(first_line) + 2)
             if "\n" in preview:
                 styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
@@ -799,6 +814,9 @@ class Session:
             tool_call_id = getattr(event, "tool_call_id", "")
             code = self._pending_code.pop(tool_call_id, None)
             if tool_call_id.startswith("prefill_"):
+                # Still flush any pending messages so they don't land
+                # below a LATER cell's output.
+                _flush_messages()
                 return
 
             stdout = str(getattr(event, "stdout", "") or "")
@@ -806,8 +824,7 @@ class Session:
 
             # show_python=True: render a notebook-style cell — 'oo python'
             # rule, syntax-highlighted code, 'oo stdout' rule, stdout,
-            # 'oo stderr' rule, stderr. Each as its own block so the
-            # single consumer writes them in order.
+            # 'oo stderr' rule, stderr.
             if self.show_python and code:
                 emit_text(Rule(_RT("oo python", style=COLORS["mauve"]), style="dim", align="left"))
                 emit_text(
@@ -823,14 +840,17 @@ class Session:
                         Rule(_RT("oo stderr", style=COLORS["red"]), style="dim", align="left")
                     )
                     emit_text(_RT(stderr.rstrip("\n"), style=COLORS["red"]))
+                _flush_messages()
                 return
 
-            # Preview mode (show_python=False): stdout is for the agent
-            # to reason about; user sees results via self.message(). Only
-            # show stderr so errors don't disappear silently.
+            # Preview mode: stdout is for the agent; user sees results
+            # via self.message(). Only show stderr so errors aren't
+            # silent. Then flush any self.message() calls from this cell
+            # so they appear BELOW the code preview.
             if stderr.strip():
                 for line in stderr.rstrip("\n").split("\n"):
                     emit_text(_RT(f"  │ {line}", style="red"))
+            _flush_messages()
 
         self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
         self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
