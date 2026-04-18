@@ -792,25 +792,45 @@ class Session:
             emit_text(styled)
 
         def _on_python_output(event) -> None:
-            from rich.text import Text
+            from rich.rule import Rule
+            from rich.syntax import Syntax
+            from rich.text import Text as _RT
 
             tool_call_id = getattr(event, "tool_call_id", "")
-            self._pending_code.pop(tool_call_id, None)
+            code = self._pending_code.pop(tool_call_id, None)
             if tool_call_id.startswith("prefill_"):
                 return
 
-            # Preview mode (show_python=False): stdout is for the agent
-            # to reason about; the user sees results via self.message().
-            # Only show stderr so errors don't disappear silently.
-            if self.show_python:
-                for line in str(getattr(event, "stdout", "") or "").rstrip("\n").split("\n"):
-                    if line:
-                        emit_text(Text(f"  │ {line}", style="dim"))
-
+            stdout = str(getattr(event, "stdout", "") or "")
             stderr = str(getattr(event, "stderr", "") or "")
+
+            # show_python=True: render a notebook-style cell — 'oo python'
+            # rule, syntax-highlighted code, 'oo stdout' rule, stdout,
+            # 'oo stderr' rule, stderr. Each as its own block so the
+            # single consumer writes them in order.
+            if self.show_python and code:
+                emit_text(Rule(_RT("oo python", style=COLORS["mauve"]), style="dim", align="left"))
+                emit_text(
+                    Syntax(code.strip(), "python", theme="monokai", background_color="default")
+                )
+                if stdout.strip():
+                    emit_text(
+                        Rule(_RT("oo stdout", style=COLORS["mauve"]), style="dim", align="left")
+                    )
+                    emit_text(_RT(stdout.rstrip("\n"), style=COLORS["text"]))
+                if stderr.strip():
+                    emit_text(
+                        Rule(_RT("oo stderr", style=COLORS["red"]), style="dim", align="left")
+                    )
+                    emit_text(_RT(stderr.rstrip("\n"), style=COLORS["red"]))
+                return
+
+            # Preview mode (show_python=False): stdout is for the agent
+            # to reason about; user sees results via self.message(). Only
+            # show stderr so errors don't disappear silently.
             if stderr.strip():
                 for line in stderr.rstrip("\n").split("\n"):
-                    emit_text(Text(f"  │ {line}", style="red"))
+                    emit_text(_RT(f"  │ {line}", style="red"))
 
         self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
         self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
