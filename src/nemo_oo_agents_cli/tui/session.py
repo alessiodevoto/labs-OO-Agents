@@ -711,9 +711,37 @@ class Session:
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
 
+            # Right-aligned session rule above the user bar:
+            #   ────────────────────────── session-name [abcd1234]
+            from rich.rule import Rule as _Rule
+
+            segments: list[str] = []
+            usage = self._context_usage_label()
+            if usage:
+                segments.append(usage)
+            if self._session_manager is not None:
+                sm = self._session_manager
+                short = (sm.session_id or "")[:8]
+                name = sm.name
+                if name and short:
+                    segments.append(f"{name} \\[{short}]")
+                elif short:
+                    segments.append(f"\\[{short}]")
+            label = " · ".join(segments)
+            if label:
+                emit_text(
+                    _Rule(
+                        title=f"[{COLORS['overlay1']}]{label}[/]",
+                        style=COLORS["surface1"],
+                        align="right",
+                    )
+                )
+            else:
+                emit_text(_Rule(style=COLORS["surface1"]))
+
             # Plain (non-bold) text on a grey background bar that
-            # spans the full terminal width. The prompt glyph matches
-            # the one BeforeInput draws on the live input line.
+            # spans the full terminal width. Prompt glyph matches the
+            # one BeforeInput draws on the live input line.
             import shutil
 
             try:
@@ -722,7 +750,6 @@ class Session:
                 cols = 120
             display = f" ❯ {text} "
             bar = Text(display.ljust(cols), style=f"{COLORS['text']} on {COLORS['surface2']}")
-            emit_text(Text(""))  # spacer above
             emit_text(bar)
             # New turn → reset the per-turn first-message guard.
             agent_has_messaged["value"] = False
@@ -737,7 +764,7 @@ class Session:
             def _render_msg(text: str) -> None:
                 if not agent_has_messaged["value"]:
                     agent_has_messaged["value"] = True
-                    emit_text(Rule(_RT("OO ", style=COLORS["mauve"]), style="dim"))
+                    emit_text(Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
                 emit_text(Markdown(str(text)))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
