@@ -622,6 +622,27 @@ class Session:
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
+        # Replace Session's logging-based loop exception handler with one
+        # that surfaces every swallowed task exception into the scrollback.
+        # Without this, any coroutine we schedule (spinner, _fire-driven
+        # commands, background bookkeeping) that raises vanishes into
+        # Python's logging module — users see 'nothing happened'.
+        loop = asyncio.get_running_loop()
+
+        def _loud_handler(_loop, context):
+            import traceback as _tb
+
+            msg = context.get("message", "")
+            exc = context.get("exception")
+            line = f"[asyncio] {msg}"
+            if exc is not None:
+                line += f" — {type(exc).__name__}: {exc}"
+                if hasattr(exc, "__traceback__"):
+                    line += "\n" + "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+            app.append_output(line + "\n")
+
+        loop.set_exception_handler(_loud_handler)
+
         try:
             await app.run_async()
         except (KeyboardInterrupt, EOFError):
