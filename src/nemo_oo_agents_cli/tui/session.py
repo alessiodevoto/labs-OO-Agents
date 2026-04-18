@@ -784,7 +784,9 @@ class Session:
             first_line = preview.split("\n", 1)[0]
             styled = Text(f"∴ {first_line}", style="dim")
             if first_line.lstrip().startswith("#"):
-                styled.stylize("not dim bold", 0, len(first_line) + 2)
+                # Comment first-line: brighten to full text colour but
+                # keep regular weight (not bold).
+                styled.stylize("not dim", 0, len(first_line) + 2)
             if "\n" in preview:
                 styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
             emit_text(styled)
