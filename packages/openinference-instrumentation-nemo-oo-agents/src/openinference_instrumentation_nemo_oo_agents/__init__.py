@@ -301,7 +301,11 @@ def _add_exporters(provider: TracerProvider, exporters: list[SpanExporter]) -> N
         if isinstance(exp, _LOCAL_EXPORTER_TYPES) or getattr(exp, "synchronous", False):
             provider.add_span_processor(SimpleSpanProcessor(exp))
         else:
-            provider.add_span_processor(BatchSpanProcessor(exp))
+            provider.add_span_processor(BatchSpanProcessor(
+                exp,
+                schedule_delay_millis=1000,
+                max_queue_size=8192,
+            ))
 
 
 def _replace_exporters(provider: TracerProvider, exporters: list[SpanExporter]) -> None:
