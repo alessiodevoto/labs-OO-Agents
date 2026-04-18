@@ -1,6 +1,0 @@
-SLEEP 8
-CAPTURE
-TYPE /exit
-KEY enter
-SLEEP 1
-CAPTURE

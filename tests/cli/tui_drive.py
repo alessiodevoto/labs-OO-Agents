@@ -3,27 +3,20 @@
 # SPDX-License-Identifier: Apache-2.0
 """Drive the NeMo OO Agents TUI via a pty and snapshot its rendered screen.
 
-Use it to A/B the old ``session.run()`` path vs. ``session.run_plan_c()``
-without having to watch a real terminal.
+Manual smoke-test tool — spawns the TUI in a pty, writes keystrokes on
+stdin, captures output through a ``pyte`` VT100 emulator, dumps screen
+snapshots on CAPTURE lines. Used during plan-C development to A/B old
+vs new TUI behaviour without watching a real terminal.
+
+Not invoked by pytest; kept under ``tests/cli/`` as a dev diagnostic.
 
 Example::
 
-    # Old path
-    scripts/tui_drive.py -- nemo oo tui <<'EOF'
-    SLEEP 1
-    TYPE hello
+    tests/cli/tui_drive.py -- uv run nemo oo tui <<'EOF'
+    SLEEP 7
+    TYPE /help
     KEY enter
-    SLEEP 2
-    CAPTURE
-    KEY c-d
-    EOF
-
-    # New path
-    NEMO_TUI_PLAN_C=1 scripts/tui_drive.py -- nemo oo tui <<'EOF'
     SLEEP 1
-    TYPE hello
-    KEY enter
-    SLEEP 2
     CAPTURE
     KEY c-d
     EOF

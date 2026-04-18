@@ -1,8 +1,0 @@
-SLEEP 10
-CAPTURE
-TYPE /help
-KEY enter
-SLEEP 2
-CAPTURE
-KEY c-d
-SLEEP 0.5
