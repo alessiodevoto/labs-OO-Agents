@@ -29,6 +29,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
+from prompt_toolkit.layout.containers import VerticalAlign
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
@@ -185,10 +186,9 @@ class TUIApplication:
             last = lines[-1] if lines else ""
             return Point(x=len(last), y=max(0, len(lines) - 1))
 
-        # Output content: shrinks to just what fits (dont_extend_height).
-        # A filler Window above takes any remaining vertical space so
-        # content is effectively bottom-aligned — short transcripts
-        # hug the prompt instead of leaving a gap below the banner.
+        # Output content — shrinks to what fits. The enclosing HSplit
+        # has align=VerticalAlign.BOTTOM so any slack floats to the top,
+        # not between the banner and the prompt.
         output_window = Window(
             FormattedTextControl(
                 _output_formatted,
@@ -199,7 +199,6 @@ class TUIApplication:
             wrap_lines=True,
             dont_extend_height=True,
         )
-        output_filler = Window(height=Dimension(weight=1))
 
         # Queue window: shown only while state.messages / state.commands
         # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
@@ -260,20 +259,21 @@ class TUIApplication:
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # Order: spacer / output / queue / status / input / completions.
-        # spacer soaks up vertical slack above the output so content
-        # bottom-aligns against the prompt area.
+        # align=VerticalAlign.BOTTOM positions the combined content at
+        # the bottom of whatever height the HSplit is given, so any
+        # slack appears above the banner instead of between the banner
+        # and the prompt.
         self._app = Application(
             layout=Layout(
                 HSplit(
                     [
-                        output_filler,
                         output_window,
                         queue_window,
                         status_window,
                         input_window,
                         completions_window,
-                    ]
+                    ],
+                    align=VerticalAlign.BOTTOM,
                 ),
                 focused_element=input_window,
             ),
