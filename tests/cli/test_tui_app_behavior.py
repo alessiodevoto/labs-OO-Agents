@@ -2,25 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 """Behaviour spec for ``TUIApplication`` (Plan-C, single long-lived app).
 
-Every test here pins a behaviour the old two-prompt TUI had. Right now
-the ``TUIApplication`` stub has almost none of these — so every test is
-marked ``xfail(strict=True)``. When the real implementation lands in
-Phase 2, tests flip green one at a time (``strict=True`` means if a test
-starts passing, pytest errors until we drop the mark — preventing silent
-drift).
+Each test pins a behaviour the TUI must preserve. Tests are grouped
+by tier of concern:
 
-Grouping:
+* Tier 1 — baseline REPL (prompt, enter → agent, buffer clears, exit)
+* Tier 2 — input mechanics (Shift+Enter, backspace, history, cursor)
+* Tier 3 — commands (/slash dispatch, Tab completion, !bang)
+* Tier 4 — type-ahead queue (queued lines, delivery order, cancel)
+* Tier 5 — hard cases (Ctrl+C, errors, Rich ANSI, spinner, THE BUG)
 
-* Tier 1 — baseline REPL
-* Tier 2 — input mechanics
-* Tier 3 — commands
-* Tier 4 — type-ahead queue
-* Tier 5 — hard cases (interrupts, rendering, THE BUG)
+Tests read logical state (``app.input_buffer.text``, ``app.state.items``,
+``app.status_text()``) via the harness's ``capture_*`` helpers rather
+than parsing terminal output — same discipline as the harness canaries.
 
-The tests read logical state (``app.input_buffer.text``,
-``app.state.messages``, ``app.status_text()``) via the harness's
-``capture_*`` helpers rather than parsing terminal output — same
-discipline as the harness canary tests.
+The ``XFAIL`` mark is still defined below for any future test that
+wants to pin an unimplemented behaviour; it's not applied anywhere
+right now because every listed behaviour is implemented.
 """
 
 from __future__ import annotations
