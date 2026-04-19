@@ -61,6 +61,9 @@ class AgentEventRenderer:
         """Subscribe to the agent's event manager and wire _render_message.
 
         Idempotent: a second call is a no-op (handlers already subscribed).
+        Chains onto any existing ``agent._render_message`` so an observer
+        hook installed by another component (e.g. a web mirror) still
+        fires when ``self.message()`` is called.
         """
         if self._unsubscribes:
             return
@@ -72,20 +75,50 @@ class AgentEventRenderer:
                 em.on("PythonOutput", self._on_python_output),
             ]
         )
+        # Chain onto any prior hook so we don't silently stomp observers.
+        prior = getattr(self._agent, "_render_message", None)
+        self._prior_render_message = prior
         if hasattr(self._agent, "_render_message"):
-            self._agent._render_message = self._render_message
+
+            def _hook(text: str) -> None:
+                if prior is not None:
+                    try:
+                        prior(text)
+                    except Exception:
+                        pass
+                self._render_message(text)
+
+            self._agent._render_message = _hook
 
     def detach(self) -> None:
-        """Unsubscribe all handlers. Safe to call multiple times."""
+        """Unsubscribe all handlers and clear the agent hook.
+
+        Safe to call multiple times. Restores ``agent._render_message``
+        to whatever was there before ``attach()`` (usually ``None``) so
+        a post-shutdown ``agent.message()`` doesn't invoke a dead renderer.
+        """
         for fn in self._unsubscribes:
             try:
                 fn()
             except Exception:
                 pass
         self._unsubscribes.clear()
+        # Restore the prior hook if the agent still has our chain installed.
+        if hasattr(self._agent, "_render_message"):
+            self._agent._render_message = getattr(self, "_prior_render_message", None)
 
     def reset_turn(self) -> None:
-        """Called on new user submission — reset the per-turn ``OO ─`` flag."""
+        """Called on new user submission — reset all per-turn state.
+
+        A previous turn that was cancelled mid-cell (Esc / Ctrl-C after
+        ``ToolCallEvent`` fired but before ``PythonOutput``) leaves
+        ``_in_cell=True`` and possibly buffered messages. Clear them on
+        the next turn boundary, emitting any stragglers first so they
+        aren't lost.
+        """
+        if self._pending_messages:
+            self._flush_messages()
+        self._in_cell = False
         self._agent_has_messaged = False
 
     # ── message rendering (agent self.message()) ───────────────────────

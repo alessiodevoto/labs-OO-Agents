@@ -12,7 +12,6 @@ decisions.  Frontends are pure rendering.
 """
 
 import asyncio
-import concurrent.futures
 import re
 from typing import TYPE_CHECKING
 
@@ -41,21 +40,6 @@ def _short_model_name(full_name: str) -> str:
     part = part.replace("bedrock-claude-", "").replace("bedrock-", "").replace("claude-", "")
     part = re.sub(r"-v\d+$", "", part)
     return part
-
-
-def _build_prompt(config: "Config") -> str:
-    """Build the dynamic input prompt."""
-    return "❯ "
-
-
-def _retrieve_future_exception(f: concurrent.futures.Future[None]) -> None:
-    """Done-callback: retrieve the exception to silence warnings."""
-    if f.cancelled():
-        return
-    try:
-        f.exception()
-    except RuntimeError:
-        pass
 
 
 async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
@@ -568,14 +552,17 @@ class Session:
                 TextOutput("Interrupted by the user. Exiting TUI...", "warning")
             )
         finally:
-            # Cancel any fire-and-forget session tasks (auto-naming,
-            # post-compact naming) still running at shutdown so they
-            # don't outlive the event loop with "Task was destroyed"
-            # warnings.
+            # Order matters:
+            # 1. Detach the renderer FIRST. Clears agent._render_message
+            #    so any post-shutdown self.message() call (e.g. from
+            #    save_snapshot) doesn't write through a dead emit_text.
+            # 2. Cancel fire-and-forget tasks (auto-naming, post-compact
+            #    naming) before the loop closes.
+            # 3. Diagnostics, frontend close, snapshot, session close.
+            renderer.detach()
             self._cancel_background_tasks()
             self._dump_exit_diagnostics()
             self.frontend.close()
-            renderer.detach()
             if self._session_manager is not None:
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
