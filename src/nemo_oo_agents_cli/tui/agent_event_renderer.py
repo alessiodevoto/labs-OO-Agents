@@ -13,11 +13,10 @@ State (all per-turn):
 - ``_agent_has_messaged`` — True after the first ``self.message()`` in
   the current turn. Drives the one-time ``"OO ─"`` rule that separates
   agent output from user input.
-- ``_in_cell`` — True between a ``ToolCallEvent(execute_python)`` and
-  its matching ``PythonOutput``. Messages emitted while ``_in_cell`` is
-  True are buffered so they render BELOW the code/output block, not in
-  the middle of it.
-- ``_pending_messages`` — the buffer used while ``_in_cell`` is True.
+- ``_pending_messages`` — buffer for ``self.message()`` calls.
+  Unconditionally buffered; drained on every ``PythonOutput`` so
+  messages always land BELOW the code-preview + output block for the
+  cell above them.
 
 The class has no reference to ``Session``. Callers pass ``emit_text``
 (the ANSI-enqueue function), a ``show_python`` getter, and a shared
@@ -79,7 +78,6 @@ class AgentEventRenderer:
         self._colors = colors
         self._unsubscribes: list[Callable[[], None]] = []
         self._agent_has_messaged = False
-        self._in_cell = False
         self._pending_messages: list[str] = []
 
     # ── lifecycle ──────────────────────────────────────────────────────
@@ -135,31 +133,32 @@ class AgentEventRenderer:
             self._agent._render_message = getattr(self, "_prior_render_message", None)
 
     def reset_turn(self) -> None:
-        """Called on new user submission — reset all per-turn state.
+        """Called on new user submission — flush any stragglers from the
+        previous turn and reset the per-turn ``OO ─`` guard.
 
-        A previous turn that was cancelled mid-cell (Esc / Ctrl-C after
-        ``ToolCallEvent`` fired but before ``PythonOutput``) leaves
-        ``_in_cell=True`` and possibly buffered messages. Clear them on
-        the next turn boundary, emitting any stragglers first so they
-        aren't lost.
+        Messages emitted after the last ``PythonOutput`` of a turn stay
+        in the buffer (there's no "turn ended" event). Flushing on the
+        next user submission ensures they're never silently dropped —
+        they appear just above the new user bar rather than being lost
+        forever.
         """
         if self._pending_messages:
             self._flush_messages()
-        self._in_cell = False
         self._agent_has_messaged = False
 
     # ── message rendering (agent self.message()) ───────────────────────
 
     def _render_message(self, text: str) -> None:
-        """Hook plugged into ``agent._render_message``.
+        """Hook plugged into ``agent._render_message``. Buffers
+        unconditionally so every message lands AFTER the nearest
+        preceding code block's ``PythonOutput`` flush — matching the
+        visual contract "messages always below the anchor above them".
 
-        Buffers if we're inside a python cell (so the message renders
-        BELOW the code/output block); otherwise emits immediately.
+        A CodeAct prefill runs at the start of every turn, so the
+        buffer drains quickly; messages don't sit visibly queued in
+        normal flow.
         """
-        if self._in_cell:
-            self._pending_messages.append(str(text))
-        else:
-            self._emit_markdown(str(text))
+        self._pending_messages.append(str(text))
 
     def _emit_markdown(self, text: str) -> None:
         if not self._agent_has_messaged:
@@ -170,12 +169,7 @@ class AgentEventRenderer:
         self._emit_text(Markdown(str(text)))
 
     def _flush_messages(self) -> None:
-        """Flush the in-cell message buffer.
-
-        Flip ``_in_cell`` to False BEFORE draining: a ``self.message()``
-        call that arrives mid-flush must render inline, not re-queue.
-        """
-        self._in_cell = False
+        """Drain ``_pending_messages`` in order, each as a markdown block."""
         while self._pending_messages:
             self._emit_markdown(self._pending_messages.pop(0))
 
@@ -195,9 +189,6 @@ class AgentEventRenderer:
         if not code:
             return
         self._pending_code[tool_call_id] = code
-        # A cell is open — any self.message() from now until PythonOutput
-        # buffers so it renders below the code/output block.
-        self._in_cell = True
 
         # show_python=True mode renders the full cell from _on_python_output;
         # no teaser preview line needed.
