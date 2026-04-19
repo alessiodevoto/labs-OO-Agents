@@ -48,13 +48,41 @@ def _build_prompt(config: "Config") -> str:
     return "❯ "
 
 
-def _code_preview(code: str, max_lines: int = 2) -> str:
-    """Return the first meaningful non-blank lines of *code* for activity preview."""
-    lines = [ln for ln in code.splitlines() if ln.strip()]
-    preview = "\n".join(lines[:max_lines])
-    if len(lines) > max_lines:
-        preview += "..."
-    return preview
+def _code_preview(code: str, max_cols: int = 100) -> str:
+    """Return a compact preview of *code* for the activity line.
+
+    Shape:
+      * First line is comment (``#…``): keep the comment (white-styled
+        downstream) AND the next non-blank code line (grey). Max 2.
+      * First line is code: show just that line (grey). Max 1.
+
+    Filters out lines matching ``return_result(...)`` — CodeAct
+    boilerplate the user doesn't care about in a preview. Long lines
+    truncate to ``max_cols`` with an ellipsis.
+    """
+    raw = [ln for ln in code.splitlines() if ln.strip()]
+    # Drop the CodeAct-internal return_result(...) scaffolding.
+    lines = [ln for ln in raw if not ln.lstrip().startswith("return_result(")]
+    if not lines:
+        return ""
+
+    def _clip(ln: str) -> str:
+        return ln if len(ln) <= max_cols else ln[: max_cols - 1] + "…"
+
+    first = lines[0]
+    if first.lstrip().startswith("#"):
+        result = [_clip(first)]
+        if len(lines) > 1:
+            result.append(_clip(lines[1]))
+        if len(lines) > 2:
+            result[-1] += "…"
+        return "\n".join(result)
+
+    # No comment — one line only, suffix with … if there was more.
+    clipped = _clip(first)
+    if len(lines) > 1:
+        clipped += "…"
+    return clipped
 
 
 def _retrieve_future_exception(f: concurrent.futures.Future[None]) -> None:
@@ -240,8 +268,6 @@ class Session:
         self._handler = CommandHandler(registry=registry, frontend=frontend)
         self._session_manager = session_manager
         self._first_message: str | None = None  # first user turn (for auto-naming)
-        self._pending_input: str = ""  # pre-fill next prompt (from interrupted queue)
-        self._pending_commands: list[str] = []  # slash commands queued during agent work
 
         # Streaming state (moved from _AgentStreamMixin)
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -497,116 +523,383 @@ class Session:
         if self.show_python and self._loop is not None:
             fut = asyncio.run_coroutine_threadsafe(self.frontend.render(execution), self._loop)
             fut.add_done_callback(_retrieve_future_exception)
+            return
+
+        # show_python=False (default): emit stdout/stderr of the cell as
+        # indented ActivityLines so they appear just below the code
+        # preview that fired a moment ago — ipython-notebook feel.
+        if self._loop is None:
+            return
+        from .output import ActivityLine
+
+        for stream_kind, payload in (("stdout", execution.stdout), ("stderr", execution.stderr)):
+            if not payload:
+                continue
+            for line in str(payload).rstrip("\n").split("\n"):
+                fut = asyncio.run_coroutine_threadsafe(
+                    self.frontend.render(ActivityLine(line, kind=stream_kind)),  # type: ignore[arg-type]
+                    self._loop,
+                )
+                fut.add_done_callback(_retrieve_future_exception)
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
     async def run(self) -> None:
-        """Run the REPL until the user exits or EOF."""
+        """Drive the single long-lived ``TUIApplication`` REPL.
+
+        One Application owns the whole terminal: output scrolls above
+        the live prompt region via a single-consumer block queue, so
+        producers (command dispatch, agent events, messages) render in
+        strict submission order and there's no handoff race that drops
+        the first keystroke between turns.
+        """
+
         from .output import TextOutput
+        from .tui_application import TUIApplication
 
         self._attach_agent(self.agent)
 
-        # Wire agent.message() → frontend.render() directly (no event callback)
-        if hasattr(self.agent, "_render_message"):
-            from .output import AgentMessage
+        async def _on_command(text: str) -> None:
+            # Echo the submitted command to scrollback so exit commands
+            # (which erase the live input region via erase_when_done)
+            # leave a visible record of what the user ran.
+            from rich.text import Text as _RT
 
-            loop = asyncio.get_running_loop()
-            frontend = self.frontend
+            emit_text(_RT(f"❯ {text}", style="bold cyan"))
+
+            # Errors bubble up to _drain_next's done-callback, which
+            # surfaces them to scrollback and keeps draining.
+            result = await self._handler.handle(text)
+            if result.new_session_manager is not None:
+                self._swap_session_manager(result.new_session_manager)
+            if (
+                result.compact_done
+                and self._first_message
+                and self._session_manager
+                and not self._session_manager.user_named
+            ):
+                _t = asyncio.create_task(self._auto_name_session(self._first_message))
+                self._background_tasks.add(_t)
+                _t.add_done_callback(self._background_tasks.discard)
+            if result.exit:
+                app.exit()
+                return
+            if result.agent_message is not None:
+                # Slash-command-generated agent turn — feed through the
+                # same path as a typed message so the user bar, session
+                # bookkeeping, and agent dispatch stay consistent.
+                app.launch_agent(result.agent_message)
+
+        async def _on_bang(body: str) -> None:
+            await self._handle_bang("!" + body)
+
+        from .input_handler import SlashCommandCompleter
+        from .theme import CATPPUCCIN_THEME, COLORS
+
+        def _session_label() -> str:
+            """Compose the label shown on the right of the rule just
+            above the input: 'context ctx 20% · name [abc12345]'."""
+            bits: list[str] = []
+            usage = self._context_usage_label()
+            if usage:
+                bits.append(usage)
+            if self._session_manager is not None:
+                sm = self._session_manager
+                short = (sm.session_id or "")[:8]
+                name = sm.name
+                if name and short:
+                    bits.append(f"{name} [{short}]")
+                elif short:
+                    bits.append(f"[{short}]")
+            return " · ".join(bits)
+
+        app = TUIApplication(
+            agent=self.agent,
+            on_command=_on_command,
+            on_bang=_on_bang,
+            completer=SlashCommandCompleter(self.registry),
+            session_label=_session_label,
+        )
+
+        # ── block rendering ──────────────────────────────────────────
+        # emit_text(renderable) = render Rich object to ANSI, enqueue
+        # it onto the app's single-consumer block queue. This is the
+        # ONLY way content reaches the transcript in plan-c. Keeps
+        # every producer on one serialised path — no races.
+        import io as _io
+
+        from rich.console import Console as _RichConsole
+        from rich.markdown import Markdown
+
+        _emit_console = _RichConsole(
+            file=_io.StringIO(),
+            force_terminal=True,
+            color_system="256",
+            width=120,
+            theme=CATPPUCCIN_THEME,
+        )
+
+        def emit_text(renderable) -> None:
+            """Render any Rich renderable / string to ANSI and enqueue.
+
+            Width tracks the current terminal so background-bar blocks
+            (e.g. the user-message panel) span the full row.
+            """
+            import shutil
+
+            try:
+                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
+            except Exception:
+                cols = 120
+            _emit_console.width = cols
+            buf = _io.StringIO()
+            _emit_console.file = buf
+            _emit_console.print(renderable)
+            app.emit_block(buf.getvalue())
+
+        # Route the frontend's own Rich console through emit_block too,
+        # so slash-command outputs (rendered via frontend.render(...))
+        # land in the block queue instead of the real stdout. This is
+        # what makes /help, /model, /context etc. appear correctly in
+        # the scrollback — without the redirect, their Rich writes
+        # clobber prompt_toolkit's layout at the current cursor.
+        class _EmitStream:
+            def write(self, text: str) -> int:
+                if text:
+                    app.emit_block(text)
+                return len(text)
+
+            def flush(self) -> None:
+                return None
+
+            def isatty(self) -> bool:
+                return True
+
+        if hasattr(self.frontend, "_console"):
+            self.frontend._console.console = _RichConsole(  # type: ignore[attr-defined]
+                file=_EmitStream(),  # type: ignore[arg-type]
+                force_terminal=True,
+                color_system="256",
+                width=120,
+                theme=CATPPUCCIN_THEME,
+            )
+
+        # Track whether the agent has already emitted a markdown block
+        # this turn — we only want the "OO ─" rule at the START of its
+        # reply block, not before every message() call in a multi-msg
+        # turn. Reset to False when the user submits a new message.
+        agent_has_messaged = {"value": False}
+
+        def _on_user_message(text: str) -> None:
+            from rich.text import Text
+
+            if self._session_manager is not None:
+                self._session_manager.record_user(text)
+            if self._first_message is None:
+                self._first_message = text
+                if (
+                    self._session_manager is not None
+                    and not self._session_manager.user_named
+                    and not (self._session_manager.name or "").strip()
+                ):
+                    _t = asyncio.create_task(self._auto_name_session(text))
+                    self._background_tasks.add(_t)
+                    _t.add_done_callback(self._background_tasks.discard)
+
+            # The session rule lives as a live layout row right above
+            # the input (see TUIApplication.session_rule window) — no
+            # need to emit a separate transcript rule per turn.
+            #
+            # User-message bar: plain (non-bold) text on a grey
+            # background bar that spans the full terminal width.
+            # Prompt glyph matches the input line's BeforeInput marker.
+            import shutil
+
+            try:
+                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
+            except Exception:
+                cols = 120
+            # For multi-line messages we pad EACH line to ``cols``
+            # individually so the grey background reaches the right
+            # edge on every row. First line carries the ``❯`` prefix;
+            # continuation lines start flush-left (no indent).
+            lines_in = text.split("\n")
+            padded: list[str] = []
+            for i, line in enumerate(lines_in):
+                shown = f" ❯ {line} " if i == 0 else f" {line} "
+                padded.append(shown.ljust(cols))
+            bar = Text("\n".join(padded), style=f"{COLORS['text']} on {COLORS['surface2']}")
+            emit_text(bar)
+            # New turn → reset the per-turn first-message guard.
+            agent_has_messaged["value"] = False
+
+        # Assign the user-message callback after construction because
+        # it closes over emit_text / Text which are defined below. The
+        # attribute is public for exactly this reason.
+        app.on_user_message = _on_user_message
+
+        # Messages emitted INSIDE a code cell are buffered and flushed
+        # after the cell's PythonOutput event, so markdown lands below
+        # the code/output block. Messages emitted OUTSIDE a cell (from
+        # a sub-method, an orchestrator, or at the very end of a turn
+        # after the final cell) render immediately — otherwise they'd
+        # silently accumulate and never appear.
+        pending_messages: list[str] = []
+        in_cell = {"value": False}
+
+        from rich.rule import Rule as _Rule
+        from rich.text import Text as _RT
+
+        def _emit_markdown(text: str) -> None:
+            if not agent_has_messaged["value"]:
+                agent_has_messaged["value"] = True
+                emit_text(_Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
+            emit_text(Markdown(str(text)))
+
+        def _flush_messages() -> None:
+            # Flip out of 'in cell' before flushing: a self.message()
+            # that arrives during the flush itself must render inline.
+            in_cell["value"] = False
+            while pending_messages:
+                _emit_markdown(pending_messages.pop(0))
+
+        if hasattr(self.agent, "_render_message"):
 
             def _render_msg(text: str) -> None:
-                show_rule = not self._agent_has_messaged
-                self._agent_has_messaged = True
-                asyncio.run_coroutine_threadsafe(
-                    frontend.render(AgentMessage(content=text, show_rule=show_rule)), loop
-                )
+                if in_cell["value"]:
+                    pending_messages.append(str(text))
+                else:
+                    _emit_markdown(str(text))
 
             self.agent._render_message = _render_msg  # type: ignore[attr-defined]
 
+        # ── replace the default event handlers with plan-c versions ──
+        # Session._attach_agent's handlers schedule frontend.render via
+        # run_coroutine_threadsafe, which means the activity line lands
+        # in the queue LATER than a synchronously-emitted message block.
+        # These sync handlers emit directly, so order matches event
+        # firing order (ToolCall before self.message).
+        self._detach_agent()
+        self._loop = asyncio.get_running_loop()
+
+        def _on_reasoning(event) -> None:
+            from rich.text import Text
+
+            content = getattr(event, "content", "") or ""
+            if content.strip():
+                emit_text(Text(content, style="dim italic"))
+
+        def _on_tool_call(event) -> None:
+            from rich.text import Text
+
+            if getattr(event, "name", "") != "execute_python":
+                return
+            tool_call_id = getattr(event, "tool_call_id", "")
+            arguments = getattr(event, "arguments", {})
+            code = arguments.get("code", "") if isinstance(arguments, dict) else ""
+            if not code:
+                return
+            self._pending_code[tool_call_id] = code
+            # Messages emitted during this cell will be buffered until
+            # _on_python_output flushes them — keeps markdown below the
+            # code/output block.
+            in_cell["value"] = True
+            # In show_python mode the full cell (oo python / code / oo
+            # stdout / stdout) renders from _on_python_output — no
+            # preview teaser needed.
+            if self.show_python:
+                return
+            preview = (
+                "Inspecting inputs..."
+                if tool_call_id.startswith("prefill_")
+                else _code_preview(code)
+            )
+            if not preview:
+                return
+            first_line = preview.split("\n", 1)[0]
+            styled = Text(f"∴ {first_line}", style="dim")
+            if first_line.lstrip().startswith("#"):
+                styled.stylize("not dim", 0, len(first_line) + 2)
+            if "\n" in preview:
+                styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
+            emit_text(styled)
+
+        def _on_python_output(event) -> None:
+            from rich.rule import Rule
+            from rich.syntax import Syntax
+            from rich.text import Text as _RT
+
+            tool_call_id = getattr(event, "tool_call_id", "")
+            code = self._pending_code.pop(tool_call_id, None)
+            if tool_call_id.startswith("prefill_"):
+                # Still flush any pending messages so they don't land
+                # below a LATER cell's output.
+                _flush_messages()
+                return
+
+            stdout = str(getattr(event, "stdout", "") or "")
+            stderr = str(getattr(event, "stderr", "") or "")
+
+            # show_python=True: render a notebook-style cell — 'oo python'
+            # rule, syntax-highlighted code, 'oo stdout' rule, stdout,
+            # 'oo stderr' rule, stderr.
+            if self.show_python and code:
+                emit_text(Rule(_RT("oo python", style=COLORS["mauve"]), style="dim", align="left"))
+                emit_text(
+                    Syntax(code.strip(), "python", theme="monokai", background_color="default")
+                )
+                if stdout.strip():
+                    emit_text(
+                        Rule(_RT("oo stdout", style=COLORS["mauve"]), style="dim", align="left")
+                    )
+                    emit_text(_RT(stdout.rstrip("\n"), style=COLORS["text"]))
+                if stderr.strip():
+                    emit_text(
+                        Rule(_RT("oo stderr", style=COLORS["red"]), style="dim", align="left")
+                    )
+                    emit_text(_RT(stderr.rstrip("\n"), style=COLORS["red"]))
+                _flush_messages()
+                return
+
+            # Preview mode: stdout is for the agent; user sees results
+            # via self.message(). Only show stderr so errors aren't
+            # silent. Then flush any self.message() calls from this cell
+            # so they appear BELOW the code preview.
+            if stderr.strip():
+                for line in stderr.rstrip("\n").split("\n"):
+                    emit_text(_RT(f"  │ {line}", style="red"))
+            _flush_messages()
+
+        self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
+        self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
+        self._unsubscribe_fns.append(self.agent.event_manager.on("PythonOutput", _on_python_output))
+
+        # Replace Session's logging-based loop exception handler with one
+        # that surfaces every swallowed task exception into the scrollback.
+        # Without this, any coroutine we schedule (spinner, _fire-driven
+        # commands, background bookkeeping) that raises vanishes into
+        # Python's logging module — users see 'nothing happened'.
+        loop = asyncio.get_running_loop()
+
+        def _loud_handler(_loop, context):
+            import traceback as _tb
+
+            msg = context.get("message", "")
+            exc = context.get("exception")
+            line = f"[asyncio] {msg}"
+            if exc is not None:
+                line += f" — {type(exc).__name__}: {exc}"
+                if hasattr(exc, "__traceback__"):
+                    line += "\n" + "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+            app.append_output(line + "\n")
+
+        loop.set_exception_handler(_loud_handler)
+
         try:
-            while True:
-                self._print_input_rule()
-                prompt = _build_prompt(self.config)
-                try:
-                    # Process any queued slash commands first
-                    if self._pending_commands:
-                        user_input = self._pending_commands.pop(0)
-                    else:
-                        pending = self._pending_input
-                        self._pending_input = ""
-                        user_input = await self.frontend.get_input(prompt, default=pending)
-                except EOFError:
-                    await self.frontend.render(
-                        TextOutput("Interrupted by the user. Exiting TUI...", "warning")
-                    )
-                    break
-                except KeyboardInterrupt:
-                    await self.frontend.render(
-                        TextOutput("Interrupted by the user. Exiting TUI...", "warning")
-                    )
-                    break
-
-                if not user_input:
-                    continue
-
-                # Slash commands
-                if user_input.startswith("/"):
-                    result = await self._handler.handle(user_input)
-                    if result.new_session_manager is not None:
-                        self._swap_session_manager(result.new_session_manager)
-                    if (
-                        result.compact_done
-                        and self._first_message
-                        and self._session_manager
-                        and not self._session_manager.user_named
-                    ):
-                        _t = asyncio.create_task(self._auto_name_session(self._first_message))
-                        self._background_tasks.add(_t)
-                        _t.add_done_callback(self._background_tasks.discard)
-                    if result.exit:
-                        from .output import SessionEnd
-
-                        await self.frontend.render(SessionEnd())
-                        break
-                    if result.agent_message is not None:
-                        msg = result.agent_message
-                        if self._session_manager is not None:
-                            self._session_manager.record_user(msg)
-                        if self._first_message is None:
-                            self._first_message = user_input  # short form for session naming
-                            if (
-                                self._session_manager is not None
-                                and not self._session_manager.user_named
-                            ):
-                                _t = asyncio.create_task(self._auto_name_session(user_input))
-                                self._background_tasks.add(_t)
-                                _t.add_done_callback(self._background_tasks.discard)
-                        await self._agent_turn(msg)
-                    continue
-
-                # Bang prefix
-                if user_input.startswith("!"):
-                    await self._handle_bang(user_input)
-                    continue
-
-                # Regular message → record and send to agent
-                if self._session_manager is not None:
-                    self._session_manager.record_user(user_input)
-
-                # Auto-name the session from the first user message
-                if self._first_message is None:
-                    self._first_message = user_input
-                    if self._session_manager is not None and not self._session_manager.user_named:
-                        _t = asyncio.create_task(self._auto_name_session(user_input))
-                        self._background_tasks.add(_t)
-                        _t.add_done_callback(self._background_tasks.discard)
-
-                await self._agent_turn(user_input)
-
+            await app.run_async()
         except (KeyboardInterrupt, EOFError):
-            from .output import TextOutput
-
             await self.frontend.render(
                 TextOutput("Interrupted by the user. Exiting TUI...", "warning")
             )
@@ -713,203 +1006,3 @@ class Session:
                 )
         except Exception as e:
             await self.frontend.render(TextOutput(f"Bash error: {e}", "error"))
-
-    # ------------------------------------------------------------------
-    # Agent turn
-    # ------------------------------------------------------------------
-
-    async def _agent_turn(self, user_input: str) -> None:
-        """Run the agent while accepting type-ahead input via a dynamic prompt prefix.
-
-        Architecture:
-        - ``patch_stdout()`` captures agent output so it prints above the prompt.
-        - A single ``frontend.typeahead_loop(state)`` call stays open across
-          multiple Enters (Enter keybinding mutates ``state`` in place — it never
-          exits the prompt). Queued lines and the spinner live in the dynamic
-          prompt prefix, never in terminal scrollback.
-        - When the agent finishes we call ``frontend.exit_typeahead()`` which
-          triggers ``app.exit()`` and the prompt returns cleanly.
-        - A spinner animation task ticks the frame and invalidates the prompt.
-        """
-        from prompt_toolkit.patch_stdout import patch_stdout
-
-        from .agent import RespondResult
-        from .output import TextOutput
-        from .queue_state import QueueState
-
-        self._clear_streaming_state()
-
-        state = QueueState()
-
-        _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-
-        async def _spin() -> None:
-            i = 0
-            while True:
-                state.spinner_frame = _FRAMES[i % len(_FRAMES)]
-                self.frontend.invalidate_typeahead()
-                i += 1
-                await asyncio.sleep(0.08)
-
-        def _update_context_block() -> None:
-            n = len(state.messages)
-            if n > 0:
-                self.agent.context_manager["queued_messages"] = (
-                    f"The user has queued {n} message(s). "
-                    f"Call return_result(RespondResult.WAIT_FOR_USER_INPUT) "
-                    f"to end your turn and receive them."
-                )
-            else:
-                try:
-                    del self.agent.context_manager["queued_messages"]
-                except (KeyError, AttributeError):
-                    pass
-
-        current_input = user_input
-
-        if hasattr(self.frontend, "patch_stdout_active"):
-            self.frontend.patch_stdout_active = True  # type: ignore[attr-defined]
-
-        try:
-            # raw=True preserves ANSI escape sequences from Rich output so
-            # coloured activity lines and rendered Markdown display correctly
-            # above the prompt instead of showing as ?[...] control chars.
-            with patch_stdout(raw=True):
-                while True:
-                    self._agent_has_messaged = False
-                    await self.frontend.stop_thinking()  # stop any Rich Live spinner
-
-                    state.thinking = True
-                    _update_context_block()
-
-                    agent_task = asyncio.create_task(
-                        self.agent.respond(current_input)  # type: ignore[union-attr]
-                    )
-                    spinner_task = asyncio.create_task(_spin())
-                    prompt_task = asyncio.create_task(self.frontend.typeahead_loop(state))
-
-                    # Watcher task: when the agent finishes, exit the prompt.
-                    # Using a dedicated task instead of add_done_callback keeps
-                    # ordering deterministic: prompt_task only completes after
-                    # agent_task is done (or after a user interrupt).
-                    async def _watcher(_agent: "asyncio.Task" = agent_task) -> None:
-                        try:
-                            await _agent
-                        except BaseException:
-                            pass
-                        finally:
-                            self.frontend.exit_typeahead()
-
-                    watcher_task = asyncio.create_task(_watcher())
-
-                    interrupted = False
-                    unexpected_exc: BaseException | None = None
-                    try:
-                        try:
-                            await prompt_task
-                        except (KeyboardInterrupt, EOFError):
-                            interrupted = True
-                            if not agent_task.done():
-                                agent_task.cancel()
-                        except BaseException as exc:
-                            # Any other exception from prompt_task must not
-                            # leave agent_task / watcher_task / spinner_task
-                            # orphaned. Remember it so we can surface it after
-                            # cleanup.
-                            unexpected_exc = exc
-                            if not agent_task.done():
-                                agent_task.cancel()
-                    finally:
-                        # Esc (soft cancel): stop the agent, then the logic
-                        # below delivers any queued messages as the next
-                        # respond(), or returns to the between-turn prompt
-                        # if nothing is queued.
-                        esc_cancel = state.cancel_requested
-                        state.cancel_requested = False
-                        if (
-                            esc_cancel
-                            and not interrupted
-                            and unexpected_exc is None
-                            and not agent_task.done()
-                        ):
-                            agent_task.cancel()
-
-                        # Drain watcher + spinner. Watcher awaits agent_task
-                        # (which is done or cancelled). Spinner just ticks.
-                        # Swallow errors — we handled the causal exception
-                        # above.
-                        spinner_task.cancel()
-                        for t in (watcher_task, spinner_task):
-                            try:
-                                await t
-                            except BaseException:
-                                pass
-
-                        state.thinking = False
-
-                    if unexpected_exc is not None:
-                        raise unexpected_exc
-
-                    if interrupted:
-                        pending = state.as_pending_text()
-                        if pending:
-                            self._pending_input = pending
-                        await self.frontend.render(TextOutput("Agent interrupted.", "warning"))
-                        return
-
-                    if esc_cancel:
-                        # Agent cancelled by Esc. Treat queued commands and
-                        # messages the same as a normal WAIT_FOR_USER_INPUT.
-                        for cmd in state.commands:
-                            self._pending_commands.append(cmd)
-                        state.commands.clear()
-                        if state.messages:
-                            joined = state.as_joined_messages()
-                            if hasattr(self.frontend, "emit_user_message_above_prompt"):
-                                await self.frontend.emit_user_message_above_prompt(joined)
-                            current_input = joined
-                            state.clear()
-                            continue
-                        # No queue — end the turn so the user lands at the
-                        # between-turn prompt.
-                        break
-
-                    # At this point the agent task has completed (normally or with error)
-                    if agent_task.cancelled():
-                        break
-
-                    exc = agent_task.exception()
-                    if exc is not None:
-                        await self.frontend.render(TextOutput(f"Agent error: {exc}", "error"))
-                        break
-
-                    result = agent_task.result()
-                    if result is not RespondResult.CONTINUE_WORKING:
-                        # Transfer queued slash commands to the session pending list
-                        for cmd in state.commands:
-                            self._pending_commands.append(cmd)
-                        state.commands.clear()
-                        # Deliver queued messages as next respond()
-                        if state.messages:
-                            joined = state.as_joined_messages()
-                            # Commit the queued message to scrollback so the
-                            # user has a visible record of what was sent.
-                            if hasattr(self.frontend, "emit_user_message_above_prompt"):
-                                await self.frontend.emit_user_message_above_prompt(joined)
-                            current_input = joined
-                            state.clear()
-                            continue
-                        break
-                    current_input = ""
-                    continue
-        finally:
-            state.thinking = False
-            if hasattr(self.frontend, "patch_stdout_active"):
-                self.frontend.patch_stdout_active = False  # type: ignore[attr-defined]
-            await self.frontend.stop_thinking()
-            try:
-                del self.agent.context_manager["queued_messages"]
-            except (KeyError, AttributeError):
-                pass
-            if not state.is_empty:
-                self._pending_input = state.as_pending_text()

@@ -2,113 +2,67 @@
 # SPDX-License-Identifier: Apache-2.0
 """Type-ahead queue state — pure data, no prompt_toolkit coupling.
 
-``QueueState`` holds what the user has typed while the agent is working.
-``render_prompt`` converts it into a prompt_toolkit ``FormattedText`` used as
-the dynamic prompt prefix.
-
-Layout the prefix produces (top → bottom):
-
-    ⠋ thinking...          ← present only while the agent is running
-    │ queued message line
-    │ /queued-command
-    ❯                      ← the input cursor lives immediately after this
-
-Queued text is NEVER printed to stdout; it only lives in the dynamic prefix
-region, so the terminal scrollback stays clean and Up-arrow can cleanly pop
-items back into the input buffer without having to un-print anything.
+``QueueState`` holds items the user submitted while the agent is
+working. Items are a single ordered ``list[(kind, text)]`` where
+``kind`` is ``"msg"`` or ``"cmd"``. Submission order is preserved so
+consumers drain in the sequence the user actually typed — commands
+and messages interleaved correctly instead of all-cmds-then-all-msgs.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
-from prompt_toolkit.formatted_text import FormattedText
-
-from .theme import COLORS
+QueueItem = tuple[Literal["msg", "cmd"], str]
 
 
 @dataclass
 class QueueState:
-    """State for the type-ahead queue rendered in the dynamic prompt prefix.
+    """State for the type-ahead queue."""
 
-    Messages are combined into a single multi-line block (successive plain
-    Enters append to the last item with ``\\n``). Commands are kept as
-    separate items so the session dispatches them individually after the
-    agent turn.
-
-    ``cancel_requested`` is set by the Esc keybinding: a soft cancel that
-    the session reads after ``typeahead_loop`` returns — it cancels the
-    current agent call and delivers any queued messages as the next
-    ``respond()``.
-    """
-
-    messages: list[str] = field(default_factory=list)
-    commands: list[str] = field(default_factory=list)
-    thinking: bool = False
-    thinking_message: str = "thinking..."
-    spinner_frame: str = "⠋"
-    cancel_requested: bool = False
+    items: list[QueueItem] = field(default_factory=list)
 
     def submit(self, text: str) -> None:
-        """Process one line submitted via Enter."""
+        """Process one line submitted via Enter.
+
+        Slash/bang lines append as a new ``cmd`` item. Plain-text lines
+        either start a new ``msg`` item or — if the tail of the queue
+        is already a ``msg`` — extend it with a newline (multi-line
+        message continuation).
+        """
         text = text.rstrip("\n")
         if not text.strip():
             return
         if text.startswith("/") or text.startswith("!"):
-            self.commands.append(text)
+            self.items.append(("cmd", text))
             return
-        if self.messages:
-            self.messages[-1] = self.messages[-1] + "\n" + text
+        if self.items and self.items[-1][0] == "msg":
+            self.items[-1] = ("msg", self.items[-1][1] + "\n" + text)
         else:
-            self.messages.append(text)
+            self.items.append(("msg", text))
 
     def pop_last_for_edit(self) -> str | None:
-        """Pop the most recently queued item (command preferred) for editing."""
-        if self.commands:
-            return self.commands.pop()
-        if self.messages:
-            return self.messages.pop()
-        return None
+        """Pop the most recently queued item for editing in the input
+        buffer. Returns the text or ``None`` if the queue is empty."""
+        if not self.items:
+            return None
+        _, text = self.items.pop()
+        return text
 
     def clear(self) -> None:
-        self.messages.clear()
-        self.commands.clear()
+        self.items.clear()
 
     @property
     def is_empty(self) -> bool:
-        return not self.messages and not self.commands
+        return not self.items
 
-    def as_joined_messages(self) -> str:
-        """Concatenate all queued messages for delivery to ``agent.respond()``."""
-        return "\n\n".join(self.messages)
+    @property
+    def messages(self) -> list[str]:
+        """Flat list of message texts, in submission order."""
+        return [t for k, t in self.items if k == "msg"]
 
-    def as_pending_text(self) -> str:
-        """All queued text (messages + commands) for ``_pending_input`` on interrupt."""
-        return "\n\n".join(self.messages + self.commands)
-
-
-def render_prompt(state: QueueState, prompt_char: str = "❯ ") -> FormattedText:
-    """Render the dynamic prompt prefix from queue state.
-
-    Order is fixed: spinner line (if thinking) → queued messages → queued
-    commands → prompt char. The prompt char has no trailing newline so
-    prompt_toolkit draws the input buffer immediately after it.
-    """
-    spinner_style = f"{COLORS['overlay1']} italic"
-    queued_style = f"{COLORS['overlay1']}"
-    prompt_style = COLORS["green"]
-
-    fragments: list[tuple[str, str]] = []
-
-    if state.thinking:
-        fragments.append((spinner_style, f"{state.spinner_frame} {state.thinking_message}\n"))
-
-    for message in state.messages:
-        for line in message.split("\n"):
-            fragments.append((queued_style, f"│ {line}\n"))
-
-    for command in state.commands:
-        fragments.append((queued_style, f"│ {command}\n"))
-
-    fragments.append((prompt_style, prompt_char))
-    return FormattedText(fragments)
+    @property
+    def commands(self) -> list[str]:
+        """Flat list of slash/bang texts, in submission order."""
+        return [t for k, t in self.items if k == "cmd"]

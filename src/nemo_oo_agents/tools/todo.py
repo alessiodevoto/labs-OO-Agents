@@ -16,6 +16,19 @@ from nemo_oo_agents import Skill
 from nemo_oo_agents.storage.markers import snapshotable
 
 
+class TodoComment(BaseModel):
+    """An append-only note on a todo — use for progress journalling.
+
+    Survives across turns (snapshot-backed like the rest of the todo
+    state). Prefer this over mutating ``Todo.notes`` when you want a
+    chronological log: what was tried, what was found, why the approach
+    changed.
+    """
+
+    body: str
+    created_at: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
+
+
 class Todo(BaseModel):
     """A single todo item."""
 
@@ -26,6 +39,7 @@ class Todo(BaseModel):
     vars: dict[str, Any] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
     notes: str = ""
+    comments: list[TodoComment] = Field(default_factory=list)
 
     def is_blocked(self, all_todos: dict[str, "Todo"]) -> bool:
         """Return True if any dependency is still open."""
@@ -162,6 +176,38 @@ class TodoManager(Skill):
         """Get a variable from a todo. Returns the value or None."""
         t = self._todos.get(todo_id)
         return t.vars.get(key) if t else None
+
+    # ── COMMENTS ──────────────────────────────────
+
+    def comment(self, todo_id: str, body: str) -> TodoComment | None:
+        """Append a comment to a todo.
+
+        Use for progress journalling — what you did, what you found, why
+        you changed approach. Persists across turns (snapshot-backed), so
+        the next turn can read the history via ``comments(todo_id)``.
+
+        Returns the created :class:`TodoComment`, or None if the todo
+        doesn't exist.
+
+        Example::
+
+            t = self.todo.add("Solve auth bug")
+            self.todo.comment(t.id, "🔍 root cause: session.py:42 races on refresh")
+            # ... next turn ...
+            for c in self.todo.comments(t.id):
+                print(c.created_at, c.body)
+        """
+        t = self._todos.get(todo_id)
+        if t is None:
+            return None
+        c = TodoComment(body=body)
+        t.comments.append(c)
+        return c
+
+    def comments(self, todo_id: str) -> list[TodoComment]:
+        """Return all comments on a todo in chronological order (empty if none)."""
+        t = self._todos.get(todo_id)
+        return list(t.comments) if t else []
 
     # ── QUERIES ───────────────────────────────────
 

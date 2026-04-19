@@ -1446,7 +1446,7 @@ class TestOrchestrateFunctions:
         spec = MagicMock()
         spec.complete = False
         agent.classify_intent = AsyncMock(return_value=intent)
-        agent.brainstorm = AsyncMock(return_value=spec)
+        agent._legacy_brainstorm = AsyncMock(return_value=spec)
         await _orchestrate(agent, "build X")
         assert agent._phase == "brainstorming"
 
@@ -1459,7 +1459,7 @@ class TestOrchestrateFunctions:
         spec.complete = True
         spec.model_dump_json = MagicMock(return_value="{}")
         agent.classify_intent = AsyncMock(return_value=intent)
-        agent.brainstorm = AsyncMock(return_value=spec)
+        agent._legacy_brainstorm = AsyncMock(return_value=spec)
         agent.write_plan = AsyncMock(return_value=MagicMock(steps=[]))
         agent.verify_work = AsyncMock()
         agent.review_changes = AsyncMock()
@@ -1504,7 +1504,7 @@ class TestOrchestrateFunctions:
         agent = MagicMock()
         spec = MagicMock()
         spec.complete = False
-        agent.brainstorm = AsyncMock(return_value=spec)
+        agent._legacy_brainstorm = AsyncMock(return_value=spec)
         await _continue_brainstorm(agent, "more info")
         # _proceed_to_plan should NOT be called
 
@@ -1513,7 +1513,7 @@ class TestOrchestrateFunctions:
         spec = MagicMock()
         spec.complete = True
         spec.model_dump_json = MagicMock(return_value="{}")
-        agent.brainstorm = AsyncMock(return_value=spec)
+        agent._legacy_brainstorm = AsyncMock(return_value=spec)
         agent.write_plan = AsyncMock(return_value=MagicMock(steps=[]))
         agent.verify_work = AsyncMock()
         agent.review_changes = AsyncMock()

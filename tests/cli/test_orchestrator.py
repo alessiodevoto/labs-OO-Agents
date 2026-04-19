@@ -27,7 +27,7 @@ def mock_agent():
     # Mock all strategy methods as async
     agent.classify_intent = AsyncMock()
     agent.answer_question = AsyncMock()
-    agent.brainstorm = AsyncMock()
+    agent._legacy_brainstorm = AsyncMock()
     agent.write_plan = AsyncMock()
     agent.implement_step = AsyncMock()
     agent.debug_issue = AsyncMock()
@@ -49,19 +49,19 @@ class TestIntentRouting:
         await _orchestrate(mock_agent, "How does X work?")
 
         mock_agent.answer_question.assert_called_once_with("How does X work?")
-        mock_agent.brainstorm.assert_not_called()
+        mock_agent._legacy_brainstorm.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_feature_starts_brainstorming(self, mock_agent):
         mock_agent.classify_intent.return_value = Intent(task_type="feature", summary="Add login")
-        mock_agent.brainstorm.return_value = BrainstormResult(
+        mock_agent._legacy_brainstorm.return_value = BrainstormResult(
             complete=False, summary="Exploring", pending_question="Which auth?"
         )
         from nemo_oo_agents_cli.tui.agent import _orchestrate
 
         await _orchestrate(mock_agent, "Add a login page")
 
-        mock_agent.brainstorm.assert_called_once()
+        mock_agent._legacy_brainstorm.assert_called_once()
         assert mock_agent._phase == "brainstorming"
 
     @pytest.mark.asyncio
@@ -90,7 +90,7 @@ class TestPhaseTracking:
     async def test_brainstorming_resumes(self, mock_agent):
         """When phase is brainstorming, route directly to brainstorm."""
         mock_agent._phase = "brainstorming"
-        mock_agent.brainstorm.return_value = BrainstormResult(
+        mock_agent._legacy_brainstorm.return_value = BrainstormResult(
             complete=True,
             summary="Build OAuth login",
             decisions=["Use Google"],
@@ -106,7 +106,7 @@ class TestPhaseTracking:
 
         # Should NOT call classify_intent (we're mid-workflow)
         mock_agent.classify_intent.assert_not_called()
-        mock_agent.brainstorm.assert_called_once()
+        mock_agent._legacy_brainstorm.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_awaiting_plan_approval_approved(self, mock_agent):
@@ -173,7 +173,7 @@ class TestFeatureWorkflow:
             decisions=["Use Y"],
             scope="Module Z",
         )
-        mock_agent.brainstorm.return_value = spec
+        mock_agent._legacy_brainstorm.return_value = spec
         plan = Plan(
             summary="Plan",
             steps=[PlanStep(number=1, description="Step 1", files=["f.py"])],
@@ -184,7 +184,7 @@ class TestFeatureWorkflow:
 
         await _orchestrate(mock_agent, "Build feature X")
 
-        mock_agent.brainstorm.assert_called_once()
+        mock_agent._legacy_brainstorm.assert_called_once()
         mock_agent.write_plan.assert_called_once()
         # Plan presented -- waiting for approval
         assert mock_agent._phase == "awaiting_plan_approval"

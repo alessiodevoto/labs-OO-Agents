@@ -192,4 +192,5 @@ async def main(
     registry.startup_info = _startup_info
     frontend.init_input(registry)  # terminal-specific: prompt_toolkit completions
     session = build_session(result, frontend, registry)
+
     await session.run()

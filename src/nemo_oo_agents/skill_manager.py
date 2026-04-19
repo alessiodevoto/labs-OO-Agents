@@ -7,7 +7,7 @@ import inspect
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from nemo_oo_agents.skill import Skill, TextSkill
 
@@ -17,26 +17,94 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _load_python_skill(path: Path) -> Skill | None:
-    """Import *path* and instantiate a ``Skill`` subclass from it.
+def skill_from_module(module: Any, module_name: str, source: str = "") -> Skill | None:
+    """Extract a ``Skill`` instance from an already-imported module.
+
+    Shared by :func:`_load_python_skill` (for ``*.py`` files under a
+    skills dir) and by ``LibraryManager`` (for agent-written libraries
+    whose top-level module may export a ``Skill``).
 
     Resolution order:
 
-    1. A module-level ``skill`` attribute that is a ``Skill`` instance.
+    1. Module-level ``skill`` attribute that is a ``Skill`` instance.
        Use this to construct with non-trivial args (``skill = MySkill(a=1)``).
-    2. First ``Skill`` subclass *defined in this module* (``cls.__module__``
-       matches the scanned file). Prefer locally-defined over re-exported
-       so ``class MyLocal(Skill)`` wins over ``from other import Existing``.
+    2. First ``Skill`` subclass *defined in this module*
+       (``cls.__module__`` equals ``module_name``). Locally-defined beats
+       re-exported, so ``class MyLocal(Skill)`` wins over
+       ``from other import Existing``.
     3. First re-exported ``Skill`` subclass in the module namespace.
 
-    Returns None if none found, the class can't be instantiated without
-    args, or the import itself fails. All failures are logged at WARNING
-    so a single broken file never aborts skill discovery.
+    ``source`` is a human-readable tag used in log messages (e.g. the
+    file path or library name).
+
+    Returns ``None`` when none found, or when the class can't be
+    instantiated without args. All failures log at WARNING.
     """
-    # Include the parent directory in the module name so two files with
-    # the same stem in different skills_dirs (e.g. dir_a/my_skill.py and
-    # dir_b/my_skill.py) don't collide in sys.modules. Full-path hash
-    # guarantees uniqueness even for deeply nested identical names.
+    # Module-level ``skill`` instance wins
+    explicit = vars(module).get("skill")
+    if isinstance(explicit, Skill):
+        return explicit
+
+    # Otherwise scan for Skill subclasses. Framework bases filtered by
+    # identity so ``from nemo_oo_agents.skill import Skill`` in a helper
+    # file doesn't trigger a spurious install.
+    local: list[type] = []
+    reexported: list[type] = []
+    for _name, obj in vars(module).items():
+        if not inspect.isclass(obj):
+            continue
+        if not issubclass(obj, Skill):
+            continue
+        if obj is Skill or obj is TextSkill:
+            continue
+        if obj.__module__ == module_name:
+            local.append(obj)
+        else:
+            reexported.append(obj)
+    candidates = local + reexported
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        picked = candidates[0]
+        extras = ", ".join(c.__name__ for c in candidates[1:])
+        logger.warning(
+            "%s defines multiple Skill subclasses; using %s, ignoring: %s",
+            source or module_name,
+            picked.__name__,
+            extras,
+        )
+    cls = candidates[0]
+    try:
+        return cls()
+    except TypeError:
+        logger.warning(
+            "%s skipped: class %s needs constructor args "
+            "(Python skills must have a zero-arg __init__)",
+            source or module_name,
+            cls.__name__,
+            exc_info=True,
+        )
+        return None
+    except Exception:
+        logger.warning(
+            "%s skipped: %s.__init__ raised",
+            source or module_name,
+            cls.__name__,
+            exc_info=True,
+        )
+        return None
+
+
+def _load_python_skill(path: Path) -> Skill | None:
+    """Import *path* and extract a ``Skill`` via :func:`skill_from_module`.
+
+    Failures (can't-import, no skill found, constructor needs args) log at
+    WARNING and return ``None`` so a single broken file never aborts
+    discovery.
+    """
+    # Include a hash of the absolute path in the module name so two files
+    # with the same stem in different skills_dirs don't collide in
+    # sys.modules.
     module_name = f"_nemo_oo_skill_{path.stem}_{abs(hash(str(path.resolve()))) & 0xFFFFFFFF:08x}"
     try:
         spec = importlib.util.spec_from_file_location(module_name, path)
@@ -55,65 +123,7 @@ def _load_python_skill(path: Path) -> Skill | None:
         return None
 
     try:
-        # Module-level ``skill`` instance wins — lets the file construct
-        # with custom args (``skill = MySkill(foo=bar)``).
-        explicit = vars(module).get("skill")
-        if isinstance(explicit, Skill):
-            return explicit
-
-        # Scan for Skill subclasses in the module namespace. Framework
-        # bases (``Skill``, ``TextSkill``) are filtered by identity so
-        # ``from nemo_oo_agents.skill import Skill`` in a helper file
-        # doesn't trigger a spurious install.
-        #
-        # Ordering: locally-defined subclasses first, re-exports after.
-        # If ``my_skill.py`` both imports an existing Skill AND defines
-        # its own, the local one wins — matches user intent.
-        local: list[type] = []
-        reexported: list[type] = []
-        for _name, obj in vars(module).items():
-            if not inspect.isclass(obj):
-                continue
-            if not issubclass(obj, Skill):
-                continue
-            if obj is Skill or obj is TextSkill:
-                continue
-            if obj.__module__ == module_name:
-                local.append(obj)
-            else:
-                reexported.append(obj)
-        candidates = local + reexported
-        if not candidates:
-            return None
-        if len(candidates) > 1:
-            picked = candidates[0]
-            extras = ", ".join(c.__name__ for c in candidates[1:])
-            logger.warning(
-                "Skill file %s defines multiple Skill subclasses; using %s, ignoring: %s",
-                path,
-                picked.__name__,
-                extras,
-            )
-        cls = candidates[0]
-        try:
-            return cls()
-        except TypeError:
-            logger.warning(
-                "Skill file %s skipped: class %s needs constructor args "
-                "(Python skills must have a zero-arg __init__)",
-                path,
-                cls.__name__,
-                exc_info=True,
-            )
-            return None
-        except Exception:
-            logger.warning(
-                "Skill file %s skipped: %s.__init__ raised",
-                path,
-                cls.__name__,
-                exc_info=True,
-            )
-            return None
+        return skill_from_module(module, module_name, source=f"Skill file {path}")
     finally:
         # The Skill instance keeps any class objects it needs alive via
         # its own references. Drop our sys.modules entry so discovery

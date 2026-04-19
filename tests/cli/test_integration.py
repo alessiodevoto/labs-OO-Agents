@@ -12,7 +12,7 @@ def test_tui_agent_instantiation():
         "respond",
         "classify_intent",
         "answer_question",
-        "brainstorm",
+        "_legacy_brainstorm",
         "write_plan",
         "implement_step",
         "debug_issue",

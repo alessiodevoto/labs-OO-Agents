@@ -466,6 +466,12 @@ class TerminalFrontend:
 
         if output.kind == "reasoning":
             styled = Text(output.content, style=f"dim italic {COLORS['overlay1']}")
+        elif output.kind == "stdout":
+            # Indent under the preceding "● <code>" line, ipython-notebook
+            # style. Two-space indent + thin gutter ("│ ") + dim text.
+            styled = Text(f"  │ {output.content}", style=f"dim {COLORS['overlay1']}")
+        elif output.kind == "stderr":
+            styled = Text(f"  │ {output.content}", style=COLORS["red"])
         else:
             styled = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
             first_line = output.content.split("\n", 1)[0]

@@ -36,14 +36,14 @@ class TestAnswerQuestion:
 
 class TestBrainstorm:
     def test_method_exists(self):
-        _get_method("brainstorm")
+        _get_method("_legacy_brainstorm")
 
     def test_return_type(self):
-        sig = inspect.signature(_get_method("brainstorm"))
+        sig = inspect.signature(_get_method("_legacy_brainstorm"))
         assert sig.return_annotation in (BrainstormResult, "BrainstormResult")
 
     def test_accepts_request(self):
-        params = list(inspect.signature(_get_method("brainstorm")).parameters.keys())
+        params = list(inspect.signature(_get_method("_legacy_brainstorm")).parameters.keys())
         assert "request" in params
 
 
