@@ -125,18 +125,35 @@ class TestSummarizationAgentBase:
         assert events[0][0] == "1"
         assert events[-1][0] == "3"
 
-    def test_estimate_tokens_with_real_history(self, test_agent):
-        """_estimate_tokens calculates based on rendered history."""
-        # Add events with known content
-        for _ in range(5):
-            test_agent.event_manager.add(Message(content="x" * 100))
+    def test_estimate_tokens_reads_runtime_stats(self, test_agent):
+        """_estimate_tokens returns total_tokens from the runtime's last stats.
+
+        The runtime records what actually shipped to the LLM — events plus
+        context blocks, with the real provider formatter applied. That's the
+        only number the summarizer should act on.
+        """
+        from nemo_oo_agents import ContextWindowStats
+
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=5_000,
+            context_blocks_count=1,
+            events_tokens=195_000,
+            events_count=3,
+            total_tokens=200_000,
+        )
 
         summarizer = SummarizationAgent(test_agent)
-        tokens = summarizer._estimate_tokens()
+        assert summarizer._estimate_tokens() == 200_000
 
-        # 5 events * ~100 chars each, plus markdown overhead
-        # chars/4 heuristic should give roughly 125-200 tokens
-        assert tokens > 0
+    def test_estimate_tokens_zero_before_first_build(self, test_agent):
+        """No generation has run → no stats → zero.
+
+        _should_summarize only fires from AfterTurn, which is always after
+        _build_messages, so this state doesn't bias the trigger.
+        """
+        assert test_agent.context_stats is None
+        summarizer = SummarizationAgent(test_agent)
+        assert summarizer._estimate_tokens() == 0
 
 
 # =============================================================================
@@ -182,11 +199,17 @@ class TestTokenBudgetSummarizer:
 
     def test_should_summarize_over_budget(self, test_agent):
         """Should summarize when over budget."""
-        # Add events with enough content to exceed a low budget
-        for _ in range(10):
-            test_agent.event_manager.add(Message(content="x" * 200))
+        from nemo_oo_agents import ContextWindowStats
 
-        # Set very low budget to trigger summarization
+        # Simulate the runtime having built a prompt over the budget.
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=500,
+            events_count=10,
+            total_tokens=500,
+        )
+
         summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=100))
 
         event = AfterTurn(
@@ -679,9 +702,20 @@ class TestSummarizationAsyncIntegration:
     @pytest.mark.asyncio
     async def test_after_turn_triggers_summarization_when_over_budget(self, test_agent):
         """_handle_after_turn schedules summarization when over token budget."""
-        # Add enough events to exceed a low budget
+        from nemo_oo_agents import ContextWindowStats
+
+        # Add enough events to have something to summarize
         for _ in range(20):
             test_agent.event_manager.add(Message(content="x" * 100))
+
+        # Simulate the runtime having built an over-budget prompt.
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=1000,
+            events_count=20,
+            total_tokens=1000,
+        )
 
         # Very low budget to trigger summarization
         summarizer = TokenBudgetSummarizer(
@@ -748,6 +782,7 @@ class TestSummarizationAsyncIntegration:
     @pytest.mark.asyncio
     async def test_end_to_end_summarization_flow(self, fake_llm):
         """Full flow: add events → trigger summarization → verify collapse."""
+        from nemo_oo_agents import ContextWindowStats
 
         # Create agent with events
         class SimpleAgent(Agent, llm=fake_llm):
@@ -761,6 +796,15 @@ class TestSummarizationAsyncIntegration:
 
         initial_tag_count = len(agent.event_manager.keys())
         assert initial_tag_count == 20
+
+        # Simulate the runtime having built an over-budget prompt.
+        agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=1000,
+            events_count=20,
+            total_tokens=1000,
+        )
 
         # Create summarizer with low threshold to trigger
         summarizer = TokenBudgetSummarizer(

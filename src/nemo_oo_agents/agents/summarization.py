@@ -62,6 +62,10 @@ class SummarizationAgent(Agent):
     # Event manager whose events will be summarized. Wired automatically by the parent Agent.
     target_event_manager: Annotated["EventManager | None", hidden] = None
 
+    # Parent agent. Used to read runtime-computed context stats for accurate
+    # token counting — see _estimate_tokens(). Hidden from the LLM.
+    _target_agent: Annotated["Agent | None", hidden] = None
+
     # Config must be set by subclasses (TokenBudgetSummarizer, MethodSummarizer set self.config
     # in __init__). The base class provides this sentinel to prevent AttributeError if a
     # subclass forgets to set it or if the base is instantiated directly.
@@ -118,6 +122,7 @@ class SummarizationAgent(Agent):
         # Inherit LLM from parent agent unless explicitly provided
         kwargs.setdefault("llm", agent._llm)
         self.target_event_manager = agent.event_manager
+        self._target_agent = agent
 
         # Extract annotated class attributes from kwargs (max_tokens, preserve_recent, etc.)
         for name in list(kwargs.keys()):
@@ -405,26 +410,18 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _estimate_tokens(self) -> int:
-        """Estimate total tokens in target event manager."""
-        if self.target_event_manager is None:
+        """Prompt tokens from the most recent ``_build_messages()`` call.
+
+        Reflects what the LLM actually saw — events plus context blocks,
+        with the real provider formatter applied. Zero before any
+        generation has run; ``_should_summarize`` only fires from
+        ``AfterTurn``, which is always after ``_build_messages()``.
+        """
+        agent = self._target_agent
+        if agent is None:
             return 0
-
-        # Render all active events to markdown for token estimation
-        tags = self.target_event_manager.keys()
-        if not tags:
-            return 0
-
-        # Render using the same method we use for summarization
-        first_tag = tags[0]
-        last_tag = tags[-1]
-        rendered = self._render_range_to_markdown(first_tag, last_tag)
-
-        # Use LLM's count_tokens if available
-        if self._llm and hasattr(self._llm, "count_tokens"):
-            return self._llm.count_tokens(rendered)
-
-        # Fallback: chars / 4 heuristic
-        return len(rendered) // 4
+        stats = agent.context_stats
+        return stats.total_tokens if stats else 0
 
 
 # =============================================================================
