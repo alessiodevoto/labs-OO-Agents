@@ -1273,3 +1273,269 @@ class TestPformatImport:
             assert "question" in output
         finally:
             trace_file.unlink()
+
+
+# =============================================================================
+# Span-discovery invariants
+#
+# These tests exist because the parser has several non-obvious paths:
+# AGENT-span parsing vs generation-span fallback, parent-chain walking that
+# crosses LLM/TOOL spans, and three tiers of turn-population matching
+# (call_id → descendant → time-range). A production bug (`_000001` session
+# in kdd-cup experiment) showed up as "No sessions found in trace." when
+# all child spans were orphaned; no test covered that path.
+# =============================================================================
+
+
+class TestOrphanSpans:
+    """Child spans whose parents are not in the trace."""
+
+    def test_only_orphan_llm_and_exec_yields_no_sessions(self):
+        """If acompletion/code_execution spans dangle (parent span ID not in
+        trace, no AGENT span, no root generation), the parser returns an
+        empty session list without crashing.
+
+        This is the `_000001` case from the kdd-cup experiment: a viewer
+        session.id returns 5 spans (2 acompletion + 2 code_execution + 1
+        eval) whose generation roots live under a *different* session.id.
+        """
+        spans = [
+            make_llm_span("aa00", parent_span_id="ghost1", messages=[("user", "?")]),
+            {
+                "name": "code_execution",
+                "spanId": "ee00",
+                "parentSpanId": "ghost1",
+                "startTimeUnixNano": "1000",
+                "endTimeUnixNano": "2000",
+                "attributes": _otlp_attrs(
+                    {
+                        "agent.name": "A",
+                        "generation.id": "orphaned",
+                        "code": "x",
+                        "result": json.dumps({"stdout": "", "returned_value": None}),
+                    }
+                ),
+                "status": {"code": 1},
+                "events": [],
+            },
+        ]
+        trace_file = create_trace_file(spans)
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            assert trace.sessions == []
+            # Overview must not crash and must communicate emptiness.
+            overview = trace.get_overview()
+            assert "No sessions found" in overview
+        finally:
+            trace_file.unlink()
+
+    def test_only_non_root_generation_spans_yield_no_sessions(self):
+        """A trace with only *child* generation spans (all have
+        generation.parent_id set) falls through the generation-span fallback
+        because it only considers root generations, and returns no sessions."""
+        spans = [
+            make_generation_span(
+                "ge01",
+                gen_id="child1",
+                parent_gen_id="missing-root",
+            ),
+        ]
+        trace_file = create_trace_file(spans)
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            assert trace.sessions == []
+        finally:
+            trace_file.unlink()
+
+
+class TestSpanCompleteness:
+    """Every descendant gen/acompletion/exec span should map to a turn."""
+
+    def test_agent_span_path_captures_all_descendant_turns(self):
+        """AGENT span + generation span + N acompletion + M code_execution
+        should produce exactly N+M turns, correctly typed and ordered by
+        start_time.
+
+        Previously there was no assertion that span *count* was preserved —
+        only that `len(turns) > 0`. That's not enough to catch a parser
+        that silently drops half the spans.
+        """
+        agent = make_agent_span(
+            span_id="ag01",
+            agent_name="A",
+            method_name="run",
+            start_time=1_000,
+            end_time=9_000,
+        )
+        gen = make_generation_span(
+            span_id="ge01",
+            gen_id="g000001-full-id",
+            agent_name="A",
+            method_name="run",
+            start_time=1_100,
+            end_time=8_900,
+        )
+        gen["parentSpanId"] = "ag01"
+        llm_spans = [
+            make_llm_span(
+                f"ll{i:02x}", "ge01", messages=[("user", f"q{i}")], start_time=1_200 + i * 200, end_time=1_300 + i * 200
+            )
+            for i in range(3)
+        ]
+        exec_spans = [
+            make_execution_span(
+                f"ee{i:02x}",
+                gen_id="g000001-full-id",
+                agent_name="A",
+                start_time=1_800 + i * 200,
+                end_time=1_900 + i * 200,
+            )
+            for i in range(2)
+        ]
+        spans = [agent, gen, *llm_spans, *exec_spans]
+
+        trace_file = create_trace_file(spans)
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            assert len(trace.sessions) == 1
+            session = trace.sessions[0]
+            assert len(session.turns) == 5, f"Expected 5 turns (3 LLM + 2 exec), got {len(session.turns)}"
+            llm_turns = [t for t in session.turns if isinstance(t, LLMTurn)]
+            exec_turns = [t for t in session.turns if isinstance(t, ExecutionTurn)]
+            assert len(llm_turns) == 3
+            assert len(exec_turns) == 2
+            # Turns must be ordered by start_time: LLM calls (1_200–1_700)
+            # come before exec calls (1_800–2_100).
+            for t in session.turns[:3]:
+                assert isinstance(t, LLMTurn)
+            for t in session.turns[3:]:
+                assert isinstance(t, ExecutionTurn)
+        finally:
+            trace_file.unlink()
+
+
+class TestMultipleRoots:
+    """Traces with multiple concurrent root AGENT spans."""
+
+    def test_two_independent_root_agents_produce_two_sessions(self):
+        """Two AGENT spans with no parent and no cross-links should yield
+        two top-level sessions, each with its own turns."""
+        agent_a = make_agent_span("aa01", agent_name="A", method_name="run", start_time=1_000, end_time=5_000)
+        gen_a = make_generation_span(
+            "ga01", "gen-A", agent_name="A", method_name="run", start_time=1_100, end_time=4_900
+        )
+        gen_a["parentSpanId"] = "aa01"
+        llm_a = make_llm_span("la01", "ga01", messages=[("user", "A")], start_time=1_200, end_time=1_300)
+
+        agent_b = make_agent_span("bb01", agent_name="B", method_name="run", start_time=2_000, end_time=6_000)
+        gen_b = make_generation_span(
+            "gb01", "gen-B", agent_name="B", method_name="run", start_time=2_100, end_time=5_900
+        )
+        gen_b["parentSpanId"] = "bb01"
+        llm_b = make_llm_span("lb01", "gb01", messages=[("user", "B")], start_time=2_200, end_time=2_300)
+
+        trace_file = create_trace_file([agent_a, gen_a, llm_a, agent_b, gen_b, llm_b])
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            assert len(trace.sessions) == 2
+            names = sorted(s.agent_name for s in trace.sessions)
+            assert names == ["A", "B"]
+            # Each root got exactly one turn (its own LLM call), no cross-contamination.
+            for session in trace.sessions:
+                assert len(session.turns) == 1, (
+                    f"Session {session.agent_name} has {len(session.turns)} turns "
+                    f"(expected 1 — turns from the other root leaked in?)"
+                )
+        finally:
+            trace_file.unlink()
+
+
+class TestCrossSessionParent:
+    """Child span's parentSpanId points to a different session's generation.
+
+    Regression guard for a data pattern seen in the kdd-cup experiment where
+    sibling sessions' acompletion spans carry a `session.id` attribute
+    distinct from their generation-span parent. The parser must not crash
+    and must still return the session that owns an intact AGENT tree.
+    """
+
+    def test_does_not_crash_and_still_populates_intact_session(self):
+        agent_a = make_agent_span("aa01", agent_name="A", method_name="run", start_time=1_000, end_time=5_000)
+        gen_a = make_generation_span(
+            "ga01", "gen-A", agent_name="A", method_name="run", start_time=1_100, end_time=4_900
+        )
+        gen_a["parentSpanId"] = "aa01"
+        llm_a = make_llm_span("la01", "ga01", messages=[("user", "A")], start_time=1_200, end_time=1_300)
+
+        # This acompletion is mis-parented to A's generation but claims to
+        # belong to agent B (no B AGENT span exists in this trace).
+        stray = make_llm_span("lx01", "ga01", messages=[("user", "stray")], start_time=1_400, end_time=1_500)
+        # Override agent.name on the stray so it doesn't match A.
+        # (It won't be picked up as A's turn because acompletion matching
+        # happens via parent-chain hitting a generation with the right
+        # gen_key, not via agent.name — so it WILL be attributed to A.
+        # That's the current behavior; this test pins it down.)
+
+        trace_file = create_trace_file([agent_a, gen_a, llm_a, stray])
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            assert len(trace.sessions) == 1
+            assert trace.sessions[0].agent_name == "A"
+            # Overview must render without raising.
+            assert isinstance(trace.get_overview(), str)
+        finally:
+            trace_file.unlink()
+
+
+class TestPopulateTurnsFallbacks:
+    """Three tiers of generation-span matching in `_populate_session_turns`.
+
+    Tier 1: agent.call_id match on generation spans (primary).
+    Tier 2: generation span is a descendant of the session's AGENT span.
+    Tier 3: time-range overlap (warns).
+    """
+
+    def test_tier2_descendant_match_populates_turns(self):
+        """Generation span parented under the AGENT span, no call_id set.
+        Turns should populate via descendant walk (no warnings)."""
+        import warnings
+
+        agent = make_agent_span("ag01", agent_name="A", method_name="run", start_time=1_000, end_time=5_000)
+        gen = make_generation_span("ge01", "gen-1", agent_name="A", method_name="run", start_time=1_100, end_time=4_900)
+        gen["parentSpanId"] = "ag01"
+        llm = make_llm_span("ll01", "ge01", messages=[("user", "hi")], start_time=1_200, end_time=1_300)
+
+        trace_file = create_trace_file([agent, gen, llm])
+        try:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                trace = TraceExplorer.from_file(trace_file)
+            assert len(trace.sessions) == 1
+            assert len(trace.sessions[0].turns) == 1
+            fallback_warnings = [w for w in caught if "time-range fallback" in str(w.message)]
+            assert not fallback_warnings, "Descendant path should not trigger time-range fallback"
+        finally:
+            trace_file.unlink()
+
+    def test_tier3_time_range_fallback_warns(self):
+        """Generation span not parented under AGENT, no call_id. The parser
+        should still find it via time-range overlap and emit a warning."""
+        import warnings
+
+        agent = make_agent_span("ag01", agent_name="A", method_name="run", start_time=1_000, end_time=5_000)
+        # gen's parent is NOT ag01 — simulating a broken parent chain.
+        gen = make_generation_span("ge01", "gen-1", agent_name="A", method_name="run", start_time=1_100, end_time=4_900)
+        gen["parentSpanId"] = "unrelated-span"
+        llm = make_llm_span("ll01", "ge01", messages=[("user", "hi")], start_time=1_200, end_time=1_300)
+
+        trace_file = create_trace_file([agent, gen, llm])
+        try:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                trace = TraceExplorer.from_file(trace_file)
+            assert len(trace.sessions) == 1
+            assert len(trace.sessions[0].turns) == 1
+            fallback_warnings = [w for w in caught if "time-range fallback" in str(w.message)]
+            assert fallback_warnings, "Expected a time-range fallback warning when gen isn't a descendant of AGENT"
+        finally:
+            trace_file.unlink()
