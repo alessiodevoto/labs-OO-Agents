@@ -22,7 +22,7 @@ from typing import Any
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.completion import Completer
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
@@ -46,27 +46,6 @@ def _strip_ansi(text: str) -> str:
 
 
 PROMPT_MARKER = "❯ "
-
-# Minimal default completions so Tab works on a bare TUIApplication.
-# Production wiring replaces this with the real ``CommandRegistry``
-# completer — the interface is just ``Completer.get_completions``.
-_DEFAULT_COMPLETIONS = ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"]
-
-
-class _PrefixCompleter(Completer):
-    """Tiny completer: suggests entries from ``candidates`` when the buffer
-    starts with ``/`` or ``!`` and is a prefix of a candidate."""
-
-    def __init__(self, candidates: list[str]) -> None:
-        self.candidates = candidates
-
-    def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-        if not text or text[0] not in "/!":
-            return
-        for cand in self.candidates:
-            if cand.startswith(text) and cand != text:
-                yield Completion(cand, start_position=-len(text))
 
 
 class TUIApplication:
@@ -95,8 +74,7 @@ class TUIApplication:
                 bash. If omitted, bang commands are only recorded in
                 ``last_bang_command()``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
-                completion. When omitted a small built-in completer
-                covers ``/help /exit /clear /compact !bash !ipython``.
+                completion. When omitted no completion is offered.
         """
         self.agent = agent
         self._on_command = on_command
@@ -118,8 +96,10 @@ class TUIApplication:
 
         # Input window: where user keystrokes land. A caller (Session)
         # passes the real CommandRegistry-backed completer; otherwise
-        # fall back to the minimal slash/bang stub.
-        self._completer = completer or _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
+        # Tab produces no suggestions.
+        from prompt_toolkit.completion import DummyCompleter
+
+        self._completer = completer or DummyCompleter()
         self.input_buffer = Buffer(
             multiline=True,
             completer=self._completer,
@@ -166,7 +146,7 @@ class TUIApplication:
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
         if hasattr(agent, "emit"):
-            agent.emit = self.append_output  # type: ignore[attr-defined]
+            agent.emit = self.emit_block  # type: ignore[attr-defined]
 
         kb = self._build_key_bindings()
 
@@ -403,42 +383,62 @@ class TUIApplication:
 
         if text.startswith("/"):
             self._commands_dispatched.append(text)
-            self._fire(self._on_command, text)
+            self._run_callback(self._on_command, text)
             return False
         if text.startswith("!"):
             body = text[1:].strip()
             self._last_bang_command = body
-            self._fire(self._on_bang, body)
+            self._run_callback(self._on_bang, body)
             return False
 
         self.launch_agent(text)
         return False
 
-    def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
-        """Call a user callback; schedule coroutines on the loop.
+    def _run_callback(
+        self,
+        cb: Callable[[str], Awaitable[None] | None] | None,
+        arg: str,
+        *,
+        after: Callable[[], None] | None = None,
+    ) -> None:
+        """Invoke one user callback, surface errors, optionally chain ``after``.
 
-        Surfaces any exception into the scrollback — without this an
-        unhandled error in on_command / on_bang would disappear into
-        asyncio's default handler and the user would see a no-op.
+        Used by every "call an out-of-band function from the TUI" site
+        (``on_command``, ``on_bang``, ``on_user_message``). Passing
+        ``after`` chains it once the callback finishes — sync path calls
+        it inline; coroutine path calls it from the task's done-callback.
+        That ordering is load-bearing for ``_drain_next``: a queued
+        command must complete before the next queue item fires.
+
+        Exceptions are surfaced into the scrollback so an unhandled
+        error in on_command / on_bang doesn't disappear into asyncio's
+        default handler.
         """
         if cb is None:
+            if after is not None:
+                after()
             return
         try:
             result = cb(arg)
         except BaseException as exc:
-            self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
+            self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
+            if after is not None:
+                after()
             return
         if asyncio.iscoroutine(result):
             task = asyncio.ensure_future(result)
 
             def _report(t: asyncio.Task) -> None:
-                if t.cancelled():
-                    return
-                exc = t.exception()
-                if exc is not None:
-                    self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
+                if not t.cancelled():
+                    exc = t.exception()
+                    if exc is not None:
+                        self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
+                if after is not None:
+                    after()
 
             task.add_done_callback(_report)
+        elif after is not None:
+            after()
 
     def _ensure_spinner_task(self) -> None:
         """Start a background task cycling the spinner frame while the
@@ -488,7 +488,7 @@ class TUIApplication:
         drive a turn). Fires ``on_user_message`` first so Session
         renders the user's input to scrollback.
         """
-        self._fire(self.on_user_message, user_message)
+        self._run_callback(self.on_user_message, user_message)
         if self.agent is None:
             return
         coro = self.agent.respond(user_message)
@@ -510,11 +510,11 @@ class TUIApplication:
         # still emit a visible ack so the user knows the interrupt
         # landed — the old TUI printed "Agent interrupted." here.
         if task.cancelled():
-            self.append_output("\x1b[33m✗ Interrupted.\x1b[0m\n")
+            self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
         else:
             exc = task.exception()
             if exc is not None:
-                self.append_output(f"Agent error: {exc}")
+                self.emit_block(f"Agent error: {exc}")
 
         # Drain ONE queue item serially, then let its completion
         # callback re-enter this function to drain the next. This
@@ -534,31 +534,7 @@ class TUIApplication:
 
         if kind == "cmd":
             self._commands_dispatched.append(text)
-            if self._on_command is None:
-                self._drain_next()
-                return
-            try:
-                result = self._on_command(text)
-            except BaseException as exc:
-                # Sync raise must not stall the queue. Surface + continue.
-                self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
-                self._drain_next()
-                return
-            if asyncio.iscoroutine(result):
-                task = asyncio.ensure_future(result)
-
-                def _after(t: asyncio.Task) -> None:
-                    # Retrieve the exception (if any) so asyncio doesn't log
-                    # "Task exception was never retrieved"; then keep draining.
-                    if not t.cancelled():
-                        exc = t.exception()
-                        if exc is not None:
-                            self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
-                    self._drain_next()
-
-                task.add_done_callback(_after)
-            else:
-                self._drain_next()
+            self._run_callback(self._on_command, text, after=self._drain_next)
             return
 
         # Message — gather any consecutive messages submitted after it
@@ -612,9 +588,6 @@ class TUIApplication:
         # Thread-safe enqueue via the captured loop — put_nowait itself
         # is NOT thread-safe, so always route through call_soon_threadsafe.
         self._loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
-
-    # Legacy name — producers written before emit_block call this.
-    append_output = emit_block
 
     # ── surface the harness (and real callers) rely on ----------------
 
