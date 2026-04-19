@@ -184,7 +184,7 @@ export function ToolExecutionPlugin({ event, viewState, rawJsonOpen, viewControl
             </div>
             <CodeBox
               code={getErrorMessage(attrs)}
-              language="text"
+              language="markdown"
               showLineNumbers={false}
               maxHeight="300px"
             />
@@ -218,7 +218,7 @@ export function ToolExecutionPlugin({ event, viewState, rawJsonOpen, viewControl
           </div>
           <CodeBox
             code={getErrorMessage(attrs)}
-            language="text"
+            language="markdown"
             showLineNumbers={false}
             maxHeight="none"
           />
