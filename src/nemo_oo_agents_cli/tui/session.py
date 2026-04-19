@@ -48,43 +48,6 @@ def _build_prompt(config: "Config") -> str:
     return "❯ "
 
 
-def _code_preview(code: str, max_cols: int = 100) -> str:
-    """Return a compact preview of *code* for the activity line.
-
-    Shape:
-      * First line is comment (``#…``): keep the comment (white-styled
-        downstream) AND the next non-blank code line (grey). Max 2.
-      * First line is code: show just that line (grey). Max 1.
-
-    Filters out lines matching ``return_result(...)`` — CodeAct
-    boilerplate the user doesn't care about in a preview. Long lines
-    truncate to ``max_cols`` with an ellipsis.
-    """
-    raw = [ln for ln in code.splitlines() if ln.strip()]
-    # Drop the CodeAct-internal return_result(...) scaffolding.
-    lines = [ln for ln in raw if not ln.lstrip().startswith("return_result(")]
-    if not lines:
-        return ""
-
-    def _clip(ln: str) -> str:
-        return ln if len(ln) <= max_cols else ln[: max_cols - 1] + "…"
-
-    first = lines[0]
-    if first.lstrip().startswith("#"):
-        result = [_clip(first)]
-        if len(lines) > 1:
-            result.append(_clip(lines[1]))
-        if len(lines) > 2:
-            result[-1] += "…"
-        return "\n".join(result)
-
-    # No comment — one line only, suffix with … if there was more.
-    clipped = _clip(first)
-    if len(lines) > 1:
-        clipped += "…"
-    return clipped
-
-
 def _retrieve_future_exception(f: concurrent.futures.Future[None]) -> None:
     """Done-callback: retrieve the exception to silence warnings."""
     if f.cancelled():
@@ -271,10 +234,8 @@ class Session:
 
         # Streaming state (moved from _AgentStreamMixin)
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._unsubscribe_fns: list = []
         self._pending_code: dict[str, str] = {}  # tool_call_id → code
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
-        self._agent_has_messaged: bool = False  # True after first message() in current turn
 
     @property
     def show_python(self) -> bool:
@@ -288,67 +249,6 @@ class Session:
     @property
     def session_id(self) -> str | None:
         return self._session_manager.session_id if self._session_manager else None
-
-    # ------------------------------------------------------------------
-    # Agent event subscription (moved from _AgentStreamMixin)
-    # ------------------------------------------------------------------
-
-    def _attach_agent(self, agent: "Agent") -> None:
-        """Subscribe to agent events for real-time streaming display."""
-        self._loop = asyncio.get_running_loop()
-        self._install_exception_handler(self._loop)
-        self._unsubscribe_fns.append(agent.event_manager.on("Reasoning", self._on_reasoning))
-        self._unsubscribe_fns.append(agent.event_manager.on("ToolCallEvent", self._on_tool_call))
-        self._unsubscribe_fns.append(agent.event_manager.on("PythonOutput", self._on_python_output))
-
-    def _detach_agent(self) -> None:
-        for fn in self._unsubscribe_fns:
-            try:
-                fn()
-            except Exception:
-                pass
-        self._unsubscribe_fns.clear()
-        self._restore_exception_handler()
-
-    # ------------------------------------------------------------------
-    # Event loop exception handler (replaces prompt_toolkit's broken one)
-    # ------------------------------------------------------------------
-
-    def _install_exception_handler(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Replace the event loop exception handler with one that shows useful info.
-
-        prompt_toolkit's handler prints ``context.get("exception")`` but never
-        prints ``context.get("message")``, so when asyncio fires an exception
-        context without an ``exception`` key (e.g. "Task was destroyed but it
-        is pending!") the user sees the useless ``Exception None``.
-        """
-        self._prev_exception_handler = loop.get_exception_handler()
-
-        import logging
-        import traceback as _tb
-
-        _log = logging.getLogger("nemo_oo_agents.tui")
-
-        def _handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
-            msg = context.get("message", "")
-            exc = context.get("exception")
-            # Log the full context for post-mortem debugging
-            _log.warning("asyncio exception: %s (exception=%r)", msg, exc)
-            if exc and hasattr(exc, "__traceback__"):
-                _log.debug("".join(_tb.format_exception(type(exc), exc, exc.__traceback__)))
-
-        loop.set_exception_handler(_handler)
-
-    def _restore_exception_handler(self) -> None:
-        prev = getattr(self, "_prev_exception_handler", None)
-        if self._loop is not None:
-            try:
-                self._loop.set_exception_handler(prev)
-            except Exception:
-                pass
-
-    def _clear_streaming_state(self) -> None:
-        self._pending_code.clear()
 
     def _context_usage_label(self) -> str:
         """Compact ``"ctx N%"`` label from the most recent ContextWindowStats.
@@ -371,43 +271,6 @@ class Session:
             return ""
         pct = stats.total_tokens / max_total * 100
         return f"ctx {pct:.0f}%"
-
-    def _print_input_rule(self) -> None:
-        """Print a horizontal rule before the input prompt with session info right-aligned."""
-        from .theme import COLORS
-
-        console = getattr(getattr(self.frontend, "_console", None), "console", None)
-        if console is None:
-            return
-
-        segments: list[str] = []
-        usage = self._context_usage_label()
-        if usage:
-            segments.append(usage)
-
-        if self._session_manager is not None:
-            sm = self._session_manager
-            short_id = (sm.session_id or "")[:8]
-            name = sm.name
-            if name and short_id:
-                segments.append(f"{name} \\[{short_id}]")
-            elif short_id:
-                segments.append(f"\\[{short_id}]")
-
-        label = " · ".join(segments)
-
-        from rich.rule import Rule
-
-        if label:
-            console.print(
-                Rule(
-                    title=f"[{COLORS['overlay1']}]{label}[/]",
-                    style=COLORS["surface1"],
-                    align="right",
-                )
-            )
-        else:
-            console.print(Rule(style=COLORS["surface1"]))
 
     # ------------------------------------------------------------------
     # Exit diagnostics
@@ -458,94 +321,6 @@ class Session:
             sys.stderr.flush()
 
     # ------------------------------------------------------------------
-    # Agent event callbacks (moved from _AgentStreamMixin)
-    # ------------------------------------------------------------------
-
-    def _on_reasoning(self, event) -> None:
-        if self.show_python:
-            return
-        content = getattr(event, "content", "") or ""
-        if not content.strip():
-            return
-        if self._loop is not None:
-            from .output import ActivityLine
-
-            fut = asyncio.run_coroutine_threadsafe(
-                self.frontend.render(ActivityLine(content, kind="reasoning")),
-                self._loop,
-            )
-            fut.add_done_callback(_retrieve_future_exception)
-
-    def _on_tool_call(self, event) -> None:
-        if getattr(event, "name", "") == "execute_python":
-            tool_call_id = getattr(event, "tool_call_id", "")
-            arguments = getattr(event, "arguments", {})
-            if tool_call_id and isinstance(arguments, dict):
-                code = arguments.get("code", "")
-                if code:
-                    self._pending_code[tool_call_id] = code
-                    if not self.show_python:
-                        from .output import ActivityLine
-
-                        # Detect prefill executions and show a friendlier message
-                        if tool_call_id.startswith("prefill_"):
-                            preview = "Inspecting inputs..."
-                        else:
-                            preview = _code_preview(code)
-
-                        if preview and self._loop is not None:
-                            fut = asyncio.run_coroutine_threadsafe(
-                                self.frontend.render(ActivityLine(preview, kind="code")),
-                                self._loop,
-                            )
-                            fut.add_done_callback(_retrieve_future_exception)
-
-    def _on_python_output(self, event) -> None:
-        try:
-            from context_blocks import ResultStatus
-
-            is_complete = event.execution_status == ResultStatus.COMPLETE
-        except ImportError:
-            is_complete = True
-
-        value = None
-        if is_complete and getattr(event, "value", None) is not None:
-            value = event.value
-
-        from .output import CodeExecution
-
-        execution = CodeExecution(
-            tool_call_id=getattr(event, "tool_call_id", ""),
-            code=self._pending_code.pop(getattr(event, "tool_call_id", ""), None),
-            stdout=getattr(event, "stdout", None) or None,
-            stderr=getattr(event, "stderr", None) or None,
-            error=getattr(event, "error", None) or None,
-            value=value,
-        )
-
-        if self.show_python and self._loop is not None:
-            fut = asyncio.run_coroutine_threadsafe(self.frontend.render(execution), self._loop)
-            fut.add_done_callback(_retrieve_future_exception)
-            return
-
-        # show_python=False (default): emit stdout/stderr of the cell as
-        # indented ActivityLines so they appear just below the code
-        # preview that fired a moment ago — ipython-notebook feel.
-        if self._loop is None:
-            return
-        from .output import ActivityLine
-
-        for stream_kind, payload in (("stdout", execution.stdout), ("stderr", execution.stderr)):
-            if not payload:
-                continue
-            for line in str(payload).rstrip("\n").split("\n"):
-                fut = asyncio.run_coroutine_threadsafe(
-                    self.frontend.render(ActivityLine(line, kind=stream_kind)),  # type: ignore[arg-type]
-                    self._loop,
-                )
-                fut.add_done_callback(_retrieve_future_exception)
-
-    # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
@@ -562,7 +337,7 @@ class Session:
         from .output import TextOutput
         from .tui_application import TUIApplication
 
-        self._attach_agent(self.agent)
+        self._loop = asyncio.get_running_loop()
 
         async def _on_command(text: str) -> None:
             # Echo the submitted command to scrollback so exit commands
@@ -634,7 +409,6 @@ class Session:
         import io as _io
 
         from rich.console import Console as _RichConsole
-        from rich.markdown import Markdown
 
         _emit_console = _RichConsole(
             file=_io.StringIO(),
@@ -668,14 +442,27 @@ class Session:
         # what makes /help, /model, /context etc. appear correctly in
         # the scrollback — without the redirect, their Rich writes
         # clobber prompt_toolkit's layout at the current cursor.
+        #
+        # Buffer writes until flush() so a single ``console.print(table)``
+        # lands as ONE queue entry (one ``run_in_terminal`` hop) instead
+        # of dozens of per-chunk enqueues. Rich flushes at the end of
+        # every ``Console.print``.
         class _EmitStream:
+            def __init__(self) -> None:
+                self._buf: list[str] = []
+
             def write(self, text: str) -> int:
                 if text:
-                    app.emit_block(text)
+                    self._buf.append(text)
                 return len(text)
 
             def flush(self) -> None:
-                return None
+                if not self._buf:
+                    return
+                chunk = "".join(self._buf)
+                self._buf.clear()
+                if chunk:
+                    app.emit_block(chunk)
 
             def isatty(self) -> bool:
                 return True
@@ -689,11 +476,19 @@ class Session:
                 theme=CATPPUCCIN_THEME,
             )
 
-        # Track whether the agent has already emitted a markdown block
-        # this turn — we only want the "OO ─" rule at the START of its
-        # reply block, not before every message() call in a multi-msg
-        # turn. Reset to False when the user submits a new message.
-        agent_has_messaged = {"value": False}
+        # Renderer subscribes Reasoning / ToolCallEvent / PythonOutput
+        # and plugs itself into ``agent._render_message`` so ``self.message()``
+        # output lands in submission order relative to code cells.
+        from .agent_event_renderer import AgentEventRenderer
+
+        renderer = AgentEventRenderer(
+            agent=self.agent,
+            emit_text=emit_text,
+            show_python=lambda: self.show_python,
+            pending_code=self._pending_code,
+            colors=COLORS,
+        )
+        renderer.attach()
 
         def _on_user_message(text: str) -> None:
             from rich.text import Text
@@ -711,23 +506,18 @@ class Session:
                     self._background_tasks.add(_t)
                     _t.add_done_callback(self._background_tasks.discard)
 
-            # The session rule lives as a live layout row right above
-            # the input (see TUIApplication.session_rule window) — no
-            # need to emit a separate transcript rule per turn.
-            #
-            # User-message bar: plain (non-bold) text on a grey
-            # background bar that spans the full terminal width.
-            # Prompt glyph matches the input line's BeforeInput marker.
+            # User-message bar: plain (non-bold) text on a grey background
+            # that spans the full terminal width. Prompt glyph matches
+            # the input line's BeforeInput marker. Each line pads to
+            # ``cols`` individually so the background reaches the right
+            # edge on every row (first line carries ``❯``; continuation
+            # lines start flush-left).
             import shutil
 
             try:
                 cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
             except Exception:
                 cols = 120
-            # For multi-line messages we pad EACH line to ``cols``
-            # individually so the grey background reaches the right
-            # edge on every row. First line carries the ``❯`` prefix;
-            # continuation lines start flush-left (no indent).
             lines_in = text.split("\n")
             padded: list[str] = []
             for i, line in enumerate(lines_in):
@@ -735,149 +525,12 @@ class Session:
                 padded.append(shown.ljust(cols))
             bar = Text("\n".join(padded), style=f"{COLORS['text']} on {COLORS['surface2']}")
             emit_text(bar)
-            # New turn → reset the per-turn first-message guard.
-            agent_has_messaged["value"] = False
+            # New turn → reset the renderer's per-turn ``OO ─`` guard.
+            renderer.reset_turn()
 
         # Assign the user-message callback after construction because
-        # it closes over emit_text / Text which are defined below. The
-        # attribute is public for exactly this reason.
+        # it closes over emit_text / renderer defined here.
         app.on_user_message = _on_user_message
-
-        # Messages emitted INSIDE a code cell are buffered and flushed
-        # after the cell's PythonOutput event, so markdown lands below
-        # the code/output block. Messages emitted OUTSIDE a cell (from
-        # a sub-method, an orchestrator, or at the very end of a turn
-        # after the final cell) render immediately — otherwise they'd
-        # silently accumulate and never appear.
-        pending_messages: list[str] = []
-        in_cell = {"value": False}
-
-        from rich.rule import Rule as _Rule
-        from rich.text import Text as _RT
-
-        def _emit_markdown(text: str) -> None:
-            if not agent_has_messaged["value"]:
-                agent_has_messaged["value"] = True
-                emit_text(_Rule(_RT("OO ", style=COLORS["mauve"]), style="dim", align="left"))
-            emit_text(Markdown(str(text)))
-
-        def _flush_messages() -> None:
-            # Flip out of 'in cell' before flushing: a self.message()
-            # that arrives during the flush itself must render inline.
-            in_cell["value"] = False
-            while pending_messages:
-                _emit_markdown(pending_messages.pop(0))
-
-        if hasattr(self.agent, "_render_message"):
-
-            def _render_msg(text: str) -> None:
-                if in_cell["value"]:
-                    pending_messages.append(str(text))
-                else:
-                    _emit_markdown(str(text))
-
-            self.agent._render_message = _render_msg  # type: ignore[attr-defined]
-
-        # ── replace the default event handlers with plan-c versions ──
-        # Session._attach_agent's handlers schedule frontend.render via
-        # run_coroutine_threadsafe, which means the activity line lands
-        # in the queue LATER than a synchronously-emitted message block.
-        # These sync handlers emit directly, so order matches event
-        # firing order (ToolCall before self.message).
-        self._detach_agent()
-        self._loop = asyncio.get_running_loop()
-
-        def _on_reasoning(event) -> None:
-            from rich.text import Text
-
-            content = getattr(event, "content", "") or ""
-            if content.strip():
-                emit_text(Text(content, style="dim italic"))
-
-        def _on_tool_call(event) -> None:
-            from rich.text import Text
-
-            if getattr(event, "name", "") != "execute_python":
-                return
-            tool_call_id = getattr(event, "tool_call_id", "")
-            arguments = getattr(event, "arguments", {})
-            code = arguments.get("code", "") if isinstance(arguments, dict) else ""
-            if not code:
-                return
-            self._pending_code[tool_call_id] = code
-            # Messages emitted during this cell will be buffered until
-            # _on_python_output flushes them — keeps markdown below the
-            # code/output block.
-            in_cell["value"] = True
-            # In show_python mode the full cell (oo python / code / oo
-            # stdout / stdout) renders from _on_python_output — no
-            # preview teaser needed.
-            if self.show_python:
-                return
-            preview = (
-                "Inspecting inputs..."
-                if tool_call_id.startswith("prefill_")
-                else _code_preview(code)
-            )
-            if not preview:
-                return
-            first_line = preview.split("\n", 1)[0]
-            styled = Text(f"∴ {first_line}", style="dim")
-            if first_line.lstrip().startswith("#"):
-                styled.stylize("not dim", 0, len(first_line) + 2)
-            if "\n" in preview:
-                styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
-            emit_text(styled)
-
-        def _on_python_output(event) -> None:
-            from rich.rule import Rule
-            from rich.syntax import Syntax
-            from rich.text import Text as _RT
-
-            tool_call_id = getattr(event, "tool_call_id", "")
-            code = self._pending_code.pop(tool_call_id, None)
-            if tool_call_id.startswith("prefill_"):
-                # Still flush any pending messages so they don't land
-                # below a LATER cell's output.
-                _flush_messages()
-                return
-
-            stdout = str(getattr(event, "stdout", "") or "")
-            stderr = str(getattr(event, "stderr", "") or "")
-
-            # show_python=True: render a notebook-style cell — 'oo python'
-            # rule, syntax-highlighted code, 'oo stdout' rule, stdout,
-            # 'oo stderr' rule, stderr.
-            if self.show_python and code:
-                emit_text(Rule(_RT("oo python", style=COLORS["mauve"]), style="dim", align="left"))
-                emit_text(
-                    Syntax(code.strip(), "python", theme="monokai", background_color="default")
-                )
-                if stdout.strip():
-                    emit_text(
-                        Rule(_RT("oo stdout", style=COLORS["mauve"]), style="dim", align="left")
-                    )
-                    emit_text(_RT(stdout.rstrip("\n"), style=COLORS["text"]))
-                if stderr.strip():
-                    emit_text(
-                        Rule(_RT("oo stderr", style=COLORS["red"]), style="dim", align="left")
-                    )
-                    emit_text(_RT(stderr.rstrip("\n"), style=COLORS["red"]))
-                _flush_messages()
-                return
-
-            # Preview mode: stdout is for the agent; user sees results
-            # via self.message(). Only show stderr so errors aren't
-            # silent. Then flush any self.message() calls from this cell
-            # so they appear BELOW the code preview.
-            if stderr.strip():
-                for line in stderr.rstrip("\n").split("\n"):
-                    emit_text(_RT(f"  │ {line}", style="red"))
-            _flush_messages()
-
-        self._unsubscribe_fns.append(self.agent.event_manager.on("Reasoning", _on_reasoning))
-        self._unsubscribe_fns.append(self.agent.event_manager.on("ToolCallEvent", _on_tool_call))
-        self._unsubscribe_fns.append(self.agent.event_manager.on("PythonOutput", _on_python_output))
 
         # Replace Session's logging-based loop exception handler with one
         # that surfaces every swallowed task exception into the scrollback.
@@ -896,7 +549,7 @@ class Session:
                 line += f" — {type(exc).__name__}: {exc}"
                 if hasattr(exc, "__traceback__"):
                     line += "\n" + "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
-            app.append_output(line + "\n")
+            app.emit_block(line + "\n")
 
         loop.set_exception_handler(_loud_handler)
 
@@ -909,7 +562,7 @@ class Session:
         finally:
             self._dump_exit_diagnostics()
             self.frontend.close()
-            self._detach_agent()
+            renderer.detach()
             if self._session_manager is not None:
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
