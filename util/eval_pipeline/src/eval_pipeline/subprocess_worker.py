@@ -113,6 +113,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
         )
 
     # Stage 1: Execute
+    _execute_error: Exception | None = None
     try:
         result = await execute_task(
             agent=agent,
@@ -121,26 +122,35 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
             timeout_seconds=task_input.timeout_seconds,
         )
     except Exception as e:
+        _execute_error = e
+
+    # Shut down tracing regardless of success/failure.
+    #
+    # flush_traces() alone (force_flush) is not sufficient:
+    # 1. On error: execute_task raises before outer spans end.
+    # 2. Under parallel load: force_flush() returns before the BSP worker thread
+    #    finishes its HTTP POST.  shutdown_traces() joins the worker, guaranteeing
+    #    all exports complete before we read the trace back for scoring.
+    try:
+        from openinference_instrumentation_nemo_oo_agents import shutdown_traces
+
+        shutdown_traces()
+    except Exception as e:
+        log.debug(f"shutdown_traces() failed (non-fatal): {e}")
+
+    if _execute_error is not None:
         return _error_result(
             task_input,
             unique_test_id,
             base_test_id,
             run_id,
             model_short,
-            str(e),
+            str(_execute_error),
             started_at,
             time.perf_counter() - sample_start,
             session_id,
             eval_metadata=merged_eval_meta,
         )
-
-    # Flush spans so the exporter has sent everything to the headless backend.
-    try:
-        from openinference_instrumentation_nemo_oo_agents import flush_traces
-
-        flush_traces()
-    except Exception:
-        pass
 
     # Fetch trace from headless backend for scoring
     _viewer_base = task_input.otlp_endpoint.rstrip("/").removesuffix("/v1/traces")

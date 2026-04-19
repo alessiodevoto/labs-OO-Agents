@@ -185,6 +185,33 @@ async def otlp_ingest(request: Request):
 
 
 # ============================================================================
+# Sync endpoint — wait for ingest queue to drain
+# ============================================================================
+
+
+@app.post("/v1/sync")
+async def sync_ingest():
+    """Block until the ingest queue is fully drained and all spans are in SQLite.
+
+    Called by subprocess_worker after flush_traces() to ensure spans are
+    readable before the trace is fetched for scoring.
+    """
+    try:
+        await asyncio.wait_for(_ingest_queue.join(), timeout=30.0)
+    except TimeoutError:
+        qsize = _ingest_queue.qsize()
+        log.error(
+            "[sync_ingest] Timeout waiting for queue drain — worker may be stuck. Queue size: %d",
+            qsize,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={"error": "timeout waiting for queue drain", "queue_size": qsize},
+        )
+    return JSONResponse(content={"synced": True})
+
+
+# ============================================================================
 # Message journal endpoints
 # ============================================================================
 
