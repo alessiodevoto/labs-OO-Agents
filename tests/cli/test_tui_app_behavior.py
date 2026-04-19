@@ -483,3 +483,39 @@ async def test_hard_async_on_command_raising_surfaces_to_output() -> None:
         h.app._on_command = _raising_async
         await h.submit_async("/go")
         await h.wait_output_contains("[callback error] RuntimeError: boom-async")
+
+
+async def test_hard_ctrl_c_emits_interrupted_notice_to_scrollback() -> None:
+    """Ctrl-C during an agent turn must put a visible ``✗ Interrupted.``
+    marker into scrollback so the user knows the cancellation landed —
+    not just silently end the turn."""
+    agent = _blocking_agent()
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        await h.press("c-c")
+        await h.wait_output_contains("Interrupted")
+
+
+async def test_hard_submit_message_re_entry_queues_instead_of_stomping() -> None:
+    """Programmatic ``submit_message`` while an agent turn is running
+    must queue the new message instead of overwriting ``_agent_task``.
+
+    Regression guard for the P1 #5 finding in the bug-hunt review.
+    """
+    agent = _blocking_agent()
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        assert h.app._agent_task is not None
+        first_task = h.app._agent_task
+
+        # Programmatic submission during the blocked turn — should go
+        # to the queue, not clobber _agent_task.
+        h.app.submit_message("second")
+        assert h.app._agent_task is first_task  # not replaced
+        assert any(kind == "msg" and text == "second" for kind, text in h.app.state.items)
+
+        # Draining second should reach the agent.
+        agent.block.set()
+        await h.wait_for(lambda: agent.messages_received == ["first", "second"])
