@@ -391,54 +391,49 @@ class TUIApplication:
             self._run_callback(self._on_bang, body)
             return False
 
-        self.launch_agent(text)
+        self.submit_message(text)
         return False
 
     def _run_callback(
         self,
         cb: Callable[[str], Awaitable[None] | None] | None,
         arg: str,
-        *,
-        after: Callable[[], None] | None = None,
-    ) -> None:
-        """Invoke one user callback, surface errors, optionally chain ``after``.
+    ) -> asyncio.Task | None:
+        """Invoke one user callback; return the scheduled Task or None.
 
         Used by every "call an out-of-band function from the TUI" site
-        (``on_command``, ``on_bang``, ``on_user_message``). Passing
-        ``after`` chains it once the callback finishes — sync path calls
-        it inline; coroutine path calls it from the task's done-callback.
-        That ordering is load-bearing for ``_drain_next``: a queued
-        command must complete before the next queue item fires.
+        (``on_command``, ``on_bang``, ``on_user_message``).
 
-        Exceptions are surfaced into the scrollback so an unhandled
-        error in on_command / on_bang doesn't disappear into asyncio's
-        default handler.
+        - Synchronous callback (``None``, a regular function, or one
+          that raised): returns ``None``. Errors are surfaced into the
+          scrollback so an unhandled exception doesn't vanish into
+          asyncio's default handler.
+        - Coroutine callback: scheduled as a Task and returned. The
+          caller can ``add_done_callback`` on it to chain follow-up
+          work (e.g. ``_drain_next`` for queued commands). Errors
+          inside the coroutine are surfaced via a done-callback
+          installed here.
         """
         if cb is None:
-            if after is not None:
-                after()
-            return
+            return None
         try:
             result = cb(arg)
         except BaseException as exc:
             self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
-            if after is not None:
-                after()
-            return
-        if asyncio.iscoroutine(result):
-            task = asyncio.ensure_future(result)
+            return None
+        if not asyncio.iscoroutine(result):
+            return None
+        task = asyncio.ensure_future(result)
 
-            def _report(t: asyncio.Task) -> None:
-                if not t.cancelled():
-                    exc = t.exception()
-                    if exc is not None:
-                        self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
-                if after is not None:
-                    after()
+        def _report(t: asyncio.Task) -> None:
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
 
-            task.add_done_callback(_report)
-        elif after is not None:
-            after()
+        task.add_done_callback(_report)
+        return task
 
     def _ensure_spinner_task(self) -> None:
         """Start a background task cycling the spinner frame while the
@@ -480,13 +475,16 @@ class TUIApplication:
         self.input_buffer.text = self._history[self._history_cursor]
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
-    def launch_agent(self, user_message: str) -> None:
-        """Kick off ``agent.respond(user_message)`` on the event loop.
+    def submit_message(self, user_message: str) -> None:
+        """Treat ``user_message`` as if the user just typed and submitted it.
 
-        Public because Session also calls it when a slash command
-        returns an ``agent_message`` (e.g. ``/compact`` that wants to
-        drive a turn). Fires ``on_user_message`` first so Session
-        renders the user's input to scrollback.
+        Fires ``on_user_message`` (scrollback echo + session bookkeeping),
+        then kicks off ``agent.respond(user_message)`` on the event loop.
+
+        Public so Session can submit a message programmatically — e.g. a
+        slash command that returns an ``agent_message`` (``/compact``)
+        and wants to drive a turn through the same user-facing path as
+        a typed message.
         """
         self._run_callback(self.on_user_message, user_message)
         if self.agent is None:
@@ -523,28 +521,37 @@ class TUIApplication:
         self._drain_next()
 
     def _drain_next(self) -> None:
-        """Pull the next queue item and fire it. Commands schedule an
-        on_command coroutine whose completion re-enters _drain_next;
-        messages launch an agent turn whose _on_agent_done does the
-        same. Order: strict FIFO on ``state.items``."""
-        if not self.state.items:
+        """Pop items from ``state.items`` and fire them until an async
+        boundary. Strict FIFO preserves user-submission order.
+
+        - Synchronous command callbacks loop in place (no recursion).
+        - Async command callbacks hand off to the task's done-callback,
+          which re-enters ``_drain_next``.
+        - Messages launch an agent turn; ``_on_agent_done`` re-enters
+          ``_drain_next`` once the turn completes.
+        """
+        while self.state.items:
+            kind, text = self.state.items.pop(0)
+
+            if kind == "cmd":
+                self._commands_dispatched.append(text)
+                task = self._run_callback(self._on_command, text)
+                if task is None:
+                    # Sync path (or no handler / handler raised): loop.
+                    continue
+                # Async path: let the task's done-callback drain next.
+                task.add_done_callback(lambda _t: self._drain_next())
+                return
+
+            # Message — gather any consecutive messages so the whole
+            # contiguous text block becomes one agent turn.
+            msgs: list[str] = [text]
+            while self.state.items and self.state.items[0][0] == "msg":
+                msgs.append(self.state.items.pop(0)[1])
+            self.submit_message("\n\n".join(msgs))
+            # Agent's done callback calls _on_agent_done, which calls
+            # _drain_next again once this turn completes.
             return
-
-        kind, text = self.state.items.pop(0)
-
-        if kind == "cmd":
-            self._commands_dispatched.append(text)
-            self._run_callback(self._on_command, text, after=self._drain_next)
-            return
-
-        # Message — gather any consecutive messages submitted after it
-        # so the whole contiguous text block becomes one agent turn.
-        msgs: list[str] = [text]
-        while self.state.items and self.state.items[0][0] == "msg":
-            msgs.append(self.state.items.pop(0)[1])
-        self.launch_agent("\n\n".join(msgs))
-        # Agent's done callback calls _on_agent_done, which calls
-        # _drain_next again once this turn completes.
 
     # ── output pipeline -----------------------------------------------
 
