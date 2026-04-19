@@ -114,6 +114,63 @@ async def test_clear_does_not_destroy_old_session_data(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_clear_resets_in_memory_todos(tmp_path):
+    """``/clear`` must wipe the agent's in-memory todo state.
+
+    Swapping storage alone only clears conversation history (events).
+    ``TodoManager._todos`` lives on the agent instance, so a naive
+    storage swap lets old todos bleed into the new "fresh" session.
+    """
+    from nemo_oo_agents.tools.todo import TodoManager
+
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+        agent.todo = TodoManager()
+        agent.todo.add("task from previous session")
+        assert len(agent.todo._todos) == 1
+
+        cmd = ClearCommand(
+            agent=agent,
+            config=MagicMock(default_model="test"),
+            frontend=AsyncMock(),
+            session_manager=old_sm,
+        )
+        result = await cmd.execute([])
+
+        if result.new_session_manager is not None:
+            result.new_session_manager.close()
+        old_sm.close()
+
+    assert agent.todo._todos == {}, "/clear left stale todos in memory"
+    assert agent.todo._order == []
+
+
+@pytest.mark.asyncio
+async def test_clear_without_todo_skill_is_safe(tmp_path):
+    """Agents without a ``todo`` attribute still work — the reset helper
+    is guarded."""
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+        if hasattr(agent, "todo"):
+            del agent.todo
+
+        cmd = ClearCommand(
+            agent=agent,
+            config=MagicMock(default_model="test"),
+            frontend=AsyncMock(),
+            session_manager=old_sm,
+        )
+        result = await cmd.execute([])
+        assert result.success is True
+
+        if result.new_session_manager is not None:
+            result.new_session_manager.close()
+        old_sm.close()
+
+
+@pytest.mark.asyncio
 async def test_clear_creates_new_session_with_different_id(tmp_path):
     """``/clear`` result carries a fresh ``SessionManager`` distinct
     from the old one — i.e. the caller has something to swap to."""

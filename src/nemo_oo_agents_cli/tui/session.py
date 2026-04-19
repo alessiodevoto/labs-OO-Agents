@@ -38,6 +38,70 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def _hex_to_ansi256(hex_color: str) -> int:
+    """Convert a ``#rrggbb`` hex string to the nearest xterm-256 index.
+
+    Used when we render ANSI directly (e.g. the user-message bar) and
+    can't rely on Rich's width/wrap logic to emit correctly-padded
+    terminal output.
+    """
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+    # 6x6x6 color cube starting at index 16.
+    def _q(v: int) -> int:
+        # 0,95,135,175,215,255 — standard xterm cube steps.
+        if v < 48:
+            return 0
+        if v < 115:
+            return 1
+        return (v - 35) // 40
+
+    return 16 + 36 * _q(r) + 6 * _q(g) + _q(b)
+
+
+def _build_user_bar(text: str, app: "TUIApplication", colors: dict) -> str:
+    """Build a full-width highlighted user-message bar as raw ANSI.
+
+    Bypasses Rich because reconciling Rich's wrap/crop/overflow logic
+    with manual ``ljust`` padding is brittle across Rich versions and
+    terminal emulators — direct CSI emission always renders the full
+    width-spanning highlighted row the spec asks for.
+
+    Each input line becomes one bar row:
+      ``ESC[fg;bg m{prefix}{line}{padding}{ ESC[0m}\\n``
+    where the first row carries the ``❯`` prompt glyph and
+    continuation rows start flush-left.
+    """
+    # Prefer prompt_toolkit's live width — ``run_in_terminal`` will use
+    # this number when writing above the prompt. Falls back to the
+    # terminal_cols helper if the app output can't report.
+    cols: int
+    try:
+        cols = app._app.output.get_size().columns  # type: ignore[attr-defined]
+    except Exception:
+        from .tui_application import terminal_cols
+
+        cols = terminal_cols(minimum=40)
+    cols = max(cols, 20)
+
+    fg = _hex_to_ansi256(colors["text"])
+    bg = _hex_to_ansi256(colors["surface2"])
+    on = f"\x1b[38;5;{fg};48;5;{bg}m"
+    off = "\x1b[0m"
+
+    rows: list[str] = []
+    for i, line in enumerate(text.split("\n")):
+        shown = f" ❯ {line} " if i == 0 else f" {line} "
+        # Clamp to cols so an overlong line becomes multiple bar rows
+        # rather than wrapping chaotically at the terminal's edge.
+        while len(shown) > cols:
+            rows.append(f"{on}{shown[:cols]}{off}")
+            shown = shown[cols:]
+        rows.append(f"{on}{shown.ljust(cols)}{off}")
+    return "\n".join(rows) + "\n"
+
+
 class _EmitStream:
     """A ``Console.file`` target that batches writes into one ``emit_block``
     per ``flush()``.
@@ -548,8 +612,7 @@ class Session:
         Also triggers first-message auto-naming and the session
         manager's user-record bookkeeping.
         """
-        assert self._renderer is not None
-        from .tui_application import terminal_cols
+        assert self._renderer is not None and self._app is not None
 
         if self._session_manager is not None:
             self._session_manager.record_user(text)
@@ -562,17 +625,7 @@ class Session:
             ):
                 self._fire_and_forget(self._auto_name_session(text))
 
-        # Grey background bar spanning full terminal width. First line
-        # carries the ``❯`` prefix; continuation lines start flush-left.
-        cols = terminal_cols(minimum=40)
-        lines_in = text.split("\n")
-        padded: list[str] = []
-        for i, line in enumerate(lines_in):
-            shown = f" ❯ {line} " if i == 0 else f" {line} "
-            padded.append(shown.ljust(cols))
-        colors = self._colors
-        bar = Text("\n".join(padded), style=f"{colors['text']} on {colors['surface2']}")
-        self._emit_text(bar)
+        self._app.emit_block(_build_user_bar(text, self._app, self._colors))
         self._renderer.reset_turn()
 
     def _loud_handler(self, _loop: asyncio.AbstractEventLoop, context: dict) -> None:

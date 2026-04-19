@@ -129,6 +129,14 @@ class TodoManager(Skill):
             return True
         return False
 
+    def clear(self) -> None:
+        """Remove every todo. Used by ``/clear`` to reset in-memory
+        working state on a new session — the old session's snapshot
+        is preserved on disk and can be re-loaded via ``/session <id>``.
+        """
+        self._todos.clear()
+        self._order.clear()
+
     def update(self, todo_id: str, **kwargs: Any) -> Todo | None:
         """Update todo fields (title, status, notes). Returns the updated Todo or None."""
         t = self._todos.get(todo_id)
