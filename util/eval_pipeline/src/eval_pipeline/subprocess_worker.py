@@ -135,8 +135,8 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
         from openinference_instrumentation_nemo_oo_agents import shutdown_traces
 
         shutdown_traces()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f"shutdown_traces() failed (non-fatal): {e}")
 
     if _execute_error is not None:
         return _error_result(
