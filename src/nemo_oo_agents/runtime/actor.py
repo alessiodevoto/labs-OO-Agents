@@ -2278,6 +2278,7 @@ async def {name}({params_str}) -> {return_type}:
                 event_limit=tc.max_event_tokens,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
+                model_context_window=getattr(llm_client, "context_window", None),
             )
         self._last_context_stats = result.stats
         return result.output

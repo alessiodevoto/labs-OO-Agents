@@ -361,9 +361,12 @@ class Session:
             return ""
         max_context = stats.max_context_tokens
         max_event = stats.max_event_tokens
-        if not (max_context and max_event):
+        if max_context and max_event:
+            max_total = max_context + max_event
+        elif stats.model_context_window:
+            max_total = stats.model_context_window
+        else:
             return ""
-        max_total = max_context + max_event
         if max_total <= 0:
             return ""
         pct = stats.total_tokens / max_total * 100

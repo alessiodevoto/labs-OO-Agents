@@ -202,6 +202,7 @@ def render_context(
     event_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
     pre_format_limit: int | None = None,
+    model_context_window: int | None = None,
 ) -> RenderResult:
     """Render resolved blocks into provider-specific output with utilization stats.
 
@@ -224,6 +225,8 @@ def render_context(
             before block-level truncation.  Comes from
             TruncationConfig.max_block_chars (single pipeline — same cap for both).
             None uses the formatter default.
+        model_context_window: The model's total context window size (max input tokens).
+            Used for percentage display in stats when per-category limits are not set.
 
     Returns:
         RenderResult with .output (provider-specific: list[dict] for OpenAI,
@@ -288,6 +291,7 @@ def render_context(
         total_tokens=context_blocks_tokens + events_tokens,
         max_context_tokens=context_limit,
         max_event_tokens=event_limit,
+        model_context_window=model_context_window,
         context_blocks_dropped=context_blocks_dropped,
         events_dropped=events_dropped,
     )
