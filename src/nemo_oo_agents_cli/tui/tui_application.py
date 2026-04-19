@@ -120,6 +120,10 @@ class TUIApplication:
         # ``run_in_terminal``. Tests read both via the accessor methods.
         self._commands_dispatched: list[str] = []
         self._last_bang_command: str | None = None
+        # Set by _run_callback on the sync-error path; read by
+        # _drain_next to bail out of a pathological "every queued
+        # command raises" loop instead of dumping N stack traces.
+        self._last_sync_callback_raised: bool = False
 
         # Status line fields — surfaced via status_text().
         self._session_label: str = ""
@@ -407,19 +411,23 @@ class TUIApplication:
         - Synchronous callback (``None``, a regular function, or one
           that raised): returns ``None``. Errors are surfaced into the
           scrollback so an unhandled exception doesn't vanish into
-          asyncio's default handler.
+          asyncio's default handler. Sets
+          ``self._last_sync_callback_raised = True`` so callers that
+          loop (``_drain_next``) can stop after a failure.
         - Coroutine callback: scheduled as a Task and returned. The
           caller can ``add_done_callback`` on it to chain follow-up
           work (e.g. ``_drain_next`` for queued commands). Errors
           inside the coroutine are surfaced via a done-callback
           installed here.
         """
+        self._last_sync_callback_raised = False
         if cb is None:
             return None
         try:
             result = cb(arg)
         except BaseException as exc:
             self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
+            self._last_sync_callback_raised = True
             return None
         if not asyncio.iscoroutine(result):
             return None
@@ -537,7 +545,19 @@ class TUIApplication:
                 self._commands_dispatched.append(text)
                 task = self._run_callback(self._on_command, text)
                 if task is None:
-                    # Sync path (or no handler / handler raised): loop.
+                    # Sync path. If the callback raised, stop draining
+                    # — otherwise a bad handler dumps N stack traces
+                    # with no way to interrupt. Discard the rest and
+                    # tell the user.
+                    if self._last_sync_callback_raised:
+                        remaining = len(self.state.items)
+                        self.state.items.clear()
+                        if remaining:
+                            self.emit_block(
+                                f"[callback error] aborted {remaining} "
+                                f"queued item{'s' if remaining != 1 else ''}\n"
+                            )
+                        return
                     continue
                 # Async path: let the task's done-callback drain next.
                 task.add_done_callback(lambda _t: self._drain_next())
