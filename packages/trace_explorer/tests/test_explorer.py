@@ -1220,3 +1220,56 @@ class TestFormatTurnStatus:
         result = _format_turn_status(error)
         assert len(result) <= len("[ERR: ") + 50 + 1  # bracket + msg + ]
         assert result.endswith("...]")
+
+
+# =============================================================================
+# Regression tests for GitLab issue #129: _pformat signature mismatch
+# =============================================================================
+
+
+class TestPformatImport:
+    """Regression tests for GitLab issue #129.
+
+    The module used to import the low-level streaming writer
+    ``agentdoc._pformat._pformat`` (now requires a ``_stream`` positional
+    argument) and call it with kwargs only — a TypeError at every call site.
+    The fix is to alias the public, string-returning ``agentdoc.pformat``.
+    """
+
+    def test_pformat_alias_returns_string(self):
+        """The ``_pformat`` name in ``trace_explorer.explorer`` must be the
+        public string-returning API, callable with kwargs only."""
+        from trace_explorer.explorer import _pformat
+
+        out = _pformat({"k": "v"}, max_string=60, max_length=5, max_depth=2)
+        assert isinstance(out, str)
+        assert "k" in out and "v" in out
+
+    def test_get_session_verbose_formats_session_input(self):
+        """End-to-end: ``get_session(concise=False)`` on a session with
+        kwargs hits ``_pformat`` without a surrounding try/except (unlike the
+        tool-arg path, which swallowed the TypeError silently). Previously
+        this raised ``TypeError: _pformat() missing 1 required positional
+        argument: '_stream'``."""
+        agent_span = make_agent_span(
+            span_id="a1b2c3d4e5f60718",
+            agent_name="TestAgent",
+            method_name="ask",
+            start_time=1_000_000_000,
+            end_time=2_000_000_000,
+        )
+        # Inject a serialized kwargs attribute so `_get_session_input` returns
+        # a non-empty dict and the non-concise branch calls `_pformat`.
+        agent_span["attributes"].append({"key": "agent.kwargs", "value": _sv(json.dumps({"question": "why?"}))})
+        spans = [agent_span]
+        trace_file = create_trace_file(spans)
+        try:
+            trace = TraceExplorer.from_file(trace_file)
+            output = trace.get_session(trace.sessions[0].session_id[:6], concise=False)
+
+            assert isinstance(output, str)
+            # Session input line is rendered via _pformat.
+            assert "IN:" in output
+            assert "question" in output
+        finally:
+            trace_file.unlink()
