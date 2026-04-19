@@ -28,9 +28,36 @@ preview with its eventual output.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
+
+from rich.markdown import Markdown
+from rich.rule import Rule
+from rich.syntax import Syntax
+from rich.text import Text
 
 from .code_preview import _code_preview
+
+
+class _ReasoningEvent(Protocol):
+    """Fields the renderer reads from a ``Reasoning`` event."""
+
+    content: str
+
+
+class _ToolCallEvent(Protocol):
+    """Fields the renderer reads from a ``ToolCallEvent``."""
+
+    name: str
+    tool_call_id: str
+    arguments: dict[str, Any]
+
+
+class _PythonOutputEvent(Protocol):
+    """Fields the renderer reads from a ``PythonOutput`` event."""
+
+    tool_call_id: str
+    stdout: str
+    stderr: str
 
 
 class AgentEventRenderer:
@@ -135,10 +162,6 @@ class AgentEventRenderer:
             self._emit_markdown(str(text))
 
     def _emit_markdown(self, text: str) -> None:
-        from rich.markdown import Markdown
-        from rich.rule import Rule
-        from rich.text import Text
-
         if not self._agent_has_messaged:
             self._agent_has_messaged = True
             self._emit_text(
@@ -158,16 +181,12 @@ class AgentEventRenderer:
 
     # ── agent event handlers ───────────────────────────────────────────
 
-    def _on_reasoning(self, event: Any) -> None:
-        from rich.text import Text
-
+    def _on_reasoning(self, event: _ReasoningEvent) -> None:
         content = getattr(event, "content", "") or ""
         if content.strip():
             self._emit_text(Text(content, style="dim italic"))
 
-    def _on_tool_call(self, event: Any) -> None:
-        from rich.text import Text
-
+    def _on_tool_call(self, event: _ToolCallEvent) -> None:
         if getattr(event, "name", "") != "execute_python":
             return
         tool_call_id = getattr(event, "tool_call_id", "")
@@ -198,11 +217,7 @@ class AgentEventRenderer:
             styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
         self._emit_text(styled)
 
-    def _on_python_output(self, event: Any) -> None:
-        from rich.rule import Rule
-        from rich.syntax import Syntax
-        from rich.text import Text
-
+    def _on_python_output(self, event: _PythonOutputEvent) -> None:
         tool_call_id = getattr(event, "tool_call_id", "")
         code = self._pending_code.pop(tool_call_id, None)
         if tool_call_id.startswith("prefill_"):

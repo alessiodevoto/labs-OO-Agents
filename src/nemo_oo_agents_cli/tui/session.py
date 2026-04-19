@@ -12,21 +12,61 @@ decisions.  Frontends are pure rendering.
 """
 
 import asyncio
+import io
 import re
-from typing import TYPE_CHECKING
+import sys
+import traceback
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+from rich.console import Console as RichConsole
+from rich.text import Text
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
 
+    from .agent_event_renderer import AgentEventRenderer
     from .commands import CommandRegistry
     from .config import Config
     from .frontend import Frontend
     from .session_manager import SessionManager
+    from .tui_application import TUIApplication
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+class _EmitStream:
+    """A ``Console.file`` target that batches writes into one ``emit_block``
+    per ``flush()``.
+
+    Rich's ``Console.print`` flushes at the end; without buffering each
+    stylised chunk (many per print call) would enqueue a separate block
+    and pay the ``run_in_terminal`` hop. Batching collapses them into
+    one atomic scrollback block.
+    """
+
+    def __init__(self, emit: Callable[[str], None]) -> None:
+        self._emit = emit
+        self._buf: list[str] = []
+
+    def write(self, text: str) -> int:
+        if text:
+            self._buf.append(text)
+        return len(text)
+
+    def flush(self) -> None:
+        if not self._buf:
+            return
+        chunk = "".join(self._buf)
+        self._buf.clear()
+        if chunk:
+            self._emit(chunk)
+
+    def isatty(self) -> bool:
+        return True
 
 
 def _short_model_name(full_name: str) -> str:
@@ -216,10 +256,20 @@ class Session:
         self._session_manager = session_manager
         self._first_message: str | None = None  # first user turn (for auto-naming)
 
-        # Streaming state (moved from _AgentStreamMixin)
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._pending_code: dict[str, str] = {}  # tool_call_id → code
+        # Streaming state shared with the AgentEventRenderer: the
+        # tool_call_id → code map that pairs a preview with its matching
+        # ``PythonOutput`` event.
+        self._pending_code: dict[str, str] = {}
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
+
+        # Populated at the start of ``run()``; referenced by the handler
+        # methods (``_on_command``, ``_on_user_message``, ``_loud_handler``,
+        # etc.) so they can live as real methods instead of 240 lines of
+        # nested closures inside ``run()``.
+        self._app: TUIApplication | None = None
+        self._renderer: AgentEventRenderer | None = None
+        self._emit_console: RichConsole | None = None
+        self._loud_handler_reentrant: bool = False
 
     @property
     def show_python(self) -> bool:
@@ -316,149 +366,44 @@ class Session:
         producers (command dispatch, agent events, messages) render in
         strict submission order and there's no handoff race that drops
         the first keystroke between turns.
-        """
 
+        The handler logic lives in instance methods (``_on_command``,
+        ``_on_user_message``, ``_emit_text``, ``_loud_handler``, …);
+        ``run`` is just the wiring.
+        """
+        from .agent_event_renderer import AgentEventRenderer
+        from .input_handler import SlashCommandCompleter
         from .output import TextOutput
+        from .theme import CATPPUCCIN_THEME
         from .tui_application import TUIApplication
 
-        self._loop = asyncio.get_running_loop()
-
-        async def _on_command(text: str) -> None:
-            # Echo the submitted command to scrollback so exit commands
-            # (which erase the live input region via erase_when_done)
-            # leave a visible record of what the user ran.
-            from rich.text import Text as _RT
-
-            emit_text(_RT(f"❯ {text}", style="bold cyan"))
-
-            # Errors bubble up to _drain_next's done-callback, which
-            # surfaces them to scrollback and keeps draining.
-            result = await self._handler.handle(text)
-            if result.new_session_manager is not None:
-                self._swap_session_manager(result.new_session_manager)
-            if (
-                result.compact_done
-                and self._first_message
-                and self._session_manager
-                and not self._session_manager.user_named
-            ):
-                _t = asyncio.create_task(self._auto_name_session(self._first_message))
-                self._background_tasks.add(_t)
-                _t.add_done_callback(self._background_tasks.discard)
-            if result.exit:
-                app.exit()
-                return
-            if result.agent_message is not None:
-                # Slash-command-generated agent turn — feed through the
-                # same path as a typed message so the user bar, session
-                # bookkeeping, and agent dispatch stay consistent.
-                app.submit_message(result.agent_message)
-
-        async def _on_bang(body: str) -> None:
-            await self._handle_bang("!" + body)
-
-        from .input_handler import SlashCommandCompleter
-        from .theme import CATPPUCCIN_THEME, COLORS
-
-        def _session_label() -> str:
-            """Compose the label shown on the right of the rule just
-            above the input: 'context ctx 20% · name [abc12345]'."""
-            bits: list[str] = []
-            usage = self._context_usage_label()
-            if usage:
-                bits.append(usage)
-            if self._session_manager is not None:
-                sm = self._session_manager
-                short = (sm.session_id or "")[:8]
-                name = sm.name
-                if name and short:
-                    bits.append(f"{name} [{short}]")
-                elif short:
-                    bits.append(f"[{short}]")
-            return " · ".join(bits)
-
-        app = TUIApplication(
-            agent=self.agent,
-            on_command=_on_command,
-            on_bang=_on_bang,
-            completer=SlashCommandCompleter(self.registry),
-            session_label=_session_label,
-        )
-
-        # ── block rendering ──────────────────────────────────────────
-        # emit_text(renderable) = render Rich object to ANSI, enqueue
-        # it onto the app's single-consumer block queue. This is the
-        # ONLY way content reaches the transcript in plan-c. Keeps
-        # every producer on one serialised path — no races.
-        import io as _io
-
-        from rich.console import Console as _RichConsole
-
-        _emit_console = _RichConsole(
-            file=_io.StringIO(),
+        # The block-rendering Rich Console: re-used across ``_emit_text``
+        # calls with width reset per-call to track live terminal width.
+        self._emit_console = RichConsole(
+            file=io.StringIO(),
             force_terminal=True,
             color_system="256",
             width=120,
             theme=CATPPUCCIN_THEME,
         )
 
-        def emit_text(renderable) -> None:
-            """Render any Rich renderable / string to ANSI and enqueue.
+        self._app = TUIApplication(
+            agent=self.agent,
+            on_command=self._on_command,
+            on_bang=self._on_bang,
+            completer=SlashCommandCompleter(self.registry),
+            session_label=self._session_label,
+        )
+        self._app.on_user_message = self._on_user_message
 
-            Width tracks the current terminal so background-bar blocks
-            (e.g. the user-message panel) span the full row.
-            """
-            import shutil
-
-            try:
-                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
-            except Exception:
-                cols = 120
-            _emit_console.width = cols
-            buf = _io.StringIO()
-            _emit_console.file = buf
-            _emit_console.print(renderable)
-            app.emit_block(buf.getvalue())
-
-        # Route the frontend's own Rich console through emit_block too,
-        # so slash-command outputs (rendered via frontend.render(...))
-        # land in the block queue instead of the real stdout. This is
-        # what makes /help, /model, /context etc. appear correctly in
-        # the scrollback — without the redirect, their Rich writes
-        # clobber prompt_toolkit's layout at the current cursor.
-        #
-        # Buffer writes until flush() so a single ``console.print(table)``
-        # lands as ONE queue entry (one ``run_in_terminal`` hop) instead
-        # of dozens of per-chunk enqueues. Rich flushes at the end of
-        # every ``Console.print``.
-        class _EmitStream:
-            def __init__(self) -> None:
-                self._buf: list[str] = []
-
-            def write(self, text: str) -> int:
-                if text:
-                    self._buf.append(text)
-                return len(text)
-
-            def flush(self) -> None:
-                if not self._buf:
-                    return
-                chunk = "".join(self._buf)
-                self._buf.clear()
-                if chunk:
-                    app.emit_block(chunk)
-
-            def isatty(self) -> bool:
-                return True
-
-        # Swap the TUIConsole's Rich console for one that writes through
-        # our block queue. Uses the public ``replace_console`` seam so we
-        # don't reach into ``frontend._console.console`` directly.
+        # Swap the frontend's Rich Console for one that writes through
+        # our block queue, so slash-command output (e.g. /help tables)
+        # lands in scrollback instead of clobbering the live prompt.
         tui_console = getattr(self.frontend, "console", None)
         if tui_console is not None and hasattr(tui_console, "replace_console"):
             tui_console.replace_console(
-                _RichConsole(
-                    file=_EmitStream(),  # type: ignore[arg-type]
+                RichConsole(
+                    file=_EmitStream(self._app.emit_block),  # type: ignore[arg-type]
                     force_terminal=True,
                     color_system="256",
                     width=120,
@@ -466,87 +411,27 @@ class Session:
                 )
             )
 
-        # Renderer subscribes Reasoning / ToolCallEvent / PythonOutput
-        # and plugs itself into ``agent._render_message`` so ``self.message()``
-        # output lands in submission order relative to code cells.
-        from .agent_event_renderer import AgentEventRenderer
-
-        renderer = AgentEventRenderer(
+        self._renderer = AgentEventRenderer(
             agent=self.agent,
-            emit_text=emit_text,
+            emit_text=self._emit_text,
             show_python=lambda: self.show_python,
             pending_code=self._pending_code,
-            colors=COLORS,
+            colors=self._colors,
         )
 
-        def _on_user_message(text: str) -> None:
-            from rich.text import Text
-
-            if self._session_manager is not None:
-                self._session_manager.record_user(text)
-            if self._first_message is None:
-                self._first_message = text
-                if (
-                    self._session_manager is not None
-                    and not self._session_manager.user_named
-                    and not (self._session_manager.name or "").strip()
-                ):
-                    _t = asyncio.create_task(self._auto_name_session(text))
-                    self._background_tasks.add(_t)
-                    _t.add_done_callback(self._background_tasks.discard)
-
-            # User-message bar: plain (non-bold) text on a grey background
-            # that spans the full terminal width. Prompt glyph matches
-            # the input line's BeforeInput marker. Each line pads to
-            # ``cols`` individually so the background reaches the right
-            # edge on every row (first line carries ``❯``; continuation
-            # lines start flush-left).
-            import shutil
-
-            try:
-                cols = max(shutil.get_terminal_size((120, 24)).columns, 40)
-            except Exception:
-                cols = 120
-            lines_in = text.split("\n")
-            padded: list[str] = []
-            for i, line in enumerate(lines_in):
-                shown = f" ❯ {line} " if i == 0 else f" {line} "
-                padded.append(shown.ljust(cols))
-            bar = Text("\n".join(padded), style=f"{COLORS['text']} on {COLORS['surface2']}")
-            emit_text(bar)
-            # New turn → reset the renderer's per-turn ``OO ─`` guard.
-            renderer.reset_turn()
-
-        # Assign the user-message callback after construction because
-        # it closes over emit_text / renderer defined here.
-        app.on_user_message = _on_user_message
-
-        # Replace Session's logging-based loop exception handler with one
-        # that surfaces every swallowed task exception into the scrollback.
-        # Without this, any coroutine we schedule (spinner, _fire-driven
-        # commands, background bookkeeping) that raises vanishes into
-        # Python's logging module — users see 'nothing happened'.
-        loop = asyncio.get_running_loop()
-
-        def _loud_handler(_loop, context):
-            import traceback as _tb
-
-            msg = context.get("message", "")
-            exc = context.get("exception")
-            line = f"[asyncio] {msg}"
-            if exc is not None:
-                line += f" — {type(exc).__name__}: {exc}"
-                if hasattr(exc, "__traceback__"):
-                    line += "\n" + "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
-            app.emit_block(line + "\n")
-
-        loop.set_exception_handler(_loud_handler)
+        # Replace Python's default asyncio exception handler with one
+        # that surfaces every swallowed task exception into the TUI.
+        # Without this, any coroutine we schedule (spinner, commands,
+        # background bookkeeping) that raises vanishes into logging and
+        # the user sees "nothing happened".
+        asyncio.get_running_loop().set_exception_handler(self._loud_handler)
 
         # Subscribe inside the try so any exception between attach and
-        # app.run_async completion still fires renderer.detach in finally.
+        # ``app.run_async`` completion still fires ``renderer.detach``
+        # in the finally.
         try:
-            renderer.attach()
-            await app.run_async()
+            self._renderer.attach()
+            await self._app.run_async()
         except (KeyboardInterrupt, EOFError):
             await self.frontend.render(
                 TextOutput("Interrupted by the user. Exiting TUI...", "warning")
@@ -556,11 +441,12 @@ class Session:
             # 1. Detach the renderer FIRST. Clears agent._render_message
             #    so any post-shutdown self.message() call (e.g. from
             #    save_snapshot) doesn't write through a dead emit_text.
-            # 2. Cancel fire-and-forget tasks (auto-naming, post-compact
-            #    naming) before the loop closes.
+            # 2. Cancel AND AWAIT fire-and-forget tasks so they don't
+            #    trip "Task was destroyed but it is pending" warnings
+            #    when the loop closes.
             # 3. Diagnostics, frontend close, snapshot, session close.
-            renderer.detach()
-            self._cancel_background_tasks()
+            self._renderer.detach()
+            await self._cancel_background_tasks()
             self._dump_exit_diagnostics()
             self.frontend.close()
             if self._session_manager is not None:
@@ -572,17 +458,195 @@ class Session:
                         pass
                 self._session_manager.close()
 
-    def _cancel_background_tasks(self) -> None:
-        """Cancel pending fire-and-forget tasks tracked by this session.
+    # ------------------------------------------------------------------
+    # Handlers — driven by TUIApplication, called in run()'s event loop.
+    # Each closes over ``self._app`` / ``self._renderer`` / ``self._emit_console``
+    # set up in ``run()``. Don't call any of these before ``run()`` has
+    # started; calling an assertion-gated attribute access ("``self._app``
+    # is None") raises a descriptive error.
+    # ------------------------------------------------------------------
+
+    @property
+    def _colors(self) -> dict[str, str]:
+        """Theme colour table — reads the current theme so ``/theme`` has
+        effect without restarting the app."""
+        from .theme import COLORS
+
+        return COLORS
+
+    def _emit_text(self, renderable: Any) -> None:
+        """Render a Rich renderable → ANSI → enqueue to the block queue.
+
+        This is the single path every producer takes: user-message bars,
+        code previews, agent markdown, slash-command echoes. Width tracks
+        the live terminal so full-width blocks span every column.
+        """
+        assert self._emit_console is not None and self._app is not None
+        from .tui_application import terminal_cols
+
+        self._emit_console.width = terminal_cols(minimum=40)
+        buf = io.StringIO()
+        self._emit_console.file = buf
+        self._emit_console.print(renderable)
+        self._app.emit_block(buf.getvalue())
+
+    async def _on_command(self, text: str) -> None:
+        """Handle one slash command submitted via the input or the queue.
+
+        Echoes ``❯ /cmd`` to scrollback so exit commands leave a record
+        (the live input region is erased on shutdown), then dispatches
+        via ``CommandHandler``. Result flags drive session-manager swap,
+        auto-naming, exit, and slash-generated agent turns.
+        """
+        assert self._app is not None
+
+        self._emit_text(Text(f"❯ {text}", style="bold cyan"))
+        result = await self._handler.handle(text)
+        if result.new_session_manager is not None:
+            self._swap_session_manager(result.new_session_manager)
+        if (
+            result.compact_done
+            and self._first_message
+            and self._session_manager
+            and not self._session_manager.user_named
+        ):
+            self._fire_and_forget(self._auto_name_session(self._first_message))
+        if result.exit:
+            self._app.exit()
+            return
+        if result.agent_message is not None:
+            # Slash-command-generated agent turn — feed through the same
+            # path as a typed message so the user bar, session bookkeeping,
+            # and agent dispatch stay consistent.
+            self._app.submit_message(result.agent_message)
+
+    async def _on_bang(self, body: str) -> None:
+        """Dispatch a ``!shell-command`` body (leading ``!`` already stripped)."""
+        await self._handle_bang("!" + body)
+
+    def _session_label(self) -> str:
+        """Right-aligned session label on the rule above the input:
+        ``ctx 20% · my-session [abc12345]``."""
+        bits: list[str] = []
+        usage = self._context_usage_label()
+        if usage:
+            bits.append(usage)
+        if self._session_manager is not None:
+            sm = self._session_manager
+            short = (sm.session_id or "")[:8]
+            name = sm.name
+            if name and short:
+                bits.append(f"{name} [{short}]")
+            elif short:
+                bits.append(f"[{short}]")
+        return " · ".join(bits)
+
+    def _on_user_message(self, text: str) -> None:
+        """Render the user's submitted text as a full-width grey bar and
+        reset per-turn renderer state.
+
+        Also triggers first-message auto-naming and the session
+        manager's user-record bookkeeping.
+        """
+        assert self._renderer is not None
+        from .tui_application import terminal_cols
+
+        if self._session_manager is not None:
+            self._session_manager.record_user(text)
+        if self._first_message is None:
+            self._first_message = text
+            if (
+                self._session_manager is not None
+                and not self._session_manager.user_named
+                and not (self._session_manager.name or "").strip()
+            ):
+                self._fire_and_forget(self._auto_name_session(text))
+
+        # Grey background bar spanning full terminal width. First line
+        # carries the ``❯`` prefix; continuation lines start flush-left.
+        cols = terminal_cols(minimum=40)
+        lines_in = text.split("\n")
+        padded: list[str] = []
+        for i, line in enumerate(lines_in):
+            shown = f" ❯ {line} " if i == 0 else f" {line} "
+            padded.append(shown.ljust(cols))
+        colors = self._colors
+        bar = Text("\n".join(padded), style=f"{colors['text']} on {colors['surface2']}")
+        self._emit_text(bar)
+        self._renderer.reset_turn()
+
+    def _loud_handler(self, _loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        """asyncio exception handler that surfaces every swallowed task
+        exception into the scrollback instead of Python's logging.
+
+        Guards against re-entry: if ``emit_block`` itself raises, the
+        asyncio loop would call us back with the new exception, yielding
+        unbounded recursion. On re-entry we fall back to a bare stderr
+        write.
+        """
+        assert self._app is not None
+
+        msg = context.get("message", "")
+        exc = context.get("exception")
+        line = f"[asyncio] {msg}"
+        if exc is not None:
+            line += f" — {type(exc).__name__}: {exc}"
+            if hasattr(exc, "__traceback__"):
+                line += "\n" + "".join(
+                    traceback.format_exception(type(exc), exc, exc.__traceback__)
+                )
+        line += "\n"
+
+        if self._loud_handler_reentrant:
+            err = sys.__stderr__
+            if err is not None:
+                try:
+                    err.write(line)
+                    err.flush()
+                except Exception:
+                    pass
+            return
+        self._loud_handler_reentrant = True
+        try:
+            self._app.emit_block(line)
+        except Exception as inner:
+            err = sys.__stderr__
+            if err is not None:
+                try:
+                    err.write(f"[loud_handler fallback] {inner}\n{line}")
+                    err.flush()
+                except Exception:
+                    pass
+        finally:
+            self._loud_handler_reentrant = False
+
+    def _fire_and_forget(self, coro) -> asyncio.Task:
+        """Schedule a coroutine as a tracked background task.
+
+        Tracked means: cancelled at shutdown by ``_cancel_background_tasks``,
+        and self-removing from the set when it finishes so the set
+        doesn't leak references to completed tasks.
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
+    async def _cancel_background_tasks(self) -> None:
+        """Cancel and await pending fire-and-forget tasks.
 
         The set is populated by auto-naming and post-compact renaming;
         tasks that finish remove themselves via ``discard``. At shutdown
-        anything still in the set is stale — cancel it so the loop can
-        close cleanly.
+        anything still in the set is stale. We cancel then ``gather``
+        so the cancellation actually propagates before the loop closes —
+        without the await asyncio emits "Task was destroyed but it is
+        pending" on some orderings.
         """
-        for t in list(self._background_tasks):
-            if not t.done():
-                t.cancel()
+        pending = [t for t in self._background_tasks if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         self._background_tasks.clear()
 
     # ------------------------------------------------------------------

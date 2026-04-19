@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -43,6 +44,21 @@ _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07")
 
 def _strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
+
+
+def terminal_cols(default: int = 120, minimum: int = 20) -> int:
+    """Live terminal column count, clamped to [``minimum``, ∞).
+
+    Wrapped so every caller gets the same fallback behaviour
+    (``(120, 24)`` on stat failure) and clamp. Used by the status-rule
+    renderer here and by the block-rendering helpers in ``Session`` so
+    rich text (user-message bars, full-width rules) spans the live
+    width and doesn't hardcode 120.
+    """
+    try:
+        return max(shutil.get_terminal_size((default, 24)).columns, minimum)
+    except Exception:
+        return default
 
 
 PROMPT_MARKER = "❯ "
@@ -181,7 +197,7 @@ class TUIApplication:
                 FormattedTextControl(_queue_formatted, focusable=False),
                 dont_extend_height=True,
             ),
-            filter=Condition(lambda: bool(self.state.messages or self.state.commands)),
+            filter=Condition(lambda: bool(self.state.items)),
         )
 
         input_window = Window(
@@ -206,12 +222,7 @@ class TUIApplication:
         # on a horizontal rule. Built from formatted text (not a Rich
         # Rule) so it re-measures with the live terminal width.
         def _session_rule_formatted():
-            try:
-                import shutil as _sh
-
-                cols = max(_sh.get_terminal_size((120, 24)).columns, 20)
-            except Exception:
-                cols = 120
+            cols = terminal_cols(minimum=20)
             label = self._session_label_fn() if self._session_label_fn is not None else ""
             if label:
                 dashes = max(cols - len(label) - 1, 1)
@@ -493,9 +504,23 @@ class TUIApplication:
         slash command that returns an ``agent_message`` (``/compact``)
         and wants to drive a turn through the same user-facing path as
         a typed message.
+
+        Guards against re-entry while an agent turn is already running:
+        a slow slash command that calls ``submit_message`` from inside
+        its handler would otherwise overwrite ``_agent_task``, stranding
+        the in-flight turn's done-callback. Silently drops the new
+        submission in that case; callers who want to queue-after-turn
+        should use ``state.submit(text)`` instead.
         """
         self._run_callback(self.on_user_message, user_message)
         if self.agent is None:
+            return
+        if self._agent_task is not None and not self._agent_task.done():
+            self.emit_block(
+                f"[submit_message ignored] agent is still running — "
+                f"message queued: {user_message[:60]!r}\n"
+            )
+            self.state.submit(user_message)
             return
         coro = self.agent.respond(user_message)
         if not asyncio.iscoroutine(coro):
@@ -584,26 +609,22 @@ class TUIApplication:
         task drains the queue and writes each block in FIFO order via
         ``run_in_terminal`` → ``sys.__stdout__``. No races.
 
-        Thread-safe: if called from a non-event-loop context, uses
-        ``call_soon_threadsafe`` to enqueue.
+        Thread-safe: any mutation of prompt_toolkit state (``Buffer``
+        document, which fires callbacks synchronously) is routed through
+        ``call_soon_threadsafe`` so it always runs on the loop thread.
+        ``list.append`` on ``_output_ansi`` is already GIL-safe.
         """
         if not text:
             return
 
-        # Mirror the plain-text transcript for tests.
+        # GIL-safe: list.append is atomic. Reading from off-thread is fine.
         self._output_ansi.append(text)
-        stripped = _strip_ansi(text)
-        existing = self.output_buffer.text
-        joined = (
-            existing + stripped
-            if not existing or existing.endswith("\n")
-            else existing + "\n" + stripped
-        )
-        self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
-        # Enqueue for the consumer. Before the consumer is up (pre
-        # run_async), fall back to a plain stdout write.
+        # Before the consumer is up (pre-run_async) we're single-threaded
+        # by construction — safe to touch the buffer directly + emit to
+        # stdout. After run_async, route everything via the loop.
         if self._block_queue is None or self._loop is None:
+            self._append_stripped_to_buffer(text)
             import sys as _sys
 
             try:
@@ -612,9 +633,40 @@ class TUIApplication:
             except Exception:
                 pass
             return
-        # Thread-safe enqueue via the captured loop — put_nowait itself
-        # is NOT thread-safe, so always route through call_soon_threadsafe.
+
+        # On-thread fast path: mutate buffer directly so tests that
+        # inspect ``output_buffer.text`` right after a call see the
+        # update without waiting for a loop tick.
+        try:
+            on_thread = asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            on_thread = False
+        if on_thread:
+            self._append_stripped_to_buffer(text)
+            self._block_queue.put_nowait(text)
+            return
+
+        # Off-thread: route everything through the loop so off-thread
+        # producers (e.g. IPython worker, OTEL exporter) never touch
+        # prompt_toolkit state directly.
+        self._loop.call_soon_threadsafe(self._append_stripped_to_buffer, text)
         self._loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
+
+    def _append_stripped_to_buffer(self, text: str) -> None:
+        """Append the ANSI-stripped transcript text to ``output_buffer``.
+
+        Runs on the event loop thread (either because ``emit_block``
+        scheduled it via ``call_soon_threadsafe`` or because we're still
+        in the pre-consumer, single-threaded bootstrap phase).
+        """
+        stripped = _strip_ansi(text)
+        existing = self.output_buffer.text
+        joined = (
+            existing + stripped
+            if not existing or existing.endswith("\n")
+            else existing + "\n" + stripped
+        )
+        self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
     # ── surface the harness (and real callers) rely on ----------------
 
@@ -661,7 +713,15 @@ class TUIApplication:
                     pass
             if self._spinner_task is not None and not self._spinner_task.done():
                 self._spinner_task.cancel()
+                # Await so the spinner's finally block runs (invalidate())
+                # and asyncio doesn't emit "Task was destroyed" on loop
+                # close. CancelledError on a cancelled task is expected.
+                try:
+                    await self._spinner_task
+                except (asyncio.CancelledError, BaseException):
+                    pass
             self._consumer_task = None
+            self._spinner_task = None
             self._block_queue = None
             self._loop = None
 

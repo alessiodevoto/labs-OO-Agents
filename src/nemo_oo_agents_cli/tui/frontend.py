@@ -11,7 +11,8 @@ All behavior lives in ``Session``.
 
 import asyncio
 import sys
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .output import (
     ActivityLine,
@@ -116,6 +117,7 @@ class TerminalFrontend:
         self._config = config
         self._console = TUIConsole()
         self._input_handler = None  # initialised after registry is ready
+        self._renderers = self._build_renderer_map()
 
     # ------------------------------------------------------------------
     # Input handler initialisation (needs the command registry)
@@ -145,37 +147,46 @@ class TerminalFrontend:
 
     async def render(self, output: Output) -> None:  # type: ignore[override]
         """Dispatch *output* to the appropriate Rich rendering call."""
-        if isinstance(output, TextOutput):
-            self._render_text(output)
-        elif isinstance(output, TableOutput):
-            self._render_table(output)
-        elif isinstance(output, HelpOutput):
-            self._console.print_help(output.commands)
-        elif isinstance(output, AgentMessage):
-            self._console.print_agent(output.content, show_rule=output.show_rule)
-        elif isinstance(output, CodeExecution):
-            self._render_code_execution(output)
-        elif isinstance(output, StartupInfo):
-            self._render_startup(output)
-        elif isinstance(output, ClearScreen):
-            self._console.console.clear()
-        elif isinstance(output, Thinking):
-            if output.active:
-                self._console.start_spinner(output.message)
-            else:
-                self._console.stop_spinner()
-        elif isinstance(output, BashOutput):
-            self._render_bash(output)
-        elif isinstance(output, RichOutput):
-            self._render_rich(output)
-        elif isinstance(output, DiffOutput):
-            self._render_diff(output)
-        elif isinstance(output, HistoryReplay):
-            self._render_history_replay(output)
-        elif isinstance(output, ActivityLine):
-            self._render_activity_line(output)
-        elif isinstance(output, UserMessage):
-            self._render_user_message(output)
+        handler = self._renderers.get(type(output))
+        if handler is not None:
+            handler(output)
+
+    def _build_renderer_map(self) -> "dict[type, Callable[[Any], None]]":
+        """Build the {Output subclass → handler} dispatch table once at
+        construction time. Cheaper and clearer than an isinstance ladder;
+        also surfaces unregistered Output kinds as silent no-ops (same
+        behaviour as the old default-fallthrough)."""
+        return {
+            TextOutput: self._render_text,
+            TableOutput: self._render_table,
+            HelpOutput: self._render_help,
+            AgentMessage: self._render_agent_message,
+            CodeExecution: self._render_code_execution,
+            StartupInfo: self._render_startup,
+            ClearScreen: self._render_clear,
+            Thinking: self._render_thinking,
+            BashOutput: self._render_bash,
+            RichOutput: self._render_rich,
+            DiffOutput: self._render_diff,
+            HistoryReplay: self._render_history_replay,
+            ActivityLine: self._render_activity_line,
+            UserMessage: self._render_user_message,
+        }
+
+    def _render_help(self, output: HelpOutput) -> None:
+        self._console.print_help(output.commands)
+
+    def _render_agent_message(self, output: AgentMessage) -> None:
+        self._console.print_agent(output.content, show_rule=output.show_rule)
+
+    def _render_clear(self, _output: ClearScreen) -> None:
+        self._console.console.clear()
+
+    def _render_thinking(self, output: Thinking) -> None:
+        if output.active:
+            self._console.start_spinner(output.message)
+        else:
+            self._console.stop_spinner()
 
     async def get_input(
         self,
