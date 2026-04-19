@@ -131,10 +131,14 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # 2. Under parallel load: force_flush() returns before the BSP worker thread
     #    finishes its HTTP POST.  shutdown_traces() joins the worker, guaranteeing
     #    all exports complete before we read the trace back for scoring.
+    #
+    # Run in a thread executor so the event loop stays responsive during the
+    # BSP flush.  Blocking the event loop thread directly causes LiteLLM's
+    # LoggingWorker asyncio.wait_for() to time out (CancelledError → TimeoutError).
     try:
         from openinference_instrumentation_nemo_oo_agents import shutdown_traces
 
-        shutdown_traces()
+        await asyncio.get_event_loop().run_in_executor(None, shutdown_traces)
     except Exception as e:
         log.debug(f"shutdown_traces() failed (non-fatal): {e}")
 
