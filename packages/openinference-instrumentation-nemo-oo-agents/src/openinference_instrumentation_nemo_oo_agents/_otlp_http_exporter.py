@@ -11,6 +11,7 @@ import logging
 import threading
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from collections.abc import Sequence
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -56,7 +57,6 @@ class OtlpJsonHttpExporter(SpanExporter):
         # time, *before* set_session(session_id) is called in eval tasks.
         # session.id is stamped per-span by SessionSpanProcessor in the event loop
         # thread, so read it from span.attributes instead.
-        from collections import defaultdict
         by_session: dict[str | None, list] = defaultdict(list)
         for span in spans:
             sid = str(span.attributes["session.id"]) if span.attributes and span.attributes.get("session.id") else None
@@ -73,6 +73,15 @@ class OtlpJsonHttpExporter(SpanExporter):
         return overall
 
     def _send_payload(self, spans: Sequence[ReadableSpan], payload: dict) -> SpanExportResult:
+        """Send a single OTLP JSON payload via HTTP POST.
+
+        Args:
+            spans: Spans included in this payload (used for drop counting on failure).
+            payload: OTLP ``ExportTraceServiceRequest`` dict to serialize and send.
+
+        Returns:
+            ``SpanExportResult.SUCCESS`` on HTTP 2xx, ``FAILURE`` otherwise.
+        """
         try:
             data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             req = urllib.request.Request(
