@@ -368,7 +368,7 @@ class Session:
                 # Slash-command-generated agent turn — feed through the
                 # same path as a typed message so the user bar, session
                 # bookkeeping, and agent dispatch stay consistent.
-                app.launch_agent(result.agent_message)
+                app.submit_message(result.agent_message)
 
         async def _on_bang(body: str) -> None:
             await self._handle_bang("!" + body)
@@ -467,13 +467,19 @@ class Session:
             def isatty(self) -> bool:
                 return True
 
-        if hasattr(self.frontend, "_console"):
-            self.frontend._console.console = _RichConsole(  # type: ignore[attr-defined]
-                file=_EmitStream(),  # type: ignore[arg-type]
-                force_terminal=True,
-                color_system="256",
-                width=120,
-                theme=CATPPUCCIN_THEME,
+        # Swap the TUIConsole's Rich console for one that writes through
+        # our block queue. Uses the public ``replace_console`` seam so we
+        # don't reach into ``frontend._console.console`` directly.
+        tui_console = getattr(self.frontend, "console", None)
+        if tui_console is not None and hasattr(tui_console, "replace_console"):
+            tui_console.replace_console(
+                _RichConsole(
+                    file=_EmitStream(),  # type: ignore[arg-type]
+                    force_terminal=True,
+                    color_system="256",
+                    width=120,
+                    theme=CATPPUCCIN_THEME,
+                )
             )
 
         # Renderer subscribes Reasoning / ToolCallEvent / PythonOutput
@@ -488,7 +494,6 @@ class Session:
             pending_code=self._pending_code,
             colors=COLORS,
         )
-        renderer.attach()
 
         def _on_user_message(text: str) -> None:
             from rich.text import Text
@@ -553,13 +558,21 @@ class Session:
 
         loop.set_exception_handler(_loud_handler)
 
+        # Subscribe inside the try so any exception between attach and
+        # app.run_async completion still fires renderer.detach in finally.
         try:
+            renderer.attach()
             await app.run_async()
         except (KeyboardInterrupt, EOFError):
             await self.frontend.render(
                 TextOutput("Interrupted by the user. Exiting TUI...", "warning")
             )
         finally:
+            # Cancel any fire-and-forget session tasks (auto-naming,
+            # post-compact naming) still running at shutdown so they
+            # don't outlive the event loop with "Task was destroyed"
+            # warnings.
+            self._cancel_background_tasks()
             self._dump_exit_diagnostics()
             self.frontend.close()
             renderer.detach()
@@ -571,6 +584,19 @@ class Session:
                     except Exception:
                         pass
                 self._session_manager.close()
+
+    def _cancel_background_tasks(self) -> None:
+        """Cancel pending fire-and-forget tasks tracked by this session.
+
+        The set is populated by auto-naming and post-compact renaming;
+        tasks that finish remove themselves via ``discard``. At shutdown
+        anything still in the set is stale — cancel it so the loop can
+        close cleanly.
+        """
+        for t in list(self._background_tasks):
+            if not t.done():
+                t.cancel()
+        self._background_tasks.clear()
 
     # ------------------------------------------------------------------
     # Session manager swap (triggered by /session new)
@@ -586,7 +612,7 @@ class Session:
             self.agent._storage = new_sm._storage
         # Propagate to registry and all command instances so /session export etc. use new ID.
         self.registry.session_manager = new_sm
-        for cmd in self.registry._commands.values():
+        for cmd in self.registry.commands():
             cmd.session_manager = new_sm
         # Start a fresh trace for the new session so it gets its own .jsonl file.
         # Use the first 8 chars of the SQLite session UUID to correlate trace↔storage.

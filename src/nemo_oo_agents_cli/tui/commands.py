@@ -1484,6 +1484,14 @@ class CommandRegistry:
     def get_command(self, name: str) -> "Command | None":
         return self._commands.get(name.lower())
 
+    def commands(self) -> "list[Command]":
+        """Return the list of registered ``Command`` instances.
+
+        Public surface so callers (e.g. ``Session._swap_session_manager``)
+        don't have to reach into ``_commands`` directly.
+        """
+        return list(self._commands.values())
+
     def get_user_skill(self, name: str) -> "_UserSkill | None":
         return self._user_skills.get(name.lower())
 
