@@ -79,6 +79,11 @@ class AgentEventRenderer:
         self._unsubscribes: list[Callable[[], None]] = []
         self._agent_has_messaged = False
         self._pending_messages: list[str] = []
+        # Assigned by attach() with whatever was on agent._render_message
+        # before; detach() restores to this value. Declaring it here
+        # means detach() can read it without a defensive getattr and
+        # pyright sees the field.
+        self._prior_render_message: Callable[[str], None] | None = None
 
     # ── lifecycle ──────────────────────────────────────────────────────
 
@@ -130,7 +135,7 @@ class AgentEventRenderer:
         self._unsubscribes.clear()
         # Restore the prior hook if the agent still has our chain installed.
         if hasattr(self._agent, "_render_message"):
-            self._agent._render_message = getattr(self, "_prior_render_message", None)
+            self._agent._render_message = self._prior_render_message
 
     def reset_turn(self) -> None:
         """Called on new user submission — flush any stragglers from the

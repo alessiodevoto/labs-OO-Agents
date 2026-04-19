@@ -119,7 +119,8 @@ async def test_clear_command_output(handler, mock_agent):
     assert result.success is True
     assert any(isinstance(o, ClearScreen) for o in result.outputs)
     # event_manager.clear() must NOT be called — it would destroy the old
-    # session's SQLite data.  Preservation is tested in test_clear_bug.py.
+    # session's SQLite data. Positive preservation is proved in
+    # tests/cli/test_clear_preserves_sqlite.py with a real SQLiteStorageManager.
     mock_agent.event_manager.clear.assert_not_called()
 
 

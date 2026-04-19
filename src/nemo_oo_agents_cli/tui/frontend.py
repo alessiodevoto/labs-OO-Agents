@@ -15,7 +15,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .output import (
-    ActivityLine,
     AgentMessage,
     BashOutput,
     ClearScreen,
@@ -169,7 +168,6 @@ class TerminalFrontend:
             RichOutput: self._render_rich,
             DiffOutput: self._render_diff,
             HistoryReplay: self._render_history_replay,
-            ActivityLine: self._render_activity_line,
             UserMessage: self._render_user_message,
         }
 
@@ -310,26 +308,6 @@ class TerminalFrontend:
                 os.unlink(tmp_path)
             except Exception:
                 pass
-
-    def _render_activity_line(self, output: ActivityLine) -> None:
-        """Render a live activity preview line (reasoning, code, stdout, stderr)."""
-        from rich.text import Text
-
-        if output.kind == "reasoning":
-            styled = Text(output.content, style=f"dim italic {COLORS['overlay1']}")
-        elif output.kind == "stdout":
-            # Indent under the preceding "● <code>" line, ipython-notebook
-            # style. Two-space indent + thin gutter ("│ ") + dim text.
-            styled = Text(f"  │ {output.content}", style=f"dim {COLORS['overlay1']}")
-        elif output.kind == "stderr":
-            styled = Text(f"  │ {output.content}", style=COLORS["red"])
-        else:
-            styled = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
-            first_line = output.content.split("\n", 1)[0]
-            if first_line.lstrip().startswith("#"):
-                styled.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
-
-        self._console.console.print(styled)
 
     def _render_user_message(self, output: UserMessage) -> None:
         """Render the user's submitted text with a high-contrast background bar."""
