@@ -63,20 +63,6 @@ class TestFrontend:
     async def stop_thinking(self) -> None:
         pass
 
-    async def typeahead_loop(self, state) -> None:
-        # Scripted tests don't simulate typeahead — return immediately so the
-        # session's _agent_turn can proceed and await the agent task.
-        return
-
-    def exit_typeahead(self) -> None:
-        pass
-
-    def invalidate_typeahead(self) -> None:
-        pass
-
-    async def emit_user_message_above_prompt(self, content: str) -> None:
-        pass
-
     @property
     def is_connected(self) -> bool:
         return self._connected
