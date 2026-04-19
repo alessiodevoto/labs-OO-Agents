@@ -24,6 +24,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from agentdoc import pformat
 from agentdoc.visibility import is_hidden_field
+from context_blocks import DynamicContext
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Error, Task
@@ -73,6 +74,11 @@ class PredictStrategy(GenerationStrategy):
     def name(self) -> str:
         """Strategy name."""
         return "PREDICT"
+
+    def get_block_overrides(self) -> dict[str, str | DynamicContext | None]:
+        return {
+            "strategy_prompt": DynamicContext("strategy.strategy_instructions(runtime)"),
+        }
 
     @strategy(TemplateStrategy())
     async def strategy_instructions(self, runtime: RuntimeServices) -> str:
