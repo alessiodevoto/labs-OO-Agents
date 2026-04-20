@@ -81,7 +81,7 @@ class ExperimentWriter:
             experiment_name: Name of the experiment (used in filename)
             timestamp: Optional timestamp (defaults to now)
         """
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir).resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.experiment_name = experiment_name.replace("_", "").replace(" ", "")

@@ -131,7 +131,7 @@ class Evaluator:
             timeout_seconds: Default timeout per sample in seconds (None = no timeout)
         """
         self.models: dict[str, Any] = models or {}
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir).resolve()
         self.name = name
         self.pass_threshold = pass_threshold
         self.timeout_seconds = timeout_seconds
