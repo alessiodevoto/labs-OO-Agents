@@ -681,7 +681,13 @@ class TUIApplication:
         self._block_queue = asyncio.Queue()
         self._consumer_task = asyncio.ensure_future(self._consume_blocks())
         try:
-            await self._app.run_async()
+            # set_exception_handler=False keeps the handler Session installed
+            # (_loud_handler) active for the whole app lifetime. Otherwise
+            # prompt_toolkit replaces it with its own, which prints "Exception
+            # None\nPress ENTER to continue..." for non-exception asyncio
+            # contexts (e.g. "Task was destroyed but it is pending!") and
+            # swallows every other diagnostic field.
+            await self._app.run_async(set_exception_handler=False)
         finally:
             # Drain any blocks queued during teardown (e.g. 'Goodbye!
             # Stay vibing.' from /exit) straight to the real stdout —
