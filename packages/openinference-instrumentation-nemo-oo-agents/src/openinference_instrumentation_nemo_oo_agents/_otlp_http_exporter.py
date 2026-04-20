@@ -66,7 +66,11 @@ class OtlpJsonHttpExporter(SpanExporter):
         overall = SpanExportResult.SUCCESS
         for session_id, session_spans in by_session.items():
             override = {"session.id": session_id} if session_id else None
-            resource_spans = build_resource_spans(session_spans, resource_attrs_override=override, exclude_attr_prefixes=exclude)
+            resource_spans = build_resource_spans(
+                session_spans,
+                resource_attrs_override=override,
+                exclude_attr_prefixes=exclude,
+            )
             result = self._send_payload(session_spans, {"resourceSpans": resource_spans})
             if result != SpanExportResult.SUCCESS:
                 overall = result
