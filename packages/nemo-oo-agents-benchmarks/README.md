@@ -203,16 +203,21 @@ harbor --version   # expect 0.4.0
 
 **SIF storage** — SIF files are large binaries (100 MB–10 GB) and are stored
 **outside** the git worktree to avoid per-branch duplication and git bloat.
-The canonical location is `~/.cache/harbor/sif/`:
+
+Current SIF locations:
+- **rcabral (local):** `/localhome/local-rcabral/.cache/harbor/sif/` — DABStep SIF lives here now
+- **Future shared cache:** DFW Lustre (see Alex Gronskiy's SWE-bench cache for the pattern — wtf#13)
+
+`3p/sif_cache/` inside the worktree is a symlink to `~/.cache/harbor/sif/` — the YAML config
+(`apptainer_image_cache_dir: 3p/sif_cache`) resolves through it automatically.
+
+To set up on a new machine:
 
 ```bash
 mkdir -p ~/.cache/harbor/sif
+ln -s ~/.cache/harbor/sif 3p/sif_cache   # inside the worktree
 ```
 
-Update `apptainer_image_cache_dir` in `util/harbor/dabstep_baseline.yaml` (and
-your `task.toml` `docker_image` paths) to point there. The YAML defaults to
-`3p/sif_cache/` (inside the worktree) as a convenience for first-time setup,
-but move to the shared cache for anything beyond a quick smoke test.
 
 **DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files).
 Requires `sudo` because `--fakeroot` needs unprivileged user namespace support
