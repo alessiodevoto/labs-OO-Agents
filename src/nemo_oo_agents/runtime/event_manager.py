@@ -574,6 +574,10 @@ class EventManager:
         # Insert at correct position
         self._backend.insert_active_tag(summary_tag, insert_idx)
 
+        # Emit symmetrically with add() so "Summary" subscribers actually
+        # see collapses. Historically collapse() was silent.
+        self._emit(summary)
+
         return summary_tag
 
     # === Introspection (internal) ===

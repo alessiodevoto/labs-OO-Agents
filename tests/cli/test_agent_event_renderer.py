@@ -104,6 +104,27 @@ def _fire_python_output(
     )
 
 
+def _fire_summary(
+    em: _FakeEventManager,
+    *,
+    summary_tag: str = "1..10",
+    replaced_range: tuple[int, int] = (1, 10),
+    children_tags: list[str] | None = None,
+    summary_text: str | None = "Summary of events.",
+) -> None:
+    em.fire(
+        "Summary",
+        SimpleNamespace(
+            summary_tag=summary_tag,
+            replaced_range=replaced_range,
+            children_tags=children_tags
+            if children_tags is not None
+            else [str(i) for i in range(1, 11)],
+            summary_text=summary_text,
+        ),
+    )
+
+
 # ── tests ──────────────────────────────────────────────────────────────
 
 
@@ -321,6 +342,59 @@ def test_attach_is_idempotent() -> None:
 
     texts = [e for e in emitted if isinstance(e, Text)]
     assert len(texts) == 1  # not 2
+
+
+def test_summary_event_emits_dim_preview_line() -> None:
+    """Applied summaries surface as ``∴ summarized <tag> · N events → NB
+    summary`` so the user can see each collapse live.
+
+    Regression guard: if Summary events stop being emitted by
+    ``event_manager.collapse``, the TUI silently loses visibility into the
+    summarizer (which is how a pathological cascade bug went undiagnosed
+    until a DB audit).
+    """
+    agent, emitted, r = _mk(show_python=False)
+    r.attach()
+
+    _fire_summary(
+        agent.event_manager,
+        summary_tag="1..600",
+        replaced_range=(1, 600),
+        children_tags=[str(i) for i in range(1, 601)],
+        summary_text="x" * 2501,
+    )
+
+    texts = [e for e in emitted if isinstance(e, Text) and "∴" in str(e)]
+    assert len(texts) == 1
+    line = str(texts[0])
+    assert "summarized" in line
+    assert "1..600" in line
+    assert "600 events" in line
+    # 2501 chars → "2.4KB" (2501/1024 ≈ 2.4)
+    assert "KB" in line
+
+
+def test_summary_event_without_text_shows_truncation() -> None:
+    """A collapse with ``summary_text=None`` is a truncation — shown with
+    ``truncated`` and a ``(no summary)`` tail so it's visually distinct
+    from a real summarization."""
+    agent, emitted, r = _mk(show_python=False)
+    r.attach()
+
+    _fire_summary(
+        agent.event_manager,
+        summary_tag="1..50",
+        replaced_range=(1, 50),
+        children_tags=[str(i) for i in range(1, 51)],
+        summary_text=None,
+    )
+
+    texts = [e for e in emitted if isinstance(e, Text) and "∴" in str(e)]
+    assert len(texts) == 1
+    line = str(texts[0])
+    assert "truncated" in line
+    assert "1..50" in line
+    assert "no summary" in line
 
 
 @pytest.mark.parametrize(
