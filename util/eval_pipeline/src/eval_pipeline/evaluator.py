@@ -217,6 +217,13 @@ class Evaluator:
     ):
         """Start headless OTLP backend and configure tracing exporters.
 
+        Args:
+            traces_dir: Directory for trace file output.
+            no_files: Suppress all file output (overrides trace_files).
+            run_experiment_name: Experiment name for OTLP session grouping.
+            trace_files: Write JSONL trace files even when viewer is running (default: False).
+                        Has no effect when no_files=True.
+
         Returns (backend, headless_base_url, use_viewer, external_otlp_endpoint).
         Caller is responsible for calling backend.stop() in a finally block.
         """
@@ -295,6 +302,10 @@ class Evaluator:
                             already set. All variants' samples are batched into a
                             single run and output file, tagged by label in
                             ``variant``. Takes precedence over ``agent_label``.
+            no_files: Suppress all file output (default: False).
+            trace_files: Write JSONL trace files even when OTLP viewer is running (default: False).
+                        By default, trace files are only written when the viewer is unavailable.
+                        Has no effect when no_files=True.
             memory_limit_mb: Per-worker memory cap in MB (None = no limit).
                             Only effective with ``engine_type="subprocess"``.
                             Workers are killed when RSS exceeds this value;
@@ -685,6 +696,9 @@ class Evaluator:
             agent_label: Optional label identifying the agent variant. When set,
                          the ``variant`` field of each result becomes
                          ``"{agent_label}_run{run_id}"``.
+            no_files: Suppress all file output (default: False).
+            trace_files: Write JSONL trace files even when OTLP viewer is running (default: False).
+                        Has no effect when no_files=True.
             memory_limit_mb: Per-worker memory cap in MB (None = no limit).
 
         Returns:
