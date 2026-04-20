@@ -206,6 +206,13 @@ Examples:
         "Traces still go to OTLP if a viewer is running.",
     )
     parser.add_argument(
+        "--trace-files",
+        action="store_true",
+        help="Write JSONL trace files even when a viewer is running. "
+        "By default, file traces are skipped when the viewer is active (traces go to OTLP only). "
+        "Useful for cross-validating viewer traces against local files.",
+    )
+    parser.add_argument(
         "--task-ids",
         nargs="+",
         metavar="ID",
@@ -673,6 +680,7 @@ async def main_async():
         "batch_size": args.batch_size,
         "on_progress_hook": watchdog.ping if watchdog else None,
         "no_files": args.no_files,
+        "trace_files": args.trace_files,
         "memory_limit_mb": args.memory_limit,
     }
 

@@ -213,6 +213,7 @@ class Evaluator:
         traces_dir: Path,
         no_files: bool,
         run_experiment_name: str,
+        trace_files: bool = False,
     ):
         """Start headless OTLP backend and configure tracing exporters.
 
@@ -234,7 +235,7 @@ class Evaluator:
         exporter_list: list = [_headless_journal]
         if _use_viewer:
             exporter_list.append(exporters.journal(endpoint=_external_otlp))
-        if not no_files:
+        if not no_files and (trace_files or not _use_viewer):
             exporter_list.append(exporters.jsonl(traces_dir))
 
         if self._langfuse_host:
@@ -267,6 +268,7 @@ class Evaluator:
         agent_label: str | None = None,
         agent_variants: list[tuple[str, list]] | None = None,
         no_files: bool = False,
+        trace_files: bool = False,
         memory_limit_mb: int | None = None,
     ) -> EvalResults:
         """Run the evaluation.
@@ -338,7 +340,7 @@ class Evaluator:
         traces_dir.mkdir(exist_ok=True)
 
         _backend, _headless_base, _use_viewer, _external_otlp = self._start_tracing(
-            traces_dir, no_files, run_experiment_name
+            traces_dir, no_files, run_experiment_name, trace_files
         )
 
         # Create writer
@@ -670,6 +672,7 @@ class Evaluator:
         timeout: float | None = None,
         agent_label: str | None = None,
         no_files: bool = False,
+        trace_files: bool = False,
         memory_limit_mb: int | None = None,
     ) -> EvalResults:
         """Run a list of pre-built samples.
@@ -700,7 +703,7 @@ class Evaluator:
         traces_dir.mkdir(exist_ok=True)
 
         _backend, _headless_base, _use_viewer, _external_otlp = self._start_tracing(
-            traces_dir, no_files, run_experiment_name
+            traces_dir, no_files, run_experiment_name, trace_files
         )
 
         # Get unique models and tests from samples
