@@ -907,6 +907,117 @@ class TestSummarizationAsyncIntegration:
         assert len(summarizer.event_manager.values()) == 0
 
     @pytest.mark.asyncio
+    async def test_apply_pending_summary_invalidates_stale_context_stats(self, test_agent):
+        """After applying a summary, the target agent's cached context_stats
+        must be invalidated.
+
+        Regression: without this, ``_should_summarize`` reads the pre-collapse
+        token count on the very next AfterTurn in the same turn and schedules a
+        second, wasteful summarization over the handful of events that piled
+        up while the first one was running. Observed in the wild as rapid
+        "1..N → 1..M" summary cascades 13–23s apart.
+        """
+        from nemo_oo_agents import ContextWindowStats
+
+        for i in range(10):
+            test_agent.event_manager.add(Message(content=f"Message {i}"))
+
+        # Simulate the runtime having built an over-budget prompt BEFORE the
+        # collapse happened — this is what _should_summarize would re-read.
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=200_000,
+            events_count=10,
+            total_tokens=200_000,
+        )
+
+        summarizer = TokenBudgetSummarizer(
+            test_agent, config=TokenBudgetConfig(max_tokens=100, preserve_recent=3)
+        )
+
+        summarizer._pending_range = ("1", "5")
+        summarizer._pending_summary = "Summary of messages 1-5"
+        summarizer._pending_task = asyncio.create_task(asyncio.sleep(0))
+        await summarizer._pending_task
+
+        # Pre-condition: stats say we're over budget.
+        assert summarizer._should_summarize(
+            AfterTurn(
+                method_name="t",
+                strategy="CODEACT",
+                generation_id="g",
+                parent_generation_id=None,
+                turn_number=1,
+                is_final=False,
+                success=True,
+            )
+        )
+
+        summarizer._apply_pending_summary()
+
+        # Post-condition: stats were cleared so the next budget check sees 0
+        # tokens and skips (re-scheduling would just re-summarize the few
+        # events added during the first run — the cascade bug).
+        assert test_agent.runtime._last_context_stats is None
+        assert summarizer._estimate_tokens() == 0
+
+    @pytest.mark.asyncio
+    async def test_no_cascade_second_summarization_same_turn(self, test_agent):
+        """End-to-end: AfterTurn → summarize → apply → AfterTurn should NOT
+        schedule a second summarization on the stale pre-collapse stats.
+        """
+        from nemo_oo_agents import ContextWindowStats
+
+        for _ in range(20):
+            test_agent.event_manager.add(Message(content="x" * 100))
+
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=200_000,
+            events_count=20,
+            total_tokens=200_000,
+        )
+
+        summarizer = TokenBudgetSummarizer(
+            test_agent, config=TokenBudgetConfig(max_tokens=100, preserve_recent=5)
+        )
+        summarizer.summarize = AsyncMock(return_value="Summary")
+
+        after_turn = AfterTurn(
+            method_name="t",
+            strategy="CODEACT",
+            generation_id="g",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=False,
+            success=True,
+        )
+
+        # First AfterTurn — over budget → schedules summarization.
+        summarizer._handle_after_turn(after_turn)
+        first_task = summarizer._pending_task
+        assert first_task is not None
+        await first_task
+
+        # Second AfterTurn fires before the next turn's render_context has
+        # refreshed stats. Previously this would observe stale 200k tokens
+        # and schedule a redundant summarization.
+        summarizer._handle_after_turn(after_turn)
+
+        # With the bug: _apply_pending_summary clears _pending_task, then
+        # _should_summarize reads stale stats → True, then
+        # _schedule_summarization assigns a fresh task. So _pending_task
+        # being None at the end is the precise discriminator — it's only
+        # cleared if no new summarization was scheduled this call.
+        active = test_agent.event_manager.keys()
+        assert any(".." in t for t in active), "first summary should be applied"
+        assert summarizer._pending_task is None, (
+            "second AfterTurn on stale stats must not schedule another summarization"
+        )
+
+    @pytest.mark.asyncio
     async def test_uninstall_cancels_pending_task(self, test_agent):
         """_uninstall() cancels any pending summarization task."""
         for i in range(10):

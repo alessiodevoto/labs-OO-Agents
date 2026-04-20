@@ -319,14 +319,30 @@ class SummarizationAgent(Agent):
             return
 
         # Get the result (summary is stored in _pending_summary by _run_summarization)
+        applied = False
         if self._pending_summary is not None and self._pending_range is not None:
             start_tag, end_tag = self._pending_range
             try:
                 assert self.target_event_manager is not None
                 self.target_event_manager.collapse(start_tag, end_tag, self._pending_summary)
+                applied = True
                 logger.debug(f"Applied summary: {start_tag} -> {end_tag}")
             except Exception as e:
                 logger.warning(f"Failed to apply summary: {e}")
+
+        # The target agent's cached context_stats came from the LAST
+        # _build_messages() call, which saw the pre-collapse event list.
+        # Subsequent same-turn _should_summarize() checks would read that
+        # stale snapshot and decide we're still over budget, triggering a
+        # spurious second summarization on only the handful of events that
+        # piled up while this one was running. Invalidate the cache so the
+        # next budget check returns 0 (treat as under-budget) until the
+        # next turn's render_context produces fresh stats.
+        if applied:
+            agent = self._target_agent
+            runtime = getattr(agent, "runtime", None)
+            if runtime is not None and hasattr(runtime, "_last_context_stats"):
+                runtime._last_context_stats = None
 
         # Clear pending state
         self._pending_task = None
