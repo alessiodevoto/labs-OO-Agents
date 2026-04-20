@@ -8,7 +8,6 @@ Shares the parent TUI agent's bash, files, and todo instances.
 
 # Module-level imports visible to the Doer's CodeAct REPL
 import json  # noqa: F401
-import os  # noqa: F401
 import re  # noqa: F401
 from pathlib import Path  # noqa: F401
 

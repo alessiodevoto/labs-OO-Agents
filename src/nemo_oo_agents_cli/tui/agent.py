@@ -107,41 +107,33 @@ with hidden:
         _DEFAULT_LLM = FakeLLMClient()
 
 
-# Budget ratios, expressed against the LLM's context window:
-#  - Summarizer triggers first so as much info as possible is preserved via summary.
-#  - Truncation safety net catches the case where the summarizer hasn't caught
-#    up (e.g. immediately after a model switch to a smaller window).
+# Summarizer trigger as a fraction of the LLM's context window. This is the
+# ONLY budget the TUI manages — event-pile truncation is enforced at the
+# runtime level (see ActorRuntime._build_messages) and adapts to whichever
+# LLM is actually resolved for each call (including per-call overrides).
 _SUMMARIZER_BUDGET_PCT = 0.8
-_EVENT_TRUNCATION_PCT = 0.7
 
 
-def _budget_from_window(llm: "UnifiedLLM", percent: float) -> int | None:
-    """Return ``int(llm.context_window * percent)`` or None if no window."""
+def _summarizer_budget(llm: "UnifiedLLM") -> int:
+    """Resolve the summarizer trigger from the LLM's context window.
+
+    Falls back to 100K when the LLM doesn't expose ``context_window`` so
+    we still have a functional threshold.
+    """
     cw = getattr(llm, "context_window", None)
-    return int(cw * percent) if cw else None
+    return int(cw * _SUMMARIZER_BUDGET_PCT) if cw else 100_000
 
 
 def apply_model_limits(agent: Agent) -> None:
-    """Sync summarizer trigger + event-truncation cap against ``agent._llm``.
+    """Sync the summarizer trigger against ``agent._llm.context_window``.
 
-    Call after a model switch so both safety nets move with the new
-    context window. Swapping the LLM without this leaves a large-context
-    session stranded on a smaller model — e.g. 420K events on a 200K
-    Sonnet window fails with a ContextWindowExceeded error because the
-    summarizer still thinks 800K is the trigger and truncation isn't
-    capping at the new window.
+    Call after a model switch so the summarizer threshold moves with the
+    new context window. Runtime-level event truncation picks up the new
+    window automatically on the next ``_build_messages`` call.
     """
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
-    from nemo_oo_agents.config.truncation_config import TruncationConfig
 
-    summarizer_max = _budget_from_window(agent._llm, _SUMMARIZER_BUDGET_PCT)
-    event_truncation = _budget_from_window(agent._llm, _EVENT_TRUNCATION_PCT)
-
-    # Swap in a fresh TokenBudgetConfig on every summarizer (frozen model, so
-    # we can't mutate in place). Fall back to 100K if the LLM didn't expose
-    # a context window so we still have a functional threshold.
-    if summarizer_max is None:
-        summarizer_max = 100_000
+    summarizer_max = _summarizer_budget(agent._llm)
     for summarizer in getattr(agent, "_summarizers", []):
         current = summarizer.config
         summarizer.config = TokenBudgetConfig(
@@ -150,19 +142,9 @@ def apply_model_limits(agent: Agent) -> None:
             target_chars=current.target_chars,
         )
 
-    # Event-truncation safety net. Merge so other truncation fields stay put.
-    agent._truncation = agent._truncation.merge_with(
-        TruncationConfig(max_event_tokens=event_truncation)
-    )
-
 
 def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     """Install a summarizer on the agent based on configuration.
-
-    Also seeds ``agent._truncation.max_event_tokens`` so the event-render
-    pipeline has a hard safety net when the summarizer hasn't caught up
-    (e.g. immediately after a model switch from a larger context window
-    to a smaller one).
 
     Args:
         config: Summarization configuration. ``config.max_tokens=None`` (the
@@ -176,9 +158,7 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
 
     summarizer_max = (
-        config.max_tokens
-        if config.max_tokens is not None
-        else _budget_from_window(agent._llm, _SUMMARIZER_BUDGET_PCT) or 100_000
+        config.max_tokens if config.max_tokens is not None else _summarizer_budget(agent._llm)
     )
 
     TokenBudgetSummarizer.install(
@@ -188,15 +168,6 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
             preserve_recent=config.preserve_recent,
             target_chars=config.target_chars,
         ),
-    )
-
-    # Seed the event-truncation cap now that the summarizer exists — a
-    # /switch to a smaller model later will call apply_model_limits which
-    # re-syncs both.
-    from nemo_oo_agents.config.truncation_config import TruncationConfig
-
-    agent._truncation = agent._truncation.merge_with(
-        TruncationConfig(max_event_tokens=_budget_from_window(agent._llm, _EVENT_TRUNCATION_PCT))
     )
 
 

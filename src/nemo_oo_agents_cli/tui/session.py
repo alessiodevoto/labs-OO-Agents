@@ -662,15 +662,17 @@ class Session:
             line += "\n  source_traceback (where task was created, enable PYTHONASYNCIODEBUG=1):\n"
             line += "".join(traceback.format_list(source_tb))
         # Other keys asyncio sometimes supplies (handle, protocol, transport,
-        # socket, peername, ...). transport/socket reprs can be kilobytes, so
-        # hand off to truncating_pformat for head/tail eliding.
+        # socket, peername, client_session, ...). 2000 chars per field covers
+        # aiohttp ``ClientSession`` reprs (~1.1KB — connector/base_url/auth
+        # all land in the middle) without letting a pathologically huge
+        # transport (SSL state, large buffers) swamp the scrollback.
         from agentdoc import truncating_pformat
 
         _known = ("message", "exception", "task", "future", "source_traceback")
         for k, v in context.items():
             if k in _known:
                 continue
-            line += f"\n  {k}={truncating_pformat(v, max_chars=200)}"
+            line += f"\n  {k}={truncating_pformat(v, max_chars=2000)}"
         line += "\n"
 
         if self._loud_handler_reentrant:

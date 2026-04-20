@@ -74,7 +74,8 @@ def _harness_metrics_lifecycle(should_trace: bool):
             try:
                 _hm.flush_to_span()
             finally:
-                restore_harness_metrics(_prev_hm)
+                if _prev_hm is not None:
+                    restore_harness_metrics(_prev_hm)
         if _llm_cb_token is not None:
             try:
                 from unifiedllm.unifiedllm import _llm_metrics_callback
@@ -2245,7 +2246,21 @@ async def {name}({params_str}) -> {return_type}:
             blocks = await self._prepare_context(method, call_args, call_kwargs)
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
-        need_token_counter = tc.max_context_tokens is not None or tc.max_event_tokens is not None
+
+        # Safety net: event pile must never exceed the resolved LLM's context
+        # window. Clamps ``max_event_tokens`` down to 85% of the window so a
+        # per-call LLM override (``method(llm=smaller)``) or a session that
+        # /switched from a large-context model to a smaller one can't ship a
+        # prompt that overflows the new model. User-configured budgets still
+        # win when they're tighter; the safety net only lowers, never raises.
+        effective_event_limit = tc.max_event_tokens
+        ctx_window = getattr(llm_client, "context_window", None)
+        if ctx_window:
+            safety_cap = int(ctx_window * 0.85)
+            if effective_event_limit is None or effective_event_limit > safety_cap:
+                effective_event_limit = safety_cap
+
+        need_token_counter = tc.max_context_tokens is not None or effective_event_limit is not None
         if need_token_counter and not callable(getattr(llm_client, "count_tokens", None)):
             raise RuntimeError(
                 "max_context_tokens / max_event_tokens requires a token counter, but the LLM "
@@ -2275,7 +2290,7 @@ async def {name}({params_str}) -> {return_type}:
                 provider_formatter=self.agent.render_config.provider_formatter,
                 block_limit=tc.max_block_chars,
                 context_limit=tc.max_context_tokens,
-                event_limit=tc.max_event_tokens,
+                event_limit=effective_event_limit,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
                 model_context_window=getattr(llm_client, "context_window", None),
