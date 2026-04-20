@@ -10,7 +10,7 @@ module for normal imports.
 
 Tests cover the four shapes:
 
-- library with no Skill export → legacy ``LibrarySkill`` wrapper
+- library with no Skill export -> ``Skill(module)`` fallback
 - library with a ``Skill`` subclass defined in ``__init__.py``
 - library with a module-level ``skill`` instance
 - library whose Skill class requires constructor args (fallback to wrapper)
@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 
 from nemo_oo_agents.library_manager import LibraryManager
-from nemo_oo_agents.library_skill import LibrarySkill
+from nemo_oo_agents.skill import Skill
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,9 +44,6 @@ def _make_library(libs_root: Path, lib_name: str, init_body: str) -> Path:
 
 def _make_agent() -> Any:
     """Build a minimal agent-like object with a dedicated module namespace."""
-    # ``agent_module`` has to exist and be in sys.modules so
-    # ``inspect.getmodule(type(agent))`` finds it and can set bare module
-    # names (``stats`` in ``stats.percentile()``) on it.
     mod_name = "_nemo_test_agent_module"
     mod = ModuleType(mod_name)
     sys.modules[mod_name] = mod
@@ -63,7 +60,6 @@ def _make_agent() -> Any:
 def libs_root(tmp_path: Path, monkeypatch) -> Path:
     """Sandboxed libs root on sys.path; cleans up imports."""
     monkeypatch.syspath_prepend(str(tmp_path))
-    # Remove anything we may have installed from a previous test
     for key in [k for k in sys.modules if k.startswith("test_lib_")]:
         del sys.modules[key]
     return tmp_path
@@ -74,8 +70,8 @@ def libs_root(tmp_path: Path, monkeypatch) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_library_without_skill_falls_back_to_wrapper(libs_root):
-    """A plain utility module attaches as the legacy ``LibrarySkill``."""
+def test_library_without_skill_falls_back_to_skill_module(libs_root):
+    """A plain utility module attaches as ``Skill(module)``."""
     _make_library(
         libs_root,
         "test_lib_plain",
@@ -85,7 +81,9 @@ def test_library_without_skill_falls_back_to_wrapper(libs_root):
     LibraryManager.install(agent, libs_dir=libs_root)
 
     attached = agent.test_lib_plain
-    assert isinstance(attached, LibrarySkill)
+    assert isinstance(attached, Skill)
+    # Dynamic class is named after the library
+    assert type(attached).__name__ == "test_lib_plain"
     # Bare module remains importable
     assert "test_lib_plain" in sys.modules
     assert sys.modules["test_lib_plain"].percentile([1, 2, 3]) == 2
@@ -111,7 +109,6 @@ class MyThing(Skill):
     LibraryManager.install(agent, libs_dir=libs_root)
 
     attached = agent.test_lib_skill_sub
-    # Instance, not the wrapper:
     assert type(attached).__name__ == "MyThing"
     assert attached.greet() == "hello from MyThing"
 
@@ -145,7 +142,7 @@ skill = MyThing(greeting="configured")
 
 
 def test_library_with_skill_needing_args_falls_back(libs_root):
-    """A Skill subclass that can't instantiate without args → wrapper fallback."""
+    """A Skill subclass that can't instantiate without args -> Skill(module) fallback."""
     _make_library(
         libs_root,
         "test_lib_needs_args",
@@ -162,13 +159,14 @@ class NeedsArgs(Skill):
     LibraryManager.install(agent, libs_dir=libs_root)
 
     attached = agent.test_lib_needs_args
-    assert isinstance(attached, LibrarySkill)  # fallback
+    # Falls back to Skill(module) since NeedsArgs can't be instantiated without args
+    assert isinstance(attached, Skill)
+    assert type(attached).__name__ == "test_lib_needs_args"
 
 
 def test_bare_module_still_in_agent_module_namespace(libs_root):
     """The bare module is always reachable on the agent's module, regardless of
-    whether the library exports a Skill or not — so ``lib.helper()`` keeps
-    working in the exec namespace alongside ``self.lib``."""
+    whether the library exports a Skill or not."""
     _make_library(
         libs_root,
         "test_lib_bare",
@@ -186,10 +184,8 @@ def helper(): return "helper"
     agent = _make_agent()
     LibraryManager.install(agent, libs_dir=libs_root)
 
-    # agent.<lib> is the Skill
     assert type(agent.test_lib_bare).__name__ == "MySk"
 
-    # Module still accessible — via sys.modules and via agent_module
     import importlib
 
     mod = importlib.import_module("test_lib_bare")

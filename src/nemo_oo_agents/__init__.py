@@ -40,7 +40,6 @@ from nemo_oo_agents.errors import (  # noqa: E402
     ValidationError,
 )
 from nemo_oo_agents.library_manager import LibraryManager  # noqa: E402
-from nemo_oo_agents.library_skill import LibrarySkill  # noqa: E402
 from nemo_oo_agents.media import Audio, File, Image, Media  # noqa: E402
 from nemo_oo_agents.metaclass import AgentMeta, no_trace  # noqa: E402
 
@@ -108,7 +107,6 @@ __all__ = [
     "Skill",
     "TextSkill",
     "SkillManager",
-    "LibrarySkill",
     "LibraryManager",
     "strategy",
     "no_trace",

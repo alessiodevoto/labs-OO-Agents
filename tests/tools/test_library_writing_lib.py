@@ -1,4 +1,4 @@
-"""Tests for LibraryWriting, LibrarySkill, and LibraryManager."""
+"""Tests for LibraryWriting, LibraryManager, and Skill(module) fallback."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from nemo_oo_agents.library_manager import LibraryManager
-from nemo_oo_agents.library_skill import LibrarySkill
+from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
 
 # ---------------------------------------------------------------------------
@@ -78,50 +78,47 @@ def test_lint_report_written_not_loaded():
 
 
 # ---------------------------------------------------------------------------
-# LibrarySkill
+# LibraryManager._import_module
 # ---------------------------------------------------------------------------
 
 
-def test_library_skill_imports_package(tmp_path: Path):
-    """LibrarySkill imports the package and registers the module in sys.modules."""
+def test_import_module_registers_in_sys_modules(tmp_path: Path):
+    """_import_module imports the package and registers it in sys.modules."""
     lib_dir = _make_lib_dir(tmp_path, "ts_load", SIMPLE_SOURCE)
-    LibrarySkill(path=lib_dir)
+    agent = _make_agent()
+    mgr = LibraryManager(agent, tmp_path)
+    mgr._import_module(lib_dir)
     assert "ts_load" in sys.modules
     assert sys.modules["ts_load"].add(1, 2) == 3
 
 
-def test_library_skill_description_from_init_py(tmp_path: Path):
-    """LibrarySkill reads description from the __init__.py module docstring."""
-    lib_dir = _make_lib_dir(tmp_path, "ts_desc", SIMPLE_SOURCE, description="My description.")
-    lib = LibrarySkill(path=lib_dir)
-    assert "My description." in (type(lib).__doc__ or "")
-
-
-def test_library_skill_reloads_on_reinstantiation(tmp_path: Path):
-    """A second LibrarySkill(path=...) picks up changes made to the package on disk."""
+def test_import_module_cache_busts(tmp_path: Path):
+    """A second _import_module picks up changes made to the package on disk."""
     lib_dir = _make_lib_dir(tmp_path, "ts_reload", SIMPLE_SOURCE)
-    LibrarySkill(path=lib_dir)
+    agent = _make_agent()
+    mgr = LibraryManager(agent, tmp_path)
+    mgr._import_module(lib_dir)
 
     (lib_dir / "ts_reload.py").write_text("def add(a, b): return a + b + 99\n")
-    LibrarySkill(path=lib_dir)
+    mgr._import_module(lib_dir)
 
     assert sys.modules["ts_reload"].add(0, 0) == 99
 
 
-def test_library_skill_dir_includes_module_names(tmp_path: Path):
-    """LibrarySkill.__dir__ returns names from the underlying module."""
-    lib_dir = _make_lib_dir(tmp_path, "ts_dir", SIMPLE_SOURCE)
-    lib = LibrarySkill(path=lib_dir)
-    assert "add" in dir(lib)
+def test_skill_module_fallback_has_module_dir(tmp_path: Path):
+    """Skill(module) fallback exposes module names via __dir__."""
+    _make_lib_dir(tmp_path, "ts_dir", SIMPLE_SOURCE)
+    agent = _make_agent()
+    LibraryManager.install(agent, libs_dir=tmp_path)
+    assert "add" in dir(agent.ts_dir)
 
 
-def test_library_skill_missing_module_dir_fallback(tmp_path: Path):
-    """LibrarySkill.__dir__ falls back gracefully if the module is not in sys.modules."""
-    lib_dir = _make_lib_dir(tmp_path, "ts_nomod", SIMPLE_SOURCE)
-    lib = LibrarySkill(path=lib_dir)
-    sys.modules.pop("ts_nomod", None)
-    result = dir(lib)
-    assert isinstance(result, list)
+def test_skill_module_fallback_description(tmp_path: Path):
+    """Skill(module) fallback uses the module docstring."""
+    _make_lib_dir(tmp_path, "ts_desc", SIMPLE_SOURCE, description="My description.")
+    agent = _make_agent()
+    LibraryManager.install(agent, libs_dir=tmp_path)
+    assert "My description." in (type(agent.ts_desc).__doc__ or "")
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +141,12 @@ def test_library_manager_discover_empty(tmp_path: Path):
 
 
 def test_library_manager_install_attaches_libraries(tmp_path: Path):
-    """install() attaches each library as a LibrarySkill attribute on the agent."""
+    """install() attaches each library as a Skill attribute on the agent."""
     _make_lib_dir(tmp_path, "lm_install", SIMPLE_SOURCE)
     agent = _make_agent()
     LibraryManager.install(agent, libs_dir=tmp_path)
     assert hasattr(agent, "lm_install")
-    assert isinstance(agent.lm_install, LibrarySkill)
+    assert isinstance(agent.lm_install, Skill)
 
 
 def test_library_manager_install_skips_missing_dir(tmp_path: Path):
