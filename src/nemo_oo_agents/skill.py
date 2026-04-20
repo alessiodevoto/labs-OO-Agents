@@ -203,7 +203,7 @@ class Skill:
     # They shouldn't be serialized in snapshots — mark them as nosnapshot.
     __nosnapshot__ = True
 
-    def __init__(self, obj: Any = None, *, content: str | None = None):
+    def __init__(self, obj: Any = None, *, content: str | None = None, name: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
         if n_given > 1:
             raise ValueError("Skill() accepts exactly one of: obj, content")
@@ -212,9 +212,11 @@ class Skill:
 
         if obj is not None:
             self._skill_obj = obj
-            self.__class__ = type("Skill", (Skill,), {"__doc__": obj.__doc__ or ""})  # pyright: ignore[reportAttributeAccessIssue]
+            cls_name = name or "Skill"
+            self.__class__ = type(cls_name, (Skill,), {"__doc__": obj.__doc__ or ""})  # pyright: ignore[reportAttributeAccessIssue]
         elif content is not None:
-            self.__class__ = type("Skill", (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
+            cls_name = name or "Skill"
+            self.__class__ = type(cls_name, (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
 
     def __dir__(self) -> list[str]:
         # Forward dir() to wrapped object so the LLM can discover its attributes.

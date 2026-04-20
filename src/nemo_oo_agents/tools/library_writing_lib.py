@@ -62,28 +62,20 @@ class LibraryWriting(Skill):
     Libraries are standard Python packages stored at a caller-specified path.
     Any valid package layout is accepted — no specific file name is required.
 
-    ## When to make a library — vs a Skill
+    ## Always write a Skill subclass
 
-    Two shapes, pick the right one:
+    Your library's ``__init__.py`` should export a ``Skill`` subclass.
+    This gives the agent full method discovery — ``doc(self.<lib_name>)``
+    shows every public method, their signatures, and docstrings.
 
-    - **Plain utility module** — stateless helpers you'll call as free
-      functions (``stats.percentile(data, 95)``). Use this when there's
-      nothing to configure and no natural "handle".
-    - **Skill-shaped library** — a ``Skill`` subclass in the library's
-      ``__init__.py``. Use this when the code has state, a configured
-      client, or a clear object-API that benefits from being discovered
-      via ``doc(self.<lib_name>)``. **Prefer this for anything reusable
-      with non-trivial behaviour.**
+    When the library manager finds a ``Skill`` subclass (or a module-level
+    ``skill = SomeSkill(...)`` instance), it attaches that as
+    ``agent.<lib_name>``. Without one, the module itself is wrapped
+    via ``Skill(module)`` — you get the module docstring and attributes
+    but not method-level discovery.
 
-    When a library's top-level module exports a ``Skill`` subclass (or a
-    module-level ``skill = SomeSkill(...)`` instance), the library
-    manager attaches *that instance* as ``agent.<lib_name>`` instead of
-    the default doc wrapper. The LLM then sees its methods in
-    ``doc(self.<lib_name>)`` and can use them directly.
+    Example ``__init__.py``::
 
-    Skill-shaped library example::
-
-        # __init__.py
         '''Grep-style search across multiple repos.'''
         from nemo_oo_agents.skill import Skill
 
@@ -129,8 +121,8 @@ class LibraryWriting(Skill):
     - Library code is plain Python only — no `self`, no `...` bodies, no async
     - Always run run_tests() after creating or editing before claiming done
     - Use a library for logic worth naming and reusing; use inline code for one-offs
-    - When the code has state or a clear API, write a ``Skill`` subclass
-      in ``__init__.py`` so it surfaces as a first-class skill on ``self``
+    - Always write a ``Skill`` subclass in ``__init__.py`` — this is how
+      ``doc(self.<lib>)`` discovers your library's API
     """
 
     def __init__(self, agent: Any, path: Path) -> None:

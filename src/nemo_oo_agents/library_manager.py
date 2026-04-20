@@ -2,13 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """LibraryManager — scan, load, and hot-reload persistent agent libraries."""
 
+import importlib
 import inspect
 import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from nemo_oo_agents.library_skill import LibrarySkill
 
 if TYPE_CHECKING:
     from nemo_oo_agents.skill import Skill
@@ -20,7 +19,12 @@ class LibraryManager:
     """Scans a libs directory and attaches each Python package as an agent attribute.
 
     Each subdirectory containing a pyproject.toml is imported and set as
-    ``agent.<lib_name>``. Supports hot-reload after edits via reload().
+    ``agent.<lib_name>``. Libraries should export a ``Skill`` subclass in
+    their ``__init__.py`` — this gives the agent full method discovery via
+    ``doc(agent.<lib_name>)``.
+
+    Libraries that don't export a Skill get a ``Skill(module)`` fallback
+    that exposes the module's docstring and attributes.
 
         mgr = LibraryManager.install(agent, libs_dir=Path("libs"))
         # agent.stats, agent.utils, ... are now set
@@ -58,53 +62,48 @@ class LibraryManager:
                 logger.warning("Library %s skipped", lib_name, exc_info=True)
 
     def _reload(self, lib_name: str) -> "Skill":
-        """Re-import lib_name from disk and re-inject the module into the agent namespace.
-
-        Returns whatever ``Skill`` ended up attached — a
-        :class:`~nemo_oo_agents.library_skill.LibrarySkill` wrapper by
-        default, or a user-defined ``Skill`` subclass if the library
-        exports one (see :func:`_attach`).
-        """
+        """Re-import and re-attach a library from disk."""
         lib_dir = self._libs_path / lib_name
         return self._attach(lib_dir, lib_name)
 
+    def _import_module(self, lib_dir: Path) -> Any:
+        """Cache-bust and (re-)import a library package from disk."""
+        lib_name = lib_dir.name
+        prefix = lib_name + "."
+        for key in [k for k in sys.modules if k == lib_name or k.startswith(prefix)]:
+            del sys.modules[key]
+        return importlib.import_module(lib_name)
+
     def _attach(self, lib_dir: Path, lib_name: str) -> "Skill":
-        """Import the library, decide what to attach, set it on the agent.
+        """Import the library and attach the best Skill handle to the agent.
 
-        The library module is always made bare-accessible on the agent's
-        module (so ``stats.percentile(...)`` works). For ``agent.<lib_name>``:
+        Resolution:
+        1. Cache-bust and import the module.
+        2. Look for a user-defined ``Skill`` export (instance or subclass).
+        3. Fall back to ``Skill(module, name=lib_name)`` if none found.
 
-        - If the library's top-level module exports a ``Skill`` (via a
-          module-level ``skill = ...`` instance or a ``Skill`` subclass),
-          attach that — lets agent-written libraries surface as first-class
-          skills with their full API visible in ``doc(agent.<lib_name>)``.
-        - Otherwise fall back to the :class:`LibrarySkill` doc wrapper.
-
-        Either way the bare module is still in the exec namespace — skill
-        attachment is additive, not a replacement.
+        The bare module is always set on the agent's module so
+        ``stats.percentile(...)`` works in exec_globals.
         """
-        # Always attach the raw module so bare-name access keeps working.
-        wrapper = LibrarySkill(path=lib_dir)
-        agent_module = inspect.getmodule(type(self._agent))
-        if agent_module is not None:
-            setattr(agent_module, lib_name, sys.modules[lib_name])
-            logger.info("Library %s set on agent module", lib_name)
-
-        # Prefer a user-defined Skill export if the library has one.
-        attached: Skill = wrapper
+        from nemo_oo_agents.skill import Skill
         from nemo_oo_agents.skill_manager import skill_from_module
 
-        module = sys.modules.get(lib_name)
-        if module is not None:
-            user_skill = skill_from_module(module, lib_name, source=f"Library {lib_name!r}")
-            if user_skill is not None:
-                attached = user_skill
-                logger.info(
-                    "Library %s exports %s — attached as agent.%s",
-                    lib_name,
-                    type(user_skill).__name__,
-                    lib_name,
-                )
+        module = self._import_module(lib_dir)
+
+        # Make bare module name accessible in agent's exec namespace.
+        agent_module = inspect.getmodule(type(self._agent))
+        if agent_module is not None:
+            setattr(agent_module, lib_name, module)
+            logger.info("Library %s set on agent module", lib_name)
+
+        # Prefer a user-defined Skill export.
+        user_skill = skill_from_module(module, lib_name, source=f"Library {lib_name!r}")
+        if user_skill is not None:
+            attached: Skill = user_skill
+            logger.info("Library %s: attached %s", lib_name, type(user_skill).__name__)
+        else:
+            attached = Skill(module, name=lib_name)
+            logger.info("Library %s: no Skill export, using Skill(module) fallback", lib_name)
 
         setattr(self._agent, lib_name, attached)
         return attached

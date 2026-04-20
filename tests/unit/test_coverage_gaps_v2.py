@@ -739,7 +739,7 @@ class TestLibraryManagerFailures:
         lib_dir.mkdir(parents=True)
         (lib_dir / "pyproject.toml").write_text("[project]\nname = 'my_lib'\n")
 
-        # LibrarySkill will fail to install (no proper package structure)
+        # Import will fail (no proper package structure)
         # This tests that the exception is swallowed
         manager = LibraryManager(agent, tmp_path / "libs")
         # Should not raise even if library fails to load

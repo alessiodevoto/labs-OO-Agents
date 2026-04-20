@@ -9,7 +9,6 @@ Covers:
 - strategies/generated_code.py: TypeError in _is_pydantic_model issubclass
 - strategies/prefill.py: ImportError for Media import
 - tools/bash_tool.py: str.find returns -1 (impossible path — see note)
-- library_skill.py: path property
 - skill.py: _find_skill_md on non-directory
 - storage/snapshot.py: is_nosnapshot_value continue path
 - storage/sqlite.py: SessionAlreadyActiveError, close-on-connect-failure
@@ -24,7 +23,6 @@ import importlib
 import os
 import sys
 import types
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -609,36 +607,6 @@ class TestPrefillMediaImportError:
 # should have this guard removed (or replaced with a pragma).
 # Per instructions, we are not modifying source files.
 # =============================================================================
-
-
-# =============================================================================
-# library_skill.py — path property
-# =============================================================================
-
-
-class TestLibrarySkillPathProperty:
-    """Line 54: LibrarySkill.path property returns a Path."""
-
-    def test_path_property_returns_path(self, tmp_path):
-        """The .path property returns the Path used during construction."""
-        from nemo_oo_agents.library_skill import LibrarySkill
-
-        lib_dir = tmp_path / "mylib"
-        lib_dir.mkdir()
-        (lib_dir / "__init__.py").write_text('"""My library."""\n')
-
-        # Add tmp_path to sys.path so importlib can find it
-        sys.path.insert(0, str(tmp_path))
-        try:
-            skill = LibrarySkill(path=lib_dir)
-            result = skill.path
-            assert isinstance(result, Path)
-            assert result == lib_dir
-        finally:
-            sys.path.remove(str(tmp_path))
-            # Clean up sys.modules
-            for key in [k for k in sys.modules if k == "mylib" or k.startswith("mylib.")]:
-                del sys.modules[key]
 
 
 # =============================================================================
