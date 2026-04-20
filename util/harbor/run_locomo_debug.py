@@ -16,6 +16,34 @@ Usage:
     uv run python util/harbor/run_locomo_debug.py --tasks 5 --question-types single-hop
 
 See gl-37: Add Harbor support for MemBench (also covers LoCoMo)
+
+# ---- Smoke test results (2026-04-20, gl-37) ----------------------------------
+#
+# eval_pipeline (debug, openai/gpt-4o, 5 single-hop tasks):
+#   [PASS] F1=1.000  expected='Adoption agencies'
+#   [PASS] F1=0.571  expected='Transgender woman'  (got full sentence, partial match)
+#   [FAIL] F1=0.000  expected='Single'             (agent answered "I don't know")
+#   [PASS] F1=1.000  expected='Sweden'
+#   [PASS] F1=0.615  expected='counseling or mental health for Transgender people'
+#   Score: 4/5 = 80%
+#
+# Harbor (Apptainer, aws/anthropic/bedrock-claude-sonnet-4-5-v1, 3/5 completed):
+#   locomo-conv00-single-hop-0007: reward=1.0000
+#   locomo-conv00-single-hop-0011: reward=1.0000
+#   locomo-conv00-single-hop-0013: reward=0.6154
+#   Mean F1 = 0.87 (3/3 pass at F1 >= 0.5 threshold)
+#   2 tasks DNF (still bootstrapping container when job was killed)
+#
+# Key findings:
+#   1. locomo10.json category field is int 1–5, not string. Adapter fix required
+#      (_CATEGORY_MAP: 1=single-hop, 2=temporal, 3=open-domain, 4=multi-hop,
+#      5=adversarial) and conversation stored as flat session_N keys, not a list.
+#   2. Debug instruction must use return_result() not /app/answer.txt — no container.
+#   3. Apptainer requires apptainer_fakeroot: false on this system (IPC namespace
+#      unavailable without CAP_SYS_ADMIN). Default true causes RuntimeError.
+#   4. Model for Harbor runs: aws/anthropic/bedrock-claude-sonnet-4-5-v1 via
+#      NVIDIA_INTERNAL_API_KEY. OPENAI_API_KEY is a proxy token, not direct OpenAI.
+# ------------------------------------------------------------------------------
 """
 
 from __future__ import annotations

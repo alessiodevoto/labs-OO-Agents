@@ -23,6 +23,26 @@ Usage:
         --tasks 5 --scenarios first --question-types simple
 
 See gl-37: Add Harbor support for MemBench
+
+# ---- Smoke test results (2026-04-20, gl-37) ----------------------------------
+#
+# Harbor smoke run not yet completed (MemBench data requires Google Drive download).
+# Run manually once data is available:
+#   python 3p/harbor-nemo/adapters/membench/run_adapter.py \
+#       --data-dir ~/.cache/membench/data \
+#       --task-dir /tmp/membench_smoke \
+#       --scenarios first --question-types simple --limit 5
+#   harbor run --config /tmp/membench_smoke.yaml   (see locomo_baseline.yaml for template)
+#
+# Key findings (from LoCoMo smoke, apply equally here):
+#   1. Debug instruction must use return_result(letter) not /app/answer.txt — no container.
+#   2. Apptainer requires apptainer_fakeroot: false on this system (IPC namespace
+#      unavailable without CAP_SYS_ADMIN). Default true causes RuntimeError.
+#   3. Model for Harbor runs: aws/anthropic/bedrock-claude-sonnet-4-5-v1 via
+#      NVIDIA_INTERNAL_API_KEY. OPENAI_API_KEY is a proxy token, not direct OpenAI.
+#   4. MemBench data is NOT on HuggingFace or GitHub. Download from Google Drive once
+#      and cache locally. The --data-dir flag must point to the unzipped directory.
+# ------------------------------------------------------------------------------
 """
 
 from __future__ import annotations
