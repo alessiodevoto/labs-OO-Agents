@@ -213,8 +213,16 @@ class Evaluator:
         traces_dir: Path,
         no_files: bool,
         run_experiment_name: str,
+        trace_files: bool = False,
     ):
         """Start headless OTLP backend and configure tracing exporters.
+
+        Args:
+            traces_dir: Directory for trace file output.
+            no_files: Suppress all file output (overrides trace_files).
+            run_experiment_name: Experiment name for OTLP session grouping.
+            trace_files: Write JSONL trace files even when viewer is running (default: False).
+                        Has no effect when no_files=True.
 
         Returns (backend, headless_base_url, use_viewer, external_otlp_endpoint).
         Caller is responsible for calling backend.stop() in a finally block.
@@ -234,7 +242,7 @@ class Evaluator:
         exporter_list: list = [_headless_journal]
         if _use_viewer:
             exporter_list.append(exporters.journal(endpoint=_external_otlp))
-        elif not no_files:
+        if not no_files and (trace_files or not _use_viewer):
             exporter_list.append(exporters.jsonl(traces_dir))
 
         if self._langfuse_host:
@@ -267,6 +275,7 @@ class Evaluator:
         agent_label: str | None = None,
         agent_variants: list[tuple[str, list]] | None = None,
         no_files: bool = False,
+        trace_files: bool = False,
         memory_limit_mb: int | None = None,
     ) -> EvalResults:
         """Run the evaluation.
@@ -293,6 +302,10 @@ class Evaluator:
                             already set. All variants' samples are batched into a
                             single run and output file, tagged by label in
                             ``variant``. Takes precedence over ``agent_label``.
+            no_files: Suppress all file output (default: False).
+            trace_files: Write JSONL trace files even when OTLP viewer is running (default: False).
+                        By default, trace files are only written when the viewer is unavailable.
+                        Has no effect when no_files=True.
             memory_limit_mb: Per-worker memory cap in MB (None = no limit).
                             Only effective with ``engine_type="subprocess"``.
                             Workers are killed when RSS exceeds this value;
@@ -338,7 +351,7 @@ class Evaluator:
         traces_dir.mkdir(exist_ok=True)
 
         _backend, _headless_base, _use_viewer, _external_otlp = self._start_tracing(
-            traces_dir, no_files, run_experiment_name
+            traces_dir, no_files, run_experiment_name, trace_files
         )
 
         # Create writer
@@ -670,6 +683,7 @@ class Evaluator:
         timeout: float | None = None,
         agent_label: str | None = None,
         no_files: bool = False,
+        trace_files: bool = False,
         memory_limit_mb: int | None = None,
     ) -> EvalResults:
         """Run a list of pre-built samples.
@@ -682,6 +696,9 @@ class Evaluator:
             agent_label: Optional label identifying the agent variant. When set,
                          the ``variant`` field of each result becomes
                          ``"{agent_label}_run{run_id}"``.
+            no_files: Suppress all file output (default: False).
+            trace_files: Write JSONL trace files even when OTLP viewer is running (default: False).
+                        Has no effect when no_files=True.
             memory_limit_mb: Per-worker memory cap in MB (None = no limit).
 
         Returns:
@@ -700,7 +717,7 @@ class Evaluator:
         traces_dir.mkdir(exist_ok=True)
 
         _backend, _headless_base, _use_viewer, _external_otlp = self._start_tracing(
-            traces_dir, no_files, run_experiment_name
+            traces_dir, no_files, run_experiment_name, trace_files
         )
 
         # Get unique models and tests from samples
