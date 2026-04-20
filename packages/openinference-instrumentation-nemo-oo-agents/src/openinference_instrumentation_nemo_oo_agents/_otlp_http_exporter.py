@@ -57,9 +57,10 @@ class OtlpJsonHttpExporter(SpanExporter):
         # time, *before* set_session(session_id) is called in eval tasks.
         # session.id is stamped per-span by SessionSpanProcessor in the event loop
         # thread, so read it from span.attributes instead.
-        by_session: dict[str | None, list] = defaultdict(list)
+        by_session: dict[str | None, list[ReadableSpan]] = defaultdict(list)
         for span in spans:
-            sid = str(span.attributes["session.id"]) if span.attributes and span.attributes.get("session.id") else None
+            val = span.attributes.get("session.id") if span.attributes else None
+            sid = str(val) if val else None
             by_session[sid].append(span)
 
         exclude = self._LLM_MESSAGE_PREFIXES if self._strip_llm_messages else ()
