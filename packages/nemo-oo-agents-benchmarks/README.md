@@ -220,12 +220,12 @@ uv pip install -e packages/nemo-oo-agents-benchmarks
 
 ## Running locally (without Harbor/Apptainer)
 
-Use `util/harbor/run_dabstep.py` as a reference. It uses `eval_pipeline` to
+Use `util/harbor/run_dabstep_debug.py` as a reference. It uses `eval_pipeline` to
 run agents directly against benchmark tasks without a container:
 
 ```bash
 # Run 5 DABStep tasks (requires DABStep data at ~/.cache/dabstep/data/context/)
-uv run python util/harbor/run_dabstep.py --tasks 5 --model openai/gpt-4o
+uv run python util/harbor/run_dabstep_debug.py --tasks 5 --agent dabstep
 ```
 
 ---
@@ -246,16 +246,36 @@ harbor --version   # expect 0.4.0
 
 ### 2. Get benchmark container images
 
-**DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files):
+**SIF storage** — SIF files are large binaries (100 MB–10 GB) and are stored
+**outside** the git worktree to avoid per-branch duplication and git bloat.
+
+Current SIF locations:
+- **rcabral (local):** `/localhome/local-rcabral/.cache/harbor/sif/` — DABStep SIF lives here now
+- **Future shared cache:** DFW Lustre (see Alex Gronskiy's SWE-bench cache for the pattern — wtf#13)
+
+`3p/sif_cache/` inside the worktree is a symlink to `~/.cache/harbor/sif/` — the YAML config
+(`apptainer_image_cache_dir: 3p/sif_cache`) resolves through it automatically.
+
+To set up on a new machine:
 
 ```bash
-apptainer build --fakeroot 3p/sif_cache/dabstep.sif 3p/dabstep.def
+mkdir -p ~/.cache/harbor/sif
+ln -s ~/.cache/harbor/sif 3p/sif_cache   # inside the worktree
+```
+
+
+**DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files).
+Requires `sudo` because `--fakeroot` needs unprivileged user namespace support
+(often unavailable on shared machines):
+
+```bash
+sudo apptainer build ~/.cache/harbor/sif/dabstep.sif 3p/dabstep.def
 ```
 
 **SWEBench** — copy from DFW Lustre or pull from Docker Hub:
 
 ```bash
-apptainer build ~/sif_cache/sympy__sympy-19346.sif \
+apptainer pull ~/.cache/harbor/sif/sympy__sympy-19346.sif \
     docker://swebench/sweb.eval.x86_64.sympy__sympy-19346:latest
 ```
 
@@ -281,7 +301,7 @@ repository — not NVIDIA-internal.
 
 ```bash
 export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
-export ANTHROPIC_API_KEY="sk-ant-..."
+export NVIDIA_INTERNAL_API_KEY="sk-..."   # routes Claude/etc. through NVIDIA internal gateway
 
 harbor run --config util/harbor/dabstep_baseline.yaml
 ```

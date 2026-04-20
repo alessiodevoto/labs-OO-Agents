@@ -282,6 +282,22 @@ class RelevantRule(BaseModel):
     reasoning: str = Field(description="Why this rule is relevant to the question")
 
 
+class AnswerResult(BaseModel):
+    """Result from compute_answer: the final answer and its explanation."""
+
+    answer: str = Field(description="Final answer matching the guidelines format exactly")
+    explanation: str = Field(description="Key calculation steps and rules applied")
+
+
+class VerifyResult(BaseModel):
+    """Result from SolutionVerifier.verify: acceptance decision and reasoning."""
+
+    accepted: bool = Field(description="True if the answer is correct, False otherwise")
+    reasoning: str = Field(
+        description="If accepted: confirmation. If rejected: specific guidance on what to fix."
+    )
+
+
 # ============================================================================
 # Shared system prompt
 # ============================================================================
@@ -438,7 +454,7 @@ class SolutionVerifier(Agent, llm=FakeLLMClient()):
         text_files: dict[str, str],
         dataframes: dict[str, pd.DataFrame],
         json_files: dict[str, Any],
-    ) -> tuple[bool, str]:
+    ) -> VerifyResult:
         """Verify if the computed answer is correct.
 
         ## Question
@@ -481,8 +497,8 @@ class SolutionVerifier(Agent, llm=FakeLLMClient()):
         - Does the answer address what was ASKED?
 
         ## Return
-        Return tuple of (accepted: bool, reasoning: str).
-        If rejecting, provide SPECIFIC guidance on what to fix.
+        Return VerifyResult(accepted=bool, reasoning=str).
+        If rejecting, provide SPECIFIC guidance on what to fix in `reasoning`.
         """
         ...
 
@@ -657,14 +673,19 @@ self.format_numeric_answer(value, guidelines)
 
             verifier = self.SolutionVerifier(llm=self._llm)
             hint = ""
+            answer: str = ""
+            explanation: str = ""
 
             for _ in range(self.MAX_RETRIES + 1):
-                answer, explanation = await self.compute_answer(
+                compute_result = await self.compute_answer(
                     question=inp.question,
                     guidelines=inp.guidelines,
                     hint=hint,
                 )
-                accepted, reasoning = await verifier.verify(
+                answer = compute_result.answer
+                explanation = compute_result.explanation
+
+                verify_result = await verifier.verify(
                     question=inp.question,
                     guidelines=inp.guidelines,
                     answer=answer,
@@ -674,11 +695,11 @@ self.format_numeric_answer(value, guidelines)
                     dataframes=self.dataframes,
                     json_files=self.json_files,
                 )
-                if accepted:
+                if verify_result.accepted:
                     break
-                hint = reasoning
+                hint = verify_result.reasoning
 
-            result_str = str(answer) if answer is not None else ""
+            result_str = str(answer) if answer else ""
             return {
                 "response": result_str,
                 "success": True,
@@ -690,9 +711,7 @@ self.format_numeric_answer(value, guidelines)
             return {"response": "", "success": False, "error": str(e)}
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, max_retries=5)))
-    async def compute_answer(
-        self, question: str, guidelines: str, hint: str = ""
-    ) -> tuple[Any, str]:
+    async def compute_answer(self, question: str, guidelines: str, hint: str = "") -> AnswerResult:
         """Compute the answer using data analysis.
 
         ## Question
@@ -747,7 +766,7 @@ self.format_numeric_answer(value, guidelines)
         - "All X" questions: confirm you iterated ALL options
 
         ## Return
-        Return tuple of (answer, explanation).
+        Return AnswerResult(answer=str, explanation=str).
         - **answer**: final answer matching guidelines format exactly
         - **explanation**: key calculation steps and rules applied
 
