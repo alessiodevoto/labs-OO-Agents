@@ -259,7 +259,10 @@ class TestSummarizationConfig:
     def test_defaults(self):
         s = SummarizationConfig()
         assert s.policy == "token_budget"
-        assert s.max_tokens == 100_000
+        # None means "scale from the model's context window at install time"
+        # — see install_summarizer. The previous absolute 100K fired at ~10%
+        # usage on 1M-context models and made summarization feel constant.
+        assert s.max_tokens is None
         assert s.window_size == 50
         assert s.preserve_recent == 10
 
@@ -1393,18 +1396,45 @@ from nemo_oo_agents_cli.tui.agent import (  # noqa: E402
 
 
 class TestInstallSummarizer:
+    def _mk_agent(self, context_window=1_000_000):
+        agent = MagicMock()
+        agent._llm = MagicMock(spec=["context_window"])
+        agent._llm.context_window = context_window
+        return agent
+
     def test_policy_none_does_nothing(self):
         config = SummarizationConfig(policy="none")
-        agent = MagicMock()
-        install_summarizer(config, agent)
-        # Nothing should be called on agent
-
-    def test_token_budget_installs_summarizer(self):
-        config = SummarizationConfig(policy="token_budget", max_tokens=50_000, preserve_recent=5)
-        agent = MagicMock()
-        with patch("nemo_oo_agents_cli.tui.agent.TokenBudgetSummarizer") as MockSummarizer:
+        agent = self._mk_agent()
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
             install_summarizer(config, agent)
-            MockSummarizer.install.assert_called_once()
+        mock_install.assert_not_called()
+
+    def test_none_max_tokens_scales_from_model_context_window(self):
+        """Default (None) → 80% of context_window. Prevents the ``ctx 8%``
+        firing issue that made summarization feel constant on 1M-context
+        models."""
+        config = SummarizationConfig()  # max_tokens=None
+        agent = self._mk_agent(context_window=1_000_000)
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
+            install_summarizer(config, agent)
+        installed_cfg = mock_install.call_args.kwargs["config"]
+        assert installed_cfg.max_tokens == 800_000
+
+    def test_explicit_max_tokens_passed_through(self):
+        """An explicit integer bypasses auto-scaling."""
+        config = SummarizationConfig(max_tokens=50_000, preserve_recent=5)
+        agent = self._mk_agent(context_window=1_000_000)
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
+            install_summarizer(config, agent)
+        installed_cfg = mock_install.call_args.kwargs["config"]
+        assert installed_cfg.max_tokens == 50_000
+        assert installed_cfg.preserve_recent == 5
 
 
 class TestOrchestrateFunctions:

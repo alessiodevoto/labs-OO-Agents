@@ -106,18 +106,29 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     """Install a summarizer on the agent based on configuration.
 
     Args:
-        config: Summarization configuration
+        config: Summarization configuration. ``config.max_tokens=None`` (the
+            default) resolves to 80% of the agent LLM's context window at
+            install time, so the trigger scales with model capability.
         agent: Agent to install summarizer on (inherits LLM, attaches to history)
     """
     if config.policy == "none":
         return
 
+    from nemo_oo_agents.agents.summarization import context_budget
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+
+    if config.max_tokens is None:
+        # Resolve against the agent's LLM so a 1M-context model gets an
+        # 800K trigger instead of a stale 100K absolute. Falls back to 100K
+        # if the LLM doesn't expose a context window.
+        max_tokens = context_budget(agent._llm, percent=0.8)
+    else:
+        max_tokens = config.max_tokens
 
     TokenBudgetSummarizer.install(
         agent,
         config=TokenBudgetConfig(
-            max_tokens=config.max_tokens,
+            max_tokens=max_tokens,
             preserve_recent=config.preserve_recent,
             target_chars=config.target_chars,
         ),

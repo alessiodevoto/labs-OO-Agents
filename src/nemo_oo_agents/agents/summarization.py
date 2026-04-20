@@ -444,22 +444,29 @@ class SummarizationAgent(Agent):
 # Helper Functions
 # =============================================================================
 def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> int:
-    """Calculate token budget as percentage of LLM context limit.
+    """Calculate token budget as percentage of the LLM's context window.
 
     Args:
-        llm: LLM instance with context_limit attribute
+        llm: LLM instance with ``context_window`` attribute (``context_limit``
+             also accepted for historical callers)
         percent: Fraction of context to use (0.0-1.0), default 0.8 (80%)
-        fallback: Value if LLM doesn't expose context_limit
+        fallback: Value returned when the LLM doesn't expose either attribute
 
     Returns:
-        Token budget as integer
+        Token budget as integer.
 
     Example:
-        TokenBudgetSummarizer.install(agent, max_tokens=context_budget(my_llm, 0.8))
+        TokenBudgetSummarizer.install(
+            agent, config=TokenBudgetConfig(max_tokens=context_budget(my_llm, 0.8))
+        )
     """
-    context_limit = getattr(llm, "context_limit", None)
-    if context_limit is not None:
-        return int(context_limit * percent)
+    # ``context_window`` is the UnifiedLLM convention. ``context_limit`` was
+    # the originally-documented attribute name but no shipped LLM client sets
+    # it — falling back keeps the helper useful for any custom wrapper that
+    # does.
+    limit = getattr(llm, "context_window", None) or getattr(llm, "context_limit", None)
+    if limit is not None:
+        return int(limit * percent)
     return fallback
 
 
