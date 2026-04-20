@@ -350,18 +350,43 @@ class TestSummarizationPendingDoneAndNotAfterTurn:
         agent = _Parent()
         return TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig())
 
-    def test_pending_task_done_clears_reference(self):
-        """Line 198: when _pending_task is done, it gets cleared to None."""
-        summarizer = self._make_summarizer()
+    def test_before_turn_clears_done_pending_task(self):
+        """_handle_before_turn is where pending-summary state gets cleared.
 
-        # Create a done future/task
+        AfterTurn intentionally doesn't touch pending state (that ordering
+        is what prevents the stale-stats cascade), so clearing is the
+        exclusive responsibility of BeforeTurn.
+        """
+        summarizer = self._make_summarizer()
         loop = asyncio.new_event_loop()
         try:
             future = loop.create_future()
             future.set_result(None)
             summarizer._pending_task = future  # type: ignore[assignment]
 
-            # Create a mock AfterTurn event that won't trigger summarization
+            from nemo_oo_agents.events import BeforeTurn
+
+            event = BeforeTurn(
+                method_name="chat",
+                strategy="CodeAct",
+                generation_id="gen-1",
+                turn_number=1,
+            )
+            summarizer._handle_before_turn(event)
+            assert summarizer._pending_task is None
+        finally:
+            loop.close()
+
+    def test_after_turn_preserves_pending_state(self):
+        """AfterTurn must not clear pending state — a done-but-unapplied
+        summary needs to survive until BeforeTurn applies it."""
+        summarizer = self._make_summarizer()
+        loop = asyncio.new_event_loop()
+        try:
+            future = loop.create_future()
+            future.set_result(None)
+            summarizer._pending_task = future  # type: ignore[assignment]
+
             from nemo_oo_agents.events import AfterTurn
 
             event = AfterTurn(
@@ -371,10 +396,9 @@ class TestSummarizationPendingDoneAndNotAfterTurn:
                 turn_number=1,
                 is_final=False,
             )
-
             summarizer._handle_after_turn(event)
-            # The done task should have been cleared
-            assert summarizer._pending_task is None
+            # Pending state untouched; BeforeTurn will handle it.
+            assert summarizer._pending_task is future
         finally:
             loop.close()
 

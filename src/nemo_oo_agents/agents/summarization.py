@@ -180,23 +180,27 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _handle_after_turn(self, event: "EventBase") -> None:
-        """Check if summarization needed and schedule it.
+        """Check whether to schedule a summarization.
 
-        Flow:
-        1. If a previous summarization completed, apply it first
-        2. If still over budget after applying, schedule another round
-        3. Only skip if summarization is still actively running
+        Never applies pending summaries — that's ``_handle_before_turn``'s
+        job. Keeping the two phases separate means ``_should_summarize``
+        always reads ``agent.context_stats`` from the most recent
+        ``_build_messages()`` call, which reflects the actual event list
+        the LLM just saw. Applying a collapse inside this same handler (as
+        earlier versions did) left stats stale for the immediate
+        ``_should_summarize`` call and produced the cascade pattern where
+        a fresh summary was followed seconds later by another over a
+        handful of newly-added events.
+
+        Dedup guard skips while ANY pending state exists — running OR
+        done-but-not-yet-applied. Without this, a task that finished mid
+        -turn would be overwritten by a new schedule call, losing the
+        waiting-to-apply summary.
         """
         from nemo_oo_agents.events import AfterTurn as _AfterTurn
 
-        # Apply any completed summary first
-        self._apply_pending_summary()
-
-        # Don't start new summarization if one is STILL RUNNING
-        if self._pending_task is not None and not self._pending_task.done():
+        if self._pending_task is not None:
             return
-
-        # Note: if _pending_task was done, _apply_pending_summary() already cleared it.
 
         if not isinstance(event, _AfterTurn):
             return
@@ -311,7 +315,14 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _apply_pending_summary(self) -> None:
-        """Apply completed summary to target event manager."""
+        """Apply a completed summary to the target event manager.
+
+        Called only from ``_handle_before_turn``. Running exclusively at
+        the turn boundary guarantees the next ``_build_messages()`` sees
+        the collapsed event list, so the subsequent ``_should_summarize``
+        check at AfterTurn reads fresh stats — no cascade from stale
+        cached totals possible.
+        """
         if self._pending_task is None:
             return
 
@@ -319,30 +330,14 @@ class SummarizationAgent(Agent):
             return
 
         # Get the result (summary is stored in _pending_summary by _run_summarization)
-        applied = False
         if self._pending_summary is not None and self._pending_range is not None:
             start_tag, end_tag = self._pending_range
             try:
                 assert self.target_event_manager is not None
                 self.target_event_manager.collapse(start_tag, end_tag, self._pending_summary)
-                applied = True
                 logger.debug(f"Applied summary: {start_tag} -> {end_tag}")
             except Exception as e:
                 logger.warning(f"Failed to apply summary: {e}")
-
-        # The target agent's cached context_stats came from the LAST
-        # _build_messages() call, which saw the pre-collapse event list.
-        # Subsequent same-turn _should_summarize() checks would read that
-        # stale snapshot and decide we're still over budget, triggering a
-        # spurious second summarization on only the handful of events that
-        # piled up while this one was running. Invalidate the cache so the
-        # next budget check returns 0 (treat as under-budget) until the
-        # next turn's render_context produces fresh stats.
-        if applied:
-            agent = self._target_agent
-            runtime = getattr(agent, "runtime", None)
-            if runtime is not None and hasattr(runtime, "_last_context_stats"):
-                runtime._last_context_stats = None
 
         # Clear pending state
         self._pending_task = None
