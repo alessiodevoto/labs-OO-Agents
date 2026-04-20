@@ -716,6 +716,49 @@ class TestSQLiteSessionLocking:
         finally:
             session1.close()
 
+    def test_session_already_active_error_reports_owner_pid(self, tmp_path):
+        """The error object carries the owner pid so callers (and users) can
+        identify which process is holding the lock and decide what to do.
+        """
+        from nemo_oo_agents.storage.sqlite import SessionAlreadyActiveError, SQLiteStorageManager
+
+        db_path = tmp_path / "test.db"
+        session1 = SQLiteStorageManager(db_path=db_path)
+        try:
+            with pytest.raises(SessionAlreadyActiveError) as exc_info:
+                SQLiteStorageManager(db_path=db_path)
+            err = exc_info.value
+            # The lock file was just written by this same process.
+            assert err.owner_pid == os.getpid()
+            assert err.session_id == "test"
+            assert f"pid {os.getpid()}" in str(err)
+        finally:
+            session1.close()
+
+    def test_lock_file_truncates_prior_pid(self, tmp_path):
+        """A shorter PID written over a longer predecessor must not leave
+        trailing digits behind.
+
+        Regression: the prior inline lock-acquisition path wrote without
+        truncating, so a predecessor pid of ``157472`` overwritten by a
+        three-digit pid produced a garbled ``999472`` that would later
+        mislead diagnostics.
+        """
+        import fcntl
+
+        from nemo_oo_agents.storage.sqlite import _acquire_session_lock
+
+        lock_path = tmp_path / "truncation.lock"
+        # Seed with a longer "old owner" PID.
+        lock_path.write_bytes(b"99999999")
+
+        fd = _acquire_session_lock(str(lock_path))
+        try:
+            assert lock_path.read_bytes() == str(os.getpid()).encode()
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
     def test_close_on_connect_failure(self, tmp_path):
         """Lines 365-367: close() is called when sqlite3.connect or schema setup fails."""
         from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
