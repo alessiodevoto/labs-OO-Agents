@@ -170,22 +170,25 @@ class TestSessionFromSpanAttributes:
 
         assert captured["override"] is None
 
-    def test_uses_first_span_session_id(self, exporter):
-        """If spans have different sessions (unusual), use the first one found."""
-        captured = {}
+    def test_groups_spans_by_session_id(self, exporter):
+        """Spans from different sessions are sent as separate HTTP requests."""
+        call_overrides = []
 
         def fake_build(spans, resource_attrs_override=None, **_kwargs):
-            captured["override"] = resource_attrs_override
+            call_overrides.append(resource_attrs_override)
             return _FAKE_RESOURCE_SPANS
 
-        spans = _spans(1, session_id="first-session") + _spans(1, session_id="second-session")
+        spans = _spans(2, session_id="first-session") + _spans(2, session_id="second-session")
         with (
             patch(_SERIALIZE_PATH, side_effect=fake_build),
             patch("urllib.request.urlopen", return_value=_ok_response()),
         ):
-            exporter.export(spans)
+            result = exporter.export(spans)
 
-        assert captured["override"] == {"session.id": "first-session"}
+        assert result == SpanExportResult.SUCCESS
+        assert len(call_overrides) == 2
+        session_ids = {o["session.id"] for o in call_overrides if o}
+        assert session_ids == {"first-session", "second-session"}
 
 
 class TestShutdownWarning:

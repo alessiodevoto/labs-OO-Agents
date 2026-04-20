@@ -11,6 +11,7 @@ import logging
 import threading
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from collections.abc import Sequence
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -47,24 +48,45 @@ class OtlpJsonHttpExporter(SpanExporter):
         if not spans:
             return SpanExportResult.SUCCESS
 
-        # Extract session.id from span attributes (set by SessionSpanProcessor in
-        # the event loop thread).  Do NOT use get_session() here — export() runs
-        # in the BatchSpanProcessor worker thread whose ContextVar context is a
-        # frozen copy from thread-start time, *before* set_session(session_id) is
-        # called in the eval task.  get_session() therefore always returns None
-        # from this thread, which would route all spans to unknown_* sessions.
-        session_id: str | None = None
+        # Group spans by session.id before sending. BatchSpanProcessor may batch
+        # spans from multiple concurrent sessions into one export() call. Sending
+        # all spans under the first session's id would mis-route the rest.
+        #
+        # Do NOT use get_session() here — export() runs in the BatchSpanProcessor
+        # worker thread whose ContextVar context is a frozen copy from thread-start
+        # time, *before* set_session(session_id) is called in eval tasks.
+        # session.id is stamped per-span by SessionSpanProcessor in the event loop
+        # thread, so read it from span.attributes instead.
+        by_session: dict[str | None, list[ReadableSpan]] = defaultdict(list)
         for span in spans:
-            if span.attributes:
-                sid = span.attributes.get("session.id")
-                if sid:
-                    session_id = str(sid)
-                    break
-        override = {"session.id": session_id} if session_id else None
-        exclude = self._LLM_MESSAGE_PREFIXES if self._strip_llm_messages else ()
-        resource_spans = build_resource_spans(spans, resource_attrs_override=override, exclude_attr_prefixes=exclude)
-        payload = {"resourceSpans": resource_spans}
+            val = span.attributes.get("session.id") if span.attributes else None
+            sid = str(val) if val else None
+            by_session[sid].append(span)
 
+        exclude = self._LLM_MESSAGE_PREFIXES if self._strip_llm_messages else ()
+        overall = SpanExportResult.SUCCESS
+        for session_id, session_spans in by_session.items():
+            override = {"session.id": session_id} if session_id else None
+            resource_spans = build_resource_spans(
+                session_spans,
+                resource_attrs_override=override,
+                exclude_attr_prefixes=exclude,
+            )
+            result = self._send_payload(session_spans, {"resourceSpans": resource_spans})
+            if result != SpanExportResult.SUCCESS:
+                overall = result
+        return overall
+
+    def _send_payload(self, spans: Sequence[ReadableSpan], payload: dict) -> SpanExportResult:
+        """Send a single OTLP JSON payload via HTTP POST.
+
+        Args:
+            spans: Spans included in this payload (used for drop counting on failure).
+            payload: OTLP ``ExportTraceServiceRequest`` dict to serialize and send.
+
+        Returns:
+            ``SpanExportResult.SUCCESS`` on HTTP 2xx, ``FAILURE`` otherwise.
+        """
         try:
             data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             req = urllib.request.Request(
