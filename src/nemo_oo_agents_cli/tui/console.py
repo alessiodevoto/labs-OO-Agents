@@ -24,6 +24,16 @@ class TUIConsole:
         self._live_spinner: Live | None = None
         self._spinner: Spinner | None = None
 
+    def replace_console(self, console: Console) -> None:
+        """Swap the underlying Rich Console (e.g. to redirect output).
+
+        ``Session`` uses this to route slash-command rendering through
+        the ``TUIApplication`` block queue instead of the real stdout —
+        without this seam, callers would have to patch ``self.console``
+        directly, a private on a foreign object.
+        """
+        self.console = console
+
     def start_spinner(self, message: str = "thinking...") -> None:
         """Start the thinking spinner with an empty input prompt.
 

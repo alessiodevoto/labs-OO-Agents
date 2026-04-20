@@ -37,8 +37,7 @@ Keep the key set small and stable. New keys need a line in this doc.
 
 | Key                   | Type               | Written by       | Read by                                 |
 |-----------------------|--------------------|------------------|-----------------------------------------|
-| `spec`                | `dict`             | `/brainstorm`    | `/root-cause`, `/tdd`, `/review`        |
-| `acceptance_criteria` | `list[str]`        | `/brainstorm`    | `/review`, `/ship`                      |
+| `spec`                | `dict`             | `/brainstorm`    | `/root-cause`, `/tdd`, `/review`, `/ship` |
 | `repro_cmd`           | `str`              | `/root-cause`    | `/tdd`                                  |
 | `failing_test_code`   | `str`              | `/root-cause`    | `/tdd`                                  |
 | `root_cause`          | `str`              | `/root-cause`    | `/tdd`, `/review`                       |
@@ -49,6 +48,9 @@ Keep the key set small and stable. New keys need a line in this doc.
 | `review_findings`     | `list[dict]`       | `/review`        | `/ship`                                 |
 | `show_diffs`          | `bool` (opt-in)    | user             | `/tdd`                                  |
 
+Acceptance criteria live inside ``spec`` — read as
+``spec["acceptance_criteria"]``; not a separate top-level key.
+
 **Shape of `spec`:**
 
 ```python
@@ -56,6 +58,7 @@ Keep the key set small and stable. New keys need a line in this doc.
     "goal": "one-sentence description",
     "requirements": ["what must be true when done"],
     "constraints": ["limits / guardrails"],
+    "acceptance_criteria": ["measurable pass/fail tests — e.g. 'pytest tests/ green'"],
     "open_questions": [],  # empty when spec is approved
 }
 ```

@@ -89,3 +89,30 @@ def test_comment_accepts_arbitrary_body(body):
     c = tm.comment(t.id, body)
     assert c is not None
     assert c.body == body
+
+
+def test_clear_wipes_all_todos_and_order() -> None:
+    """``TodoManager.clear()`` removes every todo and the insertion order."""
+    tm = TodoManager()
+    tm.add("first")
+    tm.add("second")
+    tm.add("third")
+    assert len(tm._todos) == 3
+    assert len(tm._order) == 3
+
+    tm.clear()
+
+    assert tm._todos == {}
+    assert tm._order == []
+
+
+def test_clear_then_add_starts_fresh() -> None:
+    """After ``clear()``, new todos are added starting from an empty state —
+    no id collisions with pre-clear todos (each ``add`` mints a fresh id)."""
+    tm = TodoManager()
+    old = tm.add("old")
+    tm.clear()
+    new = tm.add("new")
+
+    assert new.id != old.id
+    assert list(tm._todos.keys()) == [new.id]

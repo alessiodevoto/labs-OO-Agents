@@ -157,9 +157,17 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
 
         # Import locally so the stub can evolve without breaking harness
         # consumers that don't import it.
+        from prompt_toolkit.completion import WordCompleter
+
         from nemo_oo_agents_cli.tui.tui_application import TUIApplication
 
-        self.app = TUIApplication(agent=self.agent)
+        # Canonical slash/bang set that covers the completion tests. Production
+        # wiring passes a CommandRegistry-backed completer instead.
+        completer = WordCompleter(
+            ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"],
+            sentence=True,
+        )
+        self.app = TUIApplication(agent=self.agent, completer=completer)
         self._pipe = pipe
 
         self._run_task = asyncio.create_task(self.app.run_async())

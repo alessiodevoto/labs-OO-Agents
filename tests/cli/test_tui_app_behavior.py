@@ -415,3 +415,107 @@ async def test_hard_keystroke_during_agent_finish_not_lost():
         # The character MUST have landed in the input buffer for the
         # next turn — not dropped, not delivered to a dead typeahead.
         await h.wait_input_equals("x")
+
+
+async def test_hard_drain_loops_synchronous_commands_without_recursion():
+    """Queue N synchronous /cmd items while the agent is working, then
+    release. The drain loop must fire all N through the sync path in
+    one go — no asyncio tasks per item, no recursion per item.
+
+    Regression guard for the ``_drain_next`` loop-conversion:
+    a naive ``self._drain_next()`` recursion in the sync path would
+    still pass earlier tests but blow the stack on large batches.
+    """
+    agent = _blocking_agent()
+    commands_seen: list[str] = []
+    async with TUIHarness(agent=agent) as h:
+        # Sync on_command — records and returns None (no coroutine).
+        h.app._on_command = commands_seen.append
+        await h.submit_async("first")  # starts agent; blocks
+        await h.wait_for(lambda: h.app.is_thinking())
+        for i in range(5):
+            await h.submit_async(f"/cmd-{i}")
+        assert h.capture_queued() == [f"/cmd-{i}" for i in range(5)]
+
+        # Release the agent. Drain runs synchronously in a loop.
+        agent.block.set()
+        await h.wait_for(lambda: commands_seen == [f"/cmd-{i}" for i in range(5)])
+
+
+async def test_hard_sync_on_command_raising_surfaces_to_output_and_aborts_queue():
+    """A synchronous ``on_command`` that raises must (1) surface a
+    ``[callback error]`` line to scrollback and (2) abort the rest of
+    the queue so the user doesn't get N stack traces stacked up."""
+    agent = _blocking_agent()
+
+    def _raising(_text: str) -> None:
+        raise RuntimeError("boom-sync")
+
+    async with TUIHarness(agent=agent) as h:
+        h.app._on_command = _raising
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        # Queue three commands that would all raise.
+        for i in range(3):
+            await h.submit_async(f"/will-fail-{i}")
+        # Release agent → drain begins.
+        agent.block.set()
+        # First failure surfaces; the remaining two are aborted with a
+        # single "aborted N queued items" message, not more stack traces.
+        await h.wait_for(
+            lambda: (
+                "[callback error] RuntimeError: boom-sync" in h.capture_output()
+                and "aborted 2 queued items" in h.capture_output()
+            )
+        )
+
+
+async def test_hard_async_on_command_raising_surfaces_to_output() -> None:
+    """An async ``on_command`` coroutine that raises must surface the
+    error to scrollback via the task's done-callback (not vanish into
+    asyncio's default exception handler)."""
+    agent = _blocking_agent()
+
+    async def _raising_async(_text: str) -> None:
+        raise RuntimeError("boom-async")
+
+    async with TUIHarness(agent=agent) as h:
+        h.app._on_command = _raising_async
+        await h.submit_async("/go")
+        await h.wait_output_contains("[callback error] RuntimeError: boom-async")
+
+
+async def test_hard_ctrl_c_emits_interrupted_notice_to_scrollback() -> None:
+    """Ctrl-C during an agent turn must put a visible ``✗ Interrupted.``
+    marker into scrollback so the user knows the cancellation landed —
+    not just silently end the turn."""
+    agent = _blocking_agent()
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        await h.press("c-c")
+        await h.wait_output_contains("Interrupted")
+
+
+async def test_hard_submit_message_re_entry_queues_instead_of_stomping() -> None:
+    """Programmatic ``submit_message`` while an agent turn is running
+    must queue the new message instead of overwriting ``_agent_task``.
+
+    Regression guard for the P1 #5 finding in the bug-hunt review.
+    """
+    agent = _blocking_agent()
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        assert h.app._agent_task is not None
+        first_task = h.app._agent_task
+
+        # Programmatic submission during the blocked turn — should go
+        # to the queue, not clobber _agent_task.
+        h.app.submit_message("second")
+        assert h.app._agent_task is first_task  # not replaced
+        assert any(kind == "msg" and text == "second" for kind, text in h.app.state.items)
+
+        # Draining second should reach the agent.
+        agent.block.set()
+        await h.wait_for(lambda: agent.messages_received == ["first", "second"])

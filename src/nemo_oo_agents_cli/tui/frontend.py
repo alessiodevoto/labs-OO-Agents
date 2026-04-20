@@ -11,10 +11,10 @@ All behavior lives in ``Session``.
 
 import asyncio
 import sys
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .output import (
-    ActivityLine,
     AgentMessage,
     BashOutput,
     ClearScreen,
@@ -30,7 +30,6 @@ from .output import (
     Thinking,
     UserMessage,
 )
-from .queue_state import QueueState
 from .theme import COLORS
 
 if TYPE_CHECKING:
@@ -99,26 +98,6 @@ class Frontend(Protocol):
         """Clean up frontend resources."""
         ...
 
-    async def typeahead_loop(self, state: QueueState) -> None:
-        """Run a stay-open prompt with a dynamic prefix driven by ``state``.
-
-        Returns when ``exit_typeahead()`` is called. Raises ``KeyboardInterrupt``
-        on Ctrl+C and ``EOFError`` on Ctrl+D.
-        """
-        ...
-
-    def exit_typeahead(self) -> None:
-        """Signal the active typeahead loop to exit (agent finished)."""
-        ...
-
-    def invalidate_typeahead(self) -> None:
-        """Force a redraw of the typeahead prompt (used by spinner tick)."""
-        ...
-
-    async def emit_user_message_above_prompt(self, content: str) -> None:
-        """Commit a queued user message to scrollback above the active prompt."""
-        ...
-
 
 # ---------------------------------------------------------------------------
 # TerminalFrontend
@@ -137,7 +116,7 @@ class TerminalFrontend:
         self._config = config
         self._console = TUIConsole()
         self._input_handler = None  # initialised after registry is ready
-        self.patch_stdout_active = False  # set by session during _agent_turn
+        self._renderers = self._build_renderer_map()
 
     # ------------------------------------------------------------------
     # Input handler initialisation (needs the command registry)
@@ -167,42 +146,45 @@ class TerminalFrontend:
 
     async def render(self, output: Output) -> None:  # type: ignore[override]
         """Dispatch *output* to the appropriate Rich rendering call."""
-        if isinstance(output, TextOutput):
-            self._render_text(output)
-        elif isinstance(output, TableOutput):
-            self._render_table(output)
-        elif isinstance(output, HelpOutput):
-            self._console.print_help(output.commands)
-        elif isinstance(output, AgentMessage):
-            if self.patch_stdout_active:
-                await self._print_agent_via_run_in_terminal(
-                    output.content, show_rule=output.show_rule
-                )
-            else:
-                self._console.print_agent(output.content, show_rule=output.show_rule)
-        elif isinstance(output, CodeExecution):
-            self._render_code_execution(output)
-        elif isinstance(output, StartupInfo):
-            self._render_startup(output)
-        elif isinstance(output, ClearScreen):
-            self._console.console.clear()
-        elif isinstance(output, Thinking):
-            if output.active:
-                self._console.start_spinner(output.message)
-            else:
-                self._console.stop_spinner()
-        elif isinstance(output, BashOutput):
-            self._render_bash(output)
-        elif isinstance(output, RichOutput):
-            self._render_rich(output)
-        elif isinstance(output, DiffOutput):
-            self._render_diff(output)
-        elif isinstance(output, HistoryReplay):
-            self._render_history_replay(output)
-        elif isinstance(output, ActivityLine):
-            self._render_activity_line(output)
-        elif isinstance(output, UserMessage):
-            self._render_user_message(output)
+        handler = self._renderers.get(type(output))
+        if handler is not None:
+            handler(output)
+
+    def _build_renderer_map(self) -> "dict[type, Callable[[Any], None]]":
+        """Build the {Output subclass → handler} dispatch table once at
+        construction time. Cheaper and clearer than an isinstance ladder;
+        also surfaces unregistered Output kinds as silent no-ops (same
+        behaviour as the old default-fallthrough)."""
+        return {
+            TextOutput: self._render_text,
+            TableOutput: self._render_table,
+            HelpOutput: self._render_help,
+            AgentMessage: self._render_agent_message,
+            CodeExecution: self._render_code_execution,
+            StartupInfo: self._render_startup,
+            ClearScreen: self._render_clear,
+            Thinking: self._render_thinking,
+            BashOutput: self._render_bash,
+            RichOutput: self._render_rich,
+            DiffOutput: self._render_diff,
+            HistoryReplay: self._render_history_replay,
+            UserMessage: self._render_user_message,
+        }
+
+    def _render_help(self, output: HelpOutput) -> None:
+        self._console.print_help(output.commands)
+
+    def _render_agent_message(self, output: AgentMessage) -> None:
+        self._console.print_agent(output.content, show_rule=output.show_rule)
+
+    def _render_clear(self, _output: ClearScreen) -> None:
+        self._console.console.clear()
+
+    def _render_thinking(self, output: Thinking) -> None:
+        if output.active:
+            self._console.start_spinner(output.message)
+        else:
+            self._console.stop_spinner()
 
     async def get_input(
         self,
@@ -228,12 +210,9 @@ class TerminalFrontend:
             return (await session.prompt_async(prompt)).strip()
 
         if self._input_handler:
-            result = await self._input_handler.get_input(
+            return await self._input_handler.get_input(
                 prompt, default=default, bottom_toolbar=bottom_toolbar
             )
-            if result.strip() and not self.patch_stdout_active:
-                self._overwrite_input(prompt, result)
-            return result
 
         # Fallback: plain input via executor
         loop = asyncio.get_running_loop()
@@ -247,51 +226,9 @@ class TerminalFrontend:
     async def stop_thinking(self) -> None:
         self._console.stop_spinner()
 
-    async def typeahead_loop(self, state: QueueState) -> None:
-        """Run the stay-open typeahead prompt until exit_typeahead() is called."""
-        if self._input_handler is None:
-            # No interactive handler (tests without init_input, or headless) —
-            # nothing to do; just return so the caller can await the agent.
-            return
-        await self._input_handler.typeahead_loop(state)
-
-    def exit_typeahead(self) -> None:
-        if self._input_handler is not None:
-            self._input_handler.exit_typeahead()
-
-    def invalidate_typeahead(self) -> None:
-        if self._input_handler is not None:
-            self._input_handler.invalidate()
-
     # ------------------------------------------------------------------
     # Internal rendering helpers
     # ------------------------------------------------------------------
-
-    def _overwrite_input(self, prompt: str, text: str) -> None:
-        """Replace prompt_toolkit's input line(s) with a styled version."""
-        import math
-        import sys
-
-        from rich.padding import Padding
-        from rich.text import Text
-
-        c = self._console.console
-        width = c.size.width or 80
-        # Count visual rows: each logical line may wrap across multiple terminal rows.
-        # The first line includes the prompt prefix (e.g. "❯ ").
-        lines = text.split("\n")
-        visual_rows = 0
-        for i, line in enumerate(lines):
-            display_len = len(line) + (len(prompt) if i == 0 else 0)
-            visual_rows += max(1, math.ceil(display_len / width))
-        # Move cursor up and clear each visual row
-        for _ in range(visual_rows):
-            sys.stdout.write("\033[A\033[2K")
-        sys.stdout.flush()
-        # Padding with background style — fills full width, no border
-        content = Text(text, style=f"{COLORS['rosewater']} on {COLORS['surface0']}")
-        padded = Padding(content, (0, 1), style=f"on {COLORS['surface0']}", expand=True)
-        c.print(padded)
 
     def _render_text(self, output: TextOutput) -> None:
         lvl = output.level
@@ -371,128 +308,6 @@ class TerminalFrontend:
                 os.unlink(tmp_path)
             except Exception:
                 pass
-
-    async def _emit_ansi_above_prompt(self, rendered: str) -> None:
-        """Write a pre-rendered ANSI string above the running typeahead prompt.
-
-        Uses prompt_toolkit's ``run_in_terminal`` when a prompt is active
-        (pauses the prompt, writes to the real stdout, resumes). Falls back
-        to a direct write when no prompt is running.
-        """
-        import sys as _sys
-
-        from prompt_toolkit.application import get_app_or_none, run_in_terminal
-
-        if not rendered:
-            return
-
-        def _emit() -> None:
-            stream = _sys.__stdout__ or _sys.stdout
-            stream.write(rendered)
-            stream.flush()
-
-        app = get_app_or_none()
-        if app is None:
-            _emit()
-        else:
-            await run_in_terminal(_emit)
-
-    async def _print_agent_via_run_in_terminal(self, content: str, *, show_rule: bool) -> None:
-        """Render an AgentMessage above the running typeahead prompt.
-
-        Pre-renders Markdown to an ANSI string via a throwaway Rich Console,
-        then writes it to the real stdout inside ``run_in_terminal``.
-        """
-        import io
-        import textwrap
-
-        from rich.console import Console as _Console
-        from rich.markdown import Markdown as _Markdown
-        from rich.rule import Rule as _Rule
-
-        cleaned = content.replace("\u00a0", " ")
-        cleaned = textwrap.dedent(cleaned).strip()
-
-        width = self._console.console.size.width or 100
-        buf = io.StringIO()
-        c = _Console(
-            file=buf,
-            force_terminal=True,
-            color_system="truecolor",
-            width=width,
-        )
-        if show_rule:
-            c.print(_Rule(title="[bold]OO[/bold]", style=COLORS["surface2"], align="left"))
-        c.print(_Markdown(cleaned))
-        await self._emit_ansi_above_prompt(buf.getvalue())
-
-    async def emit_user_message_above_prompt(self, content: str) -> None:
-        """Render a queued user message as a scrollback bar above the prompt.
-
-        Used by the session right before queued type-ahead messages are
-        delivered to the agent. Without this the user sees no record of
-        what they sent — the dynamic │ lines get erased on prompt exit and
-        were never committed to scrollback.
-
-        Styled to match ``_overwrite_input`` (rosewater text on surface0)
-        so a queued message looks identical to a first/between-turn
-        message once it lands in scrollback.
-        """
-        import io
-
-        from rich.console import Console as _Console
-        from rich.padding import Padding as _Padding
-        from rich.text import Text as _Text
-
-        width = self._console.console.size.width or 100
-        for line in content.split("\n"):
-            styled = _Text(line, style=f"{COLORS['rosewater']} on {COLORS['surface0']}")
-            padded = _Padding(styled, (0, 1), style=f"on {COLORS['surface0']}", expand=True)
-            buf = io.StringIO()
-            _Console(file=buf, force_terminal=True, color_system="truecolor", width=width).print(
-                padded
-            )
-            await self._emit_ansi_above_prompt(buf.getvalue())
-
-    def _render_activity_line(self, output: ActivityLine) -> None:
-        """Render a live activity preview line (reasoning or code).
-
-        Same styling in both paths (patch_stdout active or not): reasoning is
-        dim italic overlay, code is dim subtext with the first-line comment
-        highlighted in normal text colour. Under patch_stdout we render Rich
-        to a string and print it so prompt_toolkit routes it above the prompt.
-        """
-        from rich.text import Text
-
-        if output.kind == "reasoning":
-            styled = Text(output.content, style=f"dim italic {COLORS['overlay1']}")
-        elif output.kind == "stdout":
-            # Indent under the preceding "● <code>" line, ipython-notebook
-            # style. Two-space indent + thin gutter ("│ ") + dim text.
-            styled = Text(f"  │ {output.content}", style=f"dim {COLORS['overlay1']}")
-        elif output.kind == "stderr":
-            styled = Text(f"  │ {output.content}", style=COLORS["red"])
-        else:
-            styled = Text(f"● {output.content}", style=f"dim {COLORS['subtext0']}")
-            first_line = output.content.split("\n", 1)[0]
-            if first_line.lstrip().startswith("#"):
-                styled.stylize(f"not dim {COLORS['text']}", 0, 2 + len(first_line))
-
-        if self.patch_stdout_active:
-            import io
-
-            from rich.console import Console as _Console
-
-            width = self._console.console.size.width or 100
-            buf = io.StringIO()
-            _Console(file=buf, force_terminal=True, color_system="truecolor", width=width).print(
-                styled
-            )
-            rendered = buf.getvalue()
-            if rendered:
-                print(rendered, end="", flush=True)
-        else:
-            self._console.console.print(styled)
 
     def _render_user_message(self, output: UserMessage) -> None:
         """Render the user's submitted text with a high-contrast background bar."""

@@ -84,26 +84,6 @@ class AgentMessage:
 
 
 @dataclass
-class ActivityLine:
-    """A single-line live activity preview shown while the agent is working.
-
-    ``kind`` is one of:
-    - ``"reasoning"`` — dim italic chain-of-thought snippet
-    - ``"code"``      — first line(s) of code about to be executed
-    - ``"stdout"``    — output from the just-finished code block,
-      indented so it visually belongs under the preceding ``"code"``
-      line (ipython-notebook style)
-    - ``"stderr"``    — same shape as stdout but red-styled
-    """
-
-    content: str
-    kind: Literal["reasoning", "code", "stdout", "stderr"] = "reasoning"
-
-    def to_json(self) -> dict:
-        return {"type": "activity", "content": self.content, "kind": self.kind}
-
-
-@dataclass
 class CodeExecution:
     """One Python execution turn: code + outputs."""
 
@@ -331,7 +311,6 @@ Output = (
     | TableOutput
     | HelpOutput
     | AgentMessage
-    | ActivityLine
     | CodeExecution
     | StartupInfo
     | ClearScreen

@@ -195,6 +195,28 @@ class ExitCommand(Command):
         return CommandResult.bye()
 
 
+def _reset_agent_working_state(agent: "Agent") -> None:
+    """Reset the agent's in-memory working state for a fresh ``/clear``.
+
+    The event manager is already pointed at the new (empty) storage via
+    ``_swap_session_manager`` — that handles conversation history. Here
+    we clear the *snapshotable* fields that live on the agent instance
+    itself and don't get reset by storage swap alone:
+
+    - ``agent.todo`` — ``TodoManager``'s ``_todos`` / ``_order``
+    - future fields should be added here as they're discovered
+
+    Guarded by ``hasattr`` and a duck-typed ``clear`` check so agents
+    without a todo skill keep working.
+    """
+    todo = getattr(agent, "todo", None)
+    if todo is not None and hasattr(todo, "clear") and callable(todo.clear):
+        try:
+            todo.clear()
+        except Exception:
+            pass
+
+
 class ClearCommand(Command):
     @property
     def name(self) -> str:
@@ -231,6 +253,17 @@ class ClearCommand(Command):
                 )
             except Exception:
                 pass
+
+        # Reset the agent's in-memory working state so /clear is truly a
+        # fresh start — not just a storage swap. The old session's
+        # snapshotable state (todos, context) is preserved on disk (via
+        # ``Session.run``'s shutdown save_snapshot) and can be re-loaded
+        # via ``/session <id>``.
+        #
+        # /session <id> has its own restore path (``restore_latest_snapshot``
+        # replaces in-memory state wholesale); /clear has no snapshot to
+        # restore, so we explicitly reset the known fresh-start fields.
+        _reset_agent_working_state(self.agent)
 
         outputs: list[Output] = [
             ClearScreen(),
@@ -1483,6 +1516,14 @@ class CommandRegistry:
 
     def get_command(self, name: str) -> "Command | None":
         return self._commands.get(name.lower())
+
+    def commands(self) -> "list[Command]":
+        """Return the list of registered ``Command`` instances.
+
+        Public surface so callers (e.g. ``Session._swap_session_manager``)
+        don't have to reach into ``_commands`` directly.
+        """
+        return list(self._commands.values())
 
     def get_user_skill(self, name: str) -> "_UserSkill | None":
         return self._user_skills.get(name.lower())

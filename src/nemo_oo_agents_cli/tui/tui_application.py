@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.completion import Completer
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
@@ -45,28 +46,22 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
+def terminal_cols(default: int = 120, minimum: int = 20) -> int:
+    """Live terminal column count, clamped to [``minimum``, ∞).
+
+    Wrapped so every caller gets the same fallback behaviour
+    (``(120, 24)`` on stat failure) and clamp. Used by the status-rule
+    renderer here and by the block-rendering helpers in ``Session`` so
+    rich text (user-message bars, full-width rules) spans the live
+    width and doesn't hardcode 120.
+    """
+    try:
+        return max(shutil.get_terminal_size((default, 24)).columns, minimum)
+    except Exception:
+        return default
+
+
 PROMPT_MARKER = "❯ "
-
-# Minimal default completions so Tab works on a bare TUIApplication.
-# Production wiring replaces this with the real ``CommandRegistry``
-# completer — the interface is just ``Completer.get_completions``.
-_DEFAULT_COMPLETIONS = ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"]
-
-
-class _PrefixCompleter(Completer):
-    """Tiny completer: suggests entries from ``candidates`` when the buffer
-    starts with ``/`` or ``!`` and is a prefix of a candidate."""
-
-    def __init__(self, candidates: list[str]) -> None:
-        self.candidates = candidates
-
-    def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-        if not text or text[0] not in "/!":
-            return
-        for cand in self.candidates:
-            if cand.startswith(text) and cand != text:
-                yield Completion(cand, start_position=-len(text))
 
 
 class TUIApplication:
@@ -95,8 +90,7 @@ class TUIApplication:
                 bash. If omitted, bang commands are only recorded in
                 ``last_bang_command()``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
-                completion. When omitted a small built-in completer
-                covers ``/help /exit /clear /compact !bash !ipython``.
+                completion. When omitted no completion is offered.
         """
         self.agent = agent
         self._on_command = on_command
@@ -118,8 +112,10 @@ class TUIApplication:
 
         # Input window: where user keystrokes land. A caller (Session)
         # passes the real CommandRegistry-backed completer; otherwise
-        # fall back to the minimal slash/bang stub.
-        self._completer = completer or _PrefixCompleter(list(_DEFAULT_COMPLETIONS))
+        # Tab produces no suggestions.
+        from prompt_toolkit.completion import DummyCompleter
+
+        self._completer = completer or DummyCompleter()
         self.input_buffer = Buffer(
             multiline=True,
             completer=self._completer,
@@ -140,6 +136,10 @@ class TUIApplication:
         # ``run_in_terminal``. Tests read both via the accessor methods.
         self._commands_dispatched: list[str] = []
         self._last_bang_command: str | None = None
+        # Set by _run_callback on the sync-error path; read by
+        # _drain_next to bail out of a pathological "every queued
+        # command raises" loop instead of dumping N stack traces.
+        self._last_sync_callback_raised: bool = False
 
         # Status line fields — surfaced via status_text().
         self._session_label: str = ""
@@ -166,7 +166,7 @@ class TUIApplication:
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
         if hasattr(agent, "emit"):
-            agent.emit = self.append_output  # type: ignore[attr-defined]
+            agent.emit = self.emit_block  # type: ignore[attr-defined]
 
         kb = self._build_key_bindings()
 
@@ -197,7 +197,7 @@ class TUIApplication:
                 FormattedTextControl(_queue_formatted, focusable=False),
                 dont_extend_height=True,
             ),
-            filter=Condition(lambda: bool(self.state.messages or self.state.commands)),
+            filter=Condition(lambda: bool(self.state.items)),
         )
 
         input_window = Window(
@@ -222,12 +222,7 @@ class TUIApplication:
         # on a horizontal rule. Built from formatted text (not a Rich
         # Rule) so it re-measures with the live terminal width.
         def _session_rule_formatted():
-            try:
-                import shutil as _sh
-
-                cols = max(_sh.get_terminal_size((120, 24)).columns, 20)
-            except Exception:
-                cols = 120
+            cols = terminal_cols(minimum=20)
             label = self._session_label_fn() if self._session_label_fn is not None else ""
             if label:
                 dashes = max(cols - len(label) - 1, 1)
@@ -403,42 +398,61 @@ class TUIApplication:
 
         if text.startswith("/"):
             self._commands_dispatched.append(text)
-            self._fire(self._on_command, text)
+            self._run_callback(self._on_command, text)
             return False
         if text.startswith("!"):
             body = text[1:].strip()
             self._last_bang_command = body
-            self._fire(self._on_bang, body)
+            self._run_callback(self._on_bang, body)
             return False
 
-        self.launch_agent(text)
+        self.submit_message(text)
         return False
 
-    def _fire(self, cb: Callable[[str], Awaitable[None] | None] | None, arg: str) -> None:
-        """Call a user callback; schedule coroutines on the loop.
+    def _run_callback(
+        self,
+        cb: Callable[[str], Awaitable[None] | None] | None,
+        arg: str,
+    ) -> asyncio.Task | None:
+        """Invoke one user callback; return the scheduled Task or None.
 
-        Surfaces any exception into the scrollback — without this an
-        unhandled error in on_command / on_bang would disappear into
-        asyncio's default handler and the user would see a no-op.
+        Used by every "call an out-of-band function from the TUI" site
+        (``on_command``, ``on_bang``, ``on_user_message``).
+
+        - Synchronous callback (``None``, a regular function, or one
+          that raised): returns ``None``. Errors are surfaced into the
+          scrollback so an unhandled exception doesn't vanish into
+          asyncio's default handler. Sets
+          ``self._last_sync_callback_raised = True`` so callers that
+          loop (``_drain_next``) can stop after a failure.
+        - Coroutine callback: scheduled as a Task and returned. The
+          caller can ``add_done_callback`` on it to chain follow-up
+          work (e.g. ``_drain_next`` for queued commands). Errors
+          inside the coroutine are surfaced via a done-callback
+          installed here.
         """
+        self._last_sync_callback_raised = False
         if cb is None:
-            return
+            return None
         try:
             result = cb(arg)
         except BaseException as exc:
-            self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
-            return
-        if asyncio.iscoroutine(result):
-            task = asyncio.ensure_future(result)
+            self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
+            self._last_sync_callback_raised = True
+            return None
+        if not asyncio.iscoroutine(result):
+            return None
+        task = asyncio.ensure_future(result)
 
-            def _report(t: asyncio.Task) -> None:
-                if t.cancelled():
-                    return
-                exc = t.exception()
-                if exc is not None:
-                    self.append_output(f"[error in callback] {type(exc).__name__}: {exc}\n")
+        def _report(t: asyncio.Task) -> None:
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                self.emit_block(f"[callback error] {type(exc).__name__}: {exc}\n")
 
-            task.add_done_callback(_report)
+        task.add_done_callback(_report)
+        return task
 
     def _ensure_spinner_task(self) -> None:
         """Start a background task cycling the spinner frame while the
@@ -480,16 +494,33 @@ class TUIApplication:
         self.input_buffer.text = self._history[self._history_cursor]
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
-    def launch_agent(self, user_message: str) -> None:
-        """Kick off ``agent.respond(user_message)`` on the event loop.
+    def submit_message(self, user_message: str) -> None:
+        """Treat ``user_message`` as if the user just typed and submitted it.
 
-        Public because Session also calls it when a slash command
-        returns an ``agent_message`` (e.g. ``/compact`` that wants to
-        drive a turn). Fires ``on_user_message`` first so Session
-        renders the user's input to scrollback.
+        Fires ``on_user_message`` (scrollback echo + session bookkeeping),
+        then kicks off ``agent.respond(user_message)`` on the event loop.
+
+        Public so Session can submit a message programmatically — e.g. a
+        slash command that returns an ``agent_message`` (``/compact``)
+        and wants to drive a turn through the same user-facing path as
+        a typed message.
+
+        Guards against re-entry while an agent turn is already running:
+        a slow slash command that calls ``submit_message`` from inside
+        its handler would otherwise overwrite ``_agent_task``, stranding
+        the in-flight turn's done-callback. Silently drops the new
+        submission in that case; callers who want to queue-after-turn
+        should use ``state.submit(text)`` instead.
         """
-        self._fire(self.on_user_message, user_message)
+        self._run_callback(self.on_user_message, user_message)
         if self.agent is None:
+            return
+        if self._agent_task is not None and not self._agent_task.done():
+            self.emit_block(
+                f"[submit_message ignored] agent is still running — "
+                f"message queued: {user_message[:60]!r}\n"
+            )
+            self.state.submit(user_message)
             return
         coro = self.agent.respond(user_message)
         if not asyncio.iscoroutine(coro):
@@ -510,11 +541,11 @@ class TUIApplication:
         # still emit a visible ack so the user knows the interrupt
         # landed — the old TUI printed "Agent interrupted." here.
         if task.cancelled():
-            self.append_output("\x1b[33m✗ Interrupted.\x1b[0m\n")
+            self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
         else:
             exc = task.exception()
             if exc is not None:
-                self.append_output(f"Agent error: {exc}")
+                self.emit_block(f"Agent error: {exc}")
 
         # Drain ONE queue item serially, then let its completion
         # callback re-enter this function to drain the next. This
@@ -523,52 +554,49 @@ class TUIApplication:
         self._drain_next()
 
     def _drain_next(self) -> None:
-        """Pull the next queue item and fire it. Commands schedule an
-        on_command coroutine whose completion re-enters _drain_next;
-        messages launch an agent turn whose _on_agent_done does the
-        same. Order: strict FIFO on ``state.items``."""
-        if not self.state.items:
-            return
+        """Pop items from ``state.items`` and fire them until an async
+        boundary. Strict FIFO preserves user-submission order.
 
-        kind, text = self.state.items.pop(0)
+        - Synchronous command callbacks loop in place (no recursion).
+        - Async command callbacks hand off to the task's done-callback,
+          which re-enters ``_drain_next``.
+        - Messages launch an agent turn; ``_on_agent_done`` re-enters
+          ``_drain_next`` once the turn completes.
+        """
+        while self.state.items:
+            kind, text = self.state.items.pop(0)
 
-        if kind == "cmd":
-            self._commands_dispatched.append(text)
-            if self._on_command is None:
-                self._drain_next()
+            if kind == "cmd":
+                self._commands_dispatched.append(text)
+                task = self._run_callback(self._on_command, text)
+                if task is None:
+                    # Sync path. If the callback raised, stop draining
+                    # — otherwise a bad handler dumps N stack traces
+                    # with no way to interrupt. Discard the rest and
+                    # tell the user.
+                    if self._last_sync_callback_raised:
+                        remaining = len(self.state.items)
+                        self.state.items.clear()
+                        if remaining:
+                            self.emit_block(
+                                f"[callback error] aborted {remaining} "
+                                f"queued item{'s' if remaining != 1 else ''}\n"
+                            )
+                        return
+                    continue
+                # Async path: let the task's done-callback drain next.
+                task.add_done_callback(lambda _t: self._drain_next())
                 return
-            try:
-                result = self._on_command(text)
-            except BaseException as exc:
-                # Sync raise must not stall the queue. Surface + continue.
-                self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
-                self._drain_next()
-                return
-            if asyncio.iscoroutine(result):
-                task = asyncio.ensure_future(result)
 
-                def _after(t: asyncio.Task) -> None:
-                    # Retrieve the exception (if any) so asyncio doesn't log
-                    # "Task exception was never retrieved"; then keep draining.
-                    if not t.cancelled():
-                        exc = t.exception()
-                        if exc is not None:
-                            self.append_output(f"[on_command error] {type(exc).__name__}: {exc}\n")
-                    self._drain_next()
-
-                task.add_done_callback(_after)
-            else:
-                self._drain_next()
+            # Message — gather any consecutive messages so the whole
+            # contiguous text block becomes one agent turn.
+            msgs: list[str] = [text]
+            while self.state.items and self.state.items[0][0] == "msg":
+                msgs.append(self.state.items.pop(0)[1])
+            self.submit_message("\n\n".join(msgs))
+            # Agent's done callback calls _on_agent_done, which calls
+            # _drain_next again once this turn completes.
             return
-
-        # Message — gather any consecutive messages submitted after it
-        # so the whole contiguous text block becomes one agent turn.
-        msgs: list[str] = [text]
-        while self.state.items and self.state.items[0][0] == "msg":
-            msgs.append(self.state.items.pop(0)[1])
-        self.launch_agent("\n\n".join(msgs))
-        # Agent's done callback calls _on_agent_done, which calls
-        # _drain_next again once this turn completes.
 
     # ── output pipeline -----------------------------------------------
 
@@ -581,26 +609,22 @@ class TUIApplication:
         task drains the queue and writes each block in FIFO order via
         ``run_in_terminal`` → ``sys.__stdout__``. No races.
 
-        Thread-safe: if called from a non-event-loop context, uses
-        ``call_soon_threadsafe`` to enqueue.
+        Thread-safe: any mutation of prompt_toolkit state (``Buffer``
+        document, which fires callbacks synchronously) is routed through
+        ``call_soon_threadsafe`` so it always runs on the loop thread.
+        ``list.append`` on ``_output_ansi`` is already GIL-safe.
         """
         if not text:
             return
 
-        # Mirror the plain-text transcript for tests.
+        # GIL-safe: list.append is atomic. Reading from off-thread is fine.
         self._output_ansi.append(text)
-        stripped = _strip_ansi(text)
-        existing = self.output_buffer.text
-        joined = (
-            existing + stripped
-            if not existing or existing.endswith("\n")
-            else existing + "\n" + stripped
-        )
-        self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
-        # Enqueue for the consumer. Before the consumer is up (pre
-        # run_async), fall back to a plain stdout write.
+        # Before the consumer is up (pre-run_async) we're single-threaded
+        # by construction — safe to touch the buffer directly + emit to
+        # stdout. After run_async, route everything via the loop.
         if self._block_queue is None or self._loop is None:
+            self._append_stripped_to_buffer(text)
             import sys as _sys
 
             try:
@@ -609,12 +633,40 @@ class TUIApplication:
             except Exception:
                 pass
             return
-        # Thread-safe enqueue via the captured loop — put_nowait itself
-        # is NOT thread-safe, so always route through call_soon_threadsafe.
+
+        # On-thread fast path: mutate buffer directly so tests that
+        # inspect ``output_buffer.text`` right after a call see the
+        # update without waiting for a loop tick.
+        try:
+            on_thread = asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            on_thread = False
+        if on_thread:
+            self._append_stripped_to_buffer(text)
+            self._block_queue.put_nowait(text)
+            return
+
+        # Off-thread: route everything through the loop so off-thread
+        # producers (e.g. IPython worker, OTEL exporter) never touch
+        # prompt_toolkit state directly.
+        self._loop.call_soon_threadsafe(self._append_stripped_to_buffer, text)
         self._loop.call_soon_threadsafe(self._block_queue.put_nowait, text)
 
-    # Legacy name — producers written before emit_block call this.
-    append_output = emit_block
+    def _append_stripped_to_buffer(self, text: str) -> None:
+        """Append the ANSI-stripped transcript text to ``output_buffer``.
+
+        Runs on the event loop thread (either because ``emit_block``
+        scheduled it via ``call_soon_threadsafe`` or because we're still
+        in the pre-consumer, single-threaded bootstrap phase).
+        """
+        stripped = _strip_ansi(text)
+        existing = self.output_buffer.text
+        joined = (
+            existing + stripped
+            if not existing or existing.endswith("\n")
+            else existing + "\n" + stripped
+        )
+        self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
     # ── surface the harness (and real callers) rely on ----------------
 
@@ -661,7 +713,15 @@ class TUIApplication:
                     pass
             if self._spinner_task is not None and not self._spinner_task.done():
                 self._spinner_task.cancel()
+                # Await so the spinner's finally block runs (invalidate())
+                # and asyncio doesn't emit "Task was destroyed" on loop
+                # close. CancelledError on a cancelled task is expected.
+                try:
+                    await self._spinner_task
+                except (asyncio.CancelledError, BaseException):
+                    pass
             self._consumer_task = None
+            self._spinner_task = None
             self._block_queue = None
             self._loop = None
 
