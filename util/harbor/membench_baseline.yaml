@@ -41,10 +41,13 @@ environment:
   type: apptainer
   kwargs:
     apptainer_binary: apptainer
+    apptainer_fakeroot: false
+    apptainer_image_cache_dir: ~/.cache/harbor/sif
+    env_passthrough: "NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF"
 
 agents:
   - name: nemo-oo-agents
-    model_name: anthropic/claude-sonnet-4-6
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: baseline
       # nemo_oo_agents_git_ref: "main"
