@@ -309,6 +309,13 @@ class ModelCommand(Command):
             self.agent._llm = get_llm_client(selected)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
+        # Summarizer trigger and event-truncation cap both scale with the
+        # model's context window. Swapping the LLM without also swapping
+        # these budgets leaves a large-context session stranded on a
+        # smaller model — e.g. 420K events on a 200K Sonnet window.
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        apply_model_limits(self.agent)
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -369,6 +376,12 @@ class SwitchCommand(Command):
             self.agent._llm = get_llm_client(selected)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
+
+        # Re-resolve summarizer trigger + truncation cap against the new
+        # context window — see apply_model_limits for the math.
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        apply_model_limits(self.agent)
 
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 

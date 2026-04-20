@@ -529,6 +529,25 @@ class TestModelCommand:
         ok, msg = cmd.validate_args([])
         assert ok is True
 
+    async def test_model_switch_calls_apply_model_limits(
+        self, mock_console, mock_config, mock_agent
+    ):
+        """/model <name> must also resync budgets, same as /switch."""
+        import unifiedllm
+
+        cmd = ModelCommand(mock_console, mock_config, mock_agent)
+        original_models = unifiedllm.MODELS
+        unifiedllm.MODELS = {"prov/m": None}
+        try:
+            with (
+                patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()),
+                patch("nemo_oo_agents_cli.tui.agent.apply_model_limits") as mock_apply,
+            ):
+                await cmd.execute(["prov/m"])
+        finally:
+            unifiedllm.MODELS = original_models
+        mock_apply.assert_called_once_with(mock_agent)
+
 
 class TestModelsCommand:
     async def test_lists_models_by_provider(self, mock_console, mock_config, mock_agent):
@@ -606,6 +625,26 @@ class TestSwitchCommand:
             unifiedllm.MODELS = original_models
         assert result.success is True
         assert mock_config.default_model == "prov/m"
+
+    async def test_switch_calls_apply_model_limits(self, mock_console, mock_config, mock_agent):
+        """Regression: switching models MUST re-sync summarizer trigger +
+        truncation cap to the new context window. Forgetting this caused
+        the large→small switch overflow (Opus 1M → Sonnet 200K).
+        """
+        import unifiedllm
+
+        cmd = SwitchCommand(mock_console, mock_config, mock_agent)
+        original_models = unifiedllm.MODELS
+        unifiedllm.MODELS = {"prov/m": None}
+        try:
+            with (
+                patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()),
+                patch("nemo_oo_agents_cli.tui.agent.apply_model_limits") as mock_apply,
+            ):
+                await cmd.execute(["prov/m"])
+        finally:
+            unifiedllm.MODELS = original_models
+        mock_apply.assert_called_once_with(mock_agent)
 
     async def test_llm_switch_failure(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -1435,6 +1474,93 @@ class TestInstallSummarizer:
         installed_cfg = mock_install.call_args.kwargs["config"]
         assert installed_cfg.max_tokens == 50_000
         assert installed_cfg.preserve_recent == 5
+
+    def test_install_seeds_event_truncation_cap(self):
+        """install_summarizer wires the event-render truncation cap against
+        the LLM's context window. Without this, render_context sees
+        ``max_event_tokens=None`` and the total-budget safety net is
+        disabled — a session that switches from a large to a small model
+        can overflow the smaller window before the summarizer catches up.
+        """
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        config = SummarizationConfig()
+        agent = self._mk_agent(context_window=200_000)
+        agent._truncation = TruncationConfig()
+        with patch("nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"):
+            install_summarizer(config, agent)
+        # 200_000 * 0.70 = 140_000
+        assert agent._truncation.max_event_tokens == 140_000
+
+
+class TestApplyModelLimits:
+    """``apply_model_limits`` is called by /model and /switch — resync
+    summarizer trigger + truncation cap after ``agent._llm`` swap.
+
+    Without it, a session running on Opus (1M context, 800K summarizer
+    trigger) can switch to Sonnet (200K context) and immediately ship a
+    prompt that overflows the new window because neither safety net moved
+    with the model.
+    """
+
+    def _mk_agent(self, context_window, existing_summarizer_max=800_000):
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        agent = MagicMock()
+        agent._llm = MagicMock(spec=["context_window"])
+        agent._llm.context_window = context_window
+        # Pretend a summarizer was installed earlier with a stale threshold.
+        summarizer = MagicMock()
+        summarizer.config = TokenBudgetConfig(
+            max_tokens=existing_summarizer_max, preserve_recent=10, target_chars=4000
+        )
+        agent._summarizers = [summarizer]
+        agent._truncation = TruncationConfig(max_event_tokens=700_000)
+        return agent
+
+    def test_shrinking_window_scales_both_budgets_down(self):
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        # Agent was on Opus (1M, 800K summarizer); now switched to Sonnet (200K).
+        agent = self._mk_agent(context_window=200_000, existing_summarizer_max=800_000)
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 160_000  # 200K * 0.80
+        assert agent._truncation.max_event_tokens == 140_000  # 200K * 0.70
+
+    def test_growing_window_scales_both_budgets_up(self):
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=1_000_000, existing_summarizer_max=160_000)
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 800_000
+        assert agent._truncation.max_event_tokens == 700_000
+
+    def test_preserves_other_summarizer_fields(self):
+        """preserve_recent and target_chars survive the config swap."""
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000)
+        agent._summarizers[0].config = TokenBudgetConfig(
+            max_tokens=800_000, preserve_recent=5, target_chars=8000
+        )
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.preserve_recent == 5
+        assert agent._summarizers[0].config.target_chars == 8000
+
+    def test_no_llm_window_falls_back_safely(self):
+        """LLM without context_window attribute doesn't crash — summarizer
+        gets the 100K fallback, truncation cap is cleared (None)."""
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000)
+        agent._llm = MagicMock(spec=[])  # no context_window
+        agent._truncation = TruncationConfig()
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 100_000
+        assert agent._truncation.max_event_tokens is None
 
 
 class TestOrchestrateFunctions:
