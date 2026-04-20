@@ -51,7 +51,6 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "packages/nemo-oo-agents-benchmarks/src"))
 sys.path.insert(0, str(REPO_ROOT / "util/eval_pipeline/src"))
 
-<<<<<<< HEAD
 # Default ground truth: agent006 repo 450-task JSON (same source as historical results)
 _AGENT006_ROOT = REPO_ROOT.parent / "agent006"
 DEFAULT_TASKS_FILE = (
@@ -63,14 +62,6 @@ from difflib import SequenceMatcher  # noqa: E402
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
 from unifiedllm import CompletionClient  # noqa: E402
 from unifiedllm.registry import get_llm_client  # noqa: E402
-=======
-from difflib import SequenceMatcher  # noqa: E402
-
-from datasets import load_dataset  # type: ignore[import]  # noqa: E402
-
-from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
-from unifiedllm import CompletionClient  # noqa: E402
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
 
 # ---------------------------------------------------------------------------
 # DABStep fuzzy scorer (adapted from harbor's scorer.py)
@@ -180,20 +171,12 @@ class DABStepScorer:
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
 # Build task instruction (Harbor instruction.md format)
-=======
-# Build task instruction for the baseline agent
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
 # ---------------------------------------------------------------------------
 
 
 def make_instruction(question: str, guidelines: str, data_dir: str) -> str:
-<<<<<<< HEAD
     """Create task instruction mirroring the Harbor instruction.md template."""
-=======
-    """Create baseline-agent instruction mirroring the harbor instruction.md template."""
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
     return f"""\
 You are an expert data analyst and you will answer factoid questions by referencing files in the data directory: `{data_dir}`
 Don't forget to reference any documentation in the data dir before answering a question.
@@ -209,7 +192,6 @@ When you have computed the final answer, use `return_result(answer)` where answe
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
 # Per-run helper
 # ---------------------------------------------------------------------------
 
@@ -277,13 +259,10 @@ def _make_client(model: str) -> CompletionClient:
 
 
 # ---------------------------------------------------------------------------
-=======
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
 # Main
 # ---------------------------------------------------------------------------
 
 
-<<<<<<< HEAD
 async def main(
     n_tasks: int = 0,
     baseline_model: str = "openai/gpt-4o",
@@ -303,39 +282,20 @@ async def main(
         sys.exit(1)
     all_tasks = json.loads(tasks_file.read_text())
     tasks = all_tasks if n_tasks == 0 else all_tasks[:n_tasks]
-=======
-async def main(n_tasks: int = 5, model_name: str = "openai/gpt-4o") -> None:
-    from nemo_oo_agents_benchmarks.agents.baseline import BaselineAgent
-
-    # Load DABStep dev tasks
-    ds = load_dataset("adyen/DABstep", name="tasks", split="dev")
-    tasks = [dict(row) for row in ds][:n_tasks]
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
 
     data_dir = str(Path(os.path.expanduser("~/.cache/dabstep/data/context")))
     if not Path(data_dir).exists():
         print(f"ERROR: DABStep data not found at {data_dir}")
-<<<<<<< HEAD
         sys.exit(1)
 
     # Build eval data — data_dir is passed explicitly so DABStepAgent can use it
     # without needing to parse it from the instruction text.
-=======
-        print('Run: python -c "from huggingface_hub import hf_hub_download; ..."')
-        sys.exit(1)
-
-    # Build eval data
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
     eval_data = [
         {
             "kwargs": {
                 "task_input": {
-<<<<<<< HEAD
                     "user_message": make_instruction(t["question"], t["guidelines"], data_dir),
                     "data_dir": data_dir,
-=======
-                    "user_message": make_instruction(t["question"], t["guidelines"], data_dir)
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
                 }
             },
             "expected": t["answer"],
@@ -348,7 +308,6 @@ async def main(n_tasks: int = 5, model_name: str = "openai/gpt-4o") -> None:
         for t in tasks
     ]
 
-<<<<<<< HEAD
     n_actual = len(tasks)
     print(f"\nDABStep — {n_actual} tasks from {tasks_file.name}")
     print(f"Data dir: {data_dir}\n")
@@ -437,61 +396,3 @@ if __name__ == "__main__":
             tasks_file=args.tasks_file,
         )
     )
-=======
-    llm_client = CompletionClient(model=model_name)
-
-    evaluator = Evaluator(
-        models={"baseline": llm_client},
-        output_dir=str(REPO_ROOT / ".development/docs/evaluation"),
-        name="dabstep_baseline_gl27",
-    )
-
-    # Provide model metadata for proper traceability in output
-    evaluator._model_metadata = {
-        "baseline": {"id": "baseline", "model_name": model_name},
-    }
-
-    evaluator.add_test(
-        name=f"dabstep_baseline_{n_tasks}tasks",
-        agent_class=BaselineAgent,
-        method="_run_evaluation",
-        data=eval_data,
-        scorers=[DABStepScorer()],
-    )
-
-    print(f"\nRunning {n_tasks} DABStep tasks with {model_name} (baseline agent)...")
-    print(f"Data dir: {data_dir}\n")
-
-    results = await evaluator.run(models=["baseline"])
-
-    print(f"\n{'=' * 60}")
-    print(f"RESULTS: {results.summary()}")
-    print(f"Output: {results.output_file}")
-    print(f"{'=' * 60}\n")
-
-    # Per-task breakdown
-    for r in results.results:
-        actual = r.output
-        if isinstance(actual, dict):
-            actual = actual.get("response", "")
-        expected = r.expected
-        status = "PASS" if r.passed else "FAIL"
-        print(f"  [{status}] (got={actual!r} expected={expected!r})")
-
-    # Summary
-    print(f"\nTotal: {results.passed}/{results.total} = {results.pass_rate:.1f}%")
-    print("\nPrevious agent006 DABStepAgent (Claude): 70-80% on full 10-task dev set")
-    print("Note: BaselineAgent expected lower; this run uses", model_name)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run DABStep smoke test via eval_pipeline")
-    parser.add_argument("--tasks", type=int, default=5, help="Number of tasks to run (default: 5)")
-    parser.add_argument(
-        "--model",
-        default="openai/gpt-4o",
-        help="Model name (default: openai/gpt-4o)",
-    )
-    args = parser.parse_args()
-    asyncio.run(main(n_tasks=args.tasks, model_name=args.model))
->>>>>>> d4a150d0 (docs(benchmarks): document SIF storage at ~/.cache/harbor/sif, link wtf#40)
