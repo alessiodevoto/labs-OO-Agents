@@ -1,9 +1,12 @@
 """
-Run DABStep tasks via eval_pipeline.
+DEBUG ONLY — Run DABStep tasks in-process via eval_pipeline (no container, no Harbor).
 
-Harbor is the canonical way to run benchmark evaluations.  This script
-runs the same agent code against the same benchmark tasks without a container,
-making it faster to iterate on agent changes locally.
+This is a local development shortcut for fast iteration on agent changes.
+It bypasses Harbor entirely: no Docker/Apptainer container, no task.toml environment,
+no Harbor orchestrator. Results may differ from canonical Harbor runs.
+
+THE CANONICAL WAY TO RUN DABSTEP:
+    harbor run --config util/harbor/dabstep_baseline.yaml
 
 Agents:
   baseline  — CodeAct REPL, no benchmark-specific logic (default: openai/gpt-4o)
@@ -17,7 +20,7 @@ Task source (--tasks-file):
   Use --tasks N to limit to first N tasks (0 = all, the default)
 
 Usage:
-    uv run python util/harbor/run_dabstep.py [--tasks 0] [--agent dabstep]
+    uv run python util/harbor/run_dabstep_debug.py [--tasks 5] [--agent dabstep]
 
 See gl-27: Smoke test: run 5 DABStep tasks via Harbor
 """

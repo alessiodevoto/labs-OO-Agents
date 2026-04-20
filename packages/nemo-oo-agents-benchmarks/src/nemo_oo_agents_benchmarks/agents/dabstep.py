@@ -382,7 +382,7 @@ class RulesLawyer(Agent, llm=FakeLLMClient()):
         text_files: dict[str, str],
         dataframes: dict[str, pd.DataFrame],
         json_files: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, RelevantRule]:
         """Find business rules relevant to the question.
 
         ## Question
@@ -450,7 +450,7 @@ class SolutionVerifier(Agent, llm=FakeLLMClient()):
         guidelines: str,
         answer: Any,
         explanation: str,
-        relevant_rules: dict[str, Any],
+        relevant_rules: dict[str, RelevantRule],
         text_files: dict[str, str],
         dataframes: dict[str, pd.DataFrame],
         json_files: dict[str, Any],
@@ -560,7 +560,7 @@ self.format_numeric_answer(value, guidelines)
         self.text_files: dict[str, str] = {}
         self.json_files: dict[str, Any] = {}
         self.dataframes: dict[str, pd.DataFrame] = {}
-        self.relevant_rules: dict[str, Any] = {}
+        self.relevant_rules: dict[str, RelevantRule] = {}
 
         # Make helper functions available to LLM-generated code via self.*
         self.applies_to_all = applies_to_all
@@ -711,9 +711,7 @@ self.format_numeric_answer(value, guidelines)
             return {"response": "", "success": False, "error": str(e)}
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, max_retries=5)))
-    async def compute_answer(
-        self, question: str, guidelines: str, hint: str = ""
-    ) -> AnswerResult:
+    async def compute_answer(self, question: str, guidelines: str, hint: str = "") -> AnswerResult:
         """Compute the answer using data analysis.
 
         ## Question
