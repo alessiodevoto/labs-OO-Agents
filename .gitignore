@@ -343,6 +343,9 @@ experiments/evaluation-ablations/task_temp/
 # Harbor generated task directories (regenerated via `harbor adapter run`)
 util/harbor/tasks/
 
+# Apptainer SIF images — large binaries, stored outside the worktree at ~/.cache/harbor/sif/
+3p/sif_cache/*.sif
+
 # OpenSkills workspace files
 .openskills/
 

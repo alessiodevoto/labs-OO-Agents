@@ -8,7 +8,7 @@
 #   3. DABStep task dirs generated: python util/harbor/generate_dabstep_tasks.py
 #   4. Set env vars:
 #      export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
-#      export ANTHROPIC_API_KEY="sk-ant-..."
+#      export NVIDIA_INTERNAL_API_KEY="sk-..."
 #
 # Run (5 tasks):
 #   harbor run --config util/harbor/dabstep_baseline.yaml
@@ -26,24 +26,28 @@ orchestrator:
   quiet: false
 
 # DABStep uses a custom pre-built SIF with data baked in.
-# The SIF is built from 3p/dabstep.def using:
-#   apptainer build --fakeroot 3p/sif_cache/dabstep.sif 3p/dabstep.def
+# The SIF is built from 3p/dabstep.def using (requires sudo on most machines):
+#   sudo apptainer build ~/.cache/harbor/sif/dabstep.sif 3p/dabstep.def
+#
+# SIF files are stored OUTSIDE the worktree at ~/.cache/harbor/sif/ to avoid
+# per-branch duplication and git bloat. The task.toml docker_image path
+# (3p/sif_cache/dabstep.sif) is resolved relative to the repo root; update it
+# or symlink ~/.cache/harbor/sif → 3p/sif_cache if needed.
 environment:
   type: apptainer
   override_memory_mb: 8192
   kwargs:
     apptainer_binary: apptainer
     apptainer_fakeroot: false
-    # Pre-built SIF with pandas + DABStep data at /app/data/
-    # Harbor resolves docker_image per task.toml; tasks here use the SIF below
+    # SIFs stored outside worktree; symlink or copy to 3p/sif_cache/ as needed
     apptainer_image_cache_dir: 3p/sif_cache
+    env_passthrough: NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:
   - name: nemo-oo-agents
-    model_name: anthropic/claude-sonnet-4-6
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: baseline
-      # nemo_oo_agents_git_ref: "agent/gl-27"  # Use specific branch
 
 datasets:
   # 5 DABStep tasks: 3 easy + 2 hard (dev split subset)
