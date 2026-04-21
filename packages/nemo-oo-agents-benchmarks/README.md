@@ -250,8 +250,10 @@ harbor --version   # expect 0.4.0
 
 ### 2. Configure Apptainer (one-time, requires sudo)
 
-On Ubuntu 24.04, AppArmor restricts unprivileged user namespace creation.
-Apptainer needs its `starter-suid` binary to be setuid root:
+On Ubuntu 24.04, two AppArmor restrictions affect Apptainer:
+
+**a) Mount namespace creation** — needed for all `apptainer exec` calls.
+Fix: install the setuid starter binary:
 
 ```bash
 sudo cp /usr/lib/x86_64-linux-gnu/apptainer/bin/starter \
@@ -259,10 +261,24 @@ sudo cp /usr/lib/x86_64-linux-gnu/apptainer/bin/starter \
 sudo chmod u+s /usr/lib/x86_64-linux-gnu/apptainer/bin/starter-suid
 ```
 
-Verify it works:
+**b) User namespace creation** — needed for `--fakeroot` (required for tasks
+that use `runuser` inside the container, e.g. ACL permission tests).
+Fix: allow unprivileged user namespaces:
 
 ```bash
-apptainer exec docker://ubuntu:22.04 echo "hello"
+# Temporary (until next reboot):
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+# Permanent:
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-apptainer-userns.conf
+sudo sysctl -p /etc/sysctl.d/99-apptainer-userns.conf
+```
+
+Verify both work:
+
+```bash
+apptainer exec docker://ubuntu:22.04 echo "hello"           # basic exec
+apptainer exec --fakeroot docker://ubuntu:22.04 id          # should print uid=0(root)
 ```
 
 ### 3. Get benchmark container images

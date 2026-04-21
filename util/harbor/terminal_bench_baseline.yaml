@@ -43,7 +43,7 @@ environment:
   override_memory_mb: 4096
   kwargs:
     apptainer_binary: apptainer
-    apptainer_fakeroot: false
+    apptainer_fakeroot: true   # required for runuser inside container; needs AppArmor userns allowed (see #135)
     # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
     apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
     # Forward API keys into the container
