@@ -640,6 +640,14 @@ class Session:
         assert self._app is not None
 
         msg = context.get("message", "")
+        # litellm's LiteLLMAiohttpTransport recreates its cached aiohttp
+        # ClientSession on error-recovery / loop-mismatch / session-closed
+        # paths without awaiting close() on the old one. When GC reaps the
+        # orphan, aiohttp's finalizer fires this warning via
+        # call_exception_handler. It's upstream noise, not our bug, and
+        # drowns real diagnostics — drop it before formatting.
+        if msg == "Unclosed client session" or msg == "Unclosed connector":
+            return
         exc = context.get("exception")
         task = context.get("task")
         future = context.get("future")
