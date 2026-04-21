@@ -2367,6 +2367,26 @@ async def {name}({params_str}) -> {return_type}:
             messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
                 messages, cap, llm_client.model
             )
+            if dropped:
+                # Archive the oldest events via event_manager.collapse so:
+                #  (a) next turn's render doesn't re-do the same drop work,
+                #  (b) a Summary event fires → the TUI renderer surfaces
+                #      ``∴ truncated 1..N · M events (no summary)`` to the
+                #      user instead of silently dropping history.
+                #
+                # Fraction of non-system messages dropped is a reasonable
+                # proxy for the fraction of active events to archive;
+                # per-message/per-event isn't strictly 1:1 but close enough
+                # for the archival boundary.
+                active_tags = self.event_manager.keys()
+                rest_total = len(messages) + dropped  # non-system messages rendered
+                fraction = dropped / rest_total if rest_total else 0
+                n_to_archive = int(len(active_tags) * fraction)
+                if n_to_archive > 0 and len(active_tags) > n_to_archive:
+                    try:
+                        self.event_manager.collapse(active_tags[0], active_tags[n_to_archive - 1])
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("post-clamp collapse failed: %s", exc)
             if dropped or total_tok != stats.total_tokens:
                 # Reflect the actual shipped payload in stats so the TUI's
                 # ``ctx N%`` display matches reality.

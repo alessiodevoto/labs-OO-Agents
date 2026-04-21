@@ -170,6 +170,73 @@ class TestStructuredPayloadSafetyNet:
         assert structured < int(agent._llm.context_window * 0.70)
 
     @pytest.mark.asyncio
+    async def test_clamp_emits_summary_event_when_it_truncates(self):
+        """When the safety net drops messages, it MUST archive the
+        corresponding events via ``event_manager.collapse`` so:
+
+        - The TUI renderer sees the Summary event and surfaces
+          ``∴ truncated …`` — user isn't blindsided by silently-dropped
+          history.
+        - Next turn's render doesn't redo the same drop work.
+        """
+        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for i in range(300):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 500},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="x " * 500,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
+
+        # Subscribe to Summary events
+        summary_events = []
+        agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            try:
+                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+            except Exception:
+                pass
+        finally:
+            _current_llm_var.reset(token)
+
+        # Exactly one truncation Summary should fire (summary_text=None).
+        assert len(summary_events) >= 1, "clamp must emit a Summary event"
+        ev = summary_events[0]
+        assert ev.summary_text is None, "truncation form has no summary text"
+        assert ev.children_tags, "summary must reference archived child tags"
+
+    @pytest.mark.asyncio
     async def test_per_call_llm_override_is_honored(self):
         """Per-call LLM override to a smaller model → the CLAMP sizes
         against the override, not the agent's original LLM."""
