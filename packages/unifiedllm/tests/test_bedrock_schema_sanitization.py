@@ -3,11 +3,11 @@
 """Tests for Bedrock JSON schema sanitization.
 
 Bedrock Claude rejects JSON schemas containing integer/number constraints
-(minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf) and
-array constraints (maxItems, minItems > 1). This module tests that the
-sanitization function strips those keywords for Bedrock models while
-preserving supported constraints (minLength, maxLength, pattern) and
-leaving schemas untouched for other providers.
+(minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf),
+string constraints (minLength, maxLength, pattern), and array constraints
+(maxItems, minItems > 1). This module tests that the sanitization function
+strips those keywords for Bedrock models while leaving schemas untouched
+for other providers.
 
 See: gl-134
 """
@@ -87,14 +87,14 @@ class TestSanitizeSchemaForBedrock:
         assert "exclusiveMinimum" not in score_props
         assert "exclusiveMaximum" not in score_props
 
-    def test_preserves_string_length_constraints(self):
-        """minLength/maxLength are accepted by Bedrock (live-verified) — don't strip."""
+    def test_strips_string_length_constraints(self):
+        """minLength/maxLength stripped defensively — blog says unsupported."""
         schema = Rating.model_json_schema()
         sanitized = _sanitize_schema_for_bedrock(schema)
 
         comment_props = sanitized["properties"]["comment"]
-        assert "minLength" in comment_props
-        assert "maxLength" in comment_props
+        assert "minLength" not in comment_props
+        assert "maxLength" not in comment_props
 
     def test_strips_nested_constraints(self):
         """Constraints in nested $defs are also stripped."""
@@ -160,8 +160,8 @@ class TestSanitizeSchemaForBedrock:
         assert tags_props["type"] == "array"
         assert tags_props["items"] == {"type": "string"}
 
-    def test_preserves_pattern(self):
-        """pattern is accepted by Bedrock (live-verified) — don't strip."""
+    def test_strips_pattern(self):
+        """pattern stripped defensively — blog says unsupported."""
         schema = {
             "type": "object",
             "properties": {
@@ -173,7 +173,7 @@ class TestSanitizeSchemaForBedrock:
             "required": ["email"],
         }
         sanitized = _sanitize_schema_for_bedrock(schema)
-        assert "pattern" in sanitized["properties"]["email"]
+        assert "pattern" not in sanitized["properties"]["email"]
 
     def test_strips_multiple_of(self):
         """multipleOf should be stripped."""
@@ -284,7 +284,7 @@ class TestMaybeSanitizeResponseFormat:
         schema = FullModel.model_json_schema()
         sanitized = _sanitize_schema_for_bedrock(schema)
 
-        # Only live-verified failing keywords should be stripped
+        # All keywords documented as unsupported by Bedrock
         forbidden = {
             "minimum",
             "maximum",
@@ -292,6 +292,9 @@ class TestMaybeSanitizeResponseFormat:
             "exclusiveMaximum",
             "multipleOf",
             "maxItems",
+            "minLength",
+            "maxLength",
+            "pattern",
         }
 
         def _collect_keys(node, found=None):

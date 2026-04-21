@@ -361,20 +361,33 @@ class LLMResponse:
 
 
 # --- Bedrock JSON schema sanitization (gl-134) ---
-# Bedrock Claude rejects schemas with integer/number constraints (minimum, maximum, etc.)
-# and array constraints (maxItems, minItems > 1). We strip/fix these for Bedrock models
-# and rely on Pydantic's client-side validation instead.
+# Bedrock Claude rejects schemas with certain JSON schema keywords.
+# We strip/fix these for Bedrock models and rely on Pydantic's client-side
+# validation instead.
+#
+# Source of truth: AWS ML Blog "Structured outputs on Amazon Bedrock"
+# https://aws.amazon.com/blogs/machine-learning/structured-outputs-on-amazon-bedrock-schema-compliant-ai-responses/
+# The blog lists numerical constraints, string constraints, and
+# additionalProperties != false as "Not supported". As of 2025-04-21,
+# numerical + maxItems actively 400; string constraints are silently
+# accepted today but could be tightened at any time (like the numerical
+# constraints were on Apr 20), so we strip them defensively.
 
-# Keywords Bedrock rejects outright — live-verified against
-# aws/anthropic/bedrock-claude-sonnet-4-5-v1 (2026-04-21).
 _BEDROCK_STRIP_KEYWORDS = frozenset(
     {
+        # Numerical — actively rejected (HTTP 400)
         "minimum",
         "maximum",
         "exclusiveMinimum",
         "exclusiveMaximum",
         "multipleOf",
+        # Array — maxItems actively rejected
         "maxItems",
+        # String — blog says unsupported; currently accepted but stripped
+        # defensively to avoid the next silent enforcement tightening.
+        "minLength",
+        "maxLength",
+        "pattern",
     }
 )
 
@@ -389,9 +402,14 @@ def _sanitize_schema_for_bedrock(schema: dict[str, Any]) -> dict[str, Any]:
     """Deep-copy *schema* and strip/fix keywords unsupported by Bedrock.
 
     Bedrock Claude rejects:
-    - Numerical constraints: minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf
+    - Numerical: minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf
+    - String: minLength, maxLength, pattern (docs say unsupported; stripped defensively)
     - Array: maxItems (rejected), minItems > 1 (only 0 and 1 allowed)
     - Object: additionalProperties set to anything other than false
+
+    Assumes Pydantic v2 schema output shapes. Does not recurse into
+    prefixItems, patternProperties, or dependentSchemas (Pydantic v2
+    does not emit these for typical models).
     """
     schema = copy.deepcopy(schema)
     _strip_unsupported_keys(schema)
