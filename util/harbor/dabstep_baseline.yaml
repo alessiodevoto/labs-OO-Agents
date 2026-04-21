@@ -26,21 +26,16 @@ orchestrator:
   quiet: false
 
 # DABStep uses a custom pre-built SIF with data baked in.
-# The SIF is built from 3p/dabstep.def using (requires sudo on most machines):
-#   sudo apptainer build ~/.cache/harbor/sif/dabstep.sif 3p/dabstep.def
-#
-# SIF files are stored OUTSIDE the worktree at ~/.cache/harbor/sif/ to avoid
-# per-branch duplication and git bloat. The task.toml docker_image path
-# (3p/sif_cache/dabstep.sif) is resolved relative to the repo root; update it
-# or symlink ~/.cache/harbor/sif → 3p/sif_cache if needed.
+# The SIF is built from 3p/dabstep.def using:
+#   apptainer build --fakeroot ~/3p/sif_cache/dabstep.sif 3p/dabstep.def
 environment:
   type: apptainer
   override_memory_mb: 8192
   kwargs:
     apptainer_binary: apptainer
     apptainer_fakeroot: false
-    # SIFs stored outside worktree; symlink or copy to 3p/sif_cache/ as needed
-    apptainer_image_cache_dir: 3p/sif_cache
+    # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
+    apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
     env_passthrough: NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:

@@ -267,7 +267,9 @@ apptainer exec docker://ubuntu:22.04 echo "hello"
 
 ### 3. Get benchmark container images
 
-SIF files are stored at `~/3p/sif_cache/` (outside any worktree; will be rsync'd to Lustre for team access).
+All SIF files live in `~/3p/sif_cache/` — a single directory outside any
+worktree, shared across all benchmarks. It will be rsync'd to Lustre for
+team access. Harbor configs reference this as an absolute path.
 
 **DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files):
 
@@ -283,15 +285,16 @@ missing ones with:
 sudo python3 util/harbor/build_terminal_bench_sifs.py --skip-built
 
 # Build specific tasks:
-sudo python3 util/harbor/build_terminal_bench_sifs.py analyze-access-logs cancel-async-tasks
+sudo python3 util/harbor/build_terminal_bench_sifs.py analyze-access-logs
 
 # Dry-run (print generated .def files without building):
 python3 util/harbor/build_terminal_bench_sifs.py --dry-run
 ```
 
-The script translates each task's Dockerfile to an Apptainer `.def` and builds
-on top of the cached base images in the SIF cache. Tasks that use multi-stage
-Docker builds or dynamic `FROM` expressions cannot be translated automatically.
+The script translates each task's Dockerfile to an Apptainer `.def`, builds
+on top of cached base images, and writes SIFs to `~/3p/sif_cache/`. Tasks
+using multi-stage Docker builds or dynamic `FROM` expressions cannot be
+translated automatically (39 of 241 fall into this category).
 
 **SWEBench** — copy from DFW Lustre or pull from Docker Hub:
 
@@ -356,4 +359,6 @@ harbor run --config util/harbor/terminal_bench_baseline.yaml
 | add-benchmark-lm-eval-harness | error | MemoryLimitExceededError (lm-eval-harness OOM at 4 GB) |
 
 Full results and traces: `.development/docs/evaluation/terminal_bench_baseline_gl24_*/`
+
+SIF cache: `~/3p/sif_cache/` (202/241 Terminal Bench SIFs pre-built)
 

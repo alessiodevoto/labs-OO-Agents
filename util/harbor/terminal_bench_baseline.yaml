@@ -44,6 +44,7 @@ environment:
   kwargs:
     apptainer_binary: apptainer
     apptainer_fakeroot: false
+    # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
     apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
     # Forward API keys into the container
     # Do NOT include OPENAI_API_KEY: the runner passes it as api_key override which
