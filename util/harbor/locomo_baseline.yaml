@@ -1,0 +1,55 @@
+# Harbor config for running LoCoMo with the baseline agent.
+#
+# LoCoMo: Long-term Conversational Memory benchmark (ACL 2024).
+# 10 conversations (~600 turns, ~16K tokens each), 5 question types.
+# Scored by token-level F1 (0.0–1.0); pass threshold F1 >= 0.5.
+# Paper: https://arxiv.org/abs/2402.17753
+#
+# Prerequisites:
+#   1. apptainer installed
+#   2. Harbor installed: uv pip install -e 3p/harbor-nemo
+#   3. Generate task dirs (downloads locomo10.json automatically on first run):
+#        python 3p/harbor-nemo/adapters/locomo/run_adapter.py \
+#            --task-dir util/harbor/tasks/locomo
+#   4. Set env vars:
+#        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
+#        export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# Run:
+#   harbor run --config util/harbor/locomo_baseline.yaml
+#
+# Smoke test (5 single-hop tasks):
+#   python 3p/harbor-nemo/adapters/locomo/run_adapter.py \
+#       --task-dir /tmp/locomo_smoke \
+#       --question-types single-hop --limit 5
+#   harbor run --config util/harbor/locomo_baseline.yaml \
+#       --dataset path:/tmp/locomo_smoke
+
+jobs_dir: /tmp/harbor_jobs/locomo_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 2   # Conversations are large (~16K tokens each)
+  quiet: false
+
+environment:
+  type: apptainer
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: false
+    apptainer_image_cache_dir: ~/.cache/harbor/sif
+    env_passthrough: "NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF"
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: baseline
+      # nemo_oo_agents_git_ref: "main"
+
+datasets:
+  # LoCoMo tasks — generated automatically (locomo10.json downloaded on first run).
+  # Generate with: python 3p/harbor-nemo/adapters/locomo/run_adapter.py
+  - path: util/harbor/tasks/locomo
