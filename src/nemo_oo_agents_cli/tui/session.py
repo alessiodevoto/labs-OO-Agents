@@ -641,6 +641,9 @@ class Session:
 
         msg = context.get("message", "")
         exc = context.get("exception")
+        task = context.get("task")
+        future = context.get("future")
+        source_tb = context.get("source_traceback")
         line = f"[asyncio] {msg}"
         if exc is not None:
             line += f" — {type(exc).__name__}: {exc}"
@@ -648,6 +651,28 @@ class Session:
                 line += "\n" + "".join(
                     traceback.format_exception(type(exc), exc, exc.__traceback__)
                 )
+        # Non-exception contexts (e.g. "Task was destroyed but it is pending!")
+        # carry the offending task/future and — when PYTHONASYNCIODEBUG=1 — a
+        # source_traceback pointing at where it was created.
+        if task is not None:
+            line += f"\n  task={task!r}"
+        if future is not None and future is not task:
+            line += f"\n  future={future!r}"
+        if source_tb:
+            line += "\n  source_traceback (where task was created, enable PYTHONASYNCIODEBUG=1):\n"
+            line += "".join(traceback.format_list(source_tb))
+        # Other keys asyncio sometimes supplies (handle, protocol, transport,
+        # socket, peername, client_session, ...). 2000 chars per field covers
+        # aiohttp ``ClientSession`` reprs (~1.1KB — connector/base_url/auth
+        # all land in the middle) without letting a pathologically huge
+        # transport (SSL state, large buffers) swamp the scrollback.
+        from agentdoc import truncating_pformat
+
+        _known = ("message", "exception", "task", "future", "source_traceback")
+        for k, v in context.items():
+            if k in _known:
+                continue
+            line += f"\n  {k}={truncating_pformat(v, max_chars=2000)}"
         line += "\n"
 
         if self._loud_handler_reentrant:

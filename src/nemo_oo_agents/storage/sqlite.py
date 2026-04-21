@@ -329,7 +329,82 @@ class SQLiteEventBackend:
 
 
 class SessionAlreadyActiveError(Exception):
-    """Raised when a session database is already open in another process."""
+    """Raised when a session database is already open in another process.
+
+    Attributes:
+        session_id: The session identifier (db filename stem), if known.
+        owner_pid: PID read from the lock file, or None if unavailable/unparseable.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        session_id: str | None = None,
+        owner_pid: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.session_id = session_id
+        self.owner_pid = owner_pid
+
+
+def _read_lock_pid(lock_path: str) -> int | None:
+    """Read the owner PID written by whichever process currently holds the lock.
+
+    The lock file content is just ASCII digits (see ``_acquire_session_lock``).
+    Returns None if the file is missing, empty, or not parseable.
+    """
+    try:
+        with open(lock_path, "rb") as f:
+            raw = f.read(32).strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _acquire_session_lock(lock_path: str) -> int:
+    """Acquire an exclusive flock on *lock_path*, returning the held fd.
+
+    Raises SessionAlreadyActiveError, annotated with the recorded owner PID
+    so the caller can tell the user exactly which process is holding the
+    session. On Linux/macOS flock is released by the kernel when the owning
+    process dies, so a genuine crash doesn't wedge the next run — no
+    stale-file cleanup needed here.
+
+    Lock file contents: the ASCII decimal PID of the current owner. We
+    truncate before writing so a shorter PID can't leave trailing digits
+    from a longer predecessor.
+    """
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        owner_pid = _read_lock_pid(lock_path)
+        session_id = Path(lock_path).stem
+        if owner_pid is not None:
+            msg = (
+                f"Session {session_id!r} is already active in another process "
+                f"(pid {owner_pid}). If that process is gone, remove "
+                f"{lock_path!r} to reclaim the session."
+            )
+        else:
+            msg = (
+                f"Session {session_id!r} is already active in another process "
+                f"(owner pid unavailable — lock file {lock_path!r} is empty or unreadable)."
+            )
+        raise SessionAlreadyActiveError(msg, session_id=session_id, owner_pid=owner_pid) from None
+
+    # Holder now; replace any stale predecessor PID with ours.
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode())
+    return fd
 
 
 class SQLiteStorageManager:
@@ -360,18 +435,7 @@ class SQLiteStorageManager:
 
         if self._db_path != ":memory:":
             lock_path = str(Path(self._db_path).with_suffix(".lock"))
-            fd = None
-            try:
-                fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY)
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                os.write(fd, str(os.getpid()).encode())
-                self._lock_fd = fd
-            except OSError as e:
-                if fd is not None:
-                    os.close(fd)
-                raise SessionAlreadyActiveError(
-                    f"Session {Path(self._db_path).stem!r} is already active in another process"
-                ) from e
+            self._lock_fd = _acquire_session_lock(lock_path)
 
         try:
             self._conn = sqlite3.connect(self._db_path)

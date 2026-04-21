@@ -259,7 +259,10 @@ class TestSummarizationConfig:
     def test_defaults(self):
         s = SummarizationConfig()
         assert s.policy == "token_budget"
-        assert s.max_tokens == 100_000
+        # None means "scale from the model's context window at install time"
+        # — see install_summarizer. The previous absolute 100K fired at ~10%
+        # usage on 1M-context models and made summarization feel constant.
+        assert s.max_tokens is None
         assert s.window_size == 50
         assert s.preserve_recent == 10
 
@@ -526,6 +529,25 @@ class TestModelCommand:
         ok, msg = cmd.validate_args([])
         assert ok is True
 
+    async def test_model_switch_calls_apply_model_limits(
+        self, mock_console, mock_config, mock_agent
+    ):
+        """/model <name> must also resync budgets, same as /switch."""
+        import unifiedllm
+
+        cmd = ModelCommand(mock_console, mock_config, mock_agent)
+        original_models = unifiedllm.MODELS
+        unifiedllm.MODELS = {"prov/m": None}
+        try:
+            with (
+                patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()),
+                patch("nemo_oo_agents_cli.tui.agent.apply_model_limits") as mock_apply,
+            ):
+                await cmd.execute(["prov/m"])
+        finally:
+            unifiedllm.MODELS = original_models
+        mock_apply.assert_called_once_with(mock_agent)
+
 
 class TestModelsCommand:
     async def test_lists_models_by_provider(self, mock_console, mock_config, mock_agent):
@@ -603,6 +625,26 @@ class TestSwitchCommand:
             unifiedllm.MODELS = original_models
         assert result.success is True
         assert mock_config.default_model == "prov/m"
+
+    async def test_switch_calls_apply_model_limits(self, mock_console, mock_config, mock_agent):
+        """Regression: switching models MUST re-sync summarizer trigger +
+        truncation cap to the new context window. Forgetting this caused
+        the large→small switch overflow (Opus 1M → Sonnet 200K).
+        """
+        import unifiedllm
+
+        cmd = SwitchCommand(mock_console, mock_config, mock_agent)
+        original_models = unifiedllm.MODELS
+        unifiedllm.MODELS = {"prov/m": None}
+        try:
+            with (
+                patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()),
+                patch("nemo_oo_agents_cli.tui.agent.apply_model_limits") as mock_apply,
+            ):
+                await cmd.execute(["prov/m"])
+        finally:
+            unifiedllm.MODELS = original_models
+        mock_apply.assert_called_once_with(mock_agent)
 
     async def test_llm_switch_failure(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -1393,18 +1435,126 @@ from nemo_oo_agents_cli.tui.agent import (  # noqa: E402
 
 
 class TestInstallSummarizer:
+    def _mk_agent(self, context_window=1_000_000):
+        agent = MagicMock()
+        agent._llm = MagicMock(spec=["context_window"])
+        agent._llm.context_window = context_window
+        return agent
+
     def test_policy_none_does_nothing(self):
         config = SummarizationConfig(policy="none")
-        agent = MagicMock()
-        install_summarizer(config, agent)
-        # Nothing should be called on agent
-
-    def test_token_budget_installs_summarizer(self):
-        config = SummarizationConfig(policy="token_budget", max_tokens=50_000, preserve_recent=5)
-        agent = MagicMock()
-        with patch("nemo_oo_agents_cli.tui.agent.TokenBudgetSummarizer") as MockSummarizer:
+        agent = self._mk_agent()
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
             install_summarizer(config, agent)
-            MockSummarizer.install.assert_called_once()
+        mock_install.assert_not_called()
+
+    def test_none_max_tokens_scales_from_model_context_window(self):
+        """Default (None) → 80% of context_window. Prevents the ``ctx 8%``
+        firing issue that made summarization feel constant on 1M-context
+        models."""
+        config = SummarizationConfig()  # max_tokens=None
+        agent = self._mk_agent(context_window=1_000_000)
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
+            install_summarizer(config, agent)
+        installed_cfg = mock_install.call_args.kwargs["config"]
+        assert installed_cfg.max_tokens == 800_000
+
+    def test_explicit_max_tokens_passed_through(self):
+        """An explicit integer bypasses auto-scaling."""
+        config = SummarizationConfig(max_tokens=50_000, preserve_recent=5)
+        agent = self._mk_agent(context_window=1_000_000)
+        with patch(
+            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
+        ) as mock_install:
+            install_summarizer(config, agent)
+        installed_cfg = mock_install.call_args.kwargs["config"]
+        assert installed_cfg.max_tokens == 50_000
+        assert installed_cfg.preserve_recent == 5
+
+    def test_install_does_not_seed_event_budget(self):
+        """The TUI only manages the summarizer's overall budget.
+        Event-pile truncation is enforced at the runtime level (sized from
+        the *resolved* LLM's context window each call), so no explicit
+        ``max_event_tokens`` belongs in the agent's TruncationConfig.
+        """
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        config = SummarizationConfig()
+        agent = self._mk_agent(context_window=200_000)
+        agent._truncation = TruncationConfig()
+        with patch("nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"):
+            install_summarizer(config, agent)
+        assert agent._truncation.max_event_tokens is None
+
+
+class TestApplyModelLimits:
+    """``apply_model_limits`` resyncs the summarizer trigger when the
+    agent's LLM changes (``/model``, ``/switch``). Truncation is a
+    runtime-level concern and isn't touched here.
+    """
+
+    def _mk_agent(self, context_window, existing_summarizer_max=800_000):
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        agent = MagicMock()
+        agent._llm = MagicMock(spec=["context_window"])
+        agent._llm.context_window = context_window
+        summarizer = MagicMock()
+        summarizer.config = TokenBudgetConfig(
+            max_tokens=existing_summarizer_max, preserve_recent=10, target_chars=4000
+        )
+        agent._summarizers = [summarizer]
+        agent._truncation = TruncationConfig()
+        return agent
+
+    def test_shrinking_window_scales_summarizer_down(self):
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000, existing_summarizer_max=800_000)
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 160_000  # 200K * 0.80
+
+    def test_growing_window_scales_summarizer_up(self):
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=1_000_000, existing_summarizer_max=160_000)
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 800_000
+
+    def test_preserves_other_summarizer_fields(self):
+        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000)
+        agent._summarizers[0].config = TokenBudgetConfig(
+            max_tokens=800_000, preserve_recent=5, target_chars=8000
+        )
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.preserve_recent == 5
+        assert agent._summarizers[0].config.target_chars == 8000
+
+    def test_does_not_touch_truncation_config(self):
+        """Truncation is a runtime concern — apply_model_limits must not
+        mutate ``agent._truncation``."""
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000)
+        original_trunc = agent._truncation
+        apply_model_limits(agent)
+        assert agent._truncation is original_trunc
+
+    def test_no_llm_window_falls_back_safely(self):
+        from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+        agent = self._mk_agent(context_window=200_000)
+        agent._llm = MagicMock(spec=[])  # no context_window
+        apply_model_limits(agent)
+        assert agent._summarizers[0].config.max_tokens == 100_000
 
 
 class TestOrchestrateFunctions:

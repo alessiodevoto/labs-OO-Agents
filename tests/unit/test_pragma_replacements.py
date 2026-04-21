@@ -146,33 +146,43 @@ class TestHandleBlockSyntaxError:
 class TestContextBudget:
     """context_budget() — formerly 3 pragmas on a pure function."""
 
-    def test_returns_percentage_of_context_limit(self):
+    def test_returns_percentage_of_context_window(self):
+        """``context_window`` is the canonical UnifiedLLM attribute."""
         from nemo_oo_agents.agents.summarization import context_budget
 
-        llm = MagicMock()
+        llm = MagicMock(spec=["context_window"])
+        llm.context_window = 1_000_000
+        assert context_budget(llm, 0.8) == 800_000
+        assert context_budget(llm, 0.5) == 500_000
+
+    def test_falls_back_to_context_limit(self):
+        """Legacy callers that set ``context_limit`` on custom wrappers still work."""
+        from nemo_oo_agents.agents.summarization import context_budget
+
+        llm = MagicMock(spec=["context_limit"])
         llm.context_limit = 100_000
         assert context_budget(llm, 0.8) == 80_000
-        assert context_budget(llm, 0.5) == 50_000
 
-    def test_returns_fallback_when_no_context_limit(self):
+    def test_returns_fallback_when_no_attributes(self):
         from nemo_oo_agents.agents.summarization import context_budget
 
         llm = MagicMock(spec=[])  # no attributes
         assert context_budget(llm) == 100_000
         assert context_budget(llm, fallback=50_000) == 50_000
 
-    def test_returns_fallback_when_context_limit_is_none(self):
+    def test_returns_fallback_when_attributes_are_none(self):
         from nemo_oo_agents.agents.summarization import context_budget
 
-        llm = MagicMock()
+        llm = MagicMock(spec=["context_window", "context_limit"])
+        llm.context_window = None
         llm.context_limit = None
         assert context_budget(llm) == 100_000
 
     def test_default_percent_is_80(self):
         from nemo_oo_agents.agents.summarization import context_budget
 
-        llm = MagicMock()
-        llm.context_limit = 200_000
+        llm = MagicMock(spec=["context_window"])
+        llm.context_window = 200_000
         assert context_budget(llm) == 160_000
 
 

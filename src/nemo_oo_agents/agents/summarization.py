@@ -180,23 +180,27 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _handle_after_turn(self, event: "EventBase") -> None:
-        """Check if summarization needed and schedule it.
+        """Check whether to schedule a summarization.
 
-        Flow:
-        1. If a previous summarization completed, apply it first
-        2. If still over budget after applying, schedule another round
-        3. Only skip if summarization is still actively running
+        Never applies pending summaries — that's ``_handle_before_turn``'s
+        job. Keeping the two phases separate means ``_should_summarize``
+        always reads ``agent.context_stats`` from the most recent
+        ``_build_messages()`` call, which reflects the actual event list
+        the LLM just saw. Applying a collapse inside this same handler (as
+        earlier versions did) left stats stale for the immediate
+        ``_should_summarize`` call and produced the cascade pattern where
+        a fresh summary was followed seconds later by another over a
+        handful of newly-added events.
+
+        Dedup guard skips while ANY pending state exists — running OR
+        done-but-not-yet-applied. Without this, a task that finished mid
+        -turn would be overwritten by a new schedule call, losing the
+        waiting-to-apply summary.
         """
         from nemo_oo_agents.events import AfterTurn as _AfterTurn
 
-        # Apply any completed summary first
-        self._apply_pending_summary()
-
-        # Don't start new summarization if one is STILL RUNNING
-        if self._pending_task is not None and not self._pending_task.done():
+        if self._pending_task is not None:
             return
-
-        # Note: if _pending_task was done, _apply_pending_summary() already cleared it.
 
         if not isinstance(event, _AfterTurn):
             return
@@ -311,7 +315,14 @@ class SummarizationAgent(Agent):
 
     @hidden
     def _apply_pending_summary(self) -> None:
-        """Apply completed summary to target event manager."""
+        """Apply a completed summary to the target event manager.
+
+        Called only from ``_handle_before_turn``. Running exclusively at
+        the turn boundary guarantees the next ``_build_messages()`` sees
+        the collapsed event list, so the subsequent ``_should_summarize``
+        check at AfterTurn reads fresh stats — no cascade from stale
+        cached totals possible.
+        """
         if self._pending_task is None:
             return
 
@@ -428,22 +439,29 @@ class SummarizationAgent(Agent):
 # Helper Functions
 # =============================================================================
 def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> int:
-    """Calculate token budget as percentage of LLM context limit.
+    """Calculate token budget as percentage of the LLM's context window.
 
     Args:
-        llm: LLM instance with context_limit attribute
+        llm: LLM instance with ``context_window`` attribute (``context_limit``
+             also accepted for historical callers)
         percent: Fraction of context to use (0.0-1.0), default 0.8 (80%)
-        fallback: Value if LLM doesn't expose context_limit
+        fallback: Value returned when the LLM doesn't expose either attribute
 
     Returns:
-        Token budget as integer
+        Token budget as integer.
 
     Example:
-        TokenBudgetSummarizer.install(agent, max_tokens=context_budget(my_llm, 0.8))
+        TokenBudgetSummarizer.install(
+            agent, config=TokenBudgetConfig(max_tokens=context_budget(my_llm, 0.8))
+        )
     """
-    context_limit = getattr(llm, "context_limit", None)
-    if context_limit is not None:
-        return int(context_limit * percent)
+    # ``context_window`` is the UnifiedLLM convention. ``context_limit`` was
+    # the originally-documented attribute name but no shipped LLM client sets
+    # it — falling back keeps the helper useful for any custom wrapper that
+    # does.
+    limit = getattr(llm, "context_window", None) or getattr(llm, "context_limit", None)
+    if limit is not None:
+        return int(limit * percent)
     return fallback
 
 

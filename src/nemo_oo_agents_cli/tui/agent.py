@@ -24,7 +24,12 @@ with hidden:
 
 # Standard library — all visible in REPL
 import json  # noqa: F401
-import os
+import re  # noqa: F401
+
+# os is used by this module (NEMO_RICH_URL check) but not useful to expose to
+# the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
+with hidden:
+    import os
 
 # Optional third-party libraries — visible in REPL (use np, pd, px, go directly)
 try:
@@ -102,11 +107,49 @@ with hidden:
         _DEFAULT_LLM = FakeLLMClient()
 
 
+# Summarizer trigger as a fraction of the LLM's context window. This is the
+# ONLY budget the TUI manages — event-pile truncation is enforced at the
+# runtime level (see ActorRuntime._build_messages) and adapts to whichever
+# LLM is actually resolved for each call (including per-call overrides).
+_SUMMARIZER_BUDGET_PCT = 0.8
+
+
+def _summarizer_budget(llm: "UnifiedLLM") -> int:
+    """Resolve the summarizer trigger from the LLM's context window.
+
+    Falls back to 100K when the LLM doesn't expose ``context_window`` so
+    we still have a functional threshold.
+    """
+    cw = getattr(llm, "context_window", None)
+    return int(cw * _SUMMARIZER_BUDGET_PCT) if cw else 100_000
+
+
+def apply_model_limits(agent: Agent) -> None:
+    """Sync the summarizer trigger against ``agent._llm.context_window``.
+
+    Call after a model switch so the summarizer threshold moves with the
+    new context window. Runtime-level event truncation picks up the new
+    window automatically on the next ``_build_messages`` call.
+    """
+    from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+
+    summarizer_max = _summarizer_budget(agent._llm)
+    for summarizer in getattr(agent, "_summarizers", []):
+        current = summarizer.config
+        summarizer.config = TokenBudgetConfig(
+            max_tokens=summarizer_max,
+            preserve_recent=current.preserve_recent,
+            target_chars=current.target_chars,
+        )
+
+
 def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     """Install a summarizer on the agent based on configuration.
 
     Args:
-        config: Summarization configuration
+        config: Summarization configuration. ``config.max_tokens=None`` (the
+            default) resolves to 80% of the agent LLM's context window at
+            install time, so the trigger scales with model capability.
         agent: Agent to install summarizer on (inherits LLM, attaches to history)
     """
     if config.policy == "none":
@@ -114,10 +157,14 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
 
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
 
+    summarizer_max = (
+        config.max_tokens if config.max_tokens is not None else _summarizer_budget(agent._llm)
+    )
+
     TokenBudgetSummarizer.install(
         agent,
         config=TokenBudgetConfig(
-            max_tokens=config.max_tokens,
+            max_tokens=summarizer_max,
             preserve_recent=config.preserve_recent,
             target_chars=config.target_chars,
         ),

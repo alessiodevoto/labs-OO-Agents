@@ -167,6 +167,44 @@ class TestEventManagerOn:
 
         assert handler.call_count == 2
 
+    def test_collapse_emits_summary_to_handlers(self):
+        """collapse() should notify ``Summary`` subscribers just like add()
+        does. The TUI relies on this to surface a live line whenever a
+        summarization or truncation is applied — without it, the summarizer
+        is silent and pathological cascades go unnoticed.
+        """
+        manager = EventManager()
+        handler = MagicMock()
+        manager.on("Summary", handler)
+
+        # Populate with a few events so collapse has something to fold.
+        for i in range(5):
+            manager.add(Task(prompt=f"Task {i}"))
+
+        summary_tag = manager.collapse("1", "3", summary_text="Summary of 1-3")
+
+        handler.assert_called_once()
+        event = handler.call_args[0][0]
+        assert event.summary_tag == summary_tag == "1..3"
+        assert event.summary_text == "Summary of 1-3"
+
+    def test_collapse_without_summary_text_still_emits(self):
+        """Truncation (summary_text=None) should also fire the ``Summary``
+        handler — callers that watch for all collapses (e.g. the TUI
+        renderer's truncated-vs-summarized branches) need the signal."""
+        manager = EventManager()
+        handler = MagicMock()
+        manager.on("Summary", handler)
+
+        for i in range(3):
+            manager.add(Task(prompt=f"Task {i}"))
+
+        manager.collapse("1", "2")  # truncation, no summary_text
+
+        handler.assert_called_once()
+        event = handler.call_args[0][0]
+        assert event.summary_text is None
+
 
 class TestEventManagerQuery:
     """Tests for EventManager query methods."""

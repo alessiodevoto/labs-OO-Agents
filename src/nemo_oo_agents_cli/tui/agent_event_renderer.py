@@ -59,6 +59,15 @@ class _PythonOutputEvent(Protocol):
     stderr: str
 
 
+class _SummaryEvent(Protocol):
+    """Fields the renderer reads from a ``Summary`` event."""
+
+    summary_tag: str
+    replaced_range: tuple[int, int]
+    children_tags: list[str]
+    summary_text: str | None
+
+
 class AgentEventRenderer:
     """Render agent events into the TUI block queue, in turn order."""
 
@@ -103,6 +112,7 @@ class AgentEventRenderer:
                 em.on("Reasoning", self._on_reasoning),
                 em.on("ToolCallEvent", self._on_tool_call),
                 em.on("PythonOutput", self._on_python_output),
+                em.on("Summary", self._on_summary),
             ]
         )
         # Chain onto any prior hook so we don't silently stomp observers.
@@ -253,3 +263,36 @@ class AgentEventRenderer:
             for line in stderr.rstrip("\n").split("\n"):
                 self._emit_text(Text(f"  │ {line}", style="red"))
         self._flush_messages()
+
+    def _on_summary(self, event: _SummaryEvent) -> None:
+        """Render a dim one-line notice when a summary/truncation is applied.
+
+        Makes the summarizer visible: seeing back-to-back lines here is the
+        signal that lets the user catch cascade bugs (same diagnosis we just
+        did via the DB, but live). Format:
+
+            ∴ summarized 1..600 · 600 events → 2.5KB summary
+            ∴ truncated 1..600 · 600 events (no summary)
+        """
+        tag = getattr(event, "summary_tag", "") or ""
+        rng = getattr(event, "replaced_range", None) or (0, 0)
+        children = getattr(event, "children_tags", None) or []
+        text = getattr(event, "summary_text", None)
+
+        # Event count: prefer children_tags len (exact, survives nested
+        # summaries) over replaced_range width (always an upper bound).
+        n_events = len(children) if children else max(0, rng[1] - rng[0] + 1)
+
+        if text is None:
+            detail = f"{n_events} events (no summary)"
+            verb = "truncated"
+        else:
+            chars = len(text)
+            if chars >= 1024:
+                size = f"{chars / 1024:.1f}KB"
+            else:
+                size = f"{chars}B"
+            detail = f"{n_events} events → {size} summary"
+            verb = "summarized"
+
+        self._emit_text(Text(f"∴ {verb} {tag} · {detail}", style="dim italic"))

@@ -74,7 +74,8 @@ def _harness_metrics_lifecycle(should_trace: bool):
             try:
                 _hm.flush_to_span()
             finally:
-                restore_harness_metrics(_prev_hm)
+                if _prev_hm is not None:
+                    restore_harness_metrics(_prev_hm)
         if _llm_cb_token is not None:
             try:
                 from unifiedllm.unifiedllm import _llm_metrics_callback
@@ -116,6 +117,63 @@ warnings.filterwarnings(
     message=r"invalid escape sequence",
     category=SyntaxWarning,
 )
+
+
+def _clamp_messages_to_budget(
+    messages: list[dict[str, Any]], budget: int, model: str
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    """Drop oldest non-system messages until structured tokens fit ``budget``.
+
+    Uses ``litellm.token_counter`` to measure the structured payload (the
+    same counter the API will use). Single O(n) walk from newest backward.
+    System messages are always kept.
+
+    Returns ``(clamped_messages, total_tokens, events_tokens, dropped)``
+    where ``total_tokens`` is the post-clamp structured count, ``events_tokens``
+    is that minus the system-message share, and ``dropped`` is how many
+    non-system messages were removed.
+    """
+    try:
+        import litellm
+    except ImportError:
+        return messages, 0, 0, 0
+
+    system = [m for m in messages if m.get("role") == "system"]
+    rest = [m for m in messages if m.get("role") != "system"]
+    system_cost = int(litellm.token_counter(model=model, messages=system)) if system else 0
+
+    # Fast path: already fits.
+    total = int(litellm.token_counter(model=model, messages=messages))
+    if total <= budget:
+        return messages, total, max(0, total - system_cost), 0
+
+    available = budget - system_cost
+    if available <= 0:
+        # System alone exceeds budget — nothing we can do here; let the
+        # API surface the error.
+        return messages, total, max(0, total - system_cost), 0
+
+    # Walk newest → oldest, keep as long as we fit.
+    running = 0
+    keep_from = len(rest)
+    for i in range(len(rest) - 1, -1, -1):
+        cost = int(litellm.token_counter(model=model, messages=[rest[i]]))
+        if running + cost > available:
+            break
+        running += cost
+        keep_from = i
+
+    dropped = keep_from
+    logger.warning(
+        "context-window safety net: dropped %d oldest message(s) "
+        "(structured total %d > budget %d → keeping %d, sum=%d)",
+        dropped,
+        total,
+        budget,
+        len(rest) - dropped,
+        system_cost + running,
+    )
+    return system + rest[keep_from:], system_cost + running, running, dropped
 
 
 def _strip_blocked_modules(
@@ -468,7 +526,10 @@ class ActorRuntime:
         if self._current_method is None:
             raise RuntimeError("generate() called with no current method context")
 
-        # Build messages from context + events (timers inside _build_messages)
+        # Build messages from context + events (timers inside _build_messages).
+        # The structured-payload safety net inside _build_messages clamps
+        # against ``llm.context_window``; tools are a small fraction (~350
+        # tokens for CodeAct, measured) and don't need separate accounting.
         messages = await self._build_messages(
             self._current_method,
             call_args=self._current_call.args if self._current_call else (),
@@ -2245,7 +2306,14 @@ async def {name}({params_str}) -> {return_type}:
             blocks = await self._prepare_context(method, call_args, call_kwargs)
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
-        need_token_counter = tc.max_context_tokens is not None or tc.max_event_tokens is not None
+
+        # Pre-render clamp: content-level ``max_event_tokens``. Loose upper
+        # bound — we do the authoritative structured-level check AFTER
+        # render_context produces the full messages list (see below).
+        effective_event_limit = tc.max_event_tokens
+        ctx_window = getattr(llm_client, "context_window", None)
+
+        need_token_counter = tc.max_context_tokens is not None or effective_event_limit is not None
         if need_token_counter and not callable(getattr(llm_client, "count_tokens", None)):
             raise RuntimeError(
                 "max_context_tokens / max_event_tokens requires a token counter, but the LLM "
@@ -2275,10 +2343,59 @@ async def {name}({params_str}) -> {return_type}:
                 provider_formatter=self.agent.render_config.provider_formatter,
                 block_limit=tc.max_block_chars,
                 context_limit=tc.max_context_tokens,
-                event_limit=tc.max_event_tokens,
+                event_limit=effective_event_limit,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
-        self._last_context_stats = result.stats
-        return result.output
+
+        # Authoritative structured-payload safety net. The content-level
+        # counter used inside render_context misses ~60% of the tokens
+        # the API actually sees — JSON message wrappers (role/content-
+        # array/tool_use/tool_result) plus the ``<event_xxx>`` XML that
+        # ``format_message_content`` emits. Observed on a real session:
+        # 101K content → 163K structured (litellm) → 207K at Bedrock.
+        #
+        # Count the final messages list with ``litellm.token_counter``
+        # and drop oldest non-system messages until total fits under
+        # ``ctx_window × 0.70``. The 30% margin covers the litellm→API
+        # tokenizer gap.
+        messages = result.output
+        stats = result.stats
+        if ctx_window and isinstance(messages, list) and messages:
+            cap = int(ctx_window * 0.70)
+            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
+                messages, cap, llm_client.model
+            )
+            if dropped:
+                # Archive the oldest events via event_manager.collapse so:
+                #  (a) next turn's render doesn't re-do the same drop work,
+                #  (b) a Summary event fires → the TUI renderer surfaces
+                #      ``∴ truncated 1..N · M events (no summary)`` to the
+                #      user instead of silently dropping history.
+                #
+                # Fraction of non-system messages dropped is a reasonable
+                # proxy for the fraction of active events to archive;
+                # per-message/per-event isn't strictly 1:1 but close enough
+                # for the archival boundary.
+                active_tags = self.event_manager.keys()
+                rest_total = len(messages) + dropped  # non-system messages rendered
+                fraction = dropped / rest_total if rest_total else 0
+                n_to_archive = int(len(active_tags) * fraction)
+                if n_to_archive > 0 and len(active_tags) > n_to_archive:
+                    try:
+                        self.event_manager.collapse(active_tags[0], active_tags[n_to_archive - 1])
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("post-clamp collapse failed: %s", exc)
+            if dropped or total_tok != stats.total_tokens:
+                # Reflect the actual shipped payload in stats so the TUI's
+                # ``ctx N%`` display matches reality.
+                stats = stats.model_copy(
+                    update={
+                        "total_tokens": total_tok,
+                        "events_tokens": events_tok,
+                        "events_dropped": stats.events_dropped + dropped,
+                    }
+                )
+        self._last_context_stats = stats
+        return messages

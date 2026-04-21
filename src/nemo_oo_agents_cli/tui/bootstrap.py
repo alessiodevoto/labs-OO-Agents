@@ -199,11 +199,13 @@ async def bootstrap(
 
     try:
         agent_storage = SQLiteStorageManager(agent_db)
-    except SessionAlreadyActiveError:
+    except SessionAlreadyActiveError as e:
         # Another process owns this session — start a fresh one instead.
+        detail = f" (pid {e.owner_pid})" if e.owner_pid is not None else ""
         messages.append(
             TextOutput(
-                f"Session {_session_id[:8]!r} is already active in another process, starting new.",
+                f"Session {_session_id[:8]!r} is already active in another process{detail}, "
+                "starting new.",
                 "warning",
             )
         )

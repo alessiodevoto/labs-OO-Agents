@@ -36,10 +36,17 @@ DEFAULT_MODEL = "aws/anthropic/bedrock-claude-opus-4-6"
 
 @dataclass
 class SummarizationConfig:
-    """Configuration for history summarization."""
+    """Configuration for history summarization.
+
+    ``max_tokens`` defaults to ``None`` meaning "80% of the LLM's context
+    window, resolved at install time." The old 100K absolute was fine when
+    models had ~200K context but fired at ~10% usage on 1M-context models
+    like Opus 4.6, making summarization feel constant. Set an explicit
+    integer to pin a specific threshold.
+    """
 
     policy: Literal["token_budget", "sliding_window", "none"] = "token_budget"
-    max_tokens: int = 100_000
+    max_tokens: int | None = None
     window_size: int = 50
     preserve_recent: int = 10
     target_chars: int = 4000
