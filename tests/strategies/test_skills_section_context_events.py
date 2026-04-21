@@ -121,6 +121,7 @@ def _extract_execution_context(system_prompt: str) -> str:
     start = system_prompt.find("<execution_context")
     assert start >= 0, "No <execution_context> block in system prompt"
     end = system_prompt.find("</execution_context>", start)
+    assert end >= 0, "No </execution_context> closing tag in system prompt"
     return system_prompt[start : end + len("</execution_context>")]
 
 
