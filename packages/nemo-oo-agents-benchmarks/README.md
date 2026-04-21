@@ -366,15 +366,18 @@ harbor run --config util/harbor/terminal_bench_baseline.yaml
 
 ### Terminal Bench — smoke test (5 tasks, bedrock-claude-sonnet-4-5-v1, gl-24)
 
+Run: 2026-04-21, apptainer + fakeroot=true, `aws/anthropic/bedrock-claude-sonnet-4-5-v1` via NVIDIA proxy.
+Mean reward: **0.2** (1/5). Runtime: ~12 minutes.
+
 | Task | Reward | Notes |
 |------|--------|-------|
 | analyze-access-logs | **1.0** | 3/3 pytest pass — agent correctly parsed 2000-line access log |
-| acl-permissions-inheritance | 0.0 | 2/9 tests pass |
-| adaptive-rejection-sampler | 0.0 | 4/9 tests pass (R runs; sampling logic incorrect) |
-| cancel-async-tasks | 0.0 | Agent did not create required files |
-| add-benchmark-lm-eval-harness | error | MemoryLimitExceededError (lm-eval-harness OOM at 4 GB) |
+| cancel-async-tasks | 0.0 | 5/6 tests pass — missed `test_tasks_cancel_above_max_concurrent` |
+| adaptive-rejection-sampler | 0.0 | 4/9 tests pass (structure OK; sampling values incorrect) |
+| acl-permissions-inheritance | 0.0 | 0/9 tests pass — agent wrote setup script but did not execute it |
+| add-benchmark-lm-eval-harness | error | MemoryLimitExceededError — lm-eval-harness OOM at ~4.9 GB (limit 4 GB) |
 
-Full results and traces: `.development/docs/evaluation/terminal_bench_baseline_gl24_*/`
+Full results: `/tmp/harbor_jobs/terminal_bench_baseline/2026-04-21__17-15-10/result.json`
 
 SIF cache: `~/3p/sif_cache/` (202/241 Terminal Bench SIFs pre-built)
 

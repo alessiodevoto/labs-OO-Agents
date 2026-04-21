@@ -294,14 +294,14 @@ def update_task_toml(task_dir: Path, sif_path: Path) -> None:
         print("  task.toml already has docker_image — skipping")
         return
 
-    rel = sif_path.relative_to(WORKTREE_ROOT)
+    # Use the absolute path so task.toml is portable across worktrees.
     updated = content.replace(
         "[environment]\n",
-        f'[environment]\ndocker_image = "{rel}"\n',
+        f'[environment]\ndocker_image = "{sif_path}"\n',
         1,
     )
     toml_path.write_text(updated)
-    print(f"  task.toml updated: docker_image = {rel}")
+    print(f"  task.toml updated: docker_image = {sif_path}")
 
 
 # ---------------------------------------------------------------------------

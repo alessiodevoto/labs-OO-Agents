@@ -24,6 +24,16 @@ from typing import Any
 
 import yaml
 
+_REWARD_LOGGING_SUFFIX = """
+_EXIT_CODE=$?
+if [ $_EXIT_CODE -eq 0 ]; then
+    echo 1 > /logs/verifier/reward.txt
+else
+    echo 0 > /logs/verifier/reward.txt
+fi
+exit $_EXIT_CODE
+"""
+
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
 TASKS_OUT_DIR = WORKTREE_ROOT / "util/harbor/tasks/terminal_bench"
 ORIGINAL_TASKS = Path.home() / ".cache/terminal-bench/terminal-bench-head/original-tasks"
@@ -136,6 +146,22 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
         if tests_dst.exists():
             shutil.rmtree(tests_dst)
         shutil.copytree(tests_src, tests_dst)
+
+    # -------------------------------------------------- tests/test.sh (Harbor requires this)
+    # Harbor's TaskPaths.is_valid() checks for tests/test.sh.
+    # Copy run-tests.sh → tests/test.sh, replace $TEST_DIR with /tests,
+    # and append reward logging so Harbor can read /logs/verifier/reward.txt.
+    run_tests_sh = src / "run-tests.sh"
+    if run_tests_sh.exists():
+        tests_dst.mkdir(exist_ok=True)
+        content = run_tests_sh.read_text()
+        if not content.endswith("\n"):
+            content += "\n"
+        content = content.replace("$TEST_DIR", "/tests")
+        content += _REWARD_LOGGING_SUFFIX
+        test_sh = tests_dst / "test.sh"
+        test_sh.write_text(content)
+        test_sh.chmod(test_sh.stat().st_mode | 0o111)
 
     # ---------------------------------------------------------------- task.toml
     # Skip if task.toml already exists (preserves docker_image from SIF build).
