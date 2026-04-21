@@ -82,6 +82,7 @@ def _scan_trace_errors(traces_dir: Path) -> dict[str, int]:
         "restricted_import": restricted_import,
     }
 
+
 # Markers to identify our metrics section in MR description
 METRICS_START_MARKER = "<!-- capability-metrics-start -->"
 METRICS_END_MARKER = "<!-- capability-metrics-end -->"
@@ -578,9 +579,7 @@ def format_metrics_section(current: dict[str, Any], baseline: dict[str, Any] | N
             lines.append("**Framework-caught errors** (invisible at result level):")
             lines.append("")
             lines.append(f"- Self-recursion attempts: {current.get('self_recursion', 0)}")
-            lines.append(
-                f"- Restricted-import attempts: {current.get('restricted_import', 0)}"
-            )
+            lines.append(f"- Restricted-import attempts: {current.get('restricted_import', 0)}")
             lines.append("")
 
         lines.append(
