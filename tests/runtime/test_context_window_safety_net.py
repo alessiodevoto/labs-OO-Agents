@@ -344,3 +344,102 @@ class TestStructuredPayloadSafetyNet:
 
         # Doesn't crash; no assertion on cap (there isn't one).
         assert messages is not None
+
+
+class TestTokenCounterRegression:
+    """Regression tests for the two bugs root-caused in issue #133."""
+
+    @pytest.mark.asyncio
+    async def test_stats_context_blocks_tokens_is_tokens_not_chars(self):
+        """Bug #1: when no truncation limits are set, ``render_context`` used
+        to fall back to ``len``, so ``ContextWindowStats.{context_blocks,
+        events,total}_tokens`` were character counts, not token counts. For
+        English prose this over-reports by ~4×, breaking any consumer of the
+        stats (TUI "ctx N%", observability, etc.).
+
+        After the fix, ``_build_messages`` always passes a real counter (the
+        LLM's ``count_tokens`` or ``char_approximate_token_counter`` as
+        fallback). We assert against ``context_blocks_tokens`` because it's
+        the field the structured-payload safety net does **not** overwrite
+        on clamp — so it still reflects what the renderer actually counted.
+        """
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        # A big-enough system-role block so its chars vs tokens are
+        # unambiguous. (System-role blocks land in ``context_blocks_tokens``.)
+        long_block = "the quick brown fox jumps over the lazy dog. " * 400
+        agent.context_manager["prose"] = long_block
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Ceiling: tokens must be well below the raw character count. At
+        # ~4 chars/token, 18,400 chars should land ~4,600 tokens. Allow
+        # 2× slack for block wrappers and other system blocks in the mix.
+        assert stats.context_blocks_tokens < len(long_block) // 2, (
+            f"context_blocks_tokens={stats.context_blocks_tokens:,} is close to "
+            f"raw block chars ({len(long_block):,}) — renderer is still "
+            "treating ``len`` as tokens"
+        )
+
+    def test_clamp_budget_accounts_for_tool_schemas(self):
+        """Bug #2: ``_clamp_messages_to_budget`` used to call
+        ``litellm.token_counter(messages=…)`` without ``tools=…``, under-
+        counting by the tool-schema cost (issue #133). With the fix,
+        passing ``tool_schemas=`` makes the budget larger (because the
+        tool schemas are now billed against the system-message share),
+        and passing the same schemas the API will see closes the gap.
+        """
+        from nemo_oo_agents.runtime.actor import _clamp_messages_to_budget
+
+        model = "anthropic/claude-3-5-sonnet-20240620"
+        messages = [
+            {"role": "system", "content": "You are a helpful agent."},
+            {"role": "user", "content": "What is 2 + 2?"},
+        ]
+        tool_schemas = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add",
+                    "description": "Add two integers and return the sum.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "a": {"type": "integer"},
+                            "b": {"type": "integer"},
+                        },
+                        "required": ["a", "b"],
+                    },
+                },
+            },
+        ]
+
+        budget = 10_000  # comfortably bigger than anything in this test
+        _, total_no_tools, _, _ = _clamp_messages_to_budget(messages, budget, model)
+        _, total_with_tools, _, _ = _clamp_messages_to_budget(
+            messages, budget, model, tool_schemas=tool_schemas
+        )
+        # The tool schema has to add some tokens; it's at least a few
+        # dozen (function name + description + parameter schema).
+        assert total_with_tools > total_no_tools, (
+            f"tool schemas must add tokens, got {total_with_tools} <= {total_no_tools}"
+        )
+        assert total_with_tools - total_no_tools >= 20, (
+            "tool-schema overhead unexpectedly small — expected at least "
+            f"~20 tokens, got {total_with_tools - total_no_tools}"
+        )
