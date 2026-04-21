@@ -159,6 +159,16 @@ _current_truncation_config_var: contextvars.ContextVar[Any] = contextvars.Contex
     "current_truncation_config", default=None
 )
 
+# Set by ``generate()`` before ``_build_messages`` when tools are in play.
+# Tool schemas ride alongside messages as a separate API parameter — they
+# count against the model's context window but don't appear in any block,
+# so our per-block-content token counts miss them entirely. The safety-net
+# clamp subtracts this overhead from the effective event budget. Value 0
+# means "no tool overhead to account for" (default).
+_current_tools_overhead_var: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "current_tools_overhead", default=0
+)
+
 # Context variable for current strategy being executed
 _current_strategy_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "current_strategy", default=None
@@ -469,12 +479,34 @@ class ActorRuntime:
         if self._current_method is None:
             raise RuntimeError("generate() called with no current method context")
 
-        # Build messages from context + events (timers inside _build_messages)
-        messages = await self._build_messages(
-            self._current_method,
-            call_args=self._current_call.args if self._current_call else (),
-            call_kwargs=self._current_call.kwargs if self._current_call else {},
-        )
+        # Count tool-schema overhead and stash it for _build_messages'
+        # safety-net clamp. Tools are a separate API parameter but count
+        # against the context window; _build_messages otherwise misses
+        # them. ``litellm.token_counter(text=...)`` on the JSON-serialized
+        # tools is a conservative estimate — slightly over the real wire
+        # count, which is fine for safety-net purposes.
+        tools_overhead: int = 0
+        if tools:
+            llm_client = _current_llm_var.get()
+            counter = getattr(llm_client, "count_tokens", None)
+            if callable(counter):
+                import json as _json
+
+                try:
+                    counted: Any = counter(_json.dumps(tools))
+                    tools_overhead = int(counted) if counted is not None else 0
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("tool overhead counting failed: %s", exc)
+        overhead_token = _current_tools_overhead_var.set(tools_overhead)
+        try:
+            # Build messages from context + events (timers inside _build_messages)
+            messages = await self._build_messages(
+                self._current_method,
+                call_args=self._current_call.args if self._current_call else (),
+                call_kwargs=self._current_call.kwargs if self._current_call else {},
+            )
+        finally:
+            _current_tools_overhead_var.reset(overhead_token)
         _gen_hm = get_harness_metrics()
 
         # Get LLM client from context var (set by _execute_with_generation)
@@ -2248,15 +2280,27 @@ async def {name}({params_str}) -> {return_type}:
         llm_client = _current_llm_var.get()
 
         # Safety net: event pile must never exceed the resolved LLM's context
-        # window. Clamps ``max_event_tokens`` down to 85% of the window so a
-        # per-call LLM override (``method(llm=smaller)``) or a session that
-        # /switched from a large-context model to a smaller one can't ship a
-        # prompt that overflows the new model. User-configured budgets still
-        # win when they're tighter; the safety net only lowers, never raises.
+        # window. Clamps ``max_event_tokens`` down to a safe fraction of the
+        # window *minus* tool-schema overhead.
+        #
+        # The 0.65 factor is aggressive on purpose: our per-block content
+        # count misses (a) JSON message wrappers Anthropic tokenizes —
+        # role/content/tool_use/tool_result structure, easily 15–30% on
+        # top of content, and (b) per-event ``<metadata>`` wrappers added
+        # by ``format_message_content``. Observed in a real session: 108K
+        # content → 207K actual API (Bedrock). 0.65 leaves room for that
+        # overhead without needing a second pass against the full payload.
+        #
+        # User-configured budgets still win when they're tighter; the
+        # safety net only lowers, never raises.
         effective_event_limit = tc.max_event_tokens
         ctx_window = getattr(llm_client, "context_window", None)
         if ctx_window:
-            safety_cap = int(ctx_window * 0.85)
+            tools_overhead = _current_tools_overhead_var.get()
+            # Floor at 10% of window — a runaway tools estimate mustn't
+            # silently suppress every event.
+            available = max(int(ctx_window * 0.10), ctx_window - tools_overhead)
+            safety_cap = int(available * 0.65)
             if effective_event_limit is None or effective_event_limit > safety_cap:
                 effective_event_limit = safety_cap
 

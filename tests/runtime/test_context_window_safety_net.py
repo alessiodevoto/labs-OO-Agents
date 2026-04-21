@@ -60,6 +60,91 @@ def agent_with_big_events():
     return agent
 
 
+class TestToolOverheadAccounting:
+    """The safety net must account for *tool schemas* too. Tools are a
+    separate API parameter, not in messages — but Bedrock/Anthropic count
+    them against the context window. A TUI agent with many skills can
+    easily ship 30–80K tokens of tool JSON that our per-block content
+    counter never sees, which is how ``ctx 54%`` can still overflow a
+    200K Sonnet window (observed: 108K content → 207K actual API).
+    """
+
+    @pytest.mark.asyncio
+    async def test_tool_overhead_shrinks_event_budget(self):
+        """generate() hands tools through ``_current_tools_overhead_var``
+        and ``_build_messages`` subtracts from the safety cap."""
+        from nemo_oo_agents.runtime.actor import (
+            _current_llm_var,
+            _current_tools_overhead_var,
+        )
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        # 100 × 12KB events = ~300K tokens of content.
+        for _ in range(100):
+            agent.event_manager.add(Message(content="x" * 12_000))
+
+        # Simulate 50K tokens of tool schemas (separate API parameter).
+        tools_overhead_tokens = 50_000
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(agent._llm)
+        tools_token = _current_tools_overhead_var.set(tools_overhead_tokens)
+        try:
+            try:
+                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+            except Exception:
+                pass
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_tools_overhead_var.reset(tools_token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Without tool accounting: cap = 200K * 0.65 = 130K events.
+        # With tool accounting: cap = (200K - 50K) * 0.65 = 97.5K events.
+        # Event pile must fit the tighter cap.
+        assert stats.events_tokens <= int((200_000 - 50_000) * 0.65), (
+            f"events={stats.events_tokens} — tool overhead not subtracted from safety cap"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_tool_overhead_context_acts_like_before(self):
+        """When no tool overhead is set (e.g. predict-style strategies),
+        the safety cap reverts to ``0.65 × context_window``."""
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for _ in range(100):
+            agent.event_manager.add(Message(content="x" * 12_000))
+
+        method = type(agent).respond
+        token = _current_llm_var.set(agent._llm)
+        try:
+            try:
+                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+            except Exception:
+                pass
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        assert stats.events_tokens <= int(200_000 * 0.65)
+
+
 class TestRuntimeContextWindowClamp:
     """The safety net MUST clamp events to fit the resolved LLM's window,
     regardless of what the agent's TruncationConfig says."""
@@ -90,7 +175,7 @@ class TestRuntimeContextWindowClamp:
         stats = agent.runtime._last_context_stats
         assert stats is not None
         # Event pile must fit the 200K window (minus the 15% reserve).
-        assert stats.events_tokens <= int(agent._llm.context_window * 0.85)
+        assert stats.events_tokens <= int(agent._llm.context_window * 0.65)
         # Something had to drop — the fixture loads ~300K into a 200K window.
         assert stats.events_dropped > 0
 
