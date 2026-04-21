@@ -48,8 +48,12 @@ CACHE_DIR = Path(os.path.expanduser("~/.cache/terminal-bench"))
 TASKS_DIR = CACHE_DIR / "terminal-bench" / "tasks"
 
 
-def _ensure_tasks(n_tasks: int) -> list[Path]:
-    """Clone (or update) terminal-bench repo and return up to n_tasks task dirs."""
+def _ensure_tasks(n_tasks: int, task_names: list[str] | None = None) -> list[Path]:
+    """Clone (or update) terminal-bench repo and return task dirs.
+
+    If task_names is given, return exactly those tasks in that order.
+    Otherwise return the first n_tasks alphabetically.
+    """
     repo_dir = CACHE_DIR / "terminal-bench"
 
     if repo_dir.exists() and (repo_dir / ".git").exists():
@@ -81,6 +85,9 @@ def _ensure_tasks(n_tasks: int) -> list[Path]:
             f"Terminal Bench tasks not found at {tasks_dir}. "
             "Check the sparse checkout or clone the full repo."
         )
+
+    if task_names:
+        return [tasks_dir / name for name in task_names if (tasks_dir / name).is_dir()]
 
     task_dirs = [
         d for d in sorted(tasks_dir.iterdir()) if d.is_dir() and (d / "task.yaml").exists()
@@ -135,13 +142,25 @@ class TerminalBenchScorer:
 # ---------------------------------------------------------------------------
 
 
-async def main(n_tasks: int = 5, model_name: str = "anthropic/claude-sonnet-4-6") -> None:
+async def main(
+    n_tasks: int = 5,
+    model_name: str = "anthropic/claude-sonnet-4-6",
+    task_names: list[str] | None = None,
+) -> None:
     from nemo_oo_agents_benchmarks.agents.baseline import BaselineAgent
 
     from eval_pipeline import Evaluator
     from unifiedllm import CompletionClient
+    from unifiedllm.registry import get_llm_client
 
-    task_dirs = _ensure_tasks(n_tasks)
+    _REGISTRY_PREFIXES = ("aws/", "nvidia/", "azure/", "gcp/")
+
+    def _make_client(model: str) -> CompletionClient:
+        if any(model.startswith(p) for p in _REGISTRY_PREFIXES):
+            return get_llm_client(model)
+        return CompletionClient(model=model)
+
+    task_dirs = _ensure_tasks(n_tasks, task_names=task_names)
     if not task_dirs:
         print("ERROR: No Terminal Bench tasks found.")
         sys.exit(1)
@@ -173,7 +192,7 @@ async def main(n_tasks: int = 5, model_name: str = "anthropic/claude-sonnet-4-6"
         print("ERROR: No tasks with instructions found.")
         sys.exit(1)
 
-    llm_client = CompletionClient(model=model_name)
+    llm_client = _make_client(model_name)
 
     evaluator = Evaluator(
         models={"baseline": llm_client},
@@ -225,9 +244,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("--tasks", type=int, default=5, help="Number of tasks to run (default: 5)")
     parser.add_argument(
+        "--task-names",
+        nargs="+",
+        metavar="TASK",
+        help="Run specific named tasks (overrides --tasks)",
+    )
+    parser.add_argument(
         "--model",
         default="anthropic/claude-sonnet-4-6",
         help="Model name (default: anthropic/claude-sonnet-4-6)",
     )
     args = parser.parse_args()
-    asyncio.run(main(n_tasks=args.tasks, model_name=args.model))
+    asyncio.run(main(n_tasks=args.tasks, model_name=args.model, task_names=args.task_names))
