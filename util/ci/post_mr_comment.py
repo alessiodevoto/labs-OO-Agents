@@ -33,6 +33,55 @@ import requests
 
 from eval_pipeline import Tier
 
+# Framework-caught errors the CodeAct strategy actively protects against.
+# Scanning trace spans lets us surface them even when the agent recovered
+# and the top-level result is marked passed=True. These counters are
+# emitted by util/ci/parse_capability_results.py into metrics.txt; we
+# duplicate the scan here so the MR description table can include them
+# without depending on the sibling script's output files.
+_SELF_RECURSION_RE = re.compile(r"calling self\.\w+.*forbidden.*recursion", re.I | re.S)
+_IMPORT_RESTRICTED_RE = re.compile(r"RestrictedCodeError.*import", re.I | re.S)
+
+
+def _scan_trace_errors(traces_dir: Path) -> dict[str, int]:
+    """Count self-recursion and restricted-import errors across trace spans."""
+    self_recursion = 0
+    restricted_import = 0
+
+    if not traces_dir.is_dir():
+        return {"self_recursion": 0, "restricted_import": 0}
+
+    for trace_path in traces_dir.glob("*.jsonl"):
+        for raw in trace_path.open():
+            try:
+                doc = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            for rs in doc.get("resourceSpans", []):
+                for ss in rs.get("scopeSpans", []):
+                    for span in ss.get("spans", []):
+                        err_type = ""
+                        err_msg = ""
+                        for attr in span.get("attributes", []):
+                            k = attr.get("key")
+                            v = (attr.get("value") or {}).get("stringValue") or ""
+                            if k == "error.type":
+                                err_type = v
+                            elif k == "error.message":
+                                err_msg = v
+                        if not err_type:
+                            continue
+                        blob = f"{err_type}: {err_msg}"
+                        if _SELF_RECURSION_RE.search(blob):
+                            self_recursion += 1
+                        elif _IMPORT_RESTRICTED_RE.search(blob):
+                            restricted_import += 1
+
+    return {
+        "self_recursion": self_recursion,
+        "restricted_import": restricted_import,
+    }
+
 # Markers to identify our metrics section in MR description
 METRICS_START_MARKER = "<!-- capability-metrics-start -->"
 METRICS_END_MARKER = "<!-- capability-metrics-end -->"
@@ -136,6 +185,11 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
             "total_tokens": completion.get("total_tokens", 0),
         }
 
+    # Scan the sibling traces/ directory for framework-caught errors
+    # (self-recursion, forbidden import). These are invisible at the
+    # result level because the CodeAct loop catches them and retries.
+    trace_errors = _scan_trace_errors(eval_file.parent / "traces")
+
     return {
         "passed": passed,
         "total": total,
@@ -149,6 +203,7 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
         "mode_correct_count": mode_correct_count,
         "mode_total_count": mode_total_count,
         **token_usage,
+        **trace_errors,
     }
 
 
@@ -246,6 +301,14 @@ def fetch_baseline_metrics(target_branch: str) -> dict[str, Any] | None:
                     # Fallback for old metrics.txt format without mode_selection_total
                     result["mode_total_count"] = int(
                         result["mode_correct_count"] / (result["mode_accuracy"] / 100)
+                    )
+                # Framework-caught errors (new counters — may be missing on
+                # baselines from before these were added).
+                if "capability_self_recursion_errors" in metrics:
+                    result["self_recursion"] = int(metrics["capability_self_recursion_errors"])
+                if "capability_restricted_import_errors" in metrics:
+                    result["restricted_import"] = int(
+                        metrics["capability_restricted_import_errors"]
                     )
 
                 # Extract per-tier metrics from OpenMetrics format
@@ -459,6 +522,35 @@ def format_metrics_section(current: dict[str, Any], baseline: dict[str, Any] | N
             f"| Mode Selection Accuracy | {baseline_mode_str} | {current_mode_str} | {mode_change_str} |"
         )
 
+        # Framework-caught error counters (self-recursion attempts, forbidden
+        # import attempts). These are errors the CodeAct loop intercepted and
+        # the agent recovered from, so they don't appear in result.error at
+        # all; tracking the counts directly lets us see prompt lever drift
+        # before it affects pass rate.
+        def _error_row(label: str, baseline_val: Any, current_val: int) -> str:
+            if baseline_val is None:
+                return f"| {label} | N/A | {current_val} | (new metric) |"
+            delta = current_val - baseline_val
+            delta_str = f"+{delta}" if delta > 0 else str(delta)
+            # Fewer framework-caught errors = improvement.
+            emoji = "✅" if delta < 0 else ("⚠️" if delta > 0 else "➖")
+            return f"| {label} | {baseline_val} | {current_val} | {delta_str} {emoji} |"
+
+        lines.append(
+            _error_row(
+                "Self-recursion attempts",
+                baseline.get("self_recursion"),
+                current.get("self_recursion", 0),
+            )
+        )
+        lines.append(
+            _error_row(
+                "Restricted-import attempts",
+                baseline.get("restricted_import"),
+                current.get("restricted_import", 0),
+            )
+        )
+
     else:
         # No baseline available - show current with progress bar
         progress_bar = generate_progress_bar(current_rate, None)
@@ -478,6 +570,16 @@ def format_metrics_section(current: dict[str, Any], baseline: dict[str, Any] | N
         if current.get("mode_total_count", 0) > 0:
             lines.append(
                 f"**Mode Selection Accuracy**: {current['mode_correct_count']}/{current['mode_total_count']} ({current['mode_accuracy']:.1f}%)"
+            )
+            lines.append("")
+
+        # Framework-caught error counters
+        if "self_recursion" in current or "restricted_import" in current:
+            lines.append("**Framework-caught errors** (invisible at result level):")
+            lines.append("")
+            lines.append(f"- Self-recursion attempts: {current.get('self_recursion', 0)}")
+            lines.append(
+                f"- Restricted-import attempts: {current.get('restricted_import', 0)}"
             )
             lines.append("")
 
