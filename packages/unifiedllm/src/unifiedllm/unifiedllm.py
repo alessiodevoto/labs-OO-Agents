@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+import copy
 import inspect
 import json
 import logging
@@ -357,6 +358,110 @@ class LLMResponse:
     def message(self) -> str | BaseModel | None:
         """Backward-compatible alias for content."""
         return self.content
+
+
+# --- Bedrock JSON schema sanitization (gl-134) ---
+# Bedrock Claude rejects schemas with certain JSON schema keywords.
+# We strip/fix these for Bedrock models and rely on Pydantic's client-side
+# validation instead.
+#
+# Source of truth: AWS ML Blog "Structured outputs on Amazon Bedrock"
+# https://aws.amazon.com/blogs/machine-learning/structured-outputs-on-amazon-bedrock-schema-compliant-ai-responses/
+# The blog lists numerical constraints, string constraints, and
+# additionalProperties != false as "Not supported". As of 2025-04-21,
+# numerical + maxItems actively 400; string constraints are silently
+# accepted today but could be tightened at any time (like the numerical
+# constraints were on Apr 20), so we strip them defensively.
+
+_BEDROCK_STRIP_KEYWORDS = frozenset(
+    {
+        # Numerical — actively rejected (HTTP 400)
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        # Array — maxItems actively rejected
+        "maxItems",
+        # String — blog says unsupported; currently accepted but stripped
+        # defensively to avoid the next silent enforcement tightening.
+        "minLength",
+        "maxLength",
+        "pattern",
+    }
+)
+
+
+def _is_bedrock_model(model: str) -> bool:
+    """Return True if the model string routes to AWS Bedrock."""
+    m = model.lower()
+    return "bedrock" in m or "/aws/" in m or m.startswith("aws/")
+
+
+def _sanitize_schema_for_bedrock(schema: dict[str, Any]) -> dict[str, Any]:
+    """Deep-copy *schema* and strip/fix keywords unsupported by Bedrock.
+
+    Bedrock Claude rejects:
+    - Numerical: minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf
+    - String: minLength, maxLength, pattern (docs say unsupported; stripped defensively)
+    - Array: maxItems (rejected), minItems > 1 (only 0 and 1 allowed)
+    - Object: additionalProperties set to anything other than false
+
+    Assumes Pydantic v2 schema output shapes. Does not recurse into
+    prefixItems, patternProperties, or dependentSchemas (Pydantic v2
+    does not emit these for typical models).
+    """
+    schema = copy.deepcopy(schema)
+    _strip_unsupported_keys(schema)
+    return schema
+
+
+def _strip_unsupported_keys(node: Any) -> None:
+    """Recursively fix unsupported Bedrock keywords in a schema node in-place."""
+    if not isinstance(node, dict):
+        return
+
+    # Strip keywords that Bedrock rejects outright
+    for key in list(node.keys()):
+        if key in _BEDROCK_STRIP_KEYWORDS:
+            del node[key]
+
+    # minItems: Bedrock only accepts 0 or 1; clamp higher values to 1
+    if "minItems" in node and isinstance(node["minItems"], int) and node["minItems"] > 1:
+        node["minItems"] = 1
+
+    # additionalProperties: Bedrock only accepts false
+    if "additionalProperties" in node and node["additionalProperties"] is not False:
+        node["additionalProperties"] = False
+
+    # Recurse into sub-schemas
+    for key in ("properties", "$defs", "definitions"):
+        if key in node and isinstance(node[key], dict):
+            for v in node[key].values():
+                _strip_unsupported_keys(v)
+    if "items" in node and isinstance(node["items"], dict):
+        _strip_unsupported_keys(node["items"])
+    for key in ("allOf", "anyOf", "oneOf"):
+        if key in node and isinstance(node[key], list):
+            for item in node[key]:
+                _strip_unsupported_keys(item)
+    if "not" in node and isinstance(node["not"], dict):
+        _strip_unsupported_keys(node["not"])
+
+
+def _maybe_sanitize_response_format(model: str, output_model: type[BaseModel]) -> type[BaseModel] | dict[str, Any]:
+    """Return *output_model* as-is for most providers, or a sanitized dict for Bedrock."""
+    if not _is_bedrock_model(model):
+        return output_model
+    schema = _sanitize_schema_for_bedrock(output_model.model_json_schema())
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": output_model.__name__,
+            "strict": True,
+            "schema": schema,
+        },
+    }
 
 
 def _instantiate_output_model(output_model: type[BaseModel], json_data: Any) -> BaseModel:
@@ -900,7 +1005,7 @@ class CompletionClient(UnifiedLLM):
             api_params["parallel_tool_calls"] = False
 
         if output_model is not None:
-            api_params["response_format"] = output_model
+            api_params["response_format"] = _maybe_sanitize_response_format(self.model, output_model)
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
@@ -1040,7 +1145,7 @@ class CompletionClient(UnifiedLLM):
             api_params["parallel_tool_calls"] = False
 
         if output_model is not None:
-            api_params["response_format"] = output_model
+            api_params["response_format"] = _maybe_sanitize_response_format(self.model, output_model)
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
