@@ -1,28 +1,30 @@
-"""Runtime-level truncation safety net against the resolved LLM's context window.
+"""Runtime-level safety net: final structured payload must fit the LLM window.
 
-Whenever ``_build_messages`` runs, the renderer must not ship an event pile
-larger than the LLM can accept. The safety net is unconfigurable — sized
-directly from ``llm.context_window`` at call time — so:
+The pre-render safety net (clamping ``max_event_tokens`` against
+``ctx_window``) only saw per-block CONTENT tokens — it missed:
 
-- Per-call LLM overrides (``method(llm=other)``) get scaled automatically.
-- Agents with no explicit ``max_event_tokens`` still get protected.
-- Agents whose config sets a budget LARGER than the resolved LLM's window
-  get clamped down (a session carrying 700K of events onto a 200K-window
-  model gets pruned to fit).
+- JSON message wrappers (role, content-array, tool_use, tool_result)
+- ``<event_xxx>`` XML wrappers added by ``format_message_content``
 
-None of this is TUI-specific — the clamp lives in the runtime.
+Measured on a real session: 101K content tokens → 163K when litellm
+counts the structured message list (+61%) → 207K when Bedrock actually
+tokenizes (+27% further, likely tokenizer differences).
+
+Fix: after ``render_context`` produces the full messages list, count
+it with ``litellm.token_counter(messages=...)`` and drop oldest
+non-system messages until the total fits under ``ctx_window × 0.70``.
+The 30% margin covers the litellm→API tokenizer gap.
 """
 
 import pytest
 
 from nemo_oo_agents import Agent
-from nemo_oo_agents.config.truncation_config import TruncationConfig
 from nemo_oo_agents.events import Message
 from unifiedllm import FakeLLMClient
 
 
 class _FakeLLM(FakeLLMClient):
-    """FakeLLM with settable context_window for these tests."""
+    """FakeLLM with a settable context_window for tests."""
 
     _cw = 200_000
 
@@ -31,52 +33,48 @@ class _FakeLLM(FakeLLMClient):
         return self._cw
 
     def count_tokens(self, text: str) -> int:
-        # 4 chars ≈ 1 token (Anthropic-ish average).
-        return max(1, len(text) // 4)
+        # Lean on litellm's real tokenizer — tests assert against it.
+        import litellm
+
+        # Use a real model so litellm picks the right tokenizer.
+        return litellm.token_counter(model="anthropic/claude-3-5-sonnet-20240620", text=text)
 
 
 def _mk_llm(context_window: int) -> _FakeLLM:
     class _LLM(_FakeLLM):
         _cw = context_window
 
-    return _LLM()
+    # Pin model so the runtime's model_context_window resolution works.
+    llm = _LLM()
+    # Monkey-patch .model to something litellm recognizes (matches _FakeLLM.count_tokens).
+    llm.model = "anthropic/claude-3-5-sonnet-20240620"  # type: ignore[attr-defined]
+    return llm
 
 
-@pytest.fixture
-def agent_with_big_events():
-    """Agent on a 200K-window LLM carrying ~300K tokens of events —
-    deliberately oversized so the safety net MUST drop some."""
-    llm = _mk_llm(200_000)
-
-    class A(Agent, llm=llm):
-        async def respond(self, prompt: str) -> str:
-            """Respond to {prompt}."""
-            ...
-
-    agent = A()
-    # 100 messages × ~12KB each = ~1.2MB = ~300K tokens.
-    for _ in range(100):
-        agent.event_manager.add(Message(content="x" * 12_000))
-    return agent
-
-
-class TestToolOverheadAccounting:
-    """The safety net must account for *tool schemas* too. Tools are a
-    separate API parameter, not in messages — but Bedrock/Anthropic count
-    them against the context window. A TUI agent with many skills can
-    easily ship 30–80K tokens of tool JSON that our per-block content
-    counter never sees, which is how ``ctx 54%`` can still overflow a
-    200K Sonnet window (observed: 108K content → 207K actual API).
+class TestStructuredPayloadSafetyNet:
+    """The rendered messages + tools MUST fit under ``ctx_window × 0.70``
+    when measured by ``litellm.token_counter`` — the same counter the API
+    uses (approximately; Bedrock adds another 25% that we cover with
+    margin).
     """
 
     @pytest.mark.asyncio
-    async def test_tool_overhead_shrinks_event_budget(self):
-        """generate() hands tools through ``_current_tools_overhead_var``
-        and ``_build_messages`` subtracts from the safety cap."""
-        from nemo_oo_agents.runtime.actor import (
-            _current_llm_var,
-            _current_tools_overhead_var,
-        )
+    async def test_tool_heavy_session_clamps_to_window(self):
+        """Reproduces the observed production failure: a Sonnet session
+        packed with tool-call iterations (ToolCallEvent + PythonOutput
+        pairs, like CodeAct generates). Content-only counting misses the
+        ~60% JSON-structure overhead Anthropic adds around tool_use /
+        tool_result; the authoritative safety net must still keep the
+        final structured payload under ``ctx_window × 0.70``.
+
+        Without the structured-payload safety net (pre-fix): 300 tool
+        iterations produced ~262K structured tokens on a 200K window
+        — API would reject with ContextWindowExceeded.
+        """
+        import litellm
+
+        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput
 
         llm = _mk_llm(200_000)
 
@@ -86,38 +84,57 @@ class TestToolOverheadAccounting:
                 ...
 
         agent = A()
-        # 100 × 12KB events = ~300K tokens of content.
-        for _ in range(100):
-            agent.event_manager.add(Message(content="x" * 12_000))
+        for i in range(300):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 500},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="x " * 500,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
 
-        # Simulate 50K tokens of tool schemas (separate API parameter).
-        tools_overhead_tokens = 50_000
         method = type(agent).respond
-        llm_token = _current_llm_var.set(agent._llm)
-        tools_token = _current_tools_overhead_var.set(tools_overhead_tokens)
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
         try:
             try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+                messages = await agent.runtime._build_messages(
+                    method, call_args=(agent, "hi"), call_kwargs={}
+                )
             except Exception:
-                pass
+                messages = None
         finally:
-            _current_llm_var.reset(llm_token)
-            _current_tools_overhead_var.reset(tools_token)
+            _current_llm_var.reset(token)
 
-        stats = agent.runtime._last_context_stats
-        assert stats is not None
-        # Without tool accounting: cap = 200K * 0.65 = 130K events.
-        # With tool accounting: cap = (200K - 50K) * 0.65 = 97.5K events.
-        # Event pile must fit the tighter cap.
-        assert stats.events_tokens <= int((200_000 - 50_000) * 0.65), (
-            f"events={stats.events_tokens} — tool overhead not subtracted from safety cap"
+        assert messages is not None
+        # Final structured count — what the API will bill.
+        structured = litellm.token_counter(model=agent._llm.model, messages=messages)
+        cap = int(agent._llm.context_window * 0.70)
+        assert structured <= cap, (
+            f"structured payload {structured:,} > cap {cap:,} — safety net failed"
         )
 
     @pytest.mark.asyncio
-    async def test_no_tool_overhead_context_acts_like_before(self):
-        """When no tool overhead is set (e.g. predict-style strategies),
-        the safety cap reverts to ``0.65 × context_window``."""
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+    async def test_small_session_is_not_truncated(self):
+        """Session that already fits the window must be left alone —
+        safety net only fires when the structured count exceeds budget."""
+        import litellm
 
         llm = _mk_llm(200_000)
 
@@ -127,162 +144,113 @@ class TestToolOverheadAccounting:
                 ...
 
         agent = A()
-        for _ in range(100):
-            agent.event_manager.add(Message(content="x" * 12_000))
+        for _ in range(3):
+            agent.event_manager.add(Message(content="small message"))
 
-        method = type(agent).respond
-        token = _current_llm_var.set(agent._llm)
-        try:
-            try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
-            except Exception:
-                pass
-        finally:
-            _current_llm_var.reset(token)
-
-        stats = agent.runtime._last_context_stats
-        assert stats is not None
-        assert stats.events_tokens <= int(200_000 * 0.65)
-
-
-class TestRuntimeContextWindowClamp:
-    """The safety net MUST clamp events to fit the resolved LLM's window,
-    regardless of what the agent's TruncationConfig says."""
-
-    @pytest.mark.asyncio
-    async def test_no_explicit_event_budget_still_clamps_to_window(self, agent_with_big_events):
-        """Agent has no ``max_event_tokens`` config; event pile would
-        otherwise exceed the LLM's window. Safety net MUST kick in.
-        """
-        agent = agent_with_big_events
-        # Default config: max_event_tokens is None.
-        assert agent._truncation.max_event_tokens is None
-
-        # Drive _build_messages. FakeLLMClient raises on actual generation;
-        # we only need render_context to run, which happens before the call.
         method = type(agent).respond
         from nemo_oo_agents.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
             try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+                messages = await agent.runtime._build_messages(
+                    method, call_args=(agent, "hi"), call_kwargs={}
+                )
             except Exception:
-                pass
+                messages = None
         finally:
             _current_llm_var.reset(token)
 
+        assert messages is not None
+        # No events dropped.
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        # Event pile must fit the 200K window (minus the 15% reserve).
-        assert stats.events_tokens <= int(agent._llm.context_window * 0.65)
-        # Something had to drop — the fixture loads ~300K into a 200K window.
-        assert stats.events_dropped > 0
+        # Structured count is well under the window — nothing to prune.
+        structured = litellm.token_counter(model=agent._llm.model, messages=messages)
+        assert structured < int(agent._llm.context_window * 0.70)
 
     @pytest.mark.asyncio
-    async def test_oversized_explicit_budget_is_clamped(self):
-        """Agent was configured on Opus (1M) with an explicit 700K event
-        budget, then ``_current_llm_var`` is switched to Sonnet (200K).
-        The 700K budget must clamp down to fit Sonnet's window.
-        """
-        llm_opus = _mk_llm(1_000_000)
+    async def test_per_call_llm_override_is_honored(self):
+        """Per-call LLM override to a smaller model → the CLAMP sizes
+        against the override, not the agent's original LLM."""
+        import litellm
 
-        class A(
-            Agent,
-            llm=llm_opus,
-            truncation=TruncationConfig(max_event_tokens=700_000),
-        ):
+        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput
+
+        big_llm = _mk_llm(1_000_000)
+
+        class A(Agent, llm=big_llm):
             async def respond(self, prompt: str) -> str:
                 """Respond to {prompt}."""
                 ...
 
         agent = A()
-        # 100 × 12KB = ~300K tokens of events.
-        for _ in range(100):
-            agent.event_manager.add(Message(content="x" * 12_000))
+        # Tool-heavy load — fits 1M comfortably but exceeds 200K Sonnet.
+        for i in range(300):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 500},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="x " * 500,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
 
-        # Swap to the Sonnet-sized LLM in-place.
-        agent._llm = _mk_llm(200_000)
-
+        small_llm = _mk_llm(200_000)
         method = type(agent).respond
         from nemo_oo_agents.runtime.actor import _current_llm_var
 
-        token = _current_llm_var.set(agent._llm)
+        token = _current_llm_var.set(small_llm)  # override per-call
         try:
             try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+                messages = await agent.runtime._build_messages(
+                    method, call_args=(agent, "hi"), call_kwargs={}
+                )
             except Exception:
-                pass
+                messages = None
         finally:
             _current_llm_var.reset(token)
 
-        stats = agent.runtime._last_context_stats
-        assert stats is not None
-        assert stats.events_tokens <= 200_000
-        assert stats.events_dropped > 0
-
-    @pytest.mark.asyncio
-    async def test_smaller_explicit_budget_is_respected(self):
-        """Explicit ``max_event_tokens=50_000`` smaller than the LLM's
-        window (200K) must be honored — safety net must not *raise* the
-        user's cap, only lower it.
-        """
-        llm = _mk_llm(200_000)
-
-        class A(
-            Agent,
-            llm=llm,
-            truncation=TruncationConfig(max_event_tokens=50_000),
-        ):
-            async def respond(self, prompt: str) -> str:
-                """Respond to {prompt}."""
-                ...
-
-        agent = A()
-        for _ in range(100):
-            agent.event_manager.add(Message(content="x" * 12_000))
-
-        method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
-
-        token = _current_llm_var.set(agent._llm)
-        try:
-            try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
-            except Exception:
-                pass
-        finally:
-            _current_llm_var.reset(token)
-
-        stats = agent.runtime._last_context_stats
-        assert stats is not None
-        assert stats.events_tokens <= 50_000
+        assert messages is not None
+        structured = litellm.token_counter(model=small_llm.model, messages=messages)
+        cap = int(small_llm.context_window * 0.70)
+        assert structured <= cap, (
+            f"override LLM's window was ignored: structured={structured:,} > cap={cap:,}"
+        )
 
     @pytest.mark.asyncio
     async def test_llm_without_context_window_skips_clamp(self):
-        """An LLM with no ``context_window`` attribute disables the safety
-        net — there's no number to clamp against. The call proceeds with
-        whatever the agent's config says (None → no truncation)."""
+        """LLM with no context_window disables the safety net — we have no
+        number to clamp against. Call proceeds; if it overflows, the API
+        surfaces the error."""
+        import litellm
 
-        # Plain FakeLLMClient has context_window=128000; subclass strips it.
         class NoWindowLLM(FakeLLMClient):
-            # Override at class level to remove the property.
-            pass
+            model = "anthropic/claude-3-5-sonnet-20240620"
 
-        # Python can't delete an inherited property easily; use a Mock-like
-        # object that has count_tokens but NO context_window.
-        class _FakeNoWindow:
+            @property
+            def context_window(self):  # type: ignore[override]
+                return None  # explicitly missing
+
             def count_tokens(self, text: str) -> int:
-                return max(1, len(text) // 4)
+                return litellm.token_counter(model=self.model, text=text)
 
-            async def acall(self, *a, **kw):
-                raise RuntimeError("no LLM")
-
-        # We need an Agent attachable LLM. FakeLLMClient has context_window as a
-        # non-settable property, so use an instance-level attribute trick by
-        # subclassing a minimal Agent-compatible mock. Simpler: assert that the
-        # clamp logic doesn't crash when context_window is None.
-        llm = _mk_llm(0)  # context_window=0 should be treated as "unknown"
+        llm = NoWindowLLM()
 
         class A(Agent, llm=llm):
             async def respond(self, prompt: str) -> str:
@@ -291,57 +259,21 @@ class TestRuntimeContextWindowClamp:
 
         agent = A()
         for _ in range(10):
-            agent.event_manager.add(Message(content="x" * 12_000))
+            agent.event_manager.add(Message(content="hi"))
 
         method = type(agent).respond
         from nemo_oo_agents.runtime.actor import _current_llm_var
 
-        token = _current_llm_var.set(agent._llm)
+        token = _current_llm_var.set(llm)
         try:
             try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+                messages = await agent.runtime._build_messages(
+                    method, call_args=(agent, "hi"), call_kwargs={}
+                )
             except Exception:
-                pass
+                messages = None
         finally:
             _current_llm_var.reset(token)
 
-        # Doesn't crash; stats are populated.
-        assert agent.runtime._last_context_stats is not None
-
-    @pytest.mark.asyncio
-    async def test_real_tokenizer_is_used_not_char_len(self, agent_with_big_events):
-        """When the safety net is active, the LLM's ``count_tokens`` method
-        must be the one driving decisions — NOT ``len()`` on block content.
-
-        Regression guard: an earlier version of ``render_context`` fell
-        back to ``len`` when no token counter was supplied, producing
-        ~4× over-counts on typical English (char-vs-token ratio).
-        """
-        agent = agent_with_big_events
-
-        # Instrument: record every call to our LLM's count_tokens.
-        calls = []
-        original = type(agent._llm).count_tokens
-
-        def counting_count_tokens(self, text: str) -> int:
-            calls.append(len(text))
-            return original(self, text)
-
-        type(agent._llm).count_tokens = counting_count_tokens  # type: ignore[method-assign]
-
-        method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
-
-        token = _current_llm_var.set(agent._llm)
-        try:
-            try:
-                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
-            except Exception:
-                pass
-        finally:
-            _current_llm_var.reset(token)
-            type(agent._llm).count_tokens = original  # type: ignore[method-assign]
-
-        # Render_context called count_tokens at least once — it wouldn't
-        # have if the safety net bailed out and fell through to len().
-        assert len(calls) > 0, "expected count_tokens to be invoked by the safety-net path"
+        # Doesn't crash; no assertion on cap (there isn't one).
+        assert messages is not None

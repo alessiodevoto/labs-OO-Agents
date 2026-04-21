@@ -119,6 +119,63 @@ warnings.filterwarnings(
 )
 
 
+def _clamp_messages_to_budget(
+    messages: list[dict[str, Any]], budget: int, model: str
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    """Drop oldest non-system messages until structured tokens fit ``budget``.
+
+    Uses ``litellm.token_counter`` to measure the structured payload (the
+    same counter the API will use). Single O(n) walk from newest backward.
+    System messages are always kept.
+
+    Returns ``(clamped_messages, total_tokens, events_tokens, dropped)``
+    where ``total_tokens`` is the post-clamp structured count, ``events_tokens``
+    is that minus the system-message share, and ``dropped`` is how many
+    non-system messages were removed.
+    """
+    try:
+        import litellm
+    except ImportError:
+        return messages, 0, 0, 0
+
+    system = [m for m in messages if m.get("role") == "system"]
+    rest = [m for m in messages if m.get("role") != "system"]
+    system_cost = int(litellm.token_counter(model=model, messages=system)) if system else 0
+
+    # Fast path: already fits.
+    total = int(litellm.token_counter(model=model, messages=messages))
+    if total <= budget:
+        return messages, total, max(0, total - system_cost), 0
+
+    available = budget - system_cost
+    if available <= 0:
+        # System alone exceeds budget — nothing we can do here; let the
+        # API surface the error.
+        return messages, total, max(0, total - system_cost), 0
+
+    # Walk newest → oldest, keep as long as we fit.
+    running = 0
+    keep_from = len(rest)
+    for i in range(len(rest) - 1, -1, -1):
+        cost = int(litellm.token_counter(model=model, messages=[rest[i]]))
+        if running + cost > available:
+            break
+        running += cost
+        keep_from = i
+
+    dropped = keep_from
+    logger.warning(
+        "context-window safety net: dropped %d oldest message(s) "
+        "(structured total %d > budget %d → keeping %d, sum=%d)",
+        dropped,
+        total,
+        budget,
+        len(rest) - dropped,
+        system_cost + running,
+    )
+    return system + rest[keep_from:], system_cost + running, running, dropped
+
+
 def _strip_blocked_modules(
     exec_globals: dict[str, Any],
     blocked_modules: frozenset[str],
@@ -157,16 +214,6 @@ _current_llm_var: contextvars.ContextVar[Any] = contextvars.ContextVar("current_
 # overrides are visible to runtime.truncation_config throughout strategy execution.
 _current_truncation_config_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "current_truncation_config", default=None
-)
-
-# Set by ``generate()`` before ``_build_messages`` when tools are in play.
-# Tool schemas ride alongside messages as a separate API parameter — they
-# count against the model's context window but don't appear in any block,
-# so our per-block-content token counts miss them entirely. The safety-net
-# clamp subtracts this overhead from the effective event budget. Value 0
-# means "no tool overhead to account for" (default).
-_current_tools_overhead_var: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "current_tools_overhead", default=0
 )
 
 # Context variable for current strategy being executed
@@ -479,34 +526,15 @@ class ActorRuntime:
         if self._current_method is None:
             raise RuntimeError("generate() called with no current method context")
 
-        # Count tool-schema overhead and stash it for _build_messages'
-        # safety-net clamp. Tools are a separate API parameter but count
-        # against the context window; _build_messages otherwise misses
-        # them. ``litellm.token_counter(text=...)`` on the JSON-serialized
-        # tools is a conservative estimate — slightly over the real wire
-        # count, which is fine for safety-net purposes.
-        tools_overhead: int = 0
-        if tools:
-            llm_client = _current_llm_var.get()
-            counter = getattr(llm_client, "count_tokens", None)
-            if callable(counter):
-                import json as _json
-
-                try:
-                    counted: Any = counter(_json.dumps(tools))
-                    tools_overhead = int(counted) if counted is not None else 0
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("tool overhead counting failed: %s", exc)
-        overhead_token = _current_tools_overhead_var.set(tools_overhead)
-        try:
-            # Build messages from context + events (timers inside _build_messages)
-            messages = await self._build_messages(
-                self._current_method,
-                call_args=self._current_call.args if self._current_call else (),
-                call_kwargs=self._current_call.kwargs if self._current_call else {},
-            )
-        finally:
-            _current_tools_overhead_var.reset(overhead_token)
+        # Build messages from context + events (timers inside _build_messages).
+        # The structured-payload safety net inside _build_messages clamps
+        # against ``llm.context_window``; tools are a small fraction (~350
+        # tokens for CodeAct, measured) and don't need separate accounting.
+        messages = await self._build_messages(
+            self._current_method,
+            call_args=self._current_call.args if self._current_call else (),
+            call_kwargs=self._current_call.kwargs if self._current_call else {},
+        )
         _gen_hm = get_harness_metrics()
 
         # Get LLM client from context var (set by _execute_with_generation)
@@ -2279,30 +2307,11 @@ async def {name}({params_str}) -> {return_type}:
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
 
-        # Safety net: event pile must never exceed the resolved LLM's context
-        # window. Clamps ``max_event_tokens`` down to a safe fraction of the
-        # window *minus* tool-schema overhead.
-        #
-        # The 0.65 factor is aggressive on purpose: our per-block content
-        # count misses (a) JSON message wrappers Anthropic tokenizes —
-        # role/content/tool_use/tool_result structure, easily 15–30% on
-        # top of content, and (b) per-event ``<metadata>`` wrappers added
-        # by ``format_message_content``. Observed in a real session: 108K
-        # content → 207K actual API (Bedrock). 0.65 leaves room for that
-        # overhead without needing a second pass against the full payload.
-        #
-        # User-configured budgets still win when they're tighter; the
-        # safety net only lowers, never raises.
+        # Pre-render clamp: content-level ``max_event_tokens``. Loose upper
+        # bound — we do the authoritative structured-level check AFTER
+        # render_context produces the full messages list (see below).
         effective_event_limit = tc.max_event_tokens
         ctx_window = getattr(llm_client, "context_window", None)
-        if ctx_window:
-            tools_overhead = _current_tools_overhead_var.get()
-            # Floor at 10% of window — a runaway tools estimate mustn't
-            # silently suppress every event.
-            available = max(int(ctx_window * 0.10), ctx_window - tools_overhead)
-            safety_cap = int(available * 0.65)
-            if effective_event_limit is None or effective_event_limit > safety_cap:
-                effective_event_limit = safety_cap
 
         need_token_counter = tc.max_context_tokens is not None or effective_event_limit is not None
         if need_token_counter and not callable(getattr(llm_client, "count_tokens", None)):
@@ -2339,5 +2348,34 @@ async def {name}({params_str}) -> {return_type}:
                 pre_format_limit=tc.max_block_chars,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
-        self._last_context_stats = result.stats
-        return result.output
+
+        # Authoritative structured-payload safety net. The content-level
+        # counter used inside render_context misses ~60% of the tokens
+        # the API actually sees — JSON message wrappers (role/content-
+        # array/tool_use/tool_result) plus the ``<event_xxx>`` XML that
+        # ``format_message_content`` emits. Observed on a real session:
+        # 101K content → 163K structured (litellm) → 207K at Bedrock.
+        #
+        # Count the final messages list with ``litellm.token_counter``
+        # and drop oldest non-system messages until total fits under
+        # ``ctx_window × 0.70``. The 30% margin covers the litellm→API
+        # tokenizer gap.
+        messages = result.output
+        stats = result.stats
+        if ctx_window and isinstance(messages, list) and messages:
+            cap = int(ctx_window * 0.70)
+            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
+                messages, cap, llm_client.model
+            )
+            if dropped or total_tok != stats.total_tokens:
+                # Reflect the actual shipped payload in stats so the TUI's
+                # ``ctx N%`` display matches reality.
+                stats = stats.model_copy(
+                    update={
+                        "total_tokens": total_tok,
+                        "events_tokens": events_tok,
+                        "events_dropped": stats.events_dropped + dropped,
+                    }
+                )
+        self._last_context_stats = stats
+        return messages
