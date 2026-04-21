@@ -28,7 +28,7 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
 TASKS_DIR = WORKTREE_ROOT / "util/harbor/tasks/terminal_bench"
-SIF_CACHE = WORKTREE_ROOT / "3p/sif_cache"
+SIF_CACHE = Path("/localhome/local-rcabral/3p/sif_cache")
 
 # Cached base SIFs pulled in previous Harbor runs.
 # Keys are Docker image references (as they appear in FROM lines).
