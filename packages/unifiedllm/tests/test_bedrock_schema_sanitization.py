@@ -4,8 +4,9 @@
 
 Bedrock Claude rejects JSON schemas containing integer/number constraints
 (minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf) and
-string constraints (minLength, maxLength, pattern). This module tests that
-the sanitization function strips those keywords for Bedrock models while
+array constraints (maxItems, minItems > 1). This module tests that the
+sanitization function strips those keywords for Bedrock models while
+preserving supported constraints (minLength, maxLength, pattern) and
 leaving schemas untouched for other providers.
 
 See: gl-134
