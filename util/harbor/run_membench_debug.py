@@ -168,9 +168,7 @@ def _print_results(model: str, results: object) -> None:
         status = "PASS" if r.passed else "FAIL"
         actual = _extract_answer(r.output)
         extracted = _extract_letter(actual) or "?"
-        print(
-            f"  [{status}] extracted={extracted!r}  expected={r.expected!r}"
-        )
+        print(f"  [{status}] extracted={extracted!r}  expected={r.expected!r}")
         if r.error:
             print(f"         error={r.error!r}")
     print(f"\n  Score: {results.passed}/{results.total} = {results.pass_rate:.0f}%")
@@ -211,9 +209,7 @@ async def main(
     )
 
     if not adapter.tasks:
-        print(
-            "ERROR: No tasks loaded. Check --data-dir contains MemData/ or data2test/ dirs."
-        )
+        print("ERROR: No tasks loaded. Check --data-dir contains MemData/ or data2test/ dirs.")
         sys.exit(1)
 
     print(f"Loaded {len(adapter.tasks)} tasks.\n")
