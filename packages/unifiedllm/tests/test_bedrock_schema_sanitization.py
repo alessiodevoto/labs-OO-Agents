@@ -251,6 +251,7 @@ class TestMaybeSanitizeResponseFormat:
 
     def test_bedrock_model_returns_dict(self):
         """Bedrock models should get a sanitized dict response_format."""
+
         class R(BaseModel):
             rating: int = Field(..., ge=1, le=5)
 
@@ -263,6 +264,7 @@ class TestMaybeSanitizeResponseFormat:
 
     def test_non_bedrock_model_returns_class(self):
         """Non-Bedrock models should get the original Pydantic class."""
+
         class R(BaseModel):
             rating: int = Field(..., ge=1, le=5)
 
@@ -271,6 +273,7 @@ class TestMaybeSanitizeResponseFormat:
 
     def test_comprehensive_pydantic_model(self):
         """End-to-end: a real Pydantic model with all constraint types."""
+
         class FullModel(BaseModel):
             rating: int = Field(..., ge=1, le=5)
             score: int = Field(..., gt=0, lt=100)
