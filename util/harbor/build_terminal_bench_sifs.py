@@ -68,13 +68,18 @@ def _join_continuations(lines: list[str]) -> list[str]:
 
 
 def parse_dockerfile(path: Path):
-    """Return (from_image, run_cmds, file_copies, env_vars, workdirs)."""
+    """Return (from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images).
+
+    copy_from_images: external registry images referenced via COPY --from=<image>.
+    COPY --from= lines are excluded from file_copies (can't be resolved on host).
+    """
     lines = _join_continuations(path.read_text().splitlines())
     from_image = None
     run_cmds: list[str] = []
-    file_copies: list[tuple[str, str]] = []  # (src_rel_to_env_dir, dst_in_container)
+    file_copies: list[tuple[str, str]] = []  # (src_rel_to_task_dir, dst_in_container)
     env_vars: list[str] = []
     workdirs: list[str] = []
+    copy_from_images: list[str] = []  # external images from COPY --from=
 
     for line in lines:
         if not line or line.startswith("#"):
@@ -89,15 +94,23 @@ def parse_dockerfile(path: Path):
         elif keyword == "RUN":
             run_cmds.append(rest)
         elif keyword == "COPY":
-            parts = rest.split(None, 1)
-            if len(parts) == 2:
-                file_copies.append((parts[0], parts[1]))
+            tokens = rest.split()
+            if tokens and tokens[0].startswith("--from="):
+                # Multi-stage COPY — can't copy from host. Track external images.
+                image_ref = tokens[0][7:]
+                if "/" in image_ref or ":" in image_ref:
+                    copy_from_images.append(image_ref)
+                # Skip: internal stage refs (e.g. --from=builder) have no host path.
+            else:
+                parts = rest.split(None, 1)
+                if len(parts) == 2:
+                    file_copies.append((parts[0], parts[1]))
         elif keyword == "ENV":
             env_vars.append(rest.replace(" ", "=", 1) if "=" not in rest else rest)
         elif keyword == "WORKDIR":
             workdirs.append(rest)
 
-    return from_image, run_cmds, file_copies, env_vars, workdirs
+    return from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +126,7 @@ def generate_def(
     env_vars: list[str],
     workdirs: list[str],
     env_dir: Path,
+    copy_from_images: list[str] | None = None,
 ) -> str:
     """Translate parsed Dockerfile fields into an Apptainer definition file."""
     base_sif = _BASE_SIFS.get(from_image)
@@ -134,7 +148,7 @@ def generate_def(
     setup: list[str] = []
     for _, dst in file_copies:
         parent = str(Path(dst).parent)
-        if parent not in ("/", ""):
+        if parent not in ("/", "", ".", ".."):
             setup.append(f'    mkdir -p "${{SINGULARITY_ROOTFS}}{parent}"')
     if setup:
         sections.append("%setup")
@@ -142,10 +156,16 @@ def generate_def(
         sections.append("")
 
     # %files — source paths are absolute so they work regardless of CWD.
+    # Source files may live in env_dir (environment/) or task_dir (e.g. tests/).
     if file_copies:
         sections.append("%files")
         for src, dst in file_copies:
             abs_src = env_dir / src
+            if not abs_src.exists():
+                # Also check task_dir/src (e.g. tests/foo.py → task_dir/tests/foo.py)
+                alt = env_dir.parent / src
+                if alt.exists():
+                    abs_src = alt
             sections.append(f"    {abs_src} {dst}")
         sections.append("")
 
@@ -157,7 +177,20 @@ def generate_def(
         " && rm -rf /var/lib/apt/lists/*",
     ]
 
+    # If the Dockerfile used COPY --from=ghcr.io/astral-sh/uv, install uv now.
+    if copy_from_images and any("astral-sh/uv" in img for img in copy_from_images):
+        post.append(
+            "    # Install uv (replaces COPY --from=ghcr.io/astral-sh/uv in Dockerfile)\n"
+            "    curl -LsSf https://astral.sh/uv/install.sh | env HOME=/root sh"
+            " && cp /root/.local/bin/uv /bin/uv && cp /root/.local/bin/uvx /bin/uvx"
+        )
+
     for cmd in run_cmds:
+        # Normalize bare `mkdir` (no -p) to `mkdir -p` so %setup-pre-created
+        # directories don't cause "File exists" failures in %post.
+        import re as _re
+
+        cmd = _re.sub(r"\bmkdir(?!\s+-)", "mkdir -p", cmd)
         post.append(f"    {cmd}")
 
     for wd in workdirs:
@@ -247,7 +280,7 @@ def build_sif(
 
     if result.returncode != 0:
         print(f"ERROR: apptainer build failed for {task_name}", file=sys.stderr)
-        sys.exit(1)
+        return None
 
     print(f"Built: {sif_path}")
     return sif_path
@@ -301,7 +334,9 @@ def main() -> None:
             print(f"Skipping {task_dir.name}: no Dockerfile")
             continue
 
-        from_image, run_cmds, file_copies, env_vars, workdirs = parse_dockerfile(dockerfile)
+        from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images = parse_dockerfile(
+            dockerfile
+        )
         if not from_image:
             print(f"Skipping {task_dir.name}: no FROM in Dockerfile")
             continue
@@ -314,6 +349,7 @@ def main() -> None:
             env_vars,
             workdirs,
             task_dir / "environment",
+            copy_from_images=copy_from_images,
         )
 
         sif_path = build_sif(task_dir.name, def_content, args.dry_run, args.skip_built)

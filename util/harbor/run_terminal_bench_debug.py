@@ -1,19 +1,20 @@
 """
-Run Terminal Bench tasks via eval_pipeline using the baseline agent.
+DEBUG ONLY — Run Terminal Bench tasks in-process via eval_pipeline (no container, no Harbor).
 
-Harbor is the canonical way to run benchmark evaluations.  This script
-runs the same agent code against the same benchmark tasks without a container,
-making it faster to iterate on agent changes locally.
+This is a local development shortcut for fast iteration on agent changes.
+It bypasses Harbor entirely: no Docker/Apptainer container, no task.toml environment,
+no Harbor orchestrator. Results may differ from canonical Harbor runs.
 
-Terminal Bench tasks require Docker containers for full verification (the test
-scripts run inside the sandbox and write reward.txt).  Without containers,
-this script runs the baseline agent against each task's instruction and reports
-whether the agent completed without errors.  Use `harbor run --config
-util/harbor/terminal_bench_baseline.yaml` for end-to-end evaluation with
-verifier scoring.
+Terminal Bench tasks require containers for full verification (the test scripts
+run inside the sandbox and write reward.txt). Without containers, this script
+runs the baseline agent against each task's instruction and reports whether the
+agent completed without errors — NOT whether it solved the task correctly.
+
+THE CANONICAL WAY TO RUN TERMINAL BENCH:
+    harbor run --config util/harbor/terminal_bench_baseline.yaml
 
 Usage:
-    uv run python util/harbor/run_terminal_bench.py [--tasks 5] [--model MODEL]
+    uv run python util/harbor/run_terminal_bench_debug.py [--tasks 5] [--model MODEL]
 
 See gl-24: Smoke test: run 5 Terminal Bench tasks via Harbor
 """
