@@ -474,8 +474,12 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       into the ``persist`` dict of the ``RespondResult`` you return, e.g.
       ``persist={"plan": plan, "cursor": cursor}``. They come back on the
       next call as the ``restored`` dict — unpack with ``.get("plan")``.
-    - For long-lived plans/progress, ``self.todo.set_var(t.id, "k", v)``
-      is snapshot-backed and survives across sessions, not just turns.
+    - For long-lived plans/progress, use todo vars — each todo has a
+      ``vars`` dict with an attribute-access proxy:
+          t = self.todo.add("Deep research", foo=42, data={"a": 1})
+          t.v.progress = 0.25
+          v = t.v.progress   # next turn: 0.25
+      Snapshot-backed, survives across sessions, not just turns.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.

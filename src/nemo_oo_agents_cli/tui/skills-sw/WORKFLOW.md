@@ -8,7 +8,7 @@ Five skills that scaffold software-engineering work end-to-end:
 ```
 
 Each skill reads from and writes to a single **umbrella todo** using
-`self.todo.set_var / get_var` (persistent data) and `self.todo.comment`
+`t.v.<key>` (persistent data) and `self.todo.comment`
 (chronological journal). That's how state crosses turn boundaries
 where the Python REPL namespace doesn't.
 
@@ -23,11 +23,11 @@ manually), the workflow is complete.
 ```python
 # /brainstorm "new login flow"  →  creates umbrella
 t = self.todo.add("brainstorm: new login flow")
-self.todo.set_var(t.id, "spec", {...})
+t.v.spec = {...}
 self.todo.comment(t.id, "📋 spec captured — 4 requirements, 2 open questions")
 
 # /root-cause <id>  →  reuses it
-self.todo.set_var(t.id, "fix_plan", [...])
+t.v.fix_plan = [...]
 self.todo.comment(t.id, "🔍 root cause: races on refresh")
 ```
 

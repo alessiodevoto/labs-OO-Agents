@@ -42,7 +42,7 @@ if existing is not None:
     # Revision round on an existing umbrella
     umbrella = existing
     feedback = tokens[1] if len(tokens) > 1 else ""
-    current_spec = self.todo.get_var(umbrella.id, "spec") or {}
+    current_spec = umbrella.vars.get("spec") or {}
 else:
     # Fresh brainstorm
     topic = arg
@@ -54,7 +54,7 @@ else:
         "acceptance_criteria": [],
         "open_questions": [],
     }
-    self.todo.set_var(umbrella.id, "spec", current_spec)
+    umbrella.v.spec = current_spec
     self.todo.comment(umbrella.id, f"📋 started brainstorm on: {topic}")
     feedback = ""
 ```
@@ -87,7 +87,7 @@ Each reply from the user updates the spec:
 current_spec["requirements"].append("all existing callers keep working")
 current_spec["acceptance_criteria"].append("pytest tests/ green")
 current_spec["open_questions"].append("should retry be opt-in or default?")
-self.todo.set_var(umbrella.id, "spec", current_spec)
+umbrella.v.spec = current_spec
 self.todo.comment(umbrella.id, "📋 captured 2 reqs, 1 open question")
 ```
 
@@ -110,7 +110,7 @@ Render the spec as Markdown, ask for sign-off, surface the next step:
 
 ```python
 import json
-spec = self.todo.get_var(umbrella.id, "spec")
+spec = umbrella.v.spec
 lines = [
     f"# Spec — {spec['goal']}",
     "",

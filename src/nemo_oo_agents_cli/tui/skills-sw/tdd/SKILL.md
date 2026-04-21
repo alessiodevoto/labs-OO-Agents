@@ -38,8 +38,8 @@ if umbrella is None:
     self.message(f"No todo {umbrella_id}. Start with /brainstorm or /root-cause.")
     return_result(RespondResult(kind="GET_USER_INPUT"))
 
-fix_plan = self.todo.get_var(umbrella.id, "fix_plan")
-failing_test_path = self.todo.get_var(umbrella.id, "failing_test_path")
+fix_plan = umbrella.vars.get("fix_plan")
+failing_test_path = umbrella.vars.get("failing_test_path")
 if not fix_plan or not failing_test_path:
     self.message(
         f"Todo {umbrella.id} isn't ready for /tdd — missing fix_plan or "
@@ -47,8 +47,8 @@ if not fix_plan or not failing_test_path:
     )
     return_result(RespondResult(kind="GET_USER_INPUT"))
 
-show_diffs = bool(self.todo.get_var(umbrella.id, "show_diffs"))
-commits: list[str] = self.todo.get_var(umbrella.id, "commits") or []
+show_diffs = bool(umbrella.vars.get("show_diffs"))
+commits: list[str] = umbrella.vars.get("commits") or []
 ```
 
 ## Red check (start each run with this)
@@ -73,13 +73,13 @@ Create a sub-todo per plan step so progress is visible in
 
 ```python
 # Build sub-todos once (idempotent — skip if already made)
-step_todo_ids = self.todo.get_var(umbrella.id, "step_todos") or []
+step_todo_ids = umbrella.vars.get("step_todos") or []
 if not step_todo_ids:
     step_todo_ids = [
         self.todo.add(f"tdd step {i + 1}: {step}", deps=[umbrella.id]).id
         for i, step in enumerate(fix_plan)
     ]
-    self.todo.set_var(umbrella.id, "step_todos", step_todo_ids)
+    umbrella.v.step_todos = step_todo_ids
 ```
 
 For each step:
@@ -144,7 +144,7 @@ for step_id in step_todo_ids:
     commit = await self.bash.run(f"git commit -m {msg!r}")
     sha = (await self.bash.run("git rev-parse --short HEAD")).stdout.strip()
     commits.append(sha)
-    self.todo.set_var(umbrella.id, "commits", commits)
+    umbrella.v.commits = commits
     self.todo.done(step_id)
     self.todo.comment(umbrella.id, f"✅ step committed {sha} — {step.title}")
 ```
@@ -157,15 +157,15 @@ results:
 ```python
 final = await self.bash.run("pytest --tb=short")
 passed = final.return_code == 0
-self.todo.set_var(umbrella.id, "test_results", {
+umbrella.v.test_results = {
     "cmd": "pytest --tb=short",
     "passed": passed,
     "stdout_tail": final.stdout[-1000:],
-})
+}
 diff_summary = (await self.bash.run(
     "git log --oneline HEAD~%d..HEAD" % len(commits)
 )).stdout.strip()
-self.todo.set_var(umbrella.id, "diff_summary", diff_summary)
+umbrella.v.diff_summary = diff_summary
 
 if passed:
     self.todo.comment(umbrella.id, f"✅ all tests GREEN across {len(commits)} commits")
