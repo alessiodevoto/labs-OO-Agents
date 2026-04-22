@@ -396,10 +396,12 @@ Standard Python builtins and agent instance (`self`) are available."""
             elif callable(obj):
                 imported_items.append(name)
 
-        # Build documentation
+        # Build documentation. The module / types / imports lists come
+        # first, immediately under the heading — the single most useful
+        # piece of information the LLM reads in this block is "what
+        # names can I reference", and prose buried above it loses that
+        # signal.
         parts = ["## Execution Context", ""]
-        parts.append("Available in execute_python (no imports needed — everything is pre-loaded):")
-        parts.append("")
 
         if modules:
             parts.append(f"**Imported modules**: {', '.join(sorted(modules))}")
@@ -426,11 +428,16 @@ Standard Python builtins and agent instance (`self`) are available."""
         parts.append(
             "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
         )
-        parts.append("Do NOT write import statements — all symbols above are already in scope.")
+        parts.append("Do NOT import — use what's in the Execution Context.")
 
         # Members section — Skill attrs on the agent.
         # Includes both instance attrs and class-level Skill attrs, so that
         # `frontend_design = Skill(path=...)` at class level is visible here.
+        # The Context and Events APIs (ContextApi, EventsApi) are also Skills;
+        # they are hidden on the base Agent class by default, but an agent
+        # can surface them by calling `spec(self, "context", hidden=False)`
+        # in its __init__ — which is why `is_hidden_field` is called with the
+        # instance (not the class) so the instance-level override is honored.
         # Framework Skills (_-prefixed) are excluded.
         from agentdoc.visibility import is_hidden_field
         from nemo_oo_agents.skill import Skill as _Skill
@@ -439,7 +446,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             name: val
             for name in dir(runtime.agent)
             if not name.startswith("_")
-            and not is_hidden_field(type(runtime.agent), name)
+            and not is_hidden_field(runtime.agent, name)
             and isinstance(val := getattr(runtime.agent, name, None), _Skill)
         }
         skill_attrs = list(skill_attrs_dict.items())
@@ -467,12 +474,12 @@ Standard Python builtins and agent instance (`self`) are available."""
             parts.append("- Inspect in REPL: `print(doc(self.<skill>))`")
 
             # Pin/unpin instructions only when context is visible on the agent
-            has_context = not is_hidden_field(type(runtime.agent), "context") and hasattr(
+            has_context = not is_hidden_field(runtime.agent, "context") and hasattr(
                 runtime.agent, "context"
             )
             if has_context:
-                parts.append('- Pin to context: `self.context["<skill>"] = doc(self.<skill>)`')
-                parts.append('- Unpin: `del self.context["<skill>"]`')
+                parts.append('- Pin to context: `self.context["<key>"] = <value>`')
+                parts.append('- Unpin: `del self.context["<key>"]`')
 
         return "\n".join(parts)
 
@@ -481,64 +488,25 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         ## Strategy
 
-        You are working in an interactive Python session (like a Jupyter notebook).
-        Input parameters are pre-loaded as local variables.
+        Jupyter-like Python session. Parameters pre-loaded as locals; state persists. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn.
 
         **Your two tools:**
-        - `execute_python(code)` — run a code cell (variables persist across cells)
-        - `return_result(value)` — submit your final answer
+        - `execute_python(code)` — run a code cell
+        - `return_result(value)` — submit your final answer (also callable from inside `execute_python`)
 
         ## When to use which tool
 
-        **Use `return_result(...)` directly** for simple answers you can determine from the inputs alone (yes/no, extracting one field, a single lookup).
+        Use `return_result(...)` directly for simple answers determinable from the inputs alone (yes/no, one field, a single lookup).
 
-        **Use `execute_python(...)` when:**
-        - Input contains lists or batches to process
-        - Arithmetic or multi-step computation is needed
-        - You need to transform, reshape, or iterate over data
+        Use `execute_python(...)` for lists/batches, arithmetic, multi-step computation, transforms, or iteration. Always iterate in code — never construct large arrays by hand.
 
-        Always iterate in code for lists/batches — never construct large arrays by hand.
+        For language tasks (classification, extraction, interpretation), use LLM reasoning — answer directly via `return_result`, or delegate to a `@strategy(PredictStrategy())` sub-method. Don't keyword-match or regex.
 
-        ## Returning computed results
+        ## Restrictions (will throw)
 
-        After computing in code, call `return_result(variable)` **from within** `execute_python()`:
-
-        <example>
-        results = [process(item) for item in items]
-        return_result(results)
-        </example>
-
-        This passes the variable directly. Do NOT re-type computed values in a separate `return_result` tool call.
-
-        ## No heuristics for language understanding
-
-        Never use keyword matching (`if "x" in text`), regex, or hand-written rules for tasks
-        that require understanding language or strings (classification, extraction,
-        interpretation, etc.). These tasks need LLM reasoning.
-        Either answer directly with `return_result`, or delegate to a
-        `@strategy(PredictStrategy())` sub-method (see below).
-
-        BAD:  `if "urgent" in subject: return "high"`
-        GOOD: reason about it → `return_result("high")`, or delegate to a sub-method.
-
-        This applies to language tasks only — use regular Python for math, data
-        transformation, and other deterministic logic.
-
-        ## Session rules
-
-        - Variables persist across cells (like Jupyter)
-        - Use `await` directly — no `asyncio.run()`
-        - `print()` / `pprint()` for debugging; `doc(obj)` to inspect types
-        - `Out[n]` references result of cell n; `Out[-1]` is the latest
-        - You MUST call a tool each turn — no plain-text answers
-
-        ## Restrictions (these will throw errors)
-
-        - `import` (everything is pre-imported; see Execution Context)
-        - `eval()`, `exec()`, `compile()`, `__import__()`
-        - `input()`, `breakpoint()`
-        - `globals()`, `locals()`, `vars()`
-        - `asyncio.run()`, `loop.run_until_complete()`
+        - `import` — use what's in the Execution Context
+        - `eval`, `exec`, `compile`, `__import__`, `input`, `breakpoint`
+        - `globals`, `locals`, `vars`, `asyncio.run`, `loop.run_until_complete`
         """
         ...
 
@@ -555,6 +523,8 @@ Standard Python builtins and agent instance (`self`) are available."""
         ## Task: {original_call.method_name}
 
         {original_call.docstring}
+
+        You are executing `{original_call.method_name}` — code runs in the Execution Context above. Calling `self.{original_call.method_name}(...)` would recurse.
         """
         ...
 

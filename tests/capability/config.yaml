@@ -89,12 +89,21 @@ models:
     max_tokens: 64000
 
 
-  gemini-3-pro:
-    name: "Gemini 3 Pro (NVIDIA Internal)"
-    model_name: openai/gcp/google/gemini-3-pro
+  gemini-3.1-pro-preview:
+    name: "Gemini 3.1 Pro Preview (NVIDIA Internal)"
+    model_name: openai/gcp/google/gemini-3.1-pro-preview
     provider: nvidia_internal
     endpoint: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INFERENCE_API_KEY
+    max_tokens: 64000
+
+  gemini-3-flash-preview:
+    name: "Gemini 3 Flash Preview (NVIDIA Internal)"
+    model_name: openai/gcp/google/gemini-3-flash-preview
+    provider: nvidia_internal
+    endpoint: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INFERENCE_API_KEY
+    max_tokens: 32000
 
   # GPT-OSS 120B - reasoning model on NVIDIA internal API
   gpt-oss-120b:
@@ -144,19 +153,19 @@ models:
     api_key_env: NVIDIA_INFERENCE_API_KEY
     max_tokens: 65384
 
-# Which models to use for agent evaluation
-# These are registry keys — no models: section needed for agent models
+# Which models to use for agent evaluation.
+# 8-model matrix: (Gemini, Nemotron, Claude, OpenAI) × (Big, Small).
+# Gemini entries use inline config IDs above (the gemini-3-pro registry key was
+# not authorized for our API key — swapped to the preview endpoints).
 agent_models:
-  # - nvidia/qwen/qwen3-next-80b-a3b-instruct
+  - gemini-3.1-pro-preview
+  - gemini-3-flash-preview
+  - nvidia/nvidia/nemotron-3-super-preview
   - nvidia/nvidia/Nemotron-3-Nano-30B-A3B
-  # - nvidia/openai/gpt-oss-120b
-  # - azure/openai/gpt-5-mini
-  - azure/openai/gpt-5.2
+  - aws/anthropic/bedrock-claude-sonnet-4-5-v1
   - aws/anthropic/claude-haiku-4-5-v1
-  # - aws/anthropic/bedrock-claude-sonnet-4-5-v1
-  # - gcp/google/gemini-2.5-flash-lite
-  # - gcp/google/gemini-3-pro
-  # - nvidia/nvidia/nemotron-super-3-preview
+  - azure/openai/gpt-5.2
+  - azure/openai/gpt-5-mini
 
 output_dir: results  # Relative to this config file
 
@@ -243,8 +252,21 @@ test_suite:
         weight: 1.0
 
   - name: json_qa_lookup
-    description: "JSON field lookups - answer visible in data, no computation needed"
-    tier: horizon
+    description: "JSON field lookups - correctness only (answer visible in data)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.json_qa
+      class: JsonQAAgent
+    method: answer_question
+    data_file: tests/capability/data/json_qa_lookup.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: json_qa_lookup_mode
+    description: "JSON field lookups - stricter: also penalize writing code for a lookup"
+    tier: frontier
     agent:
       module: tests.capability.agents.json_qa
       class: JsonQAAgent

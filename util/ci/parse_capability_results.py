@@ -17,11 +17,65 @@ Output:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from eval_pipeline import Tier
+
+# Self-recursion errors surface as RestrictedCodeError with a characteristic
+# message ("calling self.<name>() is forbidden - this would cause infinite
+# recursion") that the framework emits in the span's error.message field.
+_SELF_RECURSION_RE = re.compile(r"calling self\.\w+.*forbidden.*recursion", re.I | re.S)
+_IMPORT_RESTRICTED_RE = re.compile(r"RestrictedCodeError.*import", re.I | re.S)
+
+
+def _scan_trace_errors(traces_dir: Path) -> dict[str, int]:
+    """Count self-recursion and restricted-import errors across all trace spans.
+
+    Traces are OTel JSONL files (resourceSpans.scopeSpans.spans); each span may
+    carry an ``error.type`` / ``error.message`` attribute pair. We only count
+    these two categories because they're the ones the framework is actively
+    protecting against and they respond to prompt tuning; other error types
+    (ValidationError, TypeError, ...) are test-specific and noisier.
+    """
+    self_recursion = 0
+    restricted_import = 0
+
+    if not traces_dir.is_dir():
+        return {"self_recursion": 0, "restricted_import": 0}
+
+    for trace_path in traces_dir.glob("*.jsonl"):
+        for raw in trace_path.open():
+            try:
+                doc = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            for rs in doc.get("resourceSpans", []):
+                for ss in rs.get("scopeSpans", []):
+                    for span in ss.get("spans", []):
+                        err_type = ""
+                        err_msg = ""
+                        for attr in span.get("attributes", []):
+                            k = attr.get("key")
+                            v = (attr.get("value") or {}).get("stringValue") or ""
+                            if k == "error.type":
+                                err_type = v
+                            elif k == "error.message":
+                                err_msg = v
+                        if not err_type:
+                            continue
+                        blob = f"{err_type}: {err_msg}"
+                        if _SELF_RECURSION_RE.search(blob):
+                            self_recursion += 1
+                        elif _IMPORT_RESTRICTED_RE.search(blob):
+                            restricted_import += 1
+
+    return {
+        "self_recursion": self_recursion,
+        "restricted_import": restricted_import,
+    }
 
 
 def parse_eval_file(eval_file: Path) -> dict[str, Any]:
@@ -87,6 +141,13 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
         "total_tokens": completion.get("total_tokens", 0) if completion else 0,
     }
 
+    # Count trace-level errors the framework prompt is actively protecting
+    # against (self-recursion, forbidden import). These live in span
+    # attributes, not in the top-level result's error field, because the
+    # CodeAct loop catches them and the agent retries — so they're invisible
+    # at the result level even when they happen frequently.
+    trace_errors = _scan_trace_errors(eval_file.parent / "traces")
+
     return {
         "passed": passed,
         "total": total,
@@ -101,6 +162,7 @@ def parse_eval_file(eval_file: Path) -> dict[str, Any]:
         "mode_correct_count": mode_correct_count,
         "mode_total_count": mode_total_count,
         **token_usage,
+        **trace_errors,
     }
 
 
@@ -146,6 +208,12 @@ def generate_gitlab_metrics(data: dict[str, Any]) -> str:
     lines.append(f"mode_selection_accuracy_percent {data['mode_accuracy']:.2f}")
     lines.append(f"mode_selection_correct {data['mode_correct_count']}")
     lines.append(f"mode_selection_total {data['mode_total_count']}")
+    # Framework-prevented error counts (from trace span attributes).
+    # These are errors the CodeAct loop caught and recovered from, so they're
+    # invisible at the result level. Tracking them here makes the prompt-lever
+    # metrics visible on every MR.
+    lines.append(f"capability_self_recursion_errors {data['self_recursion']}")
+    lines.append(f"capability_restricted_import_errors {data['restricted_import']}")
     # Add EOF marker (required by OpenMetrics format)
     lines.append("# EOF")
 
@@ -184,6 +252,10 @@ def print_summary(data: dict[str, Any]) -> None:
     print(f"  Input tokens:   {data['total_input_tokens']:>10,}")
     print(f"  Output tokens:  {data['total_output_tokens']:>10,}")
     print(f"  Total tokens:   {data['total_tokens']:>10,}")
+
+    print("\nFramework-caught errors (recovered, not in result.error):")
+    print(f"  Self-recursion attempts:   {data['self_recursion']:>10,}")
+    print(f"  Restricted-import attempts:{data['restricted_import']:>10,}")
 
     # Group by test category
     categories = {}
