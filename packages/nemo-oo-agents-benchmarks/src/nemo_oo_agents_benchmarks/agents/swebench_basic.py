@@ -25,15 +25,70 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = (
-    "You are a software engineer working inside a pre-configured repository "
-    "container.  Your task is to make changes to non-test files in order to "
-    "fix the issue described in the problem statement in a way that is general "
-    "and consistent with the codebase.\n\n"
-    "The repository is checked out at /testbed.  A conda environment named "
-    "'testbed' is pre-activated with all dependencies installed.  Use the "
-    "available shell and file tools to navigate, understand, and fix the code."
-)
+_SYSTEM_PROMPT = """\
+You are a software engineer interacting continuously with a computer by \
+submitting commands. You will be helping implement necessary changes to \
+meet requirements in the problem description. Your task is specifically to \
+make changes to non-test files in the current directory in order to fix the \
+issue described in the problem statement in a way that is general and \
+consistent with the codebase.
+
+The repository is checked out at /testbed. A conda environment named \
+"testbed" is pre-activated with all dependencies installed. The current \
+working directory is /testbed.\
+"""
+
+# Ported from agent006/.worktrees/memory-ci/evaluation/adapters/swebench.py
+# _get_environment_instructions() — this is what produced 74.20% ReAct baseline.
+_ENVIRONMENT_INSTRUCTIONS = """\
+## Environment
+
+You are in a Docker container with the repository already cloned and checked \
+out at /testbed. Use the available tools to explore the codebase, understand \
+the bug, and make targeted fixes.
+
+## Recommended Workflow
+
+1. **Analyze** the codebase by finding and reading relevant files
+2. **Reproduce** the issue with a test script to understand the bug
+3. **Identify** the root cause by examining the implementation
+4. **Implement** the fix in the source code
+5. **Verify** your fix works by running your reproduction script again
+6. **Test** thoroughly — run the relevant test suite to ensure no regressions
+7. **Submit** your patch when complete and verified
+
+## Boundaries
+
+- MODIFY: Regular source code files in /testbed
+- DO NOT MODIFY: Tests, configuration files (pyproject.toml, setup.cfg, etc.)
+
+## Think About Test Coverage
+
+Before submitting, ask yourself:
+- Does my fix address the root cause, not just the symptom?
+- Are there edge cases I should handle? (None values, empty strings, type mismatches, etc.)
+- Consider the issue title and description — think critically, do not follow suggestions blindly.
+
+## Final Evaluation
+
+Your final changes will be automatically evaluated. The evaluation system will:
+1. Capture the final state of your working directory
+2. Generate a unified diff patch of all changes
+3. Run the test suite to verify your fix
+
+You can check your progress at any point by running:
+```bash
+git diff HEAD
+```
+
+Make sure all changes are saved to files before finishing. The evaluation \
+tests whatever modifications exist in /testbed at the end of your session.
+"""
+
+
+def _format_problem_statement(raw: str) -> str:
+    """Wrap a raw Harbor problem statement with context headers."""
+    return f"## Issue Description\n\n{raw.strip()}\n\n{_ENVIRONMENT_INSTRUCTIONS}"
 
 
 class SWEBenchBasicAgent(
@@ -56,8 +111,12 @@ class SWEBenchBasicAgent(
         """
         if "user_message" in task_input:
             # Unified interface from the benchmark-agnostic runner.
+            # Harbor sends the raw instruction.md content as user_message;
+            # inject environment context so the agent knows where it is and
+            # how to proceed (this is what produced 74.20% with the 006 ReAct
+            # baseline — see gl-64).
             self.instructions = _SYSTEM_PROMPT
-            self.problem_statement = task_input["user_message"]
+            self.problem_statement = _format_problem_statement(task_input["user_message"])
             self.response_format = "diff"
             self.initial_observation = ""
         else:
