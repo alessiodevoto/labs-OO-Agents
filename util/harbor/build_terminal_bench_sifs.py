@@ -22,6 +22,7 @@ Flags:
 
 import argparse
 import os
+import re as _re
 import subprocess
 import sys
 import tempfile
@@ -47,7 +48,7 @@ SIF_CACHE = _sif_cache_dir()
 
 # Cached base SIFs pulled in previous Harbor runs.
 # Keys are Docker image references (as they appear in FROM lines).
-_BASE_SIFS: dict[str, Path] = {
+_BASE_SIFS: dict[str, Path] = {  # noqa: E501
     "ghcr.io/laude-institute/t-bench/ubuntu-24-04:latest": SIF_CACHE
     / "ghcr.io_laude-institute_t-bench_ubuntu-24-04_latest.sif",
     "ghcr.io/laude-institute/t-bench/ubuntu-24-04:20250624": SIF_CACHE
@@ -59,73 +60,112 @@ _BASE_SIFS: dict[str, Path] = {
     / "ghcr.io_laude-institute_t-bench_python-3-13_latest.sif",
 }
 
+# Default WORKDIR inherited from known base images.  Docker inherits WORKDIR
+# from the base image, so RUN commands in a Dockerfile with no explicit WORKDIR
+# still run from the base's WORKDIR.  Apptainer %post always starts from /,
+# so we must cd explicitly.
+_BASE_IMAGE_WORKDIR: dict[str, str] = {
+    "ghcr.io/laude-institute/t-bench/ubuntu-24-04:latest": "/app",
+    "ghcr.io/laude-institute/t-bench/ubuntu-24-04:20250624": "/app",
+    "ghcr.io/laude-institute/t-bench/python-3-13:20250620": "/app",
+    "ghcr.io/laude-institute/t-bench/python-3-13:latest": "/app",
+}
+
 
 # ---------------------------------------------------------------------------
 # Dockerfile parser
 # ---------------------------------------------------------------------------
 
-
-def _join_continuations(lines: list[str]) -> list[str]:
-    """Merge backslash-continuation lines into single logical lines."""
-    out: list[str] = []
-    buf = ""
-    for raw in lines:
-        stripped = raw.rstrip()
-        if stripped.endswith("\\"):
-            buf += stripped[:-1]
-        else:
-            buf += stripped
-            out.append(buf.strip())
-            buf = ""
-    if buf.strip():
-        out.append(buf.strip())
-    return out
+# Instruction tuple types emitted by parse_dockerfile:
+#   ("RUN", cmd_str)
+#   ("WORKDIR", path_str)
+#   ("HEREDOC_COPY", dest_str, content_lines_list)
+Instruction = tuple
 
 
 def parse_dockerfile(path: Path):
-    """Return (from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images).
+    """Return (from_image, instructions, file_copies, env_vars, workdirs, copy_from_images, args).
 
+    instructions: ordered list of RUN / WORKDIR / HEREDOC_COPY tuples that preserve
+        the execution order from the Dockerfile (needed for correct WORKDIR tracking).
+    workdirs: ordered list of all WORKDIR values (for backward compat / %environment).
     copy_from_images: external registry images referenced via COPY --from=<image>.
-    COPY --from= lines are excluded from file_copies (can't be resolved on host).
+    args: dict of ARG name → default value for ${VAR} expansion in RUN commands.
     """
-    lines = _join_continuations(path.read_text().splitlines())
+    raw_lines = path.read_text().splitlines()
     from_image = None
-    run_cmds: list[str] = []
-    file_copies: list[tuple[str, str]] = []  # (src_rel_to_task_dir, dst_in_container)
+    instructions: list[Instruction] = []
+    file_copies: list[tuple[str, str]] = []
     env_vars: list[str] = []
     workdirs: list[str] = []
-    copy_from_images: list[str] = []  # external images from COPY --from=
+    copy_from_images: list[str] = []
+    args: dict[str, str] = {}
 
-    for line in lines:
-        if not line or line.startswith("#"):
+    i = 0
+    while i < len(raw_lines):
+        stripped = raw_lines[i].strip()
+
+        if not stripped or stripped.startswith("#"):
+            i += 1
             continue
-        keyword = line.split()[0].upper()
-        rest = line.split(None, 1)[1] if len(line.split()) > 1 else ""
+
+        # Detect Docker heredoc COPY before joining continuations.
+        # Syntax: COPY <<MARKER /dest/path
+        heredoc_m = _re.match(r"COPY\s+<<(\w+)\s+(.+)", stripped, _re.IGNORECASE)
+        if heredoc_m:
+            marker, dest = heredoc_m.group(1), heredoc_m.group(2).strip()
+            content_lines: list[str] = []
+            i += 1
+            while i < len(raw_lines) and raw_lines[i].rstrip() != marker:
+                content_lines.append(raw_lines[i])
+                i += 1
+            instructions.append(("HEREDOC_COPY", dest, content_lines))
+            i += 1
+            continue
+
+        # Accumulate backslash-continuation lines into one logical line.
+        logical = stripped
+        while logical.endswith("\\"):
+            logical = logical[:-1].rstrip()
+            i += 1
+            if i < len(raw_lines):
+                logical += " " + raw_lines[i].strip()
+
+        toks = logical.split(None, 1)
+        keyword = toks[0].upper() if toks else ""
+        rest = toks[1] if len(toks) > 1 else ""
+
         if keyword == "FROM":
             # Strip optional --platform=... flag and "AS <name>" alias.
             parts = rest.split()
             non_flags = [p for p in parts if not p.startswith("--")]
             from_image = non_flags[0] if non_flags else parts[0]
+        elif keyword == "ARG":
+            if "=" in rest:
+                k, v = rest.split("=", 1)
+                args[k.strip()] = v.strip()
         elif keyword == "RUN":
-            run_cmds.append(rest)
+            instructions.append(("RUN", rest))
+        elif keyword == "WORKDIR":
+            workdirs.append(rest)
+            instructions.append(("WORKDIR", rest))
         elif keyword == "COPY":
             tokens = rest.split()
             if tokens and tokens[0].startswith("--from="):
-                # Multi-stage COPY — can't copy from host. Track external images.
                 image_ref = tokens[0][7:]
                 if "/" in image_ref or ":" in image_ref:
                     copy_from_images.append(image_ref)
-                # Skip: internal stage refs (e.g. --from=builder) have no host path.
+                # Internal stage refs (--from=builder) have no host path — skip.
             else:
                 parts = rest.split(None, 1)
                 if len(parts) == 2:
                     file_copies.append((parts[0], parts[1]))
         elif keyword == "ENV":
             env_vars.append(rest.replace(" ", "=", 1) if "=" not in rest else rest)
-        elif keyword == "WORKDIR":
-            workdirs.append(rest)
 
-    return from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images
+        i += 1
+
+    return from_image, instructions, file_copies, env_vars, workdirs, copy_from_images, args
 
 
 # ---------------------------------------------------------------------------
@@ -136,14 +176,35 @@ def parse_dockerfile(path: Path):
 def generate_def(
     task_name: str,
     from_image: str,
-    run_cmds: list[str],
+    instructions: list[Instruction],
     file_copies: list[tuple[str, str]],
     env_vars: list[str],
     workdirs: list[str],
     env_dir: Path,
     copy_from_images: list[str] | None = None,
+    args: dict[str, str] | None = None,
 ) -> str:
-    """Translate parsed Dockerfile fields into an Apptainer definition file."""
+    """Translate parsed Dockerfile fields into an Apptainer definition file.
+
+    Key difference from a naive translation: Apptainer %post always starts
+    from /, but Docker RUN commands run from the active WORKDIR (which may be
+    inherited from the base image).  We track the current WORKDIR through the
+    instruction list and wrap each RUN command in (cd <workdir> && ...) so the
+    working directory is correct.
+
+    Heredoc COPY (COPY <<MARKER /dest) is emitted as an inline `cat` command
+    in %post, since Apptainer has no native heredoc support in %files.
+    """
+    copy_from_images = copy_from_images or []
+    args = args or {}
+
+    def _subst_args(s: str) -> str:
+        """Expand ${VARNAME} / $VARNAME using ARG defaults from the Dockerfile."""
+        def _repl(m: _re.Match) -> str:
+            name = m.group(1) or m.group(2)
+            return args.get(name, m.group(0))
+        return _re.sub(r"\$\{(\w+)\}|\$(\w+)", _repl, s)
+
     base_sif = _BASE_SIFS.get(from_image)
     if base_sif and base_sif.exists():
         header = f"Bootstrap: localimage\nFrom: {base_sif}"
@@ -186,30 +247,46 @@ def generate_def(
 
     # %post — always pre-install curl so verifier scripts can call it even
     # though their own `apt-get install curl` fails (no root at runtime).
-    # Then apply the Dockerfile's RUN commands, then WORKDIR mkdirs.
+    # Then process instructions in order, tracking the current WORKDIR.
     post: list[str] = [
         "    apt-get update -qq && apt-get install -y --no-install-recommends curl"
         " && rm -rf /var/lib/apt/lists/*",
     ]
 
     # If the Dockerfile used COPY --from=ghcr.io/astral-sh/uv, install uv now.
-    if copy_from_images and any("astral-sh/uv" in img for img in copy_from_images):
+    if any("astral-sh/uv" in img for img in copy_from_images):
         post.append(
             "    # Install uv (replaces COPY --from=ghcr.io/astral-sh/uv in Dockerfile)\n"
             "    curl -LsSf https://astral.sh/uv/install.sh | env HOME=/root sh"
             " && cp /root/.local/bin/uv /bin/uv && cp /root/.local/bin/uvx /bin/uvx"
         )
 
-    for cmd in run_cmds:
-        # Normalize bare `mkdir` (no -p) to `mkdir -p` so %setup-pre-created
-        # directories don't cause "File exists" failures in %post.
-        import re as _re
+    # Apptainer %post starts from /.  Docker RUN commands run from the active
+    # WORKDIR, which may be inherited from the base image.  Start with the base
+    # image's known default so relative paths in RUN commands resolve correctly.
+    current_workdir: str | None = _BASE_IMAGE_WORKDIR.get(from_image)
 
-        cmd = _re.sub(r"\bmkdir(?!\s+-)", "mkdir -p", cmd)
-        post.append(f"    {cmd}")
-
-    for wd in workdirs:
-        post.append(f"    mkdir -p {wd}")
+    for instr in instructions:
+        kind = instr[0]
+        if kind == "WORKDIR":
+            current_workdir = instr[1]
+            post.append(f"    mkdir -p {current_workdir}")
+        elif kind == "RUN":
+            cmd = _re.sub(r"\bmkdir(?!\s+-)", "mkdir -p", instr[1])
+            cmd = _subst_args(cmd)
+            if current_workdir:
+                post.append(f"    (cd {current_workdir} && {cmd})")
+            else:
+                post.append(f"    {cmd}")
+        elif kind == "HEREDOC_COPY":
+            _, dest, content_lines = instr
+            parent = str(Path(dest).parent)
+            if parent not in ("/", "", ".", ".."):
+                post.append(f"    mkdir -p {parent}")
+            # Write inline content using cat heredoc.  Single-quote the marker
+            # to prevent variable expansion inside the content.
+            content = "\n".join(content_lines)
+            post.append(f"    cat > {dest} << 'TBHEREDOC'\n{content}\nTBHEREDOC")
 
     # Redirect apt and temp I/O to /staging at runtime so neither apt-get update
     # nor uv installer fills the writable-tmpfs overlay.  /staging is a real
@@ -227,20 +304,21 @@ def generate_def(
         ]
     )
 
-    if post:
-        sections.append("%post")
-        sections.extend(post)
-        sections.append("")
+    sections.append("%post")
+    sections.extend(post)
+    sections.append("")
 
-    # %environment — ENV directives + WORKDIR + staging redirects.
+    # %environment — ENV directives + final WORKDIR as runtime cwd + staging redirects.
+    # Use current_workdir (which reflects explicit WORKDIR instructions, or the base
+    # image default if none were present) as the runtime working directory.
     env_section: list[str] = []
     for ev in env_vars:
         env_section.append(f"    export {ev}")
-    if workdirs:
-        env_section.append(f"    cd {workdirs[-1]} 2>/dev/null || true")
-    # Redirect temp dir and HOME to /staging (real bind-mounted storage) so uv
-    # installer, Python extract, and other tools don't fill the writable-tmpfs.
-    # HOME=/staging/home redirects ~/.cache/uv and ~/.local/bin off tmpfs.
+    if current_workdir:
+        # Redirect temp dir and HOME to /staging (real bind-mounted storage) so uv
+        # installer, Python extract, and other tools don't fill the writable-tmpfs.
+        # HOME=/staging/home redirects ~/.cache/uv and ~/.local/bin off tmpfs.
+        env_section.append(f"    cd {current_workdir} 2>/dev/null || true")
     env_section.append("    export TMPDIR=/staging/tmp")
     env_section.append("    export HOME=/staging/home")
 
@@ -349,8 +427,8 @@ def main() -> None:
             print(f"Skipping {task_dir.name}: no Dockerfile")
             continue
 
-        from_image, run_cmds, file_copies, env_vars, workdirs, copy_from_images = parse_dockerfile(
-            dockerfile
+        from_image, instructions, file_copies, env_vars, workdirs, copy_from_images, df_args = (
+            parse_dockerfile(dockerfile)
         )
         if not from_image:
             print(f"Skipping {task_dir.name}: no FROM in Dockerfile")
@@ -359,12 +437,13 @@ def main() -> None:
         def_content = generate_def(
             task_dir.name,
             from_image,
-            run_cmds,
+            instructions,
             file_copies,
             env_vars,
             workdirs,
             task_dir / "environment",
             copy_from_images=copy_from_images,
+            args=df_args,
         )
 
         sif_path = build_sif(task_dir.name, def_content, args.dry_run, args.skip_built)
