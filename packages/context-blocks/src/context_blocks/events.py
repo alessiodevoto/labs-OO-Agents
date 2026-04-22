@@ -109,11 +109,7 @@ class EventBase(BaseModel):
         preserved since they are semantically meaningful
         (e.g. ``execution_count=0``, ``success=False``).
         """
-        return {
-            name: value
-            for name in type(self).model_fields
-            if not _is_empty(value := getattr(self, name, None))
-        }
+        return {name: value for name in type(self).model_fields if not _is_empty(value := getattr(self, name, None))}
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
