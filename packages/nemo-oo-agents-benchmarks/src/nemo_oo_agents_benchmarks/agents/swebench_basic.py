@@ -86,9 +86,12 @@ tests whatever modifications exist in /testbed at the end of your session.
 """
 
 
+_ISSUE_DESCRIPTION_HEADER = "## Issue Description"
+
+
 def _format_problem_statement(raw: str) -> str:
     """Wrap a raw Harbor problem statement with context headers."""
-    return f"## Issue Description\n\n{raw.strip()}\n\n{_ENVIRONMENT_INSTRUCTIONS}"
+    return f"{_ISSUE_DESCRIPTION_HEADER}\n\n{raw.strip()}\n\n{_ENVIRONMENT_INSTRUCTIONS}"
 
 
 class SWEBenchBasicAgent(
