@@ -143,8 +143,6 @@ await agent._run_evaluation({"user_message": instruction})
 | `swebench/basic`   | Single CodeAct loop with `SWEBenchLocalTools`. Requires `--tools swebench`. |
 | `swebench/opt1`    | Multi-phase: clarify → root-cause → implement → FeedbackAgent review. Requires `--tools swebench`. |
 | `tau-bench`        | Multi-turn customer service agent. |
-| `terminal-bench-1` | Stub (see gl-16). |
-| `terminal-bench-2` | Stub (see gl-15). |
 | `locomo`           | Stub (see gl-14). |
 
 Any agent can run against any benchmark — the task's `instruction.md` is the
@@ -220,12 +218,18 @@ uv pip install -e packages/nemo-oo-agents-benchmarks
 
 ## Running locally (without Harbor/Apptainer)
 
-Use `util/harbor/run_dabstep_debug.py` as a reference. It uses `eval_pipeline` to
-run agents directly against benchmark tasks without a container:
+The `*_debug.py` scripts use `eval_pipeline` to run agents directly against
+benchmark tasks without a container. They bypass Harbor entirely — useful for
+fast iteration, but scoring is completion-based only (no container verifier).
 
 ```bash
-# Run 5 DABStep tasks (requires DABStep data at ~/.cache/dabstep/data/context/)
-uv run python util/harbor/run_dabstep_debug.py --tasks 5 --agent dabstep
+# DABStep — requires data at ~/.cache/dabstep/data/context/
+uv run python util/harbor/run_dabstep_debug.py --tasks 5 --model openai/gpt-4o
+
+# Terminal Bench — clones the task repo on first run
+uv run python util/harbor/run_terminal_bench_debug.py --tasks 5
+uv run python util/harbor/run_terminal_bench_debug.py \
+  --task-names analyze-access-logs cancel-async-tasks
 ```
 
 ---
@@ -244,45 +248,91 @@ uv pip install -e 3p/harbor-nemo
 harbor --version   # expect 0.4.0
 ```
 
-### 2. Get benchmark container images
+### 2. Configure Apptainer (one-time, requires sudo)
 
-**SIF storage** — SIF files are large binaries (100 MB–10 GB) and are stored
-**outside** the git worktree to avoid per-branch duplication and git bloat.
+On Ubuntu 24.04, two AppArmor restrictions affect Apptainer:
 
-Current SIF locations:
-- **rcabral (local):** `/localhome/local-rcabral/.cache/harbor/sif/` — DABStep SIF lives here now
-- **Future shared cache:** DFW Lustre (see Alex Gronskiy's SWE-bench cache for the pattern — wtf#13)
-
-`3p/sif_cache/` inside the worktree is a symlink to `~/.cache/harbor/sif/` — the YAML config
-(`apptainer_image_cache_dir: 3p/sif_cache`) resolves through it automatically.
-
-To set up on a new machine:
+**a) Mount namespace creation** — needed for all `apptainer exec` calls.
+Fix: install the setuid starter binary:
 
 ```bash
-mkdir -p ~/.cache/harbor/sif
-ln -s ~/.cache/harbor/sif 3p/sif_cache   # inside the worktree
+sudo cp /usr/lib/x86_64-linux-gnu/apptainer/bin/starter \
+        /usr/lib/x86_64-linux-gnu/apptainer/bin/starter-suid
+sudo chmod u+s /usr/lib/x86_64-linux-gnu/apptainer/bin/starter-suid
 ```
 
-
-**DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files).
-Requires `sudo` because `--fakeroot` needs unprivileged user namespace support
-(often unavailable on shared machines):
+**b) User namespace creation** — needed for `--fakeroot` (required for tasks
+that use `runuser` inside the container, e.g. ACL permission tests).
+Fix: allow unprivileged user namespaces:
 
 ```bash
-sudo apptainer build ~/.cache/harbor/sif/dabstep.sif 3p/dabstep.def
+# Temporary (until next reboot):
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+# Permanent:
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-apptainer-userns.conf
+sudo sysctl -p /etc/sysctl.d/99-apptainer-userns.conf
 ```
+
+Verify both work:
+
+```bash
+apptainer exec docker://ubuntu:22.04 echo "hello"           # basic exec
+apptainer exec --fakeroot docker://ubuntu:22.04 id          # should print uid=0(root)
+```
+
+### 3. Get benchmark container images
+
+All SIF files live in `~/3p/sif_cache/` — a single directory outside any
+worktree, shared across all benchmarks. It will be rsync'd to Lustre for
+team access. Harbor configs reference this as an absolute path.
+
+**DABStep** — build from `3p/dabstep.def` (bakes in pandas + data files):
+
+```bash
+apptainer build --fakeroot ~/3p/sif_cache/dabstep.sif 3p/dabstep.def
+```
+
+**Terminal Bench** — 202 of 241 task-specific SIFs are pre-built. Rebuild any
+missing ones with:
+
+```bash
+# Build all tasks (skips already-built SIFs):
+sudo python3 util/harbor/build_terminal_bench_sifs.py --skip-built
+
+# Build specific tasks:
+sudo python3 util/harbor/build_terminal_bench_sifs.py analyze-access-logs
+
+# Dry-run (print generated .def files without building):
+python3 util/harbor/build_terminal_bench_sifs.py --dry-run
+```
+
+The script translates each task's Dockerfile to an Apptainer `.def`, builds
+on top of cached base images, and writes SIFs to `~/3p/sif_cache/`. Tasks
+using multi-stage Docker builds or dynamic `FROM` expressions cannot be
+translated automatically (39 of 241 fall into this category).
 
 **SWEBench** — copy from DFW Lustre or pull from Docker Hub:
 
 ```bash
-apptainer pull ~/.cache/harbor/sif/sympy__sympy-19346.sif \
+apptainer build ~/3p/sif_cache/sympy__sympy-19346.sif \
     docker://swebench/sweb.eval.x86_64.sympy__sympy-19346:latest
 ```
 
-### 3. Generate task directories
+### 4. Generate task directories
 
-Task directories are not stored in git — they are generated on demand from
-Harbor's public benchmark adapters (which read from HuggingFace).
+Task directories are not stored in git — they are generated on demand.
+
+**Terminal Bench** — 241 task dirs already exist under
+`util/harbor/tasks/terminal_bench/`. To regenerate from the upstream repo:
+
+```bash
+python3 util/harbor/generate_terminal_bench_tasks.py
+# Or specific tasks:
+python3 util/harbor/generate_terminal_bench_tasks.py analyze-access-logs
+```
+
+**DABStep / SWEBench** — use Harbor's public adapters:
 
 ```bash
 # DABStep — generates task dirs under ./tasks/dabstep/
@@ -297,12 +347,37 @@ BFCL, etc.) in `3p/harbor-nemo/adapters/`. These are from the public
 [harbor-framework/harbor](https://github.com/harbor-framework/harbor)
 repository — not NVIDIA-internal.
 
-### 4. Run
+### 5. Run
 
 ```bash
 export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
 export NVIDIA_INTERNAL_API_KEY="sk-..."   # routes Claude/etc. through NVIDIA internal gateway
 
+# DABStep baseline
 harbor run --config util/harbor/dabstep_baseline.yaml
+
+# Terminal Bench (all 241 tasks, or restrict with --path to a subset)
+harbor run --config util/harbor/terminal_bench_baseline.yaml
 ```
+
+---
+
+## Baseline benchmark results
+
+### Terminal Bench — smoke test (5 tasks, bedrock-claude-sonnet-4-5-v1, gl-24)
+
+Run: 2026-04-21, apptainer + fakeroot=true, `aws/anthropic/bedrock-claude-sonnet-4-5-v1` via NVIDIA proxy.
+Mean reward: **0.2** (1/5). Runtime: ~12 minutes.
+
+| Task | Reward | Notes |
+|------|--------|-------|
+| analyze-access-logs | **1.0** | 3/3 pytest pass — agent correctly parsed 2000-line access log |
+| cancel-async-tasks | 0.0 | 5/6 tests pass — missed `test_tasks_cancel_above_max_concurrent` |
+| adaptive-rejection-sampler | 0.0 | 4/9 tests pass (structure OK; sampling values incorrect) |
+| acl-permissions-inheritance | 0.0 | 0/9 tests pass — agent wrote setup script but did not execute it |
+| add-benchmark-lm-eval-harness | error | MemoryLimitExceededError — lm-eval-harness OOM at ~4.9 GB (limit 4 GB) |
+
+Full results: `/tmp/harbor_jobs/terminal_bench_baseline/2026-04-21__17-15-10/result.json`
+
+SIF cache: `~/3p/sif_cache/` (202/241 Terminal Bench SIFs pre-built)
 

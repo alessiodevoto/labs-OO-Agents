@@ -907,7 +907,7 @@ class CompletionClient(UnifiedLLM):
         Initialize CompletionClient.
 
         Args:
-            model: The model identifier (e.g., "gpt-4o-mini", "nvidia_nim/...")
+            model: The model identifier (e.g., "gpt-4o-mini", "nvidia_nim/...").
             retry_config: Optional retry configuration for API-level retries.
                          Handles 429, 500, timeouts, etc. Set retry_on_empty_content=True
                          to also retry when reasoning models return empty content.
