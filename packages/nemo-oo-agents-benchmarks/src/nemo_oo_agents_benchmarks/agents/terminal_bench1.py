@@ -89,7 +89,7 @@ class TerminalBench1Agent(
             result = await self.solve_task(self.problem_statement)
             return {
                 "response": str(result) if result is not None else "",
-                "success": True,
+                "success": result is not None,
                 "result": result,
             }
         except Exception as e:
