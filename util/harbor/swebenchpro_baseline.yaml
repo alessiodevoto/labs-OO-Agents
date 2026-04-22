@@ -59,7 +59,7 @@ agents:
   - name: nemo-oo-agents
     model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
-      agent_type: baseline
+      agent_type: swebench/basic  # uses SWEBenchBasicAgent with /testbed env context (gl-64)
 
 datasets:
   # Full SWE-bench Pro set (731 tasks across Python, JS/TS, Go).
