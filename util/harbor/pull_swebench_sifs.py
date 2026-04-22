@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -139,8 +140,6 @@ def update_task_toml(task_toml: Path, sif_path: Path) -> None:
     """Rewrite task.toml so docker_image points to the local SIF path."""
     text = task_toml.read_text()
     # Find and replace the docker_image line
-    import re
-
     new_text = re.sub(
         r'(docker_image\s*=\s*")[^"]*(")',
         rf"\g<1>{sif_path}\g<2>",
