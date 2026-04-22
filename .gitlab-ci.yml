@@ -69,9 +69,18 @@ check-frontend-build:
         git diff --stat dist/
         exit 1
       fi
-  only:
-    - merge_requests
-    - main
+  rules:
+    # Always verify on main (dist/ drift would break CI images)
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    # On MRs: only run when frontend source changes
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nemo-oo-agents-viewer/frontend-react/src/**/*"
+        - "packages/nemo-oo-agents-viewer/frontend-react/package*.json"
+        - "packages/nemo-oo-agents-viewer/frontend-react/*.config.*"
+      when: always
+    - when: never
 
 test:
   stage: test
@@ -102,9 +111,25 @@ test:
       - coverage.xml
     expire_in: 1 day
     when: always
-  only:
-    - merge_requests
-    - main
+  rules:
+    # Always run on main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    # On MRs: run when testable code or CI config changes.
+    # Skips for util/harbor, docs-only changes — nothing to test there.
+    # .gitlab-ci.yml included so capability-test's needs: [test] is always
+    # satisfied when capability-test itself triggers (it also watches .gitlab-ci.yml).
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "src/**/*"
+        - "tests/**/*"
+        - "packages/**/*"
+        - "conftest.py"
+        - "pyproject.toml"
+        - "uv.lock"
+        - ".gitlab-ci.yml"
+      when: always
+    - when: never
 
 # Upload junit + coverage reports - separate job so artifact upload failures don't block MR
 # GitLab's artifact API can return 500 errors intermittently
@@ -118,6 +143,7 @@ upload-test-report:
   needs:
     - job: test
       artifacts: true
+      optional: true  # test may be skipped for util/harbor-only MRs; don't error
   script:
     - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
     - test -f coverage.xml && echo "Found coverage.xml" || echo "No coverage.xml found"
@@ -137,10 +163,14 @@ upload-test-report:
 
 # Capability testing - runs nemo_oo_agents against LLM test suite
 # Requires NVIDIA_INFERENCE_API_KEY environment variable to be set
-# Runs automatically on all MRs and main commits
+# Runs on main commits and on MRs that touch core framework files.
+# Skipped for MRs that only change packages/ (benchmark agents, adapters).
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
 capability-test:
   stage: capability
+  # DAG: run as soon as test finishes (no full-stage wait).
+  # Also cascades: if test is skipped or fails, this is skipped automatically.
+  needs: [test]
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: if-not-present
@@ -240,9 +270,22 @@ capability-test:
     expire_in: 7 days
     when: always
   allow_failure: false  # Block merge if stable tier fails
-  only:
-    - merge_requests
-    - main
+  rules:
+    # Always run on main branch commits
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    # On MRs: run only when core framework files change.
+    # Skipped for package-only MRs (benchmark agents, adapters) and CI-config-only MRs.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "src/**/*"
+        - "tests/**/*"
+        - "util/ci/**/*"
+        - "conftest.py"
+        - "pyproject.toml"
+        - "uv.lock"
+      when: always
+    - when: never
 
 # Build package on tags
 build-package:
