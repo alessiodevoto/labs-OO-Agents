@@ -21,6 +21,7 @@ Flags:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,7 +29,21 @@ from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
 TASKS_DIR = WORKTREE_ROOT / "util/harbor/tasks/terminal_bench"
-SIF_CACHE = Path.home() / "3p/sif_cache"
+
+
+def _sif_cache_dir() -> Path:
+    # Under `sudo`, Path.home() resolves to /root — use SUDO_USER to find the
+    # real user's home directory instead.
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        for prefix in ("/localhome", "/home"):
+            candidate = Path(prefix) / sudo_user / "3p/sif_cache"
+            if candidate.parent.parent.exists():
+                return candidate
+    return Path.home() / "3p/sif_cache"
+
+
+SIF_CACHE = _sif_cache_dir()
 
 # Cached base SIFs pulled in previous Harbor runs.
 # Keys are Docker image references (as they appear in FROM lines).
