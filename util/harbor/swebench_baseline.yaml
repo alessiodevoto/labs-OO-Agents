@@ -1,0 +1,71 @@
+# Harbor config for running nemo-oo-agents-benchmarks with the baseline agent on SWE-bench Verified.
+#
+# Uses Apptainer + per-instance SIF files from the swebench/ Docker Hub namespace.
+# Each SWE-bench Verified task has a unique pre-built Docker image
+# (swebench/sweb.eval.x86_64.<repo>_1776_<issue>:latest) that must be converted
+# to a SIF before running.  Pre-pull SIFs with:
+#
+#   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench
+#
+# or, for the 5-task smoke test subset:
+#
+#   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench_smoke
+#
+# Blocks: gl-13 (shared SIF cache), gl-25 (5-task smoke test)
+#
+# Prerequisites:
+#   1. apptainer installed (version >= 1.3)
+#   2. Harbor installed: uv pip install -e 3p/harbor-nemo
+#   3. SWE-bench tasks generated via the Harbor adapter:
+#        cd 3p/harbor/adapters/swebench
+#        uv run python run_adapter.py --task-dir /path/to/tasks/swebench
+#      For the 5-task smoke test, generate just 5 instances:
+#        uv run python run_adapter.py --instance-id astropy__astropy-12907 \
+#          --task-dir util/harbor/tasks/swebench_smoke
+#   4. SIF files pre-pulled into ~/3p/sif_cache (see pull_swebench_sifs.py)
+#   5. Set env vars:
+#        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
+#        export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# Run (5-task smoke test):
+#   harbor run --config util/harbor/swebench_baseline.yaml \
+#     --path util/harbor/tasks/swebench_smoke
+#
+# Run (all 500 tasks — requires full SIF cache from gl-13):
+#   harbor run --config util/harbor/swebench_baseline.yaml \
+#     --path util/harbor/tasks/swebench
+
+jobs_dir: /tmp/harbor_jobs/swebench_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1   # SWE-bench tasks are CPU/memory heavy; run one at a time
+  quiet: false
+
+# SWE-bench Verified uses per-instance Docker images from Docker Hub.
+# Each task's task.toml sets docker_image to the pre-pulled SIF path.
+# Apptainer loads the SIF directly (no network pull at run time).
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: true    # required: directory-backed overlay needs fakeroot in setuid mode (see #135)
+    # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
+    # Shared team cache (DFW cluster): mount via NEL at /tmp/sif-cache and set this accordingly
+    apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
+    # Forward API keys into the container
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: baseline
+
+datasets:
+  # 5-task smoke-test set (astropy, django, matplotlib, seaborn, flask).
+  # Generate with pull_swebench_sifs.py before running.
+  - path: util/harbor/tasks/swebench_smoke

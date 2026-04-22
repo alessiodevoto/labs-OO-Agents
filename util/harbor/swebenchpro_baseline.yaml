@@ -1,0 +1,70 @@
+# Harbor config for running nemo-oo-agents-benchmarks with the baseline agent on SWE-bench Pro.
+#
+# Uses Apptainer + per-instance Docker images from the jefzda/sweap-images namespace on
+# Docker Hub.  Each SWE-bench Pro task has a unique pre-built Docker image referenced in
+# its environment/Dockerfile.  Harbor auto-converts these to SIF files at run time, or you
+# can pre-pull them to avoid network traffic during the benchmark run:
+#
+#   python util/harbor/pull_swebenchpro_sifs.py util/harbor/tasks/swebenchpro
+#
+# Prerequisites:
+#   1. apptainer installed (version >= 1.3)
+#   2. Harbor installed: uv pip install -e 3p/harbor-nemo
+#   3. SWE-bench Pro tasks generated via the Harbor adapter:
+#        cd 3p/harbor/adapters/swebenchpro
+#        uv run python run_adapter.py --all \
+#          --task-dir util/harbor/tasks/swebenchpro
+#      For a single instance:
+#        uv run python run_adapter.py --no-all \
+#          --instance-id instance_ansible__ansible-xxxx \
+#          --task-dir util/harbor/tasks/swebenchpro
+#   4. (Optional) Pre-pull SIF files into ~/3p/sif_cache (see pull_swebenchpro_sifs.py)
+#   5. Set env vars:
+#        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
+#        export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# Run (all 731 tasks — SIF pulling takes hours if not pre-cached):
+#   harbor run --config util/harbor/swebenchpro_baseline.yaml \
+#     --path util/harbor/tasks/swebenchpro
+#
+# DO NOT start the harbor run until SIF pre-pulling is complete (pull_swebenchpro_sifs.py).
+# SWE-bench Pro images are large (~500MB–2GB each); pulling during a live run will be slow.
+
+jobs_dir: /tmp/harbor_jobs/swebenchpro_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1   # SWE-bench Pro tasks are CPU/memory heavy; run one at a time
+  quiet: false
+
+# SWE-bench Pro uses per-instance Docker images from Docker Hub (jefzda/sweap-images).
+# Each task's environment/Dockerfile specifies the FROM image.
+# Harbor's Apptainer environment reads the FROM line and auto-converts to SIF.
+# Pre-pull SIFs with pull_swebenchpro_sifs.py to avoid network pulls during the run.
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: true    # required: directory-backed overlay needs fakeroot in setuid mode (see #135)
+    # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
+    # Shared team cache (DFW cluster): mount via NEL at /tmp/sif-cache and set this accordingly
+    apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
+    # Forward API keys into the container
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: baseline
+
+datasets:
+  # Full SWE-bench Pro set (731 tasks across Python, JS/TS, Go).
+  # Generate tasks with:
+  #   cd 3p/harbor/adapters/swebenchpro
+  #   uv run python run_adapter.py --all --task-dir util/harbor/tasks/swebenchpro
+  # Pull SIFs with: uv run python util/harbor/pull_swebenchpro_sifs.py util/harbor/tasks/swebenchpro
+  - path: util/harbor/tasks/swebenchpro
