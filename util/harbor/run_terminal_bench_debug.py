@@ -46,6 +46,7 @@ sys.path.insert(0, str(REPO_ROOT / "util/eval_pipeline/src"))
 TERMINAL_BENCH_REPO = "https://github.com/laude-institute/terminal-bench.git"
 CACHE_DIR = Path(os.path.expanduser("~/.cache/terminal-bench"))
 TASKS_DIR = CACHE_DIR / "terminal-bench" / "tasks"
+HARBOR_TASKS_DIR = REPO_ROOT / "util/harbor/tasks/terminal_bench"
 
 
 def _ensure_tasks(n_tasks: int, task_names: list[str] | None = None) -> list[Path]:
@@ -107,33 +108,49 @@ def _load_instruction(task_dir: Path) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Scorer — Terminal Bench has no text answer; success = agent ran to completion
+# Scorer — runs the same pytest test_outputs.py that Harbor uses
 # ---------------------------------------------------------------------------
 
 
 class TerminalBenchScorer:
-    """Scores Terminal Bench tasks by agent completion (no container verifier)."""
+    """Scores Terminal Bench tasks by running the same pytest suite Harbor uses.
+
+    ctx.expected must be the path to the Harbor task directory
+    (util/harbor/tasks/terminal_bench/<task-name>/).  If the test file is
+    missing or pytest itself can't run, falls back to agent-completion scoring.
+    """
 
     def score(self, ctx) -> object:
         from eval_pipeline import ScoreResult
 
+        task_dir = Path(ctx.expected) if ctx.expected else None
+        test_file = task_dir / "tests" / "test_outputs.py" if task_dir else None
+
+        if test_file and test_file.exists():
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", str(test_file), "-v", "--tb=short", "-q"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            passed = result.returncode == 0
+            output = (result.stdout + result.stderr)[-1000:]
+            return ScoreResult(
+                score=1.0 if passed else 0.0,
+                reasoning=output,
+            )
+
+        # Fallback: score by agent completion if no test file
         result = ctx.actual
         if isinstance(result, dict):
             success = result.get("success", False)
             error = result.get("error", "")
             passed = success and not error
-            return ScoreResult(
-                score=1.0 if passed else 0.0,
-                reasoning=(
-                    "Agent completed without error"
-                    if passed
-                    else f"Agent error: {error or 'unknown'}"
-                ),
-            )
-        passed = bool(result)
+        else:
+            passed = bool(result)
         return ScoreResult(
             score=1.0 if passed else 0.0,
-            reasoning="Agent returned output" if passed else "Agent returned no output",
+            reasoning="[no test file — completion-based] " + ("passed" if passed else "failed"),
         )
 
 
@@ -176,6 +193,7 @@ async def main(
         if not instruction:
             print(f"  WARNING: no instruction in {task_dir.name}, skipping")
             continue
+        harbor_task_dir = HARBOR_TASKS_DIR / task_dir.name
         eval_data.append(
             {
                 "kwargs": {
@@ -183,7 +201,7 @@ async def main(
                         "user_message": instruction,
                     }
                 },
-                "expected": None,
+                "expected": str(harbor_task_dir) if harbor_task_dir.exists() else None,
             }
         )
         task_names.append(task_dir.name)
@@ -212,7 +230,7 @@ async def main(
     )
 
     print(f"\nRunning {len(eval_data)} Terminal Bench tasks with {model_name} (baseline agent)…")
-    print("Note: scoring is agent-completion only — no container verifier.\n")
+    print("Scoring: pytest test_outputs.py (same suite Harbor uses); fallback to completion if no test file.\n")
 
     results = await evaluator.run(models=["baseline"])
 
@@ -223,19 +241,15 @@ async def main(
 
     for i, r in enumerate(results.results):
         task_name = task_names[i] if i < len(task_names) else "?"
-        status = "PASS" if r.passed else "FAIL"
-        output = r.output
-        if isinstance(output, dict):
-            output_str = output.get("response", "") or str(output.get("error", ""))
-        else:
-            output_str = str(output or "")
-        print(f"  [{status}] {task_name} (agent output: {output_str[:80]!r})")
+        score = r.score if hasattr(r, "score") else (1.0 if r.passed else 0.0)
+        status = f"{score:.1f}"
+        reasoning = (r.reasoning or "")[-200:] if hasattr(r, "reasoning") else ""
+        print(f"  [{status}] {task_name}")
+        if reasoning:
+            for line in reasoning.strip().splitlines()[-3:]:
+                print(f"         {line}")
 
     print(f"\nTotal: {results.passed}/{results.total} = {results.pass_rate:.1f}%")
-    print("\nNote: 'PASS' here means the agent ran to completion without crashing.")
-    print("Actual task correctness requires container-based verification via Harbor.")
-    print("\nHarbor config: util/harbor/terminal_bench_baseline.yaml")
-    print("Full Harbor run: harbor run --config util/harbor/terminal_bench_baseline.yaml")
 
 
 if __name__ == "__main__":
