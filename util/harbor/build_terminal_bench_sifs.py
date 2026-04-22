@@ -200,11 +200,9 @@ def generate_def(
 
     def _subst_args(s: str) -> str:
         """Expand ${VARNAME} / $VARNAME using ARG defaults from the Dockerfile."""
-
         def _repl(m: _re.Match) -> str:
             name = m.group(1) or m.group(2)
             return args.get(name, m.group(0))
-
         return _re.sub(r"\$\{(\w+)\}|\$(\w+)", _repl, s)
 
     base_sif = _BASE_SIFS.get(from_image)
