@@ -209,6 +209,33 @@ class AfterTurn(EventBase):  # type: ignore[misc]
     )
 
 
+class Notification(EventBase):  # type: ignore[misc]
+    """Generic "something happened" signal rendered into the LLM context.
+
+    Not tied to any specific producer. Input queues emit Notifications
+    on ``put()`` to tell the LLM that new input arrived, but this event
+    is equally usable for long-running job completions, timer ticks,
+    external webhook deliveries, or any other asynchronous signal the
+    agent should know about.
+
+    - ``source`` identifies the producer — convention is a short
+      namespaced string like ``"queue:user_messages"``, ``"job:12345"``,
+      ``"timer:daily-cron"``. The outer dispatcher keys off this to
+      decide which handler to run next.
+    - ``description`` is a free-form string for the LLM; include enough
+      to make the notification self-describing in the event stream.
+    """
+
+    _role: ClassVar[Role] = Role.USER
+
+    source: Annotated[
+        str, Field(description="Origin of the notification (e.g. 'queue:user_messages')")
+    ]
+    description: Annotated[
+        str, Field(description="Human-readable description of what happened")
+    ] = ""
+
+
 class Summary(EventBase):  # type: ignore[misc]
     """Collapsed events - with optional summary text.
 
@@ -258,6 +285,7 @@ Event = (
     | Feedback
     | LLMOutput
     | PythonOutput
+    | Notification
     | Summary
     | BeforeTurn
     | AfterTurn

@@ -111,7 +111,7 @@ Every pause uses:
 
 ```python
 self.message("...")
-return_result(RespondResult.WAIT_FOR_USER_INPUT)
+return_result(RespondResult(kind="GET_USER_INPUT"))
 ```
 
 so the user can redirect at each boundary.

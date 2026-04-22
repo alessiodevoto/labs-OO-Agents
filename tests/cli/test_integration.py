@@ -34,8 +34,14 @@ def test_tui_agent_phase_tracking_initial_state():
     assert agent._workflow_state == {}
 
 
-def test_orchestrate_function_importable():
-    """_orchestrate should be importable for testing."""
-    from nemo_oo_agents_cli.tui.agent import _orchestrate
+def test_respond_is_per_turn_with_notification_and_restored():
+    """``respond()`` is invoked per turn by the outer dispatcher, taking
+    a ``(queue_name, item)`` notification and an optional ``restored``
+    dict. Replaces the older orchestrator-era signature check."""
+    import inspect
 
-    assert callable(_orchestrate)
+    from nemo_oo_agents_cli.tui.agent import BaseTUIAgent
+
+    sig = inspect.signature(BaseTUIAgent.respond)
+    assert list(sig.parameters.keys()) == ["self", "notification", "restored"]
+    assert sig.parameters["restored"].default is None

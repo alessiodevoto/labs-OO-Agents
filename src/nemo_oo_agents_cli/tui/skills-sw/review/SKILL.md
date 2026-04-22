@@ -37,18 +37,18 @@ issue, suggestion}` dicts. Severity is `blocking` | `major` | `minor`.
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("Usage: /review <umbrella-id>.")
-    return_result(RespondResult.WAIT_FOR_USER_INPUT)
+    return_result(RespondResult(kind="GET_USER_INPUT"))
 
 umbrella_id = arg.split()[0]
 umbrella = self.todo.get(umbrella_id)
 if umbrella is None:
     self.message(f"No todo {umbrella_id}.")
-    return_result(RespondResult.WAIT_FOR_USER_INPUT)
+    return_result(RespondResult(kind="GET_USER_INPUT"))
 
 commits = self.todo.get_var(umbrella.id, "commits") or []
 if not commits:
     self.message(f"Todo {umbrella.id} has no commits yet — run /tdd first.")
-    return_result(RespondResult.WAIT_FOR_USER_INPUT)
+    return_result(RespondResult(kind="GET_USER_INPUT"))
 ```
 
 ## Build reviewer todos + dispatch in parallel
@@ -214,7 +214,7 @@ self.todo.comment(
     f"👁 review complete: {len(blocking)} blocking, {len(major)} major, "
     f"{len(minor)} minor",
 )
-return_result(RespondResult.WAIT_FOR_USER_INPUT)
+return_result(RespondResult(kind="GET_USER_INPUT"))
 ```
 
 ## Guidelines

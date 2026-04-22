@@ -34,7 +34,7 @@ Do not write the fix. Do not edit production code (other than tests).
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("What bug? Give me symptoms, a stack trace, or a failing command.")
-    return_result(RespondResult.WAIT_FOR_USER_INPUT)
+    return_result(RespondResult(kind="GET_USER_INPUT"))
 
 tokens = arg.split(maxsplit=1)
 first = tokens[0]
@@ -156,7 +156,7 @@ lines = [
 ]
 self.message("\n".join(lines))
 self.todo.comment(umbrella.id, "🔍 root-cause report presented")
-return_result(RespondResult.WAIT_FOR_USER_INPUT)
+return_result(RespondResult(kind="GET_USER_INPUT"))
 ```
 
 ## Guidelines

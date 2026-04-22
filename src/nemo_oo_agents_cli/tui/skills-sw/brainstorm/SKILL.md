@@ -32,7 +32,7 @@ Detect by checking if the first token matches an existing todo id.
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("Brainstorm about what?")
-    return_result(RespondResult.WAIT_FOR_USER_INPUT)
+    return_result(RespondResult(kind="GET_USER_INPUT"))
 
 tokens = arg.split(maxsplit=1)
 first = tokens[0]
@@ -135,7 +135,7 @@ lines += [
 ]
 self.message("\n".join(lines))
 self.todo.comment(umbrella.id, "📋 spec presented for approval")
-return_result(RespondResult.WAIT_FOR_USER_INPUT)
+return_result(RespondResult(kind="GET_USER_INPUT"))
 ```
 
 ## Guidelines
