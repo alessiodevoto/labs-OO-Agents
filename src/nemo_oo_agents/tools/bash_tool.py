@@ -456,55 +456,100 @@ class FileTool:
         )
 
     async def find(self, pattern: str, path: str = ".", type: str | None = None) -> FileResult:
-        """Find files matching a pattern.
+        """Find files matching a glob pattern, respecting ``.gitignore``.
+
+        Uses ``rg --files`` under the hood for fast, gitignore-aware
+        traversal. Paths under ``.gitignore``'d directories (e.g.
+        ``.venv``, ``node_modules``, ``.git``, ``__pycache__``) are
+        skipped by default, so this won't hang on a project root the
+        way plain ``find .`` does.
 
         Args:
-            pattern: Glob pattern (e.g., "*.py", "test_*.py")
-            path: Directory to search in
-            type: Type of file to search for (f, d, l, s, c)
+            pattern: Glob pattern (e.g., "*.py", "test_*.py").
+            path: Directory to search in. Defaults to ".".
+            type: Optional filter.
+                - ``None`` or ``"f"`` (default): files only, via
+                  ``rg --files``.
+                - ``"d"``, ``"l"``, ``"s"``, ``"c"``: falls back to
+                  ``find`` with an explicit ``-prune`` list for
+                  ``.git`` / ``.venv`` / ``node_modules`` /
+                  ``__pycache__`` / ``.ruff_cache`` /
+                  ``.pytest_cache`` so the walk is still bounded.
 
         Returns:
-            FileResult with matching file paths in stdout (one per line).
-            Use .lines property to get as list.
+            FileResult with matching file paths in stdout (one per
+            line). Use ``.lines`` to get them as a list.
 
         Example:
             result = await self.files.find("*.py", "src/")
             py_files = result.lines  # Get list of matching paths
         """
-        type_flag = f"-type {type}" if type else ""
-        result = await self.bash.run(
-            f"find {shlex.quote(path)} -name {shlex.quote(pattern)} {type_flag}"
+        if type in (None, "f"):
+            cmd = (
+                f"rg --files --hidden --no-require-git --glob {shlex.quote(pattern)} "
+                f"{shlex.quote(path)}"
+            )
+        else:
+            prune = (
+                r"\( -name .git -o -name .venv -o -name node_modules "
+                r"-o -name __pycache__ -o -name .ruff_cache "
+                r"-o -name .pytest_cache \) -prune -o"
+            )
+            cmd = (
+                f"find {shlex.quote(path)} {prune} "
+                f"-type {shlex.quote(type)} -name {shlex.quote(pattern)} -print"
+            )
+        result = await self.bash.run(cmd)
+        # ``rg --files`` and ``rg`` exit 1 when nothing matches (like
+        # grep). That's not an error for this API — callers want an
+        # empty list, not a failed FileResult.
+        return_code = (
+            0 if result.return_code == 1 and not result.stderr.strip() else result.return_code
         )
         return FileResult(
             stdout=result.stdout,
             stderr=result.stderr,
-            return_code=result.return_code,
+            return_code=return_code,
             sandboxed=result.sandboxed,
         )
 
     async def grep(self, pattern: str, path: str, context: int = 0) -> FileResult:
-        """Search for a pattern in a file.
+        """Search for a pattern in a file or directory, respecting ``.gitignore``.
+
+        Uses ``rg -n`` under the hood. Unlike plain ``grep``, this
+        works on directories without needing ``-r``, skips
+        ``.gitignore``'d paths automatically, and silently ignores
+        binary files — so handing a project root to ``grep`` no
+        longer fails with ``Is a directory`` or hangs on
+        ``.venv``/``.git``.
 
         Args:
-            pattern: Regex pattern to search for
-            path: File path to search
-            context: Number of context lines before/after match
+            pattern: Regex pattern to search for.
+            path: File OR directory to search.
+            context: Number of context lines before/after each match.
 
         Returns:
-            FileResult with matching lines in stdout
+            FileResult with matching lines in stdout. Format is
+            ``<path>:<line>:<match>`` when ``path`` is a directory,
+            ``<line>:<match>`` when ``path`` is a single file.
 
         Example:
-            result = await self.files.grep("def main", "src/main.py")
+            result = await self.files.grep("def main", "src/")
             matches = result.stdout  # Get matching lines
         """
-        ctx_flag = f"-C {context}" if context > 0 else ""
-        result = await self.bash.run(
-            f"grep -n {ctx_flag} {shlex.quote(pattern)} {shlex.quote(path)}"
+        ctx_flag = f"-C {context} " if context > 0 else ""
+        cmd = (
+            f"rg -n --hidden --no-require-git {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
+        )
+        result = await self.bash.run(cmd)
+        # rg exits 1 when nothing matches — not an error for this API.
+        return_code = (
+            0 if result.return_code == 1 and not result.stderr.strip() else result.return_code
         )
         return FileResult(
             stdout=result.stdout,
             stderr=result.stderr,
-            return_code=result.return_code,
+            return_code=return_code,
             sandboxed=result.sandboxed,
         )
 

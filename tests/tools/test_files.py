@@ -269,10 +269,54 @@ async def test_file_tool_find_no_matches(file_tool: FileTool):
     """FileTool.find() returns empty list when no files match pattern.
 
     Verifies that find() returns [] when no matches are found.
+    Also pins that "no matches" isn't surfaced as a failure — rg
+    exits 1 on no-match (like grep); the tool normalizes that to
+    success so callers get a clean empty list.
     """
     result = await file_tool.find("*.nonexistent", ".")
-    files = result.lines
-    assert files == []
+    assert result.lines == []
+    assert result.success, "no-match should not be reported as failure"
+
+
+@pytest.mark.asyncio
+async def test_file_tool_find_respects_gitignore(file_tool: FileTool, temp_dir: Path):
+    """FileTool.find() skips paths listed in .gitignore.
+
+    This is the behaviour we rely on to avoid ``.venv`` / ``.git`` /
+    ``node_modules`` hangs that a plain ``find`` exhibits on a
+    project root. Any ``.py`` under a gitignored directory must NOT
+    show up in the results.
+    """
+    # Two real files we want to find.
+    (temp_dir / "keep.py").touch()
+    (temp_dir / "keep_nested").mkdir()
+    (temp_dir / "keep_nested" / "also_keep.py").touch()
+    # A "should be ignored" tree.
+    (temp_dir / "ignored").mkdir()
+    (temp_dir / "ignored" / "hidden.py").touch()
+    (temp_dir / ".gitignore").write_text("ignored/\n")
+
+    result = await file_tool.find("*.py", ".")
+    paths = result.lines
+    assert any("keep.py" in p for p in paths)
+    assert any("also_keep.py" in p for p in paths)
+    assert not any("hidden.py" in p for p in paths), (
+        f"gitignored file leaked into find() results: {paths}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_file_tool_find_type_directory(file_tool: FileTool, temp_dir: Path):
+    """``type='d'`` falls back to pruned ``find`` for directory search."""
+    (temp_dir / "alpha").mkdir()
+    (temp_dir / "beta").mkdir()
+    (temp_dir / "alpha" / "file.txt").touch()
+
+    result = await file_tool.find("alpha", ".", type="d")
+    paths = result.lines
+    assert any("alpha" in p for p in paths)
+    # Sanity: the file inside alpha isn't matched as a directory.
+    assert not any(p.endswith("file.txt") for p in paths)
 
 
 # ============================================================================
@@ -310,6 +354,55 @@ async def test_file_tool_grep_with_context_lines(file_tool: FileTool, temp_dir: 
     result = await file_tool.grep("pattern", "test.txt", context=1)
     # Should include context lines
     assert "pattern" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_file_tool_grep_on_directory(file_tool: FileTool, temp_dir: Path):
+    """FileTool.grep() works on directories (recursive, gitignore-aware).
+
+    Plain ``grep`` on a directory fails with ``Is a directory`` unless
+    ``-r`` is passed; callers who handed a project subdir to the old
+    tool got nothing back. The rg-backed version walks recursively by
+    default.
+    """
+    (temp_dir / "src").mkdir()
+    (temp_dir / "src" / "a.py").write_text("def main():\n    pass\n")
+    (temp_dir / "src" / "nested").mkdir()
+    (temp_dir / "src" / "nested" / "b.py").write_text("def main():\n    print('b')\n")
+
+    result = await file_tool.grep("def main", "src")
+    assert result.success, result.stderr
+    # Both files should show up in the directory-wide match.
+    assert "a.py" in result.stdout
+    assert "b.py" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_file_tool_grep_no_matches_is_not_failure(file_tool: FileTool, temp_dir: Path):
+    """Zero matches must not surface as a failed FileResult.
+
+    rg (like grep) exits 1 when nothing matches — the tool normalizes
+    that to success so callers don't have to special-case it.
+    """
+    (temp_dir / "test.txt").write_text("alpha\nbravo\n")
+    result = await file_tool.grep("never-in-there", "test.txt")
+    assert result.stdout == ""
+    assert result.success, "no-match should not be reported as failure"
+
+
+@pytest.mark.asyncio
+async def test_file_tool_grep_skips_gitignored_paths(file_tool: FileTool, temp_dir: Path):
+    """A directory-wide grep ignores files listed in .gitignore."""
+    (temp_dir / ".gitignore").write_text("ignored/\n")
+    (temp_dir / "kept.py").write_text("needle here\n")
+    (temp_dir / "ignored").mkdir()
+    (temp_dir / "ignored" / "hidden.py").write_text("needle here\n")
+
+    result = await file_tool.grep("needle", ".")
+    assert "kept.py" in result.stdout
+    assert "hidden.py" not in result.stdout, (
+        f"gitignored path leaked into grep output: {result.stdout!r}"
+    )
 
 
 # ============================================================================
