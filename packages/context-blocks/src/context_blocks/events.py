@@ -84,6 +84,17 @@ class EventBase(BaseModel):
         if not self.event_type:
             self.event_type = type(self).__name__
 
+    def __instance_values__(self) -> dict[str, Any]:
+        # Consumed by agentdoc.pformat via the SupportsInstanceValues protocol:
+        # fields absent from this dict are skipped, which trims empty noise like
+        # `stderr=''`, `error=''`, `value=None` from LLM-visible serializations.
+        # Only None and empty str/list/dict are dropped — 0 and False are kept.
+        return {
+            name: value
+            for name in type(self).model_fields
+            if (value := getattr(self, name, None)) not in (None, "", [], {})
+        }
+
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         """Register subclass in global registry.

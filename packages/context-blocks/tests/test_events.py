@@ -104,6 +104,59 @@ class TestEventBase:
         assert event.tag == "5"
 
 
+class TestInstanceValuesEmptySuppression:
+    """__instance_values__ drops None / empty str / empty list / empty dict fields."""
+
+    def test_empty_fields_dropped(self):
+        from pydantic import Field
+
+        from context_blocks.events import EventBase
+
+        class Sample(EventBase):
+            name: str = Field(default="")
+            tags: list[str] = Field(default_factory=list)
+            extra: dict[str, str] = Field(default_factory=dict)
+            note: str | None = Field(default=None)
+
+        event = Sample(name="ok")
+        values = event.__instance_values__()
+        assert "name" in values and values["name"] == "ok"
+        assert "tags" not in values
+        assert "extra" not in values
+        assert "note" not in values
+
+    def test_zero_and_false_are_kept(self):
+        """0 and False are semantically meaningful and must not be suppressed."""
+        from pydantic import Field
+
+        from context_blocks.events import EventBase
+
+        class Sample(EventBase):
+            count: int = Field(default=0)
+            done: bool = Field(default=False)
+
+        values = Sample().__instance_values__()
+        assert values["count"] == 0
+        assert values["done"] is False
+
+    def test_pformat_omits_empty_fields(self):
+        """Suppression is observable through agentdoc.pformat (the LLM render path)."""
+        from agentdoc import pformat
+        from pydantic import Field
+
+        from context_blocks.events import EventBase
+
+        class Sample(EventBase):
+            stdout: str = Field(default="")
+            stderr: str = Field(default="")
+            value: str | None = Field(default=None)
+
+        rendered = pformat(Sample(stdout="hello"))
+        assert "stdout=" in rendered
+        assert "stderr=" not in rendered
+        assert "value=" not in rendered
+
+
 class TestUserEvent:
     """Tests for UserEvent."""
 
