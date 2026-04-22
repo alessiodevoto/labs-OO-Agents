@@ -116,6 +116,8 @@ class TestInstanceValuesEmptySuppression:
             name: str = Field(default="")
             tags: list[str] = Field(default_factory=list)
             extra: dict[str, str] = Field(default_factory=dict)
+            coords: tuple[int, ...] = Field(default_factory=tuple)
+            seen: set[str] = Field(default_factory=set)
             note: str | None = Field(default=None)
 
         event = Sample(name="ok")
@@ -123,6 +125,8 @@ class TestInstanceValuesEmptySuppression:
         assert "name" in values and values["name"] == "ok"
         assert "tags" not in values
         assert "extra" not in values
+        assert "coords" not in values
+        assert "seen" not in values
         assert "note" not in values
 
     def test_zero_and_false_are_kept(self):

@@ -230,7 +230,9 @@ async def main(
     )
 
     print(f"\nRunning {len(eval_data)} Terminal Bench tasks with {model_name} (baseline agent)…")
-    print("Scoring: pytest test_outputs.py (same suite Harbor uses); fallback to completion if no test file.\n")
+    print(
+        "Scoring: pytest test_outputs.py (same suite Harbor uses); fallback to completion if no test file.\n"
+    )
 
     results = await evaluator.run(models=["baseline"])
 
