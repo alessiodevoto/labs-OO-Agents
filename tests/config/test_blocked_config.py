@@ -39,7 +39,7 @@ def test_codeact_config_merge_with_blocked():
     )
     merged = base.merge_with(override)
     assert merged.restrictions.blocked_modules == frozenset({"subprocess"})
-    assert merged.max_iterations == 50
+    assert merged.max_iterations is None
 
 
 def test_restrictions_config_reusable():

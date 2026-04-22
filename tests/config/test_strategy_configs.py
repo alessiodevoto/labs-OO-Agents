@@ -12,9 +12,9 @@ class TestCodeActConfig:
 
     def test_defaults(self):
         c = CodeActConfig()
-        assert c.max_iterations == 50
+        assert c.max_iterations is None
         assert c.max_retries == 3
-        assert c.cell_timeout == 600.0
+        assert c.cell_timeout is None
         assert c.max_tokens is None
         assert c.temperature is None
         assert c.top_p is None

@@ -12,9 +12,9 @@ class CodeActConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_iterations: int = 50
+    max_iterations: int | None = None
     max_retries: int = 3
-    cell_timeout: float = 600.0
+    cell_timeout: float | None = None
     max_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
