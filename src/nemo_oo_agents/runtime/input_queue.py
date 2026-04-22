@@ -287,11 +287,7 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
         for t in pending:
             t.cancel()
         # Await cancellations so exceptions don't leak.
-        for t in pending:
-            try:
-                await t
-            except (asyncio.CancelledError, BaseException):
-                pass
+        await asyncio.gather(*pending, return_exceptions=True)
         winner = next(iter(done))
         return tasks[winner].name, winner.result()
     except BaseException:
