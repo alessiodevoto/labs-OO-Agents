@@ -45,6 +45,7 @@ except ImportError:
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
+
 def _sif_cache_dir() -> Path:
     """Return ~/3p/sif_cache, respecting SUDO_USER if running as root."""
     sudo_user = os.environ.get("SUDO_USER")
