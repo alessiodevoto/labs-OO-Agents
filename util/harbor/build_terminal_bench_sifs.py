@@ -251,13 +251,13 @@ def build_sif(
     print(f"{'=' * 60}")
     print(def_content)
 
-    if dry_run:
-        print(f"[dry-run] would build → {sif_path}")
-        return None
-
     if skip_built and sif_path.exists():
         print(f"[skip-built] SIF already exists: {sif_path}")
         return sif_path
+
+    if dry_run:
+        print(f"[dry-run] would build → {sif_path}")
+        return None
 
     with tempfile.NamedTemporaryFile(suffix=".def", mode="w", delete=False, dir="/tmp") as fh:
         fh.write(def_content)
