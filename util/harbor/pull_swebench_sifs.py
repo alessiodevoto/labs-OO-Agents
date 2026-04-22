@@ -18,7 +18,7 @@ Usage (from the worktree root):
 
 Notes:
   - SIFs are written to ~/3p/sif_cache/ by default.
-  - Each SWE-bench SIF is ~300–700 MB; budget ~500 MB/task.
+  - Each SWE-bench SIF is ~300-700 MB; budget ~500 MB/task.
   - Docker Hub must be reachable (no proxy issues on this machine).
   - Does not require sudo (SWE-bench images are user-runnable without fakeroot).
   - Re-run safely: already-present SIFs are skipped.
@@ -121,10 +121,15 @@ def pull_sif(docker_uri: str, sif_cache: Path, *, dry_run: bool = False) -> bool
     sif_cache.mkdir(parents=True, exist_ok=True)
 
     for attempt in range(1, 4):
-        result = subprocess.run(
-            ["apptainer", "pull", "--dir", str(sif_cache), sif_name, docker_uri],
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["apptainer", "pull", "--dir", str(sif_cache), sif_name, docker_uri],
+                check=False,
+                timeout=600,  # 10 minutes per attempt; large SIFs are ~300-700 MB
+            )
+        except subprocess.TimeoutExpired:
+            print(f"[WARN] attempt {attempt}/3 timed out for {docker_uri}")
+            continue
         if result.returncode == 0:
             print(f"[OK]   {sif_name}")
             return True
