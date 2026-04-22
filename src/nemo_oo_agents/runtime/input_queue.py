@@ -124,7 +124,7 @@ class InputQueue[T]:
         if self._items:
             item, _tag = self._items.popleft()
             return item
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         waiter: asyncio.Future[T] = loop.create_future()
         self._waiters.append(waiter)
         try:
