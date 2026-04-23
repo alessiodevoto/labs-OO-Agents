@@ -85,14 +85,15 @@ def test_tools_importable():
 
 
 def test_agent_registry_complete():
-    """AGENT_CLASSES must contain at least 'basic' and 'opt1'."""
+    """AGENT_CLASSES must contain baseline and SWE-bench agents."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
             "from nemo_oo_agents_benchmarks.agents import AGENT_CLASSES; "
-            "assert 'basic' in AGENT_CLASSES; "
-            "assert 'opt1' in AGENT_CLASSES; "
+            "assert 'baseline' in AGENT_CLASSES; "
+            "assert 'swebench/basic' in AGENT_CLASSES; "
+            "assert 'swebench/opt1' in AGENT_CLASSES; "
             "print('OK')",
         ],
         capture_output=True,

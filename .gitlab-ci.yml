@@ -82,7 +82,24 @@ check-frontend-build:
       when: always
     - when: never
 
-test:
+# =============================================================================
+# Test jobs — split per-package so MRs only run what they affect.
+#
+# Trigger matrix (on MRs):
+#   src/**/*          → test-core + all package tests (core change may break any pkg)
+#   tests/**/*        → test-core
+#   packages/X/**/*   → test-X only (if X has tests; benchmark packages have none)
+#   pyproject.toml    → all test jobs (dep change affects everything)
+#   uv.lock           → all test jobs
+#   .gitlab-ci.yml    → test-core (verify CI config doesn't break test setup)
+#   util/ci/**/*      → test-core (ensures needs: [test-core] satisfied for capability-test)
+#
+# Packages with no tests (not in pyproject.toml testpaths) — no job needed:
+#   nemo-oo-agents-benchmarks, evaluation, nat_oo_agents, trace_explorer
+# =============================================================================
+
+# Shared boilerplate — all test jobs extend this
+.test-base:
   stage: test
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
@@ -98,12 +115,16 @@ test:
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
     - uv sync --all-extras --no-extra sandbox
+
+# Core framework tests — runs tests/ (root), owns coverage tracking.
+# INVARIANT: capability-test's changes: ⊆ test-core's changes: so test-core is
+# always present in the pipeline whenever capability-test would run (needed for
+# capability-test's needs: [test-core] to resolve correctly).
+test-core:
+  extends: .test-base
   script:
-    # Run all tests (root + packages) - testpaths configured in pyproject.toml
-    # Integration tests excluded by default via addopts
-    - uv run pytest --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
+    - uv run pytest tests/ --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
     - uv cache prune --ci
-  # Parse total coverage % from "TOTAL ... 87%" line in terminal output
   coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%/'
   artifacts:
     paths:
@@ -112,27 +133,207 @@ test:
     expire_in: 1 day
     when: always
   rules:
-    # Always run on main
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
-    # On MRs: run when testable code or CI config changes.
-    # Skips for util/harbor, docs-only changes — nothing to test there.
-    # .gitlab-ci.yml included so capability-test's needs: [test] is always
-    # satisfied when capability-test itself triggers (it also watches .gitlab-ci.yml).
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "src/**/*"
         - "tests/**/*"
-        - "packages/**/*"
         - "conftest.py"
         - "pyproject.toml"
         - "uv.lock"
         - ".gitlab-ci.yml"
+        - "util/ci/**/*"
       when: always
     - when: never
 
-# Upload junit + coverage reports - separate job so artifact upload failures don't block MR
-# GitLab's artifact API can return 500 errors intermittently
+test-agentdoc:
+  extends: .test-base
+  script:
+    - uv run pytest packages/agentdoc/tests --junitxml=test-results-agentdoc.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-agentdoc.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/agentdoc/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-viewer:
+  extends: .test-base
+  script:
+    - uv run pytest packages/nemo-oo-agents-viewer/tests --junitxml=test-results-viewer.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-viewer.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nemo-oo-agents-viewer/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-context-blocks:
+  extends: .test-base
+  script:
+    - uv run pytest packages/context-blocks/tests --junitxml=test-results-context-blocks.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-context-blocks.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/context-blocks/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-unifiedllm:
+  extends: .test-base
+  script:
+    - uv run pytest packages/unifiedllm/tests --junitxml=test-results-unifiedllm.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-unifiedllm.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/unifiedllm/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-instrumentation:
+  extends: .test-base
+  script:
+    - uv run pytest packages/openinference-instrumentation-nemo-oo-agents/tests --junitxml=test-results-instrumentation.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-instrumentation.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/openinference-instrumentation-nemo-oo-agents/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-mcp:
+  extends: .test-base
+  script:
+    - uv run pytest packages/mcp-nemo-oo-agents/tests --junitxml=test-results-mcp.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-mcp.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/mcp-nemo-oo-agents/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-benchmarks:
+  extends: .test-base
+  script:
+    - uv run pytest packages/nemo-oo-agents-benchmarks/tests --junitxml=test-results-benchmarks.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-benchmarks.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nemo-oo-agents-benchmarks/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-trace-explorer:
+  extends: .test-base
+  script:
+    - uv run pytest packages/trace_explorer/tests --junitxml=test-results-trace-explorer.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-trace-explorer.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/trace_explorer/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+# Upload core junit + coverage — separate job so artifact upload failures don't block MR
+# GitLab's artifact API can return 500 errors intermittently.
+# Package test jobs report JUnit inline via artifacts: reports: junit: above.
 upload-test-report:
   stage: test
   image:
@@ -141,9 +342,9 @@ upload-test-report:
   tags:
     - os/linux
   needs:
-    - job: test
+    - job: test-core
       artifacts: true
-      optional: true  # test may be skipped for util/harbor-only MRs; don't error
+      optional: true  # test-core may be skipped for util/harbor-only MRs; don't error
   script:
     - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
     - test -f coverage.xml && echo "Found coverage.xml" || echo "No coverage.xml found"
@@ -168,9 +369,9 @@ upload-test-report:
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
 capability-test:
   stage: capability
-  # DAG: run as soon as test finishes (no full-stage wait).
-  # Also cascades: if test is skipped or fails, this is skipped automatically.
-  needs: [test]
+  # DAG: run as soon as test-core finishes (no full-stage wait).
+  # Also cascades: if test-core is skipped or fails, this is skipped automatically.
+  needs: [test-core]
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: if-not-present
@@ -284,6 +485,7 @@ capability-test:
         - "conftest.py"
         - "pyproject.toml"
         - "uv.lock"
+        - "conftest.py"
       when: always
     - when: never
 
