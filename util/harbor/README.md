@@ -198,11 +198,19 @@ Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:
 | Benchmark | Cache location | Download |
 |-----------|---------------|----------|
 | DABStep | `~/.cache/dabstep/data/context/` | HuggingFace `adyen/DABstep` |
-| LoCoMo | `~/.cache/locomo/locomo10.json` | Auto-downloaded from GitHub |
-| MemBench | wherever `--data-dir` points | Google Drive (manual, one-time) |
+| LoCoMo | `~/.cache/locomo/locomo10.json` | Auto-downloaded from GitHub on first run |
+| MemBench | `~/.cache/membench/` | rsync from DFW or Google Drive (see below) |
 
-Auto-downloads go to `~/.cache/<benchmark>/`. Manual downloads go wherever
-the user puts them and are passed via CLI flag. Never embed raw data in the
+**MemBench data** (~1.1 GB) is available via rsync from rcabral's DFW homedir:
+
+```bash
+rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:~/.cache/membench/ ~/.cache/membench/
+```
+
+Or download from Google Drive and unzip to `~/.cache/membench/`:
+`https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view`
+
+Auto-downloads go to `~/.cache/<benchmark>/`. Never embed raw data in the
 repo or generate tasks with external retrieval at runtime.
 
 ### Verified smoke test results
