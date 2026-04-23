@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default model - Claude Opus 4.6
-DEFAULT_MODEL = "aws/anthropic/bedrock-claude-opus-4-6"
+# Default model — direct litellm-supported name. Override via config or --model.
+DEFAULT_MODEL = "claude-opus-4-6"
 
 
 @dataclass

@@ -20,7 +20,8 @@ from unifiedllm.registry import get_llm_client
 load_dotenv(override=True)
 
 # Default model for all examples - change this to switch models
-MODEL = "aws/anthropic/claude-haiku-4-5-v1"
+# Uses litellm-native routing; set OPENAI_API_KEY in .env
+MODEL = "gpt-4o-mini"
 
 # Pre-configured LLM client
 llm = get_llm_client(MODEL)

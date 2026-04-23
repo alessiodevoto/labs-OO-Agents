@@ -299,11 +299,9 @@ class ModelCommand(Command):
                 TextOutput(f"Current model: {self.config.default_model}", "info")
             )
 
-        from unifiedllm import MODELS, get_llm_client
+        from unifiedllm import get_llm_client
 
         selected = args[0]
-        if selected not in MODELS:
-            return CommandResult.err(f"Unknown model: {selected}. Use /models to see available.")
         self.config.default_model = selected
         try:
             self.agent._llm = get_llm_client(selected)
@@ -341,7 +339,7 @@ class ModelsCommand(Command):
                 title="Available Models",
                 columns=["Model", ""],
                 rows=rows,
-                footer="Use /model <name> to switch",
+                footer="Use /model <name> to switch. Any model supported by litellm works, not just these aliases.",
             )
         )
 
@@ -363,14 +361,9 @@ class SwitchCommand(Command):
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        from unifiedllm import MODELS, get_llm_client
+        from unifiedllm import get_llm_client
 
         selected = args[0]
-        if selected not in MODELS:
-            return CommandResult.err(
-                f"Model `{selected}` not found. Use /models to see available options."
-            )
-
         self.config.default_model = selected
         try:
             self.agent._llm = get_llm_client(selected)

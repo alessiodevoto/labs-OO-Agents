@@ -17,13 +17,14 @@ no_cache: true
 description: "Phase 2 code-path tests — batch, JSON, REPL, needle, large-data truncation"
 
 # =============================================================================
-# MODELS — resolved from unifiedllm registry (endpoint/api_key automatic)
+# MODELS — resolved from the unifiedllm registry.
+# Set UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml for NVIDIA aliases.
 # =============================================================================
 
 agent_models:
-  - nvidia/nvidia/Nemotron-3-Nano-30B-A3B
-  - azure/openai/gpt-5.2
-  - aws/anthropic/claude-haiku-4-5-v1
+  - nemotron3-nano-30b
+  - gpt-5.2
+  - claude-haiku
 
 output_dir: results/phase2
 pass_threshold: 0.8
@@ -102,7 +103,7 @@ test_suite:
           7. The agent calls the third_riddle method with the answer to the second riddle as an argument
           8. The agent calls the fourth_riddle method with the answer to the third riddle as an argument
           9. The agent calls the secret_message method with the answer to the fourth riddle as an argument
-        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+        model: nemotron3-nano-30b
   - name: needle_in_haystack
     description: "Find negative sentiment in large data - requires REPL exploration"
     tier: stable
@@ -130,7 +131,7 @@ test_suite:
       - name: efficiency_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+        model: nemotron3-nano-30b
         skip_prefill: true
         rubric: |
           Evaluate if the agent handled large data efficiently.
@@ -167,7 +168,7 @@ test_suite:
       - name: slicing_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+        model: nemotron3-nano-30b
         skip_prefill: true
         rubric: |
           Evaluate if the agent used efficient string slicing.
@@ -202,7 +203,7 @@ test_suite:
       - name: counting_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+        model: nemotron3-nano-30b
         skip_prefill: true
         rubric: |
           Evaluate if the agent counted efficiently.

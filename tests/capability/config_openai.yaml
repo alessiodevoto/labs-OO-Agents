@@ -1,98 +1,45 @@
-# NeMo OO Agents Capability Tests - eval_pipeline Configuration
-#
-# This experiment tests nemo_oo_agents core capabilities:
-# 1. Scale awareness - when to answer directly vs write code
-# 2. Generation methods - when to use `...` for LLM judgment
-# 3. REPL exploration - using introspection for complex state
-# 4. Subagent routing - creating and coordinating child agents
-# 5. Stateful multi-turn - maintaining state across method calls
+# Capability tests using official OpenAI API endpoints.
+# Tests gpt-5-nano and gpt-5.4 via direct litellm routing.
 #
 # Run with:
-#   python -m eval_pipeline --config experiments/capability_eval/config.yaml --runs 3
-#
-# Run subset:
-#   python -m eval_pipeline --config experiments/capability_eval/config.yaml --test sentiment_single,calculate_simple
-#
-# Debug LLM judge decisions:
-#   export DEBUG_JUDGE_INPUT=./tmp/judge_debug
-#   python -m eval_pipeline --config ... --test large_data_find --limit 1
-#   cat ./tmp/judge_debug/judge_input_*.txt
-#   (See docs/debug-llm-judge.md for details)
-#
-# NOTE: Some tests use ExactMatchScorer as a placeholder. For production use,
-# implement custom scorers for router and stateful tests that evaluate:
-# - Router tests: Correct sub-agent selection, parameter extraction, calls_made tracking
-# - Stateful tests: Multi-turn conversation flow, state updates, final state verification
-# See util/eval_pipeline/src/eval_pipeline/scorers/ for scorer implementation examples.
+#   uv run python -m eval_pipeline \
+#     --config tests/capability/config_openai.yaml \
+#     --default_strategy codeact --runs 1 --parallel 10 --timeout 120
 
-name: capability
-no_cache: true
-description: "NeMo OO Agents capability tests for prompt optimization"
+name: capability_openai
+no_cache: false  # NVIDIA-specific; must be false for OpenAI API
+description: "Capability tests with official OpenAI API (gpt-5-nano, gpt-5.4)"
 
-# =============================================================================
-# OPTIMIZATION SETTINGS - Parameters for the optimization loop
-# =============================================================================
+# Models — agent models + judge model
+models:
+  gpt-5-nano:
+    model_name: gpt-5-nano
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 16384
 
-optimization:
-  n_runs: 9           # Eval runs per iteration (for consistency analysis)
-  n_samples: 3        # FRONTIER samples (router traces are huge even with compact mode)
-  parallel: 40        # Max concurrent samples for eval_pipeline
-  max_trace_lines: 1000  # null = no truncation
-  compact_traces: true  # Only show new messages each turn (saves ~60% tokens)
+  gpt-5.4:
+    model_name: gpt-5.4
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 16384
 
-  # Reflection prompt template (edit this file to customize the prompt)
-  prompt_template: reflection_prompt.md.template
+  gpt-4o-mini-judge:
+    model_name: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 4096
 
-  # Reflection LLM - references a key from the 'models' section below
-  reflect_model: claude-opus
-  reflect_temperature: 0.7
-
-  # Trace analyzer LLM (small/fast model for analyzing individual traces)
-  # References a key from the 'models' section below
-  analyzer_model: nemotron3-nano-30b
-  analyzer_max_trace_chars: 80000  # Truncate traces to fit context window (~20k tokens)
-
-# =============================================================================
-# OPTIMIZATION TARGET - File containing the strategy templates to evolve
-# =============================================================================
-
-target_files:
-  - agents/strategy.py  # Relative to this config file
-
-# =============================================================================
-# MODELS — resolved from the unifiedllm registry.
-#
-# Set `export UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml` so that the
-# NVIDIA-internal aliases (claude-haiku, nemotron3-nano-30b, gpt-5.2, etc.)
-# are available. No local `models:` section is needed here.
-#
-# Any model name supported by litellm also works as-is.
-# =============================================================================
-
-# 8-model matrix: (Gemini, Nemotron, Claude, OpenAI) × (Big, Small).
-# Gemini entries use the preview endpoints — gemini-3-pro wasn't authorized
-# for our API key when these were added.
+# Agent models to evaluate
 agent_models:
-  - gemini-3.1-pro-preview
-  - gemini-3-flash-preview
-  - nemotron-3-super-preview
-  - nemotron3-nano-30b
-  - claude-sonnet
-  - claude-haiku
-  - gpt-5.2
-  - gpt-5-mini
+  - gpt-5-nano
+  - gpt-5.4
 
-output_dir: results  # Relative to this config file
+output_dir: results/openai
 
-# Minimum weighted score to pass (default 0.5)
-# Set to 0.8 for stricter evaluation - requires majority of scorers to pass
 pass_threshold: 0.8
 
 test_suite:
   # ===========================================================================
-  # SCALE AWARENESS - Answer vs Code (7 tests)
+  # SCALE AWARENESS (7 tests)
   # ===========================================================================
-
   - name: sentiment_single
     description: "Single sentiment classification - should answer directly"
     tier: stable
@@ -167,21 +114,8 @@ test_suite:
         weight: 1.0
 
   - name: json_qa_lookup
-    description: "JSON field lookups - correctness only (answer visible in data)"
-    tier: stable
-    agent:
-      module: tests.capability.agents.json_qa
-      class: JsonQAAgent
-    method: answer_question
-    data_file: tests/capability/data/json_qa_lookup.jsonl
-    scorers:
-      - name: exact_match
-        class: ExactMatchScorer
-        weight: 1.0
-
-  - name: json_qa_lookup_mode
-    description: "JSON field lookups - stricter: also penalize writing code for a lookup"
-    tier: frontier
+    description: "JSON field lookups - answer visible in data, no computation needed"
+    tier: horizon
     agent:
       module: tests.capability.agents.json_qa
       class: JsonQAAgent
@@ -223,9 +157,8 @@ test_suite:
         weight: 1.0
 
   # ===========================================================================
-  # NEEDLE-IN-HAYSTACK - REPL + Semantic Search (1 test)
+  # NEEDLE + REPL + ERROR RECOVERY
   # ===========================================================================
-
   - name: needle_in_haystack
     description: "Find negative sentiment in large data - requires REPL exploration"
     tier: stable
@@ -280,7 +213,7 @@ test_suite:
           - There is only one execution (no retry at all), OR
           - The agent gives up without retrying the failed operation, OR
           - The agent uses inspect or reads source code to debug
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
 
   - name: repl_exploration
     description: "REPL exploration - should use REPL exploration to find a secret message"
@@ -315,20 +248,7 @@ test_suite:
           7. The agent calls the third_riddle method with the answer to the second riddle as an argument
           8. The agent calls the fourth_riddle method with the answer to the third riddle as an argument
           9. The agent calls the secret_message method with the answer to the fourth riddle as an argument
-        model: nemotron3-nano-30b
-
-  - name: refinement
-    description: "Refinement - should use refinement to get the ingredients for a recipe"
-    tier: frontier
-    agent:
-      module: tests.capability.agents.refinement
-      class: RefinementTestAgent
-    method: _order_recipe_ingredients_with_result_parsing
-    data_file: tests/capability/data/refinement.jsonl
-    scorers:
-      - name: exact_match
-        class: ExactMatchScorer
-        weight: 1.0
+        model: gpt-4o-mini-judge
 
   - name: task_decomposition
     description: "Task Decomposition - should use task decomposition and reuse helper methods"
@@ -358,12 +278,11 @@ test_suite:
           2. The agent uses the same helper method for parsing user.created, product.created and equipment.bought or has general helper function for processing all records
           3. The agent uses the same helper method for normalizing product.description and equipment.description or has general helper function for processing all records
 
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
 
   # ===========================================================================
-  # SUBAGENT ROUTING - Child agents + asyncio.gather (5 tests)
+  # SUBAGENT ROUTING (5 tests)
   # ===========================================================================
-
   - name: router_analyze
     description: "Route to single specialist - Analyzer"
     tier: stable
@@ -373,9 +292,8 @@ test_suite:
     method: process
     data_file: tests/capability/data/router_analyze.jsonl
     scorers:
-      # TODO: Need custom scorer to check calls_made
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   - name: router_validate
@@ -388,7 +306,7 @@ test_suite:
     data_file: tests/capability/data/router_validate.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   - name: router_transform
@@ -401,7 +319,7 @@ test_suite:
     data_file: tests/capability/data/router_transform.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   - name: router_multi_analyze_validate
@@ -414,7 +332,7 @@ test_suite:
     data_file: tests/capability/data/router_multi_analyze_validate.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   - name: router_multi_transform_validate
@@ -427,13 +345,12 @@ test_suite:
     data_file: tests/capability/data/router_multi_transform_validate.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   # ===========================================================================
-  # STATEFUL MULTI-TURN - Fast food ordering (2 tests)
+  # STATEFUL MULTI-TURN (2 tests)
   # ===========================================================================
-
   - name: fast_food_order
     description: "Multi-turn order flow - modify + confirm"
     tier: frontier
@@ -443,9 +360,8 @@ test_suite:
     method: run_conversation
     data_file: tests/capability/data/fast_food_order.jsonl
     scorers:
-      # TODO: Need custom scorer to check order_items, submitted, canceled
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   - name: fast_food_cancel
@@ -458,15 +374,14 @@ test_suite:
     data_file: tests/capability/data/fast_food_cancel.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: ExactMatchScorer
         weight: 1.0
 
   # ===========================================================================
-  # WP-2: INTROSPECTION EFFECTIVENESS - Tool discovery via doc(self)
+  # INTROSPECTION + CONTEXT API
   # ===========================================================================
-
   - name: employee_lookup
-    description: "Employee salary lookup - requires chaining subagents with data dependency (name → employee_id → salary)"
+    description: "Employee salary lookup - requires chaining subagents"
     tier: stable
     agent:
       module: tests.capability.agents.employee_lookup
@@ -478,12 +393,8 @@ test_suite:
         class: ExactMatchScorer
         weight: 1.0
 
-  # ===========================================================================
-  # CONTEXT API - Dynamic context block management
-  # ===========================================================================
-
   - name: context_notes
-    description: "Note-taking with context persistence - requires pinning render_notes() into context"
+    description: "Note-taking with context persistence"
     tier: frontier
     agent:
       module: tests.capability.agents.context_notes
@@ -494,11 +405,10 @@ test_suite:
       - name: answer_match
         class: ExactMatchScorer
         weight: 0.6
-
       - name: context_api_usage
         class: LLMJudgeScorer
         weight: 0.4
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
         rubric: |
           Evaluate if the agent pinned rendered notes into context.
 
@@ -519,11 +429,10 @@ test_suite:
           - No context blocks were created (agent never used the Context API)
 
   # ===========================================================================
-  # TRUNCATION SYSTEM - Large data handling with multi-layer truncation
+  # LARGE DATA (3 tests)
   # ===========================================================================
-
   - name: large_data_find
-    description: "Find marker in very large data (500KB+) - tests prefill & stdout truncation"
+    description: "Find marker in very large data (500KB+)"
     tier: stable
     agent:
       module: tests.capability.agents.large_data_wrapper
@@ -534,11 +443,10 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 0.5
-
       - name: efficiency_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
         skip_prefill: true
         rubric: |
           Evaluate if the agent handled large data efficiently.
@@ -562,7 +470,7 @@ test_suite:
           - Agent failed to use built-in string methods
 
   - name: large_data_extract
-    description: "Extract context around marker in large data - tests smart slicing"
+    description: "Extract context around marker in large data"
     tier: stable
     agent:
       module: tests.capability.agents.large_data_wrapper
@@ -573,11 +481,10 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 0.5
-
       - name: slicing_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
         skip_prefill: true
         rubric: |
           Evaluate if the agent used efficient string slicing.
@@ -599,7 +506,7 @@ test_suite:
           - Agent didn't use slicing to extract just the needed portion
 
   - name: large_data_count
-    description: "Count pattern in large data - tests efficient counting"
+    description: "Count pattern in large data"
     tier: stable
     agent:
       module: tests.capability.agents.large_data_wrapper
@@ -610,11 +517,10 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 0.5
-
       - name: counting_check
         class: LLMJudgeScorer
         weight: 0.5
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
         skip_prefill: true
         rubric: |
           Evaluate if the agent counted efficiently.
@@ -636,11 +542,10 @@ test_suite:
           - Agent used inefficient manual counting loops
 
   # ===========================================================================
-  # STRUCTURED OUTPUT - PredictStrategy with composed Pydantic models
+  # STRUCTURED OUTPUT
   # ===========================================================================
-
   - name: structured_combined_extraction
-    description: "Extract and compose multiple Pydantic models - tests PredictStrategy with model composition"
+    description: "Extract and compose multiple Pydantic models"
     tier: stable
     agent:
       module: tests.capability.agents.structured_output
@@ -653,11 +558,10 @@ test_suite:
         weight: 1.0
 
   # ===========================================================================
-  # TOOL CALL TRANSLATION - Agent method calling via execute_python
+  # TOOL CALL TRANSLATION (4 tests)
   # ===========================================================================
-
   - name: fast_agent_help
-    description: "Help delegation — must call self.call_for_help() via execute_python"
+    description: "Help delegation — must call self.call_for_help()"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -693,10 +597,10 @@ test_suite:
           - The agent never called self.call_for_help
           - The agent tried to answer on its own (e.g., making up weather data)
           - The agent tried to import call_for_help instead of using self.call_for_help
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
 
   - name: fast_agent_no_help
-    description: "Direct answer — should answer greetings/math/knowledge without calling for help"
+    description: "Direct answer — should answer without calling for help"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -729,11 +633,10 @@ test_suite:
           Return passed=false if:
           - The agent unnecessarily called self.call_for_help for something it could answer
           - The agent refused to answer or said it couldn't help
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
 
-  # Same tests but with translate_tool_calls=True
   - name: fast_agent_help_translate
-    description: "Help delegation with tool-call translation enabled"
+    description: "Help delegation with tool-call translation"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -766,10 +669,10 @@ test_suite:
           Return passed=false if:
           - The agent never called self.call_for_help
           - The agent tried to answer on its own (e.g., making up weather data)
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge
 
   - name: fast_agent_no_help_translate
-    description: "Direct answer with tool-call translation enabled"
+    description: "Direct answer with tool-call translation"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -802,4 +705,4 @@ test_suite:
           Return passed=false if:
           - The agent unnecessarily called self.call_for_help for something it could answer
           - The agent refused to answer or said it couldn't help
-        model: nemotron3-nano-30b
+        model: gpt-4o-mini-judge

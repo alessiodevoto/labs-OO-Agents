@@ -16,13 +16,14 @@ no_cache: true
 description: "Phase 3 advanced capability tests — helper reuse, iterative refinement, subagent chaining"
 
 # =============================================================================
-# MODELS — resolved from unifiedllm registry (endpoint/api_key automatic)
+# MODELS — resolved from the unifiedllm registry.
+# Set UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml for NVIDIA aliases.
 # =============================================================================
 
 agent_models:
-  - nvidia/nvidia/Nemotron-3-Nano-30B-A3B
-  - azure/openai/gpt-5.2
-  - aws/anthropic/claude-haiku-4-5-v1
+  - nemotron3-nano-30b
+  - gpt-5.2
+  - claude-haiku
 
 output_dir: results/phase3
 pass_threshold: 0.8
@@ -64,7 +65,7 @@ test_suite:
           2. The agent uses the same helper method for parsing user.created, product.created and equipment.bought or has general helper function for processing all records
           3. The agent uses the same helper method for normalizing product.description and equipment.description or has general helper function for processing all records
 
-        model: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+        model: nemotron3-nano-30b
 
   # ===========================================================================
   # REFINEMENT — Iterative refinement

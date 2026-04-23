@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from unifiedllm.fake import FakeLLMClient
 from unifiedllm.http_config import HttpConfig
-from unifiedllm.registry import MODELS, get_llm_client
+from unifiedllm.registry import MODELS, get_llm_client, reload_registry
 from unifiedllm.retry import EmptyContentError, RetryingWrapper, sync_retry, with_retry
 from unifiedllm.retry_config import RetryConfig
 from unifiedllm.unifiedllm import (
@@ -27,6 +27,7 @@ __all__ = [
     "OpenAIResponseClient",
     # Model registry
     "get_llm_client",
+    "reload_registry",
     "MODELS",
     # Tools
     "Tool",

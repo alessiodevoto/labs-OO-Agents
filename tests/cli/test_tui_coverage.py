@@ -599,18 +599,16 @@ class TestSwitchCommand:
         assert ok is True
         assert msg is None
 
-    async def test_model_not_in_registry(self, mock_console, mock_config, mock_agent):
+    async def test_model_not_in_registry_passes_through(
+        self, mock_console, mock_config, mock_agent
+    ):
+        """Unknown models pass through to litellm — /switch should succeed."""
         import unifiedllm
 
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        original_models = unifiedllm.MODELS
-        unifiedllm.MODELS = {"prov/m": None}
-        try:
+        with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
             result = await cmd.execute(["nonexistent/model"])
-        finally:
-            unifiedllm.MODELS = original_models
-        assert result.success is False
-        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert result.success is True
 
     async def test_successful_switch(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -1257,7 +1255,7 @@ class TestCommandHandler:
 
     async def test_invalid_args_path(self, handler, mock_console):
         """Command found but args invalid → prints error."""
-        result = await handler.handle("/model extra_arg")
+        result = await handler.handle("/model arg1 arg2")
         assert result.success is False
         mock_console.render.assert_called()
 

@@ -4,8 +4,8 @@ Usage in notebook:
     from presentation_utils import setup, trace, agent_pprint, list_traces
     setup()
 
-    from unifiedllm.registry import get_llm_client
-    llm = get_llm_client("aws/anthropic/bedrock-claude-sonnet-4-5-v1")
+    from unifiedllm import get_llm_client
+    llm = get_llm_client("claude-sonnet-4-5-20250514")
 """
 
 from pathlib import Path

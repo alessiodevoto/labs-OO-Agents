@@ -529,7 +529,7 @@ class UnifiedLLM(ABC):
 
         Resolution order:
         1. Registry config (if created via get_llm_client())
-        2. Registry lookup by model name (handles openai/ prefix)
+        2. Registry lookup by model name or model_name field
         3. litellm model info (for known models)
         4. None (unknown model)
 
@@ -538,20 +538,28 @@ class UnifiedLLM(ABC):
         """
         # First, check registry config (set by get_llm_client())
         if self._registry_config is not None:
-            return self._registry_config.get("context_window")
+            cw = self._registry_config.get("context_window")
+            if cw is not None:
+                return cw
+            # Registry entry exists but lacks context_window — fall through
 
-        # Try registry lookup (handles models not created via get_llm_client())
+        # Try registry lookup by model string
         from unifiedllm.registry import MODELS
 
-        model_name = self.model
-        if model_name in MODELS:
-            return MODELS[model_name].get("context_window")
+        model_str = self.model
 
-        # Handle openai/ litellm routing prefix (e.g., openai/nvidia/... -> nvidia/...)
-        if model_name.startswith("openai/"):
-            stripped = model_name[len("openai/") :]  # Remove "openai/" prefix
-            if stripped in MODELS:
-                return MODELS[stripped].get("context_window")
+        # Direct key match
+        if model_str in MODELS:
+            cw = MODELS[model_str].get("context_window")
+            if cw is not None:
+                return cw
+
+        # Reverse lookup: check if any registry entry's model_name matches
+        for _key, cfg in MODELS.items():
+            if cfg.get("model_name") == model_str:
+                cw = cfg.get("context_window")
+                if cw is not None:
+                    return cw
 
         # Fallback to litellm
         info = self.get_model_info()

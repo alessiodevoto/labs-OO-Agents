@@ -74,10 +74,11 @@ Methods with `...` bodies are called **generation methods** - they're implemente
 
 ```python
 from nemo_oo_agents.util.quickstart import *
-from unifiedllm.registry import get_llm_client
+from unifiedllm import get_llm_client
 
-# Get a preconfigured LLM client (Inference Hub model)
-llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")
+# Any litellm-supported model name works out of the box
+# Set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY in your environment
+llm = get_llm_client("gpt-4o-mini")
 
 
 class FeedbackAgent(Agent, llm=llm):
@@ -94,15 +95,26 @@ async def main():
     result = await agent.analyze_feedback("Great product, but shipping was slow")
     print(result)
 ```
-The `get_llm_client()` function provides access to many models from the UnifiedLLM registry for models on NVIDIA Inference Hub. You can easily switch models by changing the model string:
+`get_llm_client()` is a thin wrapper on top of [litellm](https://docs.litellm.ai/), so any litellm-supported model name works directly:
 
 ```python
-llm = get_llm_client("nvidia/qwen/qwen3-next-80b-a3b-instruct")  # NVIDIA Qwen
-llm = get_llm_client("aws/anthropic/claude-haiku-4-5-v1")        # Claude Haiku
-llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")    # Nemotron
+llm = get_llm_client("gpt-4o-mini")                # OpenAI
+llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (direct API)
+llm = get_llm_client("gemini/gemini-2.5-flash")    # Google
 ```
 
-Many more models are supported—see the [UnifiedLLM registry](packages/unifiedllm/src/unifiedllm/registry.py) for the full list of models or create your own `CompletionClient()` [see here for an example](packages/unifiedllm/examples/basic_usage.py).
+For custom endpoints, proxy gateways, or team aliases, drop a `llm_config.yaml` in your working directory (or point `UNIFIEDLLM_CONFIG` at one or more YAML files). NVIDIA employees can use the shipped `configs/llm_config_nvidia.yaml`:
+
+```bash
+export UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml
+```
+
+```python
+llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
+llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
+```
+
+See [`packages/unifiedllm/src/unifiedllm/registry.py`](packages/unifiedllm/src/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control ([example](packages/unifiedllm/examples/basic_usage.py)).
 
 > **Key insight**: In NeMo OO Agents, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
 
