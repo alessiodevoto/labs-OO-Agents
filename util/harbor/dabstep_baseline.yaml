@@ -9,6 +9,7 @@
 #   4. Set env vars:
 #      export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
 #      export NVIDIA_INTERNAL_API_KEY="sk-..."
+#      export ANTHROPIC_API_KEY="sk-ant-..."
 #
 # Run (5 tasks):
 #   harbor run --config util/harbor/dabstep_baseline.yaml
@@ -33,10 +34,10 @@ environment:
   override_memory_mb: 8192
   kwargs:
     apptainer_binary: apptainer
-    apptainer_fakeroot: false
+    apptainer_fakeroot: true   # required: directory-backed overlay needs fakeroot in setuid mode (see #135)
     # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
-    apptainer_image_cache_dir: /localhome/local-rcabral/3p/sif_cache
-    env_passthrough: NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: NVIDIA_INTERNAL_API_KEY,ANTHROPIC_API_KEY
 
 agents:
   - name: nemo-oo-agents
@@ -45,5 +46,6 @@ agents:
       agent_type: baseline
 
 datasets:
-  # 5 DABStep tasks: 3 easy + 2 hard (dev split subset)
+  # DABStep dev tasks — generate with: python adapters/dabstep/run_adapter.py --split dev --output-dir util/harbor/tasks/dabstep_dev
+  # Override at runtime: harbor run ... --path util/harbor/tasks/dabstep_dev
   - path: util/harbor/tasks/dabstep
