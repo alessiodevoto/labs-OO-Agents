@@ -220,6 +220,40 @@ def test_first_message_of_turn_never_emits_before_code_preview() -> None:
         assert m > real_preview_idx
 
 
+def test_return_result_tool_call_flushes_pending_messages() -> None:
+    """When ``return_result`` fires as its own tool call (not inline in
+    ``execute_python``), no ``PythonOutput`` event follows — so the
+    turn-end flush used to be skipped and ``self.message()`` calls
+    bufferered before the stop were silently dropped.
+
+    Regression guard: the renderer must flush pending messages on
+    ``return_result`` tool calls so the user sees the agent's last words.
+    """
+    agent, emitted, r = _mk(show_python=False)
+    r.attach()
+
+    # Prior cell ran and flushed (e.g. the agent wrote a message then
+    # issued return_result without wrapping it in execute_python).
+    _fire_tool_call(agent.event_manager, "print('work')", tool_call_id="t1")
+    _fire_python_output(agent.event_manager, stdout="work", tool_call_id="t1")
+
+    # Agent calls self.message() from outside a code cell (e.g. inside
+    # respond() after the last execute_python), then the LLM issues
+    # return_result as a separate tool.
+    agent._render_message("Final word")
+    agent.event_manager.fire(
+        "ToolCallEvent",
+        SimpleNamespace(name="return_result", tool_call_id="rr1", arguments={"result": {}}),
+    )
+
+    # "Final word" should have rendered as Markdown.
+    assert any(isinstance(e, Markdown) and "Final word" in str(e.markup) for e in emitted), (
+        "return_result tool call must flush pending self.message() calls"
+    )
+    # Nothing remains buffered.
+    assert r._pending_messages == []
+
+
 def test_prefill_tool_call_does_not_render_code_but_does_flush() -> None:
     """Prefill executions (internal inspection, e.g. ``prefill_abc``) show
     a friendly message instead of code — and the matching PythonOutput
