@@ -1777,3 +1777,72 @@ class TestStartDevCommand:
                 result = self.runner.invoke(start_dev_command, ["--port", "5001"])
         if result.exit_code == 0:
             assert "5001" in result.output or "NeMo" in result.output
+
+    def test_db_flag_sets_trace_store_db(self, tmp_path):
+        """--db overrides the user-dir default and stamps $TRACE_STORE_DB
+        so the viewer module sees it when it reads the env at import."""
+        import os
+        import sys
+
+        mock_app = MagicMock()
+        mock_viewer_main = MagicMock()
+        mock_viewer_main.app = mock_app
+        mock_viewer = MagicMock()
+        mock_viewer.main = mock_viewer_main
+
+        custom_db = tmp_path / "side-by-side.db"
+        orig_env = os.environ.pop("TRACE_STORE_DB", None)
+        try:
+            with patch.dict(
+                sys.modules,
+                {
+                    "nemo_oo_agents_viewer": mock_viewer,
+                    "nemo_oo_agents_viewer.main": mock_viewer_main,
+                },
+            ):
+                with patch("uvicorn.run"):
+                    result = self.runner.invoke(
+                        start_dev_command, ["--port", "5002", "--db", str(custom_db)]
+                    )
+            assert result.exit_code == 0
+            # The env var the viewer reads is stamped with the resolved path.
+            assert os.environ["TRACE_STORE_DB"] == str(custom_db.resolve())
+            # Banner shows the DB so the user knows which file this viewer is on.
+            assert str(custom_db.resolve()) in result.output
+        finally:
+            if orig_env is None:
+                os.environ.pop("TRACE_STORE_DB", None)
+            else:
+                os.environ["TRACE_STORE_DB"] = orig_env
+
+    def test_existing_trace_store_db_env_is_respected(self, tmp_path):
+        """If --db isn't passed but $TRACE_STORE_DB is set, use that."""
+        import os
+        import sys
+
+        mock_app = MagicMock()
+        mock_viewer_main = MagicMock()
+        mock_viewer_main.app = mock_app
+        mock_viewer = MagicMock()
+        mock_viewer.main = mock_viewer_main
+
+        env_db = tmp_path / "from-env.db"
+        orig_env = os.environ.get("TRACE_STORE_DB")
+        os.environ["TRACE_STORE_DB"] = str(env_db)
+        try:
+            with patch.dict(
+                sys.modules,
+                {
+                    "nemo_oo_agents_viewer": mock_viewer,
+                    "nemo_oo_agents_viewer.main": mock_viewer_main,
+                },
+            ):
+                with patch("uvicorn.run"):
+                    result = self.runner.invoke(start_dev_command, ["--port", "5003"])
+            assert result.exit_code == 0
+            assert os.environ["TRACE_STORE_DB"] == str(env_db.resolve())
+        finally:
+            if orig_env is None:
+                os.environ.pop("TRACE_STORE_DB", None)
+            else:
+                os.environ["TRACE_STORE_DB"] = orig_env

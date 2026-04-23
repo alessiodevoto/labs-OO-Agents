@@ -26,16 +26,33 @@ class _AccessLogFilter(logging.Filter):
 @click.command()
 @click.option("--port", "-p", type=int, default=5001, help="Port number (default: 5001).")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0).")
-def command(port: int, host: str):
+@click.option(
+    "--db",
+    "db_path_opt",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="SQLite trace store path. Defaults to ~/Library/Application Support/nat/oo/traces.db "
+    "(or $TRACE_STORE_DB if set). Pass an explicit path to run a second viewer "
+    "side-by-side with the default one.",
+)
+def command(port: int, host: str, db_path_opt: str | None):
     """Start the unified trace + evaluation viewer."""
     import os
+    from pathlib import Path
 
     from nemo_oo_agents.paths import get_user_dir
 
-    # Set the viewer DB path before importing the viewer (it reads this at module level).
-    db_path = get_user_dir("traces.db")
+    # Resolve the DB path with --db winning, then $TRACE_STORE_DB, then the
+    # user-dir default. Set TRACE_STORE_DB unconditionally so the viewer
+    # module picks it up at import time (it reads the env var at the top).
+    if db_path_opt:
+        db_path = Path(db_path_opt).expanduser().resolve()
+    elif "TRACE_STORE_DB" in os.environ:
+        db_path = Path(os.environ["TRACE_STORE_DB"]).expanduser().resolve()
+    else:
+        db_path = get_user_dir("traces.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("TRACE_STORE_DB", str(db_path))
+    os.environ["TRACE_STORE_DB"] = str(db_path)
 
     try:
         from nemo_oo_agents.viewer.main import app
@@ -68,6 +85,7 @@ def command(port: int, host: str):
     click.echo()
     click.secho("  NeMo OO Agents Viewer", fg="cyan", bold=True)
     click.echo(f"  URL:  http://localhost:{port}")
+    click.echo(f"  DB:   {db_path}")
     click.echo()
 
     uvicorn.run(app, host=host, port=port, log_config=log_config)
