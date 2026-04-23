@@ -81,10 +81,10 @@ class TestEventBase:
         from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
         from context_blocks.models import Role
 
-        # event_type is the discriminator field
-        assert UserEvent(content="test").event_type == "user_message"
-        assert AssistantEvent(content="test").event_type == "assistant_message"
-        assert ToolCallEvent(tool_call_id="tc1", name="test", arguments={}).event_type == "tool_call"
+        # event_type is auto-derived from the class name
+        assert UserEvent(content="test").event_type == "UserEvent"
+        assert AssistantEvent(content="test").event_type == "AssistantEvent"
+        assert ToolCallEvent(tool_call_id="tc1", name="test", arguments={}).event_type == "ToolCallEvent"
 
         # _role is a ClassVar
         assert UserEvent._role == Role.USER
@@ -108,11 +108,11 @@ class TestUserEvent:
     """Tests for UserEvent."""
 
     def test_user_event_type(self):
-        """UserEvent should have event_type='user_message'."""
+        """UserEvent should have event_type='UserEvent' (auto-derived from class name)."""
         from context_blocks.events import UserEvent
 
         event = UserEvent(content="Hello")
-        assert event.event_type == "user_message"
+        assert event.event_type == "UserEvent"
 
     def test_user_event_with_content(self):
         """UserEvent should hold content."""
@@ -126,11 +126,11 @@ class TestAssistantEvent:
     """Tests for AssistantEvent."""
 
     def test_assistant_event_type(self):
-        """AssistantEvent should have event_type='assistant_message'."""
+        """AssistantEvent should have event_type='AssistantEvent' (auto-derived from class name)."""
         from context_blocks.events import AssistantEvent
 
         event = AssistantEvent(content="I can help with that.")
-        assert event.event_type == "assistant_message"
+        assert event.event_type == "AssistantEvent"
 
     def test_assistant_event_with_content(self):
         """AssistantEvent should hold content."""
@@ -144,11 +144,11 @@ class TestToolCallEvent:
     """Tests for ToolCallEvent."""
 
     def test_tool_call_event_type(self):
-        """ToolCallEvent should have event_type='tool_call'."""
+        """ToolCallEvent should have event_type='ToolCallEvent' (auto-derived from class name)."""
         from context_blocks.events import ToolCallEvent
 
         event = ToolCallEvent(tool_call_id="tc_1", name="search", arguments={})
-        assert event.event_type == "tool_call"
+        assert event.event_type == "ToolCallEvent"
 
     def test_tool_call_event_with_data(self):
         """ToolCallEvent should hold tool call fields."""
@@ -226,7 +226,7 @@ class TestEventSerialization:
         json_str = event.model_dump_json()
         restored = UserEvent.model_validate_json(json_str)
 
-        assert restored.event_type == "user_message"
+        assert restored.event_type == "UserEvent"
         assert restored.content == "Test message"
 
     def test_tool_call_event_to_json_and_back(self):
@@ -237,7 +237,7 @@ class TestEventSerialization:
         json_str = event.model_dump_json()
         restored = ToolCallEvent.model_validate_json(json_str)
 
-        assert restored.event_type == "tool_call"
+        assert restored.event_type == "ToolCallEvent"
         assert restored.tool_call_id == "call_abc"
         assert restored.name == "get_data"
         assert restored.arguments["key"] == "value"
@@ -262,8 +262,8 @@ class TestEventSerialization:
         restored = adapter.validate_json(json_str)
 
         assert len(restored) == 2
-        assert restored[0].event_type == "user_message"
-        assert restored[1].event_type == "assistant_message"
+        assert restored[0].event_type == "UserEvent"
+        assert restored[1].event_type == "AssistantEvent"
 
 
 class TestNestedToolResult:
@@ -321,6 +321,6 @@ class TestNestedToolResult:
         ]
 
         # Find the tool call and access its nested result
-        tool_call = next(e for e in events if e.event_type == "tool_call")
+        tool_call = next(e for e in events if e.event_type == "ToolCallEvent")
         assert tool_call.result is not None
         assert tool_call.result.content == "Sunny"
