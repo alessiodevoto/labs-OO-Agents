@@ -111,9 +111,7 @@ class TestDuckTyping:
         """Non-write attributes (``encoding`` etc.) fall through."""
         original = io.StringIO()
         original.mode = "w"  # type: ignore[attr-defined]
-        fw = _StrayStreamForwarder(
-            original, lambda _: None, prefix="· ", ansi_color="2"
-        )
+        fw = _StrayStreamForwarder(original, lambda _: None, prefix="· ", ansi_color="2")
         assert fw.mode == "w"
 
     def test_writelines_emits_each_entry(self):
@@ -134,9 +132,7 @@ class TestEmitBlockFailureSafety:
         def broken_emit(_: str) -> None:
             raise RuntimeError("block queue exploded")
 
-        fw = _StrayStreamForwarder(
-            original, broken_emit, prefix="! ", ansi_color="31"
-        )
+        fw = _StrayStreamForwarder(original, broken_emit, prefix="! ", ansi_color="31")
         fw.write("critical\n")
         assert "critical" in original.getvalue()
 
