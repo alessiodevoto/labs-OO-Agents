@@ -48,8 +48,8 @@ def _make_db() -> sqlite3.Connection:
             model         TEXT,
             ts_start      REAL,
             ts_end        REAL,
-            input_hashes  TEXT NOT NULL,
-            output_hashes TEXT NOT NULL,
+            input_skeleton   TEXT NOT NULL,
+            output_messages  TEXT NOT NULL,
             tokens        TEXT
         );
 
@@ -355,8 +355,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1000.0,
                 "ts_end": 1001.0,
-                "input_hashes": ["sha256:in1"],
-                "output_hashes": ["sha256:out1"],
+                "input_skeleton": ["sha256:in1"],
+                "output_messages": ["sha256:out1"],
                 "tokens": {"prompt": 10, "completion": 5},
                 "span_id": "abc123",
             }
@@ -377,8 +377,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess2")
@@ -394,8 +394,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
                 "span_id": "span_first",
             }
         )
@@ -406,8 +406,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
                 "span_id": "span_second",
             }
         )
@@ -428,8 +428,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:missing"],
-                "output_hashes": [],
+                "input_skeleton": ["sha256:missing"],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess3")
@@ -444,8 +444,8 @@ class TestIngestJournalCall:
                     "model": "gpt-4o",
                     "ts_start": ts,
                     "ts_end": ts + 1,
-                    "input_hashes": [],
-                    "output_hashes": [],
+                    "input_skeleton": [],
+                    "output_messages": [],
                 }
             )
         calls = store.get_session_calls("sess_order")
@@ -487,8 +487,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [h_compound, h_user],
-                "output_hashes": [],
+                "input_skeleton": [h_compound, h_user],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess_blocks")
@@ -516,8 +516,8 @@ class TestGetJournalCallsBySpan:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:s1"],
-                "output_hashes": [],
+                "input_skeleton": ["sha256:s1"],
+                "output_messages": [],
                 "span_id": "sp_abc",
             }
         )
@@ -533,8 +533,8 @@ class TestGetJournalCallsBySpan:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
             }
         )
         result = store._get_journal_calls_by_span("sess_nospam")
@@ -620,8 +620,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:q1"],
-                "output_hashes": ["sha256:a1"],
+                "input_skeleton": ["sha256:q1"],
+                "output_messages": ["sha256:a1"],
                 "span_id": "span_aug",
             }
         )
@@ -690,8 +690,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [h_compound, h_user],
-                "output_hashes": [],
+                "input_skeleton": [h_compound, h_user],
+                "output_messages": [],
                 "span_id": span_id,
             }
         )
@@ -740,8 +740,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:mx1"],
-                "output_hashes": ["sha256:mx2"],
+                "input_skeleton": ["sha256:mx1"],
+                "output_messages": ["sha256:mx2"],
                 "span_id": "span_with_journal",
             }
         )
@@ -805,8 +805,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:raw1"],
-                "output_hashes": [],
+                "input_skeleton": ["sha256:raw1"],
+                "output_messages": [],
                 "span_id": "span_raw",
             }
         )
@@ -909,7 +909,7 @@ class TestHundredMessageRoundtrip:
         items = [{"h": hash_msg(m), "msg": m} for m in all_msgs]
         store.ingest_journal_messages(items)
 
-        input_hashes = [item["h"] for item in items]
+        input_skeleton = [item["h"] for item in items]
 
         # Seed call record with all 100 input hashes
         store.ingest_journal_call(
@@ -919,8 +919,8 @@ class TestHundredMessageRoundtrip:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": input_hashes,
-                "output_hashes": [],
+                "input_skeleton": input_skeleton,
+                "output_messages": [],
                 "span_id": span_id,
             }
         )
