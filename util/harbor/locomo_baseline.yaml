@@ -8,9 +8,13 @@
 # Prerequisites:
 #   1. apptainer installed
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
-#   3. Generate task dirs (downloads locomo10.json automatically on first run):
+#   3. Get task dirs — either generate locally (downloads locomo10.json automatically):
 #        python 3p/harbor-nemo/adapters/locomo/run_adapter.py \
 #            --task-dir util/harbor/tasks/locomo
+#      Or rsync pre-generated tasks from Lustre (faster, 1542 tasks, ~176 MB):
+#        rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:\
+#          /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks/locomo/ \
+#          util/harbor/tasks/locomo/
 #   4. Set env vars:
 #        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
 #        export ANTHROPIC_API_KEY="sk-ant-..."
@@ -31,7 +35,7 @@ timeout_multiplier: 1.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 2   # Conversations are large (~16K tokens each); keep at 2 to avoid memory pressure
+  n_concurrent_trials: 4
   quiet: false
 
 environment:

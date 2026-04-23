@@ -1,0 +1,39 @@
+# Harbor config for DABStep with the specialized DABStep agent (RSCDABAgentHardOpt63).
+#
+# Uses the domain-specific multi-agent pipeline:
+#   - RulesLawyer: finds relevant business rules from markdown docs
+#   - SolutionVerifier: validates computed answers
+#   - DABStepAgent: orchestrates the pipeline
+#
+# Requires the same pre-built DABStep SIF as the baseline run.
+# Generate tasks with: python util/harbor/generate_dabstep_tasks.py
+#
+# Run:
+#   NEMO_OO_AGENTS_GIT_URL="..." harbor run --config util/harbor/dabstep_specialized.yaml
+
+jobs_dir: /tmp/harbor_jobs/dabstep_specialized
+n_attempts: 1
+timeout_multiplier: 2.0   # multi-agent pipeline takes longer
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 2
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 8192
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: NVIDIA_INTERNAL_API_KEY,ANTHROPIC_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: dabstep
+
+datasets:
+  - path: util/harbor/tasks/dabstep

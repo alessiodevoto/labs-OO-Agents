@@ -198,12 +198,57 @@ Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:
 | Benchmark | Cache location | Download |
 |-----------|---------------|----------|
 | DABStep | `~/.cache/dabstep/data/context/` | HuggingFace `adyen/DABstep` |
-| LoCoMo | `~/.cache/locomo/locomo10.json` | Auto-downloaded from GitHub |
-| MemBench | wherever `--data-dir` points | Google Drive (manual, one-time) |
+| LoCoMo | `~/.cache/locomo/locomo10.json` | Auto-downloaded from GitHub on first run |
+| MemBench | `~/.cache/membench/` | Lustre (see below) or Google Drive |
 
-Auto-downloads go to `~/.cache/<benchmark>/`. Manual downloads go wherever
-the user puts them and are passed via CLI flag. Never embed raw data in the
+**MemBench data** (~1.1 GB) and **LoCoMo data** (~3 MB) are stored on Lustre:
+
+```
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data/
+```
+
+To populate locally from Lustre (run from any DFW node):
+
+```bash
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE=/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data
+
+# MemBench (~1.1 GB, needed before running run_adapter.py)
+rsync -av "$DFW:$LUSTRE/membench/" ~/.cache/membench/
+
+# LoCoMo (~3 MB; also auto-downloads from GitHub so this is optional)
+rsync -av "$DFW:$LUSTRE/locomo/" ~/.cache/locomo/
+```
+
+LoCoMo also auto-downloads from GitHub on first adapter run — the Lustre copy is a faster fallback.
+MemBench has no auto-download; Lustre is the canonical source (Google Drive as backup:
+`https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view`).
+
+Auto-downloads go to `~/.cache/<benchmark>/`. Never embed raw data in the
 repo or generate tasks with external retrieval at runtime.
+
+### Pre-generated task directories on Lustre
+
+Running `run_adapter.py` can be slow for large benchmarks (1542 LoCoMo tasks,
+4779 MemBench tasks). Pre-generated task dirs are stored on Lustre and can be
+rsynced directly, skipping adapter generation:
+
+```
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks/
+```
+
+```bash
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE=/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks
+
+# LoCoMo task dirs (1542 tasks, ~176 MB)
+rsync -av "$DFW:$LUSTRE/locomo/" util/harbor/tasks/locomo/
+
+# MemBench task dirs (4779 tasks, ~270 MB)
+rsync -av "$DFW:$LUSTRE/membench/" util/harbor/tasks/membench/
+```
+
+This is the fastest way to get started if you already have the SIF cache populated.
 
 ### Verified smoke test results
 
