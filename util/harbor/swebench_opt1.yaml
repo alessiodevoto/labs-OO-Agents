@@ -1,0 +1,40 @@
+# Harbor config for SWE-bench Verified with the opt1 multi-phase pipeline agent.
+#
+# SWEBenchOpt1Agent runs a 3-phase pipeline:
+#   1. Understand — repo overview, issue clarification, root-cause analysis
+#   2. Implement  — complete fix with test validation
+#   3. Review     — FeedbackAgent loop (up to 3 iterations)
+#
+# Requires the same pre-built per-instance SIF files as the baseline run.
+# Pre-pull SIFs with:
+#   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench
+#
+# Run (cached-SIF subset, 267 tasks):
+#   NEMO_OO_AGENTS_GIT_URL="..." harbor run --config util/harbor/swebench_opt1.yaml
+
+jobs_dir: /tmp/harbor_jobs/swebench_opt1
+n_attempts: 1
+timeout_multiplier: 1.5   # opt1 pipeline takes longer; give 50% extra time
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1   # SWE-bench tasks are CPU/memory heavy; run one at a time
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: swebench/opt1
+
+datasets:
+  - path: /localhome/local-rcabral/nemo_oo_agents/.worktrees/gl-24/util/harbor/tasks/swebench_cached
