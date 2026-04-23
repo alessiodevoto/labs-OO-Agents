@@ -196,10 +196,55 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
     log.info("Migration complete – %d sessions migrated.", len(rows))
 
 
+class DatabaseBusyAtStartup(RuntimeError):
+    """Raised when another process is holding a lock on the DB at startup."""
+
+
+def _check_writable(path: Path) -> None:
+    """Fail fast if another process is already locking the DB file.
+
+    Opens a dedicated connection, runs ``BEGIN IMMEDIATE`` (acquires a
+    reserved lock — compatible with concurrent WAL readers, but blocked
+    by any other reserved/exclusive writer) and rolls back immediately.
+    If that raises, another process is holding a writer lock and
+    subsequent journal/ingest writes will stall every client. Much
+    better to surface this at startup with a concrete fix than to let
+    every POST time out later.
+    """
+    import sqlite3 as _sqlite
+
+    probe_timeout_s = 3
+    try:
+        probe = _sqlite.connect(str(path), timeout=probe_timeout_s)
+    except _sqlite.OperationalError as e:
+        raise DatabaseBusyAtStartup(f"cannot open {path}: {e}") from e
+    try:
+        probe.execute(f"PRAGMA busy_timeout={probe_timeout_s * 1000}")
+        probe.execute("BEGIN IMMEDIATE")
+        probe.execute("ROLLBACK")
+    except _sqlite.OperationalError as e:
+        raise DatabaseBusyAtStartup(
+            f"another process is holding a writer lock on {path}: {e}\n"
+            f"Diagnose with:\n"
+            f"  lsof {path}\n"
+            f"  pgrep -af nemo_oo_agents_viewer\n"
+            f"Then kill any stale viewer, or pick a different TRACE_STORE_DB."
+        ) from e
+    finally:
+        probe.close()
+
+
 def init_db() -> int:
-    """Create tables and return the number of existing sessions."""
+    """Create tables and return the number of existing sessions.
+
+    Raises ``DatabaseBusyAtStartup`` if another process is holding a
+    writer lock on the DB — catching the usual "stale second viewer"
+    footgun at process start instead of as runtime 500s/503s later.
+    """
     global _db
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    _check_writable(DB_PATH)
 
     # Reset any existing thread-local read connection so _get_db() opens a
     # fresh one pointing at the new DB_PATH (important in tests where each

@@ -716,3 +716,44 @@ class TestMigrateV1ToV2:
         assert sessions[0]["id"] == "s2"
         # No eval fields → no eval key in dict
         assert "eval" not in sessions[0]
+
+
+
+# ---------------------------------------------------------------------------
+# Startup lock check
+# ---------------------------------------------------------------------------
+
+
+class TestStartupLockCheck:
+    """``init_db`` must fail fast when another process is holding a writer
+    lock, so the viewer never comes up "healthy" but serving 503s."""
+
+    def test_init_db_succeeds_when_db_is_free(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "free.db"
+        monkeypatch.setattr(store, "DB_PATH", db_path)
+        monkeypatch.setattr(store, "_db", None)
+        # Should not raise.
+        store.init_db()
+
+    def test_init_db_raises_when_another_writer_holds_the_lock(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "locked.db"
+        monkeypatch.setattr(store, "DB_PATH", db_path)
+        monkeypatch.setattr(store, "_db", None)
+
+        # Simulate another process by opening a connection in this one
+        # and starting a long-running writer transaction (BEGIN IMMEDIATE
+        # acquires a reserved lock, same as a concurrent viewer would).
+        blocker = sqlite3.connect(str(db_path))
+        try:
+            blocker.execute("CREATE TABLE IF NOT EXISTS probe (x)")
+            blocker.execute("BEGIN IMMEDIATE")
+            with pytest.raises(store.DatabaseBusyAtStartup) as excinfo:
+                store.init_db()
+            # Error message should point the user at the diagnostic command.
+            assert "lsof" in str(excinfo.value)
+        finally:
+            blocker.execute("ROLLBACK")
+            blocker.close()
+

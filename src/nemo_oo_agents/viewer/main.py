@@ -118,7 +118,14 @@ logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
 async def lifespan(app: FastAPI):
     log.info("Frontend: %s", FRONTEND_DIR)
     log.info("Initializing SQLite trace store...")
-    count = otlp_store.init_db()
+    try:
+        count = otlp_store.init_db()
+    except otlp_store.DatabaseBusyAtStartup as exc:
+        # Fail loudly with a fixable diagnostic — the process would
+        # otherwise come up "healthy" but every journal/span POST would
+        # hang on the lock.
+        log.error("SQLite trace store is not writable:\n%s", exc)
+        raise SystemExit(1) from exc
     log.info("Database ready: %d sessions in %s", count, otlp_store.DB_PATH)
 
     worker = asyncio.create_task(_ingest_worker())
