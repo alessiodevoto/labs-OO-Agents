@@ -1341,29 +1341,44 @@ class ActorRuntime:
         result = None
         exception_caught = None
 
-        with _harness_metrics_lifecycle(should_trace):
-            try:
-                # Execute nested strategy directly (we're already in a generation session)
-                result = await strategy.execute(self, call)
-                return result
-            except Exception as e:
-                exception_caught = e
-                raise
-            finally:
-                # Pop generation_id from stack using copy-on-write semantics
-                _pop_generation_id()
+        # Start harness metrics + unifiedllm bridge (cleaned up in finally below)
+        _hm_ctx = _harness_metrics_lifecycle(should_trace)
+        _hm_ctx.__enter__()
 
-                # Call after generation hook
-                if should_trace:
-                    call_after_hook(
-                        "after_generation",
-                        hook_context,
-                        agent=self.agent,
-                        method_name=call.method_name,
-                        result=result,
-                        exception=exception_caught,
-                        generation_id=generation_id,
-                    )
+        try:
+            # Execute nested strategy directly (we're already in a generation session)
+            result = await strategy.execute(self, call)
+            return result
+        except Exception as e:
+            exception_caught = e
+            raise
+        finally:
+            # Pop generation_id from stack using copy-on-write semantics
+            _pop_generation_id()
+
+            # Flush harness metrics BEFORE after_generation ends the span —
+            # otherwise get_current_span() no longer returns the generation
+            # span and harness.* attributes are dropped.
+            if exception_caught is not None:
+                _hm_ctx.__exit__(
+                    type(exception_caught),
+                    exception_caught,
+                    exception_caught.__traceback__,
+                )
+            else:
+                _hm_ctx.__exit__(None, None, None)
+
+            # Call after generation hook
+            if should_trace:
+                call_after_hook(
+                    "after_generation",
+                    hook_context,
+                    agent=self.agent,
+                    method_name=call.method_name,
+                    result=result,
+                    exception=exception_caught,
+                    generation_id=generation_id,
+                )
 
     def get_generation_id(self) -> str | None:
         """Get the current generation session ID (RuntimeServices protocol).
@@ -2096,6 +2111,20 @@ class ActorRuntime:
             # Pop generation_id from stack using copy-on-write semantics
             _pop_generation_id()
 
+            # Flush harness metrics BEFORE after_generation ends the span —
+            # otherwise get_current_span() no longer returns the generation
+            # span and harness.* attributes are dropped. Pass real exception
+            # info so the context manager can chain correctly if its
+            # teardown raises.
+            if exception_caught is not None:
+                _hm_ctx.__exit__(
+                    type(exception_caught),
+                    exception_caught,
+                    exception_caught.__traceback__,
+                )
+            else:
+                _hm_ctx.__exit__(None, None, None)
+
             # Call after generation hook
             if should_trace:
                 call_after_hook(
@@ -2107,17 +2136,6 @@ class ActorRuntime:
                     exception=exception_caught,
                     generation_id=generation_id,
                 )
-
-            # Flush harness metrics and restore. Pass real exception info so
-            # the context manager can chain correctly if its teardown raises.
-            if exception_caught is not None:
-                _hm_ctx.__exit__(
-                    type(exception_caught),
-                    exception_caught,
-                    exception_caught.__traceback__,
-                )
-            else:
-                _hm_ctx.__exit__(None, None, None)
 
             # Restore previous context variable value
             # (handles nested generation sessions correctly)
