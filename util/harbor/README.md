@@ -227,6 +227,29 @@ MemBench has no auto-download; Lustre is the canonical source (Google Drive as b
 Auto-downloads go to `~/.cache/<benchmark>/`. Never embed raw data in the
 repo or generate tasks with external retrieval at runtime.
 
+### Pre-generated task directories on Lustre
+
+Running `run_adapter.py` can be slow for large benchmarks (1542 LoCoMo tasks,
+4779 MemBench tasks). Pre-generated task dirs are stored on Lustre and can be
+rsynced directly, skipping adapter generation:
+
+```
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks/
+```
+
+```bash
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE=/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks
+
+# LoCoMo task dirs (1542 tasks, ~176 MB)
+rsync -av "$DFW:$LUSTRE/locomo/" util/harbor/tasks/locomo/
+
+# MemBench task dirs (4779 tasks, ~270 MB)
+rsync -av "$DFW:$LUSTRE/membench/" util/harbor/tasks/membench/
+```
+
+This is the fastest way to get started if you already have the SIF cache populated.
+
 ### Verified smoke test results
 
 | Benchmark | Method | Model | Tasks | Result |

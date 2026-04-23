@@ -12,10 +12,14 @@
 #          /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data/membench/ \
 #          ~/.cache/membench/
 #      Or Google Drive (backup): https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view
-#   4. Generate task dirs:
+#   4. Get task dirs — either generate from data:
 #        python 3p/harbor-nemo/adapters/membench/run_adapter.py \
 #            --data-dir ~/.cache/membench \
 #            --task-dir util/harbor/tasks/membench
+#      Or rsync pre-generated tasks from Lustre (faster, 4779 tasks, ~270 MB):
+#        rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:\
+#          /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_tasks/membench/ \
+#          util/harbor/tasks/membench/
 #   5. Set env vars:
 #        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
 #        export ANTHROPIC_API_KEY="sk-ant-..."
