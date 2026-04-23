@@ -6,10 +6,11 @@
 # Prerequisites:
 #   1. apptainer installed
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
-#   3. Get MemBench data (~1.1 GB) and generate task dirs:
-#      a) rsync from rcabral's DFW homedir:
-#           rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:~/.cache/membench/ ~/.cache/membench/
-#      b) Or download from Google Drive: https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view
+#   3. Get MemBench data (~1.1 GB) from Lustre:
+#        rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:\
+#          /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data/membench/ \
+#          ~/.cache/membench/
+#      Or Google Drive (backup): https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view
 #        python 3p/harbor-nemo/adapters/membench/run_adapter.py \
 #            --data-dir ~/.cache/membench \
 #            --task-dir util/harbor/tasks/membench

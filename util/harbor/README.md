@@ -199,16 +199,30 @@ Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:
 |-----------|---------------|----------|
 | DABStep | `~/.cache/dabstep/data/context/` | HuggingFace `adyen/DABstep` |
 | LoCoMo | `~/.cache/locomo/locomo10.json` | Auto-downloaded from GitHub on first run |
-| MemBench | `~/.cache/membench/` | rsync from DFW or Google Drive (see below) |
+| MemBench | `~/.cache/membench/` | Lustre (see below) or Google Drive |
 
-**MemBench data** (~1.1 GB) is available via rsync from rcabral's DFW homedir:
+**MemBench data** (~1.1 GB) and **LoCoMo data** (~3 MB) are stored on Lustre:
 
-```bash
-rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:~/.cache/membench/ ~/.cache/membench/
+```
+/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data/
 ```
 
-Or download from Google Drive and unzip to `~/.cache/membench/`:
-`https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view`
+To populate locally from Lustre (run from any DFW node):
+
+```bash
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE=/lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmark_data
+
+# MemBench (~1.1 GB, needed before running run_adapter.py)
+rsync -av "$DFW:$LUSTRE/membench/" ~/.cache/membench/
+
+# LoCoMo (~3 MB; also auto-downloads from GitHub so this is optional)
+rsync -av "$DFW:$LUSTRE/locomo/" ~/.cache/locomo/
+```
+
+LoCoMo also auto-downloads from GitHub on first adapter run — the Lustre copy is a faster fallback.
+MemBench has no auto-download; Lustre is the canonical source (Google Drive as backup:
+`https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view`).
 
 Auto-downloads go to `~/.cache/<benchmark>/`. Never embed raw data in the
 repo or generate tasks with external retrieval at runtime.
