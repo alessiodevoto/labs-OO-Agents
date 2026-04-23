@@ -60,9 +60,10 @@ def _get_db() -> sqlite3.Connection:
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
     if not hasattr(_read_tls, "conn"):
-        _read_tls.conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        _read_tls.conn = sqlite3.connect(str(DB_PATH), timeout=30)
         _read_tls.conn.execute("PRAGMA journal_mode=WAL")
         _read_tls.conn.execute("PRAGMA synchronous=NORMAL")
+        _read_tls.conn.execute("PRAGMA busy_timeout=30000")
         _read_tls.conn.row_factory = sqlite3.Row
     return _read_tls.conn
 
@@ -72,11 +73,18 @@ def _get_write_db() -> sqlite3.Connection:
 
     Called only from the single-writer executor thread, never from the
     event loop or route-handler threads.
+
+    ``busy_timeout=30000`` lets SQLite itself wait up to 30s for a
+    writer lock before raising ``database is locked`` — covers the
+    common case where another reader (or a long OTLP batch commit on
+    the same file) is mid-fsync. Without it, lock contention surfaces
+    as 500s on the client in under a second.
     """
     if not hasattr(_write_tls, "conn"):
-        _write_tls.conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        _write_tls.conn = sqlite3.connect(str(DB_PATH), timeout=30)
         _write_tls.conn.execute("PRAGMA journal_mode=WAL")
         _write_tls.conn.execute("PRAGMA synchronous=NORMAL")
+        _write_tls.conn.execute("PRAGMA busy_timeout=30000")
         _write_tls.conn.row_factory = sqlite3.Row
     return _write_tls.conn
 
