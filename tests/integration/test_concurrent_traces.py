@@ -39,8 +39,9 @@ class FakeLLM:
         # Simulate small delay like real LLM
         await asyncio.sleep(0.01)
 
-        # Return valid Python that returns a dict
-        code = '```python\nresult = {"value": 42, "task_id": "test"}\n```'
+        # Return valid Python that calls return_result() to end the CodeAct loop.
+        # Without return_result(), CodeAct loops indefinitely when max_iterations=None.
+        code = '```python\nreturn_result({"value": 42, "task_id": "test"})\n```'
 
         # Return format expected by nemo_oo_agents
         return MagicMock(
