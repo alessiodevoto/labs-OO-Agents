@@ -49,7 +49,7 @@ environment:
     # Forward API keys into the container
     # Do NOT include OPENAI_API_KEY: the runner passes it as api_key override which
     # overrides the registry lookup for NVIDIA gateway models (NVIDIA_INTERNAL_API_KEY).
-    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:
   - name: nemo-oo-agents
@@ -58,6 +58,6 @@ agents:
       agent_type: baseline
 
 datasets:
-  # 5-task smoke-test set: acl-permissions-inheritance, adaptive-rejection-sampler,
-  # add-benchmark-lm-eval-harness, analyze-access-logs, cancel-async-tasks
-  - path: util/harbor/tasks/terminal_bench
+  # 241-task full Terminal Bench 1.0 set (generate via python util/harbor/generate_terminal_bench_tasks.py)
+  # Note: tasks/ is gitignored; these live in .worktrees/gl-24/util/harbor/tasks/terminal_bench on this machine
+  - path: /localhome/local-rcabral/nemo_oo_agents/.worktrees/gl-24/util/harbor/tasks/terminal_bench

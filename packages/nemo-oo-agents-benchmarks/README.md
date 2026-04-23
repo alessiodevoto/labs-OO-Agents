@@ -293,7 +293,7 @@ team access. Harbor configs reference this as an absolute path.
 apptainer build --fakeroot ~/3p/sif_cache/dabstep.sif 3p/dabstep.def
 ```
 
-**Terminal Bench** — 202 of 241 task-specific SIFs are pre-built. Rebuild any
+**Terminal Bench** — 240 of 241 task-specific SIFs are pre-built. Rebuild any
 missing ones with:
 
 ```bash
@@ -308,9 +308,9 @@ python3 util/harbor/build_terminal_bench_sifs.py --dry-run
 ```
 
 The script translates each task's Dockerfile to an Apptainer `.def`, builds
-on top of cached base images, and writes SIFs to `~/3p/sif_cache/`. Tasks
-using multi-stage Docker builds or dynamic `FROM` expressions cannot be
-translated automatically (39 of 241 fall into this category).
+on top of cached base images, and writes SIFs to `~/3p/sif_cache/`. The one
+remaining task (`leelachess0-pytorch-conversion`) downloads a neural network
+checkpoint from `training.lczero.org` which returns an HTTP error at build time.
 
 **SWEBench** — copy from DFW Lustre or pull from Docker Hub:
 
@@ -379,5 +379,5 @@ Mean reward: **0.2** (1/5). Runtime: ~12 minutes.
 
 Full results: `/tmp/harbor_jobs/terminal_bench_baseline/2026-04-21__17-15-10/result.json`
 
-SIF cache: `~/3p/sif_cache/` (202/241 Terminal Bench SIFs pre-built)
+SIF cache: `~/3p/sif_cache/` (240/241 Terminal Bench SIFs pre-built)
 
