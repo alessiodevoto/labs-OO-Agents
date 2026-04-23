@@ -23,8 +23,8 @@ asyncio task gets its own value. Concurrent multi-session callers
 per-task attribution without any extra bookkeeping.
 """
 
-from opentelemetry import context as otel_context
 from openinference.semconv.trace import SpanAttributes
+from opentelemetry import context as otel_context
 
 _KEY = SpanAttributes.SESSION_ID
 
