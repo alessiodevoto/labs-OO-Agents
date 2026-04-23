@@ -133,8 +133,6 @@ class TestSessionSpanProcessor:
             session_file = Path(tmpdir) / "via-otel-ctx.jsonl"
             # If this file doesn't exist, session.id wasn't propagated:
             # the exporter routes by session.id attribute.
-            assert session_file.exists(), (
-                "session.id must reach OITracer-created spans via the OTel context"
-            )
+            assert session_file.exists(), "session.id must reach OITracer-created spans via the OTel context"
             spans = read_otlp_jsonl_spans(session_file)
             assert spans[0]["attributes"]["session.id"] == "via-otel-ctx"
