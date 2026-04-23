@@ -14,7 +14,7 @@ Key insight (OPT31): intracountry = issuing_country vs acquirer_country.
 Architecture:
 - RulesLawyer: finds relevant business rules from markdown documentation
 - SolutionVerifier: validates computed answers
-- DABStepAgent (RSCDABAgentHardOpt63): orchestrator; CodeActStrategy, max_iterations=40
+- DABStepAgent (RSCDABAgentHardOpt63): orchestrator; CodeActStrategy, max_iterations=100
 """
 
 from __future__ import annotations
@@ -375,7 +375,7 @@ class RulesLawyer(Agent, llm=FakeLLMClient()):
     def _system_prompt(self) -> str:
         return _base_system_prompt(self.__class__.__name__)
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, max_retries=3)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=3)))
     async def find_rules(
         self,
         question: str,
@@ -443,7 +443,7 @@ class SolutionVerifier(Agent, llm=FakeLLMClient()):
     def _system_prompt(self) -> str:
         return _base_system_prompt(self.__class__.__name__)
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, max_retries=2)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=2)))
     async def verify(
         self,
         question: str,
@@ -710,7 +710,7 @@ self.format_numeric_answer(value, guidelines)
         except Exception as e:
             return {"response": "", "success": False, "error": str(e)}
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, max_retries=5)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=5)))
     async def compute_answer(self, question: str, guidelines: str, hint: str = "") -> AnswerResult:
         """Compute the answer using data analysis.
 

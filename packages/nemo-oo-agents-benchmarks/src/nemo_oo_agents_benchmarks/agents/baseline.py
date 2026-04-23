@@ -116,7 +116,7 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
         except Exception as e:
             return {"response": "", "success": False, "error": str(e)}
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=30, max_retries=10)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=10)))
     async def solve_task(self, description: str, response_format: str = "") -> Any:
         """Solve the following task:
 

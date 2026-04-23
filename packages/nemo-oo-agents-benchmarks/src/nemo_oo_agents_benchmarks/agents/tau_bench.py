@@ -176,7 +176,7 @@ class TauBenchAgent(
     async def respond_to_user(self, agent_message: str) -> str:
         return await self.taubench.respond_to_user(agent_message)
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, max_retries=5)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=5)))
     async def handle_user_message(self, user_message: str) -> UserResponse:
         """Process the customer's message and respond.
 
