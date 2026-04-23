@@ -7,11 +7,15 @@
 # Prerequisites:
 #   1. apptainer installed
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
-#   3. Download MemBench data from Google Drive:
+#   3. Download MemBench data (~1.1 GB) from Google Drive and unzip:
 #        https://drive.google.com/file/d/112Zraj4pTPH4Idph6i1uMOLA_LPFdGr0/view
+#      On DFW cluster: data is already at ~/.cache/membench (rcabral's machine).
+#      For other machines: rsync from rcabral@cw-dfw-cs-001-login-02:~/.cache/membench/
+#        rsync -av rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:~/.cache/membench/ ~/.cache/membench/
+#      (Or download directly from Google Drive and unzip to ~/.cache/membench/)
 #   4. Generate task dirs:
 #        python 3p/harbor-nemo/adapters/membench/run_adapter.py \
-#            --data-dir /path/to/membench_data \
+#            --data-dir ~/.cache/membench \
 #            --task-dir util/harbor/tasks/membench
 #   5. Set env vars:
 #        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
