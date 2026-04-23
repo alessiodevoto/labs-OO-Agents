@@ -5,9 +5,10 @@ Uses a fake LLM to avoid real API calls while testing the full execution path.
 """
 
 import asyncio
+import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from openinference_instrumentation_nemo_oo_agents import (
@@ -18,37 +19,48 @@ from openinference_instrumentation_nemo_oo_agents._hooks_impl import (
     OpenInferenceHooks,
     _get_active_spans,
 )
+from unifiedllm import LLMResponse, ToolCall
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
 
 
 class FakeLLM:
-    """Fake LLM that returns canned Python code responses.
+    """Fake LLM that returns a proper execute_python tool call.
 
-    Implements the UnifiedLLM interface expected by nemo_oo_agents.
+    Text-only responses (content=..., tool_calls=None) are converted by
+    CodeActStrategy into synthetic reasoning() calls — they never execute
+    code. To actually terminate the CodeAct loop we must return a real
+    LLMResponse with finish_reason="tool_calls" and an execute_python tool
+    call whose body calls return_result().
     """
 
     def __init__(self):
         self.call_count = 0
 
     async def acall(self, messages, tools=None, **kwargs):
-        """Return a valid Python code response (UnifiedLLM interface)."""
+        """Return an execute_python tool call that calls return_result()."""
         self.call_count += 1
 
         # Simulate small delay like real LLM
         await asyncio.sleep(0.01)
 
-        # Return valid Python that calls return_result() to end the CodeAct loop.
-        # Without return_result(), CodeAct loops indefinitely when max_iterations=None.
-        code = '```python\nreturn_result({"value": 42, "task_id": "test"})\n```'
-
-        # Return format expected by nemo_oo_agents
-        return MagicMock(
-            content=code,
-            tool_calls=None,
-            usage=MagicMock(prompt_tokens=10, completion_tokens=20, total_tokens=30),
+        # Return a proper tool-call response so CodeAct executes the code
+        # and terminates via return_result() on the first iteration.
+        return LLMResponse(
             raw_response=None,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id=f"fake_{self.call_count}",
+                    name="execute_python",
+                    arguments=json.dumps(
+                        {"code": 'return_result({"value": 42, "task_id": "test"})'}
+                    ),
+                )
+            ],
+            finish_reason="tool_calls",
+            assistant_message={},
         )
 
 
