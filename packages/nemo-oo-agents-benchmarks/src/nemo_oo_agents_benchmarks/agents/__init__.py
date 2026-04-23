@@ -8,6 +8,7 @@ from __future__ import annotations
 #
 # Naming convention: <benchmark>/<variant>
 #   baseline            — General-purpose CodeAct agent (default, gl-22)
+#   react-baseline      — ReAct (Thought/Action/Observation) baseline (gl-65–71)
 #   swebench/basic      — SWE-bench Verified, single-pass CodeAct
 #   swebench/opt1       — SWE-bench Verified, opt1 (feedback loop)
 #   terminal-bench-1    — Terminal Bench 1 (stub, see gl-16)
@@ -16,8 +17,9 @@ from __future__ import annotations
 #   tau-bench           — Tau Bench opt2 (ported; requires Harbor multi-turn gl-23)
 #   dabstep             — DABStep opt63 (ported from agent006)
 AGENT_CLASSES: dict[str, str] = {
-    # General-purpose baseline (gl-22)
+    # General-purpose baselines (gl-22, gl-65–71)
     "baseline": "nemo_oo_agents_benchmarks.agents.baseline:BaselineAgent",
+    "react-baseline": "nemo_oo_agents_benchmarks.agents.react_baseline:ReActBaselineAgent",
     # SWE-bench — implemented
     "swebench/basic": "nemo_oo_agents_benchmarks.agents.swebench_basic:SWEBenchBasicAgent",
     "swebench/opt1": "nemo_oo_agents_benchmarks.agents.swebench_opt1:SWEBenchOpt1Agent",
