@@ -12,8 +12,8 @@ the public API for use in agent-generated code.
 from typing import Any
 
 # Import pprint from agentdoc (the source of truth)
-from agentdoc import pprint as _agentdoc_pprint
-from agentdoc._pformat import _pformat_to_str as _pformat
+from nemo_oo_agents.agentdoc import pprint as _agentdoc_pprint
+from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
 
 def pprint(

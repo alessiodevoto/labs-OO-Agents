@@ -20,14 +20,14 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from agentdoc import TruncatingStringIO
-from agentdoc.introspect import methods, variables
 from context_blocks import (
     DynamicContext,
     ResolvedBlock,
     render_context,
 )
 from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+from nemo_oo_agents.agentdoc import TruncatingStringIO
+from nemo_oo_agents.agentdoc.introspect import methods, variables
 
 if TYPE_CHECKING:
     from context_blocks.models import ContextWindowStats
@@ -789,7 +789,7 @@ class ActorRuntime:
         parent_token = _parent_agent_var.set(self.agent)
         try:
             # Build execution globals first (needed for validation error messages)
-            from agentdoc.visibility import filter_module_globals
+            from nemo_oo_agents.agentdoc.visibility import filter_module_globals
 
             agent_module = inspect.getmodule(type(self.agent))
             exec_globals = filter_module_globals(agent_module) if agent_module else {}
@@ -800,7 +800,7 @@ class ActorRuntime:
             # installed below.
             import typing as _typing
 
-            from agentdoc import doc
+            from nemo_oo_agents.agentdoc import doc
             from nemo_oo_agents.decorators import strategy
             from nemo_oo_agents.media import Audio, File, Image, Media
             from nemo_oo_agents.runtime.media_capture import show
@@ -1495,7 +1495,7 @@ class ActorRuntime:
         """
 
         # Build evaluation namespace with all runtime context
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         namespace = {
             "self": self.agent,
@@ -1661,7 +1661,7 @@ class ActorRuntime:
 
         methods_info = {}
 
-        from agentdoc.visibility import is_hidden_method
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_method
 
         # Get all methods from the class
         for name in dir(type(self.agent)):
@@ -2425,7 +2425,7 @@ async def {name}({params_str}) -> {return_type}:
             else char_approximate_token_counter
         )
         try:
-            from openinference_instrumentation_nemo_oo_agents._context_sideband import (
+            from nemo_oo_agents.tracing._context_sideband import (
                 set_context_blocks,
             )
 

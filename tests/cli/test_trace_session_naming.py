@@ -104,9 +104,7 @@ class TestSwapSessionManagerCallsSetSession:
         fake_tracing = MagicMock()
         fake_tracing.set_session = mock_set_session
 
-        with patch.dict(
-            sys.modules, {"openinference_instrumentation_nemo_oo_agents": fake_tracing}
-        ):
+        with patch.dict(sys.modules, {"nemo_oo_agents.tracing": fake_tracing}):
             session._swap_session_manager(new_sm)
 
         assert len(captured) == 1, f"set_session not called; got {captured}"
@@ -151,9 +149,7 @@ class TestSwapSessionManagerCallsSetSession:
         fake_tracing = MagicMock()
         fake_tracing.set_session = MagicMock(side_effect=RuntimeError("tracing broken"))
 
-        with patch.dict(
-            sys.modules, {"openinference_instrumentation_nemo_oo_agents": fake_tracing}
-        ):
+        with patch.dict(sys.modules, {"nemo_oo_agents.tracing": fake_tracing}):
             # Should not raise
             session._swap_session_manager(new_sm)
 

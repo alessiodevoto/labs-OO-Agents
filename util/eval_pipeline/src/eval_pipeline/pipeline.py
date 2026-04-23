@@ -27,7 +27,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from evaluation.concurrency import ConcurrencyConfig, ConcurrencyEngine, SubprocessEngine
+from nemo_oo_agents_benchmarks.evaluation.concurrency import (
+    ConcurrencyConfig,
+    ConcurrencyEngine,
+    SubprocessEngine,
+)
 
 from ._utils import classify_error_type as _classify_error_type
 from ._utils import merge_eval_metadata as _merge_eval_metadata
@@ -181,7 +185,7 @@ async def process_sample(
 
     # Set session for this async context (supports concurrent samples)
     try:
-        from openinference_instrumentation_nemo_oo_agents import set_session
+        from nemo_oo_agents.tracing import set_session
 
         config.trace_dir.mkdir(parents=True, exist_ok=True)
         set_session(session_id)
@@ -207,7 +211,7 @@ async def process_sample(
 
         _trace = None
         try:
-            from openinference_instrumentation_nemo_oo_agents import flush_traces
+            from nemo_oo_agents.tracing import flush_traces
 
             flush_traces()
         except ImportError:
@@ -226,7 +230,7 @@ async def process_sample(
             except Exception:
                 pass
             try:
-                from trace_explorer import TraceExplorer
+                from nemo_oo_agents.trace_explorer import TraceExplorer
 
                 _trace = TraceExplorer.from_viewer(config.otlp_base_url, session_id)
             except Exception as e:
@@ -238,7 +242,7 @@ async def process_sample(
                 )
         elif result.trace_file is not None:
             try:
-                from trace_explorer import TraceExplorer
+                from nemo_oo_agents.trace_explorer import TraceExplorer
 
                 _trace = TraceExplorer.from_file(str(result.trace_file))
             except Exception:
@@ -246,7 +250,7 @@ async def process_sample(
     finally:
         if config.use_otlp:
             try:
-                from openinference_instrumentation_nemo_oo_agents import set_session
+                from nemo_oo_agents.tracing import set_session
 
                 set_session(None)
             except ImportError:
@@ -263,7 +267,7 @@ async def process_sample(
         # JSONL-only mode: flush then confirm the file landed on disk.
         trace_file_str = str(trace_file)
         try:
-            from openinference_instrumentation_nemo_oo_agents import flush_traces
+            from nemo_oo_agents.tracing import flush_traces
 
             flush_traces()
             await asyncio.sleep(0.1)

@@ -1014,6 +1014,11 @@ class CompletionClient(UnifiedLLM):
 
         if output_model is not None:
             api_params["response_format"] = _maybe_sanitize_response_format(self.model, output_model)
+            # Bedrock implements structured output via tool_choice internally in LiteLLM,
+            # which requires tools to be present. When no tools are provided (e.g.
+            # PredictStrategy), tell LiteLLM to add a dummy tool automatically.
+            if not tools and _is_bedrock_model(self.model):
+                api_params["modify_params"] = True
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
@@ -1154,6 +1159,11 @@ class CompletionClient(UnifiedLLM):
 
         if output_model is not None:
             api_params["response_format"] = _maybe_sanitize_response_format(self.model, output_model)
+            # Bedrock implements structured output via tool_choice internally in LiteLLM,
+            # which requires tools to be present. When no tools are provided (e.g.
+            # PredictStrategy), tell LiteLLM to add a dummy tool automatically.
+            if not tools and _is_bedrock_model(self.model):
+                api_params["modify_params"] = True
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 

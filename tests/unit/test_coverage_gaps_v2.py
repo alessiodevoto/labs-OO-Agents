@@ -985,7 +985,7 @@ class TestAgentAutoTracing:
         original = _agent_mod._auto_tracing_attempted
         _agent_mod._auto_tracing_attempted = False
         try:
-            with patch.dict(sys.modules, {"openinference_instrumentation_nemo_oo_agents": None}):
+            with patch.dict(sys.modules, {"nemo_oo_agents.tracing": None}):
                 # Should not raise — ImportError is swallowed
                 _agent_mod._try_auto_enable_tracing()
         finally:

@@ -211,7 +211,7 @@ def test_tool_agentdoc():
     tool = tool_bridge.create_tool_instance("web_search", mock_fn)
 
     try:
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         doc_output = doc(tool)
         assert "WebSearch" in doc_output, f"'WebSearch' not in doc output:\n{doc_output}"

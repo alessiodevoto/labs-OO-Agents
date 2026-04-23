@@ -13,10 +13,13 @@ import asyncio
 from pathlib import Path
 
 import pytest
-
-from evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
-from evaluation.concurrency import ConcurrencyConfig, ConcurrencyEngine
-from evaluation.task_runner import EvaluationTask, RunnerConfig, TaskRunner
+from nemo_oo_agents_benchmarks.evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
+from nemo_oo_agents_benchmarks.evaluation.concurrency import ConcurrencyConfig, ConcurrencyEngine
+from nemo_oo_agents_benchmarks.evaluation.task_runner import (
+    EvaluationTask,
+    RunnerConfig,
+    TaskRunner,
+)
 
 
 # Simple test agents for integration testing

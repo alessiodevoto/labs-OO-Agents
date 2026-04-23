@@ -227,7 +227,7 @@ class Evaluator:
         Returns (backend, headless_base_url, use_viewer, external_otlp_endpoint).
         Caller is responsible for calling backend.stop() in a finally block.
         """
-        from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
+        from nemo_oo_agents.tracing import enable_tracing, exporters
 
         from .headless_backend import HeadlessOtlpBackend
 

@@ -123,8 +123,8 @@ class TestCodeActHasContextSkillInstructions:
     async def test_context_visible_adds_pin_unpin(self):
         """When context is visible and agent has skills, pin/unpin
         instructions should be included (lines 435-437)."""
-        from agentdoc import spec
-        from agentdoc.visibility import is_hidden_field
+        from nemo_oo_agents.agentdoc import spec
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_field
         from nemo_oo_agents.skill import Skill
 
         class AgentWithContext(Agent, llm=_TEST_LLM):

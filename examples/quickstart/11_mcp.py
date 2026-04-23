@@ -17,7 +17,7 @@ Usage:
 from pathlib import Path
 
 try:
-    from mcp_nemo_oo_agents import MCPManager
+    from nemo_oo_agents.mcp import MCPManager
 except ImportError as e:
     raise ImportError("mcp-nemo-oo-agents not installed. Run: uv sync --extra mcp") from e
 

@@ -847,8 +847,8 @@ class TestBuildMessagesOpeninferenceErrors:
                 with patch.dict(
                     "sys.modules",
                     {
-                        "openinference_instrumentation_nemo_oo_agents": None,
-                        "openinference_instrumentation_nemo_oo_agents._context_sideband": None,
+                        "nemo_oo_agents.tracing": None,
+                        "nemo_oo_agents.tracing._context_sideband": None,
                     },
                 ):
                     # This should not raise — the ImportError is caught
@@ -881,8 +881,8 @@ class TestBuildMessagesOpeninferenceErrors:
             with patch.dict(
                 "sys.modules",
                 {
-                    "openinference_instrumentation_nemo_oo_agents._context_sideband": mock_sideband,
-                    "openinference_instrumentation_nemo_oo_agents": MagicMock(),
+                    "nemo_oo_agents.tracing._context_sideband": mock_sideband,
+                    "nemo_oo_agents.tracing": MagicMock(),
                 },
             ):
                 with patch(

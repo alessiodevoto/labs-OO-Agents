@@ -21,9 +21,9 @@ import argparse
 import asyncio
 import logging
 
-from evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
-from evaluation.concurrency import ConcurrencyEngine
-from evaluation.task_runner import (
+from nemo_oo_agents_benchmarks.evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
+from nemo_oo_agents_benchmarks.evaluation.concurrency import ConcurrencyEngine
+from nemo_oo_agents_benchmarks.evaluation.task_runner import (
     EvaluationTask,
     RunnerConfig,
     TaskRunner,

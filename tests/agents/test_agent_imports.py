@@ -14,9 +14,8 @@ import pytest
 
 def test_nemo_oo_agents_runtime_imports():
     """Test that nemo_oo_agents runtime with agentdoc dependency works."""
-    from openinference_instrumentation_nemo_oo_agents import enable_tracing
-
     from nemo_oo_agents.runtime.actor import ActorRuntime
+    from nemo_oo_agents.tracing import enable_tracing
 
     assert enable_tracing is not None
     assert ActorRuntime is not None
@@ -24,8 +23,8 @@ def test_nemo_oo_agents_runtime_imports():
 
 def test_agentdoc_imports():
     """Test that agentdoc package is installed and importable."""
-    from agentdoc import doc
-    from agentdoc.introspect import methods, variables
+    from nemo_oo_agents.agentdoc import doc
+    from nemo_oo_agents.agentdoc.introspect import methods, variables
 
     assert doc is not None
     assert methods is not None

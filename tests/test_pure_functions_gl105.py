@@ -153,7 +153,7 @@ def test_resolve_event_query_none_when_not_specified():
 
 def test_type_info_excludes_hidden_fields():
     """__type_info__ filters out Annotated[T, hidden] fields."""
-    from agentdoc import doc, hidden
+    from nemo_oo_agents.agentdoc import doc, hidden
 
     class TypeInfoAgent(Agent, llm=_TEST_LLM):
         hidden_field: Annotated[str, hidden] = "secret"
@@ -169,7 +169,7 @@ def test_type_info_excludes_hidden_fields():
 
 def test_type_info_includes_classmethods():
     """__type_info__ includes @classmethod entries."""
-    from agentdoc import doc
+    from nemo_oo_agents.agentdoc import doc
 
     class CMAgent(Agent, llm=_TEST_LLM):
         @classmethod
@@ -191,7 +191,7 @@ def test_type_info_includes_classmethods():
 
 def test_instance_values_swallows_unexpected_exception():
     """__instance_values__ swallows RuntimeError from a broken property."""
-    from agentdoc import doc
+    from nemo_oo_agents.agentdoc import doc
 
     class BrokenAgent(Agent, llm=_TEST_LLM):
         @property

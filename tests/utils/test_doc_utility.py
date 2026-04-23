@@ -6,9 +6,9 @@ work correctly with nemo_oo_agents Agent instances.
 Note: The output format uses Python class syntax per the agentdoc design doc.
 """
 
-from agentdoc import doc
-from agentdoc.introspect import methods, variables
 from nemo_oo_agents import Agent
+from nemo_oo_agents.agentdoc import doc
+from nemo_oo_agents.agentdoc.introspect import methods, variables
 from unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
@@ -63,7 +63,7 @@ class TestAgentDocProtocol:
 
     def test_agent_doc_is_callable(self):
         """Test that doc() works on Agent instances."""
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         agent_instance = SimpleAgent()
         # doc() should return useful documentation for agents
@@ -74,7 +74,7 @@ class TestAgentDocProtocol:
 
     def test_agent_uses_type_info_protocol(self):
         """Test that Agent class uses __type_info__ protocol for documentation."""
-        from agentdoc.ext import has_type_info
+        from nemo_oo_agents.agentdoc.ext import has_type_info
 
         # Agent implements __type_info__ protocol directly
         assert has_type_info(SimpleAgent)
@@ -372,7 +372,7 @@ class TestAgentDocFieldExtraction:
 
     def test_extract_type_info_finds_subclass_init_fields(self):
         """Test that fields from subclass __init__ are found."""
-        from agentdoc.ext import extract_type_info
+        from nemo_oo_agents.agentdoc.ext import extract_type_info
 
         info = extract_type_info(SimpleAgent, _skip_protocol=True)
         field_names = {f.name for f in info.fields}
@@ -430,8 +430,8 @@ def test_underscore_method_hidden_by_default():
     """_private methods are hidden by default; @spec(hidden=False) opts them back in."""
     from unittest.mock import MagicMock
 
-    from agentdoc import spec
     from nemo_oo_agents import Agent
+    from nemo_oo_agents.agentdoc import spec
 
     llm = MagicMock()
     llm.model = "test"
@@ -494,8 +494,8 @@ def test_underscore_field_visible_without_hidden():
 
 def test_framework_attrs_hidden_via_annotation():
     """runtime, _event_manager, event_query, render_config should be hidden via Annotated[T, hidden]."""
-    from agentdoc.visibility import is_hidden_field
     from nemo_oo_agents import Agent
+    from nemo_oo_agents.agentdoc.visibility import is_hidden_field
 
     assert is_hidden_field(Agent, "runtime") is True
     assert is_hidden_field(Agent, "event_manager") is True

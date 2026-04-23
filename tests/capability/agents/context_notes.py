@@ -6,9 +6,9 @@ This test verifies that the LLM can:
 3. Use that persisted context to answer questions about stored notes
 """
 
-from agentdoc import spec
 from context_blocks import DynamicContext
 from nemo_oo_agents import Agent
+from nemo_oo_agents.agentdoc import spec
 
 
 class Notes:

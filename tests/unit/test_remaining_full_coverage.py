@@ -131,8 +131,8 @@ class TestTypeInfoDedupAndFilters:
 
     def test_hidden_classmethod_filtered_in_ismethod_loop(self):
         """Line 469-472: @hidden classmethod is filtered by is_hidden_method."""
-        from agentdoc import hidden as _hidden
         from nemo_oo_agents.agent import Agent
+        from nemo_oo_agents.agentdoc import hidden as _hidden
 
         llm = FakeLLMClient()
 

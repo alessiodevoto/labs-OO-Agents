@@ -75,7 +75,7 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
 
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner."""
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         parts = []
 

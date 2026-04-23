@@ -6,16 +6,16 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any, NamedTuple, cast
 from uuid import uuid4
 
-from agentdoc import hidden
 from context_blocks import DynamicContext
+from nemo_oo_agents.agentdoc import hidden
 from nemo_oo_agents.metaclass import AgentMeta
 from nemo_oo_agents.runtime.context_vars import _parent_agent_var
 from nemo_oo_agents.storage.markers import nosnapshot
 
 if TYPE_CHECKING:
-    from agentdoc.ext import TypeInfo
     from context_blocks.models import ContextWindowStats
     from context_blocks.render_config import RenderConfig
+    from nemo_oo_agents.agentdoc.ext import TypeInfo
     from nemo_oo_agents.config.execution_config import ExecutionConfig
     from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.runtime.actor import ActorRuntime
@@ -39,7 +39,7 @@ def _try_auto_enable_tracing() -> None:
         return
     _auto_tracing_attempted = True
     try:
-        from openinference_instrumentation_nemo_oo_agents import enable_tracing
+        from nemo_oo_agents.tracing import enable_tracing
 
         enable_tracing()
     except ImportError:
@@ -449,8 +449,8 @@ class Agent(metaclass=AgentMeta):
         """
         import inspect
 
-        from agentdoc.ext import TypeInfo, extract_callable_info, extract_type_info
-        from agentdoc.visibility import is_hidden_field, is_hidden_method
+        from nemo_oo_agents.agentdoc.ext import TypeInfo, extract_callable_info, extract_type_info
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_field, is_hidden_method
 
         # Get base type info via automatic extraction (skip protocol to avoid recursion)
         base_info = extract_type_info(cls, _skip_protocol=True)
@@ -530,7 +530,7 @@ class Agent(metaclass=AgentMeta):
         """
         import inspect
 
-        from agentdoc.visibility import is_hidden_field, is_hidden_method
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_field, is_hidden_method
 
         values = {}
 

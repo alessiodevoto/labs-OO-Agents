@@ -77,13 +77,13 @@ def _setup_tracing(model: str, agent_type: str) -> None:
     For Docker containers set ``OTLP_ENDPOINT=http://host.docker.internal:5001``.
     """
     try:
-        from openinference_instrumentation_nemo_oo_agents import (
+        from nemo_oo_agents.tracing import (
             enable_tracing,
             probe_otlp_endpoint,
         )
-        from openinference_instrumentation_nemo_oo_agents import exporters as nemo_exporters
+        from nemo_oo_agents.tracing import exporters as nemo_exporters
     except ImportError:
-        logger.warning("openinference_instrumentation_nemo_oo_agents not available, no tracing")
+        logger.warning("nemo_oo_agents.tracing not available, no tracing")
         return
 
     endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")

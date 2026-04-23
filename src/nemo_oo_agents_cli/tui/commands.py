@@ -549,7 +549,7 @@ class MCPCommand(Command):
 
     async def execute(self, args: list[str]) -> "CommandResult":
         try:
-            from mcp_nemo_oo_agents import MCPManager
+            from nemo_oo_agents.mcp import MCPManager
         except ImportError:
             return CommandResult.err("MCP not enabled. Run `uv sync --extra mcp` and restart.")
 

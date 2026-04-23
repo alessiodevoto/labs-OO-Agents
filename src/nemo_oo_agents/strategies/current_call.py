@@ -124,7 +124,7 @@ class CurrentCall:
         if value_formatter is not None:
             fmt = value_formatter
         elif tc is not None:
-            from agentdoc import pformat
+            from nemo_oo_agents.agentdoc import pformat
 
             _tc = tc  # capture for closure
 

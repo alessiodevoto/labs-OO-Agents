@@ -49,7 +49,7 @@ def test_tui_agent_has_input_and_output_queue_for_user_messages():
 
 def test_user_messages_queue_is_hidden_from_doc():
     """The hidden InputQueue must NOT appear in the LLM's API listing."""
-    from agentdoc import doc
+    from nemo_oo_agents.agentdoc import doc
 
     agent = _fresh_agent()
     api = doc(agent)

@@ -162,7 +162,7 @@ class FeedbackAgent(Agent, llm=FakeLLMClient()):
     def __init__(self, swebench: Any, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.swebench = swebench
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         tool_doc = (
             "To navigate the repository and modify files, use the following tools:\n\n"
@@ -264,7 +264,7 @@ class SWEBenchOpt1Agent(Agent, llm=FakeLLMClient()):
         Accepts the unified runner interface ``{"user_message": instruction}``
         as well as the legacy field-by-field format.
         """
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         if "user_message" in task_input:
             # Unified interface from the benchmark-agnostic runner.

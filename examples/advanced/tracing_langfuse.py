@@ -65,7 +65,7 @@ class SentimentAgent(Agent, llm=qwen):
 
 
 async def main() -> None:
-    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
+    from nemo_oo_agents.tracing import enable_tracing, exporters
 
     print("=" * 80)
     print("Langfuse Tracing Example")

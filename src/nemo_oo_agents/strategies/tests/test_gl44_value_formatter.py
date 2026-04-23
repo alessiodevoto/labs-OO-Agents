@@ -61,7 +61,7 @@ class TestFormatParametersValueFormatter:
 
     def test_truncating_pformat_usable_as_formatter(self):
         # TDD: will fail until Change 5 is implemented
-        from agentdoc import truncating_pformat
+        from nemo_oo_agents.agentdoc import truncating_pformat
 
         big = list(range(10_000))
         call = _make_call(args=(big,))

@@ -64,7 +64,7 @@ class SentimentAgent(Agent, llm=qwen):
 
 
 async def main() -> None:
-    from openinference_instrumentation_nemo_oo_agents import enable_tracing, exporters
+    from nemo_oo_agents.tracing import enable_tracing, exporters
 
     host = os.getenv("PHOENIX_HOST", "http://localhost:6006")
     api_key = os.getenv("PHOENIX_API_KEY")
