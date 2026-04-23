@@ -11,7 +11,7 @@ Architecture:
 - Classic ReAct loop: Thought → Action → Observation, repeated
 - Calls Harbor environment tools via method dispatch (not execute_python)
 - One action per turn; LLM must emit Final Answer to exit
-- Works with any Harbor benchmark — tools are injected by the runner
+- Falls back to built-in bash/file tools when no environment tools are injected
 
 Key differences from the baseline (CodeAct) agent:
 - No execute_python() sandbox — each tool call is a discrete method invocation
@@ -25,6 +25,7 @@ import inspect
 import json
 import logging
 import re
+import subprocess
 import textwrap
 import types
 from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
@@ -90,23 +91,75 @@ class _ToolRegistry:
             lines.append(f"  - {t['name']}({sig}): {t['description']}")
         return "\n".join(lines)
 
-    async def call(self, name: str, **kwargs: Any) -> str:
+    async def call(self, tool_name: str, **kwargs: Any) -> str:
         """Invoke a registered tool and return its output as a string."""
-        if name not in self._tools:
+        if tool_name not in self._tools:
             available = list(self._tools)
-            return f"Error: unknown tool '{name}'. Available: {available}"
+            return f"Error: unknown tool '{tool_name}'. Available: {available}"
         try:
             # Coerce kwargs to declared Python types
-            tool_def = next((t for t in self._descriptions if t["name"] == name), None)
+            tool_def = next((t for t in self._descriptions if t["name"] == tool_name), None)
             if tool_def:
                 kwargs = _coerce_kwargs(kwargs, tool_def["parameters"])
-            fn = self._tools[name]
+            fn = self._tools[tool_name]
             result = fn(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
             return _truncate(str(result))
         except Exception as exc:
-            return f"Error calling {name}: {exc}"
+            return f"Error calling {tool_name}: {exc}"
+
+
+class _BashTools:
+    """Built-in bash execution tools, injected when no environment tools are provided.
+
+    Enables command-line benchmarks (Terminal Bench, etc.) where the agent runs
+    inside a container with a bash environment.  For Q&A benchmarks these tools
+    are present but the LLM naturally won't call them.
+    """
+
+    def run_command(self, command: str, timeout: int = 120) -> str:
+        """Execute a shell command and return stdout + stderr with exit code."""
+        try:
+            proc = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            output = proc.stdout
+            if proc.stderr:
+                output = output + proc.stderr if output else proc.stderr
+            if proc.returncode != 0:
+                output += f"\n[exit code: {proc.returncode}]"
+            return output or "(no output)"
+        except subprocess.TimeoutExpired:
+            return f"[timeout after {timeout}s]"
+        except Exception as exc:
+            return f"[error: {exc}]"
+
+    def read_file(self, path: str) -> str:
+        """Read a text file and return its contents."""
+        try:
+            with open(path) as fh:
+                return fh.read()
+        except Exception as exc:
+            return f"[error reading {path}: {exc}]"
+
+    def write_file(self, path: str, content: str) -> str:
+        """Write *content* to *path*.  Creates parent directories as needed.  Returns 'OK' or error."""
+        try:
+            import os
+
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write(content)
+            return "OK"
+        except Exception as exc:
+            return f"[error writing {path}: {exc}]"
 
 
 def _extract_params(method: Any) -> dict[str, dict]:
@@ -249,6 +302,12 @@ class ReActBaselineAgent(Agent, llm=FakeLLMClient()):
             if tool is not None:
                 prefix = f"{tool_name}_"
                 registry.register_instance(tool, prefix=prefix)
+
+        # Fall back to built-in bash/file tools when the benchmark does not
+        # inject environment tools.  This enables command-line benchmarks
+        # (Terminal Bench) where the agent runs inside a container.
+        if not registry._tools:
+            registry.register_instance(_BashTools())
 
         # Build prompt parts
         system_content = _SYSTEM_PROMPT_TEMPLATE.format(tool_list=registry.tool_list())
