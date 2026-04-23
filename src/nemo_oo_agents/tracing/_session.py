@@ -6,7 +6,12 @@ All exporters see the same session.id via the SessionSpanProcessor, which reads
 the ContextVar and stamps it on every span as a span attribute.
 """
 
+<<<<<<< Updated upstream
 from contextvars import ContextVar
+=======
+from openinference.semconv.trace import SpanAttributes
+from opentelemetry import context as otel_context
+>>>>>>> Stashed changes
 
 _current_session: ContextVar[str | None] = ContextVar("nemo_oo_agents_session", default=None)
 
