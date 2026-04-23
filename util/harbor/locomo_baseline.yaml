@@ -20,10 +20,10 @@
 #
 # Smoke test (5 single-hop tasks):
 #   python 3p/harbor-nemo/adapters/locomo/run_adapter.py \
-#       --task-dir /tmp/locomo_smoke \
+#       --task-dir util/harbor/tasks/locomo_smoke \
 #       --question-types single-hop --limit 5
 #   harbor run --config util/harbor/locomo_baseline.yaml \
-#       --dataset path:/tmp/locomo_smoke
+#       --path util/harbor/tasks/locomo_smoke
 
 jobs_dir: /tmp/harbor_jobs/locomo_baseline
 n_attempts: 1
@@ -31,16 +31,17 @@ timeout_multiplier: 1.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 2   # Conversations are large (~16K tokens each)
+  n_concurrent_trials: 2   # Conversations are large (~16K tokens each); keep at 2 to avoid memory pressure
   quiet: false
 
 environment:
   type: apptainer
+  override_memory_mb: 4096
   kwargs:
     apptainer_binary: apptainer
-    apptainer_fakeroot: false
-    apptainer_image_cache_dir: ~/.cache/harbor/sif
-    env_passthrough: "NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF"
+    apptainer_fakeroot: true   # required for runuser inside container; needs AppArmor userns allowed (see #135)
+    apptainer_image_cache_dir: ~/3p/sif_cache  # update to your local SIF cache path
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:
   - name: nemo-oo-agents
