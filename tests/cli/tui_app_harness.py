@@ -76,22 +76,51 @@ def _key_sequence(key: str) -> str:
 # ── scriptable agent mock ----------------------------------------------------
 
 
+class _StubEventManager:
+    """Minimal event_manager stub so InputQueue can emit Notifications."""
+
+    def __init__(self) -> None:
+        self.added: list[Any] = []
+
+    def add(self, event: Any) -> str:  # pragma: no cover - trivial
+        self.added.append(event)
+        return str(len(self.added))
+
+
 class FakeAgent:
     """Scriptable stand-in for ``TUIAgent`` used by harness tests.
 
-    Each call to ``respond(user_message)`` pops the next scripted response
-    off ``self.script`` and invokes it with ``self`` so the script can
-    emit activity, messages, or simulate work. If the script is empty the
-    agent just waits on ``self.block`` — useful for testing "agent working"
-    states where the test controls when the agent finishes.
+    Matches the per-turn contract: ``respond((queue_name, item), restored=None)``
+    is invoked once per turn by the dispatcher, and returns a
+    ``RespondResult``-shaped object telling the dispatcher what to do
+    next.
+
+    Control knobs:
+
+    - ``self.script`` — callables run one per received message.
+    - ``self.block`` — when cleared, ``respond()`` awaits it before
+      returning, keeping the dispatcher (and spinner) visibly "working"
+      for as long as the test needs. Default: set, so respond returns
+      quickly.
+    - ``self.next_kind`` — the ``kind`` the FakeAgent returns by
+      default. Tests flip it to ``"STOP"`` to end the session, or
+      ``"WAIT"`` to exercise multi-queue races.
     """
 
     def __init__(self) -> None:
+        from nemo_oo_agents import InputQueue
+
         self.script: list[Callable[[FakeAgent, str], Any]] = []
         self.messages_received: list[str] = []
+        self.restored_seen: list[dict[str, Any] | None] = []
         self.block = asyncio.Event()
         self.block.set()  # default: respond returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
+        self.event_manager = _StubEventManager()
+        self._user_messages_in: InputQueue[str] = InputQueue("user_messages", agent=self)
+        self.user_messages = self._user_messages_in.reader
+        self.next_kind: str = "GET_USER_INPUT"
+        self.next_persist: dict[str, Any] = {}
 
     def emit_message(self, text: str) -> None:
         """Render ``text`` as Markdown → ANSI and push to the output buffer.
@@ -113,13 +142,33 @@ class FakeAgent:
         ).print(Markdown(text))
         self.emit(buf.getvalue())
 
-    async def respond(self, user_message: str) -> Any:
-        self.messages_received.append(user_message)
+    async def respond(
+        self,
+        notification: tuple[str, Any],
+        restored: dict[str, Any] | None = None,
+    ) -> Any:
+        """Per-turn stub: record inputs, run a scripted step, return a result.
+
+        Returns a simple namespace with ``kind`` and ``persist`` (matches
+        the shape ``RespondResult`` exposes via ``model_dump()``) so the
+        dispatcher's ``getattr`` calls find what they need without the
+        harness needing to import the TUI agent's Pydantic model.
+        """
+        queue_name, item = notification
+        self.messages_received.append(str(item))
+        self.restored_seen.append(restored)
         if self.script:
             step = self.script.pop(0)
-            return await _maybe_await(step(self, user_message))
+            await _maybe_await(step(self, item))
         await self.block.wait()
-        return None
+
+        class _Result:
+            pass
+
+        r = _Result()
+        r.kind = self.next_kind
+        r.persist = dict(self.next_persist)
+        return r
 
     def queue(self, step: Callable[[FakeAgent, str], Any]) -> None:
         """Add one scripted step to the end of the response sequence."""
@@ -268,9 +317,19 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
         return "".join(self.app._output_ansi)
 
     def capture_queued(self) -> list[str]:
-        """Return queued items in submission order."""
+        """Return queued items (pending user messages) in submission order.
+
+        Reads ``agent._user_messages_in`` — the hidden InputQueue the
+        dispatcher pumps from — so tests see what the UI's queue
+        window is showing. Commands are no longer queued in app state;
+        they dispatch immediately via ``on_command``/``on_bang``.
+        """
         assert self.app is not None
-        return [text for _kind, text in self.app.state.items]
+        agent = getattr(self.app, "agent", None)
+        q = getattr(agent, "_user_messages_in", None) if agent is not None else None
+        if q is None:
+            return []
+        return [str(item) for item in q.snapshot()]
 
     def capture_status(self) -> str:
         assert self.app is not None

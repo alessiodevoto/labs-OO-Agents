@@ -1425,11 +1425,6 @@ class TestShowSplash:
 
 from nemo_oo_agents_cli.tui.agent import (  # noqa: E402
     TUIAgent,
-    _continue_brainstorm,
-    _execute_plan,
-    _handle_plan_approval,
-    _orchestrate,
-    _verify_and_complete,
     install_summarizer,
 )
 
@@ -1557,182 +1552,6 @@ class TestApplyModelLimits:
         assert agent._summarizers[0].config.max_tokens == 100_000
 
 
-class TestOrchestrateFunctions:
-    """Test the module-level orchestration helper functions."""
-
-    async def test_orchestrate_brainstorming_phase(self):
-        agent = MagicMock()
-        agent._phase = "brainstorming"
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._continue_brainstorm", new_callable=AsyncMock
-        ) as mock_cb:
-            await _orchestrate(agent, "my message")
-            mock_cb.assert_called_once_with(agent, "my message")
-
-    async def test_orchestrate_awaiting_plan_approval(self):
-        agent = MagicMock()
-        agent._phase = "awaiting_plan_approval"
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._handle_plan_approval", new_callable=AsyncMock
-        ) as mock_hpa:
-            await _orchestrate(agent, "yes")
-            mock_hpa.assert_called_once_with(agent, "yes")
-
-    async def test_orchestrate_question_intent(self):
-        agent = MagicMock()
-        agent._phase = "idle"
-        intent = MagicMock()
-        intent.task_type = "question"
-        agent.classify_intent = AsyncMock(return_value=intent)
-        agent.answer_question = AsyncMock()
-        await _orchestrate(agent, "what is X?")
-        agent.answer_question.assert_called_once_with("what is X?")
-
-    async def test_orchestrate_feature_intent_incomplete(self):
-        agent = MagicMock()
-        agent._phase = "idle"
-        intent = MagicMock()
-        intent.task_type = "feature"
-        spec = MagicMock()
-        spec.complete = False
-        agent.classify_intent = AsyncMock(return_value=intent)
-        agent._legacy_brainstorm = AsyncMock(return_value=spec)
-        await _orchestrate(agent, "build X")
-        assert agent._phase == "brainstorming"
-
-    async def test_orchestrate_feature_intent_complete(self):
-        agent = MagicMock()
-        agent._phase = "idle"
-        intent = MagicMock()
-        intent.task_type = "feature"
-        spec = MagicMock()
-        spec.complete = True
-        spec.model_dump_json = MagicMock(return_value="{}")
-        agent.classify_intent = AsyncMock(return_value=intent)
-        agent._legacy_brainstorm = AsyncMock(return_value=spec)
-        agent.write_plan = AsyncMock(return_value=MagicMock(steps=[]))
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._proceed_to_plan", new_callable=AsyncMock
-        ) as mock_ptp:
-            await _orchestrate(agent, "build X")
-            mock_ptp.assert_called_once()
-
-    async def test_orchestrate_bugfix_intent(self):
-        agent = MagicMock()
-        agent._phase = "idle"
-        intent = MagicMock()
-        intent.task_type = "bugfix"
-        agent.classify_intent = AsyncMock(return_value=intent)
-        agent.debug_issue = AsyncMock()
-        agent.verify_work = AsyncMock()
-        await _orchestrate(agent, "fix bug")
-        agent.debug_issue.assert_called_once_with("fix bug")
-
-    async def test_orchestrate_refactor_intent(self):
-        agent = MagicMock()
-        agent._phase = "idle"
-        intent = MagicMock()
-        intent.task_type = "refactor"
-        plan = MagicMock()
-        plan.steps = []
-        plan.model_dump_json = MagicMock(return_value="{}")
-        agent.classify_intent = AsyncMock(return_value=intent)
-        agent.write_plan = AsyncMock(return_value=plan)
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        # _execute_plan sets phase to "implementing" then "verifying" then "idle"
-        # Use a mock to capture what _execute_plan is called with
-        with patch("nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock) as mock_ep:
-            await _orchestrate(agent, "refactor foo")
-            mock_ep.assert_called_once_with(agent, plan)
-        # Phase was set to "planning" before _execute_plan
-        assert agent._phase == "planning"
-
-    async def test_continue_brainstorm_not_complete(self):
-        agent = MagicMock()
-        spec = MagicMock()
-        spec.complete = False
-        agent._legacy_brainstorm = AsyncMock(return_value=spec)
-        await _continue_brainstorm(agent, "more info")
-        # _proceed_to_plan should NOT be called
-
-    async def test_continue_brainstorm_complete(self):
-        agent = MagicMock()
-        spec = MagicMock()
-        spec.complete = True
-        spec.model_dump_json = MagicMock(return_value="{}")
-        agent._legacy_brainstorm = AsyncMock(return_value=spec)
-        agent.write_plan = AsyncMock(return_value=MagicMock(steps=[]))
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._proceed_to_plan", new_callable=AsyncMock
-        ) as mock_ptp:
-            await _continue_brainstorm(agent, "yes")
-            mock_ptp.assert_called_once_with(agent, spec)
-
-    async def test_handle_plan_approval_yes(self):
-        agent = MagicMock()
-        plan = MagicMock()
-        plan.steps = []
-        plan.model_dump_json = MagicMock(return_value="{}")
-        agent._workflow_state = {"plan": plan}
-        agent.implement_step = AsyncMock()
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        with patch("nemo_oo_agents_cli.tui.agent._execute_plan", new_callable=AsyncMock) as mock_ep:
-            await _handle_plan_approval(agent, "yes")
-            mock_ep.assert_called_once_with(agent, plan)
-
-    async def test_handle_plan_approval_revision(self):
-        agent = MagicMock()
-        plan = MagicMock()
-        agent._workflow_state = {}
-        agent.write_plan = AsyncMock(return_value=plan)
-        await _handle_plan_approval(agent, "change step 2")
-        agent.write_plan.assert_called_once_with("change step 2")
-        assert agent._workflow_state["plan"] is plan
-
-    async def test_execute_plan(self):
-        agent = MagicMock()
-        agent._workflow_state = {}
-        step1 = MagicMock()
-        step1.model_dump_json = MagicMock(return_value='{"step": 1}')
-        plan = MagicMock()
-        plan.steps = [step1]
-        plan.model_dump_json = MagicMock(return_value="{}")
-        agent.implement_step = AsyncMock()
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        await _execute_plan(agent, plan)
-        agent.implement_step.assert_called_once()
-        agent.verify_work.assert_called_once()
-
-    async def test_verify_and_complete_with_plan(self):
-        agent = MagicMock()
-        agent._workflow_state = {}
-        plan = MagicMock()
-        plan.model_dump_json = MagicMock(return_value="{}")
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        await _verify_and_complete(agent, plan)
-        agent.verify_work.assert_called_once()
-        agent.review_changes.assert_called_once()
-        assert agent._phase == "idle"
-        assert agent._workflow_state == {}
-
-    async def test_verify_and_complete_no_plan(self):
-        agent = MagicMock()
-        agent._workflow_state = {}
-        agent.verify_work = AsyncMock()
-        agent.review_changes = AsyncMock()
-        await _verify_and_complete(agent, None)
-        agent.verify_work.assert_called_once()
-        agent.review_changes.assert_not_called()
-
-
 class TestTUIAgentInit:
     def test_init_with_defaults(self):
         with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
@@ -1801,31 +1620,19 @@ class TestTUIAgentInit:
         assert status["current_tokens"] == 5000
         assert status["summary_count"] == 1  # one ".." tag
 
-    async def test_respond_codeact_mode(self):
-        config = AgentConfig()
-        config.orchestrator = False
-        with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
-            with patch("nemo_oo_agents_cli.tui.agent.FileTool"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
-                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
-                        agent = TUIAgent(llm=MagicMock(), config=config)
-        agent._respond_codeact = AsyncMock()
-        await agent.respond("hello")
-        agent._respond_codeact.assert_called_once_with("hello")
+    def test_respond_signature_is_per_turn(self):
+        """respond() is a per-turn generation method decorated with
+        CodeActStrategy. Outer dispatcher calls it with
+        ``(queue_name, item)`` notifications and an optional
+        ``restored`` dict.
+        """
+        import inspect
 
-    async def test_respond_orchestrator_mode(self):
-        config = AgentConfig()
-        config.orchestrator = True
-        with patch("nemo_oo_agents_cli.tui.agent.BashTool"):
-            with patch("nemo_oo_agents_cli.tui.agent.FileTool"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
-                    with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
-                        agent = TUIAgent(llm=MagicMock(), config=config)
-        with patch(
-            "nemo_oo_agents_cli.tui.agent._orchestrate", new_callable=AsyncMock
-        ) as mock_orch:
-            await agent.respond("hello")
-            mock_orch.assert_called_once_with(agent, "hello")
+        from nemo_oo_agents_cli.tui.agent import BaseTUIAgent
+
+        sig = inspect.signature(BaseTUIAgent.respond)
+        assert list(sig.parameters.keys()) == ["self", "notification", "restored"]
+        assert sig.parameters["restored"].default is None
 
 
 # ===========================================================================

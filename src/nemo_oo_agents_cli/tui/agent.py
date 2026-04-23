@@ -5,7 +5,9 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, Field
 
 from agentdoc import doc, spec
 from nemo_oo_agents import hidden, strategy
@@ -13,11 +15,11 @@ from nemo_oo_agents.storage.markers import nosnapshot
 
 with hidden:
     from collections.abc import Callable
-    from enum import Enum
 
-    from nemo_oo_agents import Agent
+    from nemo_oo_agents import Agent, InputQueue
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.runtime.input_queue import OutputQueue
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
     from nemo_oo_agents.tools.web_publisher import WebPublisher
@@ -77,20 +79,40 @@ with hidden:
     )
 
 
-class RespondResult(Enum):
-    """Return value for respond() that controls what happens next.
+RespondKind = Literal["GET_USER_INPUT", "WAIT", "STOP"]
 
-    Pass one of these to ``return_result()`` at the end of your turn:
 
-    - ``RespondResult.STOP_WORK`` — done; the TUI will NOT call respond() again.
-    - ``RespondResult.WAIT_FOR_USER_INPUT`` — done for now; hand control back to the user.
-    - ``RespondResult.CONTINUE_WORKING`` — the TUI will call respond() again
-      immediately without waiting for the user.
+class RespondResult(BaseModel):
+    """Return value for ``respond()`` — signals what the outer loop should do next.
+
+    Fields:
+
+    - ``kind`` — one of:
+        * ``"GET_USER_INPUT"`` — dispatcher awaits ``agent.user_messages.get()``
+          and re-enters ``respond(notification)`` with the new message.
+        * ``"WAIT"`` — dispatcher races every ``InputQueue`` declared on
+          the agent (``wait_for_any``) and re-enters with the first arrival.
+        * ``"STOP"`` — end the session; dispatcher exits without re-entering.
+
+    - ``persist`` — a dict of ``name -> value`` to carry into the next
+      ``respond()`` turn. The dispatcher passes this dict in as the
+      ``restored`` keyword argument. Omit or pass ``{}`` to clear.
+
+    Build from within the LLM's ``execute_python`` code::
+
+        return_result(RespondResult(
+            kind="GET_USER_INPUT",
+            persist={"plan": plan, "cursor": cursor},
+        ))
     """
 
-    STOP_WORK = "stop_work"
-    WAIT_FOR_USER_INPUT = "wait_for_user_input"
-    CONTINUE_WORKING = "continue_working"
+    kind: RespondKind = Field(description="What the outer dispatcher should do next")
+    persist: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Variables to carry into the next respond() turn (name -> value)",
+    )
+
+    model_config = {"arbitrary_types_allowed": True}
 
 
 # Default LLM for class definition (overridden at instantiation)
@@ -171,100 +193,11 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Orchestration functions (module-level for testability)
-# ---------------------------------------------------------------------------
-
-
-async def _orchestrate(agent: "TUIAgent", user_message: str) -> "RespondResult":
-    """Core orchestration logic. Extracted for testability.
-
-    Routes user messages through workflow phases based on agent._phase state.
-    """
-    if agent._phase == "brainstorming":
-        await _continue_brainstorm(agent, user_message)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    if agent._phase == "awaiting_plan_approval":
-        await _handle_plan_approval(agent, user_message)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    intent = await agent.classify_intent(user_message)
-
-    if intent.task_type == "question":
-        await agent.answer_question(user_message)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    if intent.task_type == "feature":
-        agent._phase = "brainstorming"
-        spec = await agent._legacy_brainstorm(user_message)
-        if not spec.complete:
-            return RespondResult.WAIT_FOR_USER_INPUT
-        await _proceed_to_plan(agent, spec)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    if intent.task_type == "bugfix":
-        await agent.debug_issue(user_message)
-        await _verify_and_complete(agent)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    if intent.task_type == "refactor":
-        agent._phase = "planning"
-        plan = await agent.write_plan(user_message)
-        await _execute_plan(agent, plan)
-        return RespondResult.WAIT_FOR_USER_INPUT
-
-    return RespondResult.WAIT_FOR_USER_INPUT
-
-
-async def _continue_brainstorm(agent: "TUIAgent", user_message: str) -> None:
-    """Resume brainstorming with user's answer."""
-    spec = await agent._legacy_brainstorm(user_message)
-    if not spec.complete:
-        return
-    await _proceed_to_plan(agent, spec)
-
-
-async def _proceed_to_plan(agent: "TUIAgent", spec: BrainstormResult) -> None:
-    """Transition from brainstorm to planning."""
-    agent.context["brainstorm_decisions"] = f"'''{spec.model_dump_json()}'''"
-    agent._phase = "planning"
-    plan = await agent.write_plan(spec.model_dump_json())
-    agent._workflow_state["plan"] = plan
-    agent._phase = "awaiting_plan_approval"
-
-
-async def _handle_plan_approval(agent: "TUIAgent", user_message: str) -> None:
-    """Handle user's response to plan presentation."""
-    approval_keywords = {"yes", "ok", "okay", "approve", "approved", "lgtm", "proceed", "go"}
-    words = set(user_message.lower().split())
-    if words & approval_keywords:
-        plan = agent._workflow_state["plan"]
-        await _execute_plan(agent, plan)
-        return
-
-    # Treat as revision request — revise plan and stay in approval phase
-    plan = await agent.write_plan(user_message)
-    agent._workflow_state["plan"] = plan
-
-
-async def _execute_plan(agent: "TUIAgent", plan: Plan) -> None:
-    """Execute all plan steps with TDD, then verify and review."""
-    agent.context["plan"] = f"'''{plan.model_dump_json()}'''"
-    agent._phase = "implementing"
-    for step in plan.steps:
-        await agent.implement_step(step.model_dump_json())
-    await _verify_and_complete(agent, plan)
-
-
-async def _verify_and_complete(agent: "TUIAgent", plan: Plan | None = None) -> None:
-    """Verification gate — always runs before completion."""
-    agent._phase = "verifying"
-    await agent.verify_work()
-    if plan:
-        await agent.review_changes(plan.model_dump_json())
-    agent._phase = "idle"
-    agent._workflow_state = {}
+# Orchestrator mode (multi-phase workflow via classify/brainstorm/plan/verify)
+# was removed when respond() became a forever-loop. The phase methods
+# (classify_intent, _legacy_brainstorm, write_plan, etc.) are still defined
+# on TUIAgent and can be invoked by the LLM via CodeAct — they just no longer
+# drive a state machine from respond().
 
 
 @hidden
@@ -273,13 +206,35 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
     Subclass this and implement ``respond()`` to build a custom TUI agent.
     ``message()`` and ``name_session()`` are provided for free.
+
+    **Input queues.** Every ``BaseTUIAgent`` has a ``self.user_messages``
+    queue (``InputQueue``) that the TUI feeds when the human types.
+    Subclasses may declare additional queues as instance attributes for
+    other producers (long-running job output, monitor streams, etc.).
+
+    Each queue is two objects: an ``InputQueue`` (full producer +
+    dispatcher API, hidden from the LLM under ``_<name>_in``) and an
+    ``OutputQueue`` reader facade exposed under the public name. The
+    LLM can ``await self.user_messages.get()`` to dequeue mid-turn;
+    everything else (put, snapshot, qsize, etc.) is dispatcher-only.
+
+    ``respond()`` runs *per turn* — the outer dispatcher calls it with
+    the next notification ``(queue_name, item)`` and whatever
+    ``restored`` dict the previous turn asked to carry over.
     """
 
     _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
+    # InputQueue (full producer/dispatcher API) is hidden — the LLM
+    # has no business calling .put() / .snapshot() / etc.
+    _user_messages_in: Annotated[InputQueue, hidden, nosnapshot]
+    # OutputQueue (just .get() and .name) is the LLM-facing facade.
+    user_messages: Annotated[OutputQueue, nosnapshot]
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
+        self._user_messages_in = InputQueue("user_messages", agent=self)
+        self.user_messages = self._user_messages_in.reader
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
@@ -310,15 +265,76 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
-    async def respond(self, user_message: str) -> "RespondResult":
-        """Respond to the user's message.
+    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0, max_iterations=100)))
+    async def respond(
+        self,
+        notification: tuple[str, Any],
+        restored: dict[str, Any] | None = None,
+    ) -> "RespondResult":
+        """Handle a single turn of the conversation.
 
-        Message: {user_message}
+        Called once per inbound notification. Unpack ``notification``
+        (``(queue_name, item)``) and any ``restored`` variables from the
+        previous turn, do the work, then return a ``RespondResult``
+        telling the outer dispatcher what to do next.
 
-        Use self.message() to send formatted Markdown to the user.
-        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to hand control back to the user.
-        Call return_result(RespondResult.STOP_WORK) when completely done.
+        ## Turn anatomy
+
+        Notification:
+
+            queue_name, item = notification
+            # queue_name is e.g. "user_messages" or "job_outputs"
+            # item is the actual queued value (str for user messages,
+            # whatever producers push for other queues)
+
+        Restored state (optional — empty on the first turn):
+
+            restored = restored or {}
+            plan   = restored.get("plan")
+            cursor = restored.get("cursor")
+
+        ## Returning
+
+        End the turn with exactly one ``return_result(RespondResult(...))``.
+
+        - Wait for the next user message::
+
+              return_result(RespondResult(
+                  kind="GET_USER_INPUT",
+                  persist={"plan": plan, "cursor": cursor},
+              ))
+
+        - Wait for ANY producer queue (user or background job)::
+
+              return_result(RespondResult(
+                  kind="WAIT",
+                  persist={"job_id": job_id},
+              ))
+
+        - End the session::
+
+              return_result(RespondResult(kind="STOP"))
+
+        Names listed in ``persist`` become the next turn's ``restored``
+        kwarg. Omit ``persist`` (or pass ``{}``) and nothing carries
+        over — the next turn starts with a clean REPL.
+
+        ## Available queues
+
+        The dispatcher delivers the next item via ``notification``.
+        You can also dequeue extra items mid-turn (without ending it)
+        by awaiting the queue directly::
+
+            extra = await self.user_messages.get()  # blocks until next message
+
+        Recognized ``queue_name`` values:
+
+        - ``"user_messages"`` — text from the human; ``item`` is a str.
+
+        Subclasses may add more (e.g. ``"job_outputs"``); their
+        ``Notification`` events appear in your context as they fire.
+        When you return ``kind="WAIT"`` the dispatcher races every
+        declared queue and re-enters with the first arrival.
         """
         ...
 
@@ -383,8 +399,12 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     # When to ask
 
-    If the request is ambiguous, ask a clarifying question via
-    ``self.message()`` then ``return_result(RespondResult.WAIT_FOR_USER_INPUT)``.
+    If the request is ambiguous, send a clarifying question via
+    ``self.message(...)`` and end the turn with
+    ``return_result(RespondResult(kind="GET_USER_INPUT", persist=...))``.
+    The dispatcher blocks on the next user message and re-enters
+    ``respond()`` with their answer.
+
     Don't guess at interpretation and produce output the user has to reject.
 
     # Destructive actions
@@ -446,36 +466,42 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     - Run **one** thing at a time and observe the result before the next
       step. Don't build giant blocks that stop at the first error.
-    - **REPL variables persist within a single call to respond(), not
-      across turns.** As soon as you call ``return_result(...)`` and the
-      user comes back, the Python namespace is wiped — any ``x =
-      something`` from the previous turn is gone.
-    - **To carry state across turns, store it on a todo.** ``self.todo``
-      persists (via snapshot) and each todo has a ``vars`` dict:
-          t = self.todo.add("Deep research", foo=42, data={"a": 1})
-          self.todo.set_var(t.id, "progress", 0.25)
-          v = self.todo.get_var(t.id, "progress")   # next turn: 0.25
-      Good for: reproducer steps, partial results, paths the user gave
-      you earlier, anything you'll need after a ``WAIT_FOR_USER_INPUT``.
+    - **REPL variables persist within a single ``respond()`` turn but are
+      cleared between turns.** A turn ends when you call
+      ``return_result(RespondResult(...))``; the next turn's REPL starts
+      from scratch except for whatever you passed in ``persist``.
+    - **Carry state across turns via ``persist``.** Pack the names you need
+      into the ``persist`` dict of the ``RespondResult`` you return, e.g.
+      ``persist={"plan": plan, "cursor": cursor}``. They come back on the
+      next call as the ``restored`` dict — unpack with ``.get("plan")``.
+    - For long-lived plans/progress, ``self.todo.set_var(t.id, "k", v)``
+      is snapshot-backed and survives across sessions, not just turns.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
-    - End your turn with ``return_result(RespondResult.WAIT_FOR_USER_INPUT)``
-      when you're awaiting the user, or ``RespondResult.STOP_WORK`` when the
-      whole task is complete.
+    - **Ending a turn.** Every turn ends with
+      ``return_result(RespondResult(kind=..., persist=...))``:
+        * ``kind="GET_USER_INPUT"`` — wait for the next human message.
+          Use after answering a question or asking a follow-up.
+        * ``kind="WAIT"`` — wait for ANY declared input queue (useful
+          when a background job is running alongside the conversation).
+        * ``kind="STOP"`` — end the session on explicit "we're done"
+          signals (``/exit``, "quit", etc.).
 
     # Communication mechanics
 
-    ``self.message(text)`` — Markdown to the user, rendered immediately.
-    Use for final answers and for status the user should see.
+    ``self.message(text)`` — Markdown to the user, rendered when the
+    current code cell finishes. Use for final answers and for status
+    the user should see. Call it multiple times per turn as needed.
 
     Python comments in ``execute_python`` — your internal thinking. The user
     doesn't see them but the next turn does. Use sparingly: a one-liner when
     a decision is non-obvious.
 
-    This is a multi-turn conversation. ``WAIT_FOR_USER_INPUT`` is "send" —
-    it ends your response and hands control back. You'll be called again
-    with the user's reply.
+    The outer dispatcher calls ``respond(notification, restored=...)``
+    once per turn. ``notification`` is a ``(queue_name, item)`` pair;
+    ``restored`` is whatever dict you handed back via ``persist`` last
+    time. On the very first turn, ``restored`` is ``None``.
     """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]
@@ -751,29 +777,5 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         Report your findings honestly."""
         ...
 
-    @hidden
-    async def respond(self, user_message: str) -> "RespondResult":
-        """Respond to the user's message.
-
-        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to yield back to the user.
-        Call return_result(RespondResult.STOP_WORK) when completely done.
-        """
-        if self._config.orchestrator:
-            return await _orchestrate(self, user_message)
-        else:
-            return await self._respond_codeact(user_message)
-
-    @hidden
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100)))
-    async def _respond_codeact(self, user_message: str) -> "RespondResult":
-        """Respond to the user's message using a single CodeAct strategy.
-
-        Message: {user_message}
-
-        Use tools to help the user.
-        Use self.message() to respond with formatted Markdown.
-        Call return_result(RespondResult.WAIT_FOR_USER_INPUT) to end your turn.
-        Call return_result(RespondResult.STOP_WORK) when completely done.
-        Execute ONE thing at a time, then observe results.
-        """
-        ...
+    # respond() is inherited from BaseTUIAgent and runs as a forever-loop.
+    # See the BaseTUIAgent.respond docstring for the pump pattern.

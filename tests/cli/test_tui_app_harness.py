@@ -37,10 +37,14 @@ async def test_harness_delivers_named_key():
 
 
 @pytest.mark.asyncio
-async def test_fake_agent_receives_scripted_message():
+async def test_fake_agent_receives_notification_and_restored():
+    """FakeAgent ``respond(notification, restored)`` records both inputs
+    and invokes any scripted step on the item."""
     agent = FakeAgent()
-    # Directly exercise the mock so its contract is tested without the app.
     received: list[str] = []
-    agent.queue(lambda self, msg: received.append(msg))
-    await agent.respond("hi")
+    agent.queue(lambda _self, msg: received.append(msg))
+    result = await agent.respond(("user_messages", "hi"), restored={"prior": 1})
     assert received == ["hi"]
+    assert agent.messages_received == ["hi"]
+    assert agent.restored_seen == [{"prior": 1}]
+    assert result.kind == "GET_USER_INPUT"

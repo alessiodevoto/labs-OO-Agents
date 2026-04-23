@@ -85,9 +85,9 @@ class TestCodeActStrategyConfig:
     """Tests for CodeActStrategy configuration."""
 
     def test_default_max_iterations(self):
-        """Default max_iterations should be 50."""
+        """Default max_iterations should be None (unlimited)."""
         strat = CodeActStrategy(config=CodeActConfig())
-        assert strat.config.max_iterations == 50
+        assert strat.config.max_iterations is None
 
     def test_default_max_retries(self):
         """Default max_retries should be 3."""
@@ -112,8 +112,8 @@ class TestCodeActStrategyConfig:
     def test_default_config(self):
         """CodeActStrategy() has default CodeActConfig."""
         strat = CodeActStrategy(config=CodeActConfig())
-        assert strat.config.max_iterations == 50
-        assert strat.config.cell_timeout == 600.0
+        assert strat.config.max_iterations is None
+        assert strat.config.cell_timeout is None
 
     def test_rejects_old_flat_kwargs(self):
         """CodeActStrategy rejects old-style flat kwargs."""

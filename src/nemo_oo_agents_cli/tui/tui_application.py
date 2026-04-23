@@ -79,7 +79,8 @@ class TUIApplication:
     ) -> None:
         """
         Args:
-            agent: Object with an async ``respond(user_message)`` method.
+            agent: Object with an async ``respond()`` method that pumps
+                input queues (see ``BaseTUIAgent.respond``).
             on_command: Called with the raw slash text (e.g. ``"/help"``)
                 whenever the user submits one. Session wires this to its
                 CommandRegistry. If omitted, commands still land in
@@ -176,20 +177,24 @@ class TUIApplication:
         # No output Window in the layout — keeps the active region tiny
         # and preserves native terminal scrollback.
 
-        # Queue window: shown only while state.messages / state.commands
-        # are non-empty. Mirrors the pre-rewrite ``│ foo`` visual.
+        # Queue window: shown whenever the agent has unconsumed messages
+        # in its user_messages input queue. Mirrors the pre-rewrite
+        # ``│ foo`` visual. Reads the hidden InputQueue
+        # (``_user_messages_in``) — the public ``user_messages`` is the
+        # LLM-facing OutputQueue facade and doesn't expose snapshot.
+        def _queue_pending() -> list[str]:
+            if self.agent is None:
+                return []
+            q = getattr(self.agent, "_user_messages_in", None)
+            if q is None:
+                return []
+            return q.snapshot()
+
         def _queue_formatted():
-            # Iterate the unified items list so messages and commands
-            # appear in submission order — the properties .messages /
-            # .commands filter by kind and would show 'all msgs, then
-            # all cmds' regardless of when each was typed.
             lines = []
-            for kind, text in self.state.items:
-                if kind == "msg":
-                    for line in text.split("\n"):
-                        lines.append(("class:queue", f"│ {line}\n"))
-                else:
-                    lines.append(("class:queue", f"│ {text}\n"))
+            for text in _queue_pending():
+                for line in str(text).split("\n"):
+                    lines.append(("class:queue", f"│ {line}\n"))
             return lines
 
         queue_window = ConditionalContainer(
@@ -197,7 +202,7 @@ class TUIApplication:
                 FormattedTextControl(_queue_formatted, focusable=False),
                 dont_extend_height=True,
             ),
-            filter=Condition(lambda: bool(self.state.items)),
+            filter=Condition(lambda: bool(_queue_pending())),
         )
 
         input_window = Window(
@@ -342,12 +347,23 @@ class TUIApplication:
 
         # Empty-buffer Up: queue pop wins over history — matches the
         # pre-rewrite typeahead UX (pop the last thing you typed while
-        # the agent was working so you can edit it).
+        # the agent was working so you can edit it). In the forever-loop
+        # model we pop from the agent's user_messages queue; items
+        # already consumed by the agent can't be edited.
         empty_buffer = Condition(lambda: self.input_buffer.text == "")
+
+        def _pop_last_queued() -> str | None:
+            if self.agent is None:
+                return None
+            q = getattr(self.agent, "_user_messages_in", None)
+            if q is None:
+                return None
+            item = q.pop_last()
+            return None if item is None else str(item)
 
         @kb.add("up", filter=empty_buffer)
         def _(event):
-            popped = self.state.pop_last_for_edit()
+            popped = _pop_last_queued()
             if popped is not None:
                 self.input_buffer.text = popped
                 self.input_buffer.cursor_position = len(popped)
@@ -378,9 +394,10 @@ class TUIApplication:
     def _accept_handler(self, buffer: Buffer) -> bool:
         """prompt_toolkit accept_handler — invoked by ``validate_and_handle()``.
 
-        When the agent is working, the submission is queued instead —
-        messages collect in ``state.messages``, slash commands in
-        ``state.commands``. Both are flushed when the agent finishes.
+        Slash/bang commands dispatch immediately. Plain text is pushed
+        onto ``agent.user_messages`` via ``submit_message`` — the agent's
+        forever-loop ``respond()`` picks it up when it calls
+        ``self.get_next_input(...)``.
 
         Returning False tells prompt_toolkit to reset the buffer (clear
         the text, don't keep it as the working-lines tip).
@@ -391,10 +408,6 @@ class TUIApplication:
         if not self._history or self._history[-1] != text:
             self._history.append(text)
         self._history_cursor = None
-
-        if self.is_thinking():
-            self.state.submit(text)
-            return False
 
         if text.startswith("/"):
             self._commands_dispatched.append(text)
@@ -497,106 +510,157 @@ class TUIApplication:
     def submit_message(self, user_message: str) -> None:
         """Treat ``user_message`` as if the user just typed and submitted it.
 
-        Fires ``on_user_message`` (scrollback echo + session bookkeeping),
-        then kicks off ``agent.respond(user_message)`` on the event loop.
+        Pushes the text onto the agent's user_messages InputQueue
+        (which emits a ``Notification`` event) and lazy-starts the
+        dispatcher task. The ``on_user_message`` echo (grey user bar
+        in scrollback, session bookkeeping) fires later — when the
+        dispatcher actually pumps this message into ``respond()`` —
+        so a message typed while the agent is working shows only in
+        the queue pane until its turn comes up.
 
-        Public so Session can submit a message programmatically — e.g. a
-        slash command that returns an ``agent_message`` (``/compact``)
-        and wants to drive a turn through the same user-facing path as
-        a typed message.
+        Consecutive submissions that land while the dispatcher is
+        still busy are *merged* into the trailing queue item with a
+        ``\\n`` separator. That preserves the old "type, Enter, type,
+        Enter → one message" UX where the user is composing a
+        multi-line thought across several Enters.
 
-        Guards against re-entry while an agent turn is already running:
-        a slow slash command that calls ``submit_message`` from inside
-        its handler would otherwise overwrite ``_agent_task``, stranding
-        the in-flight turn's done-callback. Silently drops the new
-        submission in that case; callers who want to queue-after-turn
-        should use ``state.submit(text)`` instead.
+        Public so ``Session`` can submit a message programmatically —
+        e.g. a slash command that returns an ``agent_message``
+        (``/compact``) and wants to drive the same path as a typed
+        message.
         """
-        self._run_callback(self.on_user_message, user_message)
+        if self.agent is None:
+            return
+        inq = getattr(self.agent, "_user_messages_in", None)
+        if inq is None:
+            self.emit_block("[submit_message dropped] agent has no user_messages queue\n")
+            return
+        # Merge into the trailing queued message if there is one — so
+        # successive Enters compose a single multi-line item rather
+        # than producing N tiny ones for the agent to handle one-by-one.
+        #
+        # ``pop_last_with_tag`` returns (item, tag) WITHOUT retracting
+        # the Notification (unlike ``pop_last``, which is for the
+        # un-queue UX). On merge we re-push the merged item under the
+        # original tag — so there's still exactly one Notification per
+        # in-flight queued message, and that single notification is
+        # the one ``pop_last`` would retract if the user later un-queues.
+        tail_pair = inq.pop_last_with_tag()
+        if tail_pair is not None and isinstance(tail_pair[0], str):
+            old_item, old_tag = tail_pair
+            inq.put(
+                f"{old_item}\n{user_message}",
+                emit_notification=False,
+                inherit_tag=old_tag,
+            )
+        else:
+            if tail_pair is not None:
+                old_item, old_tag = tail_pair
+                inq.put(old_item, emit_notification=False, inherit_tag=old_tag)
+            inq.put(user_message)
+        self._ensure_dispatcher_task()
+
+    def _ensure_dispatcher_task(self) -> None:
+        """Start the per-turn dispatcher if not already live.
+
+        The dispatcher is the outer loop around ``agent.respond()``:
+        it reads the result's ``kind`` and waits on the appropriate
+        queue before calling ``respond()`` again with the new
+        ``(queue_name, item)`` notification and whatever ``restored``
+        dict the previous turn asked to carry over.
+
+        Lazy-started: on session load there's no task. The first user
+        message triggers submit_message → put onto user_messages →
+        _ensure_dispatcher_task → dispatcher loops forever until STOP.
+        """
         if self.agent is None:
             return
         if self._agent_task is not None and not self._agent_task.done():
-            self.emit_block(
-                f"[submit_message ignored] agent is still running — "
-                f"message queued: {user_message[:60]!r}\n"
-            )
-            self.state.submit(user_message)
             return
-        coro = self.agent.respond(user_message)
-        if not asyncio.iscoroutine(coro):
-            return
-        self._agent_task = asyncio.ensure_future(coro)
+        self._agent_task = asyncio.ensure_future(self._dispatcher_loop())
         self._agent_task.add_done_callback(self._on_agent_done)
         self._ensure_spinner_task()
 
-    def _on_agent_done(self, task: asyncio.Task) -> None:
-        """Fired once the agent's respond() returns / errors / is cancelled.
+    async def _dispatcher_loop(self) -> None:
+        """Drive ``agent.respond()`` turn-by-turn until ``STOP``.
 
-        Drains the type-ahead queue via ``_drain_next``: commands fire
-        through ``on_command`` (serialised via a completion callback),
-        consecutive messages collect into one next-turn input.
+        Fires ``on_user_message`` at each "pump" point where a
+        user_messages item is about to enter ``respond()`` — that's
+        the moment a message transitions from "queued" to "accepted",
+        so the grey user-bar echoes into scrollback exactly once,
+        right when the agent starts working on it.
         """
-        # Surface errors into output scrollback. Cancellation is not an
-        # error (Esc soft-cancel + Ctrl-C both cancel on purpose) but
-        # still emit a visible ack so the user knows the interrupt
-        # landed — the old TUI printed "Agent interrupted." here.
+        from nemo_oo_agents import wait_for_any
+        from nemo_oo_agents.runtime.input_queue import InputQueue
+
+        agent = self.agent
+        assert agent is not None
+
+        user_messages_in: InputQueue = agent._user_messages_in
+
+        # Wait for the first user message (already queued by submit_message
+        # that started us). qsize()>0 → get() returns immediately.
+        queue_name = "user_messages"
+        item = await user_messages_in.get()
+        self._on_dispatcher_dequeued()
+        restored: dict[str, Any] | None = None
+
+        while True:
+            if queue_name == "user_messages":
+                # Echo the user-bar and run session bookkeeping at the
+                # exact transition from queued → accepted.
+                self._run_callback(self.on_user_message, str(item))
+
+            result = await agent.respond((queue_name, item), restored=restored)
+
+            # Be tolerant if the LLM returned something slightly off-shape;
+            # treat missing fields as safe defaults.
+            kind = getattr(result, "kind", "STOP")
+            restored = getattr(result, "persist", None) or None
+
+            if kind == "STOP":
+                return
+            if kind == "WAIT":
+                # Iterate hidden InputQueues on the agent — one per
+                # logical input source (the OutputQueue facades are
+                # readers; we always race the underlying InputQueues).
+                queues = [v for v in vars(agent).values() if isinstance(v, InputQueue)]
+                if not queues:
+                    return
+                queue_name, item = await wait_for_any(queues)
+            else:  # GET_USER_INPUT (default)
+                queue_name = "user_messages"
+                item = await user_messages_in.get()
+            self._on_dispatcher_dequeued()
+
+    def _on_dispatcher_dequeued(self) -> None:
+        """React to a just-dequeued item: redraw queue pane, restart spinner.
+
+        Without this, the queue pane can show stale contents until the
+        next event happens to trigger a redraw (spinner tick, user key,
+        scrollback write). And the spinner animation task exits when
+        ``is_thinking()`` was False between turns — a new turn wants
+        it running again.
+        """
+        if self._app.is_running:
+            self._app.invalidate()
+        self._ensure_spinner_task()
+
+    def _on_agent_done(self, task: asyncio.Task) -> None:
+        """Fired when the dispatcher exits (STOP, error, or cancellation).
+
+        On cancellation with messages still pending, we lazy-restart so
+        Esc (soft-cancel) doesn't strand queued input.
+        """
         if task.cancelled():
             self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
-        else:
-            exc = task.exception()
-            if exc is not None:
-                self.emit_block(f"Agent error: {exc}")
-
-        # Drain ONE queue item serially, then let its completion
-        # callback re-enter this function to drain the next. This
-        # preserves strict submission order: a queued [cmd, msg, msg]
-        # plays as cmd → wait-for-cmd → msg turn → wait-for-agent.
-        self._drain_next()
-
-    def _drain_next(self) -> None:
-        """Pop items from ``state.items`` and fire them until an async
-        boundary. Strict FIFO preserves user-submission order.
-
-        - Synchronous command callbacks loop in place (no recursion).
-        - Async command callbacks hand off to the task's done-callback,
-          which re-enters ``_drain_next``.
-        - Messages launch an agent turn; ``_on_agent_done`` re-enters
-          ``_drain_next`` once the turn completes.
-        """
-        while self.state.items:
-            kind, text = self.state.items.pop(0)
-
-            if kind == "cmd":
-                self._commands_dispatched.append(text)
-                task = self._run_callback(self._on_command, text)
-                if task is None:
-                    # Sync path. If the callback raised, stop draining
-                    # — otherwise a bad handler dumps N stack traces
-                    # with no way to interrupt. Discard the rest and
-                    # tell the user.
-                    if self._last_sync_callback_raised:
-                        remaining = len(self.state.items)
-                        self.state.items.clear()
-                        if remaining:
-                            self.emit_block(
-                                f"[callback error] aborted {remaining} "
-                                f"queued item{'s' if remaining != 1 else ''}\n"
-                            )
-                        return
-                    continue
-                # Async path: let the task's done-callback drain next.
-                task.add_done_callback(lambda _t: self._drain_next())
-                return
-
-            # Message — gather any consecutive messages so the whole
-            # contiguous text block becomes one agent turn.
-            msgs: list[str] = [text]
-            while self.state.items and self.state.items[0][0] == "msg":
-                msgs.append(self.state.items.pop(0)[1])
-            self.submit_message("\n\n".join(msgs))
-            # Agent's done callback calls _on_agent_done, which calls
-            # _drain_next again once this turn completes.
+            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+            if q is not None and q.qsize() > 0:
+                self._ensure_dispatcher_task()
             return
+        exc = task.exception()
+        if exc is not None:
+            self.emit_block(f"Agent error: {exc}\n")
 
     # ── output pipeline -----------------------------------------------
 
@@ -776,8 +840,20 @@ class TUIApplication:
         return self.input_buffer.cursor_position
 
     def is_thinking(self) -> bool:
-        """True while an agent task is live (respond() not yet returned)."""
-        return self._agent_task is not None and not self._agent_task.done()
+        """True while the dispatcher is actively running a turn (not idle-waiting).
+
+        The dispatcher task stays alive for the whole session — it's
+        "live" even when blocked on the user_messages InputQueue's
+        ``.get()`` between turns. We distinguish the two states via
+        the queue's waiter count: if something is blocked on ``get()``
+        the agent is idle; otherwise it's thinking.
+        """
+        if self._agent_task is None or self._agent_task.done():
+            return False
+        inq = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+        if inq is not None and inq.has_waiters():
+            return False
+        return True
 
     def commands_dispatched(self) -> list[str]:
         """Slash commands the user has submitted, in order."""

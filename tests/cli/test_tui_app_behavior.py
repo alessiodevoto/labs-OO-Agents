@@ -252,28 +252,41 @@ async def test_queue_displays_above_prompt_while_agent_working():
         await h.wait_for(lambda: h.capture_queued() == ["queued-msg"])
 
 
-async def test_queue_multiple_enters_collect_messages():
+async def test_queue_multiple_enters_merge_into_one_item():
+    """Successive Enters typed while the agent is working compose one
+    queued message joined with newlines — restores the old
+    ``QueueState.submit`` UX so the agent isn't asked to handle each
+    line of a half-finished thought as its own turn."""
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
-        await h.submit_async("trigger")  # new helper: type+enter+don't wait
+        await h.submit_async("trigger")
         await h.wait_for(lambda: h.app.is_thinking())
         await h.type_keys("one")
         await h.press("enter")
         await h.type_keys("two")
         await h.press("enter")
-        # Successive Enters append into the same message with newlines
-        # (matches QueueState.submit).
+        # One queue item, two lines.
         await h.wait_for(lambda: h.capture_queued() == ["one\ntwo"])
+        # Three lines if the user keeps going.
+        await h.type_keys("three")
+        await h.press("enter")
+        await h.wait_for(lambda: h.capture_queued() == ["one\ntwo\nthree"])
 
 
-async def test_queue_slash_command_while_working_goes_to_commands_slot():
+async def test_slash_command_while_agent_working_dispatches_immediately():
+    """Forever-loop model: slash commands no longer queue — they fire right away.
+
+    Contrast with the old contract where /exit typed mid-turn waited
+    for the agent to finish. Now the agent's respond() runs for the
+    whole session, so there's no "next turn" to flush commands into.
+    """
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
         await h.submit_async("trigger")
         await h.wait_for(lambda: h.app.is_thinking())
         await h.type_keys("/exit")
         await h.press("enter")
-        await h.wait_for(lambda: h.app.state.commands == ["/exit"])
+        await h.wait_for(lambda: h.app.commands_dispatched() == ["/exit"])
 
 
 async def test_queue_up_arrow_pops_last_queued_item_when_buffer_empty():
@@ -301,28 +314,41 @@ async def test_queue_delivered_as_next_turn_when_agent_finishes():
         await h.wait_for(lambda: agent.messages_received == ["first", "queued"])
 
 
-async def test_queue_interleaved_cmd_msg_msg_drains_in_submission_order():
-    """Queue: [text1, /cmd, text2] plays as text1-turn → /cmd → text2-turn."""
+async def test_interleaved_cmd_msg_msg_commands_fire_immediately():
+    """Per-turn dispatcher model: commands dispatch immediately; only
+    messages queue (and consecutive ones merge).
+
+    Contrast with the old contract: messages and commands queued
+    together, flushed in order after respond() returned. Now
+    commands sidestep the agent's input queue and fire as soon as
+    typed; consecutive queued messages compose a single multi-line
+    item via the dispatcher's submit-merge.
+    """
     agent = _blocking_agent()
     commands_seen: list[str] = []
     async with TUIHarness(agent=agent) as h:
         h.app._on_command = commands_seen.append
-        await h.submit_async("first")  # triggers agent, who blocks
+        await h.submit_async("first")
         await h.wait_for(lambda: h.app.is_thinking())
-        # Queue up the rest in order: text, /cmd, text
+        # Interleave: message → command → message.
         await h.submit_async("queued-text-1")
         await h.submit_async("/my-cmd")
         await h.submit_async("queued-text-2")
-        # The queued items must be in submission order
-        assert h.capture_queued() == ["queued-text-1", "/my-cmd", "queued-text-2"]
-        # Let the first turn finish; drain begins.
+        # Two queued messages around a slash command merge into one
+        # multi-line queue item — the slash didn't break the chain
+        # because slash commands never touch the user_messages queue.
+        await h.wait_for(lambda: h.capture_queued() == ["queued-text-1\nqueued-text-2"])
+        # The command fired immediately, without waiting for the agent.
+        assert commands_seen == ["/my-cmd"]
+        # Let the agent pump the rest.
         agent.block.set()
-        # After everything drains: first + queued-text-1 → agent, then
-        # /my-cmd fires, then queued-text-2 → agent.
         await h.wait_for(
             lambda: (
-                agent.messages_received == ["first", "queued-text-1", "queued-text-2"]
-                and commands_seen == ["/my-cmd"]
+                agent.messages_received
+                == [
+                    "first",
+                    "queued-text-1\nqueued-text-2",
+                ]
             )
         )
 
@@ -417,35 +443,34 @@ async def test_hard_keystroke_during_agent_finish_not_lost():
         await h.wait_input_equals("x")
 
 
-async def test_hard_drain_loops_synchronous_commands_without_recursion():
-    """Queue N synchronous /cmd items while the agent is working, then
-    release. The drain loop must fire all N through the sync path in
-    one go — no asyncio tasks per item, no recursion per item.
+async def test_hard_synchronous_commands_dispatch_without_queueing():
+    """N synchronous /cmd items typed while agent is working fire immediately.
 
-    Regression guard for the ``_drain_next`` loop-conversion:
-    a naive ``self._drain_next()`` recursion in the sync path would
-    still pass earlier tests but blow the stack on large batches.
+    Forever-loop contract: commands don't queue behind the agent — the
+    agent loop doesn't own them. Each slash command goes straight
+    through ``on_command`` as typed; the queue only holds user messages.
     """
     agent = _blocking_agent()
     commands_seen: list[str] = []
     async with TUIHarness(agent=agent) as h:
-        # Sync on_command — records and returns None (no coroutine).
         h.app._on_command = commands_seen.append
-        await h.submit_async("first")  # starts agent; blocks
+        await h.submit_async("first")  # starts agent; agent blocks
         await h.wait_for(lambda: h.app.is_thinking())
         for i in range(5):
             await h.submit_async(f"/cmd-{i}")
-        assert h.capture_queued() == [f"/cmd-{i}" for i in range(5)]
-
-        # Release the agent. Drain runs synchronously in a loop.
-        agent.block.set()
+        # Commands all dispatched immediately — none queued.
+        assert h.capture_queued() == []
         await h.wait_for(lambda: commands_seen == [f"/cmd-{i}" for i in range(5)])
 
 
-async def test_hard_sync_on_command_raising_surfaces_to_output_and_aborts_queue():
-    """A synchronous ``on_command`` that raises must (1) surface a
-    ``[callback error]`` line to scrollback and (2) abort the rest of
-    the queue so the user doesn't get N stack traces stacked up."""
+async def test_hard_sync_on_command_raising_surfaces_to_output():
+    """A synchronous ``on_command`` that raises must surface a
+    ``[callback error]`` line to scrollback.
+
+    Forever-loop contract: commands no longer queue behind the agent,
+    so each failing command reports independently as typed. There's no
+    "abort the queue" shortcut any more — there is no command queue.
+    """
     agent = _blocking_agent()
 
     def _raising(_text: str) -> None:
@@ -455,19 +480,8 @@ async def test_hard_sync_on_command_raising_surfaces_to_output_and_aborts_queue(
         h.app._on_command = _raising
         await h.submit_async("first")
         await h.wait_for(lambda: h.app.is_thinking())
-        # Queue three commands that would all raise.
-        for i in range(3):
-            await h.submit_async(f"/will-fail-{i}")
-        # Release agent → drain begins.
-        agent.block.set()
-        # First failure surfaces; the remaining two are aborted with a
-        # single "aborted N queued items" message, not more stack traces.
-        await h.wait_for(
-            lambda: (
-                "[callback error] RuntimeError: boom-sync" in h.capture_output()
-                and "aborted 2 queued items" in h.capture_output()
-            )
-        )
+        await h.submit_async("/will-fail")
+        await h.wait_for(lambda: "[callback error] RuntimeError: boom-sync" in h.capture_output())
 
 
 async def test_hard_async_on_command_raising_surfaces_to_output() -> None:
@@ -497,11 +511,10 @@ async def test_hard_ctrl_c_emits_interrupted_notice_to_scrollback() -> None:
         await h.wait_output_contains("Interrupted")
 
 
-async def test_hard_submit_message_re_entry_queues_instead_of_stomping() -> None:
-    """Programmatic ``submit_message`` while an agent turn is running
-    must queue the new message instead of overwriting ``_agent_task``.
-
-    Regression guard for the P1 #5 finding in the bug-hunt review.
+async def test_hard_submit_message_re_entry_pushes_to_queue_not_stomps_task() -> None:
+    """Programmatic ``submit_message`` while the forever-loop agent is
+    running must push onto the agent's ``user_messages`` queue, not
+    replace ``_agent_task``.
     """
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
@@ -510,12 +523,22 @@ async def test_hard_submit_message_re_entry_queues_instead_of_stomping() -> None
         assert h.app._agent_task is not None
         first_task = h.app._agent_task
 
-        # Programmatic submission during the blocked turn — should go
-        # to the queue, not clobber _agent_task.
+        # Programmatic submission during the blocked turn — pushes onto
+        # the hidden InputQueue without replacing _agent_task. The
+        # exact tail item depends on whether the dispatcher already
+        # consumed "first" (race) — but "second" must be present in
+        # whatever the queue currently holds.
         h.app.submit_message("second")
         assert h.app._agent_task is first_task  # not replaced
-        assert any(kind == "msg" and text == "second" for kind, text in h.app.state.items)
+        snap = agent._user_messages_in.snapshot()
+        assert any("second" in item for item in snap), (
+            f"expected 'second' to be queued; snapshot={snap!r}"
+        )
 
-        # Draining second should reach the agent.
+        # Pump: release the agent so it drains the queue.
         agent.block.set()
-        await h.wait_for(lambda: agent.messages_received == ["first", "second"])
+        # "second" must reach the agent — either as its own item (if
+        # the dispatcher already consumed "first" before the second
+        # submit_message ran) or merged into a "first\nsecond" item
+        # (if the merge race went the other way).
+        await h.wait_for(lambda: any("second" in m for m in agent.messages_received))

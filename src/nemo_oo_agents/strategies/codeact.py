@@ -147,7 +147,7 @@ class _TurnState:
 class CodeActSession:
     """Tracks state for a single CodeAct generation session."""
 
-    max_iterations: int
+    max_iterations: int | None
     max_retries: int
     target_method_name: str
     event_manager: Any  # EventManager reference for Out[n] access
@@ -165,7 +165,9 @@ class CodeActSession:
         self.session_locals["Out"] = self.out_accessor
 
     def is_exhausted(self) -> bool:
-        return self.iteration >= self.max_iterations or self.error_count >= self.max_retries
+        if self.max_iterations is not None and self.iteration >= self.max_iterations:
+            return True
+        return self.error_count >= self.max_retries
 
     def record_iteration(self) -> None:
         self.iteration += 1
