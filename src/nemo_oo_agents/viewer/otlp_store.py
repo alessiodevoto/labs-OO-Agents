@@ -349,6 +349,30 @@ def init_db() -> int:
     if _has_column(_db, "sessions", "eval_model"):
         _migrate_v1_to_v2(_db)
 
+    # Journal v3 renamed input_hashes/output_hashes → input_skeleton/output_messages
+    # and dropped the msg_content table. Older DBs still have the v2 shape, and
+    # CREATE TABLE IF NOT EXISTS above won't replace them — so INSERTs into
+    # input_skeleton raise OperationalError. Journal data is regenerable trace
+    # display state; drop-recreate when the new column is missing.
+    if not _has_column(_db, "llm_calls", "input_skeleton"):
+        log.info("Migrating llm_calls to v3 schema (skeleton + blocks)")
+        _db.execute("DROP TABLE IF EXISTS llm_calls")
+        _db.execute("DROP TABLE IF EXISTS msg_content")
+        _db.execute("""
+            CREATE TABLE llm_calls (
+                call_id          TEXT PRIMARY KEY,
+                session_id       TEXT NOT NULL,
+                span_id          TEXT,
+                model            TEXT,
+                ts_start         REAL,
+                ts_end           REAL,
+                input_skeleton   TEXT NOT NULL,
+                output_messages  TEXT NOT NULL,
+                tokens           TEXT
+            )
+        """)
+        _db.execute("CREATE INDEX idx_llm_calls_session ON llm_calls(session_id)")
+
     # Add span_id to llm_calls if missing (added in journal v2)
     if not _has_column(_db, "llm_calls", "span_id"):
         _db.execute("ALTER TABLE llm_calls ADD COLUMN span_id TEXT")

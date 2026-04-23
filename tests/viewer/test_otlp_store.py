@@ -716,8 +716,109 @@ class TestMigrateV1ToV2:
         assert sessions[0]["id"] == "s2"
         # No eval fields → no eval key in dict
         assert "eval" not in sessions[0]
+# ---------------------------------------------------------------------------
+# journal v2 → v3 migration (input_hashes + msg_content → input_skeleton + blocks)
+# ---------------------------------------------------------------------------
 
 
+class TestJournalV2ToV3Migration:
+    """An older viewer DB has ``llm_calls.input_hashes`` and a ``msg_content``
+    table. The current code inserts ``input_skeleton``, which raises
+    ``OperationalError`` unless ``init_db`` rebuilds ``llm_calls``.
+    """
+
+    def _build_v2_schema(self, db_path):
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.executescript("""
+            CREATE TABLE sessions (
+                session_id TEXT PRIMARY KEY,
+                experiment TEXT NOT NULL,
+                span_count INTEGER DEFAULT 0,
+                modified REAL DEFAULT 0,
+                resource_attrs TEXT,
+                eval_passed INTEGER,
+                eval_metadata TEXT
+            );
+            CREATE TABLE spans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                trace_id TEXT, span_id TEXT, parent_span_id TEXT,
+                name TEXT, kind INTEGER, start_time_ns INTEGER, end_time_ns INTEGER,
+                status_code INTEGER, status_message TEXT,
+                attributes TEXT, resource TEXT, events TEXT
+            );
+            CREATE TABLE annotations (
+                id TEXT PRIMARY KEY, session_id TEXT NOT NULL, span_id TEXT,
+                target TEXT, name TEXT NOT NULL, score REAL, label TEXT, comment TEXT,
+                tags TEXT, created_at TEXT NOT NULL, author_id TEXT,
+                source TEXT NOT NULL DEFAULT 'human', metadata TEXT
+            );
+            CREATE TABLE msg_content (
+                hash TEXT PRIMARY KEY,
+                msg  TEXT NOT NULL
+            );
+            CREATE TABLE llm_calls (
+                call_id       TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL,
+                span_id       TEXT,
+                model         TEXT,
+                ts_start      REAL,
+                ts_end        REAL,
+                input_hashes  TEXT NOT NULL,
+                output_hashes TEXT NOT NULL,
+                tokens        TEXT
+            );
+        """)
+        conn.commit()
+        conn.close()
+
+    def test_init_db_rebuilds_llm_calls_with_new_columns(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "v2.db"
+        monkeypatch.setattr(store, "DB_PATH", db_path)
+        monkeypatch.setattr(store, "_db", None)
+        self._build_v2_schema(db_path)
+
+        store.init_db()
+
+        # New schema: input_skeleton + output_messages, no input_hashes.
+        db = store._get_db()
+        cols = {r[1] for r in db.execute("PRAGMA table_info(llm_calls)").fetchall()}
+        assert "input_skeleton" in cols
+        assert "output_messages" in cols
+        assert "input_hashes" not in cols
+        assert "output_hashes" not in cols
+        # Legacy content table is gone too.
+        msg_content_tables = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='msg_content'"
+        ).fetchall()
+        assert msg_content_tables == []
+
+    def test_journal_ingest_works_after_migration(self, tmp_path, monkeypatch):
+        """End-to-end: after migration, ingest_journal_call no longer 500s."""
+        db_path = tmp_path / "v2_ingest.db"
+        monkeypatch.setattr(store, "DB_PATH", db_path)
+        monkeypatch.setattr(store, "_db", None)
+        self._build_v2_schema(db_path)
+
+        store.init_db()
+        # This is the call shape that previously raised
+        # ``OperationalError: table llm_calls has no column named input_skeleton``.
+        store.ingest_journal_call(
+            {
+                "call_id": "c1",
+                "session_id": "s1",
+                "model": "gpt-4o",
+                "ts_start": 1.0,
+                "ts_end": 2.0,
+                "input_skeleton": [{"role": "user", "content": "hi"}],
+                "output_messages": [],
+            }
+        )
+        row = store._get_db().execute(
+            "SELECT call_id FROM llm_calls WHERE call_id='c1'"
+        ).fetchone()
+        assert row is not None
 
 # ---------------------------------------------------------------------------
 # Startup lock check
