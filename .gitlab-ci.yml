@@ -28,6 +28,7 @@ stages:
 
 lint:
   stage: lint
+  timeout: 10 minutes  # lint takes ~50s; 10m catches zombie runners
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: if-not-present
@@ -95,12 +96,19 @@ check-frontend-build:
 #   util/ci/**/*      → test-core (ensures needs: [test-core] satisfied for capability-test)
 #
 # Packages with no tests (not in pyproject.toml testpaths) — no job needed:
-#   nemo-oo-agents-benchmarks, evaluation, nat_oo_agents, trace_explorer
+#   evaluation, nat_oo_agents
 # =============================================================================
 
 # Shared boilerplate — all test jobs extend this
 .test-base:
   stage: test
+  timeout: 15 minutes  # Force zombie runners to fail fast (real tests take <5m)
+  interruptible: true  # Allow GitLab to auto-cancel when a newer pipeline supersedes this one
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: if-not-present
@@ -336,6 +344,12 @@ test-trace-explorer:
 # Package test jobs report JUnit inline via artifacts: reports: junit: above.
 upload-test-report:
   stage: test
+  timeout: 5 minutes  # should complete in <30s; 5m catches zombie runners
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: if-not-present

@@ -27,30 +27,101 @@ harbor run --config util/harbor/locomo_baseline.yaml
 uv run python util/harbor/run_locomo_debug.py --tasks 5
 ```
 
-## System-specific Apptainer settings (this machine)
+## SIF cache
 
-These settings apply on the current host and are already baked into every
-`*_baseline.yaml` in this directory. If you move to a different machine,
-check them again.
+Harbor converts Docker images to Apptainer SIF files once, caches them in
+`apptainer_image_cache_dir`, and reuses them for every subsequent run.
+**Pulling is a one-time cost per unique task image**, not per run.
 
-```yaml
-environment:
-  type: apptainer
-  kwargs:
-    apptainer_binary: apptainer
-    apptainer_fakeroot: false          # IPC namespace unavailable without CAP_SYS_ADMIN
-    apptainer_image_cache_dir: ~/.cache/harbor/sif   # reuse pulled SIFs across runs
-    env_passthrough: "NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF"
+Each SIF is ~500 MB–1 GB. Running a full benchmark (e.g. 500 SWE-bench tasks)
+requires ~300 GB of cache space. The shipped `*_baseline.yaml` configs use
+`~/3p/sif_cache/` as a generic default for the current host. On DFW hosts,
+override `apptainer_image_cache_dir` in your config (or copy from Lustre
+into `~/3p/sif_cache/`) — see the "Shared SIF cache on DFW Lustre" section
+below.
+
+### Shared SIF cache on DFW Lustre
+
+Pre-built SIFs for Terminal Bench, SWE-bench Verified, DABStep, and MemBench
+are stored on the DFW cluster's Lustre filesystem (world-writable,
+`hardware` group):
+
+```
+/lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache/
 ```
 
-**`apptainer_fakeroot: false`** — The default is `true`, which requires IPC
-namespace support (`CAP_SYS_ADMIN`). On this host that fails with
-`Failed to create ipc namespace: ipc namespace requires privileges`. Always
-set `false` here.
+This is a flat directory: `<name>.sif` + `<name>.sif.lock` pairs — the exact
+naming convention Harbor expects for `apptainer_image_cache_dir`.
 
-**`apptainer_image_cache_dir`** — Without this, each trial pulls the Docker
-image to a throwaway temp dir. With it, the SIF is written once and reused.
-Put pre-built SIFs here too (e.g. `dabstep.sif`).
+**To populate your local SIF cache from Lustre** (instead of pulling from
+Docker Hub, which is much slower):
+
+```bash
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE_CACHE=/lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache
+LOCAL_CACHE=~/3p/sif_cache
+
+# Sync all available SIFs (or filter by prefix, e.g. terminal_bench_*)
+rsync -av "$DFW:$LUSTRE_CACHE/" "$LOCAL_CACHE/"
+```
+
+Transfer speed is ~46 MB/s. Contents as of 2026-04-22:
+
+| Benchmark | SIFs | Notes |
+|-----------|------|-------|
+| SWE-bench Verified | ~500 | `swebench_sweb.eval.x86_64.*_latest.sif` |
+| Terminal Bench 1 | ~241 | `terminal_bench_*.sif`, one per task |
+| DABStep | 1 | `dabstep.sif` |
+| MemBench / LoCoMo | 1 | `ghcr.io_laude-institute_t-bench_ubuntu-24-04_latest.sif` |
+
+SWE-bench Pro (~731 SIFs, ~500 GB) is not yet on Lustre. See gl-13.
+
+### Disk space
+
+SIFs are large. A rough budget:
+
+| Benchmark | # SIFs | ~Size |
+|-----------|--------|-------|
+| Terminal Bench 1 | 241 | 38 GB |
+| SWE-bench Verified | 500 | 300 GB |
+| SWE-bench Pro | 731 | ~500 GB |
+| DABStep + MemBench/LoCoMo | 2 | < 1 GB |
+
+If running SWE-bench Verified or Pro without a pre-populated cache, Harbor
+pulls SIFs on-the-fly per task from Docker Hub (~5 min/SIF). Pre-populating
+from Lustre is strongly recommended for any full run.
+
+## System-specific Apptainer settings (rcabral DFW/local hosts)
+
+The `*_baseline.yaml` configs in this directory are tuned for the current
+hosts. Key settings to revisit on a new machine:
+
+**`apptainer_fakeroot`** — Required `true` for benchmarks that need `runuser`
+inside the container (Terminal Bench, SWE-bench, MemBench, LoCoMo). Requires
+AppArmor unprivileged user namespace support (`aa-status | grep userns`).
+See gl-35 for the AppArmor fix if it's disabled.
+
+**`apptainer_image_cache_dir`** — Set to `~/3p/sif_cache` on local hosts.
+On DFW you can point this directly at the Lustre path (no rsync needed):
+```yaml
+apptainer_image_cache_dir: /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache
+```
+
+**`TMPDIR` for fakeroot runs** — Fakeroot containers create staging dirs in
+`$TMPDIR` (Python `tempfile.mkdtemp`). These dirs are root-owned inside the
+user namespace and cannot be deleted by the regular user if a container
+crashes. `/tmp` is a 61 GB tmpfs and fills up silently.
+
+Always set before launching harbor on a fakeroot benchmark:
+```bash
+export TMPDIR=/localhome/$USER/apptainer_tmp   # or any non-tmpfs path
+mkdir -p "$TMPDIR"
+```
+
+If `/tmp` fills and you see `ENOSPC` errors:
+```bash
+sudo rm -rf /tmp/apptainer_staging_*/   # root-owned; requires sudo
+```
 
 **`env_passthrough`** — The container starts with a clean environment.
 API keys must be forwarded explicitly. `OPENAI_API_KEY` on this host is
