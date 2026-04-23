@@ -31,7 +31,7 @@ uv init my-agent-project
 cd my-agent-project
 
 # Add NeMo OO Agents
-uv add git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git --branch main
+uv add "nemo-oo-agents[viewer,tracing] @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
 ```
 
 ### API Keys
