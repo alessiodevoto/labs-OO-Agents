@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
         "-m",
         type=str,
         default=None,
-        help="LLM model from registry (e.g., aws/anthropic/bedrock-claude-sonnet-4-5-v1)",
+        help="LLM model name (e.g., claude-sonnet-4-5, gpt-4o-mini)",
     )
     parser.add_argument(
         "--agent",

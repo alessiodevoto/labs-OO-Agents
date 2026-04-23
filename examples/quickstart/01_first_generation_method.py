@@ -5,10 +5,6 @@ uv run python examples/quickstart/01_first_generation_method.py
 """
 
 from nemo_oo_agents.util.quickstart import *
-from unifiedllm.registry import get_llm_client
-
-# Get a preconfigured LLM client (Inference Hub model)
-llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")
 
 
 class FeedbackAgent(Agent, llm=llm):

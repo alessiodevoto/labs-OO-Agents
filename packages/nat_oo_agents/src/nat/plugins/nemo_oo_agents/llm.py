@@ -45,8 +45,8 @@ def _build_llm(
     except ImportError:
         registry_config = {}
 
-    # Resolve endpoint: NAT config wins, then registry, then nothing
-    resolved_base = base_url or registry_config.get("endpoint")
+    # Resolve api_base: NAT config wins, then registry, then nothing
+    resolved_base = base_url or registry_config.get("api_base")
 
     # Resolve API key: NAT config wins, then registry env var
     resolved_key = api_key
@@ -71,11 +71,9 @@ def _build_llm(
         if key in registry_config:
             params[key] = registry_config[key]
 
-    # When routing through an OpenAI-compatible gateway, prefix with
-    # "openai/" so litellm uses its OpenAI handler.
-    litellm_model = model_name
-    if resolved_base and not model_name.startswith("openai/"):
-        litellm_model = f"openai/{model_name}"
+    # Use model_name from registry config if available (includes litellm routing prefix),
+    # otherwise pass the name directly and let litellm handle routing.
+    litellm_model = registry_config.get("model_name", model_name)
 
     llm = CompletionClient(model=litellm_model, **params)
     logger.info(

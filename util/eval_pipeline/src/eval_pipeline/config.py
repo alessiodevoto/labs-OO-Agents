@@ -138,7 +138,7 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
     """Resolve a model from the unifiedllm registry into ModelSpec fields.
 
     Args:
-        registry_name: Registry key (e.g., "aws/anthropic/claude-haiku-4-5-v1")
+        registry_name: Registry key (e.g., "claude-sonnet-4-5")
         overrides: Optional dict of field overrides (max_tokens, reasoning_effort, etc.)
 
     Returns:
@@ -147,7 +147,7 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
     Raises:
         ValueError: If the registry name is not found.
     """
-    from unifiedllm.registry import MODELS, NVIDIA_API_KEY_ENV, NVIDIA_ENDPOINT
+    from unifiedllm.registry import MODELS
 
     config = MODELS.get(registry_name)
     if config is None:
@@ -158,16 +158,27 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
         )
 
     # Build ModelSpec fields from registry config
-    # model_name uses "openai/" prefix for litellm routing (same as get_llm_client)
+    # model_name from config is the litellm-ready string; fall back to registry key
     fields: dict = {
-        "model_name": f"openai/{registry_name}",
-        "endpoint": config.get("endpoint", NVIDIA_ENDPOINT),
-        "api_key_env": config.get("api_key_env", NVIDIA_API_KEY_ENV),
+        "model_name": config.get("model_name", registry_name),
     }
+    if "api_base" in config:
+        fields["endpoint"] = config["api_base"]
+    if "api_key_env" in config:
+        fields["api_key_env"] = config["api_key_env"]
 
     # Copy optional fields from registry
-    if "max_tokens" in config:
-        fields["max_tokens"] = config["max_tokens"]
+    for key in (
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "reasoning_effort",
+        "max_thinking_tokens",
+        "max_retries",
+        "retry_on_empty_content",
+    ):
+        if key in config:
+            fields[key] = config[key]
 
     # Apply overrides (from config YAML)
     if overrides:
@@ -493,10 +504,13 @@ def evaluator_from_config(
                     )
 
                 # Build config dict
+                # Guard against api_key_env=None (public registry models that
+                # delegate API key resolution to litellm)
+                api_key = os.getenv(s.api_key_env, "") if s.api_key_env else ""
                 config_dict = {
                     "model": s.model_name,
                     "api_base": s.endpoint,
-                    "api_key": os.getenv(s.api_key_env, ""),
+                    "api_key": api_key,
                     "max_tokens": s.max_tokens,
                 }
 

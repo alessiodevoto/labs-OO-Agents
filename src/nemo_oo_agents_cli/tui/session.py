@@ -137,8 +137,8 @@ def _short_model_name(full_name: str) -> str:
     """Convert a full model registry key to a short display name.
 
     Examples:
-        "aws/anthropic/bedrock-claude-sonnet-4-5-v1" → "sonnet-4-5"
-        "openai/gpt-4o" → "gpt-4o"
+        "claude-sonnet-4-5" → "sonnet-4-5"
+        "gpt-4o" → "gpt-4o"
     """
     part = full_name.split("/")[-1]
     part = part.replace("bedrock-claude-", "").replace("bedrock-", "").replace("claude-", "")

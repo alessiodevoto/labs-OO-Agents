@@ -1,112 +1,289 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for model registry."""
+"""Tests for YAML-based model registry."""
 
-from unifiedllm import MODELS, get_llm_client
+import textwrap
+
+import pytest
+
+from unifiedllm import MODELS, CompletionClient, get_llm_client, reload_registry
 
 
-class TestGetLlmClientBasics:
-    """Basic tests for get_llm_client function."""
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    """Reset the registry cache before and after each test."""
+    reload_registry()
+    yield
+    reload_registry()
+
+
+class TestEmptyDefaultRegistry:
+    """The registry ships empty; public models rely on litellm's built-in routing."""
+
+    def test_registry_empty_by_default(self):
+        """Without UNIFIEDLLM_CONFIG or CWD config, the registry is empty."""
+        assert MODELS == {}
+
+
+class TestGetLlmClient:
+    """Tests for get_llm_client() function."""
 
     def test_returns_completion_client(self):
         """get_llm_client should return a CompletionClient."""
-        from unifiedllm import CompletionClient
-
-        llm = get_llm_client("azure/openai/gpt-5-mini")
+        llm = get_llm_client("gpt-4o-mini")
         assert isinstance(llm, CompletionClient)
 
-    def test_context_window_accessible(self):
-        """get_llm_client result should have context_window property."""
-        llm = get_llm_client("azure/openai/gpt-5-mini")
-        assert llm.context_window is not None
-        assert llm.context_window > 0
+    def test_unknown_model_passes_through(self):
+        """Unknown model names should pass through to CompletionClient directly."""
+        llm = get_llm_client("some-unknown-model-xyz")
+        assert llm.model == "some-unknown-model-xyz"
 
-
-class TestModelsRegistry:
-    """Tests for the MODELS registry dict."""
-
-    def test_has_entries(self):
-        """MODELS should have model configurations."""
-        assert len(MODELS) > 0
-        assert "azure/openai/gpt-5-mini" in MODELS
-
-    def test_all_models_have_context_window(self):
-        """All models should have context_window defined."""
-        for model_name, config in MODELS.items():
-            assert "context_window" in config, f"{model_name} missing context_window"
-            assert config["context_window"] > 0, f"{model_name} has invalid context_window"
-
-    def test_context_windows_reasonable(self):
-        """Context windows should be within reasonable bounds."""
-        for model_name, config in MODELS.items():
-            cw = config["context_window"]
-            # Minimum 1K, maximum 2M (for Gemini models)
-            assert 1_000 <= cw <= 2_000_000, f"{model_name} has unreasonable context_window: {cw}"
-
-
-class TestParameterOverrides:
-    """Tests for parameter override behavior."""
-
-    def test_basic_overrides(self):
-        """get_llm_client should accept parameter overrides."""
-        llm = get_llm_client("azure/openai/gpt-5-mini", max_tokens=100, temperature=0.5)
-        assert llm.config.get("max_tokens") == 100
-        assert llm.config.get("temperature") == 0.5
-
-    def test_override_takes_precedence_over_config(self):
-        """User overrides should take precedence over model config defaults."""
-        # Nemotron-3-Nano has temperature=0.7 in config
-        llm = get_llm_client(
-            "nvidia/nvidia/Nemotron-3-Nano-30B-A3B",
-            temperature=0.9,
+    def test_registry_model_uses_model_name(self, tmp_path, monkeypatch):
+        """Registry model should use the model_name from config."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+        """)
         )
-        assert llm.config.get("temperature") == 0.9
+        reload_registry()
+        llm = get_llm_client("my-alias")
+        assert llm.model == "openai/my-org/my-model"
 
-    def test_config_defaults_used_when_no_override(self):
-        """Model config defaults should be used when no override provided."""
-        # Nemotron-3-Nano has temperature=0.7 and top_p=0.7 in config
-        llm = get_llm_client("nvidia/nvidia/Nemotron-3-Nano-30B-A3B")
-        assert llm.config.get("temperature") == 0.7
-        assert llm.config.get("top_p") == 0.7
+    def test_overrides_take_precedence(self):
+        """User overrides should take precedence over registry defaults."""
+        llm = get_llm_client("gpt-4o-mini", temperature=0.9, max_tokens=100)
+        assert llm.config.get("temperature") == 0.9
+        assert llm.config.get("max_tokens") == 100
+
+    def test_drop_params_default_true(self):
+        """drop_params should default to True."""
+        llm = get_llm_client("gpt-4o-mini")
+        assert llm.config.get("drop_params") is True
+
+    def test_registry_hit_logs_info(self, tmp_path, monkeypatch, caplog):
+        """Registry hits should be logged at INFO level for user visibility."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+                api_base: https://example.com/v1
+        """)
+        )
+        reload_registry()
+
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="unifiedllm.registry"):
+            get_llm_client("my-alias")
+        assert "registry hit" in caplog.text.lower()
 
 
 class TestApiKeyHandling:
     """Tests for API key environment variable handling."""
 
-    def test_api_key_from_environment(self, monkeypatch):
-        """API key should be read from environment variable."""
-        test_key = "test-api-key-12345"
-        monkeypatch.setenv("NVIDIA_INTERNAL_API_KEY", test_key)
+    def test_api_key_from_env(self, tmp_path, monkeypatch):
+        """API key should be read from the env var specified in config."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              test-keyed-model:
+                model_name: test-model
+                api_key_env: MY_TEST_KEY
+        """)
+        )
+        monkeypatch.setenv("MY_TEST_KEY", "test-key-abc")
+        reload_registry()
+        llm = get_llm_client("test-keyed-model")
+        assert llm.config.get("api_key") == "test-key-abc"
 
-        llm = get_llm_client("azure/openai/gpt-5-mini")
-        assert llm.config.get("api_key") == test_key
-
-    def test_api_key_missing_gracefully_handled(self, monkeypatch):
+    def test_missing_api_key_handled_gracefully(self, tmp_path, monkeypatch):
         """Missing API key should not crash get_llm_client."""
-        # Ensure the env var is not set
-        monkeypatch.delenv("NVIDIA_INTERNAL_API_KEY", raising=False)
-
-        # Should not raise
-        llm = get_llm_client("azure/openai/gpt-5-mini")
-        # api_key should be None or not in config
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              test-keyed-model:
+                model_name: test-model
+                api_key_env: NONEXISTENT_KEY
+        """)
+        )
+        monkeypatch.delenv("NONEXISTENT_KEY", raising=False)
+        reload_registry()
+        llm = get_llm_client("test-keyed-model")
         assert llm.config.get("api_key") is None
 
-    def test_model_specific_api_key_env(self, monkeypatch):
-        """Models can specify different API key environment variables."""
-        # Claude reasoning models use the standard NVIDIA_INTERNAL_API_KEY
-        test_key = "internal-api-key-xyz"
-        monkeypatch.setenv("NVIDIA_INTERNAL_API_KEY", test_key)
-
-        llm = get_llm_client("aws/anthropic/claude-haiku-4-5-v1-reasoning-high")
-        assert llm.config.get("api_key") == test_key
+    def test_unknown_model_no_api_key_env(self):
+        """Unknown models should not attempt to read an env var."""
+        llm = get_llm_client("totally-made-up-model")
+        assert llm.config.get("api_key") is None
 
 
-class TestUnknownModel:
-    """Tests for handling unknown models."""
+class TestConfigLayering:
+    """Tests for YAML config file layering."""
 
-    def test_unknown_model_still_works(self):
-        """Unknown model names should still create a client with defaults."""
-        # This allows using models not in the registry
-        llm = get_llm_client("some/unknown/model")
-        # Should use default endpoint
-        assert llm.config.get("api_base") is not None
+    def test_cwd_override(self, tmp_path, monkeypatch):
+        """llm_config.yaml in CWD should populate the registry."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              my-custom-model:
+                model_name: openai/my-custom-model
+                api_base: https://my-endpoint.example.com/v1
+                api_key_env: MY_API_KEY
+                context_window: 128000
+        """)
+        )
+
+        registry = reload_registry()
+        assert "my-custom-model" in registry
+        assert registry["my-custom-model"]["api_base"] == "https://my-endpoint.example.com/v1"
+
+    def test_null_removes_model(self, tmp_path, monkeypatch):
+        """Setting a model to null in a later layer should remove it."""
+        env_config = tmp_path / "env.yaml"
+        env_config.write_text(
+            textwrap.dedent("""\
+            models:
+              removable:
+                model_name: removable
+        """)
+        )
+        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(env_config))
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              removable: null
+        """)
+        )
+
+        registry = reload_registry()
+        assert "removable" not in registry
+
+    def test_env_var_config(self, tmp_path, monkeypatch):
+        """UNIFIEDLLM_CONFIG env var should add extra config files."""
+        extra_config = tmp_path / "extra.yaml"
+        extra_config.write_text(
+            textwrap.dedent("""\
+            models:
+              extra-model:
+                model_name: openai/extra-model
+                api_base: https://extra.example.com/v1
+                context_window: 64000
+        """)
+        )
+        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(extra_config))
+
+        registry = reload_registry()
+        assert "extra-model" in registry
+        assert registry["extra-model"]["context_window"] == 64000
+
+    def test_cwd_wins_over_env(self, tmp_path, monkeypatch):
+        """CWD config should take precedence over UNIFIEDLLM_CONFIG."""
+        monkeypatch.chdir(tmp_path)
+
+        env_config = tmp_path / "env_config.yaml"
+        env_config.write_text(
+            textwrap.dedent("""\
+            models:
+              test-model:
+                model_name: from-env
+                context_window: 1000
+        """)
+        )
+        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(env_config))
+
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              test-model:
+                model_name: from-cwd
+                context_window: 2000
+        """)
+        )
+
+        registry = reload_registry()
+        assert registry["test-model"]["model_name"] == "from-cwd"
+        assert registry["test-model"]["context_window"] == 2000
+
+    def test_multiple_env_configs(self, tmp_path, monkeypatch):
+        """UNIFIEDLLM_CONFIG should support comma-separated paths."""
+        config1 = tmp_path / "config1.yaml"
+        config1.write_text(
+            textwrap.dedent("""\
+            models:
+              model-a:
+                model_name: model-a
+        """)
+        )
+
+        config2 = tmp_path / "config2.yaml"
+        config2.write_text(
+            textwrap.dedent("""\
+            models:
+              model-b:
+                model_name: model-b
+        """)
+        )
+
+        monkeypatch.setenv("UNIFIEDLLM_CONFIG", f"{config1},{config2}")
+        registry = reload_registry()
+        assert "model-a" in registry
+        assert "model-b" in registry
+
+    def test_missing_env_config_warned(self, monkeypatch, caplog):
+        """Non-existent paths in UNIFIEDLLM_CONFIG should log a warning."""
+        monkeypatch.setenv("UNIFIEDLLM_CONFIG", "/nonexistent/path.yaml")
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="unifiedllm.registry"):
+            reload_registry()
+        assert "does not exist" in caplog.text
+
+
+class TestReloadRegistry:
+    """Tests for reload_registry() function."""
+
+    def test_reload_picks_up_changes(self, tmp_path, monkeypatch):
+        """reload_registry() should pick up newly created config files."""
+        monkeypatch.chdir(tmp_path)
+
+        registry1 = reload_registry()
+        assert "dynamic-model" not in registry1
+
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              dynamic-model:
+                model_name: dynamic-model
+        """)
+        )
+
+        registry2 = reload_registry()
+        assert "dynamic-model" in registry2
+
+    def test_reload_updates_in_place(self, tmp_path, monkeypatch):
+        """Callers holding a reference to MODELS should see reloaded contents."""
+        monkeypatch.chdir(tmp_path)
+        original_ref = MODELS
+
+        (tmp_path / "llm_config.yaml").write_text(
+            textwrap.dedent("""\
+            models:
+              new-model:
+                model_name: new-model
+        """)
+        )
+        reload_registry()
+
+        # Same dict object, new contents
+        assert MODELS is original_ref
+        assert "new-model" in original_ref

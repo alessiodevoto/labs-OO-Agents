@@ -23,12 +23,12 @@ from pydantic import BaseModel
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.media import Image
 from nemo_oo_agents.strategies import PredictStrategy
-from unifiedllm.registry import get_llm_client
+from unifiedllm import get_llm_client
 
 load_dotenv(override=True)
 
-# Vision-capable model
-llm = get_llm_client("azure/openai/gpt-5.2")
+# Vision-capable model (any litellm model name works)
+llm = get_llm_client("gpt-4o")
 
 ASSETS = Path(__file__).parent.parent / "assets"
 
