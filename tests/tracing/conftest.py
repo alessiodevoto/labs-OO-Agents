@@ -22,7 +22,7 @@ def reset_tracing_module_state():
     Tests need to reset this to verify behaviour in isolation.
     """
     import nemo_oo_agents.tracing as module
-    from nemo_oo_agents.tracing._session import _current_session
+    from nemo_oo_agents.tracing._session import set_session
 
     # Shutdown provider if any
     if module._provider is not None:
@@ -35,8 +35,8 @@ def reset_tracing_module_state():
     module._probe_failed = False
     module._hooks = None
 
-    # Reset session ContextVar
-    _current_session.set(None)
+    # Clear session in the OTel context
+    set_session(None)
 
     # Reset instrumentation hooks ContextVar (set by enable_tracing / set_hooks)
     with contextlib.suppress(ImportError):

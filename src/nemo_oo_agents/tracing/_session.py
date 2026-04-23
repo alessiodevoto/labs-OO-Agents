@@ -1,29 +1,54 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""ContextVar-based session management for exporter-agnostic session routing.
+"""Session-id propagation, backed by the OpenTelemetry context.
 
-All exporters see the same session.id via the SessionSpanProcessor, which reads
-the ContextVar and stamps it on every span as a span attribute.
+``set_session()`` writes ``session.id`` into the current OTel context.
+Two things then read from that one source of truth:
+
+1. **OpenInference instrumentations** (``OITracer`` used by
+   ``LiteLLMInstrumentor`` and others) — at span creation, they call
+   ``get_attributes_from_context()`` and merge the value into the
+   span's initial attribute dict. This is what makes
+   litellm's ``acompletion`` spans land in the correct session.
+2. **Our own hooks** — :class:`SessionSpanProcessor` reads the same
+   OTel context at ``on_start`` and stamps ``session.id`` on spans
+   created by the plain SDK tracer (framework hooks like
+   ``method.respond``, ``generation``, ``code_execution``,
+   ``context_snapshot``) which otherwise have no OpenInference layer
+   to consult the context on their behalf.
+
+OTel context is a per-task ``ContextVar`` under the hood, so each
+asyncio task gets its own value. Concurrent multi-session callers
+(``--parallel N`` eval runs, multiple agents in one process) keep
+per-task attribution without any extra bookkeeping.
 """
 
-from contextvars import ContextVar
+from opentelemetry import context as otel_context
+from openinference.semconv.trace import SpanAttributes
 
-_current_session: ContextVar[str | None] = ContextVar("nemo_oo_agents_session", default=None)
+_KEY = SpanAttributes.SESSION_ID
 
 
 def set_session(session_id: str | None) -> None:
     """Set the session ID for the current async context.
 
-    All spans created in this context will carry ``session.id`` as a span attribute.
-    Every exporter sees the correct value:
+    All spans created in this context will carry ``session.id`` as a
+    span attribute. Writes to the OpenTelemetry context so OpenInference
+    instrumentations pick it up automatically at span creation, and
+    our :class:`SessionSpanProcessor` picks it up at ``on_start``.
 
-    - **JSONL exporter**: routes spans to ``{trace_dir}/{session_id}.jsonl``
-    - **OTLP exporters**: ``session.id`` is a span attribute -- collectors group correctly
-    - **Console exporter**: prints ``session.id`` in the span output
+    The returned ``attach()`` token is intentionally not kept — the
+    value persists for the rest of this task, same semantics as a
+    bare ``ContextVar.set()``. Pass ``None`` to clear.
     """
-    _current_session.set(session_id)
+    value = "" if session_id is None else session_id
+    new_ctx = otel_context.set_value(_KEY, value, otel_context.get_current())
+    otel_context.attach(new_ctx)
 
 
 def get_session() -> str | None:
-    """Get the current session ID for this async context."""
-    return _current_session.get()
+    """Get the current session ID for this async context (``None`` if unset)."""
+    value = otel_context.get_value(_KEY)
+    if not value:
+        return None
+    return str(value)
