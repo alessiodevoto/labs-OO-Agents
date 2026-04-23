@@ -7,9 +7,9 @@
 #
 # Requires the same pre-built per-instance SIF files as the baseline run.
 # Pre-pull SIFs with:
-#   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench
+#   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench_all
 #
-# Run (cached-SIF subset, 267 tasks):
+# Run (500 tasks — requires SIF cache from ~/3p/sif_cache):
 #   NEMO_OO_AGENTS_GIT_URL="..." harbor run --config util/harbor/swebench_opt1.yaml
 
 jobs_dir: /tmp/harbor_jobs/swebench_opt1
@@ -37,4 +37,4 @@ agents:
       agent_type: swebench/opt1
 
 datasets:
-  - path: /localhome/local-rcabral/nemo_oo_agents/.worktrees/gl-24/util/harbor/tasks/swebench_cached
+  - path: util/harbor/tasks/swebench_all

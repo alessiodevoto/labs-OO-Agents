@@ -8,7 +8,7 @@
 #   1. apptainer installed + AppArmor userns allowed (see util/harbor/README.md)
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
 #   3. SIF files in ~/3p/sif_cache (build via util/harbor/build_terminal_bench_sifs.py)
-#   4. Task dirs in util/harbor/tasks/terminal_bench_all (241 tasks)
+#   4. Task dirs in util/harbor/tasks/terminal_bench (241 tasks)
 #   5. Set env vars:
 #        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
 #        export ANTHROPIC_API_KEY="sk-ant-..."
@@ -22,7 +22,7 @@ timeout_multiplier: 1.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 1   # Run 1 at a time; SIF pulls can be slow
+  n_concurrent_trials: 4
   quiet: false
 
 environment:
@@ -42,4 +42,4 @@ agents:
       agent_type: react-baseline
 
 datasets:
-  - path: util/harbor/tasks/terminal_bench_all
+  - path: util/harbor/tasks/terminal_bench

@@ -7,19 +7,17 @@
 #
 #   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench
 #
-# or, for the 5-task smoke test subset:
+# or, for a 5-task smoke test:
 #
 #   python util/harbor/pull_swebench_sifs.py util/harbor/tasks/swebench_smoke
-#
-# Blocks: gl-13 (shared SIF cache), gl-25 (5-task smoke test)
 #
 # Prerequisites:
 #   1. apptainer installed (version >= 1.3)
 #   2. Harbor installed: uv pip install -e 3p/harbor-nemo
 #   3. SWE-bench tasks generated via the Harbor adapter:
 #        cd 3p/harbor/adapters/swebench
-#        uv run python run_adapter.py --task-dir /path/to/tasks/swebench
-#      For the 5-task smoke test, generate just 5 instances:
+#        uv run python run_adapter.py --task-dir util/harbor/tasks/swebench_all
+#      For a 5-task smoke test, generate just 5 instances:
 #        uv run python run_adapter.py --instance-id astropy__astropy-12907 \
 #          --task-dir util/harbor/tasks/swebench_smoke
 #   4. SIF files pre-pulled into ~/3p/sif_cache (see pull_swebench_sifs.py)
@@ -27,13 +25,12 @@
 #        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
 #        export ANTHROPIC_API_KEY="sk-ant-..."
 #
-# Run (5-task smoke test):
+# Smoke test (5 tasks):
 #   harbor run --config util/harbor/swebench_baseline.yaml \
 #     --path util/harbor/tasks/swebench_smoke
 #
-# Run (all 500 tasks — requires full SIF cache from gl-13):
-#   harbor run --config util/harbor/swebench_baseline.yaml \
-#     --path util/harbor/tasks/swebench
+# Run (all 500 tasks):
+#   harbor run --config util/harbor/swebench_baseline.yaml
 
 jobs_dir: /tmp/harbor_jobs/swebench_baseline
 n_attempts: 1
@@ -66,6 +63,6 @@ agents:
       agent_type: swebench/basic  # uses SWEBenchBasicAgent with /testbed env context (gl-64)
 
 datasets:
-  # 5-task smoke-test set (astropy, django, matplotlib, seaborn, flask).
-  # Generate with pull_swebench_sifs.py before running.
-  - path: util/harbor/tasks/swebench_smoke
+  # Full SWE-bench Verified set (500 tasks).
+  # SIF cache: rsync from ~/3p/sif_cache (or from Alex's Lustre share — see README).
+  - path: util/harbor/tasks/swebench_all
