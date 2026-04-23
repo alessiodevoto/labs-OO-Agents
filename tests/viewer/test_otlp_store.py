@@ -716,6 +716,8 @@ class TestMigrateV1ToV2:
         assert sessions[0]["id"] == "s2"
         # No eval fields → no eval key in dict
         assert "eval" not in sessions[0]
+
+
 # ---------------------------------------------------------------------------
 # journal v2 → v3 migration (input_hashes + msg_content → input_skeleton + blocks)
 # ---------------------------------------------------------------------------
@@ -815,10 +817,9 @@ class TestJournalV2ToV3Migration:
                 "output_messages": [],
             }
         )
-        row = store._get_db().execute(
-            "SELECT call_id FROM llm_calls WHERE call_id='c1'"
-        ).fetchone()
+        row = store._get_db().execute("SELECT call_id FROM llm_calls WHERE call_id='c1'").fetchone()
         assert row is not None
+
 
 # ---------------------------------------------------------------------------
 # Startup lock check
@@ -836,9 +837,7 @@ class TestStartupLockCheck:
         # Should not raise.
         store.init_db()
 
-    def test_init_db_raises_when_another_writer_holds_the_lock(
-        self, tmp_path, monkeypatch
-    ):
+    def test_init_db_raises_when_another_writer_holds_the_lock(self, tmp_path, monkeypatch):
         db_path = tmp_path / "locked.db"
         monkeypatch.setattr(store, "DB_PATH", db_path)
         monkeypatch.setattr(store, "_db", None)
@@ -857,4 +856,3 @@ class TestStartupLockCheck:
         finally:
             blocker.execute("ROLLBACK")
             blocker.close()
-

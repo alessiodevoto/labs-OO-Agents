@@ -325,21 +325,16 @@ def init_db() -> int:
         CREATE INDEX IF NOT EXISTS idx_annotations_session ON annotations(session_id);
         CREATE INDEX IF NOT EXISTS idx_annotations_span ON annotations(session_id, span_id);
 
-        CREATE TABLE IF NOT EXISTS msg_content (
-            hash TEXT PRIMARY KEY,
-            msg  TEXT NOT NULL
-        );
-
         CREATE TABLE IF NOT EXISTS llm_calls (
-            call_id       TEXT PRIMARY KEY,
-            session_id    TEXT NOT NULL,
-            span_id       TEXT,
-            model         TEXT,
-            ts_start      REAL,
-            ts_end        REAL,
-            input_hashes  TEXT NOT NULL,
-            output_hashes TEXT NOT NULL,
-            tokens        TEXT
+            call_id          TEXT PRIMARY KEY,
+            session_id       TEXT NOT NULL,
+            span_id          TEXT,
+            model            TEXT,
+            ts_start         REAL,
+            ts_end           REAL,
+            input_skeleton   TEXT NOT NULL,
+            output_messages  TEXT NOT NULL,
+            tokens           TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
@@ -1366,51 +1361,23 @@ def list_tags() -> list[dict[str, Any]]:
 
 
 def ingest_journal_messages(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Upsert a batch of content-addressed messages.
+    """Accept a batch of content-addressed messages (v2 compat).
 
-    Each item must have ``"h"`` (hash string) and ``"msg"`` (message dict).
-    Already-stored hashes are silently skipped (INSERT OR IGNORE).
-    Returns ``{"stored": N}`` where N is the number of newly inserted rows.
+    Journal v3 stores messages inline in ``llm_calls.input_skeleton`` /
+    ``output_messages``, so the separate ``msg_content`` table is gone.
+    This endpoint is kept for backward-compatible clients that still POST
+    messages; it simply acknowledges them without persisting.
 
-    Called from the single-writer executor thread via main.py.
+    Returns ``{"stored": 0}`` unconditionally.
     """
-    if not items:
-        return {"stored": 0}
-    db = _get_write_db()
-    rows = []
-    for item in items:
-        if "h" not in item or "msg" not in item:
-            continue
-        try:
-            rows.append((item["h"], json.dumps(item["msg"], separators=(",", ":"))))
-        except (TypeError, ValueError) as e:
-            log.warning(
-                "ingest_journal_messages: skipping unserializable item hash=%s: %s",
-                item.get("h"),
-                e,
-            )
-    if not rows:
-        return {"stored": 0}
-    import time as _time
-
-    t0 = _time.monotonic()
-    cur = db.executemany("INSERT OR IGNORE INTO msg_content (hash, msg) VALUES (?, ?)", rows)
-    db.commit()
-    elapsed_ms = (_time.monotonic() - t0) * 1000
-    if elapsed_ms > 200:
-        log.warning(
-            "[journal_messages] sqlite commit took %.0fms  rows=%d",
-            elapsed_ms,
-            len(rows),
-        )
-    return {"stored": cur.rowcount}
+    return {"stored": 0}
 
 
 def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
     """Upsert a single LLM call record.
 
     Expected keys: ``call_id``, ``session_id``, ``model``, ``ts_start``,
-    ``ts_end``, ``input_hashes`` (list), ``output_hashes`` (list),
+    ``ts_end``, ``input_skeleton`` (list), ``output_messages`` (list),
     ``tokens`` (dict or None), ``span_id`` (str or None).
 
     Called from the single-writer executor thread via main.py.
@@ -1422,8 +1389,8 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
 
     db = _get_write_db()
     try:
-        input_hashes_json = json.dumps(call.get("input_hashes", []), separators=(",", ":"))
-        output_hashes_json = json.dumps(call.get("output_hashes", []), separators=(",", ":"))
+        input_skeleton_json = json.dumps(call.get("input_skeleton", []), separators=(",", ":"))
+        output_messages_json = json.dumps(call.get("output_messages", []), separators=(",", ":"))
         tokens_json = (
             json.dumps(call["tokens"], separators=(",", ":")) if call.get("tokens") else None
         )
@@ -1441,7 +1408,7 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
         """
         INSERT OR REPLACE INTO llm_calls
             (call_id, session_id, span_id, model, ts_start, ts_end,
-             input_hashes, output_hashes, tokens)
+             input_skeleton, output_messages, tokens)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -1451,8 +1418,8 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
             call.get("model", ""),
             call.get("ts_start"),
             call.get("ts_end"),
-            input_hashes_json,
-            output_hashes_json,
+            input_skeleton_json,
+            output_messages_json,
             tokens_json,
         ),
     )
@@ -1491,8 +1458,8 @@ def _resolve_msg(h: str, msg_by_hash: dict[str, dict]) -> dict | None:
 def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     """Return all LLM call records for a session, ordered by start time.
 
-    Each record includes ``input_messages`` and ``output_messages`` — the
-    fully reconstructed message dicts (looked up from msg_content by hash).
+    Each record includes ``input_messages`` and ``output_messages`` —
+    stored inline as JSON in the v3 schema (no more hash indirection).
     """
     db = _get_db()
     call_rows = db.execute(
@@ -1503,43 +1470,16 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     if not call_rows:
         return []
 
-    # Collect all hashes referenced by this session's calls
-    all_hashes: set[str] = set()
-    for row in call_rows:
-        all_hashes.update(json.loads(row["input_hashes"]))
-        all_hashes.update(json.loads(row["output_hashes"]))
-
-    msg_by_hash: dict[str, dict] = {}
-    if all_hashes:
-        placeholders = ",".join("?" * len(all_hashes))
-        first_pass = db.execute(
-            f"SELECT hash, msg FROM msg_content WHERE hash IN ({placeholders})",
-            list(all_hashes),
-        ).fetchall()
-        # Expand compound system-message entries to include their block sub-hashes
-        for r in first_pass:
-            m = json.loads(r["msg"])
-            if "_blocks" in m:
-                all_hashes.update(m["_blocks"])
-        placeholders = ",".join("?" * len(all_hashes))
-        msg_rows = db.execute(
-            f"SELECT hash, msg FROM msg_content WHERE hash IN ({placeholders})",
-            list(all_hashes),
-        ).fetchall()
-        msg_by_hash = {r["hash"]: json.loads(r["msg"]) for r in msg_rows}
-
     result = []
     for row in call_rows:
-        input_hashes = json.loads(row["input_hashes"])
-        output_hashes = json.loads(row["output_hashes"])
         rec: dict[str, Any] = {
             "call_id": row["call_id"],
             "session_id": row["session_id"],
             "model": row["model"],
             "ts_start": row["ts_start"],
             "ts_end": row["ts_end"],
-            "input_messages": [_resolve_msg(h, msg_by_hash) for h in input_hashes],
-            "output_messages": [_resolve_msg(h, msg_by_hash) for h in output_hashes],
+            "input_messages": json.loads(row["input_skeleton"]),
+            "output_messages": json.loads(row["output_messages"]),
             "tokens": json.loads(row["tokens"]) if row["tokens"] else None,
         }
         if row["span_id"]:

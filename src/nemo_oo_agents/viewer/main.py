@@ -245,7 +245,9 @@ async def journal_messages_ingest(request: Request):
     loop = asyncio.get_running_loop()
     t0 = time.monotonic()
     try:
-        result = await loop.run_in_executor(_write_executor, otlp_store.ingest_journal_messages, body)
+        result = await loop.run_in_executor(
+            _write_executor, otlp_store.ingest_journal_messages, body
+        )
     except sqlite3.OperationalError as exc:
         log.warning("[journal/messages] SQLite write failed: %s", exc)
         return JSONResponse(
