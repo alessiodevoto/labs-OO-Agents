@@ -346,8 +346,10 @@ upload-test-report:
       artifacts: true
       optional: true  # test-core may be skipped for util/harbor-only MRs; don't error
   script:
-    - test -f test-results.xml && echo "Found test-results.xml" || echo "No test-results.xml found"
-    - test -f coverage.xml && echo "Found coverage.xml" || echo "No coverage.xml found"
+    # Create empty placeholder files if test-core was skipped (e.g. YAML-only MR).
+    # GitLab hangs collecting artifacts when referenced files don't exist.
+    - test -f test-results.xml && echo "Found test-results.xml" || (echo "No test-results.xml found, creating placeholder" && echo '<?xml version="1.0" encoding="UTF-8"?><testsuites/>' > test-results.xml)
+    - test -f coverage.xml && echo "Found coverage.xml" || (echo "No coverage.xml found, creating placeholder" && echo '<?xml version="1.0" encoding="UTF-8"?><coverage/>' > coverage.xml)
   artifacts:
     reports:
       junit: test-results.xml
