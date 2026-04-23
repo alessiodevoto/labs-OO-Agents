@@ -19,10 +19,10 @@ from openinference_instrumentation_nemo_oo_agents._hooks_impl import (
     OpenInferenceHooks,
     _get_active_spans,
 )
-from unifiedllm import LLMResponse, ToolCall
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
+from unifiedllm import LLMResponse, ToolCall
 
 
 class FakeLLM:
