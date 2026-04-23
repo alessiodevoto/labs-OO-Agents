@@ -1,0 +1,44 @@
+# Harbor config for LoCoMo with the ReAct baseline agent (gl-68).
+#
+# Uses the ReAct (Thought/Action/Observation) agent instead of CodeAct.
+# Compare with locomo_baseline.yaml which uses the CodeAct baseline.
+#
+# Prerequisites:
+#   1. apptainer installed
+#   2. Harbor installed: uv pip install -e 3p/harbor-nemo
+#   3. Generate task dirs:
+#        python 3p/harbor-nemo/adapters/locomo/run_adapter.py \
+#            --task-dir util/harbor/tasks/locomo
+#   4. Set env vars:
+#        export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/..."
+#        export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# Run:
+#   harbor run --config util/harbor/locomo_react_baseline.yaml
+
+jobs_dir: /tmp/harbor_jobs/locomo_react_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1   # LoCoMo conversations are large (~16K tokens each)
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: react-baseline
+
+datasets:
+  - path: util/harbor/tasks/locomo
