@@ -14,7 +14,7 @@ not the full accumulated context window.
 Usage (handled automatically by ``enable_tracing()``)::
 
     import litellm
-    from openinference_instrumentation_nemo_oo_agents._litellm_journal import (
+    from nemo_oo_agents.tracing._litellm_journal import (
         MessageJournalCallback,
     )
     litellm.callbacks.append(MessageJournalCallback("http://localhost:5001"))
@@ -76,6 +76,80 @@ def _extract_output_msgs(response_obj: Any) -> list[dict]:
     except Exception as exc:
         log.debug("Failed to extract output messages: %s", exc)
     return msgs
+
+
+def _skeleton_dict_message(msg: dict, blocks: dict[str, str]) -> dict:
+    """Content-address ``msg["content"]`` and each tool_call's ``arguments``.
+
+    Mirrors what :func:`nemo_oo_agents.runtime.actor._build_journal_payload`
+    does for ``RenderedMessage`` inputs, but takes the dict shape returned
+    by :func:`_extract_output_msgs` (and anything else that lands already
+    as an OpenAI-shape message dict).
+
+    Populates *blocks* with ``hash -> content`` for every large field so
+    the caller can feed those to :meth:`MessageJournalCallback._send_new_blocks`
+    for per-session dedup.
+
+    Fields transformed:
+
+    * ``content`` (string) → replaced with ``parts=[{"block_hash": …}]``.
+    * ``tool_calls[i].function.arguments`` (string) → replaced with
+      ``arguments_hash`` under the same ``function`` object.
+    * ``images`` (list[str]) → replaced with ``image_hashes``
+      (list[str]), one hash per image.
+
+    Unchanged fields (``role``, ``tool_call_id``, ``type``, ``name``,
+    message-level extras) are carried through untouched.
+    """
+    entry: dict = {k: v for k, v in msg.items() if k not in ("content", "tool_calls", "images")}
+
+    content = msg.get("content")
+    if content is not None:
+        content_s = str(content)
+        h = _hash_str(content_s)
+        blocks[h] = content_s
+        entry["parts"] = [{"block_hash": h}]
+
+    tcs = msg.get("tool_calls")
+    if tcs:
+        new_tcs: list[dict] = []
+        for tc in tcs:
+            new_tc = dict(tc)
+            fn = dict(new_tc.get("function") or {})
+            args = fn.get("arguments")
+            if args is not None:
+                args_s = str(args)
+                ah = _hash_str(args_s)
+                blocks[ah] = args_s
+                fn.pop("arguments", None)
+                fn["arguments_hash"] = ah
+            new_tc["function"] = fn
+            new_tcs.append(new_tc)
+        entry["tool_calls"] = new_tcs
+
+    images = msg.get("images")
+    if images:
+        image_hashes: list[str] = []
+        for img in images:
+            # Canonical JSON so dict-shape images hash stably regardless
+            # of key order. Non-dict shapes (already a string URL, etc.)
+            # just serialize to themselves.
+            img_s = (
+                json.dumps(img, sort_keys=True, separators=(",", ":"))
+                if not isinstance(img, str)
+                else img
+            )
+            h = _hash_str(img_s)
+            blocks[h] = img_s
+            image_hashes.append(h)
+        entry["image_hashes"] = image_hashes
+
+    return entry
+
+
+def _hash_str(s: str) -> str:
+    """SHA-256 a string the same way ``actor._build_journal_payload`` does."""
+    return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 _LARGE_PAYLOAD_BYTES = 512 * 1024  # 512 KB — warn when payloads get this big
@@ -170,29 +244,36 @@ def _to_ts(t: Any) -> float:
 
 
 class MessageJournalCallback(CustomLogger):
-    """LiteLLM callback that streams messages to a content-addressed journal.
+    """LiteLLM callback that streams skeletons + content-addressed blocks.
 
-    Maintains a per-session in-memory set of already-sent hashes so that
-    each unique message is transmitted at most once per session.
+    Per LLM call:
+
+    1. ``log_pre_api_call`` consumes the journal sideband (populated by
+       the nemo_oo_agents actor's ``_build_journal_payload``) and POSTs
+       any newly-seen blocks (by hash) to ``/v1/journal/blocks``. The
+       skeleton — the wire message list with block refs replaced by
+       hashes — is held until the call completes.
+    2. ``log_success_event`` POSTs the full call record
+       (``{call_id, session_id, skeleton, output_messages, span_id, tokens}``)
+       to ``/v1/journal/calls``. Output messages (assistant replies)
+       are included inline — they're small and one-shot per call.
+
+    Per-session in-memory hash sets avoid retransmitting blocks that
+    were already sent for that session.
     """
 
     def __init__(self, base_url: str) -> None:
         super().__init__()
         base = base_url.rstrip("/")
-        self._messages_url = base + "/v1/journal/messages"
+        self._blocks_url = base + "/v1/journal/blocks"
         self._calls_url = base + "/v1/journal/calls"
         self._base_url = base
-        # session_id -> set of hashes already posted.
-        # NOTE: grows unboundedly in long-running servers with many sessions.
-        # Each session holds O(unique_messages) hash strings (~80 bytes each).
-        # Acceptable for typical eval workloads (<1000 sessions); for persistent
-        # servers consider wrapping in an LRU-bounded structure.
-        self._sent: dict[str, set[str]] = {}
-        # litellm_call_id -> (input_hash_list, span_id | None).
-        # Entries are removed in log_success_event / log_failure_event.
-        # Entries for calls where neither fires (cancelled tasks, internal
-        # litellm crashes) will leak until the callback object is GC'd.
-        self._call_inputs: dict[str, tuple[list[str], str | None]] = {}
+        # session_id -> set of block hashes already posted.
+        # Bounded by number of distinct blocks per session (usually tiny).
+        self._sent_blocks: dict[str, set[str]] = {}
+        # litellm_call_id -> (input_skeleton, span_id | None). Entries
+        # are removed in log_success_event / log_failure_event.
+        self._call_inputs: dict[str, tuple[list[dict], str | None]] = {}
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -202,59 +283,25 @@ class MessageJournalCallback(CustomLogger):
     def _session(self) -> str:
         return get_session() or "unknown"
 
-    def _send_new_messages(self, session_id: str, messages: list[dict]) -> list[str]:
-        """Hash all messages, POST the new ones, return ordered hash list.
+    def _send_new_blocks(self, session_id: str, blocks: dict[str, str]) -> None:
+        """POST any blocks this session hasn't seen yet.
 
-        If the first message is a system message and context block strings are
-        available via the sideband ContextVar, each block is content-addressed
-        individually.  The system message entry in the returned hash list is a
-        compound hash ``{"role": "system", "_blocks": [h1, h2, ...]}`` whose
-        constituent block entries (``{"_block": rendered_str}``) are stored
-        separately.  This reduces storage from O(N × |system|) to
-        O(N × |delta|) for sessions with growing context blocks.
+        Prunes the tracking set to only contain hashes from the current
+        payload so memory stays bounded by the active context size rather
+        than accumulating every hash ever seen in the session.
         """
-        from nemo_oo_agents.tracing._context_sideband import (
-            get_context_blocks,
-            set_context_blocks,
-        )
-
-        # Build (hash, entry) pairs; may expand system message into block entries
-        entries: list[tuple[str, dict]] = []  # goes into hashes / input_hashes
-        extras: list[tuple[str, dict]] = []  # block sub-entries for compound msg
-
-        for i, m in enumerate(messages):
-            if i == 0 and m.get("role") == "system":
-                block_strings = get_context_blocks()
-                if block_strings:
-                    set_context_blocks([])  # consume the sideband
-                    block_hashes = [_hash_msg({"_block": s}) for s in block_strings]
-                    compound: dict = {"role": "system", "_blocks": block_hashes}
-                    entries.append((_hash_msg(compound), compound))
-                    extras = [
-                        (bh, {"_block": bs})
-                        for bh, bs in zip(block_hashes, block_strings, strict=True)
-                    ]
-                    continue
-            entries.append((_hash_msg(m), m))
-
-        hashes = [h for h, _ in entries]
-
+        if not blocks:
+            return
         with self._lock:
-            known = self._sent.setdefault(session_id, set())
-            new: list[dict] = []
-            # Block sub-entries first so they exist before the compound entry
-            for h, m in extras:
-                if h not in known:
-                    known.add(h)
-                    new.append({"h": h, "msg": m})
-            for h, m in entries:
-                if h not in known:
-                    known.add(h)
-                    new.append({"h": h, "msg": m})
-
-        if new:
-            _post_json(self._messages_url, new, session_id=session_id)
-        return hashes
+            known = self._sent_blocks.setdefault(session_id, set())
+            new_entries = [{"hash": h, "content": c} for h, c in blocks.items() if h not in known]
+            # Replace known set with current payload's hashes — old hashes
+            # from collapsed/archived events are forgotten. If they reappear
+            # the viewer handles duplicate POSTs idempotently.
+            known.clear()
+            known.update(blocks.keys())
+        if new_entries:
+            _post_json(self._blocks_url, new_entries, session_id=session_id)
 
     # ------------------------------------------------------------------
     # Sync hooks
@@ -272,13 +319,28 @@ class MessageJournalCallback(CustomLogger):
         return None
 
     def log_pre_api_call(self, model: str, messages: list, kwargs: dict) -> None:
+        from nemo_oo_agents.tracing._context_sideband import (
+            get_journal_payload,
+            set_journal_payload,
+        )
+
         session_id = self._session()
         call_id = kwargs.get("litellm_call_id", "")
-        dicts = [_msg_to_dict(m) for m in messages]
-        hashes = self._send_new_messages(session_id, dicts)
+
+        payload = get_journal_payload()
+        if payload is not None:
+            set_journal_payload(None)  # consume
+            self._send_new_blocks(session_id, payload.blocks)
+            input_skeleton = payload.skeleton
+        else:
+            # No sideband — publish the raw messages as the skeleton
+            # with no block refs. The viewer just uses their content
+            # as-is, matching what the wire shows.
+            input_skeleton = [_msg_to_dict(m) for m in messages]
+
         span_id = self._current_span_id()
         with self._lock:
-            self._call_inputs[call_id] = (hashes, span_id)
+            self._call_inputs[call_id] = (input_skeleton, span_id)
 
     def log_success_event(
         self, kwargs: dict, response_obj: Any, start_time: Any, end_time: Any
@@ -290,15 +352,25 @@ class MessageJournalCallback(CustomLogger):
         if stored is None:
             log.warning(
                 "[MessageJournal] log_success_event fired for call_id=%r with no prior "
-                "log_pre_api_call — input_hashes will be empty (retry or out-of-order event?)",
+                "log_pre_api_call — input_skeleton will be empty (retry or out-of-order event?)",
                 call_id,
             )
-            input_hashes, span_id = [], None
+            input_skeleton, span_id = [], None
         else:
-            input_hashes, span_id = stored
+            input_skeleton, span_id = stored
 
-        output_msgs = _extract_output_msgs(response_obj)
-        output_hashes = self._send_new_messages(session_id, output_msgs)
+        raw_output = _extract_output_msgs(response_obj)
+        # Content-address the output messages too. The assistant's reply
+        # itself doesn't dedup across *different* calls, but a single
+        # reply can already be hundreds of KB when it embeds a large
+        # code block in ``tool_call.arguments`` — routing that body
+        # through the blocks sideband keeps the /v1/journal/calls record
+        # small and re-uses any hash that overlaps with messages the
+        # agent will echo back on subsequent turns.
+        output_blocks: dict[str, str] = {}
+        output_messages = [_skeleton_dict_message(m, output_blocks) for m in raw_output]
+        if output_blocks:
+            self._send_new_blocks(session_id, output_blocks)
 
         usage = getattr(response_obj, "usage", None)
         tokens: dict[str, int] | None = None
@@ -319,8 +391,8 @@ class MessageJournalCallback(CustomLogger):
             "model": kwargs.get("model", ""),
             "ts_start": _to_ts(start_time),
             "ts_end": _to_ts(end_time),
-            "input_hashes": input_hashes,
-            "output_hashes": output_hashes,
+            "input_skeleton": input_skeleton,
+            "output_messages": output_messages,
             "tokens": tokens,
         }
         if span_id:

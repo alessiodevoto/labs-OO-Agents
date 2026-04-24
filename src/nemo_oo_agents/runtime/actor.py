@@ -7,6 +7,7 @@ import asyncio
 import contextvars
 import inspect
 import io
+import json
 import linecache
 import logging
 import re as _re
@@ -491,6 +492,81 @@ def _has_top_level_return(tree: ast.Module) -> bool:
         if finder.found:
             return True
     return False
+
+
+def _build_journal_payload(messages: "list[Any]") -> "Any | None":
+    """Build a :class:`JournalPayload` from a rendered message list.
+
+    Walks each ``RenderedMessage.parts`` (populated by block-aware
+    formatters), hashes every ``BlockPart.content`` with SHA-256, and
+    constructs a skeleton that mirrors the wire message shape but with
+    block references replaced by their hashes. Messages without
+    ``parts`` are carried through as-is (plain ``content``).
+
+    Returns ``None`` if the openinference sideband isn't importable
+    (optional extra).
+    """
+    try:
+        from nemo_oo_agents.tracing._context_sideband import JournalPayload
+    except ImportError:
+        return None
+
+    import hashlib
+
+    blocks: dict[str, Any] = {}
+    skeleton: list[dict[str, Any]] = []
+
+    def _hash(content: str) -> str:
+        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    for msg in messages:
+        role = msg.role
+        # Skip roles that never reach the LLM
+        role_s = role.value if hasattr(role, "value") else str(role)
+        if role_s in ("metadata", "runtime_event"):
+            continue
+
+        entry: dict[str, Any] = {"role": role_s}
+
+        if msg.parts:
+            parts_repr: list[dict[str, Any]] = []
+            for part in msg.parts:
+                if part.kind == "block":
+                    h = _hash(part.content)
+                    blocks[h] = part.content
+                    parts_repr.append({"block_hash": h, "key": part.key})
+                else:  # text
+                    parts_repr.append({"text": part.text})
+            entry["parts"] = parts_repr
+        elif msg.content is not None:
+            entry["content"] = msg.content
+
+        if msg.tool_call is not None:
+            tc = msg.tool_call
+            args = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
+            ah = _hash(args)
+            blocks[ah] = args
+            entry["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments_hash": ah},
+                }
+            ]
+        if msg.tool_call_id is not None:
+            entry["tool_call_id"] = msg.tool_call_id
+        if msg.images:
+            img_hashes = []
+            for img in msg.images:
+                s = json.dumps(img) if isinstance(img, dict) else str(img)
+                h = _hash(s)
+                blocks[h] = s
+                img_hashes.append(h)
+            entry["image_hashes"] = img_hashes
+
+        skeleton.append(entry)
+
+    return JournalPayload(skeleton=skeleton, blocks=blocks)
 
 
 class ActorRuntime:
