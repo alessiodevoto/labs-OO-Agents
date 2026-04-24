@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from trace_explorer import TraceExplorer
+    from nemo_oo_agents.trace_explorer import TraceExplorer
 
 # Type alias for task input: (args, kwargs) tuple for method invocation
 TaskInput = tuple[tuple[Any, ...], dict[str, Any]]

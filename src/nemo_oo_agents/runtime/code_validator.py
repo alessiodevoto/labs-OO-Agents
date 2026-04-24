@@ -512,7 +512,7 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
 
     def _collect_async_methods(self) -> None:
         """Collect names of async methods from agent."""
-        from agentdoc.visibility import is_hidden_method
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_method
 
         agent = self.context.agent
         if not agent:
@@ -614,7 +614,7 @@ class _ClassAssignmentVisitor(ast.NodeVisitor):
             names.add(cls.__name__)
 
         # Class attributes that are themselves classes (sub-agent classes)
-        from agentdoc.visibility import is_hidden_field
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_field
 
         for attr_name in dir(type(agent)):
             if attr_name.startswith("__"):

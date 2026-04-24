@@ -21,7 +21,7 @@ from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.errors import PydanticSchemaGenerationError
 
-from agentdoc import pformat
+from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
 
 
@@ -55,14 +55,14 @@ class ExecutionNamespaceBuilder:
         import typing as _typing
 
         # Start with the agent's defining module globals (module-level imports passthrough).
-        from agentdoc.visibility import filter_module_globals
+        from nemo_oo_agents.agentdoc.visibility import filter_module_globals
 
         agent_module = inspect.getmodule(type(agent))
         namespace: dict[str, Any] = filter_module_globals(agent_module) if agent_module else {}
 
         # Mirror core execute_code symbols.
-        from agentdoc import doc
-        from agentdoc.introspect import methods, variables
+        from nemo_oo_agents.agentdoc import doc
+        from nemo_oo_agents.agentdoc.introspect import methods, variables
         from nemo_oo_agents.decorators import strategy
         from nemo_oo_agents.runtime.pprint import pprint
 
@@ -141,7 +141,7 @@ class GeneratedCodeValidator:
         return errors
 
     def _collect_async_method_names(self, agent: Any) -> set[str]:
-        from agentdoc.visibility import is_hidden_method
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_method
 
         names: set[str] = set()
 

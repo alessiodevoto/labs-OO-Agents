@@ -1439,7 +1439,7 @@ class TestPredictStrategyCreateResponseModel:
     def test_pydantic_model_with_hidden_creates_public_subset(self):
         from typing import Annotated
 
-        from agentdoc import hidden
+        from nemo_oo_agents.agentdoc import hidden
 
         class M(BaseModel):
             public: str
@@ -1494,7 +1494,7 @@ class TestPredictStrategyValidateResponse:
         """When model has hidden fields, validate_response returns original type."""
         from typing import Annotated
 
-        from agentdoc import hidden
+        from nemo_oo_agents.agentdoc import hidden
 
         class M(BaseModel):
             public: str

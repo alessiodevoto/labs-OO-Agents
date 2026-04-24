@@ -59,9 +59,9 @@ check-frontend-build:
   tags:
     - os/linux
   before_script:
-    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - apt-get update -qq && apt-get install -y -qq git
   script:
-    - cd packages/nemo-oo-agents-viewer/frontend-react
+    - cd src/nemo_oo_agents/viewer/frontend-react
     - npm ci --ignore-scripts
     - npm run build
     - |
@@ -77,9 +77,9 @@ check-frontend-build:
     # On MRs: only run when frontend source changes
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/nemo-oo-agents-viewer/frontend-react/src/**/*"
-        - "packages/nemo-oo-agents-viewer/frontend-react/package*.json"
-        - "packages/nemo-oo-agents-viewer/frontend-react/*.config.*"
+        - "src/nemo_oo_agents/viewer/frontend-react/src/**/*"
+        - "src/nemo_oo_agents/viewer/frontend-react/package*.json"
+        - "src/nemo_oo_agents/viewer/frontend-react/*.config.*"
       when: always
     - when: never
 
@@ -133,7 +133,7 @@ check-frontend-build:
 test-core:
   extends: .test-base
   script:
-    - uv run pytest tests/ --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
+    - uv run pytest tests/ --ignore=tests/viewer --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
     - uv cache prune --ci
   coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%/'
   artifacts:
@@ -160,7 +160,7 @@ test-core:
 test-agentdoc:
   extends: .test-base
   script:
-    - uv run pytest packages/agentdoc/tests --junitxml=test-results-agentdoc.xml
+    - uv run pytest tests/agentdoc --junitxml=test-results-agentdoc.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -172,7 +172,7 @@ test-agentdoc:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/agentdoc/**/*"
+        - "src/nemo_oo_agents/agentdoc/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -183,7 +183,7 @@ test-agentdoc:
 test-viewer:
   extends: .test-base
   script:
-    - uv run pytest packages/nemo-oo-agents-viewer/tests --junitxml=test-results-viewer.xml
+    - uv run pytest tests/viewer --junitxml=test-results-viewer.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -195,7 +195,7 @@ test-viewer:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/nemo-oo-agents-viewer/**/*"
+        - "src/nemo_oo_agents/viewer/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -252,7 +252,7 @@ test-unifiedllm:
 test-instrumentation:
   extends: .test-base
   script:
-    - uv run pytest packages/openinference-instrumentation-nemo-oo-agents/tests --junitxml=test-results-instrumentation.xml
+    - uv run pytest tests/tracing --junitxml=test-results-instrumentation.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -264,7 +264,7 @@ test-instrumentation:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/openinference-instrumentation-nemo-oo-agents/**/*"
+        - "src/nemo_oo_agents/tracing/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -275,7 +275,7 @@ test-instrumentation:
 test-mcp:
   extends: .test-base
   script:
-    - uv run pytest packages/mcp-nemo-oo-agents/tests --junitxml=test-results-mcp.xml
+    - uv run pytest tests/test_mcp --junitxml=test-results-mcp.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -287,7 +287,7 @@ test-mcp:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/mcp-nemo-oo-agents/**/*"
+        - "src/nemo_oo_agents/mcp/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -321,7 +321,7 @@ test-benchmarks:
 test-trace-explorer:
   extends: .test-base
   script:
-    - uv run pytest packages/trace_explorer/tests --junitxml=test-results-trace-explorer.xml
+    - uv run pytest tests/trace_explorer --junitxml=test-results-trace-explorer.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -333,7 +333,7 @@ test-trace-explorer:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/trace_explorer/**/*"
+        - "src/nemo_oo_agents/trace_explorer/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"

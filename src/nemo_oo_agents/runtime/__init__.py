@@ -10,7 +10,7 @@ Middleware types are imported directly from ``nemo_oo_agents.runtime.middleware`
     from nemo_oo_agents.runtime.middleware import LLMCallContext, LLMCallMiddleware
 """
 
-from agentdoc import TruncatingStringIO
+from nemo_oo_agents.agentdoc import TruncatingStringIO
 from nemo_oo_agents.config.truncation_config import TruncationConfig
 from nemo_oo_agents.runtime.actor import ActorRuntime
 from nemo_oo_agents.runtime.event_manager import EventManager

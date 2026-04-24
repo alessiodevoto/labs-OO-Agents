@@ -36,9 +36,9 @@ from uuid import uuid4
 from pydantic import BaseModel, PydanticSchemaGenerationError, PydanticUserError, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from agentdoc._structured import format_type as _format_type
 from context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
 from context_blocks.exceptions import BlockSyntaxError
+from nemo_oo_agents.agentdoc._structured import format_type as _format_type
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import (
@@ -237,7 +237,7 @@ class CodeActSession:
 
 def _iter_agent_attrs(agent: Any) -> Iterator[Any]:
     """Yield non-hidden attribute values from an agent (class then instance)."""
-    from agentdoc.visibility import is_hidden_field
+    from nemo_oo_agents.agentdoc.visibility import is_hidden_field
 
     cls = type(agent)
     for name in dir(cls):
@@ -441,7 +441,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         # in its __init__ — which is why `is_hidden_field` is called with the
         # instance (not the class) so the instance-level override is honored.
         # Framework Skills (_-prefixed) are excluded.
-        from agentdoc.visibility import is_hidden_field
+        from nemo_oo_agents.agentdoc.visibility import is_hidden_field
         from nemo_oo_agents.skill import Skill as _Skill
 
         skill_attrs_dict = {
@@ -1994,7 +1994,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         context: dict[str, Any] = {}
 
-        from agentdoc.visibility import filter_module_globals
+        from nemo_oo_agents.agentdoc.visibility import filter_module_globals
 
         filtered = filter_module_globals(agent_module)
 

@@ -183,7 +183,7 @@ class ProFeedbackAgent(Agent, llm=FakeLLMClient()):
     def __init__(self, swebench: Any, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.swebench = swebench
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         tool_doc = (
             "To navigate the repository and modify files, use the following tools:\n\n"
@@ -299,7 +299,7 @@ class SWEBenchProAgent(Agent, llm=FakeLLMClient()):
             ``interface``, ``system_prompt``, ``initial_observation``,
             ``response_format``
         """
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         if "user_message" in task_input:
             # Unified interface: problem_statement + requirements + interface

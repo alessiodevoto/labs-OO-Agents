@@ -11,17 +11,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from openinference_instrumentation_nemo_oo_agents import (
-    get_session,
-    set_session,
-)
-from openinference_instrumentation_nemo_oo_agents._hooks_impl import (
-    OpenInferenceHooks,
-    _get_active_spans,
-)
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
+from nemo_oo_agents.tracing import (
+    get_session,
+    set_session,
+)
+from nemo_oo_agents.tracing._hooks_impl import (
+    OpenInferenceHooks,
+    _get_active_spans,
+)
 from unifiedllm import LLMResponse, ToolCall
 
 
@@ -98,14 +98,15 @@ def setup_tracing(temp_trace_dir):
 
     Returns the hooks instance for tests that need to propagate hooks to child tasks.
     """
-    from openinference_instrumentation_nemo_oo_agents import NemoOOAgentsInstrumentor
-    from openinference_instrumentation_nemo_oo_agents._otlp_file_exporter import (
-        OtlpJsonFileExporter,
-    )
-    from openinference_instrumentation_nemo_oo_agents._session_processor import SessionSpanProcessor
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+    from nemo_oo_agents.tracing import NemoOOAgentsInstrumentor
+    from nemo_oo_agents.tracing._otlp_file_exporter import (
+        OtlpJsonFileExporter,
+    )
+    from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
 
     # Create a fresh exporter for this test's temp directory
     exporter = OtlpJsonFileExporter(temp_trace_dir)

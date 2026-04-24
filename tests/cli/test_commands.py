@@ -331,7 +331,7 @@ async def test_sandbox_disable_already_disabled_output(handler, mock_agent):
 async def test_mcp_command_no_args_output(handler):
     """Test /mcp with no args - shows error."""
     mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp")
 
     assert result.success is False
@@ -343,7 +343,7 @@ async def test_mcp_command_no_args_output(handler):
 async def test_mcp_command_invalid_subcommand_output(handler):
     """Test /mcp with invalid subcommand - shows error."""
     mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp invalid")
 
     assert result.success is False
@@ -356,7 +356,7 @@ async def test_mcp_list_output(handler):
     """Test /mcp list - lists servers."""
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["server1", "server2"]
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp list")
 
         assert result.success is True
@@ -367,7 +367,7 @@ async def test_mcp_list_output(handler):
 async def test_mcp_connect_no_server_output(handler):
     """Test /mcp connect with no server - shows error."""
     mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp connect")
 
     assert result.success is False
@@ -380,7 +380,7 @@ async def test_mcp_connect_not_found_output(handler):
     """Test /mcp connect with non-existent server - shows error."""
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp connect nonexistent")
 
         assert result.success is False
@@ -394,7 +394,7 @@ async def test_mcp_connect_success_output(handler, mock_agent):
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
     mock_mcp_module.MCPManager.create_from_server.return_value = MagicMock()
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp connect server1")
 
         assert result.success is True
@@ -410,7 +410,7 @@ async def test_mcp_disconnect_not_connected_output(handler, mock_agent):
 
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp disconnect server1")
 
     assert result.success is False
@@ -426,7 +426,7 @@ async def test_mcp_disconnect_success_output(handler, mock_agent):
     mcp_cmd._mcp_connections.add("server1")
 
     mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp disconnect server1")
 
     assert result.success is True
@@ -643,7 +643,7 @@ async def test_mcp_list_tableoutput_fields(handler):
     """/mcp list produces a TableOutput with correct title, columns, and rows."""
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["srv-a", "srv-b"]
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp list")
 
     tables = [o for o in result.outputs if isinstance(o, TableOutput)]
@@ -1166,7 +1166,7 @@ async def test_mcp_list_servers_exception_returns_error(handler):
     """/mcp list returns an error if MCPManager.list_servers raises, not a crash."""
     mock_mcp_module = MagicMock()
     mock_mcp_module.MCPManager.list_servers.side_effect = OSError("config file unreadable")
-    with patch.dict("sys.modules", {"mcp_nemo_oo_agents": mock_mcp_module}):
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp list")
 
     assert result.success is False

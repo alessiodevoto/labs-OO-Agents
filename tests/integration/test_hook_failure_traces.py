@@ -11,10 +11,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from openinference_instrumentation_nemo_oo_agents._hooks_impl import OpenInferenceHooks
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.hooks import call_before_hook, set_hooks
+from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
 
 
 class SimpleAgent(Agent):

@@ -4,7 +4,14 @@
 
 import re
 
-from agentdoc import truncating_pformat as truncating_pformat  # noqa: F401 — re-exported for callers
+
+# Lazy import to avoid circular dependency:
+# context_blocks -> nemo_oo_agents.agentdoc -> nemo_oo_agents -> ... -> context_blocks
+def truncating_pformat(*args, **kwargs):  # noqa: F811
+    from nemo_oo_agents.agentdoc import truncating_pformat as _real
+
+    return _real(*args, **kwargs)
+
 
 # Hard character cap applied to pformat output **before** block-level truncation.
 # This is a safety net that prevents OOM when a Python object (e.g. a 10 M-element

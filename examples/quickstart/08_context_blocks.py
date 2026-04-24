@@ -4,7 +4,7 @@
 uv run python examples/quickstart/08_context_blocks.py
 """
 
-from agentdoc import spec
+from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.util.quickstart import *
 
 

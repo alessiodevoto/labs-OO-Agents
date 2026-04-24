@@ -179,7 +179,7 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     # module-level globals + self + framework builtins.
     ns: dict = {}
     try:
-        from agentdoc.visibility import filter_module_globals
+        from nemo_oo_agents.agentdoc.visibility import filter_module_globals
 
         agent_module = inspect.getmodule(type(agent))
         if agent_module is not None:
@@ -189,14 +189,14 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
 
     # Framework builtins (mirrors ActorRuntime.execute_code)
     try:
-        from agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc
 
         ns["doc"] = doc
         ns["help"] = doc
     except Exception:
         pass
     try:
-        from agentdoc import pprint
+        from nemo_oo_agents.agentdoc import pprint
 
         ns["pprint"] = pprint
     except Exception:
@@ -674,7 +674,7 @@ class Session:
         # aiohttp ``ClientSession`` reprs (~1.1KB — connector/base_url/auth
         # all land in the middle) without letting a pathologically huge
         # transport (SSL state, large buffers) swamp the scrollback.
-        from agentdoc import truncating_pformat
+        from nemo_oo_agents.agentdoc import truncating_pformat
 
         _known = ("message", "exception", "task", "future", "source_traceback")
         for k, v in context.items():
@@ -754,7 +754,7 @@ class Session:
         # Start a fresh trace for the new session so it gets its own .jsonl file.
         # Use the first 8 chars of the SQLite session UUID to correlate trace↔storage.
         try:
-            from openinference_instrumentation_nemo_oo_agents import set_session
+            from nemo_oo_agents.tracing import set_session
 
             from .session_manager import _make_trace_session_name
 

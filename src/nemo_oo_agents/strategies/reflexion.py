@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from agentdoc import truncating_pformat
+from nemo_oo_agents.agentdoc import truncating_pformat
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Feedback

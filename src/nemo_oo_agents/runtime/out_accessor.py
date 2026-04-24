@@ -20,7 +20,7 @@ Example in LLM-generated code:
 
 from typing import TYPE_CHECKING, Any
 
-from agentdoc import truncating_pformat
+from nemo_oo_agents.agentdoc import truncating_pformat
 from nemo_oo_agents.events import PythonOutput
 
 if TYPE_CHECKING:

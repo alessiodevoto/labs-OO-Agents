@@ -229,7 +229,7 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             # Enable NeMo OO Agents's own tracing first -- this creates the TracerProvider
             # with full resource metadata (including tags) attached.
             try:
-                from openinference_instrumentation_nemo_oo_agents import enable_tracing
+                from nemo_oo_agents.tracing import enable_tracing
 
                 enable_tracing(
                     extra_resource_attrs={"tags": ["nat_integration"]},

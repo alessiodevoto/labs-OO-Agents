@@ -122,7 +122,7 @@ async def bootstrap(
     _set_trace_session = None  # deferred: called once _session_id is known
     if not config.no_trace:
         try:
-            from openinference_instrumentation_nemo_oo_agents import (
+            from nemo_oo_agents.tracing import (
                 enable_tracing,
                 exporters,
                 set_session,

@@ -23,15 +23,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agentdoc import pformat as _pformat
 from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents.agentdoc import pformat as _pformat
 from nemo_oo_agents.strategies import PredictStrategy
 
 from .model_factory import client as model_client
 from .models import ExecutionResult, ScoreResult, ScoringContext
 
 if TYPE_CHECKING:
-    from trace_explorer import TraceExplorer
+    from nemo_oo_agents.trace_explorer import TraceExplorer
 
 
 def _client_from_spec(spec):
@@ -112,7 +112,7 @@ def scorer_from_spec(spec) -> ScorerConfig:
 
 def _iter_all_sessions(trace: TraceExplorer):
     """Yield all AgentSessions depth-first, including nested children."""
-    from trace_explorer.explorer import AgentSession as _AgentSession
+    from nemo_oo_agents.trace_explorer.explorer import AgentSession as _AgentSession
 
     def _recurse(session: _AgentSession):
         yield session
@@ -125,7 +125,7 @@ def _iter_all_sessions(trace: TraceExplorer):
 
 def _count_tokens(trace: TraceExplorer) -> tuple[int, int, int] | None:
     """Sum token counts across all LLM turns in the trace."""
-    from trace_explorer.explorer import LLMTurn as _LLMTurn
+    from nemo_oo_agents.trace_explorer.explorer import LLMTurn as _LLMTurn
 
     input_t = output_t = total_t = 0
     for session in _iter_all_sessions(trace):
@@ -143,7 +143,7 @@ def _get_code_executions(
     trace: TraceExplorer, *, skip_prefill: bool = False
 ) -> list[dict[str, Any]]:
     """Extract all code executions from all sessions in the trace."""
-    from trace_explorer.explorer import ExecutionTurn as _ExecutionTurn
+    from nemo_oo_agents.trace_explorer.explorer import ExecutionTurn as _ExecutionTurn
 
     executions = []
     for session in _iter_all_sessions(trace):
@@ -171,8 +171,8 @@ def _get_code(trace: TraceExplorer, *, skip_prefill: bool = False) -> str | None
     For PurePython: returns the LLM response text.
     Returns None if no meaningful code was executed (e.g. direct answer via return_result).
     """
-    from trace_explorer.explorer import ExecutionTurn as _ExecutionTurn
-    from trace_explorer.explorer import LLMTurn as _LLMTurn
+    from nemo_oo_agents.trace_explorer.explorer import ExecutionTurn as _ExecutionTurn
+    from nemo_oo_agents.trace_explorer.explorer import LLMTurn as _LLMTurn
 
     code_blocks: list[str] = []
     direct_output: str | None = None
@@ -1000,7 +1000,7 @@ class LLMJudgeScorer:
         agent_session = None
         judge_session = None
         try:
-            from openinference_instrumentation_nemo_oo_agents import get_session, set_session
+            from nemo_oo_agents.tracing import get_session, set_session
 
             agent_session = get_session()
             judge_session = f"{agent_session}_judge" if agent_session else f"{ctx.task_id}_judge"
@@ -1032,7 +1032,7 @@ class LLMJudgeScorer:
         # Switch back to agent session
         if agent_session:
             try:
-                from openinference_instrumentation_nemo_oo_agents import set_session
+                from nemo_oo_agents.tracing import set_session
 
                 set_session(agent_session)
             except Exception:
@@ -1040,7 +1040,7 @@ class LLMJudgeScorer:
 
         # Flush judge traces
         try:
-            from openinference_instrumentation_nemo_oo_agents import flush_traces
+            from nemo_oo_agents.tracing import flush_traces
 
             flush_traces()
         except Exception:
@@ -1184,7 +1184,7 @@ class LLMMethodologyScorer:
         agent_session = None
         judge_session = None
         try:
-            from openinference_instrumentation_nemo_oo_agents import get_session, set_session
+            from nemo_oo_agents.tracing import get_session, set_session
 
             agent_session = get_session()
             judge_session = (
@@ -1218,7 +1218,7 @@ class LLMMethodologyScorer:
         # Switch back to agent session
         if agent_session:
             try:
-                from openinference_instrumentation_nemo_oo_agents import set_session
+                from nemo_oo_agents.tracing import set_session
 
                 set_session(agent_session)
             except Exception:
@@ -1226,7 +1226,7 @@ class LLMMethodologyScorer:
 
         # Flush judge traces
         try:
-            from openinference_instrumentation_nemo_oo_agents import flush_traces
+            from nemo_oo_agents.tracing import flush_traces
 
             flush_traces()
         except Exception:

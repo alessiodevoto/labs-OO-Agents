@@ -12,10 +12,12 @@ dependencies = [
     "click>=8.1.0",
     "pydantic>=2.5.0",
     "unifiedllm",
-    "agentdoc",
     "context-blocks",
     "ipython>=9.12.0",
     "platformdirs>=4.9.4",
+    # from mcp-nemo-oo-agents (now internal)
+    "httpx>=0.27.0",
+    "mcp>=1.0.0",
 ]
 
 [project.scripts]
@@ -26,14 +28,8 @@ sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
 
 [tool.uv.sources]
 unifiedllm = { workspace = true }
-agentdoc = { workspace = true }
 context-blocks = { workspace = true }
-openinference-instrumentation-nemo-oo-agents = { workspace = true }
-nemo-oo-agents-viewer = { workspace = true }
-mcp-nemo-oo-agents = { workspace = true }
 eval_pipeline = { workspace = true }
-evaluation = { workspace = true }
-trace_explorer = { workspace = true }
 nemo-oo-agents-benchmarks = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
@@ -45,34 +41,32 @@ exclude-newer = "2026-04-01T00:00:00Z"
 [tool.uv.workspace]
 members = [
     "packages/unifiedllm",
-    "packages/agentdoc",
     "packages/context-blocks",
-    "packages/openinference-instrumentation-nemo-oo-agents",
-    "packages/nemo-oo-agents-viewer",
-    "packages/mcp-nemo-oo-agents",
-    "packages/trace_explorer",
     "util/eval_pipeline",
-    "packages/evaluation",
     "packages/nemo-oo-agents-benchmarks",
 ]
 
 
 [project.optional-dependencies]
 tracing = [
-    "openinference_instrumentation_nemo_oo_agents",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "openinference-instrumentation>=0.1.42",
+    "openinference-semantic-conventions>=0.1.9",
+    "openinference-instrumentation-litellm>=0.1.28",
 ]
 viewer = [
-    "nemo-oo-agents-viewer",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.5",
+    "pyyaml>=6.0",
 ]
-trace-explorer = [
-    "trace_explorer",
-]
+# trace_explorer is now nemo_oo_agents.trace_explorer (internal, no extra deps)
 sandbox = [
     "openshell",
 ]
-mcp = [
-    "mcp-nemo-oo-agents",
-]
+# mcp is now nemo_oo_agents.mcp (deps in main dependencies)
 # Scientific / plotting stack pre-loaded into the TUI agent REPL (np, pd, px, go, scipy, sklearn)
 tui = [
     "numpy>=1.24.0",
@@ -215,13 +209,7 @@ dev = [
     "ruff>=0.14.14",
     "httpx[socks]>=0.28.1",
     "opentelemetry-exporter-otlp-proto-http>=1.39.1",
-    "openinference-instrumentation-nemo-oo-agents",
-    "nemo-oo-agents-viewer",
-    "trace-explorer",
     "eval_pipeline",
-    "evaluation",
-    "trace_explorer",
-    "mcp-nemo-oo-agents",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
@@ -233,26 +221,20 @@ dev = [
 asyncio_mode = "auto"
 testpaths = [
     "tests",
-    "packages/agentdoc/tests",
-    "packages/nemo-oo-agents-viewer/tests",
+    "tests/agentdoc",
+    "tests/viewer",
     "packages/context-blocks/tests",
     "packages/unifiedllm/tests",
-    "packages/openinference-instrumentation-nemo-oo-agents/tests",
-    "packages/mcp-nemo-oo-agents/tests",
+    "tests/tracing",
+    "tests/test_mcp",
     "packages/nemo-oo-agents-benchmarks/tests",
-    "packages/trace_explorer/tests",
+    "tests/trace_explorer",
 ]
 pythonpath = [
     "src",
-    "packages/agentdoc/src",
-    "packages/agentdoc/tests",
-    "packages/nemo-oo-agents-viewer/src",
     "packages/context-blocks/src",
     "packages/unifiedllm/src",
-    "packages/openinference-instrumentation-nemo-oo-agents/src",
-    "packages/mcp-nemo-oo-agents/src",
     "packages/nemo-oo-agents-benchmarks/src",
-    "packages/trace_explorer/src",
 ]
 addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
 markers = [
@@ -338,7 +320,6 @@ venv = ".venv"
 extraPaths = [
     "src",
     "packages/unifiedllm/src",
-    "packages/agentdoc/src",
     "packages/context-blocks/src",
 ]
 include = [
