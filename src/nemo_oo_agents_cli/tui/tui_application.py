@@ -163,6 +163,9 @@ class TUIApplication:
         # Captured in run_async; used by emit_block for thread-safe
         # enqueue without calling the deprecated asyncio.get_event_loop().
         self._loop: asyncio.AbstractEventLoop | None = None
+        # Set by run_async's stdout/stderr forwarder install; called in
+        # the finally to restore the real streams.
+        self._uninstall_stream_capture: Callable[[], None] | None = None
 
         # Let the FakeAgent (or real agent) push output into our scrollback
         # without knowing about our internals.
@@ -744,6 +747,16 @@ class TUIApplication:
         self._loop = asyncio.get_running_loop()
         self._block_queue = asyncio.Queue()
         self._consumer_task = asyncio.ensure_future(self._consume_blocks())
+
+        # Route stray sys.stdout / sys.stderr writes (aiohttp warnings,
+        # litellm noise, stray prints) into the scrollback instead of
+        # letting them corrupt prompt_toolkit's paint. Must install here
+        # — before the first agent cell runs and before the framework
+        # wraps sys.stdout with ContextVarStream — so agent-cell stdout
+        # capture layers on top and still works unchanged.
+        from .stream_forwarder import install_stray_stream_capture
+
+        self._uninstall_stream_capture = install_stray_stream_capture(self.emit_block)
         try:
             # set_exception_handler=False keeps the handler Session installed
             # (_loud_handler) active for the whole app lifetime. Otherwise
@@ -753,6 +766,18 @@ class TUIApplication:
             # swallows every other diagnostic field.
             await self._app.run_async(set_exception_handler=False)
         finally:
+            # Restore sys.stdout / sys.stderr FIRST so any post-exit
+            # prints from teardown code (spinner cleanup, snapshot save,
+            # goodbye message) go straight to the real terminal rather
+            # than back into the dying block queue.
+            uninstall = getattr(self, "_uninstall_stream_capture", None)
+            if uninstall is not None:
+                try:
+                    uninstall()
+                except Exception:
+                    pass
+                self._uninstall_stream_capture = None
+
             # Drain any blocks queued during teardown (e.g. 'Goodbye!
             # Stay vibing.' from /exit) straight to the real stdout —
             # the consumer task's run_in_terminal no longer works once

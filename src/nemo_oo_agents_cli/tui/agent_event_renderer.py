@@ -196,7 +196,16 @@ class AgentEventRenderer:
             self._emit_text(Text(content, style="dim italic"))
 
     def _on_tool_call(self, event: _ToolCallEvent) -> None:
-        if getattr(event, "name", "") != "execute_python":
+        name = getattr(event, "name", "")
+        if name == "return_result":
+            # ``return_result`` invoked as its own tool call (not inline
+            # inside ``execute_python``) emits no PythonOutput, so
+            # ``_on_python_output`` never fires the turn-end flush.
+            # Any buffered ``self.message()`` calls would otherwise stay
+            # stuck in ``_pending_messages`` past the agent's stop.
+            self._flush_messages()
+            return
+        if name != "execute_python":
             return
         tool_call_id = getattr(event, "tool_call_id", "")
         arguments = getattr(event, "arguments", {})
