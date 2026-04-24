@@ -915,6 +915,7 @@ class ActorRuntime:
                             execution_count=execution_count,
                             agent=self.agent,
                             exec_globals=exec_globals,
+                            allow_all_imports=effective_restrictions.allow_all_imports,
                         )
 
                         # Run unified validation (security, blocking calls, REPL policy)

@@ -54,6 +54,10 @@ class RestrictionsConfig(BaseModel):
 
     blocked_modules: frozenset[str] = DEFAULT_BLOCKED_MODULES
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
+    allow_all_imports: bool = False
+    """When True, the code validator skips import checking entirely.
+    Agents can import any installed module. Blocked modules and
+    forbidden builtins (__import__, exec, eval) are still enforced."""
 
 
 def match_blocked_module(
