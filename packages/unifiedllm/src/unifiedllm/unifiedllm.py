@@ -203,6 +203,13 @@ def extract_and_parse_json(text: str) -> dict[str, Any]:
         _record_llm_metric("json_fence_removed")
         text = markdown_match.group(1).strip()
 
+    # Strip leading/trailing markdown bold/italic markers (* or **)
+    text_before = text
+    text = re.sub(r"^\*{1,2}\s*", "", text)
+    text = re.sub(r"\s*\*{1,2}$", "", text)
+    if text != text_before:
+        _record_llm_metric("json_markdown_bold_stripped")
+
     if not text:
         raise json.JSONDecodeError(
             f"Empty text after processing. Original: `{original_text[:200]}` ...", original_text, 0

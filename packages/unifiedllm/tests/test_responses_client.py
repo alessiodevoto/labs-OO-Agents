@@ -22,13 +22,13 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def client():
-    """Create a ResponsesClient with NVIDIA gpt-oss-120b model."""
+    """Create a ResponsesClient with NVIDIA gpt-oss-20b model."""
     api_key = os.getenv("NVIDIA_INFERENCE_API_KEY")
     if not api_key:
         pytest.skip("NVIDIA_INFERENCE_API_KEY environment variable not set")
 
     return ResponsesClient(
-        model="openai/nvidia/openai/gpt-oss-120b",
+        model="openai/nvidia/openai/gpt-oss-20b",
         base_url="https://inference-api.nvidia.com/v1/",
         api_key=api_key,
     )
