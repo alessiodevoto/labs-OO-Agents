@@ -52,4 +52,3 @@ class TestAllowAllImports:
         """__import__ is still forbidden even with allow_all_imports."""
         issues = self._validate("__import__('os')", allow_all_imports=True)
         assert any("__import__" in i.message for i in issues)
-
