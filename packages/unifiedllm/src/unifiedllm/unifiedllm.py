@@ -205,8 +205,8 @@ def extract_and_parse_json(text: str) -> dict[str, Any]:
 
     # Strip leading/trailing markdown bold/italic markers (* or **)
     text_before = text
-    text = re.sub(r"^\*{1,2}\s*", "", text)
-    text = re.sub(r"\s*\*{1,2}$", "", text)
+    text = re.sub(r"^\*{1,3}\s*", "", text)
+    text = re.sub(r"\s*\*{1,3}$", "", text)
     if text != text_before:
         _record_llm_metric("json_markdown_bold_stripped")
 
