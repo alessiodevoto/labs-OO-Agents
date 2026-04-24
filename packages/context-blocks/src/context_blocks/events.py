@@ -37,6 +37,21 @@ _logger = logging.getLogger(__name__)
 _EVENT_REGISTRY: dict[str, type["EventBase"]] = {}
 
 
+def _is_empty(value: Any) -> bool:
+    """True if ``value`` should be suppressed from LLM-facing serialization.
+
+    ``None`` and any empty string/container are empty. Numeric zero and
+    ``False`` are NOT empty — they carry meaning.
+    """
+    if value is None:
+        return True
+    if isinstance(value, (bool, int, float)):
+        return False
+    if isinstance(value, (str, list, dict, tuple, set, frozenset)):
+        return len(value) == 0
+    return False
+
+
 # === Enums ===
 
 
@@ -83,6 +98,18 @@ class EventBase(BaseModel):
         super().model_post_init(__context)
         if not self.event_type:
             self.event_type = type(self).__name__
+
+    def __instance_values__(self) -> dict[str, Any]:
+        """Return non-empty field values for agentdoc serialization.
+
+        Implements the ``SupportsInstanceValues`` protocol so ``agentdoc.pformat``
+        skips fields whose value is ``None`` or an empty container/string.
+        Trims noise like ``stderr=''``, ``error=''``, ``value=None`` from
+        LLM-visible event serializations. ``0`` and ``False`` are intentionally
+        preserved since they are semantically meaningful
+        (e.g. ``execution_count=0``, ``success=False``).
+        """
+        return {name: value for name in type(self).model_fields if not _is_empty(value := getattr(self, name, None))}
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
