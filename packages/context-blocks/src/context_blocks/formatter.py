@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 """Formatters for context blocks and provider output.
 
-Two orthogonal formatter types:
-1. BlockFormatter - How to format system prompt blocks (XML, Markdown)
-2. ProviderFormatter - How to assemble system prompt + messages for provider (OpenAI, Anthropic)
+Two orthogonal formatters:
 
-Compose any combination without combinatorial explosion.
+1. :class:`BlockFormatter` — turns a list of resolved blocks (both system-role
+   context blocks and event blocks) into a neutral ``list[RenderedMessage]``.
+   Owns semantic choices: how each block is wrapped (XML / Markdown / plain),
+   how events are serialized, how system blocks are concatenated into a single
+   system message.
+
+2. :class:`ProviderFormatter` — a thin syntactic adapter that reshapes the
+   neutral message list into provider-specific wire format (OpenAI ``list[dict]``,
+   Anthropic ``{"system": ..., "messages": [...]}``).
+
+This split keeps the "format" axis (XML / Markdown / Plain) orthogonal to the
+"provider" axis (OpenAI / Anthropic / ...). Neither knows about the other.
 """
 
 import json
@@ -15,88 +24,278 @@ from enum import StrEnum
 from typing import Any
 
 from context_blocks.events import EventBase, ToolCallEvent
-from context_blocks.models import ResolvedBlock, Role
+from context_blocks.models import (
+    RenderedMessage,
+    ResolvedBlock,
+    Role,
+    ToolCallInfo,
+)
 from context_blocks.utils import _MAX_PRE_FORMAT_CHARS, truncating_pformat
 
 
 class FormatType(StrEnum):
-    """Format type for block and message rendering.
-
-    StrEnum so values work as plain strings (e.g., in f-strings, == comparisons).
-    """
+    """Format type identifier used for block-level truncation."""
 
     XML = "xml"
     MARKDOWN = "markdown"
     PLAIN = "plain"
 
 
-# Convenience aliases
 FORMAT_XML = FormatType.XML
 FORMAT_MARKDOWN = FormatType.MARKDOWN
 FORMAT_PLAIN = FormatType.PLAIN
 
 
-class BlockFormatter(ABC):
-    """Abstract base class for formatting system prompt blocks into a string.
+# ---------------------------------------------------------------------------
+# BlockFormatter — blocks → neutral message list
+# ---------------------------------------------------------------------------
 
-    Subclasses implement format() to convert a list of ResolvedBlocks into
-    a formatted string (e.g., XML tags, Markdown headers).
+
+class BlockFormatter(ABC):
+    """Turn resolved blocks into a neutral list of :class:`RenderedMessage`.
+
+    Subclasses implement :meth:`format` to decide both the ordering of messages
+    and the wrapping of each block's content. The stock implementations
+    partition by ``block.role``: SYSTEM blocks concatenate into a single system
+    message, event blocks emit per-event messages.
     """
 
     @property
     @abstractmethod
     def format_type(self) -> FormatType:
-        """Return format type identifier (FormatType.XML, FormatType.MARKDOWN, FormatType.PLAIN)."""
-        ...
+        """Return format type (FORMAT_XML / FORMAT_MARKDOWN / FORMAT_PLAIN).
 
-    @abstractmethod
-    def format(self, blocks: list[ResolvedBlock]) -> str:
-        """Format system prompt blocks into context string.
-
-        Args:
-            blocks: List of resolved system blocks with content and metadata.
-
-        Returns:
-            Formatted string combining all blocks.
+        Used by :func:`render_context` to pick the right block-level truncation
+        strategy for oversized content.
         """
         ...
 
     @abstractmethod
-    def format_description(self) -> str:
-        """Return a human-readable description of the block format.
+    def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
+        """Convert all resolved blocks into a neutral message list.
 
-        Used in the agent system prompt so the LLM understands how
-        context blocks are structured.
+        Args:
+            blocks: All resolved blocks, already truncated and with event
+                content pre-serialized by :func:`render_context`. System
+                blocks appear before event blocks.
+
+        Returns:
+            A list of :class:`RenderedMessage`, in final display order.
         """
         ...
 
     def format_event(self, event: EventBase, max_chars: int = _MAX_PRE_FORMAT_CHARS) -> str:
-        """Serialize a non-tool event into a content string.
+        """Serialize a non-tool-call event into string content.
 
-        Called by render_context() for each non-ToolCallEvent message block
-        before truncation. The result becomes block.content.
+        Called by :func:`render_context` *before* truncation runs, so the
+        resulting string can be measured and trimmed by the block-level
+        truncation pipeline. ToolCallEvents are handled structurally by
+        :meth:`format` — they are not routed through ``format_event``.
 
-        Default: bounded repr via truncating_pformat. Override in subclasses
-        (e.g. PlainBlockFormatter) for alternative serialization.
-
-        Args:
-            event:     The raw event to serialize.
-            max_chars: Hard character cap on pformat output — single-pipeline cap,
-                       comes from ``TruncationConfig.max_block_chars`` via render_context().
-
-        Returns:
-            String content to use as the block's message content.
+        Default: bounded repr via ``truncating_pformat``. Override for
+        alternative serialization (plain text, JSON, etc.).
         """
         return truncating_pformat(event, max_chars=max_chars)
 
+    def format_description(self) -> str:
+        """Return a human-readable description of the block format.
+
+        Embedded in the default agent system prompt so the LLM understands
+        how context blocks are structured. Subclasses should override.
+        """
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by the stock BlockFormatters
+# ---------------------------------------------------------------------------
+
+
+def _xml_system_block(block: ResolvedBlock) -> str:
+    """Wrap a system block's content in an XML tag.
+
+    ``expr=`` is only emitted for blocks produced by
+    :meth:`ContextApi.set_dynamic` — static blocks, framework blocks, and
+    strategy overrides render without the attribute so the prompt doesn't
+    leak internal accessor syntax the LLM can't use.
+    """
+    show_expr = block.metadata.source_dynamic and block.metadata.expr
+    attrs = f' expr="{block.metadata.expr}"' if show_expr else ""
+    return f"<{block.key}{attrs}>\n{block.content}\n</{block.key}>"
+
+
+def _xml_message_content(block: ResolvedBlock) -> str:
+    """Wrap an event block's content with a minimal role tag carrying metadata.
+
+    Two wrappers, mirroring who produced the event:
+
+    * ``<sys>`` — USER-role events are framework-generated feedback to
+      the LLM (``Task`` prompts, ``PythonOutput`` cells, ``Error`` /
+      ``Feedback``, etc.). They share one wrapper because the event's
+      class name is already inside the rendered content
+      (``PythonOutput(...)``, ``Task(...)``) — nothing is lost, and the
+      tag stays uniform across event types.
+    * ``<agent>`` — ASSISTANT-role events are the LLM's own outputs
+      (``Message``, ``Reasoning``, ``LLMOutput``). Wrapping them in
+      ``<sys>`` would misattribute the agent's messages to the system.
+
+    Other roles fall back to ``{role}_message`` (rare — events mostly
+    carry USER or ASSISTANT).
+    """
+    if block.role == Role.USER:
+        role_label = "sys"
+    elif block.role == Role.ASSISTANT:
+        role_label = "agent"
+    else:
+        role_label = f"{block.role.value}_message"
+    attrs: list[str] = []
+    if block.metadata.source_dynamic and block.metadata.expr:
+        attrs.append(f'expr="{block.metadata.expr}"')
+    if block.metadata.tag:
+        attrs.append(f'tag="{block.metadata.tag}"')
+    attr_str = (" " + " ".join(attrs)) if attrs else ""
+    return f"<{role_label}{attr_str}>\n{block.content}\n</{role_label}>"
+
+
+def _markdown_system_block(block: ResolvedBlock) -> str:
+    header = block.key.replace("_", " ").title()
+    inline_meta = ""
+    if block.metadata.source_dynamic and block.metadata.expr:
+        inline_meta = ' `{"expr": "' + block.metadata.expr + '"}`'
+    return f"# {header}{inline_meta}\n\n{block.content}"
+
+
+def _markdown_message_content(block: ResolvedBlock) -> str:
+    role_label = block.role.value.replace("_", " ").title() + " Message"
+    meta_parts: list[str] = []
+    if block.metadata.source_dynamic and block.metadata.expr:
+        meta_parts.append(f'"expr": "{block.metadata.expr}"')
+    if block.metadata.tag:
+        meta_parts.append(f'"tag": "{block.metadata.tag}"')
+    inline_meta = (" `{" + ", ".join(meta_parts) + "}`") if meta_parts else ""
+    return f"### {role_label}{inline_meta}\n\n{block.content}"
+
+
+def _event_block_to_messages(
+    block: ResolvedBlock,
+    *,
+    wrap_content: "callable[[ResolvedBlock], str] | None",
+) -> list[RenderedMessage]:
+    """Convert a single event block into one or two :class:`RenderedMessage`s.
+
+    ToolCallEvents fan out into an assistant tool-call message and a tool
+    result message. Other events produce a single role-tagged message with
+    wrapped content.
+
+    Non-tool messages carry a one-element ``parts=[BlockPart(...)]`` so
+    the journal publisher can content-address each event independently —
+    repeated events across turns hash identically and don't retransmit.
+    """
+    from context_blocks.models import BlockPart
+
+    if isinstance(block.event, ToolCallEvent):
+        event = block.event
+        messages: list[RenderedMessage] = [
+            RenderedMessage(
+                role=Role.ASSISTANT,
+                tool_call=ToolCallInfo(
+                    id=event.tool_call_id,
+                    name=event.name,
+                    arguments=event.arguments,
+                ),
+            )
+        ]
+        if event.result is not None:
+            messages.append(
+                RenderedMessage(
+                    role=Role.TOOL,
+                    content=event.result.content,
+                    tool_call_id=event.tool_call_id,
+                )
+            )
+        return messages
+
+    # Non-tool event
+    content = (
+        wrap_content(block)
+        if wrap_content is not None and (block.metadata.expr or block.metadata.tag)
+        else (block.content or "")
+    )
+    images = getattr(block.event, "images", None) if block.event is not None else None
+    return [
+        RenderedMessage(
+            role=block.role,
+            content=content,
+            parts=[BlockPart(key=block.key, content=content)],
+            images=images,
+        )
+    ]
+
+
+def _build_messages(
+    blocks: list[ResolvedBlock],
+    *,
+    wrap_system: "callable[[ResolvedBlock], str]",
+    wrap_message: "callable[[ResolvedBlock], str] | None",
+    system_separator: str = "\n\n",
+) -> list[RenderedMessage]:
+    """Common BlockFormatter.format() body used by XML and Markdown variants.
+
+    Always emits a SYSTEM message (empty content if no SYSTEM blocks) unless the
+    input is completely empty. This matches the old renderer's behavior of
+    always including a system slot for providers that expect one.
+
+    The SYSTEM message is emitted with block-aware ``parts`` so the journal
+    publisher can separate each block's content for dedup/hashing.
+    """
+    if not blocks:
+        return []
+
+    from context_blocks.models import BlockPart, TextPart
+
+    system_blocks = [b for b in blocks if b.role == Role.SYSTEM]
+    event_blocks = [b for b in blocks if b.role != Role.SYSTEM]
+
+    system_rendered = [wrap_system(b) for b in system_blocks]
+    system_content = system_separator.join(system_rendered)
+
+    system_parts: list[TextPart | BlockPart] = []
+    for i, (block, rendered) in enumerate(zip(system_blocks, system_rendered, strict=True)):
+        if i > 0:
+            system_parts.append(TextPart(text=system_separator))
+        system_parts.append(BlockPart(key=block.key, content=rendered))
+
+    messages: list[RenderedMessage] = [
+        RenderedMessage(
+            role=Role.SYSTEM,
+            content=system_content,
+            parts=system_parts if system_parts else None,
+        )
+    ]
+    for block in event_blocks:
+        messages.extend(_event_block_to_messages(block, wrap_content=wrap_message))
+    return messages
+
+
+# ---------------------------------------------------------------------------
+# Stock BlockFormatters
+# ---------------------------------------------------------------------------
+
 
 class XMLBlockFormatter(BlockFormatter):
-    """Wraps each block in XML tags with metadata attributes.
+    """Wrap each system block in an XML tag; wrap each event in a role tag.
 
-    Example:
+    Example system output::
+
         <notes expr="self.context['notes']">
         Here are my notes...
         </notes>
+
+    Example event output::
+
+        <user_message expr='self.events["1"]' tag="1">
+        Hello world
+        </user_message>
     """
 
     @property
@@ -105,28 +304,27 @@ class XMLBlockFormatter(BlockFormatter):
 
     def format_description(self) -> str:
         return (
-            'Your prompt is organized in XML context blocks: `<name expr="expression">CONTENT</name>`.\n'
-            "The `expr` attribute is the Python expression that produced the content."
+            "Your prompt is organized in XML context blocks: `<name>CONTENT</name>`.\n"
+            "Blocks produced by `self.context.set_dynamic()` carry an "
+            '`expr="..."` attribute whose value is the Python expression '
+            "re-evaluated each turn.\n"
+            'Event history: system entries in `<sys tag="N">`, your own in '
+            '`<agent tag="N">`; reference via `self.events["N"]`.'
         )
 
-    def format(self, blocks: list[ResolvedBlock]) -> str:
-        if not blocks:
-            return ""
-
-        parts = []
-        for block in blocks:
-            attr_parts = []
-            if block.metadata.expr:
-                attr_parts.append(f'expr="{block.metadata.expr}"')
-            attrs = (" " + " ".join(attr_parts)) if attr_parts else ""
-            parts.append(f"<{block.key}{attrs}>\n{block.content}\n</{block.key}>")
-        return "\n\n".join(parts)
+    def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
+        return _build_messages(
+            blocks,
+            wrap_system=_xml_system_block,
+            wrap_message=_xml_message_content,
+        )
 
 
 class MarkdownBlockFormatter(BlockFormatter):
-    """Formats blocks with markdown headers and inline metadata.
+    """Render each system block as a Markdown section; wrap events with Markdown headers.
 
-    Example:
+    Example system output::
+
         # Notes `{"expr": "self.context['notes']"}`
 
         Here are my notes...
@@ -139,173 +337,134 @@ class MarkdownBlockFormatter(BlockFormatter):
     def format_description(self) -> str:
         return (
             "Your prompt is organized in context blocks with markdown headers: "
-            '`# Block Name {"expr": "expression"}`.\n'
-            "The inline JSON contains the Python expression that produced the content."
+            "`# Block Name`.\n"
+            "Blocks produced by `self.context.set_dynamic()` carry an inline "
+            '`{"expr": "..."}` annotation whose value is the Python expression '
+            "re-evaluated each turn."
         )
 
-    def format(self, blocks: list[ResolvedBlock]) -> str:
-        if not blocks:
-            return ""
+    def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
+        return _build_messages(
+            blocks,
+            wrap_system=_markdown_system_block,
+            wrap_message=_markdown_message_content,
+        )
 
-        parts = []
-        for block in blocks:
-            header = block.key.replace("_", " ").title()
 
-            inline_meta = ""
-            if block.metadata.expr:
-                dict_parts = [f'"expr": "{block.metadata.expr}"']
-                inline_meta = " `{" + ", ".join(dict_parts) + "}`"
-
-            parts.append(f"# {header}{inline_meta}\n\n{block.content}")
-        return "\n\n".join(parts)
+# ---------------------------------------------------------------------------
+# ProviderFormatter — neutral messages → provider wire format
+# ---------------------------------------------------------------------------
 
 
 class ProviderFormatter(ABC):
-    """Abstract base class for assembling system prompt + messages into provider output.
+    """Reshape a neutral :class:`RenderedMessage` list into provider wire format.
 
-    Message blocks arrive pre-formatted (content already wrapped with metadata).
-    The provider formatter only needs to handle message assembly and tool calls.
-
-    Tool call blocks carry the original ToolCallEvent on ``block.event``,
-    which the formatter reads directly for structured fields.
+    Thin syntactic adapter: does not wrap content, does not re-order, does not
+    decide what goes where. Just translates message shape and tool-call
+    conventions to the target API.
     """
 
     @abstractmethod
-    def format(
-        self,
-        context: str,
-        message_blocks: list[ResolvedBlock],
-    ) -> Any:
-        """Format context string + message blocks into provider-specific output.
-
-        Args:
-            context: Formatted system prompt string (from BlockFormatter).
-            message_blocks: Pre-formatted message blocks. Non-tool-call blocks
-                have content already wrapped with metadata. Tool-call blocks
-                carry the original ToolCallEvent on block.event.
-
-        Returns:
-            Provider-specific output (type depends on implementation).
-        """
+    def format(self, messages: list[RenderedMessage]) -> Any:
+        """Return provider-specific output for this message list."""
         ...
 
 
+def _append_openai_image_message(out: list[dict], msg: RenderedMessage) -> None:
+    content_parts: list[dict] = [{"type": "text", "text": msg.content or ""}]
+    content_parts.extend(msg.images or [])
+    out.append({"role": msg.role.value, "content": content_parts})
+
+
 class OpenAIProviderFormatter(ProviderFormatter):
-    """Assembles context + messages into OpenAI message format."""
+    """Emit OpenAI-compatible messages (``list[dict]``)."""
 
-    def format(
-        self,
-        context: str,
-        message_blocks: list[ResolvedBlock],
-    ) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": context}]
-
-        for block in message_blocks:
-            if block.role in (Role.RUNTIME_EVENT, Role.METADATA):
-                continue
-
-            if isinstance(block.event, ToolCallEvent):
-                event = block.event
-                messages.append(
+    def format(self, messages: list[RenderedMessage]) -> list[dict]:
+        out: list[dict] = []
+        for msg in messages:
+            if msg.tool_call is not None:
+                out.append(
                     {
                         "role": "assistant",
                         "content": None,
                         "tool_calls": [
                             {
-                                "id": event.tool_call_id,
+                                "id": msg.tool_call.id,
                                 "type": "function",
                                 "function": {
-                                    "name": event.name,
-                                    "arguments": json.dumps(event.arguments),
+                                    "name": msg.tool_call.name,
+                                    "arguments": json.dumps(msg.tool_call.arguments),
                                 },
                             }
                         ],
                     }
                 )
-                if event.result is not None:
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": event.tool_call_id,
-                            "content": event.result.content,
-                        }
-                    )
+            elif msg.tool_call_id is not None:
+                out.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": msg.content or "",
+                    }
+                )
+            elif msg.images:
+                _append_openai_image_message(out, msg)
             else:
-                # Check for image attachments (from show() in CodeAct execution)
-                images = getattr(block.event, "images", None) if block.event is not None else None
-                if images:
-                    _append_images(messages, block.role.value, block.content, images)
-                else:
-                    messages.append({"role": block.role.value, "content": block.content or ""})
-
-        return messages
-
-
-def _append_images(messages: list[dict], role: str, content: str, images: list[dict]) -> None:
-    """Append a message with multi-part content (text + images) to the message list.
-
-    Images use LiteLLM's universal image_url format. LiteLLM automatically
-    converts to provider-native formats (Anthropic, Bedrock, Vertex AI, etc.).
-    See: https://docs.litellm.ai/docs/completion/vision
-    """
-    content_parts: list[dict] = [{"type": "text", "text": content or ""}]
-    content_parts.extend(images)
-    messages.append({"role": role, "content": content_parts})
+                if msg.role in (Role.RUNTIME_EVENT, Role.METADATA):
+                    continue
+                out.append({"role": msg.role.value, "content": msg.content or ""})
+        return out
 
 
 class AnthropicProviderFormatter(ProviderFormatter):
-    """Assembles context + messages into Anthropic message format."""
+    """Emit Anthropic-native messages (``{"system": str, "messages": list[dict]}``)."""
 
-    def format(
-        self,
-        context: str,
-        message_blocks: list[ResolvedBlock],
-    ) -> dict:
-        messages: list[dict] = []
-
-        for block in message_blocks:
-            if block.role in (Role.RUNTIME_EVENT, Role.METADATA):
+    def format(self, messages: list[RenderedMessage]) -> dict:
+        system_parts: list[str] = []
+        out: list[dict] = []
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                if msg.content:
+                    system_parts.append(msg.content)
                 continue
 
-            if isinstance(block.event, ToolCallEvent):
-                event = block.event
-                messages.append(
+            if msg.tool_call is not None:
+                out.append(
                     {
                         "role": "assistant",
                         "content": [
                             {
                                 "type": "tool_use",
-                                "id": event.tool_call_id,
-                                "name": event.name,
-                                "input": event.arguments,
+                                "id": msg.tool_call.id,
+                                "name": msg.tool_call.name,
+                                "input": msg.tool_call.arguments,
                             }
                         ],
                     }
                 )
-                if event.result is not None:
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": event.tool_call_id,
-                                    "content": event.result.content,
-                                }
-                            ],
-                        }
-                    )
+            elif msg.tool_call_id is not None:
+                out.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.tool_call_id,
+                                "content": msg.content or "",
+                            }
+                        ],
+                    }
+                )
+            elif msg.images:
+                # Keep the universal LiteLLM image_url shape — LiteLLM translates for Anthropic.
+                role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
+                content_parts: list[dict] = [{"type": "text", "text": msg.content or ""}]
+                content_parts.extend(msg.images)
+                out.append({"role": role.value, "content": content_parts})
             else:
-                role = block.role
-                if role not in (Role.USER, Role.ASSISTANT):
-                    role = Role.USER
-                # Check for image attachments (from show() in CodeAct execution)
-                # Uses LiteLLM's universal image_url format — no provider-specific
-                # conversion needed. LiteLLM handles Anthropic/Bedrock/Vertex conversion.
-                images = getattr(block.event, "images", None) if block.event is not None else None
-                if images:
-                    _append_images(messages, role.value, block.content, images)
-                else:
-                    messages.append({"role": role.value, "content": block.content or ""})
+                if msg.role in (Role.RUNTIME_EVENT, Role.METADATA):
+                    continue
+                role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
+                out.append({"role": role.value, "content": msg.content or ""})
 
-        return {"system": context, "messages": messages}
+        return {"system": "\n\n".join(system_parts), "messages": out}

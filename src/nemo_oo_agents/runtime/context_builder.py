@@ -81,7 +81,7 @@ async def _apply_overrides(
             content = "None"
 
         if isinstance(value, DynamicContext):
-            meta = BlockMetadata(expr=value.expr)
+            meta = BlockMetadata(expr=value.expr, immutable=value.immutable)
         else:
             meta = BlockMetadata(expr=static_expr(key))
 
@@ -244,7 +244,7 @@ async def _phase_framework_blocks(
             continue
 
         if isinstance(value, DynamicContext):
-            meta = BlockMetadata(expr=value.expr)
+            meta = BlockMetadata(expr=value.expr, immutable=value.immutable)
         else:
             meta = BlockMetadata(expr=f'self.context["{key}"]')
 
@@ -271,12 +271,18 @@ async def _phase_persistent_blocks(
     resolved_cache: dict[str, Any] = {}
 
     for key, value in context_manager._raw_items():
+        immutable = context_manager.is_immutable(key)
         if isinstance(value, DynamicContext):
             # DynamicContext path: resolve via async eval
             # resolve_fn returns pre-formatted string (already pprinted if non-string)
             resolved = await resolve_fn(key, value)
             content = resolved if resolved is not None else "None"
-            meta = BlockMetadata(expr=value.expr, user_block=True)
+            meta = BlockMetadata(
+                expr=value.expr,
+                user_block=True,
+                immutable=immutable or value.immutable,
+                source_dynamic=True,
+            )
             # Cache the resolved value for __getitem__ access
             resolved_cache[key] = resolved
         else:
@@ -286,7 +292,9 @@ async def _phase_persistent_blocks(
             else:
                 kwargs = {} if pre_format_chars is None else {"max_chars": pre_format_chars}
                 content = truncating_pformat(value, **kwargs)
-            meta = BlockMetadata(expr=f'self.context["{key}"]', user_block=True)
+            meta = BlockMetadata(
+                expr=f'self.context["{key}"]', user_block=True, immutable=immutable
+            )
 
         blocks = [
             *blocks,

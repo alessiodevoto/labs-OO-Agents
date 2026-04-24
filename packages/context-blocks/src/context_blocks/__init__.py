@@ -42,8 +42,10 @@ from context_blocks.models import (
     BlockMetadata,
     ContextWindowStats,
     DynamicContext,
+    RenderedMessage,
     ResolvedBlock,
     Role,
+    ToolCallInfo,
 )
 from context_blocks.render_config import RenderConfig
 from context_blocks.renderer import RenderResult, format_message_content, render_context
@@ -56,6 +58,8 @@ __all__ = [
     "Role",
     "BlockMetadata",
     "ContextWindowStats",
+    "RenderedMessage",
+    "ToolCallInfo",
     # Renderer
     "render_context",
     "RenderResult",
