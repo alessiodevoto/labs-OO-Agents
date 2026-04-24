@@ -128,6 +128,27 @@ async def with_retry(
         try:
             return await func(*args, **kwargs)
 
+        except asyncio.CancelledError:
+            # aiohttp raises CancelledError (a BaseException) when its
+            # ClientTimeout.total fires. Treat it as a retryable timeout
+            # so the call gets another chance. If the cancellation came
+            # from a real task-level timeout, the retry will be cancelled
+            # immediately too, so this is safe.
+            last_error = TimeoutError("asyncio.CancelledError (likely HTTP timeout)")
+            is_retryable = True
+            is_rate_limit = False
+            if attempt >= config.max_retries:
+                raise last_error from None
+            delay = _calculate_delay(attempt, config, is_rate_limit=False)
+            logger.warning(
+                f"Retry {attempt + 1}/{config.max_retries + 1}: CancelledError (HTTP timeout). Waiting {delay:.1f}s"
+            )
+            if config.on_retry:
+                config.on_retry(attempt + 1, last_error, delay)
+            await asyncio.sleep(delay)
+            attempt += 1
+            continue
+
         except Exception as e:
             last_error = e
             is_retryable, is_rate_limit = _is_retryable_error(e, config)
