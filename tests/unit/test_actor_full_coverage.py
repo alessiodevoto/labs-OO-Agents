@@ -842,7 +842,7 @@ class TestBuildMessagesOpeninferenceErrors:
             # Patch the import to raise ImportError
             with patch(
                 "nemo_oo_agents.runtime.actor.render_context",
-                return_value=RenderResult(output=[], stats=_EMPTY_STATS),
+                return_value=RenderResult(output=[], stats=_EMPTY_STATS, messages=[]),
             ):
                 with patch.dict(
                     "sys.modules",
@@ -887,7 +887,7 @@ class TestBuildMessagesOpeninferenceErrors:
             ):
                 with patch(
                     "nemo_oo_agents.runtime.actor.render_context",
-                    return_value=RenderResult(output=[], stats=_EMPTY_STATS),
+                    return_value=RenderResult(output=[], stats=_EMPTY_STATS, messages=[]),
                 ):
                     # Should not raise — the Exception is caught
                     await runtime._build_messages(method)

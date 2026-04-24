@@ -1495,12 +1495,13 @@ class ActorRuntime:
         """
 
         # Build evaluation namespace with all runtime context
-        from nemo_oo_agents.agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc, pformat
 
         namespace = {
             "self": self.agent,
             # agentdoc introspection (doc respects agentscope hidden fields)
             "doc": doc,
+            "pformat": pformat,
             "methods": methods,
             "variables": variables,
             **(extra_context or {}),
