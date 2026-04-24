@@ -598,6 +598,7 @@ class ActorRuntime:
             call_args=self._current_call.args if self._current_call else (),
             call_kwargs=self._current_call.kwargs if self._current_call else {},
             tools=tools,
+            max_output_tokens=kwargs.get("max_tokens"),
         )
         _gen_hm = get_harness_metrics()
 
@@ -2378,6 +2379,7 @@ async def {name}({params_str}) -> {return_type}:
         call_kwargs: dict[str, Any] | None = None,
         *,
         tools: list[Any] | None = None,
+        max_output_tokens: int | None = None,
     ) -> list[dict[str, Any]]:
         """Build messages for LLM API.
 
@@ -2459,12 +2461,21 @@ async def {name}({params_str}) -> {return_type}:
         #
         # Count the final messages list with ``litellm.token_counter``
         # and drop oldest non-system messages until total fits under
-        # ``ctx_window × 0.70``. The 30% margin covers the litellm→API
-        # tokenizer gap.
+        # the available input budget.  When ``max_output_tokens`` is
+        # known we subtract it (plus a 5 % margin for tokenizer
+        # divergence) from the context window; otherwise fall back to
+        # the old 70 % heuristic.
         messages = result.output
         stats = result.stats
         if ctx_window and isinstance(messages, list) and messages:
-            cap = int(ctx_window * 0.70)
+            default_cap = int(ctx_window * 0.70)
+            if max_output_tokens:
+                # 5 % margin covers litellm ↔ API tokenizer gap
+                margin = int(ctx_window * 0.05)
+                output_aware_cap = ctx_window - max_output_tokens - margin
+                cap = min(default_cap, output_aware_cap)
+            else:
+                cap = default_cap
             tool_schemas = _schemas_for_budget(tools) if tools else None
             messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
                 messages, cap, llm_client.model, tool_schemas=tool_schemas

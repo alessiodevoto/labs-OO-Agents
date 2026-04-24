@@ -443,3 +443,157 @@ class TestTokenCounterRegression:
             "tool-schema overhead unexpectedly small — expected at least "
             f"~20 tokens, got {total_with_tools - total_no_tools}"
         )
+
+class TestMaxOutputTokensBudget:
+    """The safety net must account for ``max_output_tokens`` when computing
+    the input budget.  With ``max_tokens=64000`` on a 131072-token window
+    the old ``ctx_window × 0.70 = 91750`` cap was too generous — the real
+    safe limit is ``131072 − 64000 = 67072``.  The fix passes
+    ``max_output_tokens`` into ``_build_messages`` so the cap tightens.
+    """
+
+    @pytest.mark.asyncio
+    async def test_large_max_tokens_tightens_budget(self):
+        """Reproduces the KDD Cup crash: 131072-token window with
+        max_tokens=64000.  Without the fix the safety net allows up to
+        ~91K input tokens; the API rejects at 67073.  With the fix the
+        cap drops to ~60K and the safety net fires before overflow.
+        """
+        import litellm
+
+        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput
+
+        llm = _mk_llm(131_072)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        # Pump enough events to exceed 67K input tokens but stay under 91K.
+        for i in range(200):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 400},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="y " * 400,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        max_output_tokens = 64_000
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            messages = await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                max_output_tokens=max_output_tokens,
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        assert messages is not None
+        structured = litellm.token_counter(model=agent._llm.model, messages=messages)
+        # The invariant: input_tokens + max_output_tokens < ctx_window
+        assert structured + max_output_tokens < agent._llm.context_window, (
+            f"input ({structured:,}) + max_output ({max_output_tokens:,}) = "
+            f"{structured + max_output_tokens:,} >= ctx_window "
+            f"({agent._llm.context_window:,}) — safety net failed to account "
+            "for max_output_tokens"
+        )
+
+    @pytest.mark.asyncio
+    async def test_small_max_tokens_uses_default_cap(self):
+        """When max_tokens is small (< 30 % of ctx_window), the default
+        70 % heuristic is already tighter and should win.  No regression.
+        """
+        import litellm
+
+        from nemo_oo_agents.events import Message
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for _ in range(5):
+            agent.event_manager.add(Message(content="small message"))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            messages = await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                max_output_tokens=4096,
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        assert messages is not None
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Nothing should be dropped — session is tiny.
+        assert stats.events_dropped == 0
+
+    @pytest.mark.asyncio
+    async def test_none_max_output_tokens_falls_back(self):
+        """When max_output_tokens is None (not passed), the old 70 %
+        heuristic must be used — no crash from None arithmetic.
+        """
+        from nemo_oo_agents.events import Message
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for _ in range(3):
+            agent.event_manager.add(Message(content="test message"))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            messages = await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                # max_output_tokens not passed — defaults to None
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        assert messages is not None
+
