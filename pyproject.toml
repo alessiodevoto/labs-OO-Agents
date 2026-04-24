@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 nemo = "nemo_oo_agents_cli:main"
+trace-explorer = "nemo_oo_agents.trace_explorer:main"
 
 [project.entry-points."nemo_oo_tui.skills_dirs"]
 sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
