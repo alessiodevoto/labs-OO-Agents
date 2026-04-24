@@ -135,9 +135,20 @@ class Agent(metaclass=AgentMeta):
     # Framework context blocks — managed by _prepare_context(), protected from LLM mutation.
     # These use DynamicContext() so they are re-evaluated each LLM turn.
     # Each subclass gets its own copy via __init_subclass__, so mutations stay local.
+    # ``self`` documents the class (methods, docstrings, field types) —
+    # genuinely stable across turns, so it lives in the cacheable prefix.
+    # ``state`` is the instance's current field values (skill instances,
+    # tool working dirs, etc.) — re-evaluated each turn since skills can
+    # attach at runtime and field values change as the agent runs.
     _framework_blocks: Annotated[dict[str, "FrameworkBlock"], hidden] = {
-        "system_prompt": FrameworkBlock(DynamicContext("self._system_prompt()")),
-        "self": FrameworkBlock(DynamicContext("doc(self)")),
+        "system_prompt": FrameworkBlock(DynamicContext("self._system_prompt()", immutable=True)),
+        "self": FrameworkBlock(DynamicContext("doc(type(self))", immutable=True)),
+        "state": FrameworkBlock(
+            DynamicContext(
+                "pformat(self, max_length=50, max_string=500, max_depth=4)",
+                immutable=False,
+            )
+        ),
     }
 
     def __init_subclass__(

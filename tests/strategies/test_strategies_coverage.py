@@ -1652,94 +1652,75 @@ class TestFormatSingleErrorNamedResultField:
 
 
 class TestPlainProviderFormatterFormat:
-    """Tests for PlainProviderFormatter.format() covering missing branches."""
+    """Tests for PlainCodeActBlockFormatter.format() covering key branches."""
 
     def test_runtime_event_skipped(self):
-        """RUNTIME_EVENT blocks are skipped (line 136)."""
         from context_blocks import ResolvedBlock
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="runtime", content="", role=Role.RUNTIME_EVENT, event=None)
-        result = formatter.format("System", [rb])
-        # Only the system message should be present
-        assert len(result) == 1
-        assert result[0]["role"] == "system"
+        sys_block = ResolvedBlock(key="sys", content="System", role=Role.SYSTEM)
+        messages = formatter.format([sys_block, rb])
+        assert len(messages) == 1
+        assert messages[0].role == Role.SYSTEM
 
     def test_tool_call_event_with_result_no_python_output(self):
-        """ToolCallEvent with event.result but no PythonOutput uses event.result.content (line 167)."""
         from context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
-        tool_result = ToolResult(tool_call_id="tc1", content="direct result")
         tce = ToolCallEvent(
             tool_call_id="tc1",
             name="some_tool",
             arguments={"arg": "val"},
-            result=tool_result,
+            result=ToolResult(tool_call_id="tc1", content="direct result"),
         )
         block = ResolvedBlock(key="tc", content="", role=Role.ASSISTANT, event=tce)
-        messages = formatter.format("System", [block])
-
-        # Find the tool response
-        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        messages = formatter.format([block])
+        tool_msgs = [m for m in messages if m.role == Role.TOOL]
         assert len(tool_msgs) == 1
-        assert tool_msgs[0]["content"] == "direct result"
+        assert tool_msgs[0].content == "direct result"
 
     def test_tool_call_event_with_no_result_and_no_python_output(self):
-        """ToolCallEvent with no result and no PythonOutput uses empty string (line 169)."""
         from context_blocks import ResolvedBlock, ToolCallEvent
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
-        tce = ToolCallEvent(
-            tool_call_id="tc2",
-            name="some_tool",
-            arguments={},
-            result=None,
-        )
+        tce = ToolCallEvent(tool_call_id="tc2", name="some_tool", arguments={}, result=None)
         block = ResolvedBlock(key="tc", content="", role=Role.ASSISTANT, event=tce)
-        messages = formatter.format("System", [block])
-
-        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        messages = formatter.format([block])
+        tool_msgs = [m for m in messages if m.role == Role.TOOL]
         assert len(tool_msgs) == 1
-        assert tool_msgs[0]["content"] == ""
+        assert tool_msgs[0].content == ""
 
     def test_block_with_no_event_uses_content(self):
-        """Block with no event uses block.content (line 193)."""
         from context_blocks import ResolvedBlock
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="text", content="block content text", role=Role.USER, event=None)
-        messages = formatter.format("System", [rb])
-
-        user_msgs = [m for m in messages if m.get("role") == "user"]
+        messages = formatter.format([rb])
+        user_msgs = [m for m in messages if m.role == Role.USER]
         assert len(user_msgs) == 1
-        assert user_msgs[0]["content"] == "block content text"
+        assert user_msgs[0].content == "block content text"
 
     def test_block_with_no_event_and_no_content(self):
-        """Block with no event and no content uses empty string."""
         from context_blocks import ResolvedBlock
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="empty", content="", role=Role.USER, event=None)
-        messages = formatter.format("System", [rb])
-
-        user_msgs = [m for m in messages if m.get("role") == "user"]
+        messages = formatter.format([rb])
+        user_msgs = [m for m in messages if m.role == Role.USER]
         assert len(user_msgs) == 1
-        assert user_msgs[0]["content"] == ""
+        assert user_msgs[0].content == ""
 
     def test_tool_call_with_python_output_uses_plain_content(self):
-        """ToolCallEvent with PythonOutput uses plain_event_content (lines 163-165)."""
         from context_blocks import ResolvedBlock, ToolCallEvent
         from context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
-
-        # Create PythonOutput with same tool_call_id
         po = PythonOutput(
             tool_call_id="tc_match",
             execution_status=ResultStatus.COMPLETE,
@@ -1747,7 +1728,6 @@ class TestPlainProviderFormatterFormat:
             stdout="python result",
         )
         po_block = ResolvedBlock(key="po", content="", role=Role.TOOL, event=po)
-
         tce = ToolCallEvent(
             tool_call_id="tc_match",
             name="execute_python",
@@ -1756,11 +1736,10 @@ class TestPlainProviderFormatterFormat:
         )
         tce_block = ResolvedBlock(key="tc", content="", role=Role.ASSISTANT, event=tce)
 
-        messages = formatter.format("System", [tce_block, po_block])
-
-        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        messages = formatter.format([tce_block, po_block])
+        tool_msgs = [m for m in messages if m.role == Role.TOOL]
         assert len(tool_msgs) == 1
-        assert tool_msgs[0]["content"] == "python result"
+        assert tool_msgs[0].content == "python result"
 
 
 class TestPredictStrategyRawExtractionFallback:

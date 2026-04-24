@@ -18,7 +18,6 @@ Decoration is minimal by design: no "you are an agent" prose, no format
 description. Authors see the structure through the XML tags themselves.
 """
 
-from context_blocks.events import ToolCallEvent
 from context_blocks.formatter import (
     FORMAT_XML,
     BlockFormatter,
@@ -51,9 +50,7 @@ def _xml_concat(blocks: list[ResolvedBlock], separator: str = "\n\n") -> str:
     return separator.join(_xml_system_block(b) for b in blocks)
 
 
-def _concat_parts(
-    blocks: list[ResolvedBlock], separator: str = "\n\n"
-) -> tuple[str, list[MessagePart]]:
+def _concat_parts(blocks: list[ResolvedBlock], separator: str = "\n\n") -> tuple[str, list[MessagePart]]:
     """Render ``blocks`` as XML and return (joined_content, parts) for journaling."""
     pieces = [_xml_system_block(b) for b in blocks]
     parts: list[MessagePart] = []
@@ -90,9 +87,7 @@ class CachedBlockFormatter(BlockFormatter):
         messages: list[RenderedMessage] = []
         if immutable:
             content, parts = _concat_parts(immutable)
-            messages.append(
-                RenderedMessage(role=Role.SYSTEM, content=content, parts=parts)
-            )
+            messages.append(RenderedMessage(role=Role.SYSTEM, content=content, parts=parts))
 
         # Event messages (wrap like XMLBlockFormatter does, except ToolCallEvents
         # still fan out into tool_call + tool_result messages).
@@ -110,9 +105,7 @@ class CachedBlockFormatter(BlockFormatter):
             suffix = f"<context>\n{suffix_inner}\n</context>"
             # Build parts for the <context>...</context> envelope.
             envelope_parts: list[MessagePart] = [TextPart(text="<context>\n")]
-            for i, (block, rendered) in enumerate(
-                zip(volatile, volatile_rendered, strict=True)
-            ):
+            for i, (block, rendered) in enumerate(zip(volatile, volatile_rendered, strict=True)):
                 if i > 0:
                     envelope_parts.append(TextPart(text="\n"))
                 envelope_parts.append(BlockPart(key=block.key, content=rendered))
@@ -138,13 +131,9 @@ class CachedBlockFormatter(BlockFormatter):
                 else:
                     merged_content = suffix
                 last_parts.extend(envelope_parts)
-                messages[-1] = last.model_copy(
-                    update={"content": merged_content, "parts": last_parts}
-                )
+                messages[-1] = last.model_copy(update={"content": merged_content, "parts": last_parts})
             else:
-                messages.append(
-                    RenderedMessage(role=Role.USER, content=suffix, parts=envelope_parts)
-                )
+                messages.append(RenderedMessage(role=Role.USER, content=suffix, parts=envelope_parts))
 
         return messages
 

@@ -16,12 +16,11 @@ System prompt blocks still use XML formatting (via XMLBlockFormatter).
 Only conversation messages are simplified.
 """
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from context_blocks import ResolvedBlock, ToolCallEvent
-from context_blocks.formatter import OpenAIProviderFormatter
+from context_blocks import RenderedMessage, ResolvedBlock, ToolCallEvent, ToolCallInfo
+from context_blocks.formatter import XMLBlockFormatter
 from context_blocks.models import Role
 from context_blocks.scoped import ScopedContext
 from context_blocks.utils import truncating_pformat
@@ -99,70 +98,69 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
 
 
 # ---------------------------------------------------------------------------
-# PlainProviderFormatter — handles all three rendering changes
+# PlainCodeActBlockFormatter — handles all three rendering changes
 # ---------------------------------------------------------------------------
 
 
-class PlainProviderFormatter(OpenAIProviderFormatter):  # type: ignore[misc]  # untyped base class from context_blocks
-    """Provider formatter that renders clean messages without XML tags or type wrappers.
+class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # untyped base class from context_blocks
+    """BlockFormatter that emits clean messages without XML wrappers or type wrappers.
 
-    Handles three changes compared to OpenAIProviderFormatter:
-    1. Strips XML wrapping from message content (uses plain_event_content)
-    2. Removes Python type wrappers (Task(...) -> just the prompt text)
+    Handles three changes compared to XMLBlockFormatter + OpenAIProviderFormatter:
+
+    1. Strips XML wrapping from message content (uses ``plain_event_content``)
+    2. Removes Python type wrappers (``Task(...)`` → just the prompt text)
     3. Merges PythonOutput into tool response (inline tool results)
 
-    System prompt blocks are not affected — they still use XML formatting.
+    System prompt blocks are not affected — they still use XML formatting
+    (inherited from XMLBlockFormatter).
 
     Args:
-        max_chars: Hard character cap forwarded to plain_event_content
-            for non-string Out[n] values.  Set from
-            TruncationConfig.max_block_chars by CodeActLiteStrategy.
+        max_chars: Hard character cap forwarded to ``plain_event_content``
+            for non-string ``Out[n]`` values.  Set from
+            ``TruncationConfig.max_block_chars`` by CodeActLiteStrategy.
     """
 
     def __init__(self, max_chars: int = _DEFAULT_MAX_CHARS):
         self._max_chars = max_chars  # set from tc.max_block_chars by CodeActLiteStrategy
 
-    def format(
-        self,
-        context: str,
-        message_blocks: list[ResolvedBlock],
-    ) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = [{"role": "system", "content": context}]
+    def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
+        # System blocks: reuse XML wrapping from the base class by calling it on
+        # the SYSTEM-role blocks only. That gives us a list with a single
+        # RenderedMessage(SYSTEM, xml_content) — we keep that and replace the
+        # per-event messages with our custom merging logic below.
+        system_blocks = [b for b in blocks if b.role == Role.SYSTEM]
+        message_blocks = [b for b in blocks if b.role != Role.SYSTEM]
 
-        # Index PythonOutput blocks by tool_call_id for merging
+        messages: list[RenderedMessage] = []
+        if system_blocks:
+            # super().format() returns a list; the first entry is the SYSTEM message.
+            base = super().format(system_blocks)
+            # Take the SYSTEM entry only (there are no event blocks in ``system_blocks``).
+            messages.extend(m for m in base if m.role == Role.SYSTEM)
+
+        # Index PythonOutput blocks by tool_call_id for merging.
         python_outputs: dict[str, ResolvedBlock] = {}
         for block in message_blocks:
             if isinstance(block.event, PythonOutput):
                 python_outputs[block.event.tool_call_id] = block
 
         for block in message_blocks:
-            # Skip runtime events
             if block.role == Role.RUNTIME_EVENT:
                 continue
 
-            # ToolCallEvent — render assistant tool_call + merged tool response
             if isinstance(block.event, ToolCallEvent):
                 event = block.event
-
-                # Assistant message with tool call
                 messages.append(
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": event.tool_call_id,
-                                "type": "function",
-                                "function": {
-                                    "name": event.name,
-                                    "arguments": json.dumps(event.arguments),
-                                },
-                            }
-                        ],
-                    }
+                    RenderedMessage(
+                        role=Role.ASSISTANT,
+                        tool_call=ToolCallInfo(
+                            id=event.tool_call_id,
+                            name=event.name,
+                            arguments=event.arguments,
+                        ),
+                    )
                 )
-
-                # Tool response: merge PythonOutput content if available
+                # Tool result: merge PythonOutput content if available.
                 py_out_block = python_outputs.get(event.tool_call_id)
                 if py_out_block and py_out_block.event:
                     content = plain_event_content(py_out_block.event, max_chars=self._max_chars)
@@ -170,31 +168,33 @@ class PlainProviderFormatter(OpenAIProviderFormatter):  # type: ignore[misc]  # 
                     content = event.result.content
                 else:
                     content = ""
-
                 messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": event.tool_call_id,
-                        "content": content,
-                    }
+                    RenderedMessage(
+                        role=Role.TOOL,
+                        content=content,
+                        tool_call_id=event.tool_call_id,
+                    )
                 )
 
-            # PythonOutput — skip (already merged into tool response above)
             elif isinstance(block.event, PythonOutput):
+                # Already merged into tool result above.
                 assert block.event.tool_call_id in python_outputs, (
                     "PythonOutput not in python_outputs index — indexing loop above should capture all"
                 )
                 continue
 
-            # All other events — render as plain text
             else:
                 if block.event is not None:
                     content = plain_event_content(block.event, max_chars=self._max_chars)
                 else:
                     content = block.content or ""
-                messages.append({"role": block.role.value, "content": content})
+                messages.append(RenderedMessage(role=block.role, content=content))
 
         return messages
+
+
+# Back-compat alias — code outside this file may still import the old name.
+PlainProviderFormatter = PlainCodeActBlockFormatter
 
 
 # ---------------------------------------------------------------------------
@@ -244,12 +244,14 @@ class CodeActLiteStrategy(CodeActStrategy):
         call_id = stack[-1] if stack else call.id
 
         # Swap the agent's render_config to use our plain formatter, threading
-        # the block char limit from TruncationConfig.
+        # the block char limit from TruncationConfig. In the new pipeline this
+        # is a BlockFormatter swap (semantic decisions live there); the stock
+        # OpenAIProviderFormatter handles provider-shape.
         original_render_config = runtime.agent.render_config
         tc = runtime.agent._truncation
         runtime.agent.render_config = original_render_config.model_copy(
             update={
-                "provider_formatter": PlainProviderFormatter(
+                "block_formatter": PlainCodeActBlockFormatter(
                     max_chars=tc.max_block_chars,
                 )
             }
