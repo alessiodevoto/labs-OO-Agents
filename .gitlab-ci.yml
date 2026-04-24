@@ -132,6 +132,10 @@ check-frontend-build:
 # capability-test's needs: [test-core] to resolve correctly).
 test-core:
   extends: .test-base
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq ripgrep > /dev/null
+    # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
+    - uv sync --all-extras --no-extra sandbox
   script:
     - uv run pytest tests/ --ignore=tests/viewer --junitxml=test-results.xml --cov --cov-report=term-missing --cov-report=xml:coverage.xml
     - uv cache prune --ci
