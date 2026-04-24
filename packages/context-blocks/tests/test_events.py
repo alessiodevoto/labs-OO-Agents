@@ -145,7 +145,7 @@ class TestInstanceValuesEmptySuppression:
 
     def test_pformat_omits_empty_fields(self):
         """Suppression is observable through agentdoc.pformat (the LLM render path)."""
-        from agentdoc import pformat
+        from nemo_oo_agents.agentdoc import pformat
         from pydantic import Field
 
         from context_blocks.events import EventBase
