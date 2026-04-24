@@ -4,19 +4,26 @@
 
 Must be added to TracerProvider **before** export processors so the attribute
 is present when exporters see the span.
+
+Reads the session id from the OpenTelemetry context — the same source
+:mod:`openinference_instrumentation_nemo_oo_agents._session` writes
+via :func:`set_session`. Needed for spans created by the plain SDK
+tracer (framework hooks) because those don't go through
+OpenInference's ``OITracer`` and therefore don't auto-receive the
+attribute from ``get_attributes_from_context()`` at creation.
 """
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 
-from nemo_oo_agents.tracing._session import _current_session
+from nemo_oo_agents.tracing._session import get_session
 
 
 class SessionSpanProcessor(SpanProcessor):
-    """Reads the session ContextVar at span-start and sets ``session.id``."""
+    """Stamps ``session.id`` on every span at ``on_start``."""
 
     def on_start(self, span, parent_context: Context | None = None) -> None:
-        session_id = _current_session.get(None)
+        session_id = get_session()
         if session_id:
             span.set_attribute("session.id", session_id)
 

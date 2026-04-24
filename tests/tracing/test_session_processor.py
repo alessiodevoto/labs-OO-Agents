@@ -102,3 +102,39 @@ class TestSessionSpanProcessor:
     def test_shutdown_is_noop(self):
         proc = SessionSpanProcessor()
         proc.shutdown()  # Should not raise
+
+    def test_session_propagates_via_otel_context_to_openinference_spans(self):
+        """Regression: acompletion spans created by LiteLLMInstrumentor
+        were landing in ``unknown_*`` sessions because our ContextVar was
+        a separate propagation channel from OTel's context — and
+        OpenInference's OITracer reads ``session.id`` out of the OTel
+        context at span creation, not from our ContextVar.
+
+        This test uses :class:`OITracer` directly (same tracer class
+        LiteLLMInstrumentor uses) to confirm ``set_session()`` makes it
+        all the way onto a span without relying on
+        :class:`SessionSpanProcessor`.
+        """
+        from openinference.instrumentation import OITracer, TraceConfig
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = OtlpJsonFileExporter(tmpdir)
+            provider = TracerProvider()
+            # Note: deliberately NOT adding SessionSpanProcessor so this
+            # proves the OTel context channel works on its own.
+            provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+            set_session("via-otel-ctx")
+            tracer = OITracer(provider.get_tracer(__name__), config=TraceConfig())
+            with tracer.start_as_current_span("oi-span"):
+                pass
+            provider.force_flush()
+
+            session_file = Path(tmpdir) / "via-otel-ctx.jsonl"
+            # If this file doesn't exist, session.id wasn't propagated:
+            # the exporter routes by session.id attribute.
+            assert session_file.exists(), (
+                "session.id must reach OITracer-created spans via the OTel context"
+            )
+            spans = read_otlp_jsonl_spans(session_file)
+            assert spans[0]["attributes"]["session.id"] == "via-otel-ctx"
