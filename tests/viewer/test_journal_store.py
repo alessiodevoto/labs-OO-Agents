@@ -445,7 +445,10 @@ class TestIngestJournalCall:
 
     def test_compound_system_message_roundtrip(self, store):
         """v3: compound system messages are stored inline (no block assembly)."""
-        sys_msg = {"role": "system", "content": "<notes>\nFirst note.\n</notes>\n\n<status>\nIdle.\n</status>"}
+        sys_msg = {
+            "role": "system",
+            "content": "<notes>\nFirst note.\n</notes>\n\n<status>\nIdle.\n</status>",
+        }
         user_msg = {"role": "user", "content": "hello"}
         store.ingest_journal_call(
             {
