@@ -444,11 +444,12 @@ class TestTokenCounterRegression:
             f"~20 tokens, got {total_with_tools - total_no_tools}"
         )
 
+
 class TestMaxOutputTokensBudget:
     """The safety net must account for ``max_output_tokens`` when computing
     the input budget.  With ``max_tokens=64000`` on a 131072-token window
-    the old ``ctx_window × 0.70 = 91750`` cap was too generous — the real
-    safe limit is ``131072 − 64000 = 67072``.  The fix passes
+    the old ``ctx_window * 0.70 = 91750`` cap was too generous -- the real
+    safe limit is ``131072 - 64000 = 67072``.  The fix passes
     ``max_output_tokens`` into ``_build_messages`` so the cap tightens.
     """
 
@@ -528,8 +529,6 @@ class TestMaxOutputTokensBudget:
         """When max_tokens is small (< 30 % of ctx_window), the default
         70 % heuristic is already tighter and should win.  No regression.
         """
-        import litellm
-
         from nemo_oo_agents.events import Message
 
         llm = _mk_llm(200_000)
@@ -597,3 +596,281 @@ class TestMaxOutputTokensBudget:
 
         assert messages is not None
 
+
+class _ContextWindowExceededError(Exception):
+    """Test double for litellm.ContextWindowExceededError."""
+
+    pass
+
+
+class TestContextWindowRecovery:
+    """When the LLM API rejects with ContextWindowExceededError, generate()
+    should reduce max_tokens and retry once instead of propagating the error.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recovery_reduces_max_tokens_and_retries(self):
+        """Simulates the KDD crash: first acall raises ContextWindowExceeded,
+        recovery retries with reduced max_tokens and succeeds."""
+        from unittest.mock import patch
+
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import (
+            _current_llm_var,
+            _current_method_var,
+        )
+
+        llm = _mk_llm(131_072)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.event_manager.add(Message(content="hello"))
+
+        error = _ContextWindowExceededError(
+            "This model's maximum context length is 131072 tokens. "
+            "However, you requested 64000 output tokens and your prompt "
+            "contains at least 67073 input tokens, for a total of at least "
+            "131073 tokens."
+        )
+
+        call_count = 0
+        received_max_tokens = []
+
+        original_acall = llm.acall
+
+        async def mock_acall(messages, **kw):
+            nonlocal call_count
+            call_count += 1
+            received_max_tokens.append(kw.get("max_tokens"))
+            if call_count == 1:
+                raise error
+            return await original_acall(messages, **kw)
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=mock_acall):
+                _response, _event_id = await agent.runtime.generate(tools=[], max_tokens=64000)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+        assert call_count == 2, f"Expected 2 calls (fail + retry), got {call_count}"
+        assert received_max_tokens[0] == 64000, "First call should use original max_tokens"
+        assert received_max_tokens[1] is not None
+        assert received_max_tokens[1] < 64000, (
+            f"Retry max_tokens ({received_max_tokens[1]}) should be less than original (64000)"
+        )
+        assert received_max_tokens[1] >= 1024, "Retry max_tokens should be >= minimum"
+
+    @pytest.mark.asyncio
+    async def test_non_context_window_errors_still_propagate(self):
+        """Errors that aren't ContextWindowExceeded must propagate normally."""
+        from unittest.mock import patch
+
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import (
+            _current_llm_var,
+            _current_method_var,
+        )
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.event_manager.add(Message(content="hello"))
+
+        async def mock_acall(messages, **kw):
+            raise RuntimeError("Some other API error")
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=mock_acall):
+                with pytest.raises(RuntimeError, match="Some other API error"):
+                    await agent.runtime.generate(tools=[], max_tokens=4096)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+    @pytest.mark.asyncio
+    async def test_recovery_gives_up_when_budget_too_small(self):
+        """If the prompt is so large that even minimal output won't fit,
+        recovery should re-raise instead of retrying with a useless budget."""
+        from unittest.mock import patch
+
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import (
+            _current_llm_var,
+            _current_method_var,
+        )
+
+        llm = _mk_llm(131_072)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.event_manager.add(Message(content="hello"))
+
+        error = _ContextWindowExceededError(
+            "This model's maximum context length is 131072 tokens. "
+            "However, you requested 64000 output tokens and your prompt "
+            "contains at least 130500 input tokens."
+        )
+
+        async def mock_acall(messages, **kw):
+            raise error
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=mock_acall):
+                with pytest.raises(_ContextWindowExceededError):
+                    await agent.runtime.generate(tools=[], max_tokens=64000)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+
+class TestEndToEndSmallContextWindow:
+    """Integration test: FakeLLM with a tiny context window exercises both
+    the proactive safety net and the reactive recovery path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_small_window_safety_net_prevents_overflow(self):
+        """With a 4096-token window and max_tokens=2048, the safety net
+        should keep input under 2048 tokens (4096 - 2048 - margin)."""
+        import litellm
+
+        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        llm = _mk_llm(4096)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        # Add enough events to blow past the tiny 4096 window
+        for i in range(50):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 100},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="y " * 100,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
+
+        method = type(agent).respond
+        token = _current_llm_var.set(agent._llm)
+        try:
+            messages = await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                max_output_tokens=2048,
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        assert messages is not None
+        structured = litellm.token_counter(model=agent._llm.model, messages=messages)
+        # Must fit: input + max_output_tokens < context_window
+        assert structured + 2048 < 4096, (
+            f"input ({structured}) + max_output (2048) = {structured + 2048} >= 4096"
+        )
+        # Safety net should have dropped messages
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        assert stats.events_dropped > 0, "Safety net should have dropped events"
+
+    @pytest.mark.asyncio
+    async def test_recovery_fires_on_token_estimation_error(self):
+        """Simulate the case where the safety net's token count is slightly
+        off and the API still rejects. Recovery should reduce max_tokens
+        and succeed on retry."""
+        from unittest.mock import patch
+
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import (
+            _current_llm_var,
+            _current_method_var,
+        )
+
+        llm = _mk_llm(4096)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.event_manager.add(Message(content="hello world"))
+
+        # First call: raises ContextWindowExceeded (simulating tokenizer gap)
+        # Second call: succeeds with reduced max_tokens
+        call_count = 0
+        received_max_tokens = []
+        original_acall = llm.acall
+
+        async def mock_acall(messages, **kw):
+            nonlocal call_count
+            call_count += 1
+            received_max_tokens.append(kw.get("max_tokens"))
+            if call_count == 1:
+                raise _ContextWindowExceededError(
+                    "This model's maximum context length is 4096 tokens. "
+                    "However, you requested 2048 output tokens and your prompt "
+                    "contains at least 2500 input tokens, for a total of at "
+                    "least 4548 tokens."
+                )
+            return await original_acall(messages, **kw)
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=mock_acall):
+                _response, _event_id = await agent.runtime.generate(tools=[], max_tokens=2048)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+        assert call_count == 2
+        assert received_max_tokens[0] == 2048
+        # Recovery: 4096 - 2500 - margin(~82) = ~1514
+        assert received_max_tokens[1] < 2048
+        assert received_max_tokens[1] >= 1024  # above minimum

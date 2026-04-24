@@ -9,6 +9,7 @@ import inspect
 import io
 import linecache
 import logging
+import re as _re
 import tokenize
 import types
 import warnings
@@ -236,6 +237,68 @@ def _clamp_messages_to_budget(
         system_cost + running,
     )
     return system + rest[keep_from:], system_cost + running, running, dropped
+
+
+# ---------------------------------------------------------------------------
+# ContextWindowExceededError recovery helpers
+# ---------------------------------------------------------------------------
+
+_MIN_RECOVERY_OUTPUT_TOKENS = 1024
+
+
+_PROMPT_TOKENS_RE = _re.compile(
+    r"prompt[^0-9]*(?:contains?\s+(?:at\s+least\s+)?)?(\d[\d,]*)\s*(?:input\s+)?tokens",
+    _re.IGNORECASE,
+)
+
+
+def _is_context_window_error(exc: BaseException) -> bool:
+    """Walk the exception chain looking for ContextWindowExceeded."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        name = type(cur).__name__
+        msg = str(cur).lower()
+        if "contextwindowexceeded" in name.lower() or "context length" in msg:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+def _parse_prompt_tokens(exc: BaseException) -> int | None:
+    """Extract prompt token count from a ContextWindowExceededError chain."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        m = _PROMPT_TOKENS_RE.search(str(cur))
+        if m:
+            return int(m.group(1).replace(",", ""))
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
+def _compute_reduced_max_tokens(
+    exc: BaseException,
+    ctx_window: int | None,
+    original_max_tokens: int | None,
+) -> int | None:
+    """Compute reduced max_tokens for context window recovery.
+
+    Returns the reduced value, or None if recovery is not possible.
+    """
+    prompt_tok = _parse_prompt_tokens(exc)
+    if ctx_window and prompt_tok:
+        margin = max(int(ctx_window * 0.02), 256)
+        reduced = ctx_window - prompt_tok - margin
+    elif ctx_window and original_max_tokens:
+        reduced = original_max_tokens // 2
+    else:
+        return None
+    if reduced < _MIN_RECOVERY_OUTPUT_TOKENS:
+        return None
+    return reduced
 
 
 def _strip_blocked_modules(
@@ -647,7 +710,25 @@ class ActorRuntime:
                     )
                     return ctx
 
-                ctx = await em.run_middleware("llm_call", ctx, _core_llm)
+                try:
+                    ctx = await em.run_middleware("llm_call", ctx, _core_llm)
+                except Exception as _cw_exc:
+                    if not _is_context_window_error(_cw_exc):
+                        raise
+                    _reduced = _compute_reduced_max_tokens(
+                        _cw_exc,
+                        getattr(llm_client, "context_window", None),
+                        ctx.params.get("max_tokens"),
+                    )
+                    if _reduced is None:
+                        raise
+                    logger.warning(
+                        "context-window recovery (middleware): reducing max_tokens %s -> %d",
+                        ctx.params.get("max_tokens"),
+                        _reduced,
+                    )
+                    ctx.params["max_tokens"] = _reduced
+                    ctx = await em.run_middleware("llm_call", ctx, _core_llm)
                 response = ctx.response
                 if response is None:
                     raise RuntimeError(
@@ -664,12 +745,38 @@ class ActorRuntime:
                     generation_id=current_generation_id or "",
                     context_stats=self._last_context_stats,
                 )
-                response = await llm_client.acall(
-                    messages,
-                    tools=tools or [],
-                    output_model=output_model,
-                    **kwargs,
-                )
+                try:
+                    response = await llm_client.acall(
+                        messages,
+                        tools=tools or [],
+                        output_model=output_model,
+                        **kwargs,
+                    )
+                except Exception as _cw_exc:
+                    if not _is_context_window_error(_cw_exc):
+                        raise
+                    _reduced = _compute_reduced_max_tokens(
+                        _cw_exc,
+                        getattr(llm_client, "context_window", None),
+                        kwargs.get("max_tokens"),
+                    )
+                    if _reduced is None:
+                        raise
+                    logger.warning(
+                        "context-window recovery: reducing max_tokens %s -> %d "
+                        "(prompt=%s, ctx_window=%s)",
+                        kwargs.get("max_tokens"),
+                        _reduced,
+                        _parse_prompt_tokens(_cw_exc),
+                        getattr(llm_client, "context_window", None),
+                    )
+                    _recovery_kw = {**kwargs, "max_tokens": _reduced}
+                    response = await llm_client.acall(
+                        messages,
+                        tools=tools or [],
+                        output_model=output_model,
+                        **_recovery_kw,
+                    )
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -2473,7 +2580,18 @@ async def {name}({params_str}) -> {return_type}:
                 # 5 % margin covers litellm ↔ API tokenizer gap
                 margin = int(ctx_window * 0.05)
                 output_aware_cap = ctx_window - max_output_tokens - margin
-                cap = min(default_cap, output_aware_cap)
+                if output_aware_cap <= 0:
+                    logger.warning(
+                        "max_output_tokens (%d) + margin (%d) >= ctx_window (%d); "
+                        "falling back to default cap — the LLM call will likely "
+                        "fail and the recovery path will reduce max_tokens",
+                        max_output_tokens,
+                        margin,
+                        ctx_window,
+                    )
+                    cap = default_cap
+                else:
+                    cap = min(default_cap, output_aware_cap)
             else:
                 cap = default_cap
             tool_schemas = _schemas_for_budget(tools) if tools else None
