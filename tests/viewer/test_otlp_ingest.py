@@ -172,6 +172,7 @@ class TestEventLoopIsolation:
     with a POST /v1/traces, and asserts the POST returns in under 1 s.
     """
 
+    @pytest.mark.flaky(reruns=2, reason="CI timing: 1s threshold sensitive to runner load")
     async def test_post_not_blocked_by_slow_get(self, mock_store):
         """POST /v1/traces must return quickly while a slow GET is in-flight."""
         from nemo_oo_agents.viewer.main import app

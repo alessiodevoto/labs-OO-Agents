@@ -129,6 +129,7 @@ class TestResponsesClientAsync:
         assert response.finish_reason == "stop"
 
     @pytest.mark.asyncio
+    @pytest.mark.flaky(reruns=2, reason="Live LLM API may return malformed structured output")
     async def test_async_structured_output(self, client):
         """Test async structured output parsing."""
         messages = [{"role": "user", "content": "What is 10 * 10? Provide your answer and confidence."}]
