@@ -118,7 +118,14 @@ logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
 async def lifespan(app: FastAPI):
     log.info("Frontend: %s", FRONTEND_DIR)
     log.info("Initializing SQLite trace store...")
-    count = otlp_store.init_db()
+    try:
+        count = otlp_store.init_db()
+    except otlp_store.DatabaseBusyAtStartup as exc:
+        # Fail loudly with a fixable diagnostic — the process would
+        # otherwise come up "healthy" but every journal/span POST would
+        # hang on the lock.
+        log.error("SQLite trace store is not writable:\n%s", exc)
+        raise SystemExit(1) from exc
     log.info("Database ready: %d sessions in %s", count, otlp_store.DB_PATH)
 
     worker = asyncio.create_task(_ingest_worker())
@@ -226,6 +233,8 @@ async def journal_messages_ingest(request: Request):
     Offloads the SQLite write to the single-writer executor so the event
     loop is never blocked — same pattern as /v1/traces ingest.
     """
+    import sqlite3
+
     body = await request.json()
     if not isinstance(body, list):
         return JSONResponse(
@@ -235,7 +244,16 @@ async def journal_messages_ingest(request: Request):
     n_items = len(body)
     loop = asyncio.get_running_loop()
     t0 = time.monotonic()
-    result = await loop.run_in_executor(_write_executor, otlp_store.ingest_journal_messages, body)
+    try:
+        result = await loop.run_in_executor(
+            _write_executor, otlp_store.ingest_journal_messages, body
+        )
+    except sqlite3.OperationalError as exc:
+        log.warning("[journal/messages] SQLite write failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"sqlite busy: {exc}", "retryable": True},
+        )
     elapsed_ms = (time.monotonic() - t0) * 1000
     if elapsed_ms > 500:
         log.warning(
@@ -252,6 +270,8 @@ async def journal_call_ingest(request: Request):
 
     Offloads the SQLite write to the single-writer executor.
     """
+    import sqlite3
+
     body = await request.json()
     if not isinstance(body, dict) or not body.get("call_id") or not body.get("session_id"):
         return JSONResponse(
@@ -264,6 +284,16 @@ async def journal_call_ingest(request: Request):
         result = await loop.run_in_executor(_write_executor, otlp_store.ingest_journal_call, body)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
+    except sqlite3.OperationalError as exc:
+        log.warning(
+            "[journal/calls] SQLite write failed: %s  call_id=%s",
+            exc,
+            body.get("call_id", "?"),
+        )
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"sqlite busy: {exc}", "retryable": True},
+        )
     elapsed_ms = (time.monotonic() - t0) * 1000
     if elapsed_ms > 500:
         log.warning(

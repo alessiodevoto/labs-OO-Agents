@@ -60,9 +60,10 @@ def _get_db() -> sqlite3.Connection:
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
     if not hasattr(_read_tls, "conn"):
-        _read_tls.conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        _read_tls.conn = sqlite3.connect(str(DB_PATH), timeout=30)
         _read_tls.conn.execute("PRAGMA journal_mode=WAL")
         _read_tls.conn.execute("PRAGMA synchronous=NORMAL")
+        _read_tls.conn.execute("PRAGMA busy_timeout=30000")
         _read_tls.conn.row_factory = sqlite3.Row
     return _read_tls.conn
 
@@ -72,11 +73,18 @@ def _get_write_db() -> sqlite3.Connection:
 
     Called only from the single-writer executor thread, never from the
     event loop or route-handler threads.
+
+    ``busy_timeout=30000`` lets SQLite itself wait up to 30s for a
+    writer lock before raising ``database is locked`` — covers the
+    common case where another reader (or a long OTLP batch commit on
+    the same file) is mid-fsync. Without it, lock contention surfaces
+    as 500s on the client in under a second.
     """
     if not hasattr(_write_tls, "conn"):
-        _write_tls.conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        _write_tls.conn = sqlite3.connect(str(DB_PATH), timeout=30)
         _write_tls.conn.execute("PRAGMA journal_mode=WAL")
         _write_tls.conn.execute("PRAGMA synchronous=NORMAL")
+        _write_tls.conn.execute("PRAGMA busy_timeout=30000")
         _write_tls.conn.row_factory = sqlite3.Row
     return _write_tls.conn
 
@@ -188,10 +196,55 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
     log.info("Migration complete – %d sessions migrated.", len(rows))
 
 
+class DatabaseBusyAtStartup(RuntimeError):
+    """Raised when another process is holding a lock on the DB at startup."""
+
+
+def _check_writable(path: Path) -> None:
+    """Fail fast if another process is already locking the DB file.
+
+    Opens a dedicated connection, runs ``BEGIN IMMEDIATE`` (acquires a
+    reserved lock — compatible with concurrent WAL readers, but blocked
+    by any other reserved/exclusive writer) and rolls back immediately.
+    If that raises, another process is holding a writer lock and
+    subsequent journal/ingest writes will stall every client. Much
+    better to surface this at startup with a concrete fix than to let
+    every POST time out later.
+    """
+    import sqlite3 as _sqlite
+
+    probe_timeout_s = 3
+    try:
+        probe = _sqlite.connect(str(path), timeout=probe_timeout_s)
+    except _sqlite.OperationalError as e:
+        raise DatabaseBusyAtStartup(f"cannot open {path}: {e}") from e
+    try:
+        probe.execute(f"PRAGMA busy_timeout={probe_timeout_s * 1000}")
+        probe.execute("BEGIN IMMEDIATE")
+        probe.execute("ROLLBACK")
+    except _sqlite.OperationalError as e:
+        raise DatabaseBusyAtStartup(
+            f"another process is holding a writer lock on {path}: {e}\n"
+            f"Diagnose with:\n"
+            f"  lsof {path}\n"
+            f"  pgrep -af nemo_oo_agents_viewer\n"
+            f"Then kill any stale viewer, or pick a different TRACE_STORE_DB."
+        ) from e
+    finally:
+        probe.close()
+
+
 def init_db() -> int:
-    """Create tables and return the number of existing sessions."""
+    """Create tables and return the number of existing sessions.
+
+    Raises ``DatabaseBusyAtStartup`` if another process is holding a
+    writer lock on the DB — catching the usual "stale second viewer"
+    footgun at process start instead of as runtime 500s/503s later.
+    """
     global _db
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    _check_writable(DB_PATH)
 
     # Reset any existing thread-local read connection so _get_db() opens a
     # fresh one pointing at the new DB_PATH (important in tests where each
@@ -272,21 +325,16 @@ def init_db() -> int:
         CREATE INDEX IF NOT EXISTS idx_annotations_session ON annotations(session_id);
         CREATE INDEX IF NOT EXISTS idx_annotations_span ON annotations(session_id, span_id);
 
-        CREATE TABLE IF NOT EXISTS msg_content (
-            hash TEXT PRIMARY KEY,
-            msg  TEXT NOT NULL
-        );
-
         CREATE TABLE IF NOT EXISTS llm_calls (
-            call_id       TEXT PRIMARY KEY,
-            session_id    TEXT NOT NULL,
-            span_id       TEXT,
-            model         TEXT,
-            ts_start      REAL,
-            ts_end        REAL,
-            input_hashes  TEXT NOT NULL,
-            output_hashes TEXT NOT NULL,
-            tokens        TEXT
+            call_id          TEXT PRIMARY KEY,
+            session_id       TEXT NOT NULL,
+            span_id          TEXT,
+            model            TEXT,
+            ts_start         REAL,
+            ts_end           REAL,
+            input_skeleton   TEXT NOT NULL,
+            output_messages  TEXT NOT NULL,
+            tokens           TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
@@ -295,6 +343,30 @@ def init_db() -> int:
 
     if _has_column(_db, "sessions", "eval_model"):
         _migrate_v1_to_v2(_db)
+
+    # Journal v3 renamed input_hashes/output_hashes → input_skeleton/output_messages
+    # and dropped the msg_content table. Older DBs still have the v2 shape, and
+    # CREATE TABLE IF NOT EXISTS above won't replace them — so INSERTs into
+    # input_skeleton raise OperationalError. Journal data is regenerable trace
+    # display state; drop-recreate when the new column is missing.
+    if not _has_column(_db, "llm_calls", "input_skeleton"):
+        log.info("Migrating llm_calls to v3 schema (skeleton + blocks)")
+        _db.execute("DROP TABLE IF EXISTS llm_calls")
+        _db.execute("DROP TABLE IF EXISTS msg_content")
+        _db.execute("""
+            CREATE TABLE llm_calls (
+                call_id          TEXT PRIMARY KEY,
+                session_id       TEXT NOT NULL,
+                span_id          TEXT,
+                model            TEXT,
+                ts_start         REAL,
+                ts_end           REAL,
+                input_skeleton   TEXT NOT NULL,
+                output_messages  TEXT NOT NULL,
+                tokens           TEXT
+            )
+        """)
+        _db.execute("CREATE INDEX idx_llm_calls_session ON llm_calls(session_id)")
 
     # Add span_id to llm_calls if missing (added in journal v2)
     if not _has_column(_db, "llm_calls", "span_id"):
@@ -1289,51 +1361,23 @@ def list_tags() -> list[dict[str, Any]]:
 
 
 def ingest_journal_messages(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Upsert a batch of content-addressed messages.
+    """Accept a batch of content-addressed messages (v2 compat).
 
-    Each item must have ``"h"`` (hash string) and ``"msg"`` (message dict).
-    Already-stored hashes are silently skipped (INSERT OR IGNORE).
-    Returns ``{"stored": N}`` where N is the number of newly inserted rows.
+    Journal v3 stores messages inline in ``llm_calls.input_skeleton`` /
+    ``output_messages``, so the separate ``msg_content`` table is gone.
+    This endpoint is kept for backward-compatible clients that still POST
+    messages; it simply acknowledges them without persisting.
 
-    Called from the single-writer executor thread via main.py.
+    Returns ``{"stored": 0}`` unconditionally.
     """
-    if not items:
-        return {"stored": 0}
-    db = _get_write_db()
-    rows = []
-    for item in items:
-        if "h" not in item or "msg" not in item:
-            continue
-        try:
-            rows.append((item["h"], json.dumps(item["msg"], separators=(",", ":"))))
-        except (TypeError, ValueError) as e:
-            log.warning(
-                "ingest_journal_messages: skipping unserializable item hash=%s: %s",
-                item.get("h"),
-                e,
-            )
-    if not rows:
-        return {"stored": 0}
-    import time as _time
-
-    t0 = _time.monotonic()
-    cur = db.executemany("INSERT OR IGNORE INTO msg_content (hash, msg) VALUES (?, ?)", rows)
-    db.commit()
-    elapsed_ms = (_time.monotonic() - t0) * 1000
-    if elapsed_ms > 200:
-        log.warning(
-            "[journal_messages] sqlite commit took %.0fms  rows=%d",
-            elapsed_ms,
-            len(rows),
-        )
-    return {"stored": cur.rowcount}
+    return {"stored": 0}
 
 
 def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
     """Upsert a single LLM call record.
 
     Expected keys: ``call_id``, ``session_id``, ``model``, ``ts_start``,
-    ``ts_end``, ``input_hashes`` (list), ``output_hashes`` (list),
+    ``ts_end``, ``input_skeleton`` (list), ``output_messages`` (list),
     ``tokens`` (dict or None), ``span_id`` (str or None).
 
     Called from the single-writer executor thread via main.py.
@@ -1345,8 +1389,8 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
 
     db = _get_write_db()
     try:
-        input_hashes_json = json.dumps(call.get("input_hashes", []), separators=(",", ":"))
-        output_hashes_json = json.dumps(call.get("output_hashes", []), separators=(",", ":"))
+        input_skeleton_json = json.dumps(call.get("input_skeleton", []), separators=(",", ":"))
+        output_messages_json = json.dumps(call.get("output_messages", []), separators=(",", ":"))
         tokens_json = (
             json.dumps(call["tokens"], separators=(",", ":")) if call.get("tokens") else None
         )
@@ -1364,7 +1408,7 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
         """
         INSERT OR REPLACE INTO llm_calls
             (call_id, session_id, span_id, model, ts_start, ts_end,
-             input_hashes, output_hashes, tokens)
+             input_skeleton, output_messages, tokens)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -1374,8 +1418,8 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
             call.get("model", ""),
             call.get("ts_start"),
             call.get("ts_end"),
-            input_hashes_json,
-            output_hashes_json,
+            input_skeleton_json,
+            output_messages_json,
             tokens_json,
         ),
     )
@@ -1414,8 +1458,8 @@ def _resolve_msg(h: str, msg_by_hash: dict[str, dict]) -> dict | None:
 def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     """Return all LLM call records for a session, ordered by start time.
 
-    Each record includes ``input_messages`` and ``output_messages`` — the
-    fully reconstructed message dicts (looked up from msg_content by hash).
+    Each record includes ``input_messages`` and ``output_messages`` —
+    stored inline as JSON in the v3 schema (no more hash indirection).
     """
     db = _get_db()
     call_rows = db.execute(
@@ -1426,43 +1470,16 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     if not call_rows:
         return []
 
-    # Collect all hashes referenced by this session's calls
-    all_hashes: set[str] = set()
-    for row in call_rows:
-        all_hashes.update(json.loads(row["input_hashes"]))
-        all_hashes.update(json.loads(row["output_hashes"]))
-
-    msg_by_hash: dict[str, dict] = {}
-    if all_hashes:
-        placeholders = ",".join("?" * len(all_hashes))
-        first_pass = db.execute(
-            f"SELECT hash, msg FROM msg_content WHERE hash IN ({placeholders})",
-            list(all_hashes),
-        ).fetchall()
-        # Expand compound system-message entries to include their block sub-hashes
-        for r in first_pass:
-            m = json.loads(r["msg"])
-            if "_blocks" in m:
-                all_hashes.update(m["_blocks"])
-        placeholders = ",".join("?" * len(all_hashes))
-        msg_rows = db.execute(
-            f"SELECT hash, msg FROM msg_content WHERE hash IN ({placeholders})",
-            list(all_hashes),
-        ).fetchall()
-        msg_by_hash = {r["hash"]: json.loads(r["msg"]) for r in msg_rows}
-
     result = []
     for row in call_rows:
-        input_hashes = json.loads(row["input_hashes"])
-        output_hashes = json.loads(row["output_hashes"])
         rec: dict[str, Any] = {
             "call_id": row["call_id"],
             "session_id": row["session_id"],
             "model": row["model"],
             "ts_start": row["ts_start"],
             "ts_end": row["ts_end"],
-            "input_messages": [_resolve_msg(h, msg_by_hash) for h in input_hashes],
-            "output_messages": [_resolve_msg(h, msg_by_hash) for h in output_hashes],
+            "input_messages": json.loads(row["input_skeleton"]),
+            "output_messages": json.loads(row["output_messages"]),
             "tokens": json.loads(row["tokens"]) if row["tokens"] else None,
         }
         if row["span_id"]:

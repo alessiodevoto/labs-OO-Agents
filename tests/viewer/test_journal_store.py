@@ -48,8 +48,8 @@ def _make_db() -> sqlite3.Connection:
             model         TEXT,
             ts_start      REAL,
             ts_end        REAL,
-            input_hashes  TEXT NOT NULL,
-            output_hashes TEXT NOT NULL,
+            input_skeleton   TEXT NOT NULL,
+            output_messages  TEXT NOT NULL,
             tokens        TEXT
         );
 
@@ -292,19 +292,15 @@ class TestResolveMsg:
 
 
 class TestIngestJournalMessages:
+    """v3: ingest_journal_messages is a backward-compat no-op (messages are inline in llm_calls)."""
+
     def test_stores_messages(self, store):
         items = [
             {"h": "sha256:aaa", "msg": {"role": "user", "content": "hi"}},
             {"h": "sha256:bbb", "msg": {"role": "assistant", "content": "hello"}},
         ]
         result = store.ingest_journal_messages(items)
-        assert result["stored"] >= 0  # rowcount behaviour is driver-dependent
-
-        db = store._get_db()
-        rows = db.execute("SELECT hash FROM msg_content").fetchall()
-        hashes = {r[0] for r in rows}
-        assert "sha256:aaa" in hashes
-        assert "sha256:bbb" in hashes
+        assert result == {"stored": 0}
 
     def test_empty_list_returns_stored_zero(self, store):
         """Empty batch returns {stored: 0} without touching the DB."""
@@ -313,20 +309,27 @@ class TestIngestJournalMessages:
 
     def test_dedup_insert_or_ignore(self, store):
         items = [{"h": "sha256:dup", "msg": {"role": "user", "content": "x"}}]
-        store.ingest_journal_messages(items)
-        store.ingest_journal_messages(items)  # second call: same hash
-        db = store._get_db()
-        count = db.execute("SELECT COUNT(*) FROM msg_content WHERE hash = 'sha256:dup'").fetchone()[
-            0
-        ]
-        assert count == 1
+        result1 = store.ingest_journal_messages(items)
+        result2 = store.ingest_journal_messages(items)
+        assert result1 == {"stored": 0}
+        assert result2 == {"stored": 0}
 
     def test_message_json_round_trips(self, store):
+        """v3: messages round-trip via input_skeleton in llm_calls, not msg_content."""
         msg = {"role": "assistant", "content": None, "tool_calls": [{"id": "c1"}]}
-        store.ingest_journal_messages([{"h": "sha256:tc", "msg": msg}])
-        db = store._get_db()
-        row = db.execute("SELECT msg FROM msg_content WHERE hash = 'sha256:tc'").fetchone()
-        assert json.loads(row[0]) == msg
+        store.ingest_journal_call(
+            {
+                "call_id": "call_rt",
+                "session_id": "sess_rt",
+                "model": "gpt-4o",
+                "ts_start": 1.0,
+                "ts_end": 2.0,
+                "input_skeleton": [msg],
+                "output_messages": [],
+            }
+        )
+        calls = store.get_session_calls("sess_rt")
+        assert calls[0]["input_messages"][0] == msg
 
 
 # ---------------------------------------------------------------------------
@@ -335,19 +338,7 @@ class TestIngestJournalMessages:
 
 
 class TestIngestJournalCall:
-    def _seed_messages(self, store, pairs):
-        """Seed (hash, msg) pairs into msg_content."""
-        items = [{"h": h, "msg": m} for h, m in pairs]
-        store.ingest_journal_messages(items)
-
     def test_stores_and_retrieves_call(self, store):
-        self._seed_messages(
-            store,
-            [
-                ("sha256:in1", {"role": "user", "content": "hi"}),
-                ("sha256:out1", {"role": "assistant", "content": "hello"}),
-            ],
-        )
         store.ingest_journal_call(
             {
                 "call_id": "cid1",
@@ -355,8 +346,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1000.0,
                 "ts_end": 1001.0,
-                "input_hashes": ["sha256:in1"],
-                "output_hashes": ["sha256:out1"],
+                "input_skeleton": [{"role": "user", "content": "hi"}],
+                "output_messages": [{"role": "assistant", "content": "hello"}],
                 "tokens": {"prompt": 10, "completion": 5},
                 "span_id": "abc123",
             }
@@ -377,8 +368,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess2")
@@ -394,8 +385,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
                 "span_id": "span_first",
             }
         )
@@ -406,8 +397,8 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
                 "span_id": "span_second",
             }
         )
@@ -419,8 +410,9 @@ class TestIngestJournalCall:
         calls = store.get_session_calls("nonexistent")
         assert calls == []
 
-    def test_hash_miss_returns_none_in_messages(self, store):
-        """If a hash isn't in msg_content, the message is None."""
+    def test_inline_messages_round_trip(self, store):
+        """v3: messages stored inline in input_skeleton are returned as-is."""
+        msg = {"role": "user", "content": "hello"}
         store.ingest_journal_call(
             {
                 "call_id": "cid3",
@@ -428,12 +420,12 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:missing"],
-                "output_hashes": [],
+                "input_skeleton": [msg],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess3")
-        assert calls[0]["input_messages"] == [None]
+        assert calls[0]["input_messages"] == [msg]
 
     def test_multiple_calls_ordered_by_ts_start(self, store):
         for i, ts in [(2, 200.0), (1, 100.0), (3, 300.0)]:
@@ -444,42 +436,20 @@ class TestIngestJournalCall:
                     "model": "gpt-4o",
                     "ts_start": ts,
                     "ts_end": ts + 1,
-                    "input_hashes": [],
-                    "output_hashes": [],
+                    "input_skeleton": [],
+                    "output_messages": [],
                 }
             )
         calls = store.get_session_calls("sess_order")
         assert [c["call_id"] for c in calls] == ["cid1", "cid2", "cid3"]
 
     def test_compound_system_message_roundtrip(self, store):
-        """Block-level compound entries are reconstructed into full system messages."""
-        block_a = "<notes>\nFirst note.\n</notes>"
-        block_b = "<status>\nIdle.\n</status>"
-        h_a = "sha256:block_a"
-        h_b = "sha256:block_b"
-        compound = {"role": "system", "_blocks": [h_a, h_b]}
-        import hashlib
-        import json as _json
-
-        h_compound = (
-            "sha256:"
-            + hashlib.sha256(
-                _json.dumps(
-                    compound, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-                ).encode()
-            ).hexdigest()
-        )
-
-        # Seed: two block sub-entries + compound entry + a user message
-        h_user = "sha256:user1"
-        store.ingest_journal_messages(
-            [
-                {"h": h_a, "msg": {"_block": block_a}},
-                {"h": h_b, "msg": {"_block": block_b}},
-                {"h": h_compound, "msg": compound},
-                {"h": h_user, "msg": {"role": "user", "content": "hello"}},
-            ]
-        )
+        """v3: compound system messages are stored inline (no block assembly)."""
+        sys_msg = {
+            "role": "system",
+            "content": "<notes>\nFirst note.\n</notes>\n\n<status>\nIdle.\n</status>",
+        }
+        user_msg = {"role": "user", "content": "hello"}
         store.ingest_journal_call(
             {
                 "call_id": "cid_blocks",
@@ -487,16 +457,14 @@ class TestIngestJournalCall:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [h_compound, h_user],
-                "output_hashes": [],
+                "input_skeleton": [sys_msg, user_msg],
+                "output_messages": [],
             }
         )
         calls = store.get_session_calls("sess_blocks")
         assert len(calls) == 1
-        sys_msg = calls[0]["input_messages"][0]
-        assert sys_msg == {"role": "system", "content": f"{block_a}\n\n{block_b}"}
-        user_msg = calls[0]["input_messages"][1]
-        assert user_msg == {"role": "user", "content": "hello"}
+        assert calls[0]["input_messages"][0] == sys_msg
+        assert calls[0]["input_messages"][1] == user_msg
 
 
 # ---------------------------------------------------------------------------
@@ -506,9 +474,6 @@ class TestIngestJournalCall:
 
 class TestGetJournalCallsBySpan:
     def test_returns_dict_keyed_by_span_id(self, store):
-        store.ingest_journal_messages(
-            [{"h": "sha256:s1", "msg": {"role": "user", "content": "hi"}}]
-        )
         store.ingest_journal_call(
             {
                 "call_id": "c1",
@@ -516,8 +481,8 @@ class TestGetJournalCallsBySpan:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:s1"],
-                "output_hashes": [],
+                "input_skeleton": [{"role": "user", "content": "hi"}],
+                "output_messages": [],
                 "span_id": "sp_abc",
             }
         )
@@ -533,8 +498,8 @@ class TestGetJournalCallsBySpan:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [],
-                "output_hashes": [],
+                "input_skeleton": [],
+                "output_messages": [],
             }
         )
         result = store._get_journal_calls_by_span("sess_nospam")
@@ -606,13 +571,6 @@ class TestGetSessionSpansAugment:
 
     def test_llm_span_augmented_with_journal_messages(self, store):
         _seed_session(store)
-        msgs = [{"role": "user", "content": "what is 2+2?"}]
-        store.ingest_journal_messages(
-            [
-                {"h": "sha256:q1", "msg": msgs[0]},
-                {"h": "sha256:a1", "msg": {"role": "assistant", "content": "4"}},
-            ]
-        )
         store.ingest_journal_call(
             {
                 "call_id": "cid_aug",
@@ -620,8 +578,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:q1"],
-                "output_hashes": ["sha256:a1"],
+                "input_skeleton": [{"role": "user", "content": "what is 2+2?"}],
+                "output_messages": [{"role": "assistant", "content": "4"}],
                 "span_id": "span_aug",
             }
         )
@@ -654,35 +612,15 @@ class TestGetSessionSpansAugment:
         assert "openinference.span.kind" in keys
 
     def test_llm_span_augmented_with_compound_system_message(self, store):
-        """Compound system message entry is resolved and augmented into span attrs."""
-        import hashlib
-        import json as _json
-
+        """v3: system message stored inline is augmented into span attrs."""
         session_id = "sess_compound_aug"
         span_id = "span_compound_aug"
         _seed_session(store, session_id)
 
-        block_a = "<persona>\nYou are helpful.\n</persona>"
-        block_b = "<notes>\nSome notes.\n</notes>"
+        sys_content = "<persona>\nYou are helpful.\n</persona>\n\n<notes>\nSome notes.\n</notes>"
+        sys_msg = {"role": "system", "content": sys_content}
+        user_msg = {"role": "user", "content": "hello"}
 
-        def _h(obj):
-            canon = _json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-            return "sha256:" + hashlib.sha256(canon.encode()).hexdigest()
-
-        h_a = _h({"_block": block_a})
-        h_b = _h({"_block": block_b})
-        compound = {"role": "system", "_blocks": [h_a, h_b]}
-        h_compound = _h(compound)
-        h_user = _h({"role": "user", "content": "hello"})
-
-        store.ingest_journal_messages(
-            [
-                {"h": h_a, "msg": {"_block": block_a}},
-                {"h": h_b, "msg": {"_block": block_b}},
-                {"h": h_compound, "msg": compound},
-                {"h": h_user, "msg": {"role": "user", "content": "hello"}},
-            ]
-        )
         store.ingest_journal_call(
             {
                 "call_id": "cid_compound_aug",
@@ -690,8 +628,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": [h_compound, h_user],
-                "output_hashes": [],
+                "input_skeleton": [sys_msg, user_msg],
+                "output_messages": [],
                 "span_id": span_id,
             }
         )
@@ -710,14 +648,14 @@ class TestGetSessionSpansAugment:
         span = next(s for s in spans if s["spanId"] == span_id)
         keys = [a["key"] for a in span["attributes"]]
 
-        # System message reconstructed from blocks
+        # System message content present
         sys_content_attr = next(
             (a for a in span["attributes"] if a["key"] == "llm.input_messages.0.message.content"),
             None,
         )
         assert sys_content_attr is not None, "System message content missing after augmentation"
-        assert block_a in sys_content_attr["value"]["stringValue"]
-        assert block_b in sys_content_attr["value"]["stringValue"]
+        assert "<persona>" in sys_content_attr["value"]["stringValue"]
+        assert "<notes>" in sys_content_attr["value"]["stringValue"]
 
         # User message present at index 1
         assert "llm.input_messages.1.message.role" in keys
@@ -726,13 +664,6 @@ class TestGetSessionSpansAugment:
         """In a session with two LLM spans, only the one with a journal call is augmented."""
         _seed_session(store, "sess_mixed")
 
-        # Seed journal call matching span_with_journal only
-        store.ingest_journal_messages(
-            [
-                {"h": "sha256:mx1", "msg": {"role": "user", "content": "full content"}},
-                {"h": "sha256:mx2", "msg": {"role": "assistant", "content": "full reply"}},
-            ]
-        )
         store.ingest_journal_call(
             {
                 "call_id": "cid_mix",
@@ -740,8 +671,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:mx1"],
-                "output_hashes": ["sha256:mx2"],
+                "input_skeleton": [{"role": "user", "content": "full content"}],
+                "output_messages": [{"role": "assistant", "content": "full reply"}],
                 "span_id": "span_with_journal",
             }
         )
@@ -793,11 +724,6 @@ class TestGetSessionSpansAugment:
 
     def test_augment_false_returns_raw(self, store):
         _seed_session(store, "sess_raw")
-        store.ingest_journal_messages(
-            [
-                {"h": "sha256:raw1", "msg": {"role": "user", "content": "hi"}},
-            ]
-        )
         store.ingest_journal_call(
             {
                 "call_id": "cid_raw",
@@ -805,8 +731,8 @@ class TestGetSessionSpansAugment:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:raw1"],
-                "output_hashes": [],
+                "input_skeleton": [{"role": "user", "content": "hi"}],
+                "output_messages": [],
                 "span_id": "span_raw",
             }
         )
@@ -885,7 +811,7 @@ class TestMigrationSpanId:
 
 class TestHundredMessageRoundtrip:
     def test_100_message_roundtrip(self, store):
-        """Seed 100 messages; span has only first 10; augment returns all 100."""
+        """Seed 100 messages inline; span has only first 10; augment returns all 100."""
         session_id = "sess_100"
         span_id = "span_100"
 
@@ -897,21 +823,7 @@ class TestHundredMessageRoundtrip:
             for i in range(100)
         ]
 
-        # Seed all 100 in journal
-        import hashlib
-
-        def hash_msg(msg):
-            import json as _json
-
-            canonical = _json.dumps(msg, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-            return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
-
-        items = [{"h": hash_msg(m), "msg": m} for m in all_msgs]
-        store.ingest_journal_messages(items)
-
-        input_hashes = [item["h"] for item in items]
-
-        # Seed call record with all 100 input hashes
+        # Seed call record with all 100 messages inline (v3)
         store.ingest_journal_call(
             {
                 "call_id": "call_100",
@@ -919,8 +831,8 @@ class TestHundredMessageRoundtrip:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": input_hashes,
-                "output_hashes": [],
+                "input_skeleton": all_msgs,
+                "output_messages": [],
                 "span_id": span_id,
             }
         )

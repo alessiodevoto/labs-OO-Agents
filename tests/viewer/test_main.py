@@ -27,21 +27,16 @@ def _make_db() -> sqlite3.Connection:
     db = sqlite3.connect(":memory:", check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.executescript("""
-        CREATE TABLE msg_content (
-            hash TEXT PRIMARY KEY,
-            msg  TEXT NOT NULL
-        );
-
         CREATE TABLE llm_calls (
-            call_id       TEXT PRIMARY KEY,
-            session_id    TEXT NOT NULL,
-            span_id       TEXT,
-            model         TEXT,
-            ts_start      REAL,
-            ts_end        REAL,
-            input_hashes  TEXT NOT NULL,
-            output_hashes TEXT NOT NULL,
-            tokens        TEXT
+            call_id          TEXT PRIMARY KEY,
+            session_id       TEXT NOT NULL,
+            span_id          TEXT,
+            model            TEXT,
+            ts_start         REAL,
+            ts_end           REAL,
+            input_skeleton   TEXT NOT NULL,
+            output_messages  TEXT NOT NULL,
+            tokens           TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
@@ -149,18 +144,16 @@ def _seed_session(db: sqlite3.Connection, session_id: str = "sess1") -> None:
 
 
 class TestJournalMessagesEndpoint:
-    def test_happy_path_stores_messages(self, client):
-        db = otlp_store._get_db()
+    def test_happy_path_returns_stored_zero(self, client):
+        """Journal v3 stores messages inline in llm_calls; the messages
+        endpoint is a backward-compat no-op that acknowledges without persisting."""
         payload = [
             {"h": "sha256:aaa", "msg": {"role": "user", "content": "hi"}},
             {"h": "sha256:bbb", "msg": {"role": "assistant", "content": "hello"}},
         ]
         resp = client.post("/v1/journal/messages", json=payload)
         assert resp.status_code == 200
-        rows = db.execute("SELECT hash FROM msg_content").fetchall()
-        hashes = {r[0] for r in rows}
-        assert "sha256:aaa" in hashes
-        assert "sha256:bbb" in hashes
+        assert resp.json() == {"stored": 0}
 
     def test_empty_list_returns_stored_zero(self, client):
         resp = client.post("/v1/journal/messages", json=[])
@@ -168,14 +161,12 @@ class TestJournalMessagesEndpoint:
         assert resp.json() == {"stored": 0}
 
     def test_dedup_idempotent(self, client):
+        """Repeated POSTs are fine — endpoint is a no-op."""
         payload = [{"h": "sha256:dup", "msg": {"role": "user", "content": "x"}}]
         r1 = client.post("/v1/journal/messages", json=payload)
         r2 = client.post("/v1/journal/messages", json=payload)
         assert r1.status_code == 200
         assert r2.status_code == 200
-        db = otlp_store._get_db()
-        count = db.execute("SELECT COUNT(*) FROM msg_content WHERE hash='sha256:dup'").fetchone()[0]
-        assert count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -192,8 +183,8 @@ class TestJournalCallsEndpoint:
             "model": "gpt-4o",
             "ts_start": 1.0,
             "ts_end": 2.0,
-            "input_hashes": [],
-            "output_hashes": [],
+            "input_skeleton": [],
+            "output_messages": [],
         }
         resp = client.post("/v1/journal/calls", json=payload)
         assert resp.status_code == 200
@@ -204,7 +195,7 @@ class TestJournalCallsEndpoint:
     def test_missing_call_id_returns_400(self, client):
         resp = client.post(
             "/v1/journal/calls",
-            json={"session_id": "s1", "input_hashes": [], "output_hashes": []},
+            json={"session_id": "s1", "input_skeleton": [], "output_messages": []},
         )
         assert resp.status_code == 400
         assert "call_id" in resp.json()["error"]
@@ -212,14 +203,14 @@ class TestJournalCallsEndpoint:
     def test_empty_string_call_id_returns_400(self, client):
         resp = client.post(
             "/v1/journal/calls",
-            json={"call_id": "", "session_id": "s1", "input_hashes": [], "output_hashes": []},
+            json={"call_id": "", "session_id": "s1", "input_skeleton": [], "output_messages": []},
         )
         assert resp.status_code == 400
 
     def test_missing_session_id_returns_400(self, client):
         resp = client.post(
             "/v1/journal/calls",
-            json={"call_id": "cid2", "input_hashes": [], "output_hashes": []},
+            json={"call_id": "cid2", "input_skeleton": [], "output_messages": []},
         )
         assert resp.status_code == 400
         assert "session_id" in resp.json()["error"]
@@ -250,9 +241,6 @@ class TestGetSessionCallsEndpoint:
     def test_known_session_with_calls_returns_records(self, client):
         db = otlp_store._get_db()
         _seed_session(db, "sess_calls")
-        otlp_store.ingest_journal_messages(
-            [{"h": "sha256:m1", "msg": {"role": "user", "content": "hi"}}]
-        )
         otlp_store.ingest_journal_call(
             {
                 "call_id": "c1",
@@ -260,8 +248,8 @@ class TestGetSessionCallsEndpoint:
                 "model": "gpt-4o",
                 "ts_start": 1.0,
                 "ts_end": 2.0,
-                "input_hashes": ["sha256:m1"],
-                "output_hashes": [],
+                "input_skeleton": [{"role": "user", "content": "hi"}],
+                "output_messages": [],
             }
         )
         resp = client.get("/api/traces/sess_calls/calls")
