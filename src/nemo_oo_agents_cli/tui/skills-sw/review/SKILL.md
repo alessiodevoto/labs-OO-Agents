@@ -45,7 +45,7 @@ if umbrella is None:
     self.message(f"No todo {umbrella_id}.")
     return_result(RespondResult(kind="GET_USER_INPUT"))
 
-commits = self.todo.get_var(umbrella.id, "commits") or []
+commits = umbrella.vars.get("commits") or []
 if not commits:
     self.message(f"Todo {umbrella.id} has no commits yet — run /tdd first.")
     return_result(RespondResult(kind="GET_USER_INPUT"))
@@ -57,7 +57,7 @@ One sub-todo per reviewer so progress shows in `<todo_status>`.
 Parallel-run them with `asyncio.gather`.
 
 ```python
-spec = self.todo.get_var(umbrella.id, "spec") or {}
+spec = umbrella.vars.get("spec") or {}
 acceptance = spec.get("acceptance_criteria", [])
 diff_cmd = f"git log --oneline HEAD~{len(commits)}..HEAD"
 diff = (await self.bash.run(
@@ -126,9 +126,9 @@ async def _run_reviewer(lens: str, instr: str, todo_id: str):
         goal=spec.get("goal", umbrella.title),
         criteria="\n".join(f"  - {c}" for c in acceptance) or "  (none specified)",
         plan="\n".join(f"  {i + 1}. {s}" for i, s in enumerate(
-            self.todo.get_var(umbrella.id, "fix_plan") or []
+            umbrella.vars.get("fix_plan") or []
         )) or "  (none)",
-        root_cause=self.todo.get_var(umbrella.id, "root_cause") or "(none)",
+        root_cause=umbrella.vars.get("root_cause") or "(none)",
         n_commits=len(commits),
         diff=diff,
     )
@@ -170,7 +170,7 @@ for outcome in results:
         f["reviewer"] = lens
         findings.append(f)
 
-self.todo.set_var(umbrella.id, "review_findings", findings)
+umbrella.v.review_findings = findings
 
 severity_rank = {"blocking": 0, "major": 1, "minor": 2}
 findings.sort(key=lambda f: (severity_rank.get(f.get("severity"), 3), f.get("reviewer", "")))

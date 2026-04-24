@@ -29,6 +29,40 @@ class TodoComment(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
+class TodoVars:
+    """Attribute-access proxy for a todo's vars dict.
+
+    Lets you write ``t.v.commits = [...]`` instead of
+    ``t.vars["commits"] = [...]``.  Reads and writes go straight
+    through to the underlying ``Todo.vars`` dict, so snapshot
+    serialisation is unaffected.
+    """
+
+    def __init__(self, todo: "Todo"):
+        object.__setattr__(self, "_todo", todo)
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self._todo.vars[key]
+        except KeyError:
+            raise AttributeError(f"No var {key!r} on todo {self._todo.id}") from None
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        self._todo.vars[key] = value
+
+    def __delattr__(self, key: str) -> None:
+        try:
+            del self._todo.vars[key]
+        except KeyError:
+            raise AttributeError(f"No var {key!r} on todo {self._todo.id}") from None
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._todo.vars
+
+    def __repr__(self) -> str:
+        return repr(self._todo.vars)
+
+
 class Todo(BaseModel):
     """A single todo item."""
 
@@ -40,6 +74,20 @@ class Todo(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
     notes: str = ""
     comments: list[TodoComment] = Field(default_factory=list)
+
+    @property
+    def v(self) -> "TodoVars":
+        """Attribute-access proxy for ``self.vars``.
+
+        Usage::
+
+            t = self.todo.add("Fix the bug")
+            t.v.commits = ["abc123"]
+            print(t.v.commits)   # ['abc123']
+            del t.v.commits      # remove
+            "commits" in t.v     # False
+        """
+        return TodoVars(self)
 
     def is_blocked(self, all_todos: dict[str, "Todo"]) -> bool:
         """Return True if any dependency is still open."""
