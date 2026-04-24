@@ -236,7 +236,18 @@ def enable_tracing(
     else:
         tracer_provider = TracerProvider(
             resource=resource,
-            span_limits=SpanLimits(max_span_attributes=2048),
+            # No attribute cap. LiteLLM's instrumentor emits one attribute
+            # per message in the conversation history
+            # (``llm.input_messages.N.message.role`` / ``.content`` /
+            # ``.tool_call_id`` / …). A long conversation overflows any
+            # finite cap and OTel SDK's ``BoundedAttributes`` evicts the
+            # OLDEST entries FIFO — which is exactly where ``session.id``
+            # lives (stamped by :class:`SessionSpanProcessor.on_start`
+            # *before* LiteLLM adds anything else). Evicted ``session.id``
+            # → span exports with no session → viewer buckets it as
+            # ``unknown_*``. The OTLP exporter already handles multi-MB
+            # spans, so drop the cap.
+            span_limits=SpanLimits(max_span_attributes=SpanLimits.UNSET),
         )
         trace.set_tracer_provider(tracer_provider)
 

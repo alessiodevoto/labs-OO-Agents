@@ -6,7 +6,8 @@ Covers:
 - MessageJournalCallback: hashing, delta sends, span_id capture, failure cleanup
 - JournalExporter: SpanExporter interface, install/shutdown/idempotency
 - exporters.journal() factory
-- SpanLimits raised to 2048 in enable_tracing()
+- SpanLimits: enable_tracing() sets no cap on span attributes so
+  ``session.id`` cannot be FIFO-evicted by LiteLLM's per-message flood
 """
 
 from __future__ import annotations
@@ -837,8 +838,21 @@ class TestJournalFactory:
 
 
 class TestSpanLimits:
-    def test_tracer_provider_has_raised_span_attribute_limit(self):
-        """enable_tracing() must create a TracerProvider with max_span_attributes=2048."""
+    def test_tracer_provider_has_no_span_attribute_cap(self):
+        """enable_tracing() must create a TracerProvider with NO attribute cap.
+
+        Regression: an earlier version of this code set
+        ``max_span_attributes=2048``. LiteLLM's instrumentor emits one
+        attribute per message in the conversation history
+        (``llm.input_messages.N.message.role`` / ``.content`` /
+        ``.tool_call_id`` / …), so a long conversation overflows the
+        cap. OTel SDK's ``BoundedAttributes`` evicts the oldest entries
+        FIFO — which is exactly where ``session.id`` lives (stamped at
+        ``SessionSpanProcessor.on_start`` before LiteLLM adds anything).
+        An evicted ``session.id`` makes the span arrive at the viewer
+        with no session attached, where it's bucketed as ``unknown_*``.
+        Setting the limit to ``SpanLimits.UNSET`` disables the cap.
+        """
         import nemo_oo_agents.tracing as pkg
 
         # Reset global state — including OTel's global provider so a TracerProvider
@@ -847,10 +861,7 @@ class TestSpanLimits:
         pkg._provider = None
         pkg._probe_failed = False
 
-        fake_exporter = MagicMock()
-        fake_exporter.__class__.__name__ = "FakeExporter"
-
-        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace import SpanLimits, TracerProvider
         from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
         class _FakeExporter(SpanExporter):
@@ -875,9 +886,16 @@ class TestSpanLimits:
 
         provider = pkg._provider
         assert isinstance(provider, TracerProvider)
-        # SpanLimits are stored on the provider's internal config
+        # ``SpanLimits.UNSET`` (-1) surfaces on the provider config as
+        # ``None`` — OTel's "no cap" shape. Either is acceptable; what
+        # must NOT be present is a finite integer that could evict
+        # ``session.id`` once LiteLLM's per-message attributes flood in.
         limit = provider._span_limits.max_span_attributes
-        assert limit == 2048, f"Expected 2048, got {limit}"
+        assert limit in (None, SpanLimits.UNSET), (
+            f"span attribute cap leaked back in: {limit!r}. "
+            "Long-history acompletion spans will evict session.id "
+            "and end up in unknown_* sessions in the viewer."
+        )
 
         # Cleanup
         pkg._enabled = False
@@ -886,3 +904,40 @@ class TestSpanLimits:
         from nemo_oo_agents.runtime.hooks import set_hooks
 
         set_hooks(None)
+
+    def test_session_id_survives_a_flood_of_span_attributes(self):
+        """End-to-end: ``session.id`` set at span-start must survive even
+        when thousands of other attributes are added before ``end()``.
+
+        This simulates LiteLLM's per-message attribute emission on a
+        long conversation. Without the fix (capped at 2048), the
+        ``session.id`` set first would be FIFO-evicted before the span
+        reached the exporter. With the cap removed, every attribute
+        (including ``session.id``) rides along to export.
+        """
+        from opentelemetry.sdk.trace import SpanLimits, TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider(span_limits=SpanLimits(max_span_attributes=SpanLimits.UNSET))
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        tracer = provider.get_tracer("regression-test")
+
+        with tracer.start_as_current_span("long-history-acompletion") as span:
+            # Stamp session.id first — mimics SessionSpanProcessor.on_start.
+            span.set_attribute("session.id", "tui-20260424-foo-bar")
+            # Flood with way more attributes than the old 2048 cap allowed.
+            for i in range(5000):
+                span.set_attribute(f"llm.input_messages.{i}.message.role", "user")
+
+        provider.force_flush()
+        spans = exporter.get_finished_spans()
+        assert len(spans) == 1
+        exported = spans[0]
+        assert exported.attributes["session.id"] == "tui-20260424-foo-bar", (
+            "session.id was evicted by the attribute cap — "
+            "regression: the fix disabling max_span_attributes has been reverted."
+        )

@@ -205,6 +205,7 @@ dev = [
     {include-group = "trace-viewer"},
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-rerunfailures>=14.0",
     "pytest-cov>=4.0.0",
     "mypy>=1.7.0",
     "ruff>=0.14.14",
