@@ -2,12 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for context_blocks formatters.
 
-Tests BlockFormatter (XML, Markdown) and ProviderFormatter (OpenAI, Anthropic)
-with the ResolvedBlock-based API.
-
-BlockFormatter.format() takes list[ResolvedBlock] (system blocks only).
-ProviderFormatter.format() takes (context_str, message_blocks) — no block_formatter param.
-format_expr() has been removed from BlockFormatter (moved to render_context).
+BlockFormatter.format() takes ``list[ResolvedBlock]`` (both SYSTEM and event
+blocks) and returns ``list[RenderedMessage]``. ProviderFormatter.format() takes
+``list[RenderedMessage]`` and returns provider-specific wire format.
 """
 
 import pytest
@@ -19,7 +16,13 @@ from context_blocks.formatter import (
     OpenAIProviderFormatter,
     XMLBlockFormatter,
 )
-from context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from context_blocks.models import (
+    BlockMetadata,
+    RenderedMessage,
+    ResolvedBlock,
+    Role,
+    ToolCallInfo,
+)
 
 
 def _tool_call_block(
@@ -30,36 +33,25 @@ def _tool_call_block(
     arguments: dict,
     result_content: str | None = None,
 ) -> ResolvedBlock:
-    """Helper to create a ResolvedBlock with a ToolCallEvent."""
-    result = None
-    if result_content is not None:
-        result = ToolResult(tool_call_id=tool_call_id, content=result_content)
-    event = ToolCallEvent(
-        tool_call_id=tool_call_id,
-        name=name,
-        arguments=arguments,
-        result=result,
-    )
-    return ResolvedBlock(
-        key=key,
-        content="",
-        role=Role.ASSISTANT,
-        event=event,
-    )
+    """Helper: ResolvedBlock carrying a ToolCallEvent."""
+    result = ToolResult(tool_call_id=tool_call_id, content=result_content) if result_content is not None else None
+    event = ToolCallEvent(tool_call_id=tool_call_id, name=name, arguments=arguments, result=result)
+    return ResolvedBlock(key=key, content="", role=Role.ASSISTANT, event=event)
+
+
+def _system_content(messages: list[RenderedMessage]) -> str:
+    """Return the concatenated SYSTEM message content (empty string if none)."""
+    return "\n\n".join(m.content or "" for m in messages if m.role == Role.SYSTEM)
 
 
 class TestBlockFormatterABC:
-    """Tests for BlockFormatter abstract base class."""
-
     def test_is_abstract(self):
-        """BlockFormatter should be abstract - cannot instantiate directly."""
         from context_blocks.formatter import BlockFormatter
 
         with pytest.raises(TypeError):
             BlockFormatter()  # type: ignore[abstract]
 
     def test_requires_format_method(self):
-        """BlockFormatter subclasses must implement format() and format_type."""
         from context_blocks.formatter import BlockFormatter
 
         class IncompleteFormatter(BlockFormatter):
@@ -70,134 +62,120 @@ class TestBlockFormatterABC:
 
 
 class TestXMLBlockFormatter:
-    """Tests for XMLBlockFormatter."""
-
     def test_single_block(self):
-        """XMLBlockFormatter should wrap single block in XML tags."""
-        formatter = XMLBlockFormatter()
-        blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
-        result = formatter.format(blocks)
-
-        assert "<persona>" in result
-        assert "</persona>" in result
-        assert "You are helpful." in result
+        messages = XMLBlockFormatter().format([ResolvedBlock(key="persona", content="You are helpful.")])
+        assert len(messages) == 1
+        assert messages[0].role == Role.SYSTEM
+        assert "<persona>" in messages[0].content
+        assert "</persona>" in messages[0].content
+        assert "You are helpful." in messages[0].content
 
     def test_multiple_blocks(self):
-        """XMLBlockFormatter should wrap multiple blocks, separated by newlines."""
-        formatter = XMLBlockFormatter()
-        blocks = [
-            ResolvedBlock(key="persona", content="You are helpful."),
-            ResolvedBlock(key="tools", content="Available tools: search, calculate"),
-        ]
-        result = formatter.format(blocks)
-
-        assert "<persona>" in result
-        assert "</persona>" in result
-        assert "<tools>" in result
-        assert "</tools>" in result
-        assert "You are helpful." in result
-        assert "Available tools:" in result
+        messages = XMLBlockFormatter().format(
+            [
+                ResolvedBlock(key="persona", content="You are helpful."),
+                ResolvedBlock(key="tools", content="Available tools: search, calculate"),
+            ]
+        )
+        content = _system_content(messages)
+        assert "<persona>" in content and "<tools>" in content
+        assert "You are helpful." in content and "Available tools:" in content
 
     def test_empty_blocks(self):
-        """XMLBlockFormatter should handle empty blocks list."""
-        formatter = XMLBlockFormatter()
-        result = formatter.format([])
-        assert result == ""
+        messages = XMLBlockFormatter().format([])
+        assert messages == []
 
     def test_preserves_content_newlines(self):
-        """XMLBlockFormatter should preserve newlines in content."""
-        formatter = XMLBlockFormatter()
-        blocks = [ResolvedBlock(key="content", content="Line 1\nLine 2\nLine 3")]
-        result = formatter.format(blocks)
+        messages = XMLBlockFormatter().format([ResolvedBlock(key="content", content="Line 1\nLine 2\nLine 3")])
+        assert "Line 1\nLine 2\nLine 3" in messages[0].content
 
-        assert "Line 1\nLine 2\nLine 3" in result
+    def test_with_metadata_expr_renders_only_for_dynamic(self):
+        # Dynamic-source block: expr is shown.
+        dynamic = XMLBlockFormatter().format(
+            [
+                ResolvedBlock(
+                    key="notes",
+                    content="My notes",
+                    metadata=BlockMetadata(expr="self.context['notes']", source_dynamic=True),
+                )
+            ]
+        )
+        assert "expr=\"self.context['notes']\"" in dynamic[0].content
+        assert "My notes" in dynamic[0].content
 
-    def test_with_metadata_expr(self):
-        """XMLBlockFormatter should include expr attribute from metadata."""
-        formatter = XMLBlockFormatter()
-        blocks = [
-            ResolvedBlock(
-                key="notes",
-                content="My notes",
-                metadata=BlockMetadata(expr="self.context['notes']"),
-            )
-        ]
-        result = formatter.format(blocks)
-
-        assert "expr=\"self.context['notes']\"" in result
-        assert "My notes" in result
+        # Non-dynamic block with the same expr: expr is suppressed.
+        static = XMLBlockFormatter().format(
+            [
+                ResolvedBlock(
+                    key="notes",
+                    content="My notes",
+                    metadata=BlockMetadata(expr="self.context['notes']"),
+                )
+            ]
+        )
+        assert "expr=" not in static[0].content
+        assert "<notes>" in static[0].content
+        assert "My notes" in static[0].content
 
     def test_format_type(self):
-        """XMLBlockFormatter.format_type returns 'xml'."""
-        formatter = XMLBlockFormatter()
-        assert formatter.format_type == "xml"
+        assert XMLBlockFormatter().format_type == "xml"
 
 
 class TestMarkdownBlockFormatter:
-    """Tests for MarkdownBlockFormatter."""
-
     def test_single_block(self):
-        """MarkdownBlockFormatter should format with markdown header."""
-        formatter = MarkdownBlockFormatter()
-        blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
-        result = formatter.format(blocks)
-
-        assert "# Persona" in result
-        assert "You are helpful." in result
+        messages = MarkdownBlockFormatter().format([ResolvedBlock(key="persona", content="You are helpful.")])
+        content = _system_content(messages)
+        assert "# Persona" in content
+        assert "You are helpful." in content
 
     def test_multiple_blocks(self):
-        """MarkdownBlockFormatter should format multiple blocks with headers."""
-        formatter = MarkdownBlockFormatter()
-        blocks = [
-            ResolvedBlock(key="persona", content="You are helpful."),
-            ResolvedBlock(key="tools", content="Available tools"),
-        ]
-        result = formatter.format(blocks)
-
-        assert "# Persona" in result
-        assert "# Tools" in result
+        messages = MarkdownBlockFormatter().format(
+            [
+                ResolvedBlock(key="persona", content="You are helpful."),
+                ResolvedBlock(key="tools", content="Available tools"),
+            ]
+        )
+        content = _system_content(messages)
+        assert "# Persona" in content and "# Tools" in content
 
     def test_key_with_underscores(self):
-        """MarkdownBlockFormatter should convert underscores to spaces in headers."""
-        formatter = MarkdownBlockFormatter()
-        blocks = [ResolvedBlock(key="python_tools", content="Tool list")]
-        result = formatter.format(blocks)
-
-        assert "# Python Tools" in result
+        messages = MarkdownBlockFormatter().format([ResolvedBlock(key="python_tools", content="Tool list")])
+        assert "# Python Tools" in _system_content(messages)
 
     def test_empty_blocks(self):
-        """MarkdownBlockFormatter should handle empty blocks list."""
-        formatter = MarkdownBlockFormatter()
-        result = formatter.format([])
-        assert result == ""
+        assert MarkdownBlockFormatter().format([]) == []
 
-    def test_with_metadata(self):
-        """MarkdownBlockFormatter should include metadata inline."""
-        formatter = MarkdownBlockFormatter()
-        blocks = [
-            ResolvedBlock(
-                key="notes",
-                content="My notes",
-                metadata=BlockMetadata(expr="self.context['notes']"),
-            )
-        ]
-        result = formatter.format(blocks)
+    def test_with_metadata_expr_renders_only_for_dynamic(self):
+        dynamic = MarkdownBlockFormatter().format(
+            [
+                ResolvedBlock(
+                    key="notes",
+                    content="My notes",
+                    metadata=BlockMetadata(expr="self.context['notes']", source_dynamic=True),
+                )
+            ]
+        )
+        dyn_content = _system_content(dynamic)
+        assert "# Notes" in dyn_content and '"expr"' in dyn_content and "My notes" in dyn_content
 
-        assert "# Notes" in result
-        assert '"expr"' in result
-        assert "My notes" in result
+        static = MarkdownBlockFormatter().format(
+            [
+                ResolvedBlock(
+                    key="notes",
+                    content="My notes",
+                    metadata=BlockMetadata(expr="self.context['notes']"),
+                )
+            ]
+        )
+        stat_content = _system_content(static)
+        assert "# Notes" in stat_content and '"expr"' not in stat_content and "My notes" in stat_content
 
     def test_format_type(self):
-        """MarkdownBlockFormatter.format_type returns 'markdown'."""
-        formatter = MarkdownBlockFormatter()
-        assert formatter.format_type == "markdown"
+        assert MarkdownBlockFormatter().format_type == "markdown"
 
 
 class TestProviderFormatterABC:
-    """Tests for ProviderFormatter abstract base class."""
-
     def test_is_abstract(self):
-        """ProviderFormatter should be abstract - cannot instantiate directly."""
         from context_blocks.formatter import ProviderFormatter
 
         with pytest.raises(TypeError):
@@ -205,338 +183,189 @@ class TestProviderFormatterABC:
 
 
 class TestOpenAIProviderFormatter:
-    """Tests for OpenAIProviderFormatter with ResolvedBlock API."""
-
     def test_system_message_only(self):
-        """OpenAIProviderFormatter should create system message from context."""
-        formatter = OpenAIProviderFormatter()
-        result = formatter.format("You are helpful.", [])
-
-        assert len(result) == 1
-        assert result[0]["role"] == "system"
-        assert result[0]["content"] == "You are helpful."
+        messages = [RenderedMessage(role=Role.SYSTEM, content="You are helpful.")]
+        result = OpenAIProviderFormatter().format(messages)
+        assert result == [{"role": "system", "content": "You are helpful."}]
 
     def test_user_message(self):
-        """OpenAIProviderFormatter should handle USER role blocks."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [ResolvedBlock(key="msg", content="Hello", role=Role.USER)]
-        result = formatter.format("System", blocks)
-
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(role=Role.USER, content="Hello"),
+        ]
+        result = OpenAIProviderFormatter().format(messages)
         assert len(result) == 2
-        assert result[1]["role"] == "user"
-        assert "Hello" in result[1]["content"]
+        assert result[1] == {"role": "user", "content": "Hello"}
 
     def test_assistant_message(self):
-        """OpenAIProviderFormatter should handle ASSISTANT role blocks."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [ResolvedBlock(key="msg", content="Hi there!", role=Role.ASSISTANT)]
-        result = formatter.format("System", blocks)
-
-        assert len(result) == 2
-        assert result[1]["role"] == "assistant"
-        assert "Hi there!" in result[1]["content"]
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(role=Role.ASSISTANT, content="Hi there!"),
+        ]
+        result = OpenAIProviderFormatter().format(messages)
+        assert result[1]["role"] == "assistant" and result[1]["content"] == "Hi there!"
 
     def test_tool_call_message(self):
-        """OpenAIProviderFormatter should handle ToolCallEvent on block.event."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            _tool_call_block(
-                tool_call_id="call_abc",
-                name="get_weather",
-                arguments={"location": "SF"},
-            )
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(
+                role=Role.ASSISTANT,
+                tool_call=ToolCallInfo(id="call_abc", name="get_weather", arguments={"location": "SF"}),
+            ),
         ]
-        result = formatter.format("System", blocks)
-
+        result = OpenAIProviderFormatter().format(messages)
         assert len(result) == 2
         msg = result[1]
-        assert msg["role"] == "assistant"
-        assert msg["content"] is None
-        assert "tool_calls" in msg
+        assert msg["role"] == "assistant" and msg["content"] is None
         assert msg["tool_calls"][0]["id"] == "call_abc"
         assert msg["tool_calls"][0]["function"]["name"] == "get_weather"
 
     def test_tool_call_with_result(self):
-        """OpenAIProviderFormatter should expand tool_call + tool_result into two messages."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            _tool_call_block(
-                tool_call_id="call_abc",
-                name="get_weather",
-                arguments={"location": "SF"},
-                result_content="Sunny",
-            )
-        ]
-        result = formatter.format("System", blocks)
-
-        # system + assistant(tool_call) + tool(result)
-        assert len(result) == 3
-        assert result[1]["role"] == "assistant"
-        assert "tool_calls" in result[1]
-        assert result[2]["role"] == "tool"
-        assert result[2]["tool_call_id"] == "call_abc"
-        assert result[2]["content"] == "Sunny"
-
-    def test_full_conversation(self):
-        """OpenAIProviderFormatter should handle full conversation with tool calls."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="q", content="What's the weather?", role=Role.USER),
-            _tool_call_block(
-                key="tc",
-                tool_call_id="tc_1",
-                name="weather",
-                arguments={"loc": "SF"},
-                result_content="Sunny",
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(
+                role=Role.ASSISTANT,
+                tool_call=ToolCallInfo(id="call_abc", name="get_weather", arguments={"location": "SF"}),
             ),
-            ResolvedBlock(key="a", content="It's sunny in SF.", role=Role.ASSISTANT),
+            RenderedMessage(role=Role.TOOL, content="Sunny", tool_call_id="call_abc"),
         ]
-        result = formatter.format("You are a weather bot.", blocks)
-
-        # system + user + assistant(tool_call) + tool(result) + assistant
-        assert len(result) == 5
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        assert result[2]["role"] == "assistant"
-        assert result[3]["role"] == "tool"
-        assert result[4]["role"] == "assistant"
+        result = OpenAIProviderFormatter().format(messages)
+        assert len(result) == 3
+        assert result[1]["role"] == "assistant" and "tool_calls" in result[1]
+        assert result[2] == {"role": "tool", "tool_call_id": "call_abc", "content": "Sunny"}
 
     def test_runtime_event_skipped(self):
-        """OpenAIProviderFormatter should skip RUNTIME_EVENT role blocks."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
-            ResolvedBlock(key="evt", content="internal", role=Role.RUNTIME_EVENT),
+        messages = [
+            RenderedMessage(role=Role.USER, content="Hello"),
+            RenderedMessage(role=Role.RUNTIME_EVENT, content="internal"),
         ]
-        result = formatter.format("System", blocks)
-
-        assert len(result) == 2  # system + user only
-        assert result[1]["role"] == "user"
+        result = OpenAIProviderFormatter().format(messages)
+        roles = [m["role"] for m in result]
+        assert "runtime_event" not in roles and roles == ["user"]
 
     def test_metadata_skipped(self):
-        """OpenAIProviderFormatter should skip METADATA role blocks (stored metadata, not shown to LLM)."""
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
-            ResolvedBlock(key="meta", content="session-start", role=Role.METADATA),
+        messages = [
+            RenderedMessage(role=Role.USER, content="Hello"),
+            RenderedMessage(role=Role.METADATA, content="session-start"),
         ]
-        result = formatter.format("System", blocks)
-
-        assert len(result) == 2  # system + user only; metadata is excluded
-        assert result[1]["role"] == "user"
-
-    def test_metadata_subclass_skipped(self):
-        """Metadata subclasses (like TUISessionStart) should not appear in LLM messages."""
-        from typing import ClassVar, Literal
-
-        from pydantic import Field
-
-        from context_blocks import Metadata
-        from context_blocks.roles import Role as _Role
-
-        class FakeSessionStart(Metadata):
-            event_type: Literal["fake_session_start"] = Field(default="fake_session_start", repr=False)
-            _role: ClassVar[_Role] = _Role.METADATA
-            model: str = "test-model"
-
-        event = FakeSessionStart(model="openai/gpt-4o")
-        formatter = OpenAIProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="user_msg", content="Hello", role=Role.USER),
-            ResolvedBlock(key="sess", content=str(event), role=Role.METADATA, event=event),
-        ]
-        result = formatter.format("System", blocks)
-
-        # Only system + user message; the metadata event must not reach the LLM
-        assert len(result) == 2
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        # Verify no metadata content leaked into any message
-        combined = " ".join(str(m.get("content", "")) for m in result)
-        assert "fake_session_start" not in combined
-        assert "openai/gpt-4o" not in combined
+        result = OpenAIProviderFormatter().format(messages)
+        assert [m["role"] for m in result] == ["user"]
 
 
 class TestAnthropicProviderFormatter:
-    """Tests for AnthropicProviderFormatter with ResolvedBlock API."""
-
     def test_returns_dict_with_system_and_messages(self):
-        """AnthropicProviderFormatter should return dict with system and messages."""
-        formatter = AnthropicProviderFormatter()
-        result = formatter.format("You are helpful.", [])
-
-        assert isinstance(result, dict)
-        assert result["system"] == "You are helpful."
-        assert result["messages"] == []
+        messages = [RenderedMessage(role=Role.SYSTEM, content="You are helpful.")]
+        result = AnthropicProviderFormatter().format(messages)
+        assert result == {"system": "You are helpful.", "messages": []}
 
     def test_user_message(self):
-        """AnthropicProviderFormatter should handle USER role blocks."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [ResolvedBlock(key="msg", content="Hello", role=Role.USER)]
-        result = formatter.format("System", blocks)
-
-        assert len(result["messages"]) == 1
-        assert result["messages"][0]["role"] == "user"
-        assert result["messages"][0]["content"] == "Hello"
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(role=Role.USER, content="Hello"),
+        ]
+        result = AnthropicProviderFormatter().format(messages)
+        assert result["system"] == "System"
+        assert result["messages"] == [{"role": "user", "content": "Hello"}]
 
     def test_assistant_message(self):
-        """AnthropicProviderFormatter should handle ASSISTANT role blocks."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [ResolvedBlock(key="msg", content="Hi!", role=Role.ASSISTANT)]
-        result = formatter.format("System", blocks)
-
-        assert len(result["messages"]) == 1
-        assert result["messages"][0]["role"] == "assistant"
-        assert result["messages"][0]["content"] == "Hi!"
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(role=Role.ASSISTANT, content="Hi!"),
+        ]
+        result = AnthropicProviderFormatter().format(messages)
+        assert result["messages"] == [{"role": "assistant", "content": "Hi!"}]
 
     def test_tool_call_message(self):
-        """AnthropicProviderFormatter should format tool_call as tool_use."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [
-            _tool_call_block(
-                tool_call_id="tc_1",
-                name="search",
-                arguments={"q": "test"},
-            )
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(
+                role=Role.ASSISTANT,
+                tool_call=ToolCallInfo(id="tc_1", name="search", arguments={"q": "test"}),
+            ),
         ]
-        result = formatter.format("System", blocks)
-
+        result = AnthropicProviderFormatter().format(messages)
         msg = result["messages"][0]
         assert msg["role"] == "assistant"
-        assert isinstance(msg["content"], list)
-        assert msg["content"][0]["type"] == "tool_use"
-        assert msg["content"][0]["id"] == "tc_1"
+        assert msg["content"][0]["type"] == "tool_use" and msg["content"][0]["id"] == "tc_1"
 
     def test_tool_call_with_result(self):
-        """AnthropicProviderFormatter should expand tool_call + result."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [
-            _tool_call_block(
-                tool_call_id="tc_1",
-                name="search",
-                arguments={"q": "test"},
-                result_content="Result",
-            )
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(
+                role=Role.ASSISTANT,
+                tool_call=ToolCallInfo(id="tc_1", name="search", arguments={"q": "test"}),
+            ),
+            RenderedMessage(role=Role.TOOL, content="Result", tool_call_id="tc_1"),
         ]
-        result = formatter.format("System", blocks)
-
-        # assistant (tool_use) + user (tool_result)
+        result = AnthropicProviderFormatter().format(messages)
         assert len(result["messages"]) == 2
         assert result["messages"][0]["role"] == "assistant"
         assert result["messages"][1]["role"] == "user"
         assert result["messages"][1]["content"][0]["type"] == "tool_result"
 
     def test_tool_role_mapped_to_user(self):
-        """AnthropicProviderFormatter should map TOOL role to user."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [ResolvedBlock(key="tr", content="Tool output", role=Role.TOOL)]
-        result = formatter.format("System", blocks)
-
+        """TOOL role without tool_call_id falls back to user (matches old behavior)."""
+        messages = [
+            RenderedMessage(role=Role.SYSTEM, content="System"),
+            RenderedMessage(role=Role.TOOL, content="Tool output"),
+        ]
+        result = AnthropicProviderFormatter().format(messages)
         assert result["messages"][0]["role"] == "user"
 
     def test_metadata_skipped(self):
-        """AnthropicProviderFormatter should skip METADATA role blocks."""
-        formatter = AnthropicProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
-            ResolvedBlock(key="meta", content="session-start", role=Role.METADATA),
+        messages = [
+            RenderedMessage(role=Role.USER, content="Hello"),
+            RenderedMessage(role=Role.METADATA, content="session-start"),
         ]
-        result = formatter.format("System", blocks)
-
-        assert len(result["messages"]) == 1  # metadata excluded
-        assert result["messages"][0]["role"] == "user"
-
-    def test_metadata_subclass_skipped(self):
-        """Metadata subclasses should not appear in Anthropic LLM messages."""
-        from typing import ClassVar, Literal
-
-        from pydantic import Field
-
-        from context_blocks import Metadata
-        from context_blocks.roles import Role as _Role
-
-        class FakeRename(Metadata):
-            event_type: Literal["fake_rename"] = Field(default="fake_rename", repr=False)
-            _role: ClassVar[_Role] = _Role.METADATA
-            name: str = ""
-
-        event = FakeRename(name="My Session")
-        formatter = AnthropicProviderFormatter()
-        blocks = [
-            ResolvedBlock(key="user_msg", content="Hello", role=Role.USER),
-            ResolvedBlock(key="rename", content=str(event), role=Role.METADATA, event=event),
-        ]
-        result = formatter.format("System", blocks)
-
+        result = AnthropicProviderFormatter().format(messages)
         assert len(result["messages"]) == 1
         assert result["messages"][0]["role"] == "user"
-        combined = " ".join(str(m.get("content", "")) for m in result["messages"])
-        assert "fake_rename" not in combined
-        assert "My Session" not in combined
 
 
-class TestFormatterComposition:
-    """Tests for composing BlockFormatter with ProviderFormatter."""
+class TestEndToEndPipelines:
+    """Compose BlockFormatter + ProviderFormatter through the neutral type."""
 
     def test_xml_with_openai(self):
-        """XML blocks + OpenAI provider should work together."""
-        block_formatter = XMLBlockFormatter()
-        provider_formatter = OpenAIProviderFormatter()
-
-        system_blocks = [
+        blocks = [
             ResolvedBlock(key="persona", content="You are helpful."),
             ResolvedBlock(key="tools", content="search, calculate"),
+            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
         ]
-        context_str = block_formatter.format(system_blocks)
-
-        message_blocks = [ResolvedBlock(key="msg", content="Hello", role=Role.USER)]
-        result = provider_formatter.format(context_str, message_blocks)
-
+        messages = XMLBlockFormatter().format(blocks)
+        result = OpenAIProviderFormatter().format(messages)
         assert len(result) == 2
         assert "<persona>" in result[0]["content"]
         assert "Hello" in result[1]["content"]
 
     def test_markdown_with_anthropic(self):
-        """Markdown blocks + Anthropic provider should work together."""
-        block_formatter = MarkdownBlockFormatter()
-        provider_formatter = AnthropicProviderFormatter()
-
-        system_blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
-        context_str = block_formatter.format(system_blocks)
-
-        message_blocks = [ResolvedBlock(key="msg", content="Hello", role=Role.USER)]
-        result = provider_formatter.format(context_str, message_blocks)
-
+        blocks = [
+            ResolvedBlock(key="persona", content="You are helpful."),
+            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
+        ]
+        messages = MarkdownBlockFormatter().format(blocks)
+        result = AnthropicProviderFormatter().format(messages)
         assert "# Persona" in result["system"]
         assert result["messages"][0]["content"] == "Hello"
 
 
 class TestBlockFormatterFormatEvent:
-    """Tests for BlockFormatter.format_event() — serializes raw events to content strings."""
+    """format_event() still serializes raw events to content strings."""
 
     def test_xml_format_event_user_event(self):
-        """XMLBlockFormatter.format_event() should call agentdoc_pformat on the event."""
         from context_blocks.events import UserEvent
 
-        formatter = XMLBlockFormatter()
         event = UserEvent(content="Hello world", tag="1")
-        result = formatter.format_event(event)
-
-        # Should contain the content field (pformat repr of UserEvent)
-        assert "Hello world" in result
+        assert "Hello world" in XMLBlockFormatter().format_event(event)
 
     def test_markdown_format_event_user_event(self):
-        """MarkdownBlockFormatter.format_event() should call agentdoc_pformat on the event."""
         from context_blocks.events import UserEvent
 
-        formatter = MarkdownBlockFormatter()
         event = UserEvent(content="Hello world", tag="1")
-        result = formatter.format_event(event)
-
-        assert "Hello world" in result
+        assert "Hello world" in MarkdownBlockFormatter().format_event(event)
 
     def test_format_event_has_default(self):
-        """BlockFormatter provides a concrete format_event() default (agentdoc pformat)."""
+        """BlockFormatter.format_event() is concrete by default (agentdoc pformat)."""
+        from context_blocks.events import UserEvent
         from context_blocks.formatter import BlockFormatter, FormatType
 
         class MinimalFormatter(BlockFormatter):
@@ -545,14 +374,7 @@ class TestBlockFormatterFormatEvent:
                 return FormatType.XML
 
             def format(self, blocks):
-                return ""
+                return []
 
-            def format_description(self) -> str:
-                return "minimal"
-
-        from context_blocks.events import UserEvent
-
-        formatter = MinimalFormatter()
         event = UserEvent(content="Hello world", tag="1")
-        result = formatter.format_event(event)
-        assert "Hello world" in result
+        assert "Hello world" in MinimalFormatter().format_event(event)

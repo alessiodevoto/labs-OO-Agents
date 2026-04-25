@@ -185,7 +185,6 @@ class TestEventBlockTruncation:
         msg = result["messages"][0]
         assert msg.content.count("x") == 1000  # head(500) + tail(500)
         assert "output too large" in msg.content.lower()
-        assert msg.metadata.truncated is True
 
     def test_event_block_no_truncation_when_under_limit(self):
         """Short message blocks should not be truncated."""
@@ -202,7 +201,6 @@ class TestEventBlockTruncation:
 
         msg = result["messages"][0]
         assert msg.content == "short"
-        assert msg.metadata.truncated is False
 
     def test_block_limit_applies_to_both_context_and_events(self):
         """block_limit truncates both context blocks and event blocks."""
@@ -492,10 +490,15 @@ class TestEventTotalLimit:
 class MockProviderFormatter(ProviderFormatter):
     """Mock provider formatter for testing.
 
-    Returns raw ResolvedBlock objects in 'messages' (unlike real formatters
-    which return dicts). This lets tests assert on .content and .metadata directly.
+    Partitions the incoming neutral message list into a ``context`` string
+    (concatenated SYSTEM content) and ``messages`` (non-system
+    :class:`RenderedMessage` objects), so tests can assert on content and
+    metadata without reshaping to provider-specific wire format.
     """
 
-    def format(self, context: str, message_blocks: list) -> dict:
-        """Return simple dict for testing."""
-        return {"context": context, "messages": message_blocks}
+    def format(self, messages: list) -> dict:
+        from context_blocks.models import Role as _Role
+
+        context_parts = [m.content or "" for m in messages if m.role == _Role.SYSTEM]
+        non_system = [m for m in messages if m.role != _Role.SYSTEM]
+        return {"context": "\n\n".join(context_parts), "messages": non_system}

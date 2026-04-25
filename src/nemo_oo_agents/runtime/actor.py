@@ -1495,12 +1495,13 @@ class ActorRuntime:
         """
 
         # Build evaluation namespace with all runtime context
-        from nemo_oo_agents.agentdoc import doc
+        from nemo_oo_agents.agentdoc import doc, pformat
 
         namespace = {
             "self": self.agent,
             # agentdoc introspection (doc respects agentscope hidden fields)
             "doc": doc,
+            "pformat": pformat,
             "methods": methods,
             "variables": variables,
             **(extra_context or {}),
@@ -2430,7 +2431,12 @@ async def {name}({params_str}) -> {return_type}:
             )
 
             block_formatter = self.agent.render_config.block_formatter
-            rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
+            rendered = []
+            for b in blocks:
+                if b.role == "system":
+                    for msg in block_formatter.format([b]):
+                        if msg.content:
+                            rendered.append(msg.content)
             if rendered:
                 set_context_blocks(rendered)
         except ImportError:

@@ -21,8 +21,9 @@ class TestPlainBlockFormatterFormatSystemBlocks:
         blocks = [ResolvedBlock(key="persona", content="You are helpful.")]
         result = formatter.format(blocks)
 
-        assert "<persona>" in result
-        assert "You are helpful." in result
+        assert len(result) == 1
+        assert "<persona>" in result[0].content
+        assert "You are helpful." in result[0].content
 
 
 class TestPlainBlockFormatterFormatEvent:

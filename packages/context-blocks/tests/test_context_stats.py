@@ -393,13 +393,16 @@ class TestContextWindowStatsEdgeCases:
 
     def test_render_result_destructuring(self):
         """RenderResult supports tuple unpacking."""
-        output, stats = render_context(
+        from context_blocks.models import RenderedMessage
+
+        output, stats, messages = render_context(
             [ResolvedBlock(key="sys", content="hello")],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
         )
         assert isinstance(output, list)
         assert isinstance(stats, ContextWindowStats)
+        assert all(isinstance(m, RenderedMessage) for m in messages)
 
     def test_block_limit_and_context_limit_interaction(self):
         """Per-block truncation happens before total budget check."""

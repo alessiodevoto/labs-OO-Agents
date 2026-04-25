@@ -23,16 +23,19 @@ class TestRenderContextBasic:
     """Basic rendering tests."""
 
     def test_render_empty_blocks(self):
-        """render_context() with empty list returns system-only output."""
+        """render_context() with empty list returns no messages.
+
+        The old renderer always emitted an empty system message; the new
+        pipeline emits nothing when there are no blocks. Downstream code that
+        wants a guaranteed system slot should pass at least one block.
+        """
         result = render_context(
             [],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
         ).output
 
-        assert len(result) == 1
-        assert result[0]["role"] == "system"
-        assert result[0]["content"] == ""
+        assert result == []
 
     def test_render_single_system_block(self):
         """render_context() formats a single system block."""
@@ -51,12 +54,12 @@ class TestRenderContextBasic:
         assert "</persona>" in system_content
 
     def test_render_system_block_with_metadata(self):
-        """render_context() includes metadata (expr) in formatted output."""
+        """render_context() includes ``expr=`` only for set_dynamic-sourced blocks."""
         blocks = [
             ResolvedBlock(
                 key="notes",
                 content="My notes",
-                metadata=BlockMetadata(expr="self.context['notes']"),
+                metadata=BlockMetadata(expr="self.context['notes']", source_dynamic=True),
             )
         ]
 
@@ -316,20 +319,34 @@ class TestFormatMessageContent:
     """Tests for format_message_content() — wraps message blocks with metadata."""
 
     def test_xml_with_expr(self):
+        """``expr=`` is only rendered for source_dynamic blocks (set_dynamic).
+
+        USER-role events wrap in ``<sys>``; assistant events in ``<agent>``.
+        """
         from context_blocks.renderer import format_message_content
 
-        block = ResolvedBlock(
+        dynamic = ResolvedBlock(
+            key="msg",
+            content="Hello",
+            role=Role.USER,
+            metadata=BlockMetadata(expr="self.events['1']", source_dynamic=True),
+        )
+        result = format_message_content(dynamic, "xml")
+        assert "<sys expr=\"self.events['1']\">" in result
+        assert "Hello" in result
+        assert "</sys>" in result
+
+        # Non-dynamic block: expr is suppressed.
+        static = ResolvedBlock(
             key="msg",
             content="Hello",
             role=Role.USER,
             metadata=BlockMetadata(expr="self.events['1']"),
         )
-        result = format_message_content(block, "xml")
-        assert "<user_message expr=\"self.events['1']\">" in result
-        assert "Hello" in result
-        assert "</user_message>" in result
+        assert "expr=" not in format_message_content(static, "xml")
 
     def test_xml_with_tag(self):
+        """Assistant events wrap in ``<agent>``."""
         from context_blocks.renderer import format_message_content
 
         block = ResolvedBlock(
@@ -339,8 +356,9 @@ class TestFormatMessageContent:
             metadata=BlockMetadata(tag="42"),
         )
         result = format_message_content(block, "xml")
-        assert '<assistant_message tag="42">' in result
+        assert '<agent tag="42">' in result
         assert "Hi" in result
+        assert "</agent>" in result
 
     def test_xml_with_expr_and_tag(self):
         from context_blocks.renderer import format_message_content
@@ -349,7 +367,7 @@ class TestFormatMessageContent:
             key="msg",
             content="content",
             role=Role.USER,
-            metadata=BlockMetadata(expr="self.events['1']", tag="1"),
+            metadata=BlockMetadata(expr="self.events['1']", tag="1", source_dynamic=True),
         )
         result = format_message_content(block, "xml")
         assert "expr=\"self.events['1']\"" in result
@@ -362,7 +380,7 @@ class TestFormatMessageContent:
             key="msg",
             content="Hello",
             role=Role.USER,
-            metadata=BlockMetadata(expr="self.events['1']"),
+            metadata=BlockMetadata(expr="self.events['1']", source_dynamic=True),
         )
         result = format_message_content(block, "markdown")
         assert "### User Message" in result
@@ -392,8 +410,9 @@ class TestFormatMessageContent:
             metadata=BlockMetadata(),
         )
         result = format_message_content(block, "xml")
-        # No expr or tag, so no attributes — but still wrapped
-        assert "<user_message>" in result
+        # No expr or tag, so no attributes — but still wrapped.
+        # USER-role events wrap in <sys>.
+        assert "<sys>" in result
         assert "Hello" in result
 
 

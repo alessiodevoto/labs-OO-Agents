@@ -23,8 +23,8 @@ class TestContextManager:
         agent = TestAgent()
         assert hasattr(agent, "context_manager")
 
-    def test_old_set_method_removed(self):
-        """The old .set() method has been removed - use dict-like syntax instead."""
+    def test_set_method_supports_immutable_flag(self):
+        """``.set()`` is available for declaring per-block immutability."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
@@ -32,12 +32,12 @@ class TestContextManager:
 
         agent = TestAgent()
 
-        # The old .set() method should not exist
-        assert not hasattr(agent.context_manager, "set")
+        agent.context_manager.set("key", "value", immutable=True)
+        assert agent.context_manager["key"] == "value"
+        assert agent.context_manager.is_immutable("key") is True
 
-        # Trying to use it should raise AttributeError
-        with pytest.raises(AttributeError, match="has no attribute 'set'"):
-            agent.context_manager.set("key", "value")
+        agent.context_manager.set("other", "value")
+        assert agent.context_manager.is_immutable("other") is False
 
     def test_set_static_value(self):
         """self.context['key'] = 'value' stores a static string."""

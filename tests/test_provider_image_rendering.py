@@ -9,9 +9,27 @@ from context_blocks.events import ResultStatus
 from context_blocks.formatter import (
     AnthropicProviderFormatter,
     OpenAIProviderFormatter,
+    XMLBlockFormatter,
 )
 from context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from context_blocks.renderer import render_context
 from nemo_oo_agents.events import PythonOutput
+
+
+def _render_openai(blocks: list[ResolvedBlock]) -> list[dict]:
+    return render_context(
+        blocks,
+        block_formatter=XMLBlockFormatter(),
+        provider_formatter=OpenAIProviderFormatter(),
+    ).output
+
+
+def _render_anthropic(blocks: list[ResolvedBlock]) -> dict:
+    return render_context(
+        blocks,
+        block_formatter=XMLBlockFormatter(),
+        provider_formatter=AnthropicProviderFormatter(),
+    ).output
 
 
 def _make_python_output_block(
@@ -38,9 +56,8 @@ def _make_python_output_block(
 class TestOpenAIProviderFormatterImages:
     def test_no_images_plain_content(self):
         block = _make_python_output_block(stdout="hello", images=[])
-        formatter = OpenAIProviderFormatter()
-        result = formatter.format("system prompt", [block])
-        # System + 1 message
+        result = _render_openai([block])
+        # System + 1 user message
         assert len(result) == 2
         msg = result[1]
         assert msg["role"] == "user"
@@ -49,11 +66,11 @@ class TestOpenAIProviderFormatterImages:
     def test_with_images_multipart_content(self):
         image_block = {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}
         block = _make_python_output_block(stdout="analyzed", images=[image_block])
-        formatter = OpenAIProviderFormatter()
-        result = formatter.format("system prompt", [block])
+        result = _render_openai([block])
         msg = result[1]
         assert isinstance(msg["content"], list)
-        assert msg["content"][0] == {"type": "text", "text": "<stdout>analyzed</stdout>"}
+        assert msg["content"][0]["type"] == "text"
+        assert "analyzed" in msg["content"][0]["text"]
         assert msg["content"][1] == image_block
 
     def test_multiple_images(self):
@@ -62,8 +79,7 @@ class TestOpenAIProviderFormatterImages:
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,BBBB"}},
         ]
         block = _make_python_output_block(images=images)
-        formatter = OpenAIProviderFormatter()
-        result = formatter.format("system prompt", [block])
+        result = _render_openai([block])
         msg = result[1]
         assert isinstance(msg["content"], list)
         assert len(msg["content"]) == 3  # text + 2 images
@@ -72,28 +88,22 @@ class TestOpenAIProviderFormatterImages:
 class TestAnthropicProviderFormatterImages:
     def test_no_images_plain_content(self):
         block = _make_python_output_block(stdout="hello", images=[])
-        formatter = AnthropicProviderFormatter()
-        result = formatter.format("system prompt", [block])
+        result = _render_anthropic([block])
         msg = result["messages"][0]
         assert isinstance(msg["content"], str)
 
     def test_with_images_uses_universal_format(self):
-        """Anthropic formatter now uses LiteLLM's universal image_url format.
-
-        No provider-specific conversion — LiteLLM handles it.
-        """
+        """Anthropic formatter uses LiteLLM's universal image_url format — LiteLLM converts."""
         image_block = {
             "type": "image_url",
             "image_url": {"url": "data:image/png;base64,AAAA", "format": "image/png"},
         }
         block = _make_python_output_block(stdout="analyzed", images=[image_block])
-        formatter = AnthropicProviderFormatter()
-        result = formatter.format("system prompt", [block])
+        result = _render_anthropic([block])
         msg = result["messages"][0]
         assert isinstance(msg["content"], list)
-        # First part is text
-        assert msg["content"][0] == {"type": "text", "text": "<stdout>analyzed</stdout>"}
-        # Second part is the SAME image_url format — LiteLLM converts for us
+        assert msg["content"][0]["type"] == "text"
+        assert "analyzed" in msg["content"][0]["text"]
         assert msg["content"][1] == image_block
 
 

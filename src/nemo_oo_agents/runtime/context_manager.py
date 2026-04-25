@@ -45,6 +45,7 @@ class ContextManager:
         self._blocks: dict[str, Any | DynamicContext] = {}
         self._protected_keys: set[str] = protected_keys or set()
         self._dynamic_cache: dict[str, Any] = {}
+        self._immutable: dict[str, bool] = {}
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Set a static context block.
@@ -54,6 +55,21 @@ class ContextManager:
             value: Any value. Stored as-is; pprint formatting happens at
                    render time in _prepare_context().
                    For dynamic blocks, use set_dynamic() instead.
+
+        Raises:
+            ProtectedBlockError: If key is protected.
+            TypeError: If value is a DynamicContext (use set_dynamic instead).
+        """
+        self.set(key, value)
+
+    def set(self, key: str, value: Any, *, immutable: bool = False) -> None:
+        """Set a static context block, with optional immutability declaration.
+
+        Args:
+            key: Block key (unique identifier).
+            value: Any value. Stored as-is; pprint formatting happens at render time.
+            immutable: Declare that this block's content will not change between
+                turns. Renderers use this to place it in a cacheable prefix.
 
         Raises:
             ProtectedBlockError: If key is protected.
@@ -69,14 +85,17 @@ class ContextManager:
             )
 
         self._blocks[key] = value
+        self._immutable[key] = immutable
         self._invalidate(key)
 
-    def set_dynamic(self, key: str, expr: str) -> None:
+    def set_dynamic(self, key: str, expr: str, *, immutable: bool = False) -> None:
         """Set a dynamic context block that re-evaluates each turn.
 
         Args:
             key: Block key (unique identifier).
             expr: Python expression to evaluate each turn.
+            immutable: Declare that the expression's output is stable across
+                turns. Renderers use this to place it in a cacheable prefix.
 
         Raises:
             ProtectedBlockError: If key is protected.
@@ -84,8 +103,13 @@ class ContextManager:
         if key in self._protected_keys:
             raise ProtectedBlockError(key, "modify")
 
-        self._blocks[key] = DynamicContext(expr)
+        self._blocks[key] = DynamicContext(expr, immutable=immutable)
+        self._immutable[key] = immutable
         self._invalidate(key)
+
+    def is_immutable(self, key: str) -> bool:
+        """Return True if the block was set with immutable=True."""
+        return self._immutable.get(key, False)
 
     def __getitem__(self, key: str) -> Any:
         """Get the value of a context block.
@@ -124,6 +148,7 @@ class ContextManager:
         if key in self._protected_keys:
             raise ProtectedBlockError(key, "remove")
         del self._blocks[key]
+        self._immutable.pop(key, None)
         self._invalidate(key)
 
     def __contains__(self, key: object) -> bool:
@@ -178,6 +203,7 @@ class ContextManager:
             value = raw
 
         del self._blocks[key]
+        self._immutable.pop(key, None)
         self._invalidate(key)
         return value
 
