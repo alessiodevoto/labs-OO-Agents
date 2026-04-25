@@ -20,6 +20,7 @@ Each result includes:
 """
 
 import asyncio
+import logging
 import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -600,15 +601,16 @@ async def run_evaluation(
                 # Worker crashed or communication failed — create an error result
                 # so it appears in the output file and progress reporting.
                 sample = sample_map.get(task_id)
+                run_id = getattr(sample.task, "run_id", 1) if sample else 1
                 result = EvalTestResult(
                     test_id=task_id,
                     base_test_id=task_id,
-                    run_id=1,
+                    run_id=run_id,
                     test_case=task_id,
                     agent_class=sample.agent_class if sample else "unknown",
                     method=sample.method if sample else "unknown",
                     model=sample.model or "unknown" if sample else "unknown",
-                    variant="run1",
+                    variant=f"run{run_id}",
                     passed=False,
                     scores={},
                     input=None,
@@ -620,7 +622,10 @@ async def run_evaluation(
                 )
             if result.passed:
                 passed[0] += 1
-            writer.append_result(result)
+            try:
+                writer.append_result(result)
+            except Exception as e:
+                logging.getLogger(__name__).warning("Failed to write result for %s: %s", task_id, e)
             if config.on_progress:
                 try:
                     config.on_progress(completed[0], total, result)

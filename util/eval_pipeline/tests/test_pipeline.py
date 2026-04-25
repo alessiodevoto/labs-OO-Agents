@@ -280,6 +280,103 @@ class TestCapabilityTestsIntegration:
         assert result.output == 391
 
 
+class TestSubprocessOnComplete:
+    """Tests for subprocess_on_complete error handling (the MR #132 fixes)."""
+
+    def _make_sample(self, task_id: str, run_id: int = 1) -> Sample:
+        return Sample(
+            task=Task(id=task_id, input="test", expected="x", run_id=run_id),
+            method="classify",
+            agent_class="DummyAgent",
+            scorers=[ScorerConfig(name="exact", weight=1.0, scorer=ExactMatchScorer())],
+            agent_factory=lambda: None,
+            model="test",
+            test_name="crash_test",
+            sample_id=task_id,
+            tier=Tier.STABLE,
+            agent_module="eval_pipeline._test_fixtures",
+            client_config={},
+            scorer_specs=[
+                {
+                    "name": "exact",
+                    "weight": 1.0,
+                    "scorer_class": "eval_pipeline.scoring.ExactMatchScorer",
+                    "scorer_kwargs": {},
+                }
+            ],
+        )
+
+    def test_on_progress_fires_even_when_writer_raises(self, tmp_path):
+        """on_progress is called even if writer.append_result raises."""
+        import asyncio
+        from unittest.mock import patch
+
+        progress_calls: list = []
+
+        class FailingWriter(MockWriter):
+            def append_result(self, result):
+                raise OSError("disk full")
+
+        sample = self._make_sample("crash_001")
+        writer = FailingWriter()
+        config = PipelineConfig(
+            trace_dir=tmp_path,
+            engine_type="subprocess",
+            pass_threshold=0.5,
+            on_progress=lambda completed, total, result: progress_calls.append(result),
+        )
+
+        async def fake_run_tasks(task_ids, task_data, config, on_task_complete=None):
+            for tid in task_ids:
+                if on_task_complete:
+                    on_task_complete(tid, RuntimeError("subprocess crashed"))
+            return [RuntimeError("subprocess crashed")]
+
+        async def run():
+            with patch("eval_pipeline.pipeline.SubprocessEngine") as MockEngine:
+                MockEngine.return_value.run_tasks = fake_run_tasks
+                await run_evaluation([sample], config, writer, max_concurrent=1)
+
+        asyncio.run(run())
+
+        assert len(progress_calls) == 1, "on_progress must fire even when writer raises"
+        assert progress_calls[0].passed is False
+        assert progress_calls[0].error_type == "SubprocessError"
+
+    def test_crash_stub_uses_correct_run_id(self, tmp_path):
+        """Crash stub EvalTestResult uses run_id from the sample, not hardcoded 1."""
+        import asyncio
+        from unittest.mock import patch
+
+        sample = self._make_sample("crash_run2", run_id=2)
+        writer = MockWriter()
+        config = PipelineConfig(
+            trace_dir=tmp_path,
+            engine_type="subprocess",
+            pass_threshold=0.5,
+        )
+
+        async def fake_run_tasks(task_ids, task_data, config, on_task_complete=None):
+            for tid in task_ids:
+                if on_task_complete:
+                    on_task_complete(tid, RuntimeError("subprocess crashed"))
+            return [RuntimeError("subprocess crashed")]
+
+        async def run():
+            with patch("eval_pipeline.pipeline.SubprocessEngine") as MockEngine:
+                MockEngine.return_value.run_tasks = fake_run_tasks
+                await run_evaluation([sample], config, writer, max_concurrent=1)
+
+        asyncio.run(run())
+
+        assert len(writer.results) == 1
+        stub = writer.results[0]
+        assert stub.run_id == 2, f"Expected run_id=2, got {stub.run_id}"
+        assert stub.variant == "run2", f"Expected variant='run2', got {stub.variant}"
+        assert stub.passed is False
+        assert stub.error_type == "SubprocessError"
+
+
 class TestParallelExecution:
     """Tests for parallel execution of samples."""
 
