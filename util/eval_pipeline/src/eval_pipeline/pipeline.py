@@ -20,6 +20,7 @@ Each result includes:
 """
 
 import asyncio
+import logging
 import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -624,7 +625,7 @@ async def run_evaluation(
             try:
                 writer.append_result(result)
             except Exception as e:
-                log.warning("Failed to write result for %s: %s", task_id, e)
+                logging.getLogger(__name__).warning("Failed to write result for %s: %s", task_id, e)
             if config.on_progress:
                 try:
                     config.on_progress(completed[0], total, result)
