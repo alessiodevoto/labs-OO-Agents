@@ -870,9 +870,10 @@ class ActorRuntime:
 
             # 2. Strip blocked modules and their members from exec_globals
             effective_restrictions = restrictions or RestrictionsConfig()
-            exec_globals = _strip_blocked_modules(
-                exec_globals, effective_restrictions.blocked_modules
-            )
+            if not effective_restrictions.allow_all_imports:
+                exec_globals = _strip_blocked_modules(
+                    exec_globals, effective_restrictions.blocked_modules
+                )
 
             # 3. Strip redundant imports (from typing import Literal, etc.)
             from nemo_oo_agents.runtime.code_validator import strip_redundant_imports

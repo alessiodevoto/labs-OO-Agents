@@ -180,8 +180,8 @@ class _SecurityVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
         """Check from-import statements."""
-        # from X import * is always forbidden
-        if any(alias.name == "*" for alias in node.names):
+        # from X import * is forbidden unless allow_all_imports is set
+        if any(alias.name == "*" for alias in node.names) and not self.context.allow_all_imports:
             self.issues.append(
                 ValidationIssue(
                     line=node.lineno,

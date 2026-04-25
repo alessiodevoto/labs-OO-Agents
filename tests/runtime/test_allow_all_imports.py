@@ -43,12 +43,30 @@ class TestAllowAllImports:
         issues = self._validate("from pathlib import Path")
         assert any("pathlib" in i.message for i in issues)
 
-    def test_star_import_still_blocked(self):
-        """from X import * is always forbidden, even with allow_all_imports."""
+    def test_star_import_allowed_when_flag_set(self):
+        """from X import * is allowed with allow_all_imports."""
         issues = self._validate("from json import *", allow_all_imports=True)
+        star_issues = [i for i in issues if "*" in i.message]
+        assert star_issues == []
+
+    def test_star_import_blocked_by_default(self):
+        """from X import * is blocked without allow_all_imports."""
+        issues = self._validate("from json import *")
         assert any("*" in i.message for i in issues)
 
     def test_forbidden_builtins_still_blocked(self):
         """__import__ is still forbidden even with allow_all_imports."""
         issues = self._validate("__import__('os')", allow_all_imports=True)
         assert any("__import__" in i.message for i in issues)
+
+    def test_blocked_modules_allowed_when_flag_set(self):
+        """subprocess/socket are allowed with allow_all_imports — the developer opted in."""
+        issues = self._validate("import subprocess", allow_all_imports=True)
+        import_issues = [i for i in issues if "subprocess" in i.message]
+        assert import_issues == [], (
+            "import subprocess should be allowed with allow_all_imports=True"
+        )
+
+        issues = self._validate("import socket", allow_all_imports=True)
+        import_issues = [i for i in issues if "socket" in i.message]
+        assert import_issues == [], "import socket should be allowed with allow_all_imports=True"
