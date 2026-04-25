@@ -2431,7 +2431,12 @@ async def {name}({params_str}) -> {return_type}:
             )
 
             block_formatter = self.agent.render_config.block_formatter
-            rendered = [block_formatter.format([b]) for b in blocks if b.role == "system"]
+            rendered = []
+            for b in blocks:
+                if b.role == "system":
+                    for msg in block_formatter.format([b]):
+                        if msg.content:
+                            rendered.append(msg.content)
             if rendered:
                 set_context_blocks(rendered)
         except ImportError:
