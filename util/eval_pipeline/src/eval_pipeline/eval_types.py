@@ -271,6 +271,7 @@ class SubprocessTaskInput(BaseModel):
     # Pipeline config
     trace_dir: str
     use_otlp: bool = False
+    write_trace_file: bool = True
     otlp_endpoint: str = "http://localhost:5001/v1/traces"
     viewer_endpoint: str | None = None  # external viewer /v1/traces URL (if running)
     experiment_name: str | None = None

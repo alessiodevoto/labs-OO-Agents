@@ -582,6 +582,7 @@ async def run_evaluation(
                 agent_label=sample.agent_label or config.agent_label,
                 trace_dir=str(config.trace_dir),
                 use_otlp=config.use_otlp,
+                write_trace_file=not config.no_files,
                 otlp_endpoint=_otlp_endpoint,
                 viewer_endpoint=config.viewer_endpoint,
                 experiment_name=config.experiment_name,

@@ -242,7 +242,7 @@ class Evaluator:
         exporter_list: list = [_headless_journal]
         if _use_viewer:
             exporter_list.append(exporters.journal(endpoint=_external_otlp))
-        if not no_files and (trace_files or not _use_viewer):
+        if not no_files:
             exporter_list.append(exporters.jsonl(traces_dir))
 
         if self._langfuse_host:

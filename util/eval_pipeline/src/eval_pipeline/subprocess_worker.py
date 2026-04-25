@@ -15,6 +15,7 @@ Protocol:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import sys
 import time
@@ -71,8 +72,10 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     trace_dir = Path(task_input.trace_dir)
     trace_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build trace file / session ID
-    trace_filename = f"{task_input.agent_spec.agent_class}_{model_short}_{task_input.agent_spec.method}_{task_input.sample_id}.jsonl"
+    # Build trace file / session ID — include a short experiment hash so that two
+    # experiments running the same agent class concurrently never share a session_id.
+    _exp_hash = hashlib.sha256((task_input.experiment_name or "").encode()).hexdigest()[:8]
+    trace_filename = f"{task_input.agent_spec.agent_class}_{model_short}_{task_input.agent_spec.method}_{task_input.sample_id}_{_exp_hash}.jsonl"
     trace_file = trace_dir / trace_filename
     session_id = trace_file.stem
 
@@ -89,6 +92,8 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
             _exporter_list = [exporters.journal(endpoint=task_input.otlp_endpoint)]
             if task_input.viewer_endpoint:
                 _exporter_list.append(exporters.journal(endpoint=task_input.viewer_endpoint))
+            if task_input.write_trace_file:
+                _exporter_list.append(exporters.jsonl(trace_dir))
             enable_tracing(exporters=_exporter_list, experiment=task_input.experiment_name)
             set_session(session_id)
         except Exception as e:
