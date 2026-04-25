@@ -92,7 +92,6 @@ class ValidationContext:
     execution_count: int = 1
     agent: Any = None  # Agent instance for method introspection
     exec_globals: dict[str, Any] = field(default_factory=dict)
-    allow_all_imports: bool = False
 
 
 class Validator(Protocol):
@@ -180,8 +179,8 @@ class _SecurityVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
         """Check from-import statements."""
-        # from X import * is forbidden unless allow_all_imports is set
-        if any(alias.name == "*" for alias in node.names) and not self.context.allow_all_imports:
+        # from X import * is always forbidden
+        if any(alias.name == "*" for alias in node.names):
             self.issues.append(
                 ValidationIssue(
                     line=node.lineno,
@@ -283,9 +282,6 @@ class _SecurityVisitor(ast.NodeVisitor):
 
     def _is_module_available(self, module_name: str) -> bool:
         """Check if module (or parent) is importable."""
-        if self.context.allow_all_imports:
-            return True
-
         modules = self.context.importable_modules
         if not modules:
             # Fallback to available_names for backwards compat

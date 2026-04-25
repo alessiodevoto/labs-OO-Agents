@@ -54,11 +54,6 @@ class RestrictionsConfig(BaseModel):
 
     blocked_modules: frozenset[str] = DEFAULT_BLOCKED_MODULES
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
-    allow_all_imports: bool = False
-    """When True, all import and module restrictions are lifted.
-    Agents can import and call any installed module, including
-    subprocess, socket, os.system, etc. Only forbidden builtins
-    (__import__, exec, eval, compile) remain blocked."""
 
 
 def match_blocked_module(
