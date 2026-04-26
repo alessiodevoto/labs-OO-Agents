@@ -22,15 +22,10 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from context_blocks.models import RenderedMessage, Role, ToolCallInfo
-from nemo_oo_agents.runtime.actor import _build_journal_payload
-
-# ``_build_journal_payload`` returns None if the openinference sideband
-# isn't installed. The package is a workspace member here, so skip
-# cleanly rather than fail if some minimal env ever lacks it.
-pytest.importorskip("openinference_instrumentation_nemo_oo_agents._context_sideband")
+from nemo_oo_agents.tracing._journal_builder import (
+    build_journal_payload as _build_journal_payload,
+)
 
 
 def _text_msg(role: Role, content: str) -> RenderedMessage:
@@ -107,20 +102,20 @@ class TestAssistantToolCallWireShape:
     def test_flattener_recovers_tool_call_arguments_via_reconstruction(self):
         """Round-trip: the stored skeleton plus blocks rebuild the
         original message shape (including ``arguments``) when read
-        back via ``_reconstruct_message``, so the viewer's flattener
+        back via ``_resolve_message``, so the viewer's flattener
         emits ``llm.input_messages.N.message.tool_calls.0.*`` attrs
         with the real code body — not an empty string.
         """
-        from nemo_oo_agents_viewer.otlp_store import (
+        from nemo_oo_agents.viewer.otlp_store import (
             _flatten_msg_to_attrs,
-            _reconstruct_message,
+            _resolve_message,
         )
 
         msg = _assistant_tool_call("call_xyz", "search", {"q": "bedrock"})
         payload = _build_journal_payload([msg])
         assert payload is not None
         entry = payload.skeleton[0]
-        rebuilt = _reconstruct_message(entry, payload.blocks)
+        rebuilt = _resolve_message(entry, payload.blocks)
 
         attrs = _flatten_msg_to_attrs(rebuilt, "llm.input_messages.0.message")
         by_key = {a["key"]: a["value"]["stringValue"] for a in attrs}
@@ -152,9 +147,9 @@ class TestAssistantToolCallWireShape:
     def test_tool_result_message_carries_tool_call_id(self):
         """Tool-role messages keep ``tool_call_id`` (singular). Their content
         now lives in the blocks dict behind a single-part block-ref, so the
-        viewer's ``_reconstruct_message`` reconstructs the original
+        viewer's ``_resolve_message`` reconstructs the original
         ``content`` verbatim on read."""
-        from nemo_oo_agents_viewer.otlp_store import _reconstruct_message
+        from nemo_oo_agents.viewer.otlp_store import _resolve_message
 
         msg = RenderedMessage(role=Role.TOOL, content="status: complete", tool_call_id="call_abc")
         payload = _build_journal_payload([msg])
@@ -169,7 +164,7 @@ class TestAssistantToolCallWireShape:
 
         # Round-trip via the viewer reconstruction path: tool_call_id
         # survives and content comes back verbatim.
-        rendered = _reconstruct_message(entry, payload.blocks)
+        rendered = _resolve_message(entry, payload.blocks)
         assert rendered["role"] == "tool"
         assert rendered["tool_call_id"] == "call_abc"
         assert rendered["content"] == "status: complete"
@@ -185,7 +180,7 @@ class TestPartsAndBlocks:
         the repeated-turn case and the /v1/journal/calls payloads stop
         growing with the conversation.
         """
-        from nemo_oo_agents_viewer.otlp_store import _reconstruct_message
+        from nemo_oo_agents.viewer.otlp_store import _resolve_message
 
         payload = _build_journal_payload([_text_msg(Role.USER, "hello")])
         assert payload is not None
@@ -199,17 +194,17 @@ class TestPartsAndBlocks:
         assert payload.blocks[h] == "hello"
 
         # Round-trips through the viewer's reconstruction untouched.
-        rendered = _reconstruct_message(entry, payload.blocks)
+        rendered = _resolve_message(entry, payload.blocks)
         assert rendered == {"role": "user", "content": "hello"}
 
     def test_images_hashed_into_blocks_and_round_trip(self):
         """Multimodal images — LiteLLM-shape dicts wrapping multi-MB
         base64 strings — get content-addressed into the blocks dict
         so they ship at most once per session. The viewer's
-        ``_reconstruct_message`` restores the original ``images`` list
+        ``_resolve_message`` restores the original ``images`` list
         (including dict shape) byte-for-byte.
         """
-        from nemo_oo_agents_viewer.otlp_store import _reconstruct_message
+        from nemo_oo_agents.viewer.otlp_store import _resolve_message
 
         def _image(tag: str, body_char: str) -> dict:
             return {
@@ -238,8 +233,8 @@ class TestPartsAndBlocks:
         assert len(all_image_hashes) == 3
 
         # Round-trip via the viewer path rebuilds the original dict shape.
-        rebuilt_a = _reconstruct_message(entry_a, payload.blocks)
-        rebuilt_b = _reconstruct_message(entry_b, payload.blocks)
+        rebuilt_a = _resolve_message(entry_a, payload.blocks)
+        rebuilt_b = _resolve_message(entry_b, payload.blocks)
         assert rebuilt_a["images"] == [shared, unique_a]
         assert rebuilt_b["images"] == [shared, unique_b]
         assert "image_hashes" not in rebuilt_a

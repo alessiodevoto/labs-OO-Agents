@@ -257,4 +257,4 @@ class TestGetSessionCallsEndpoint:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["call_id"] == "c1"
-        assert data[0]["input_messages"] == [{"role": "user", "content": "hi"}]
+        assert data[0]["input_skeleton"] == [{"role": "user", "content": "hi"}]

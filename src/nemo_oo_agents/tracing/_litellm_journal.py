@@ -35,6 +35,7 @@ from typing import Any
 from litellm.integrations.custom_logger import CustomLogger
 from opentelemetry import trace as otel_trace
 
+from nemo_oo_agents.tracing._journal_builder import _encode_image
 from nemo_oo_agents.tracing._session import get_session
 
 log = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def _extract_output_msgs(response_obj: Any) -> list[dict]:
 def _skeleton_dict_message(msg: dict, blocks: dict[str, str]) -> dict:
     """Content-address ``msg["content"]`` and each tool_call's ``arguments``.
 
-    Mirrors what :func:`nemo_oo_agents.runtime.actor._build_journal_payload`
+    Mirrors what :func:`nemo_oo_agents.tracing._journal_builder.build_journal_payload`
     does for ``RenderedMessage`` inputs, but takes the dict shape returned
     by :func:`_extract_output_msgs` (and anything else that lands already
     as an OpenAI-shape message dict).
@@ -132,14 +133,7 @@ def _skeleton_dict_message(msg: dict, blocks: dict[str, str]) -> dict:
     if images:
         image_hashes: list[str] = []
         for img in images:
-            # Canonical JSON so dict-shape images hash stably regardless
-            # of key order. Non-dict shapes (already a string URL, etc.)
-            # just serialize to themselves.
-            img_s = (
-                json.dumps(img, sort_keys=True, separators=(",", ":"))
-                if not isinstance(img, str)
-                else img
-            )
+            img_s = _encode_image(img)
             h = _hash_str(img_s)
             blocks[h] = img_s
             image_hashes.append(h)
@@ -149,7 +143,7 @@ def _skeleton_dict_message(msg: dict, blocks: dict[str, str]) -> dict:
 
 
 def _hash_str(s: str) -> str:
-    """SHA-256 a string the same way ``actor._build_journal_payload`` does."""
+    """SHA-256 a string the same way ``_journal_builder._hash`` does."""
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
@@ -171,6 +165,15 @@ def _post_json(
     """Fire-and-forget JSON POST with retries — dispatched to a daemon thread."""
 
     def _send() -> None:
+        try:
+            _send_impl()
+        finally:
+            # Self-evict so ``_PENDING_THREADS`` doesn't grow without bound
+            # in long-running processes that never call ``flush_pending``.
+            with _PENDING_LOCK:
+                _PENDING_THREADS.discard(threading.current_thread())
+
+    def _send_impl() -> None:
         tag = f" [session={session_id}]" if session_id else ""
         n_items = len(payload) if isinstance(payload, list) else 1
         size_kb = 0.0
@@ -188,9 +191,13 @@ def _post_json(
                 n_items,
                 tag,
             )
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-        )
+        headers = {"Content-Type": "application/json"}
+        if session_id:
+            # The receiver's /v1/journal/blocks route uses this header to
+            # key blocks per session.  /v1/journal/calls reads session_id
+            # off the body, but it's harmless to pass on both routes.
+            headers["X-Session-Id"] = session_id
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         t0 = time.monotonic()
         for attempt in range(_POST_RETRIES):
             try:
@@ -235,7 +242,63 @@ def _post_json(
                         tag,
                     )
 
-    threading.Thread(target=_send, daemon=True).start()
+    t = threading.Thread(target=_send, daemon=True)
+    # Add to the set then start, with the lock held across both.  The
+    # thread's ``finally`` block also acquires this lock to self-evict,
+    # so even if ``_send`` finishes before this block returns, its
+    # ``discard`` blocks until we've added — no risk of a "discard runs
+    # before add, then add leaves a dead-thread reference in the set"
+    # leak.  And ``flush_pending`` can never see the thread as
+    # not-yet-started: it joins with the lock released, but by then the
+    # thread is started and either alive or already self-evicted.
+    with _PENDING_LOCK:
+        _PENDING_THREADS.add(t)
+        t.start()
+
+
+# Process-wide lock guarding the scan-and-append on ``litellm.callbacks``
+# in :meth:`JournalExporter._install`.  Two ``enable_tracing`` calls for
+# the same base_url racing concurrently would otherwise both scan, see
+# no existing :class:`MessageJournalCallback`, and each append a fresh
+# one -- the per-Destination refcount only converges shared state when
+# both exporters land on the *same* callback object.
+_INSTALL_LOCK = threading.Lock()
+
+
+# In-flight journal POST threads.  ``flush_pending`` waits on them so
+# fire-and-forget POSTs aren't truncated when the calling process exits
+# (the eval pipeline's daemon-thread POSTs were getting ClientDisconnect
+# at the receiver because the test process exited before their HTTP
+# request body was fully sent).  Stored as a set so completed threads
+# can be evicted in O(1); ``_send`` self-evicts on its way out.
+_PENDING_THREADS: set[threading.Thread] = set()
+_PENDING_LOCK = threading.Lock()
+
+
+def flush_pending(timeout: float = 30.0) -> None:
+    """Block until all in-flight journal POSTs have finished or *timeout* expires.
+
+    Called by ``JournalExporter.force_flush`` so OTel ``force_flush()`` (the
+    eval pipeline calls it before scoring) covers the journal sideband as
+    well as the OTLP span exporter.  Threads that haven't joined within
+    *timeout* are abandoned -- they're daemons, so process exit will kill
+    them, but ``_post_json`` will already have logged a warning if their
+    HTTP POST failed.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        with _PENDING_LOCK:
+            threads = [t for t in _PENDING_THREADS if t.is_alive()]
+        if not threads:
+            return
+        for t in threads:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            t.join(timeout=remaining)
+        # Loop once more in case new POSTs were dispatched while we were
+        # joining the first batch -- otherwise an LLM call that fires
+        # multiple POSTs back-to-back could partially miss the flush.
 
 
 def _to_ts(t: Any) -> float:
@@ -253,6 +316,43 @@ def _to_ts(t: Any) -> float:
 # ---------------------------------------------------------------------------
 
 
+class _Destination:
+    """One journal sink: pair of POST URLs + per-session block dedup state
+    + a refcount so multiple ``JournalExporter``s pointed at the same
+    base URL share state instead of stomping on each other at shutdown.
+
+    Each ``MessageJournalCallback`` holds an ordered list of these so the
+    eval pipeline can fan a single LLM call's journal payload out to both
+    the in-process headless backend and the user's running viewer without
+    needing two ``litellm.callbacks`` entries (litellm only delivers
+    ``log_success_event`` to one callback per class).
+    """
+
+    __slots__ = (
+        "base",
+        "blocks_url",
+        "calls_url",
+        "refcount",
+        "sent_session",
+        "sent_hashes",
+    )
+
+    def __init__(self, base_url: str) -> None:
+        base = base_url.rstrip("/")
+        self.base = base
+        self.blocks_url = base + "/v1/journal/blocks"
+        self.calls_url = base + "/v1/journal/calls"
+        # How many ``JournalExporter`` instances reference this destination.
+        # Decremented on each shutdown; the destination is removed only
+        # when the last referencing exporter shuts down.
+        self.refcount: int = 1
+        # Per-session block hash set.  When the session changes the old
+        # set is dropped, so memory stays bounded regardless of how many
+        # sessions the process sees.
+        self.sent_session: str = ""
+        self.sent_hashes: set[str] = set()
+
+
 class MessageJournalCallback(CustomLogger):
     """LiteLLM callback that streams skeletons + content-addressed blocks.
 
@@ -260,33 +360,82 @@ class MessageJournalCallback(CustomLogger):
 
     1. ``log_pre_api_call`` consumes the journal sideband (populated by
        the nemo_oo_agents actor's ``_build_journal_payload``) and POSTs
-       any newly-seen blocks (by hash) to ``/v1/journal/blocks``. The
-       skeleton — the wire message list with block refs replaced by
-       hashes — is held until the call completes.
-    2. ``log_success_event`` POSTs the full call record
-       (``{call_id, session_id, skeleton, output_messages, span_id, tokens}``)
-       to ``/v1/journal/calls``. Output messages (assistant replies)
-       are included inline — they're small and one-shot per call.
+       any newly-seen blocks (by hash) to ``/v1/journal/blocks`` *on every
+       configured destination*.  The skeleton — the wire message list
+       with block refs replaced by hashes — is held until the call
+       completes.
+    2. ``log_success_event`` POSTs the full call record to
+       ``/v1/journal/calls`` *on every configured destination*.  Output
+       messages (assistant replies) are included inline.
 
-    Per-session in-memory hash sets avoid retransmitting blocks that
-    were already sent for that session.
+    Multiple destinations live behind a single callback so they all get
+    every event.  litellm dispatches ``log_pre_api_call`` to every
+    callback in ``litellm.callbacks`` but only delivers
+    ``log_success_event`` to one per class — putting all destinations
+    inside one callback instance sidesteps that asymmetry.
+
+    Per-destination, per-session in-memory hash sets avoid retransmitting
+    blocks that were already sent for that session.
     """
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str | list[str]) -> None:
         super().__init__()
-        base = base_url.rstrip("/")
-        self._blocks_url = base + "/v1/journal/blocks"
-        self._calls_url = base + "/v1/journal/calls"
-        self._base_url = base
-        # Track block hashes for the current session only.
-        # When the session changes the old set is dropped, so memory
-        # stays bounded regardless of how many sessions the process sees.
-        self._sent_session: str = ""
-        self._sent_hashes: set[str] = set()
+        if isinstance(base_url, str):
+            urls: list[str] = [base_url]
+        else:
+            urls = list(base_url)
+        if not urls:
+            raise ValueError("MessageJournalCallback requires at least one base URL")
+        self._destinations: list[_Destination] = [_Destination(u) for u in urls]
         # litellm_call_id -> (input_skeleton, span_id | None). Entries
         # are removed in log_success_event / log_failure_event.
         self._call_inputs: dict[str, tuple[list[dict], str | None]] = {}
         self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Destination management
+    # ------------------------------------------------------------------
+
+    @property
+    def base_urls(self) -> list[str]:
+        """Return the list of destination base URLs (no trailing slash)."""
+        with self._lock:
+            return [d.base for d in self._destinations]
+
+    def add_destination(self, base_url: str) -> None:
+        """Add another sink, or bump the refcount on an existing one.
+
+        Used by ``JournalExporter`` so two ``enable_tracing`` exporters
+        pointed at the same URL share state.  Each ``add_destination``
+        must be paired with one ``remove_destination`` -- the destination
+        sticks around until *every* exporter that added it has gone away.
+        """
+        normalized = base_url.rstrip("/")
+        with self._lock:
+            for dest in self._destinations:
+                if dest.base == normalized:
+                    dest.refcount += 1
+                    return
+            self._destinations.append(_Destination(base_url))
+
+    def remove_destination(self, base_url: str) -> None:
+        """Decrement refcount for a sink; remove only when refcount hits 0.
+
+        Pairs with :meth:`add_destination`.  No-op if the URL isn't
+        configured.
+        """
+        normalized = base_url.rstrip("/")
+        with self._lock:
+            for dest in list(self._destinations):
+                if dest.base == normalized:
+                    dest.refcount -= 1
+                    if dest.refcount <= 0:
+                        self._destinations.remove(dest)
+                    return
+
+    def has_destinations(self) -> bool:
+        with self._lock:
+            return bool(self._destinations)
 
     # ------------------------------------------------------------------
     # Internal
@@ -296,39 +445,56 @@ class MessageJournalCallback(CustomLogger):
         return get_session() or "unknown"
 
     def _send_new_blocks(self, session_id: str, blocks: dict[str, str]) -> None:
-        """POST any blocks this session hasn't seen yet.
+        """POST any blocks this session hasn't seen yet, to every destination.
 
-        Only the current session's hashes are tracked.  When the session
-        changes the old set is dropped, keeping memory bounded.  Hashes
-        are recorded *after* the POST succeeds so a failed fire-and-forget
-        attempt will be retried on the next call.
+        Per-destination, per-session hash tracking: a freshly-started
+        sink doesn't free-ride on a long-lived sink's dedup state.
+        Hashes are recorded after the POST succeeds, so a failed
+        fire-and-forget attempt is retried on the next call.
+
+        Session change resets the tracking set so memory stays bounded
+        regardless of how many sessions a process sees.  ``on_success``
+        verifies the destination's session is still the one we
+        dispatched for -- a session change between dispatch and
+        completion (parallel agents racing) must not clobber the new
+        session's set with stale hashes.
         """
         if not blocks:
             return
         with self._lock:
-            if session_id != self._sent_session:
-                self._sent_session = session_id
-                self._sent_hashes = set()
-            new_entries = [
-                {"hash": h, "content": c} for h, c in blocks.items() if h not in self._sent_hashes
-            ]
-        if new_entries:
-            new_hashes = frozenset(blocks.keys())
+            destinations = list(self._destinations)
 
-            def _on_success() -> None:
-                with self._lock:
-                    # Replace with current payload's hashes — old hashes
-                    # from collapsed/archived events are forgotten.
-                    self._sent_hashes.clear()
-                    self._sent_hashes.update(new_hashes)
-
-            _post_json(self._blocks_url, new_entries, session_id=session_id, on_success=_on_success)
-        else:
-            # No new blocks to POST, but still prune the tracking set
-            # to only the current payload's hashes.
+        for dest in destinations:
             with self._lock:
-                self._sent_hashes.clear()
-                self._sent_hashes.update(blocks.keys())
+                if session_id != dest.sent_session:
+                    dest.sent_session = session_id
+                    dest.sent_hashes = set()
+                new_entries = [
+                    {"hash": h, "content": c}
+                    for h, c in blocks.items()
+                    if h not in dest.sent_hashes
+                ]
+            if not new_entries:
+                continue
+
+            def _on_success(
+                d: _Destination = dest,
+                sid: str = session_id,
+                hashes: frozenset = frozenset(e["hash"] for e in new_entries),
+            ) -> None:
+                with self._lock:
+                    if d.sent_session != sid:
+                        # Session changed under us; the new session's set
+                        # is for a different conversation, don't pollute it.
+                        return
+                    d.sent_hashes.update(hashes)
+
+            _post_json(
+                dest.blocks_url,
+                new_entries,
+                session_id=session_id,
+                on_success=_on_success,
+            )
 
     # ------------------------------------------------------------------
     # Sync hooks
@@ -424,7 +590,10 @@ class MessageJournalCallback(CustomLogger):
         }
         if span_id:
             record["span_id"] = span_id
-        _post_json(self._calls_url, record, session_id=session_id)
+        with self._lock:
+            destinations = list(self._destinations)
+        for dest in destinations:
+            _post_json(dest.calls_url, record, session_id=session_id)
 
     def log_failure_event(
         self, kwargs: dict, response_obj: Any, start_time: Any, end_time: Any

@@ -19,8 +19,8 @@ Block bodies are ``dict[str, str]`` keyed by hash.
 
 **Async-boundary note:** ``ContextVar.set()`` only modifies the value in the
 *current* async task's context copy. The consumer
-(``_send_new_messages`` in ``_litellm_journal.py``) calls
-``set_journal_payload(None)`` to consume the sideband after reading it.
+(``MessageJournalCallback.log_pre_api_call`` in ``_litellm_journal.py``)
+calls ``set_journal_payload(None)`` to consume the sideband after reading it.
 This works correctly as long as the litellm call and the callback both
 execute in the *same* async task as the ``set_journal_payload`` call —
 which is true for nemo_oo_agents's normal execution model

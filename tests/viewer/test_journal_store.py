@@ -5,13 +5,10 @@
 Covers:
 - _flatten_msg_to_attrs: plain messages, null content, tool_calls, tool role
 - _augment_span_attrs: replaces input/output message attrs, preserves others
-- _resolve_msg: plain messages, compound system entries, hash misses
-- ingest_journal_messages: dedup via INSERT OR IGNORE
 - ingest_journal_call: stores span_id, round-trip via get_session_calls
 - get_session_spans(augment=True): augments LLM spans, skips non-LLM spans
 - Migration: span_id column added to existing llm_calls table
 - 100-message roundtrip integration test
-- Context block roundtrip: compound entry reconstructs system message
 """
 
 from __future__ import annotations
@@ -36,11 +33,6 @@ def _make_db() -> sqlite3.Connection:
     db = sqlite3.connect(":memory:", check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.executescript("""
-        CREATE TABLE msg_content (
-            hash TEXT PRIMARY KEY,
-            msg  TEXT NOT NULL
-        );
-
         CREATE TABLE llm_calls (
             call_id       TEXT PRIMARY KEY,
             session_id    TEXT NOT NULL,
@@ -55,6 +47,14 @@ def _make_db() -> sqlite3.Connection:
 
         CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
         CREATE INDEX IF NOT EXISTS idx_llm_calls_span ON llm_calls(span_id);
+
+        -- v3: content-addressed message blocks resolved on read.
+        CREATE TABLE msg_blocks (
+            session_id  TEXT NOT NULL,
+            hash        TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            PRIMARY KEY (session_id, hash)
+        );
 
         CREATE TABLE sessions (
             session_id TEXT PRIMARY KEY,
@@ -174,7 +174,7 @@ class TestFlattenMsgToAttrs:
 
 class TestAugmentSpanAttrs:
     def _make_call(self, input_msgs, output_msgs):
-        return {"input_messages": input_msgs, "output_messages": output_msgs}
+        return {"input_skeleton": input_msgs, "output_messages": output_msgs}
 
     def test_replaces_input_and_output_message_attrs(self, store):
         existing = [
@@ -227,66 +227,6 @@ class TestAugmentSpanAttrs:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_msg
-# ---------------------------------------------------------------------------
-
-
-class TestResolveMsg:
-    def _by_hash(self, entries: list[tuple[str, dict]]) -> dict:
-        return dict(entries)
-
-    def test_plain_message_returned_as_is(self, store):
-        msg = {"role": "user", "content": "hello"}
-        h = "sha256:plain"
-        result = store._resolve_msg(h, {h: msg})
-        assert result == msg
-
-    def test_missing_hash_returns_none(self, store):
-        result = store._resolve_msg("sha256:missing", {})
-        assert result is None
-
-    def test_compound_system_message_reconstructed(self, store):
-        block_a = "<notes>\nFirst note.\n</notes>"
-        block_b = "<status>\nIdle.\n</status>"
-        h_a = "sha256:block_a"
-        h_b = "sha256:block_b"
-        compound = {"role": "system", "_blocks": [h_a, h_b]}
-        h_compound = "sha256:compound"
-
-        msg_by_hash = {
-            h_a: {"_block": block_a},
-            h_b: {"_block": block_b},
-            h_compound: compound,
-        }
-        result = store._resolve_msg(h_compound, msg_by_hash)
-        assert result == {"role": "system", "content": f"{block_a}\n\n{block_b}"}
-
-    def test_compound_with_missing_block_skips_gracefully(self, store):
-        h_a = "sha256:block_a"
-        h_b = "sha256:missing_block"
-        compound = {"role": "system", "_blocks": [h_a, h_b]}
-        h_compound = "sha256:compound"
-        msg_by_hash = {
-            h_a: {"_block": "<notes>\nContent.\n</notes>"},
-            h_compound: compound,
-        }
-        result = store._resolve_msg(h_compound, msg_by_hash)
-        # Missing block is skipped; only block_a content present
-        assert result is not None
-        assert "<notes>" in result["content"]
-        assert result["role"] == "system"
-
-    def test_single_block_system_message(self, store):
-        block = "<persona>\nYou are helpful.\n</persona>"
-        h_block = "sha256:block"
-        compound = {"role": "system", "_blocks": [h_block]}
-        h_compound = "sha256:compound"
-        msg_by_hash = {h_block: {"_block": block}, h_compound: compound}
-        result = store._resolve_msg(h_compound, msg_by_hash)
-        assert result == {"role": "system", "content": block}
-
-
-# ---------------------------------------------------------------------------
 # ingest_journal_messages
 # ---------------------------------------------------------------------------
 
@@ -329,7 +269,7 @@ class TestIngestJournalMessages:
             }
         )
         calls = store.get_session_calls("sess_rt")
-        assert calls[0]["input_messages"][0] == msg
+        assert calls[0]["input_skeleton"][0] == msg
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +296,7 @@ class TestIngestJournalCall:
         assert len(calls) == 1
         assert calls[0]["call_id"] == "cid1"
         assert calls[0]["span_id"] == "abc123"
-        assert calls[0]["input_messages"] == [{"role": "user", "content": "hi"}]
+        assert calls[0]["input_skeleton"] == [{"role": "user", "content": "hi"}]
         assert calls[0]["output_messages"] == [{"role": "assistant", "content": "hello"}]
         assert calls[0]["tokens"] == {"prompt": 10, "completion": 5}
 
@@ -425,7 +365,7 @@ class TestIngestJournalCall:
             }
         )
         calls = store.get_session_calls("sess3")
-        assert calls[0]["input_messages"] == [msg]
+        assert calls[0]["input_skeleton"] == [msg]
 
     def test_multiple_calls_ordered_by_ts_start(self, store):
         for i, ts in [(2, 200.0), (1, 100.0), (3, 300.0)]:
@@ -463,8 +403,8 @@ class TestIngestJournalCall:
         )
         calls = store.get_session_calls("sess_blocks")
         assert len(calls) == 1
-        assert calls[0]["input_messages"][0] == sys_msg
-        assert calls[0]["input_messages"][1] == user_msg
+        assert calls[0]["input_skeleton"][0] == sys_msg
+        assert calls[0]["input_skeleton"][1] == user_msg
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import asyncio
 import contextvars
 import inspect
 import io
-import json
 import linecache
 import logging
 import re as _re
@@ -492,81 +491,6 @@ def _has_top_level_return(tree: ast.Module) -> bool:
         if finder.found:
             return True
     return False
-
-
-def _build_journal_payload(messages: "list[Any]") -> "Any | None":
-    """Build a :class:`JournalPayload` from a rendered message list.
-
-    Walks each ``RenderedMessage.parts`` (populated by block-aware
-    formatters), hashes every ``BlockPart.content`` with SHA-256, and
-    constructs a skeleton that mirrors the wire message shape but with
-    block references replaced by their hashes. Messages without
-    ``parts`` are carried through as-is (plain ``content``).
-
-    Returns ``None`` if the openinference sideband isn't importable
-    (optional extra).
-    """
-    try:
-        from nemo_oo_agents.tracing._context_sideband import JournalPayload
-    except ImportError:
-        return None
-
-    import hashlib
-
-    blocks: dict[str, Any] = {}
-    skeleton: list[dict[str, Any]] = []
-
-    def _hash(content: str) -> str:
-        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-    for msg in messages:
-        role = msg.role
-        # Skip roles that never reach the LLM
-        role_s = role.value if hasattr(role, "value") else str(role)
-        if role_s in ("metadata", "runtime_event"):
-            continue
-
-        entry: dict[str, Any] = {"role": role_s}
-
-        if msg.parts:
-            parts_repr: list[dict[str, Any]] = []
-            for part in msg.parts:
-                if part.kind == "block":
-                    h = _hash(part.content)
-                    blocks[h] = part.content
-                    parts_repr.append({"block_hash": h, "key": part.key})
-                else:  # text
-                    parts_repr.append({"text": part.text})
-            entry["parts"] = parts_repr
-        elif msg.content is not None:
-            entry["content"] = msg.content
-
-        if msg.tool_call is not None:
-            tc = msg.tool_call
-            args = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
-            ah = _hash(args)
-            blocks[ah] = args
-            entry["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.name, "arguments_hash": ah},
-                }
-            ]
-        if msg.tool_call_id is not None:
-            entry["tool_call_id"] = msg.tool_call_id
-        if msg.images:
-            img_hashes = []
-            for img in msg.images:
-                s = json.dumps(img) if isinstance(img, dict) else str(img)
-                h = _hash(s)
-                blocks[h] = s
-                img_hashes.append(h)
-            entry["image_hashes"] = img_hashes
-
-        skeleton.append(entry)
-
-    return JournalPayload(skeleton=skeleton, blocks=blocks)
 
 
 class ActorRuntime:
@@ -2610,24 +2534,6 @@ async def {name}({params_str}) -> {return_type}:
             if callable(client_counter)
             else char_approximate_token_counter
         )
-        try:
-            from nemo_oo_agents.tracing._context_sideband import (
-                set_context_blocks,
-            )
-
-            block_formatter = self.agent.render_config.block_formatter
-            rendered = []
-            for b in blocks:
-                if b.role == "system":
-                    for msg in block_formatter.format([b]):
-                        if msg.content:
-                            rendered.append(msg.content)
-            if rendered:
-                set_context_blocks(rendered)
-        except ImportError:
-            pass  # openinference instrumentation is an optional extra
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to set context blocks for journal: %s", exc)
         with hm.timer("time_render_context"):
             result = render_context(
                 blocks,
@@ -2640,6 +2546,18 @@ async def {name}({params_str}) -> {return_type}:
                 pre_format_limit=tc.max_block_chars,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
+
+        # Publish the rendered message list to the tracing sideband so
+        # the litellm journal callback can compress block bodies into a
+        # content-addressed sideband and ship a hash-only skeleton on
+        # the wire.  Pure tracing concern -- the runtime hands over its
+        # ``RenderedMessage``s and is otherwise oblivious to
+        # ``JournalPayload`` / ``block_hash`` / SHA-256.
+        from nemo_oo_agents.tracing._journal_builder import (
+            set_journal_payload_from_messages,
+        )
+
+        set_journal_payload_from_messages(result.messages)
 
         # Authoritative structured-payload safety net. The content-level
         # counter used inside render_context misses ~60% of the tokens

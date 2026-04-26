@@ -338,6 +338,17 @@ def init_db() -> int:
         );
 
         CREATE INDEX IF NOT EXISTS idx_llm_calls_session ON llm_calls(session_id);
+
+        -- Content-addressed message blocks. The journal wire protocol POSTs
+        -- block contents separately from call records; the call's
+        -- input_skeleton/output_messages reference block hashes, and we
+        -- resolve them from this table when the trace is read back out.
+        CREATE TABLE IF NOT EXISTS msg_blocks (
+            session_id  TEXT NOT NULL,
+            hash        TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            PRIMARY KEY (session_id, hash)
+        );
     """)
     _db.commit()
 
@@ -892,6 +903,90 @@ def get_experiment_summary(experiment: str) -> dict[str, Any]:
     }
 
 
+def _resolve_message(msg: dict[str, Any], blocks: dict[str, str]) -> dict[str, Any]:
+    """Resolve a journal-skeleton message back to its v2-shape, in-line content.
+
+    Inverse of :func:`nemo_oo_agents.tracing._litellm_journal._skeleton_dict_message`
+    (and the same for ``_journal_builder.build_journal_payload``):
+
+    * ``parts: [{block_hash}]`` / ``[{text}]`` -> ``content`` (string, parts joined).
+    * ``tool_calls[i].function.arguments_hash`` -> ``arguments``.
+    * ``image_hashes`` -> ``images`` (placeholder URLs in resolution order).
+
+    Block hashes that don't resolve (``hash`` not in *blocks*) are kept as a
+    ``<missing block: {hash}>`` placeholder so the gap is visible in the
+    download rather than silently empty.
+
+    Messages that already have ``content`` (no ``parts``) pass through
+    unchanged -- the v3 protocol can carry both shapes simultaneously.
+    """
+    out = dict(msg)
+
+    parts = out.pop("parts", None)
+    if parts is not None and "content" not in out:
+        text_pieces: list[str] = []
+        for p in parts:
+            if not isinstance(p, dict):
+                continue
+            if "block_hash" in p:
+                h = p["block_hash"]
+                resolved = blocks.get(h)
+                if resolved is None:
+                    text_pieces.append(f"<missing block: {h}>")
+                else:
+                    text_pieces.append(resolved)
+            elif "text" in p:
+                text_pieces.append(str(p["text"]))
+        out["content"] = "".join(text_pieces) if text_pieces else None
+
+    tcs = out.get("tool_calls")
+    if tcs:
+        new_tcs: list[dict[str, Any]] = []
+        for tc in tcs:
+            new_tc = dict(tc)
+            fn = dict(new_tc.get("function") or {})
+            if "arguments" not in fn and "arguments_hash" in fn:
+                ah = fn.pop("arguments_hash")
+                resolved = blocks.get(ah)
+                fn["arguments"] = resolved if resolved is not None else f"<missing block: {ah}>"
+            new_tc["function"] = fn
+            new_tcs.append(new_tc)
+        out["tool_calls"] = new_tcs
+
+    img_hashes = out.pop("image_hashes", None)
+    if img_hashes is not None and "images" not in out:
+        out["images"] = [_resolve_image(blocks.get(h, f"<missing block: {h}>")) for h in img_hashes]
+
+    return out
+
+
+def _resolve_image(s: str) -> Any:
+    """Reverse the canonical-JSON encoding ``_encode_image`` does for
+    non-string images so the round-tripped ``images`` list matches what
+    the runtime originally rendered.
+
+    ``_encode_image`` is "if str: pass-through, else canonical JSON".
+    Only dict/list inputs ever produce JSON output, so the inverse
+    accepts only ``dict`` / ``list`` results.  Anything else (decode
+    failure, or a string input that happens to be valid JSON for a
+    scalar like ``"null"`` / ``"42"`` / ``"true"``) is returned
+    verbatim, matching what the runtime saw.
+    """
+    if not isinstance(s, str):
+        return s
+    try:
+        decoded = json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        return s
+    if isinstance(decoded, (dict, list)):
+        return decoded
+    # JSON scalar (str / int / float / bool / None) decoded from a
+    # string -- ``_encode_image`` of a string never produces this, so
+    # the source must be a plain-text image whose contents happen to
+    # parse as a JSON scalar.  Keep the original string.
+    return s
+
+
 def _flatten_msg_to_attrs(msg: dict[str, Any], prefix: str) -> list[dict[str, Any]]:
     """Convert a message dict to OTLP-format flat attribute dicts.
 
@@ -927,42 +1022,124 @@ def _flatten_msg_to_attrs(msg: dict[str, Any], prefix: str) -> list[dict[str, An
     return attrs
 
 
-def _augment_span_attrs(attrs: list[dict[str, Any]], call: dict[str, Any]) -> list[dict[str, Any]]:
-    """Replace ``llm.input_messages.*`` / ``llm.output_messages.*`` attrs with
-    journal-reconstructed ones.  All other attributes are preserved as-is.
+def _augment_span_attrs(
+    attrs: list[dict[str, Any]],
+    call: dict[str, Any],
+    blocks: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Augment LLM message attrs with journal-reconstructed content.
+
+    Each input/output message is in v3 wire shape (``parts:
+    [{block_hash}]`` / ``arguments_hash``); *blocks* is the
+    ``{hash: content}`` map used to resolve those references back to
+    in-line content before flattening to OTLP attributes.
+
+    "Soft" augmentation: only the indices the journal call actually
+    supplies are replaced.  If the call record is missing some
+    messages (hash miss, partial delivery, downgraded skeleton from
+    the no-sideband fallback path) the original ``llm.input_messages.N.*``
+    attrs at indices the journal didn't cover are preserved -- a
+    truncated journal must not erase content the span already had.
     """
-    kept = [
-        a
-        for a in attrs
-        if not (
-            a["key"].startswith("llm.input_messages.")
-            or a["key"].startswith("llm.output_messages.")
-        )
-    ]
+    blocks = blocks or {}
     call_id = call.get("call_id", "<unknown>")
-    in_idx = 0
-    for raw_idx, msg in enumerate(call.get("input_messages") or []):
-        if msg:
-            kept.extend(_flatten_msg_to_attrs(msg, f"llm.input_messages.{in_idx}.message"))
-            in_idx += 1
-        else:
-            log.warning(
-                "_augment_span_attrs: input message at index %d missing (hash miss) for call_id=%r",
-                raw_idx,
-                call_id,
-            )
-    out_idx = 0
-    for raw_idx, msg in enumerate(call.get("output_messages") or []):
-        if msg:
-            kept.extend(_flatten_msg_to_attrs(msg, f"llm.output_messages.{out_idx}.message"))
-            out_idx += 1
-        else:
-            log.warning(
-                "_augment_span_attrs: output message at index %d missing (hash miss) for call_id=%r",
-                raw_idx,
-                call_id,
-            )
-    return kept
+
+    def _augmented(prefix: str, raw_messages: list) -> tuple[list[dict], set[int]]:
+        out: list[dict] = []
+        covered: set[int] = set()
+        idx = 0
+        for raw_i, msg in enumerate(raw_messages):
+            if not msg:
+                log.warning(
+                    "_augment_span_attrs: message at %s index %d missing for call_id=%r",
+                    prefix,
+                    raw_i,
+                    call_id,
+                )
+                continue
+            resolved = _resolve_message(msg, blocks)
+            out.extend(_flatten_msg_to_attrs(resolved, f"{prefix}.{idx}.message"))
+            covered.add(idx)
+            idx += 1
+        return out, covered
+
+    in_attrs, in_covered = _augmented("llm.input_messages", list(call.get("input_skeleton") or []))
+    out_attrs, out_covered = _augmented(
+        "llm.output_messages", list(call.get("output_messages") or [])
+    )
+
+    def _index_of(key: str, prefix: str) -> int | None:
+        # ``llm.input_messages.7.message.foo`` -> 7
+        rest = key[len(prefix) + 1 :]  # drop "{prefix}."
+        head, _, _ = rest.partition(".")
+        try:
+            return int(head)
+        except ValueError:
+            return None
+
+    kept: list[dict[str, Any]] = []
+    for a in attrs:
+        k = a["key"]
+        if k.startswith("llm.input_messages."):
+            i = _index_of(k, "llm.input_messages")
+            if i is not None and i in in_covered:
+                continue  # journal supplies this index; drop the stored attr
+        elif k.startswith("llm.output_messages."):
+            i = _index_of(k, "llm.output_messages")
+            if i is not None and i in out_covered:
+                continue
+        kept.append(a)
+
+    return kept + in_attrs + out_attrs
+
+
+def reconstruct_full_spans(session_id: str) -> list[dict[str, Any]]:
+    """Return OTLP spans for *session_id* with journal-reconstructed messages.
+
+    The single read-side helper that resolves the journal sideband
+    (``llm_calls`` + ``msg_blocks``) back into ``llm.input_messages.*`` /
+    ``llm.output_messages.*`` attributes on each LLM span, so the on-disk
+    storage shape (stripped) is invisible to consumers.
+
+    Used by both ``get_session_spans`` (UI render path) and
+    ``export_session_otlp`` (download path) so they always agree on what
+    a session "is" -- the on-the-wire compression of the journal protocol
+    is a strictly internal concern.
+    """
+    db = _get_db()
+    exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if not exists:
+        raise FileNotFoundError(f"Session not found: {session_id}")
+
+    rows = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? ORDER BY start_time_ns",
+        (session_id,),
+    ).fetchall()
+
+    spans: list[dict[str, Any]] = []
+    for r in rows:
+        span = _row_to_span(r)
+        span["_resource"] = json.loads(r["resource"]) if r["resource"] else {}
+        spans.append(span)
+
+    journal_by_span = _get_journal_calls_by_span(session_id)
+    if not journal_by_span:
+        return spans
+
+    blocks = get_session_blocks(session_id)
+    for span in spans:
+        span_id = span.get("spanId")
+        if not span_id or span_id not in journal_by_span:
+            continue
+        attrs = span.get("attributes", [])
+        is_llm = any(
+            a["key"] == "openinference.span.kind" and a.get("value", {}).get("stringValue") == "LLM"
+            for a in attrs
+        )
+        if is_llm:
+            span["attributes"] = _augment_span_attrs(attrs, journal_by_span[span_id], blocks)
+
+    return spans
 
 
 def session_exists(session_id: str) -> bool:
@@ -1008,59 +1185,32 @@ def _row_to_span(r: sqlite3.Row) -> dict[str, Any]:
 
 
 def get_session_spans(session_id: str, augment: bool = True) -> list[dict[str, Any]]:
-    """Return all spans for a session as OTLP-format dicts."""
-    import time as _time
+    """Return all spans for a session as OTLP-format dicts.
 
-    _t0 = _time.monotonic()
-    db = _get_db()
-
-    exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
-    if not exists:
-        raise FileNotFoundError(f"Session not found: {session_id}")
-
-    rows = db.execute(
-        "SELECT * FROM spans WHERE session_id = ? ORDER BY start_time_ns",
-        (session_id,),
-    ).fetchall()
-
-    spans: list[dict[str, Any]] = []
-    for r in rows:
-        span = _row_to_span(r)
-        span["_resource"] = json.loads(r["resource"]) if r["resource"] else {}
-        spans.append(span)
-
+    With ``augment=True`` (default), LLM spans receive
+    journal-reconstructed ``llm.input_messages.*`` /
+    ``llm.output_messages.*`` attributes via :func:`reconstruct_full_spans`.
+    Pass ``augment=False`` to see the raw stored shape (debugging only;
+    consumers should never rely on the stripped form leaking through).
+    """
     if not augment:
+        # Fast path: no augmentation, return raw stored spans.
+        db = _get_db()
+        exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+        if not exists:
+            raise FileNotFoundError(f"Session not found: {session_id}")
+        rows = db.execute(
+            "SELECT * FROM spans WHERE session_id = ? ORDER BY start_time_ns",
+            (session_id,),
+        ).fetchall()
+        spans: list[dict[str, Any]] = []
+        for r in rows:
+            span = _row_to_span(r)
+            span["_resource"] = json.loads(r["resource"]) if r["resource"] else {}
+            spans.append(span)
         return spans
 
-    # Augment LLM spans with journal-reconstructed messages where available.
-    # One query fetches all journal calls for this session keyed by span_id.
-    journal_by_span = _get_journal_calls_by_span(session_id)
-    _read_ms = (_time.monotonic() - _t0) * 1000
-    if _read_ms > 500:
-        log.warning(
-            "[get_session_spans] slow read: %.0fms  spans=%d  journal_calls=%d  session=%s",
-            _read_ms,
-            len(spans),
-            len(journal_by_span),
-            session_id,
-        )
-    if not journal_by_span:
-        return spans
-
-    for span in spans:
-        span_id = span.get("spanId")
-        if not span_id or span_id not in journal_by_span:
-            continue
-        # Only augment spans tagged as LLM spans
-        attrs = span.get("attributes", [])
-        is_llm = any(
-            a["key"] == "openinference.span.kind" and a.get("value", {}).get("stringValue") == "LLM"
-            for a in attrs
-        )
-        if is_llm:
-            span["attributes"] = _augment_span_attrs(attrs, journal_by_span[span_id])
-
-    return spans
+    return reconstruct_full_spans(session_id)
 
 
 def export_session_otlp(session_id: str) -> list[dict[str, Any]]:
@@ -1069,23 +1219,22 @@ def export_session_otlp(session_id: str) -> list[dict[str, Any]]:
     Reconstructs the ``resourceSpans`` wrapper that ``/v1/traces`` expects,
     grouping spans by their stored resource JSON so the result round-trips
     cleanly through ``import-traces``.
+
+    Spans are augmented with journal-reconstructed messages via
+    :func:`reconstruct_full_spans`, so the download is byte-equivalent
+    (modulo timestamps / batching) to a JSONL file written by
+    ``exporters.jsonl`` for the same run.  Journaling stays an internal
+    wire optimization -- consumers see complete OTLP either way.
     """
-    db = _get_db()
+    spans = reconstruct_full_spans(session_id)
 
-    exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
-    if not exists:
-        raise FileNotFoundError(f"Session not found: {session_id}")
-
-    rows = db.execute(
-        "SELECT * FROM spans WHERE session_id = ? ORDER BY start_time_ns",
-        (session_id,),
-    ).fetchall()
-
-    # Group spans by resource JSON (preserves original batching)
+    # Group spans by their original resource JSON (carried on each span as
+    # ``_resource`` from reconstruct_full_spans / _row_to_span lookups).
     groups: dict[str, list[dict[str, Any]]] = {}
-    for r in rows:
-        res_key = r["resource"] or "{}"
-        groups.setdefault(res_key, []).append(_row_to_span(r))
+    for span in spans:
+        resource = span.pop("_resource", {}) if "_resource" in span else {}
+        res_key = json.dumps(resource, separators=(",", ":"), sort_keys=True)
+        groups.setdefault(res_key, []).append(span)
 
     bodies: list[dict[str, Any]] = []
     for res_json, spans_list in groups.items():
@@ -1373,6 +1522,55 @@ def ingest_journal_messages(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"stored": 0}
 
 
+def ingest_journal_blocks(session_id: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Persist a batch of content-addressed blocks for *session_id*.
+
+    Each item is ``{"hash": "<sha256:...>", "content": "<utf-8 string>"}``.
+    Idempotent on ``(session_id, hash)`` — repeated POSTs of the same
+    block are a no-op.  Returns ``{"stored": N}`` where ``N`` counts items
+    successfully written (existing rows count toward N).
+
+    Called from the single-writer executor thread via main.py.
+    """
+    if not items:
+        return {"stored": 0}
+    db = _get_write_db()
+    rows = []
+    for item in items:
+        h = item.get("hash")
+        c = item.get("content")
+        if not h or c is None:
+            continue
+        rows.append((session_id, h, c))
+    if not rows:
+        return {"stored": 0}
+    db.executemany(
+        "INSERT OR IGNORE INTO msg_blocks (session_id, hash, content) VALUES (?, ?, ?)",
+        rows,
+    )
+    db.commit()
+    return {"stored": len(rows)}
+
+
+def get_session_blocks(session_id: str) -> dict[str, str]:
+    """Return ``{hash: content}`` for every block stored under *session_id*.
+
+    Returns ``{}`` when the table is missing (older DBs that predate the
+    msg_blocks schema, or in-memory test DBs that didn't run init_db).
+    """
+    db = _get_db()
+    try:
+        rows = db.execute(
+            "SELECT hash, content FROM msg_blocks WHERE session_id = ?",
+            (session_id,),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return {}
+        raise
+    return {r["hash"]: r["content"] for r in rows}
+
+
 def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
     """Upsert a single LLM call record.
 
@@ -1434,32 +1632,18 @@ def ingest_journal_call(call: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True}
 
 
-def _resolve_msg(h: str, msg_by_hash: dict[str, dict]) -> dict | None:
-    """Resolve a message hash to a plain message dict.
-
-    Handles compound system-message entries (``{"role": "system", "_blocks": [...]}``):
-    block sub-entries (``{"_block": rendered_str}``) are joined with ``"\\n\\n"``
-    to reconstruct the full system message content.
-    """
-    msg = msg_by_hash.get(h)
-    if msg is None:
-        return None
-    block_hashes = msg.get("_blocks")
-    if block_hashes is not None:
-        parts = [
-            msg_by_hash[bh]["_block"]
-            for bh in block_hashes
-            if bh in msg_by_hash and "_block" in msg_by_hash[bh]
-        ]
-        return {"role": "system", "content": "\n\n".join(parts)}
-    return msg
-
-
 def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     """Return all LLM call records for a session, ordered by start time.
 
-    Each record includes ``input_messages`` and ``output_messages`` —
-    stored inline as JSON in the v3 schema (no more hash indirection).
+    The returned ``input_skeleton`` / ``output_messages`` keys match
+    both the column names and the ``/v1/journal/calls`` POST body --
+    no rename across the storage / read boundary.  Both values are v3
+    skeletons; block bodies live in ``msg_blocks`` and aren't inlined
+    here.  ``_augment_span_attrs`` resolves the hashes via
+    ``get_session_blocks`` when stamping them onto LLM spans as
+    ``llm.input_messages.*`` / ``llm.output_messages.*``.  The
+    column-name → OTLP-attribute-name change happens *only* at that
+    flattening boundary, not here.
     """
     db = _get_db()
     call_rows = db.execute(
@@ -1478,7 +1662,7 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
             "model": row["model"],
             "ts_start": row["ts_start"],
             "ts_end": row["ts_end"],
-            "input_messages": json.loads(row["input_skeleton"]),
+            "input_skeleton": json.loads(row["input_skeleton"]),
             "output_messages": json.loads(row["output_messages"]),
             "tokens": json.loads(row["tokens"]) if row["tokens"] else None,
         }
