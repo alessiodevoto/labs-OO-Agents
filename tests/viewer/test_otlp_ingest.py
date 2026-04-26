@@ -138,12 +138,27 @@ class TestIngestWorker:
 
         await queue.put(bad_payload)
 
+        async def _wait_for_call_count(n: int, timeout: float = 5.0) -> None:
+            deadline = _time.monotonic() + timeout
+            while _time.monotonic() < deadline:
+                if mock_store.ingest_batch_write_bytes.call_count >= n:
+                    return
+                await asyncio.sleep(0.01)
+            raise AssertionError(
+                f"timed out waiting for ingest_batch_write_bytes call_count >= {n}; "
+                f"got {mock_store.ingest_batch_write_bytes.call_count}"
+            )
+
         with patch("nemo_oo_agents.viewer.main._ingest_queue", queue):
             with patch("nemo_oo_agents.viewer.main.otlp_store", mock_store):
                 task = asyncio.create_task(_ingest_worker())
-                await asyncio.sleep(0.1)
+                # Wait for the bad payload to be drained and raise — without
+                # this barrier, a slow CI runner can leave the queue holding
+                # both payloads at the next ``put`` so the worker batches them
+                # into a single call and the second-call assertion fails.
+                await _wait_for_call_count(1)
                 await queue.put(good_payload)
-                await asyncio.sleep(0.1)
+                await _wait_for_call_count(2)
                 task.cancel()
 
         assert mock_store.ingest_batch_write_bytes.call_count == 2
