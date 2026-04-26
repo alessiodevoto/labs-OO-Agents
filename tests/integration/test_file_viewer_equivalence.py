@@ -166,8 +166,10 @@ async def test_file_save_equals_viewer_download(live_viewer, monkeypatch):
 
         # _post_json fires-and-forgets in daemon threads.  Poll until the
         # journal call record has landed so the export can resolve it.
+        import logging
         import time
 
+        log = logging.getLogger(__name__)
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             try:
@@ -178,8 +180,12 @@ async def test_file_save_equals_viewer_download(live_viewer, monkeypatch):
                     body = json.loads(r.read().decode())
                 if body:
                     break
-            except Exception:
-                pass
+            except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
+                # Transient HTTP / serialization failure during the brief
+                # window before the journal POST has been committed.  Log
+                # at debug so a real persistent failure is visible
+                # instead of silently looping until the deadline.
+                log.debug("polling /api/traces/.../calls failed: %s", exc)
             time.sleep(0.05)
 
         # File side: read the saved JSONL.

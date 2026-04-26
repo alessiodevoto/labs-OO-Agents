@@ -12,7 +12,8 @@ today but the resolver must still handle gracefully:
   inline literal text between blocks),
 - empty ``parts=[]`` (a formatter that produced no output),
 - ``content`` and ``parts`` both present (a future writer might do
-  this; the resolver picks ``parts``).
+  this; the resolver picks ``content`` -- see
+  ``test_content_wins_when_both_present``).
 """
 
 from __future__ import annotations

@@ -64,45 +64,73 @@ def test_flush_pending_blocks_until_post_completes():
 
 def test_flush_pending_handles_thread_added_during_flush():
     """A POST dispatched *while* ``flush_pending`` is mid-join must still
-    be waited on -- otherwise back-to-back log_success_event calls drop
-    the second batch.
+    be waited on -- otherwise back-to-back ``log_success_event`` calls
+    drop the second batch.
+
+    Coordination:
+      1. Dispatch the first POST; it blocks inside ``urlopen`` until
+         released.
+      2. Start ``flush_pending`` in a side thread; it enters its first
+         iteration and is joining the first POST.
+      3. Dispatch a second POST — appended to ``_PENDING_THREADS`` while
+         flush is mid-join.
+      4. Release the first POST.
+      5. flush returns only after the second POST has *also* run; both
+         ``"p1"`` and ``"p2"`` are in ``seen``.
     """
-    barrier = threading.Event()
+    from unittest.mock import MagicMock
+
     seen: list[str] = []
+    started_post1 = threading.Event()
+    release_post1 = threading.Event()
 
-    def post1(*_args, **_kwargs):
-        # Block briefly so a second post can be dispatched while flush is
-        # joining the first.
-        barrier.wait(timeout=5)
-        seen.append("p1")
+    fake_response = MagicMock()
+    fake_response.__enter__ = lambda self: MagicMock(status=200)
+    fake_response.__exit__ = lambda *a: False
 
-    def post2(*_args, **_kwargs):
-        seen.append("p2")
+    call_count = [0]
 
-    # Patch urlopen with a side-effect that dispatches a second POST when
-    # the first one starts -- mimicking a real flow where POSTs queue up.
-    posted_second = threading.Event()
-
-    def queue_first(*args, **kwargs):
-        if not posted_second.is_set():
-            posted_second.set()
-            _post_json("http://example.invalid/two", {"x": 2})
-        post1(*args, **kwargs)
+    def dispatcher(*_args, **_kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            started_post1.set()
+            release_post1.wait(timeout=5)
+            seen.append("p1")
+        else:
+            seen.append("p2")
+        return fake_response
 
     with patch(
         "nemo_oo_agents.tracing._litellm_journal.urllib.request.urlopen",
-        side_effect=queue_first,
+        side_effect=dispatcher,
     ):
         _post_json("http://example.invalid/one", {"x": 1})
-        # Give post1 a moment to start so it's the active thread.
-        time.sleep(0.1)
-        # Release post1; it appends to seen, then post2 (already queued)
-        # runs and appends.  flush_pending should wait for both.
-        barrier.set()
-        flush_pending(timeout=5)
+        assert started_post1.wait(timeout=2), "first POST didn't start"
+
+        flush_done = threading.Event()
+
+        def _flush():
+            flush_pending(timeout=5)
+            flush_done.set()
+
+        threading.Thread(target=_flush, daemon=True).start()
+        # Let flush enter its first iteration and start joining the
+        # first POST (still blocked on release_post1).
+        time.sleep(0.05)
+
+        # Append the second POST while flush is mid-join.
+        _post_json("http://example.invalid/two", {"x": 2})
+
+        # Release the first POST so it can finish; flush must then loop
+        # and pick up the second one.
+        release_post1.set()
+        assert flush_done.wait(timeout=5), "flush_pending didn't return"
 
     assert "p1" in seen
-    assert posted_second.is_set()
+    # The key assertion: flush_pending waited for the second POST too.
+    # If it returned after the first iteration only, ``seen`` would
+    # lack ``"p2"`` and the append-during-flush bug would slip through.
+    assert "p2" in seen, f"flush_pending returned before the second POST completed; seen={seen!r}"
 
 
 def test_pending_threads_self_evict_when_post_returns():

@@ -26,7 +26,7 @@ import tempfile
 import pytest
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from nemo_oo_agents.tracing import enable_tracing, exporters, set_session
+from nemo_oo_agents.tracing import enable_tracing, exporters, flush_traces, set_session
 
 
 @pytest.mark.asyncio
@@ -61,10 +61,7 @@ async def test_saved_jsonl_has_input_and_output_messages_on_llm_span():
         )
 
         # Force flush so SimpleSpanProcessor writes everything.
-        from nemo_oo_agents.tracing import _provider
-
-        assert _provider is not None
-        _provider.force_flush()
+        flush_traces()
 
         spans = read_all_otlp_jsonl_spans(tmpdir)
         assert spans, f"no spans written to {tmpdir}"
