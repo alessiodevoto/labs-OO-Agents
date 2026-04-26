@@ -29,8 +29,10 @@ def _posts():
     """Return a list that captures every _post_json call's (url, payload) tuple."""
     calls: list[tuple[str, object]] = []
 
-    def fake_post(url, payload, *, session_id="", timeout=15.0):
+    def fake_post(url, payload, *, session_id="", timeout=15.0, on_success=None):
         calls.append((url, payload))
+        if on_success is not None:
+            on_success()
 
     return calls, fake_post
 
@@ -165,3 +167,56 @@ class TestJournalCallbackSuccessEvent:
         assert len(block_posts) >= 1
         all_blocks = {e["hash"]: e["content"] for post in block_posts for e in post[1]}
         assert all_blocks[answer_hash] == "answer"
+
+
+class TestSentBlocksBounding:
+    """Tests for single-session tracking and deferred hash marking."""
+
+    def test_session_switch_drops_old_hashes(self, session_ctx):
+        """Switching sessions forgets the old session's hashes, so blocks are re-posted."""
+        from nemo_oo_agents.tracing._session import set_session
+
+        cb = MessageJournalCallback("http://localhost:5001")
+        calls, fake_post = _posts()
+
+        payload = JournalPayload(skeleton=[], blocks={"h1": "block1"})
+        with patch(
+            "nemo_oo_agents.tracing._litellm_journal._post_json",
+            side_effect=fake_post,
+        ):
+            # Post block under session A
+            set_session("session-A")
+            set_journal_payload(payload)
+            cb.log_pre_api_call("m", [], {"litellm_call_id": "c1"})
+
+            # Switch to session B — same block hash should be re-posted
+            set_session("session-B")
+            set_journal_payload(payload)
+            cb.log_pre_api_call("m", [], {"litellm_call_id": "c2"})
+
+        block_posts = [c for c in calls if c[0].endswith("/v1/journal/blocks")]
+        assert len(block_posts) == 2, "Block should be posted once per session"
+
+    def test_failed_post_allows_retry(self, session_ctx):
+        """When POST fails (on_success not called), hashes stay unmarked for retry."""
+        cb = MessageJournalCallback("http://localhost:5001")
+        calls: list[tuple[str, object]] = []
+
+        def failing_post(url, payload, *, session_id="", timeout=15.0, on_success=None):
+            calls.append((url, payload))
+            # Simulate POST failure: do NOT call on_success
+
+        payload = JournalPayload(skeleton=[], blocks={"h1": "block1"})
+        with patch(
+            "nemo_oo_agents.tracing._litellm_journal._post_json",
+            side_effect=failing_post,
+        ):
+            set_journal_payload(payload)
+            cb.log_pre_api_call("m", [], {"litellm_call_id": "c1"})
+
+            # Same block again — should be re-posted since prior POST "failed"
+            set_journal_payload(payload)
+            cb.log_pre_api_call("m", [], {"litellm_call_id": "c2"})
+
+        block_posts = [c for c in calls if c[0].endswith("/v1/journal/blocks")]
+        assert len(block_posts) == 2, "Failed POST should not mark hashes as sent"

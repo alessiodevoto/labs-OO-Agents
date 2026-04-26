@@ -29,6 +29,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 
 from litellm.integrations.custom_logger import CustomLogger
@@ -159,7 +160,14 @@ _POST_RETRIES = 3
 _POST_RETRY_DELAYS = (1.0, 3.0, 5.0)
 
 
-def _post_json(url: str, payload: Any, *, session_id: str = "", timeout: float = 15.0) -> None:
+def _post_json(
+    url: str,
+    payload: Any,
+    *,
+    session_id: str = "",
+    timeout: float = 15.0,
+    on_success: Callable[[], None] | None = None,
+) -> None:
     """Fire-and-forget JSON POST with retries — dispatched to a daemon thread."""
 
     def _send() -> None:
@@ -197,6 +205,8 @@ def _post_json(url: str, payload: Any, *, session_id: str = "", timeout: float =
                                 attempt + 1,
                                 tag,
                             )
+                        if on_success is not None:
+                            on_success()
                         return
                     log.debug("POST %s returned HTTP %s%s", url, resp.status, tag)
             except Exception as exc:
@@ -268,9 +278,11 @@ class MessageJournalCallback(CustomLogger):
         self._blocks_url = base + "/v1/journal/blocks"
         self._calls_url = base + "/v1/journal/calls"
         self._base_url = base
-        # session_id -> set of block hashes already posted.
-        # Bounded by number of distinct blocks per session (usually tiny).
-        self._sent_blocks: dict[str, set[str]] = {}
+        # Track block hashes for the current session only.
+        # When the session changes the old set is dropped, so memory
+        # stays bounded regardless of how many sessions the process sees.
+        self._sent_session: str = ""
+        self._sent_hashes: set[str] = set()
         # litellm_call_id -> (input_skeleton, span_id | None). Entries
         # are removed in log_success_event / log_failure_event.
         self._call_inputs: dict[str, tuple[list[dict], str | None]] = {}
@@ -286,22 +298,37 @@ class MessageJournalCallback(CustomLogger):
     def _send_new_blocks(self, session_id: str, blocks: dict[str, str]) -> None:
         """POST any blocks this session hasn't seen yet.
 
-        Prunes the tracking set to only contain hashes from the current
-        payload so memory stays bounded by the active context size rather
-        than accumulating every hash ever seen in the session.
+        Only the current session's hashes are tracked.  When the session
+        changes the old set is dropped, keeping memory bounded.  Hashes
+        are recorded *after* the POST succeeds so a failed fire-and-forget
+        attempt will be retried on the next call.
         """
         if not blocks:
             return
         with self._lock:
-            known = self._sent_blocks.setdefault(session_id, set())
-            new_entries = [{"hash": h, "content": c} for h, c in blocks.items() if h not in known]
-            # Replace known set with current payload's hashes — old hashes
-            # from collapsed/archived events are forgotten. If they reappear
-            # the viewer handles duplicate POSTs idempotently.
-            known.clear()
-            known.update(blocks.keys())
+            if session_id != self._sent_session:
+                self._sent_session = session_id
+                self._sent_hashes = set()
+            new_entries = [
+                {"hash": h, "content": c} for h, c in blocks.items() if h not in self._sent_hashes
+            ]
         if new_entries:
-            _post_json(self._blocks_url, new_entries, session_id=session_id)
+            new_hashes = frozenset(blocks.keys())
+
+            def _on_success() -> None:
+                with self._lock:
+                    # Replace with current payload's hashes — old hashes
+                    # from collapsed/archived events are forgotten.
+                    self._sent_hashes.clear()
+                    self._sent_hashes.update(new_hashes)
+
+            _post_json(self._blocks_url, new_entries, session_id=session_id, on_success=_on_success)
+        else:
+            # No new blocks to POST, but still prune the tracking set
+            # to only the current payload's hashes.
+            with self._lock:
+                self._sent_hashes.clear()
+                self._sent_hashes.update(blocks.keys())
 
     # ------------------------------------------------------------------
     # Sync hooks
