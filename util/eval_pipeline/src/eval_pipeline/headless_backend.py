@@ -145,6 +145,31 @@ def _make_headless_app():
             return _JSONResponse(status_code=400, content={"error": str(exc)})
         return _JSONResponse(content=result)
 
+    @app.post("/v1/journal/blocks")
+    async def journal_blocks(request: _FastAPIRequest):
+        body = await request.json()
+        if not isinstance(body, list):
+            return _JSONResponse(
+                status_code=400, content={"error": "Body must be a list of block objects"}
+            )
+        session_id = request.headers.get("X-Session-Id") or ""
+        if not session_id:
+            items_with_sid = [i for i in body if isinstance(i, dict) and i.get("session_id")]
+            if items_with_sid:
+                session_id = items_with_sid[0]["session_id"]
+        if not session_id:
+            return _JSONResponse(
+                status_code=400,
+                content={
+                    "error": ("session id required (X-Session-Id header or session_id on items)")
+                },
+            )
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            _write_executor, otlp_store.ingest_journal_blocks, session_id, body
+        )
+        return _JSONResponse(content=result)
+
     @app.post("/v1/sync")
     async def sync():
         """Wait until all spans queued before this call are written.

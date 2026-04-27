@@ -8,6 +8,7 @@ matching the ExportTraceServiceRequest schema.
 
 import json
 import logging
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -32,6 +33,10 @@ class OtlpJsonHttpExporter(SpanExporter):
 
     # Attribute key prefixes for LLM messages (OpenInference convention).
     _LLM_MESSAGE_PREFIXES = ("llm.input_messages.", "llm.output_messages.")
+    # input.value / output.value duplicate the full conversation that the
+    # journal sideband already captures. Stripped unless
+    # NEMO_TRACE_KEEP_LLM_VALUES=1 is set.
+    _LLM_VALUE_KEYS = ("input.value", "output.value")
 
     def __init__(
         self,
@@ -64,6 +69,8 @@ class OtlpJsonHttpExporter(SpanExporter):
             by_session[sid].append(span)
 
         exclude = self._LLM_MESSAGE_PREFIXES if self._strip_llm_messages else ()
+        if self._strip_llm_messages and not os.environ.get("NEMO_TRACE_KEEP_LLM_VALUES"):
+            exclude = (*exclude, *self._LLM_VALUE_KEYS)
         overall = SpanExportResult.SUCCESS
         for session_id, session_spans in by_session.items():
             override = {"session.id": session_id} if session_id else None

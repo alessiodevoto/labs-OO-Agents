@@ -1,43 +1,66 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""ContextVar sideband for passing rendered context block strings to the journal callback.
+"""ContextVar sideband carrying a journal skeleton + content-addressed blocks.
 
-The nemo_oo_agents runtime sets this before each litellm call so that
-``MessageJournalCallback`` can content-address individual context blocks
-instead of the entire merged system message.  This is transparent to litellm
-and the LLM provider — the ContextVar carries no data into API calls.
+The nemo_oo_agents runtime sets this before each litellm call so
+``MessageJournalCallback`` can ship a *skeleton* (the wire message list
+with each block reference replaced by its content hash) and the
+underlying block bodies (content-addressed so repeat blocks across
+turns reuse their hash and don't retransmit).
+
+The skeleton is ``list[SkeletonMessage]``:
+
+* ``{"role": "system", "parts": [{"text": "..."} | {"block_hash": "sha256:..."}, ...]}``
+* ``{"role": "user", "content": "..."}`` — when no blocks are present.
+* ``{"role": "assistant", "tool_calls": [...]}``.
+* ``{"role": "tool", "content": "...", "tool_call_id": "..."}``.
+
+Block bodies are ``dict[str, str]`` keyed by hash.
 
 **Async-boundary note:** ``ContextVar.set()`` only modifies the value in the
-*current* async task's context copy.  The consumer (``_send_new_messages`` in
-``_litellm_journal.py``) calls ``set_context_blocks([])`` to consume the
-sideband after reading it.  This works correctly as long as the litellm call
-and the callback both execute in the *same* async task as the ``set_context_blocks``
-call — which is true for nemo_oo_agents's normal execution model (``_build_messages`` →
-``litellm.acompletion`` → callback, all in the same coroutine).
-
-If litellm ever dispatches callbacks into a *separate* spawned task, the reset
-would only affect that child task's copy and the caller's ContextVar would retain
-its previous value.  Should that scenario arise, use the ``Token``-based reset
-pattern (``token = _current_blocks.set(...); ...; _current_blocks.reset(token)``)
-to guarantee rollback in the originating context.
+*current* async task's context copy. The consumer
+(``MessageJournalCallback.log_pre_api_call`` in ``_litellm_journal.py``)
+calls ``set_journal_payload(None)`` to consume the sideband after reading it.
+This works correctly as long as the litellm call and the callback both
+execute in the *same* async task as the ``set_journal_payload`` call —
+which is true for nemo_oo_agents's normal execution model
+(``_build_messages`` → ``litellm.acompletion`` → callback, all in the
+same coroutine).
 """
 
 from __future__ import annotations
 
 from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Any
 
-# Each string is one rendered block as it appears in the system message,
-# e.g. "<notes expr=\"...\">\n...\n</notes>".  Blocks are in order.
-_current_blocks: ContextVar[list[str] | None] = ContextVar(
-    "_nemo_oo_agents_context_blocks", default=None
+
+@dataclass(frozen=True)
+class JournalPayload:
+    """Skeleton + block bodies for a single LLM call."""
+
+    skeleton: list[dict[str, Any]]
+    """Wire message list with block references as ``{"block_hash": ...}``."""
+
+    blocks: dict[str, str]
+    """``hash -> rendered_content`` for every block referenced in ``skeleton``."""
+
+
+_current_payload: ContextVar[JournalPayload | None] = ContextVar(
+    "_nemo_oo_agents_journal_payload", default=None
 )
 
 
-def set_context_blocks(rendered_block_strings: list[str]) -> None:
-    """Called by the runtime just before each litellm call."""
-    _current_blocks.set(rendered_block_strings)
+def set_journal_payload(payload: JournalPayload | None) -> None:
+    """Called by the runtime just before each litellm call.
+
+    Pass ``None`` to clear. Consumers (the journal callback) clear the
+    sideband immediately after reading so later calls within the same
+    task don't pick up a stale payload.
+    """
+    _current_payload.set(payload)
 
 
-def get_context_blocks() -> list[str] | None:
-    """Called by the journal callback inside log_pre_api_call."""
-    return _current_blocks.get()
+def get_journal_payload() -> JournalPayload | None:
+    """Called by the journal callback inside ``log_pre_api_call``."""
+    return _current_payload.get()

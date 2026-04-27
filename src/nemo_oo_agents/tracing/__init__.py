@@ -376,14 +376,22 @@ def _default_exporters() -> list[SpanExporter] | None:
 
 
 def _instrument_litellm(tracer_provider: TracerProvider) -> None:
-    """Instrument LiteLLM if available (best-effort)."""
-    with contextlib.suppress(ImportError):
-        from openinference.instrumentation.litellm import LiteLLMInstrumentor
+    """Instrument LiteLLM with the OpenInference auto-instrumentor.
 
-        from nemo_oo_agents.tracing._litellm_patch import apply_litellm_patch
+    Required dep: ``openinference-instrumentation-litellm`` is what stamps
+    ``llm.input_messages.*`` / ``llm.output_messages.*`` onto LLM spans
+    at the source.  Without it, file exports silently lack message
+    content (the wire-strip-and-reconstruct path on the viewer side
+    can't recover what was never produced).  Listed in
+    ``pyproject.toml::project.dependencies`` so install failures surface
+    here rather than as missing message attrs at runtime.
+    """
+    from openinference.instrumentation.litellm import LiteLLMInstrumentor
 
-        LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
-        apply_litellm_patch()
+    from nemo_oo_agents.tracing._litellm_patch import apply_litellm_patch
+
+    LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
+    apply_litellm_patch()
 
 
 def _describe_exporter(exp: SpanExporter) -> str:

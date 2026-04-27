@@ -304,6 +304,60 @@ async def journal_call_ingest(request: Request):
     return JSONResponse(content=result)
 
 
+@app.post("/v1/journal/blocks")
+async def journal_blocks_ingest(request: Request):
+    """Accept a batch of content-addressed message blocks for a session.
+
+    Body: list of ``{"hash": "<sha256:...>", "content": "<utf-8 string>"}``.
+    Per-session idempotent on hash.  The exporter posts the session id in
+    the ``X-Session-Id`` header (the legacy journal callback also tags
+    individual blobs with their session); we accept either source.
+
+    Offloads the SQLite write to the single-writer executor so the event
+    loop is never blocked.
+    """
+    import sqlite3
+
+    body = await request.json()
+    if not isinstance(body, list):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Body must be a list of block objects"},
+        )
+    session_id = request.headers.get("X-Session-Id") or ""
+    if not session_id:
+        # Fallback: allow the session_id on each item (rarely used but
+        # symmetric with /v1/journal/calls).
+        items_with_sid = [i for i in body if isinstance(i, dict) and i.get("session_id")]
+        if items_with_sid:
+            session_id = items_with_sid[0]["session_id"]
+    if not session_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "session id required (X-Session-Id header or session_id on items)"},
+        )
+    loop = asyncio.get_running_loop()
+    t0 = time.monotonic()
+    try:
+        result = await loop.run_in_executor(
+            _write_executor, otlp_store.ingest_journal_blocks, session_id, body
+        )
+    except sqlite3.OperationalError as exc:
+        log.warning("[journal/blocks] SQLite write failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"sqlite busy: {exc}", "retryable": True},
+        )
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    if elapsed_ms > 500:
+        log.warning(
+            "[journal/blocks] slow write: %.0fms  items=%d  (executor backlog likely)",
+            elapsed_ms,
+            len(body),
+        )
+    return JSONResponse(content=result)
+
+
 @app.get("/api/traces/{session_id:path}/calls")
 def get_session_calls(session_id: str):
     """Return all LLM calls for a session with fully reconstructed messages."""

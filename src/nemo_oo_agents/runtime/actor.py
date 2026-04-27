@@ -2534,24 +2534,6 @@ async def {name}({params_str}) -> {return_type}:
             if callable(client_counter)
             else char_approximate_token_counter
         )
-        try:
-            from nemo_oo_agents.tracing._context_sideband import (
-                set_context_blocks,
-            )
-
-            block_formatter = self.agent.render_config.block_formatter
-            rendered = []
-            for b in blocks:
-                if b.role == "system":
-                    for msg in block_formatter.format([b]):
-                        if msg.content:
-                            rendered.append(msg.content)
-            if rendered:
-                set_context_blocks(rendered)
-        except ImportError:
-            pass  # openinference instrumentation is an optional extra
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to set context blocks for journal: %s", exc)
         with hm.timer("time_render_context"):
             result = render_context(
                 blocks,
@@ -2564,6 +2546,18 @@ async def {name}({params_str}) -> {return_type}:
                 pre_format_limit=tc.max_block_chars,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
+
+        # Publish the rendered message list to the tracing sideband so
+        # the litellm journal callback can compress block bodies into a
+        # content-addressed sideband and ship a hash-only skeleton on
+        # the wire.  Pure tracing concern -- the runtime hands over its
+        # ``RenderedMessage``s and is otherwise oblivious to
+        # ``JournalPayload`` / ``block_hash`` / SHA-256.
+        from nemo_oo_agents.tracing._journal_builder import (
+            set_journal_payload_from_messages,
+        )
+
+        set_journal_payload_from_messages(result.messages)
 
         # Authoritative structured-payload safety net. The content-level
         # counter used inside render_context misses ~60% of the tokens
