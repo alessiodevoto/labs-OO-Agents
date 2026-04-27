@@ -97,7 +97,7 @@ class FakeAgent:
     """
 
     def __init__(self) -> None:
-        from nemo_oo_agents import InputQueue
+        from nemo_oo_agents.runtime.channels import QueueManager
 
         self.script: list[Callable[[FakeAgent, str], Any]] = []
         self.messages_received: list[str] = []
@@ -105,7 +105,9 @@ class FakeAgent:
         self.block = asyncio.Event()
         self.block.set()  # default: respond returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
-        self._user_messages_in: InputQueue[str] = InputQueue("user_messages", agent=self)
+        # Tests don't need event-mode channels, so no event_manager.
+        self.queue_manager = QueueManager(agent=self)
+        self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
         self.next_kind: str = "GET_USER_INPUT"
         self.next_persist: dict[str, Any] = {}

@@ -15,7 +15,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.runtime.input_queue import InputQueue, wait_for_any
+from nemo_oo_agents.runtime.channels import Channel, QueueManager
 
 # ---------------------------------------------------------------------------
 # Basic producer/consumer
@@ -24,7 +24,7 @@ from nemo_oo_agents.runtime.input_queue import InputQueue, wait_for_any
 
 @pytest.mark.asyncio
 async def test_put_get_fifo():
-    q: InputQueue[str] = InputQueue("user_messages")
+    q: Channel[str] = Channel("user_messages", "queue")
     q.put("a")
     q.put("b")
     q.put("c")
@@ -36,7 +36,7 @@ async def test_put_get_fifo():
 
 @pytest.mark.asyncio
 async def test_get_blocks_then_wakes():
-    q: InputQueue[str] = InputQueue("q")
+    q: Channel[str] = Channel("q", "queue")
     # No item yet — get() must block.
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)  # let the task run & register the waiter
@@ -54,7 +54,7 @@ async def test_put_delivers_directly_when_waiter_exists():
 
     The item should NOT land on the backing deque — qsize stays 0.
     """
-    q: InputQueue[int] = InputQueue("q")
+    q: Channel[int] = Channel("q", "queue")
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)
     q.put(42)
@@ -64,7 +64,7 @@ async def test_put_delivers_directly_when_waiter_exists():
 
 @pytest.mark.asyncio
 async def test_cancelled_get_leaves_no_phantom_waiter():
-    q: InputQueue[str] = InputQueue("q")
+    q: Channel[str] = Channel("q", "queue")
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)
     getter.cancel()
@@ -84,7 +84,7 @@ async def test_cancelled_get_leaves_no_phantom_waiter():
 
 
 def test_pop_last_and_snapshot():
-    q: InputQueue[str] = InputQueue("q")
+    q: Channel[str] = Channel("q", "queue")
     assert q.pop_last() is None
     q.put("a")
     q.put("b")
@@ -101,12 +101,12 @@ def test_pop_last_and_snapshot():
 
 def test_peek_removed():
     """peek() invited multi-turn branching on queue state; removed."""
-    q: InputQueue[str] = InputQueue("q")
+    q: Channel[str] = Channel("q", "queue")
     assert not hasattr(q, "peek")
 
 
 def test_clear_empties_the_queue():
-    q: InputQueue[str] = InputQueue("q")
+    q: Channel[str] = Channel("q", "queue")
     q.put("a")
     q.put("b")
     q.clear()
@@ -126,7 +126,7 @@ async def test_on_get_fires_on_slow_path_backlog_drain():
     case where the agent's ``await self.user_messages.get()`` drains
     a message that was typed while the agent was busy."""
     seen: list[str] = []
-    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    q: Channel[str] = Channel("user_messages", "queue", on_get=seen.append)
     q.put("hi")
     got = await q.get()
     assert got == "hi"
@@ -138,7 +138,7 @@ async def test_on_get_fires_on_fast_path_waiter_handoff():
     """When a waiter was already blocked on ``get()`` and ``put()`` hands
     the item straight through, the hook must still fire exactly once."""
     seen: list[str] = []
-    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    q: Channel[str] = Channel("user_messages", "queue", on_get=seen.append)
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)  # register the waiter
     q.put("hello")
@@ -150,7 +150,7 @@ async def test_on_get_fires_on_fast_path_waiter_handoff():
 async def test_on_get_fires_once_per_item_across_multiple_gets():
     """Two puts, two gets → hook fires twice, in order."""
     seen: list[str] = []
-    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    q: Channel[str] = Channel("user_messages", "queue", on_get=seen.append)
     q.put("a")
     q.put("b")
     assert await q.get() == "a"
@@ -165,7 +165,7 @@ async def test_on_get_does_not_fire_on_cancelled_get():
     result pushes the item back onto the deque; the hook will fire when
     some other consumer actually takes it."""
     seen: list[str] = []
-    q: InputQueue[str] = InputQueue("q", on_get=seen.append)
+    q: Channel[str] = Channel("q", "queue", on_get=seen.append)
 
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)
@@ -188,7 +188,7 @@ async def test_on_get_hook_exception_is_swallowed_and_item_still_returned():
     def boom(_item: str) -> None:
         raise RuntimeError("bad hook")
 
-    q: InputQueue[str] = InputQueue("q", on_get=boom)
+    q: Channel[str] = Channel("q", "queue", on_get=boom)
     q.put("payload")
     # Must not raise.
     got = await q.get()
@@ -201,7 +201,7 @@ async def test_set_on_get_late_binds():
     has already created its ``_user_messages_in`` queue, so late
     binding must work."""
     seen: list[str] = []
-    q: InputQueue[str] = InputQueue("user_messages")  # no hook yet
+    q: Channel[str] = Channel("user_messages", "queue")  # no hook yet
     q.set_on_get(seen.append)
     q.put("x")
     await q.get()
@@ -214,12 +214,12 @@ async def test_set_on_get_late_binds():
 
 
 def test_status_empty_queue_returns_empty_string():
-    q: InputQueue[str] = InputQueue("user_messages")
+    q: Channel[str] = Channel("user_messages", "queue")
     assert q.status() == ""
 
 
 def test_status_includes_name_count_and_numbered_previews():
-    q: InputQueue[str] = InputQueue("user_messages")
+    q: Channel[str] = Channel("user_messages", "queue")
     q.put("first")
     q.put("second")
     status = q.status()
@@ -230,7 +230,7 @@ def test_status_includes_name_count_and_numbered_previews():
 
 
 def test_status_flattens_newlines_and_clips_overlong_items():
-    q: InputQueue[str] = InputQueue("user_messages")
+    q: Channel[str] = Channel("user_messages", "queue")
     q.put("line1\nline2\nline3")
     q.put("x" * 200)
     status = q.status(max_items=3, max_chars=30)
@@ -244,7 +244,7 @@ def test_status_flattens_newlines_and_clips_overlong_items():
 
 
 def test_status_overflow_summary_when_more_than_max_items():
-    q: InputQueue[int] = InputQueue("jobs")
+    q: Channel[int] = Channel("jobs", "queue")
     for i in range(7):
         q.put(i)
     status = q.status(max_items=3)
@@ -253,7 +253,7 @@ def test_status_overflow_summary_when_more_than_max_items():
 
 
 def test_status_previews_non_string_items_via_pformat():
-    q: InputQueue[dict] = InputQueue("jobs")
+    q: Channel[dict] = Channel("jobs", "queue")
     q.put({"id": 42, "kind": "build"})
     status = q.status()
     assert "jobs: 1 pending" in status
@@ -263,25 +263,30 @@ def test_status_previews_non_string_items_via_pformat():
 def test_output_queue_status_delegates_to_input_queue():
     """OutputQueue exposes status() so the LLM can peek mid-turn without
     reaching into the hidden producer-side queue."""
-    q: InputQueue[str] = InputQueue("user_messages")
+    q: Channel[str] = Channel("user_messages", "queue")
     q.put("waiting")
     assert q.reader.status() == q.status()
 
 
 # ---------------------------------------------------------------------------
-# wait_for_any
+# QueueManager.race()
 # ---------------------------------------------------------------------------
 
 
+def _qm_with(*names: str) -> tuple[QueueManager, list[Channel]]:
+    """Build a QueueManager + N queue-mode channels in registration order."""
+    qm = QueueManager()
+    channels = [qm.queue(n) for n in names]
+    return qm, channels
+
+
 @pytest.mark.asyncio
-async def test_wait_for_any_returns_fast_path():
-    """If a queue already has an item, wait_for_any returns it immediately."""
-    q1: InputQueue[str] = InputQueue("q1")
-    q2: InputQueue[str] = InputQueue("q2")
+async def test_race_returns_fast_path():
+    """If a channel already has an item, race returns it immediately."""
+    qm, (q1, q2) = _qm_with("q1", "q2")
     q2.put("fromq2")
-    name, item = await wait_for_any([q1, q2])
-    assert name == "q2"
-    assert item == "fromq2"
+    items = await qm.race()
+    assert items == [("q2", "fromq2")]
     assert q2.qsize() == 0
     # q1 was never touched.
     assert q1.qsize() == 0
@@ -289,55 +294,47 @@ async def test_wait_for_any_returns_fast_path():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_races_blocking_waiters():
-    q1: InputQueue[str] = InputQueue("q1")
-    q2: InputQueue[str] = InputQueue("q2")
-    waiter = asyncio.create_task(wait_for_any([q1, q2]))
+async def test_race_races_blocking_waiters():
+    qm, (q1, q2) = _qm_with("q1", "q2")
+    waiter = asyncio.create_task(qm.race())
     await asyncio.sleep(0)
     q1.put("hello")
-    name, item = await asyncio.wait_for(waiter, timeout=0.5)
-    assert name == "q1"
-    assert item == "hello"
+    items = await asyncio.wait_for(waiter, timeout=0.5)
+    assert items == [("q1", "hello")]
     # Losing waiter should be cancelled — no items stranded on q2.
     assert q2.qsize() == 0
     assert not q2.has_waiters()
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_fast_path_does_not_touch_other_queues():
+async def test_race_fast_path_does_not_touch_other_channels():
     """Pre-loaded item on q2 → fast path returns it; q1 stays untouched."""
-    q1: InputQueue[str] = InputQueue("q1")
-    q2: InputQueue[str] = InputQueue("q2")
+    qm, (q1, q2) = _qm_with("q1", "q2")
     q2.put("preloaded")
-    name, item = await wait_for_any([q1, q2])
-    assert (name, item) == ("q2", "preloaded")
+    items = await qm.race()
+    assert items == [("q2", "preloaded")]
     assert q1.qsize() == 0
     assert not q1.has_waiters()
     assert q2.qsize() == 0
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_multi_done_restores_losers_to_head():
+async def test_race_multi_done_restores_losers_to_head():
     """When multiple racing tasks complete in the same tick, the first
     is the winner and the rest must be re-pushed to the head of their
-    source queues — not silently dropped.
+    source channels — not silently dropped.
 
     Drives the multi-done branch by issuing puts back-to-back (no
     intervening yield) so all racing tasks become done together.
     """
-    q1: InputQueue[str] = InputQueue("q1")
-    q2: InputQueue[str] = InputQueue("q2")
-    q3: InputQueue[str] = InputQueue("q3")
-    waiter = asyncio.create_task(wait_for_any([q1, q2, q3]))
-    await asyncio.sleep(0)  # let waiter create racing tasks
-    # Three back-to-back puts on the same loop tick — all racing tasks
-    # complete before the next yield.
+    qm, (q1, q2, q3) = _qm_with("q1", "q2", "q3")
+    waiter = asyncio.create_task(qm.race())
+    await asyncio.sleep(0)
     q1.put("a")
     q2.put("b")
     q3.put("c")
-    name, item = await asyncio.wait_for(waiter, timeout=0.5)
-    # Whichever was returned, the other two items must still be
-    # reachable from their source queues — no silent loss.
+    items = await asyncio.wait_for(waiter, timeout=0.5)
+    name, item = items[0]
     consumed = {(name, item)}
     for q, expected in [(q1, ("q1", "a")), (q2, ("q2", "b")), (q3, ("q3", "c"))]:
         if expected in consumed:
@@ -349,48 +346,45 @@ async def test_wait_for_any_multi_done_restores_losers_to_head():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_multi_done_winner_is_first_in_queues_order():
+async def test_race_multi_done_winner_is_first_in_registration_order():
     """When multiple racing tasks complete in the same tick, the winner
-    must be the queue earliest in the input list — same FIFO-by-position
-    contract the fast path documents. ``done`` is a set, so a naive
-    ``list(done)[0]`` would be non-deterministic; the slow path must
-    pick by queue-list order to match the fast path.
+    must be the channel registered earliest — same FIFO-by-position
+    contract the fast path documents. ``done`` is a set, so picking by
+    iteration would be non-deterministic.
     """
-    # Run several queue orderings so a non-deterministic implementation
-    # would visibly fail at least one of these.
     for queue_order in (["q1", "q2", "q3"], ["q3", "q2", "q1"], ["q2", "q3", "q1"]):
-        queues = {name: InputQueue[str](name) for name in queue_order}
-        ordered = [queues[n] for n in queue_order]
+        qm, channels = _qm_with(*queue_order)
+        by_name = dict(zip(queue_order, channels, strict=True))
 
-        waiter = asyncio.create_task(wait_for_any(ordered))
+        waiter = asyncio.create_task(qm.race())
         await asyncio.sleep(0)
-        # All fire on the same tick → multi-done branch.
         for n in queue_order:
-            queues[n].put(f"item-from-{n}")
-        name, _item = await asyncio.wait_for(waiter, timeout=0.5)
+            by_name[n].put(f"item-from-{n}")
+        items = await asyncio.wait_for(waiter, timeout=0.5)
 
-        assert name == queue_order[0], (
-            f"For input order {queue_order}, expected winner={queue_order[0]} but got {name}"
+        assert items[0][0] == queue_order[0], (
+            f"For order {queue_order}, expected winner={queue_order[0]} got {items[0][0]}"
         )
-        # Losers' items must still be on their queues.
+        # Losers' items must still be on their channels.
         for n in queue_order[1:]:
-            assert queues[n].snapshot() == [f"item-from-{n}"]
+            assert by_name[n].snapshot() == [f"item-from-{n}"]
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_only_fires_on_get_for_winner():
+async def test_race_only_fires_on_get_for_winner():
     """The winner's on_get fires exactly once; losers' hooks must not fire
     even if their racing tasks completed in the same tick."""
     seen_q1: list[str] = []
     seen_q2: list[str] = []
-    q1: InputQueue[str] = InputQueue("q1", on_get=seen_q1.append)
-    q2: InputQueue[str] = InputQueue("q2", on_get=seen_q2.append)
-    waiter = asyncio.create_task(wait_for_any([q1, q2]))
+    qm = QueueManager()
+    q1 = qm.queue("q1", on_get=seen_q1.append)
+    q2 = qm.queue("q2", on_get=seen_q2.append)
+    waiter = asyncio.create_task(qm.race())
     await asyncio.sleep(0)
     q1.put("a")
     q2.put("b")
-    name, item = await asyncio.wait_for(waiter, timeout=0.5)
-    # Exactly one hook fired, on the winner.
+    items = await asyncio.wait_for(waiter, timeout=0.5)
+    name, _ = items[0]
     if name == "q1":
         assert seen_q1 == ["a"]
         assert seen_q2 == []
@@ -400,22 +394,18 @@ async def test_wait_for_any_only_fires_on_get_for_winner():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_outer_cancel_restores_late_set_results():
-    """If wait_for_any is cancelled while a producer set a waiter's
-    result mid-cancellation, the item must end up restored to its
-    source queue (not stranded in the cancelled future).
+async def test_race_outer_cancel_restores_late_set_results():
+    """If race is cancelled while a producer set a waiter's result
+    mid-cancellation, the item must end up restored to its source
+    channel (not stranded in the cancelled future).
     """
-    q: InputQueue[str] = InputQueue("q")
-    waiter = asyncio.create_task(wait_for_any([q]))
-    await asyncio.sleep(0)  # registers waiter
-    # Cancel + put on same tick: the waiter receives the result before
-    # the cancellation is processed. The CancelledError handler in
-    # _drain_one must restore that result to the deque.
+    qm, (q,) = _qm_with("q")
+    waiter = asyncio.create_task(qm.race())
+    await asyncio.sleep(0)
     waiter.cancel()
     q.put("late-result")
     with pytest.raises(asyncio.CancelledError):
         await waiter
-    # Item must still be reachable.
     assert q.snapshot() == ["late-result"]
 
 
@@ -432,14 +422,16 @@ async def test_on_get_hook_swallows_base_exception():
         seen.append(item)
         raise BaseException("simulated hook failure")  # noqa: TRY002
 
-    q: InputQueue[str] = InputQueue("q", on_get=boom)
+    q: Channel[str] = Channel("q", "queue", on_get=boom)
     q.put("hi")
-    # Must return cleanly — no BaseException leaks out of get().
     assert await q.get() == "hi"
     assert seen == ["hi"]
 
 
 @pytest.mark.asyncio
-async def test_wait_for_any_empty_raises():
+async def test_race_no_queue_channels_raises():
+    """race() requires at least one queue-mode channel; event-only
+    managers raise ValueError."""
+    qm = QueueManager()
     with pytest.raises(ValueError):
-        await wait_for_any([])
+        await qm.race()

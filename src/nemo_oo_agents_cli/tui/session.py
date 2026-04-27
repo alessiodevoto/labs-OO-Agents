@@ -458,7 +458,7 @@ class Session:
             completer=SlashCommandCompleter(self.registry),
             session_label=self._session_label,
         )
-        # Wire the user-bar render + TUIUserInput log on the InputQueue's
+        # Wire the user-bar render + TUIUserInput log on the channel's
         # on_get hook so the echo fires when the dispatcher (or agent
         # code mid-turn) actually dequeues the message — symmetric across
         # both consumer paths, which is why the hook lives on the queue

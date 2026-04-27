@@ -126,12 +126,12 @@ async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
     """Regression guard for the original bug: the user-bar echo wiring
     used to assign to ``self._app.on_user_message``, an attribute that
     nothing reads. The fix installs ``Session._on_user_message`` on
-    the InputQueue's ``on_get`` hook, so the echo fires when the
+    the channel's ``on_get`` hook, so the echo fires when the
     dispatcher dequeues the message.
     """
     from unittest.mock import Mock, patch
 
-    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents.runtime.channels import Channel
     from nemo_oo_agents_cli.tui.session import Session
 
     session = Session.__new__(Session)
@@ -143,7 +143,7 @@ async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
     session._first_message = None
     # _colors is a read-only property that reads the global theme; no setup needed.
 
-    queue: InputQueue[str] = InputQueue("user_messages")
+    queue: Channel[str] = Channel("user_messages", "queue")
     # The exact wiring Session.run() performs.
     queue.set_on_get(session._on_user_message)
 
@@ -166,7 +166,7 @@ async def test_session_on_user_message_fires_for_mid_turn_dequeue() -> None:
     """
     from unittest.mock import Mock, patch
 
-    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents.runtime.channels import Channel
     from nemo_oo_agents_cli.tui.session import Session
 
     session = Session.__new__(Session)
@@ -178,10 +178,10 @@ async def test_session_on_user_message_fires_for_mid_turn_dequeue() -> None:
     session._first_message = None
     # _colors is a read-only property that reads the global theme; no setup needed.
 
-    inq: InputQueue[str] = InputQueue("user_messages")
+    inq: Channel[str] = Channel("user_messages", "queue")
     inq.set_on_get(session._on_user_message)
-    # Mid-turn drain goes through the OutputQueue read facade, the same
-    # surface the LLM uses.
+    # Mid-turn drain goes through the read facade, the same surface
+    # the LLM uses.
     reader = inq.reader
 
     inq.put("clarification")

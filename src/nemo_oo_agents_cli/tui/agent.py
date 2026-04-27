@@ -18,10 +18,10 @@ with hidden:
 
     from context_blocks.render_config import RenderConfig
     from context_blocks.renderers import CachedBlockFormatter
-    from nemo_oo_agents import Agent, InputQueue
+    from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
-    from nemo_oo_agents.runtime.input_queue import OutputQueue
+    from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
     from nemo_oo_agents.tools.todo import Todo
@@ -227,11 +227,17 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     """
 
     _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
-    # InputQueue (full producer/dispatcher API) is hidden — the LLM
-    # has no business calling .put() / .snapshot() / etc.
-    _user_messages_in: Annotated[InputQueue, hidden, nosnapshot]
-    # OutputQueue (just .get() and .name) is the LLM-facing facade.
-    user_messages: Annotated[OutputQueue, nosnapshot]
+    # QueueManager owns the channel registry. Hidden from the LLM by
+    # default — the LLM should access individual channels (e.g.
+    # ``self.user_messages``) directly, not through a string-keyed
+    # registry lookup.
+    queue_manager: Annotated[QueueManager, hidden, nosnapshot]
+    # Producer-side Channel (full put / pop_last / snapshot / etc.)
+    # — hidden, since the LLM has no business calling those.
+    _user_messages_in: Annotated[Channel, hidden, nosnapshot]
+    # Read-only facade (just .get() / .status() / .name) is what the
+    # LLM sees as ``self.user_messages``.
+    user_messages: Annotated[_ChannelReader, nosnapshot]
 
     def __init__(self, llm=None, **kwargs):
         # Use the cached block formatter so immutable blocks (system
@@ -245,16 +251,14 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         )
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
-        self._user_messages_in = InputQueue("user_messages", agent=self)
+        self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
+        self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
         # Surface pending-queue counts (and a short preview of each item)
-        # to the LLM every turn. Replaces the per-put Notification event
-        # the InputQueue used to emit — the agent now reads queue depth
-        # straight from the context.
-        self.context.set_dynamic(
-            "queue_status",
-            "self._queue_status(max_items=3, max_chars=80)",
-        )
+        # to the LLM every turn — the agent reads queue depth straight
+        # from the ``queues`` context block. Composed via
+        # ``QueueManager.status()`` so adding new channels Just Works.
+        self.context.set_dynamic("queues", "self.queue_manager.status()")
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
@@ -266,28 +270,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             # mark it immutable — it goes into the cacheable prefix
             # with the system prompt.
             self.context.set("web", doc(self.web), immutable=True)
-
-    def input_queues(self) -> list[InputQueue]:
-        """Return all ``InputQueue`` instances declared as agent fields.
-
-        Single discovery rule: walk ``vars(self).values()`` and pick out
-        ``InputQueue`` instances. Used by ``_queue_status`` to render the
-        dynamic context block AND by the dispatcher loop's ``WAIT`` race
-        — both need the same set; centralising the walk here means a
-        future "queues live in a dict / are auto-registered" change has
-        one place to update.
-        """
-        return [q for q in vars(self).values() if isinstance(q, InputQueue)]
-
-    def _queue_status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
-        """Join every non-empty ``InputQueue``'s ``status()`` block.
-
-        Defers per-queue rendering to each queue's ``status()`` — so
-        ``self.user_messages.status()`` and this composite view stay in
-        sync. Returns an empty string when every queue is drained.
-        """
-        parts = [q.status(max_items=max_items, max_chars=max_chars) for q in self.input_queues()]
-        return "\n".join(p for p in parts if p)
 
     def message(self, text: str) -> None:
         """Send a Markdown message to the user.
