@@ -15,6 +15,25 @@ function formatHarnessValue(v: unknown): string {
   return String(v);
 }
 
+const TIMER_RE =
+  /^harness\.time\.(\w+)\.(total_s|min_s|max_s|avg_s|count|samples)$/;
+type TimerStats = {
+  count?: unknown;
+  avg_s?: unknown;
+  min_s?: unknown;
+  max_s?: unknown;
+  total_s?: unknown;
+  samples?: unknown;
+};
+
+function formatSamples(s: unknown): string {
+  if (!Array.isArray(s)) return String(s);
+  const head = s.slice(0, 3).map((x) => formatHarnessValue(x));
+  return s.length > 3
+    ? `[${head.join(", ")}, …${s.length - 3} more]`
+    : `[${head.join(", ")}]`;
+}
+
 export function GenerationPlugin({
   event,
   viewState,
@@ -86,9 +105,20 @@ export function GenerationPlugin({
   if (agentMethod) meta["Method"] = agentMethod;
   if (agentName) meta["Agent"] = agentName;
 
-  const harnessEntries = Object.entries(attrs)
-    .filter(([k]) => k.startsWith("harness."))
-    .sort(([a], [b]) => a.localeCompare(b));
+  const timerStats: Record<string, TimerStats> = {};
+  const otherHarnessEntries: [string, unknown][] = [];
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!key.startsWith("harness.")) continue;
+    const match = key.match(TIMER_RE);
+    if (match) {
+      const [, name, stat] = match;
+      (timerStats[name] ??= {})[stat as keyof TimerStats] = value;
+    } else {
+      otherHarnessEntries.push([key, value]);
+    }
+  }
+  const timerNames = Object.keys(timerStats).sort();
+  otherHarnessEntries.sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div>
@@ -129,21 +159,68 @@ export function GenerationPlugin({
         </div>
       )}
 
-      {harnessEntries.length > 0 && (
+      {(timerNames.length > 0 || otherHarnessEntries.length > 0) && (
         <div className="mt-3 p-3 bg-gray-900 rounded border-l-4 border-teal-700">
           <div className="text-xs text-gray-500 mb-2">Harness Telemetry</div>
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
-            {harnessEntries.map(([key, value]) => (
-              <Fragment key={key}>
-                <span className="text-gray-400">
-                  {key.slice("harness.".length)}
-                </span>
-                <span className="text-gray-200 break-all">
-                  {formatHarnessValue(value)}
-                </span>
-              </Fragment>
-            ))}
-          </div>
+
+          {timerNames.length > 0 && (
+            <table className="text-xs font-mono w-full mb-3">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-800">
+                  <th className="text-left pb-1 pr-3 font-normal">timer</th>
+                  <th className="text-right pb-1 px-2 font-normal">count</th>
+                  <th className="text-right pb-1 px-2 font-normal">avg</th>
+                  <th className="text-right pb-1 px-2 font-normal">min</th>
+                  <th className="text-right pb-1 px-2 font-normal">max</th>
+                  <th className="text-right pb-1 px-2 font-normal">total</th>
+                  <th className="text-left pb-1 pl-3 font-normal">samples</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timerNames.map((name) => {
+                  const s = timerStats[name];
+                  return (
+                    <tr key={name} className="text-gray-200">
+                      <td className="py-0.5 pr-3 text-gray-400">{name}</td>
+                      <td className="py-0.5 px-2 text-right">
+                        {formatHarnessValue(s.count)}
+                      </td>
+                      <td className="py-0.5 px-2 text-right">
+                        {formatHarnessValue(s.avg_s)}
+                      </td>
+                      <td className="py-0.5 px-2 text-right">
+                        {formatHarnessValue(s.min_s)}
+                      </td>
+                      <td className="py-0.5 px-2 text-right">
+                        {formatHarnessValue(s.max_s)}
+                      </td>
+                      <td className="py-0.5 px-2 text-right">
+                        {formatHarnessValue(s.total_s)}
+                      </td>
+                      <td className="py-0.5 pl-3 break-all">
+                        {formatSamples(s.samples)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {otherHarnessEntries.length > 0 && (
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+              {otherHarnessEntries.map(([key, value]) => (
+                <Fragment key={key}>
+                  <span className="text-gray-400">
+                    {key.slice("harness.".length)}
+                  </span>
+                  <span className="text-gray-200 break-all">
+                    {formatHarnessValue(value)}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
