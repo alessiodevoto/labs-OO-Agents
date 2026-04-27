@@ -351,13 +351,17 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
                 await t
             except BaseException:
                 pass
-        # Multiple done tasks are possible. First one wins; restore the
-        # rest to the head of their source queues so nothing is lost.
-        done_list = list(done)
-        winner_task = done_list[0]
+        # Multiple done tasks are possible. Pick the winner by queue-list
+        # order (matches dict insertion order, which matches the order
+        # tasks were created from `queues`) — same FIFO-by-position
+        # contract the fast path documents. ``done`` is a set; iterating
+        # it directly would be non-deterministic.
+        winner_task = next(t for t in tasks if t in done)
         winner_q = tasks[winner_task]
         winner_item = winner_task.result()
-        for t in done_list[1:]:
+        for t in done:
+            if t is winner_task:
+                continue
             q = tasks[t]
             try:
                 lost_item = t.result()

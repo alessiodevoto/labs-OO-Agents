@@ -349,6 +349,35 @@ async def test_wait_for_any_multi_done_restores_losers_to_head():
 
 
 @pytest.mark.asyncio
+async def test_wait_for_any_multi_done_winner_is_first_in_queues_order():
+    """When multiple racing tasks complete in the same tick, the winner
+    must be the queue earliest in the input list — same FIFO-by-position
+    contract the fast path documents. ``done`` is a set, so a naive
+    ``list(done)[0]`` would be non-deterministic; the slow path must
+    pick by queue-list order to match the fast path.
+    """
+    # Run several queue orderings so a non-deterministic implementation
+    # would visibly fail at least one of these.
+    for queue_order in (["q1", "q2", "q3"], ["q3", "q2", "q1"], ["q2", "q3", "q1"]):
+        queues = {name: InputQueue[str](name) for name in queue_order}
+        ordered = [queues[n] for n in queue_order]
+
+        waiter = asyncio.create_task(wait_for_any(ordered))
+        await asyncio.sleep(0)
+        # All fire on the same tick → multi-done branch.
+        for n in queue_order:
+            queues[n].put(f"item-from-{n}")
+        name, _item = await asyncio.wait_for(waiter, timeout=0.5)
+
+        assert name == queue_order[0], (
+            f"For input order {queue_order}, expected winner={queue_order[0]} but got {name}"
+        )
+        # Losers' items must still be on their queues.
+        for n in queue_order[1:]:
+            assert queues[n].snapshot() == [f"item-from-{n}"]
+
+
+@pytest.mark.asyncio
 async def test_wait_for_any_only_fires_on_get_for_winner():
     """The winner's on_get fires exactly once; losers' hooks must not fire
     even if their racing tasks completed in the same tick."""
