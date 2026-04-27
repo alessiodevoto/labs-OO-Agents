@@ -5,12 +5,12 @@
 Extracted from actor.py so _prepare_context() is thin.
 
 Pipeline phases (must run in order — later phases override earlier ones):
-    1. Framework blocks (system_prompt, self-doc, context_api, events_api)
-    2. Persistent blocks from self.context (ContextApi)
-    3. Strategy overrides (strategy.get_block_overrides())
-    4. Decorator context (@strategy(ScopedContext(context={...})))
-    5. Scoped context (with ScopedContext(context={...}))
-    6. Events -> ResolvedBlocks with roles
+    1. Persistent blocks from context_manager (protected framework blocks +
+       user blocks — all registered via the same ContextManager API)
+    2. Strategy overrides (strategy.get_block_overrides())
+    3. Decorator context (@strategy(ScopedContext(context={...})))
+    4. Scoped context (with ScopedContext(context={...}))
+    5. Events -> ResolvedBlocks with roles
        Event filtering priority: runtime > scoped > decorator > agent > all events
 
 All phase functions are pure — they return new lists, never mutate inputs.
@@ -26,7 +26,6 @@ from context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
 from context_blocks.utils import truncating_pformat
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.agent import FrameworkBlock
     from nemo_oo_agents.runtime.context_manager import ContextManager
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.strategies.base import GenerationStrategy
@@ -155,7 +154,6 @@ class BuildResult(NamedTuple):
 # ---------------------------------------------------------------------------
 async def build_context(
     *,
-    framework_blocks: "dict[str, FrameworkBlock]",
     context_manager: "ContextManager",
     event_manager: Any,
     strategy: "GenerationStrategy | None",
@@ -175,8 +173,12 @@ async def build_context(
     The caller is responsible for applying resolved_cache via
     ``context_manager._update_resolved(result.resolved_cache)``.
 
+    All blocks (including protected framework blocks like system_prompt, self,
+    state) live in ``context_manager`` and are emitted by
+    ``_phase_persistent_blocks``.  Protected blocks get ``user_block=False``
+    so they survive truncation.
+
     Args:
-        framework_blocks: Framework block definitions (from Agent._framework_blocks).
         context_manager: The agent's ContextManager (read-only here).
         event_manager: The agent's EventManager (for events phase).
         strategy: Current generation strategy (or None).
@@ -197,10 +199,7 @@ async def build_context(
     """
     blocks: list[ResolvedBlock] = []
 
-    # --- Framework blocks ---
-    blocks = await _phase_framework_blocks(blocks, framework_blocks, resolve_fn)
-
-    # --- Persistent blocks from self.context ---
+    # --- All persistent blocks (protected framework blocks + user blocks) ---
     blocks, resolved_cache = await _phase_persistent_blocks(
         blocks, context_manager, resolve_fn, pre_format_chars=pre_format_chars
     )
@@ -231,46 +230,28 @@ async def build_context(
     return BuildResult(blocks=blocks, resolved_cache=resolved_cache)
 
 
-async def _phase_framework_blocks(
-    blocks: list[ResolvedBlock],
-    framework_blocks: "dict[str, FrameworkBlock]",
-    resolve_fn: ResolveFunc,
-) -> list[ResolvedBlock]:
-    """Add framework blocks (system_prompt, self-doc, etc.)."""
-    for key, fb in framework_blocks.items():
-        value = fb.value
-        content = await resolve_fn(key, value)
-        if content is None:
-            continue
-
-        if isinstance(value, DynamicContext):
-            meta = BlockMetadata(expr=value.expr, immutable=value.immutable)
-        else:
-            meta = BlockMetadata(expr=f'self.context["{key}"]')
-
-        blocks = [*blocks, ResolvedBlock(key=key, content=content, role=Role.SYSTEM, metadata=meta)]
-
-    return blocks
-
-
 async def _phase_persistent_blocks(
     blocks: list[ResolvedBlock],
     context_manager: "ContextManager",
     resolve_fn: ResolveFunc,
     pre_format_chars: int | None = None,
 ) -> tuple[list[ResolvedBlock], dict[str, Any]]:
-    """Add persistent blocks from ContextApi (user-set via self.context).
+    """Add persistent blocks from context_manager.
 
-    These blocks are tagged as ``user_block=True`` in metadata so that
-    truncation can prioritize dropping them before framework/strategy blocks.
+    Protected blocks (framework blocks like system_prompt, self, state) get
+    ``user_block=False`` so they survive truncation.  User-set blocks get
+    ``user_block=True``.  All DynamicContext blocks get ``source_dynamic=True``
+    regardless of origin.
 
     Returns:
         Tuple of (updated blocks, resolved_cache dict).
         The caller should pass resolved_cache to context_manager._update_resolved().
     """
     resolved_cache: dict[str, Any] = {}
+    protected_keys = context_manager.protected_keys
 
     for key, value in context_manager._raw_items():
+        is_user = key not in protected_keys
         immutable = context_manager.is_immutable(key)
         if isinstance(value, DynamicContext):
             # DynamicContext path: resolve via async eval
@@ -279,7 +260,7 @@ async def _phase_persistent_blocks(
             content = resolved if resolved is not None else "None"
             meta = BlockMetadata(
                 expr=value.expr,
-                user_block=True,
+                user_block=is_user,
                 immutable=immutable or value.immutable,
                 source_dynamic=True,
             )
@@ -293,7 +274,7 @@ async def _phase_persistent_blocks(
                 kwargs = {} if pre_format_chars is None else {"max_chars": pre_format_chars}
                 content = truncating_pformat(value, **kwargs)
             meta = BlockMetadata(
-                expr=f'self.context["{key}"]', user_block=True, immutable=immutable
+                expr=f'self.context["{key}"]', user_block=is_user, immutable=immutable
             )
 
         blocks = [

@@ -87,7 +87,10 @@ class AgentSnapshot(BaseModel):
         all_allowlist: set[str] = set()
 
         context_blocks: list[StaticContextBlock | DynamicContextBlock] = []
+        protected = agent.context_manager.protected_keys
         for key, value in agent.context_manager._raw_items():
+            if key in protected:
+                continue  # Framework blocks are recreated by __init__
             if isinstance(value, DynamicContext):
                 context_blocks.append(DynamicContextBlock(key=key, expr=value.expr))
             else:
@@ -161,10 +164,18 @@ class AgentSnapshot(BaseModel):
             )
 
         for block in self.context:
+            is_protected = block.key in agent.context_manager.protected_keys
             if isinstance(block, DynamicContextBlock):
-                agent.context_manager.set_dynamic(block.key, block.expr)
+                if is_protected:
+                    agent.context_manager.set_dynamic_protected(block.key, block.expr)
+                else:
+                    agent.context_manager.set_dynamic(block.key, block.expr)
             else:
-                agent.context_manager[block.key] = deserialize(block.value, self.type_allowlist)
+                value = deserialize(block.value, self.type_allowlist)
+                if is_protected:
+                    agent.context_manager.set_protected(block.key, value)
+                else:
+                    agent.context_manager[block.key] = value
 
         # Use the higher of the snapshot value and the backend's actual max tag,
         # because events may have been added after the snapshot was saved (e.g.

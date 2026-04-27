@@ -1405,26 +1405,28 @@ class TestContextBuilderResolveNoneContent:
         assert len(result) == 1
         assert result[0].content == "None"
 
-    async def test_framework_block_static_meta(self):
-        """Line 259: static framework block gets expr=f'self.context["{key}"]' meta."""
-        from nemo_oo_agents.agent import FrameworkBlock
-        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
+    async def test_protected_block_static_meta(self):
+        """Protected static block gets expr=f'self.context["{key}"]' meta and user_block=False."""
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
+        from nemo_oo_agents.runtime.context_manager import ContextManager
 
         async def _resolve(key: str, value: Any) -> str | None:
             return "some content"
 
-        # Create a framework block that is NOT DynamicContext (static value)
-        framework_blocks = {"my_key": FrameworkBlock(value="static value")}
+        # Create a context manager with a static protected block
+        cm = ContextManager()
+        cm.set_protected("my_key", "static value")
 
-        result = await _phase_framework_blocks(
+        result, _ = await _phase_persistent_blocks(
             blocks=[],
-            framework_blocks=framework_blocks,
+            context_manager=cm,
             resolve_fn=_resolve,
         )
         assert len(result) == 1
         assert result[0].key == "my_key"
-        # Meta should contain a static expr (not DynamicContext)
+        # Meta should contain a static expr and user_block=False (protected)
         assert "my_key" in result[0].metadata.expr
+        assert result[0].metadata.user_block is False
 
 
 # =============================================================================

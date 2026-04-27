@@ -27,7 +27,7 @@ import sys
 import types
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, ClassVar
+from typing import Any
 
 # Cache of per-module _StandaloneAgent subclasses, keyed by module __name__.
 # Each subclass has __module__ set to the function's module so that
@@ -52,7 +52,6 @@ def _get_agent_cls(module_name: str) -> type:
     class _StandaloneAgent:
         """Minimal agent stub: no framework blocks, fresh state per call."""
 
-        _framework_blocks: ClassVar[dict[str, Any]] = {}  # no system_prompt, no self-doc
         event_query = None
         _execution_config = None
 
@@ -61,7 +60,7 @@ def _get_agent_cls(module_name: str) -> type:
             self._truncation = TruncationConfig()
             self.render_config = RenderConfig()
             self.event_manager = EventManager()
-            self.context_manager = ContextManager(protected_keys=set())
+            self.context_manager = ContextManager()
             self.runtime = ActorRuntime(self)
 
     cls = type("_StandaloneAgent", (_StandaloneAgent,), {})

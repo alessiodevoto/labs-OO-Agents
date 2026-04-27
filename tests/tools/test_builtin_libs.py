@@ -44,11 +44,15 @@ def test_codeact_strategy_instructions_no_longer_has_decomposition():
     assert "Task decomposition" not in src
 
 
-def test_context_api_not_in_framework_blocks():
+def test_context_api_not_in_protected_blocks():
+    """context_api and events_api should not be registered as protected blocks."""
+    from unittest.mock import MagicMock
+
     from nemo_oo_agents.agent import Agent
 
-    assert "context_api" not in Agent._framework_blocks
-    assert "events_api" not in Agent._framework_blocks
+    agent = Agent(llm=MagicMock())
+    assert "context_api" not in agent.context_manager.protected_keys
+    assert "events_api" not in agent.context_manager.protected_keys
 
 
 def test_codeact_block_order_no_api_keys():

@@ -188,22 +188,20 @@ class TestContextManager:
             del agent.context_manager["nonexistent"]
 
     def test_delete_nonexistent_protected_key_raises_keyerror(self):
-        """del context['system_prompt'] raises KeyError (not ProtectedBlockError)
-        when the key is protected but not in _blocks."""
+        """del context['nonexistent'] raises KeyError when the key is not in _blocks."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
             pass
 
         agent = TestAgent()
-        # system_prompt is in protected_keys but NOT in _blocks
-        assert "system_prompt" in agent.context_manager._protected_keys
-        assert "system_prompt" not in agent.context_manager._blocks
+        # A key that doesn't exist at all should raise KeyError
+        assert "nonexistent" not in agent.context_manager._blocks
         with pytest.raises(KeyError):
-            del agent.context_manager["system_prompt"]
+            del agent.context_manager["nonexistent"]
 
     def test_delete_existing_protected_key_raises_protected_error(self):
-        """del context['key'] raises ProtectedBlockError when key exists and is protected."""
+        """del context['system_prompt'] raises ProtectedBlockError when key is protected."""
         from context_blocks.exceptions import ProtectedBlockError
 
         fake_llm = FakeLLMClient()
@@ -212,11 +210,11 @@ class TestContextManager:
             pass
 
         agent = TestAgent()
-        # Directly inject a block into _blocks AND mark as protected
-        agent.context_manager._blocks["guarded"] = "value"
-        agent.context_manager._protected_keys.add("guarded")
+        # system_prompt is now in both protected_keys and _blocks
+        assert "system_prompt" in agent.context_manager.protected_keys
+        assert "system_prompt" in agent.context_manager._blocks
         with pytest.raises(ProtectedBlockError):
-            del agent.context_manager["guarded"]
+            del agent.context_manager["system_prompt"]
 
     def test_pop_protected_key_raises_protected_error(self):
         """pop() on an existing protected key raises ProtectedBlockError."""
@@ -230,21 +228,36 @@ class TestContextManager:
         agent = TestAgent()
         # Directly inject a block into _blocks AND mark as protected
         agent.context_manager._blocks["guarded"] = "value"
-        agent.context_manager._protected_keys.add("guarded")
+        agent.context_manager.protected_keys.add("guarded")
         with pytest.raises(ProtectedBlockError):
             agent.context_manager.pop("guarded")
 
     def test_pop_nonexistent_protected_key_raises_keyerror(self):
-        """pop() on a protected key not in _blocks raises KeyError (not ProtectedBlockError)."""
+        """pop() on a key not in _blocks raises KeyError."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
             pass
 
         agent = TestAgent()
-        assert "system_prompt" in agent.context_manager._protected_keys
-        assert "system_prompt" not in agent.context_manager._blocks
+        assert "nonexistent" not in agent.context_manager._blocks
         with pytest.raises(KeyError):
+            agent.context_manager.pop("nonexistent")
+
+    def test_pop_existing_protected_key_raises_protected_error(self):
+        """pop() on a protected key that is in _blocks raises ProtectedBlockError."""
+        from context_blocks.exceptions import ProtectedBlockError
+
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        # system_prompt is now in both protected_keys and _blocks
+        assert "system_prompt" in agent.context_manager.protected_keys
+        assert "system_prompt" in agent.context_manager._blocks
+        with pytest.raises(ProtectedBlockError):
             agent.context_manager.pop("system_prompt")
 
 

@@ -8,7 +8,7 @@ by default. Subclasses opt in by calling spec(self, "context", hidden=False) in 
 ContextApi wraps agent.context_manager (ContextManager) — the state always lives there.
 """
 
-from collections.abc import Iterator, KeysView
+from collections.abc import Iterator, Set
 from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents.runtime.context_manager import ContextManager
@@ -79,23 +79,26 @@ class ContextApi(Skill):
         self._context.set_dynamic(key, expr, immutable=immutable)
 
     def __getitem__(self, key: str) -> Any:
+        # Protected keys are hidden from iteration (__contains__/keys()/len)
+        # but readable by name — the LLM already sees their rendered content
+        # in the prompt; mutations are guarded by ProtectedBlockError.
         return self._context[key]
 
     def __delitem__(self, key: str) -> None:
         del self._context[key]
 
     def __contains__(self, key: object) -> bool:
-        return key in self._context
+        return key in self._context and key not in self._context.protected_keys
 
     def __len__(self) -> int:
-        return len(self._context)
+        return sum(1 for k in self._context if k not in self._context.protected_keys)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._context)
+        return (k for k in self._context if k not in self._context.protected_keys)
 
-    def keys(self) -> KeysView[str]:
-        """Return block keys."""
-        return self._context.keys()
+    def keys(self) -> Set[str]:
+        """Return user (non-protected) block keys."""
+        return self._context.keys() - self._context.protected_keys
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a block value, returning default if not found."""
@@ -106,4 +109,4 @@ class ContextApi(Skill):
         return self._context.pop(key, *args)
 
     def __repr__(self) -> str:
-        return f"ContextApi({len(self._context)} blocks)"
+        return f"ContextApi({len(self)} blocks)"
