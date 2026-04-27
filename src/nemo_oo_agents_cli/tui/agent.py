@@ -16,12 +16,15 @@ from nemo_oo_agents.storage.markers import nosnapshot
 with hidden:
     from collections.abc import Callable
 
+    from context_blocks.render_config import RenderConfig
+    from context_blocks.renderers import CachedBlockFormatter
     from nemo_oo_agents import Agent, InputQueue
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.runtime.input_queue import OutputQueue
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
+    from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
@@ -231,10 +234,27 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     user_messages: Annotated[OutputQueue, nosnapshot]
 
     def __init__(self, llm=None, **kwargs):
+        # Use the cached block formatter so immutable blocks (system
+        # prompt, doc(self), and anything the subclass marks
+        # ``immutable=True``) land in a stable SYSTEM prefix that the
+        # provider can cache across turns. Callers can override by
+        # passing their own ``render_config``.
+        kwargs.setdefault(
+            "render_config",
+            RenderConfig(block_formatter=CachedBlockFormatter()),
+        )
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
         self._user_messages_in = InputQueue("user_messages", agent=self)
         self.user_messages = self._user_messages_in.reader
+        # Surface pending-queue counts (and a short preview of each item)
+        # to the LLM every turn. Replaces the per-put Notification event
+        # the InputQueue used to emit — the agent now reads queue depth
+        # straight from the context.
+        self.context.set_dynamic(
+            "queue_status",
+            "self._queue_status(max_items=3, max_chars=80)",
+        )
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
@@ -242,7 +262,32 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             self.web: Annotated[WebPublisher, nosnapshot] = WebPublisher(
                 event_manager=self.event_manager
             )
-            self.context["web"] = doc(self.web)
+            # The WebPublisher's doc is static across the session, so
+            # mark it immutable — it goes into the cacheable prefix
+            # with the system prompt.
+            self.context.set("web", doc(self.web), immutable=True)
+
+    def input_queues(self) -> list[InputQueue]:
+        """Return all ``InputQueue`` instances declared as agent fields.
+
+        Single discovery rule: walk ``vars(self).values()`` and pick out
+        ``InputQueue`` instances. Used by ``_queue_status`` to render the
+        dynamic context block AND by the dispatcher loop's ``WAIT`` race
+        — both need the same set; centralising the walk here means a
+        future "queues live in a dict / are auto-registered" change has
+        one place to update.
+        """
+        return [q for q in vars(self).values() if isinstance(q, InputQueue)]
+
+    def _queue_status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
+        """Join every non-empty ``InputQueue``'s ``status()`` block.
+
+        Defers per-queue rendering to each queue's ``status()`` — so
+        ``self.user_messages.status()`` and this composite view stay in
+        sync. Returns an empty string when every queue is drained.
+        """
+        parts = [q.status(max_items=max_items, max_chars=max_chars) for q in self.input_queues()]
+        return "\n".join(p for p in parts if p)
 
     def message(self, text: str) -> None:
         """Send a Markdown message to the user.
@@ -265,7 +310,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         ...
 
     @hidden
-    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0, max_iterations=100)))
+    @strategy(CodeActStrategy())
     async def respond(
         self,
         notification: tuple[str, Any],
@@ -331,10 +376,10 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         - ``"user_messages"`` — text from the human; ``item`` is a str.
 
-        Subclasses may add more (e.g. ``"job_outputs"``); their
-        ``Notification`` events appear in your context as they fire.
-        When you return ``kind="WAIT"`` the dispatcher races every
-        declared queue and re-enters with the first arrival.
+        Subclasses may add more (e.g. ``"job_outputs"``); the
+        ``<queue_status>`` context block lists the pending count per
+        queue each turn. When you return ``kind="WAIT"`` the dispatcher
+        races every declared queue and re-enters with the first arrival.
         """
         ...
 
@@ -433,19 +478,19 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     Inline execution:
         t = self.todo.add("Explore the codebase")
-        result = await self.do_it(t.id, t.title, t.notes)
+        result = await self.do_it(t)
 
     Delegate to a Doer subagent (isolates context, good for complex items):
         t = self.todo.add("Run the full test suite and triage failures")
-        result = await self.make_doer().execute(t.id, t.title, t.notes)
+        result = await self.make_doer().execute(t)
 
     Parallel when todos are independent (each doer gets its own context):
         t1 = self.todo.add("Fix module A")
         t2 = self.todo.add("Fix module B")
         t3 = self.todo.add("Run tests", deps=[t1.id, t2.id])
         r1, r2 = await asyncio.gather(
-            self.make_doer().execute(t1.id, t1.title, t1.notes),
-            self.make_doer().execute(t2.id, t2.title, t2.notes),
+            self.make_doer().execute(t1),
+            self.make_doer().execute(t2),
         )
 
     The ``<todo_status>`` context block shows current progress every turn.
@@ -474,12 +519,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       into the ``persist`` dict of the ``RespondResult`` you return, e.g.
       ``persist={"plan": plan, "cursor": cursor}``. They come back on the
       next call as the ``restored`` dict — unpack with ``.get("plan")``.
-    - For long-lived plans/progress, use todo vars — each todo has a
-      ``vars`` dict with an attribute-access proxy:
-          t = self.todo.add("Deep research", foo=42, data={"a": 1})
-          t.v.progress = 0.25
-          v = t.v.progress   # next turn: 0.25
-      Snapshot-backed, survives across sessions, not just turns.
+    - For long-lived plans/progress, ``self.todo.set_var(t.id, "k", v)``
+      is snapshot-backed and survives across sessions, not just turns.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
@@ -623,19 +664,19 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             skills_dirs=self._skills_dirs,
         )
 
-    @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
-    async def do_it(self, todo_id: str, todo_title: str, todo_notes: str) -> str:
+    @strategy(CodeActStrategy())
+    async def do_it(self, todo: Todo) -> str:
         """Execute a single todo item and return a summary of what was done.
 
-        Todo: [{todo_id}] {todo_title}
-        Notes: {todo_notes}
+        Todo: [{todo.id}] {todo.title}
+        Notes: {todo.notes}
 
         Instructions:
         1. Read the todo title and notes carefully.
         2. Execute the work described using self.bash and self.files.
         3. When done, update the todo with what you learned:
-           self.todo.update("{todo_id}", notes="what you did and found")
-        4. Mark it complete: self.todo.done("{todo_id}")
+           self.todo.update("{todo.id}", notes="what you did and found")
+        4. Mark it complete: self.todo.done("{todo.id}")
         5. Return a concise summary of what you did and the outcome.
 
         Focus only on this one item. Do NOT work on other todos.

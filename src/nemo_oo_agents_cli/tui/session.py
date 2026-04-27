@@ -458,7 +458,16 @@ class Session:
             completer=SlashCommandCompleter(self.registry),
             session_label=self._session_label,
         )
-        self._app.on_user_message = self._on_user_message
+        # Wire the user-bar render + TUIUserInput log on the InputQueue's
+        # on_get hook so the echo fires when the dispatcher (or agent
+        # code mid-turn) actually dequeues the message — symmetric across
+        # both consumer paths, which is why the hook lives on the queue
+        # and not on the dispatcher loop. self.agent is typed as Agent;
+        # the queue is on BaseTUIAgent. getattr matches the existing
+        # convention in tui_application.py for the same lookup.
+        queue = getattr(self.agent, "_user_messages_in", None)
+        if queue is not None:
+            queue.set_on_get(self._on_user_message)
 
         # Swap the frontend's Rich Console for one that writes through
         # our block queue, so slash-command output (e.g. /help tables)

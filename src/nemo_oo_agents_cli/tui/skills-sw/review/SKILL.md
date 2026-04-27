@@ -45,7 +45,7 @@ if umbrella is None:
     self.message(f"No todo {umbrella_id}.")
     return_result(RespondResult(kind="GET_USER_INPUT"))
 
-commits = umbrella.vars.get("commits") or []
+commits = self.todo.get_var(umbrella.id, "commits") or []
 if not commits:
     self.message(f"Todo {umbrella.id} has no commits yet — run /tdd first.")
     return_result(RespondResult(kind="GET_USER_INPUT"))
@@ -57,7 +57,7 @@ One sub-todo per reviewer so progress shows in `<todo_status>`.
 Parallel-run them with `asyncio.gather`.
 
 ```python
-spec = umbrella.vars.get("spec") or {}
+spec = self.todo.get_var(umbrella.id, "spec") or {}
 acceptance = spec.get("acceptance_criteria", [])
 diff_cmd = f"git log --oneline HEAD~{len(commits)}..HEAD"
 diff = (await self.bash.run(
@@ -115,32 +115,29 @@ is clean on your lens, return `[]` and stop.
 
 review_todos = []
 for lens, instr in reviewers:
-    rt = self.todo.add(f"review: {lens}", deps=[umbrella.id])
-    review_todos.append((lens, instr, rt.id))
-    self.todo.comment(umbrella.id, f"👁 dispatched {lens} reviewer: {rt.id}")
-
-async def _run_reviewer(lens: str, instr: str, todo_id: str):
     prompt = REVIEW_PROMPT_TEMPLATE.format(
         lens=lens,
         instructions=instr,
         goal=spec.get("goal", umbrella.title),
         criteria="\n".join(f"  - {c}" for c in acceptance) or "  (none specified)",
         plan="\n".join(f"  {i + 1}. {s}" for i, s in enumerate(
-            umbrella.vars.get("fix_plan") or []
+            self.todo.get_var(umbrella.id, "fix_plan") or []
         )) or "  (none)",
-        root_cause=umbrella.vars.get("root_cause") or "(none)",
+        root_cause=self.todo.get_var(umbrella.id, "root_cause") or "(none)",
         n_commits=len(commits),
         diff=diff,
     )
-    summary = await self.make_doer().execute(
-        todo_id,
-        f"Review ({lens})",
-        prompt,
-    )
+    rt = self.todo.add(f"Review ({lens})", deps=[umbrella.id])
+    self.todo.update(rt.id, notes=prompt)
+    review_todos.append((lens, rt))
+    self.todo.comment(umbrella.id, f"👁 dispatched {lens} reviewer: {rt.id}")
+
+async def _run_reviewer(lens: str, todo):
+    summary = await self.make_doer().execute(todo)
     return lens, summary
 
 results = await asyncio.gather(
-    *[_run_reviewer(lens, instr, tid) for lens, instr, tid in review_todos],
+    *[_run_reviewer(lens, t) for lens, t in review_todos],
     return_exceptions=True,
 )
 ```
@@ -170,7 +167,7 @@ for outcome in results:
         f["reviewer"] = lens
         findings.append(f)
 
-umbrella.v.review_findings = findings
+self.todo.set_var(umbrella.id, "review_findings", findings)
 
 severity_rank = {"blocking": 0, "major": 1, "minor": 2}
 findings.sort(key=lambda f: (severity_rank.get(f.get("severity"), 3), f.get("reviewer", "")))

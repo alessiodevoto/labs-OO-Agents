@@ -1,17 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Async input queue with Notification emission.
+"""Async input queue for producer → agent handoffs.
 
 An ``InputQueue`` is a named, deque-backed async queue that lives on an
-agent as an instance attribute (e.g. ``self.user_messages``). Pushing
-onto the queue fires a ``Notification`` event so the LLM knows data is
-available; the agent drains with ``await queue.get()``.
+agent as an instance attribute (e.g. ``self.user_messages``). Producers
+push with ``put()``; the agent drains with ``await queue.get()``.
+
+Queue state is surfaced to the LLM through a dynamic context block
+(``queue_status``) that re-evaluates each turn — the agent reads the
+current pending counts straight from the context, so the queue itself
+doesn't need to emit any events of its own.
 
 Compared to ``asyncio.Queue``:
 - Supports ``pop_last()`` so the UI can undo "oops, I queued the
   wrong thing" without consuming awaiters.
-- Auto-emits a ``Notification`` event on each ``put()`` so the LLM sees
-  queue activity in its context.
 - No maxsize / backpressure — input queues are producer-bounded by
   humans and fast job outputs, not LLM rate.
 - Intentionally no ``peek()``: in the per-turn ``respond()`` model
@@ -22,93 +24,119 @@ Compared to ``asyncio.Queue``:
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 
-from nemo_oo_agents.events import Notification
+logger = logging.getLogger(__name__)
+
+
+def _preview_item(item: Any, max_chars: int) -> str:
+    """Render one queue item as a single-line preview clipped to *max_chars*.
+
+    Strings render as-is; non-strings go through :func:`agentdoc.pformat`
+    so a deeply nested dict/list comes out bounded by default. Newlines
+    (and tabs) flatten to ``↵`` / spaces so a pasted multi-line message
+    or pformat'd object stays on one preview line, and the whole thing
+    is clipped with an ellipsis when it still overflows.
+    """
+    from nemo_oo_agents.agentdoc import pformat
+
+    if isinstance(item, str):
+        text = item
+    else:
+        text = pformat(item, max_length=max_chars, max_string=max_chars, max_depth=2)
+    text = text.replace("\r\n", "\n").replace("\n", "↵").replace("\t", " ")
+    if len(text) > max_chars:
+        text = text[: max_chars - 1] + "…"
+    return text
 
 
 class InputQueue[T]:
-    """A named async queue that emits a ``Notification`` event on every push.
+    """A named async queue owned by an agent.
 
     Attributes
     ----------
     name
-        Queue name. Shows up in ``Notification.queue_name`` and is how
-        ``Agent.get_next_input(name)`` looks the queue up.
+        Queue name. Shows up in the dispatcher's ``(queue_name, item)``
+        notification tuple and in the ``queue_status`` context block.
     """
 
-    def __init__(self, name: str, agent: Any = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        agent: Any = None,
+        *,
+        on_get: Callable[[T], None] | None = None,
+    ) -> None:
         self.name = name
         self._agent = agent
-        # Each queued slot is (item, notification_tag_or_None). Tracking
-        # the tag lets ``pop_last`` retract the Notification when a
-        # producer (e.g. UI Up-arrow) un-queues an item — keeping the
-        # event log truthful instead of leaving a "1 item pending"
-        # event that the LLM will see for nothing.
-        self._items: deque[tuple[T, str | None]] = deque()
+        self._items: deque[T] = deque()
         # Waiters are futures pending on get(). FIFO.
         self._waiters: deque[asyncio.Future[T]] = deque()
+        # Hook fired once per item at the exact "queued → accepted"
+        # transition, regardless of whether the caller is the outer
+        # dispatcher or agent code awaiting ``get()`` mid-turn. The
+        # TUI uses it to echo the user-bar and log a TUIUserInput
+        # event even when the agent drains the queue itself — without
+        # the hook, mid-turn ``get()`` makes the message silently
+        # vanish from the UI.
+        self._on_get: Callable[[T], None] | None = on_get
 
     # ---- producer side -----------------------------------------------
 
-    def put(
-        self,
-        item: T,
-        *,
-        emit_notification: bool = True,
-        inherit_tag: str | None = None,
-    ) -> None:
+    def put(self, item: T) -> None:
         """Enqueue an item and wake one pending ``get()``.
 
-        On the slow path (no awaiting consumer), emits a ``Notification``
-        and stores its tag alongside the item so ``pop_last`` can
-        retract it later. Pass ``emit_notification=False`` to skip
-        emission. Pass ``inherit_tag=<tag>`` to attach a previously-
-        emitted tag to this item (used by the merge path in
-        ``submit_message`` so a merged item keeps the original
-        Notification rather than firing a duplicate).
-
         Fast path: if a ``get()`` is already awaiting, hand the item
-        directly to the waiter (skipping the deque). NO notification
-        fires in this case — the consumer's awaited return value IS
-        the notification. Emitting one would just clutter the event
-        log with "data arrived" right next to the item itself.
+        directly to the waiter (skipping the deque). Slow path: append
+        to the deque so any later consumer sees it.
         """
-        # Hand directly to a waiting get() if one exists. This keeps
-        # the deque at 0 and avoids a wake-then-poll round-trip; the
-        # consumer's await returns immediately with the item.
         while self._waiters:
             waiter = self._waiters.popleft()
             if not waiter.done():
                 waiter.set_result(item)
                 return
-
-        # Slow path: queue the item and (optionally) emit a Notification
-        # so any later consumer learns the queue has data.
-        tag: str | None = inherit_tag
-        if emit_notification and inherit_tag is None:
-            tag = self._emit_notification(pending=len(self._items) + 1)
-        self._items.append((item, tag))
-
-    def _emit_notification(self, *, pending: int) -> str | None:
-        """Emit a Notification on the agent's event_manager. Returns the
-        assigned tag (so it can be paired with the queue slot for later
-        retraction), or None if no event_manager is bound.
-        """
-        if self._agent is None:
-            return None
-        mgr = getattr(self._agent, "event_manager", None)
-        if mgr is None:
-            return None
-        return mgr.add(
-            Notification(
-                source=f"queue:{self.name}",
-                description=f"{pending} item(s) pending on queue {self.name!r}",
-            )
-        )
+        self._items.append(item)
 
     # ---- consumer side -----------------------------------------------
+
+    async def _drain_one(self) -> T:
+        """Block until an item arrives; return it WITHOUT firing on_get.
+
+        Internal: the public ``get()`` wraps this and fires ``on_get``.
+        ``wait_for_any`` calls ``_drain_one`` directly so it can fire
+        ``on_get`` exactly once for the race winner, even when multiple
+        racing tasks complete in the same loop tick.
+
+        Safe to cancel: a cancelled drain removes its waiter without
+        consuming any item. If a producer set the waiter's result
+        between the cancel and the unwind, the item is restored to the
+        head of the deque so a later consumer can claim it.
+        """
+        if self._items:
+            return self._items.popleft()
+        loop = asyncio.get_running_loop()
+        waiter: asyncio.Future[T] = loop.create_future()
+        self._waiters.append(waiter)
+        try:
+            return await waiter
+        except asyncio.CancelledError:
+            try:
+                self._waiters.remove(waiter)
+            except ValueError:
+                pass
+            # If we were cancelled but a producer already set our result,
+            # the item would be lost — push it back onto the queue. We
+            # do NOT fire on_get here: the item is back in the backlog
+            # and will fire when some other consumer actually dequeues it.
+            if waiter.done() and not waiter.cancelled():
+                try:
+                    self._items.appendleft(waiter.result())
+                except BaseException:
+                    pass
+            raise
 
     async def get(self) -> T:
         """Block until an item arrives, then return it.
@@ -116,34 +144,44 @@ class InputQueue[T]:
         Safe to cancel: a cancelled ``get()`` simply removes its waiter
         from the queue without consuming any item.
 
-        Note: the Notification associated with the popped item is
-        *not* retracted here — when the dispatcher hands an item to
-        ``respond()`` the Notification is real history. Only
-        ``pop_last`` (un-queue without delivering) retracts.
+        Fires ``on_get(item)`` on the caller's event loop thread
+        exactly once per returned item, whether it came straight off
+        the backlog or was handed directly through a pending waiter.
         """
-        if self._items:
-            item, _tag = self._items.popleft()
-            return item
-        loop = asyncio.get_running_loop()
-        waiter: asyncio.Future[T] = loop.create_future()
-        self._waiters.append(waiter)
+        item = await self._drain_one()
+        self._fire_on_get(item)
+        return item
+
+    def _fire_on_get(self, item: T) -> None:
+        """Fire ``on_get`` for *item*, swallowing any exception.
+
+        Catches ``BaseException`` deliberately. ``get()`` has already
+        popped *item* from the deque by the time this is called; if the
+        hook raises out of ``get()``, the caller's ``await`` never
+        binds and the item is lost. The hook is fire-and-forget UI
+        bookkeeping — nothing it does should prevent the caller from
+        receiving the item it just dequeued. The trade-off is that a
+        ``KeyboardInterrupt`` raised while the hook is actively running
+        won't propagate; that is a narrow window in exchange for the
+        item-delivery guarantee, and the hook is small enough that the
+        window is not meaningful in practice.
+        """
+        if self._on_get is None:
+            return
         try:
-            return await waiter
-        except asyncio.CancelledError:
-            # Clean up — remove ourselves from the waiter list if still there.
-            try:
-                self._waiters.remove(waiter)
-            except ValueError:
-                pass
-            # If we were cancelled but a producer already set our result,
-            # the item would be lost — push it back onto the queue with
-            # no notification tag (that one already fired and stays).
-            if waiter.done() and not waiter.cancelled():
-                try:
-                    self._items.appendleft((waiter.result(), None))
-                except BaseException:
-                    pass
-            raise
+            self._on_get(item)
+        except BaseException:
+            logger.exception("InputQueue(%s).on_get raised", self.name)
+
+    def set_on_get(self, callback: Callable[[T], None] | None) -> None:
+        """Late-bind the ``on_get`` hook.
+
+        Useful when the queue is constructed before the consumer that
+        wants to observe dequeues exists (e.g. the TUI ``Session``
+        wires its user-bar renderer here *after* the agent has already
+        created its ``_user_messages_in`` queue).
+        """
+        self._on_get = callback
 
     def qsize(self) -> int:
         """Number of pending items."""
@@ -154,46 +192,18 @@ class InputQueue[T]:
 
     def snapshot(self) -> list[T]:
         """Return a copy of pending items (head to tail). Non-consuming."""
-        return [item for item, _tag in self._items]
+        return list(self._items)
 
     def pop_last(self) -> T | None:
         """Remove and return the most recently put item (tail).
 
         Used by the TUI for "edit what I just queued" UX (Up-arrow):
         the user pulls the queued message back into the input buffer
-        to edit it. The item never reached the agent, so we *also*
-        retract the Notification we emitted for it — otherwise the
-        LLM's event log claims data is pending when there isn't.
-
-        Returns None if the queue is empty.
-        """
-        if not self._items:
-            return None
-        item, tag = self._items.pop()
-        if tag is not None:
-            self._retract_notification(tag)
-        return item
-
-    def pop_last_with_tag(self) -> tuple[T, str | None] | None:
-        """``pop_last`` variant that also returns the notification tag
-        WITHOUT retracting it. Used by callers that want to re-push
-        the same item under the same tag (the merge path in
-        ``submit_message``).
+        to edit it. Returns None if the queue is empty.
         """
         if not self._items:
             return None
         return self._items.pop()
-
-    def _retract_notification(self, tag: str) -> None:
-        if self._agent is None:
-            return
-        mgr = getattr(self._agent, "event_manager", None)
-        if mgr is None:
-            return
-        try:
-            mgr.remove(tag)
-        except Exception:
-            pass
 
     def clear(self) -> None:
         self._items.clear()
@@ -205,6 +215,33 @@ class InputQueue[T]:
         waiting for input) vs "thinking" (working the queue).
         """
         return any(not w.done() for w in self._waiters)
+
+    # ---- introspection -----------------------------------------------
+
+    def status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
+        """Format a pending-count summary + short preview of waiting items.
+
+        Returns an empty string when the queue is drained so callers can
+        conditionally include it. Used by the TUI's ``queue_status``
+        dynamic context block and available to the LLM directly via
+        ``OutputQueue.status()`` for mid-turn checks.
+
+        Example::
+
+            user_messages: 2 pending
+              1. Can you fix this error?↵↵# one-time setup (if necess…
+              2. OK, keep going.
+        """
+        if not self._items:
+            return ""
+        lines = [f"{self.name}: {len(self._items)} pending"]
+        snapshot = list(self._items)
+        for i, item in enumerate(snapshot[:max_items], start=1):
+            lines.append(f"  {i}. {_preview_item(item, max_chars)}")
+        overflow = len(snapshot) - max_items
+        if overflow > 0:
+            lines.append(f"  … {overflow} more")
+        return "\n".join(lines)
 
     # ---- lifecycle ---------------------------------------------------
 
@@ -256,6 +293,15 @@ class OutputQueue[T]:
     async def get(self) -> T:
         return await self._source.get()
 
+    def status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
+        """Delegate to the underlying ``InputQueue.status()``.
+
+        Exposed on the read facade so the LLM can peek at pending items
+        mid-turn (``self.user_messages.status()``) without reaching into
+        the hidden producer-side queue.
+        """
+        return self._source.status(max_items=max_items, max_chars=max_chars)
+
     def __repr__(self) -> str:
         return f"OutputQueue(name={self.name!r})"
 
@@ -265,6 +311,14 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
 
     Cancels losing waiters cleanly: their items stay on their queues,
     nothing is dropped. Raises ``ValueError`` if the list is empty.
+
+    Race-completion semantics: ``asyncio.wait(FIRST_COMPLETED)`` may
+    return more than one done task when multiple ``put`` calls land
+    on adjacent loop ticks. The first done task wins and returns;
+    the others are restored to the head of their source queues so no
+    item is silently dropped. ``on_get`` fires only for the winner —
+    that's why this races on the internal ``_drain_one`` (which does
+    not fire ``on_get``) rather than on ``get()``.
     """
     if not queues:
         raise ValueError("wait_for_any() requires at least one queue")
@@ -275,23 +329,66 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
         if not q.is_empty():
             return q.name, await q.get()
 
-    # Slow path: race their get() coroutines. Wrap each in a task so
-    # we can cancel losers without losing items.
+    # Slow path: race the internal drain. We must NOT use q.get() here
+    # because get() fires on_get on every successful return; if multiple
+    # racing tasks complete in the same tick, every loser would have
+    # already fired its hook — observably wrong (UI logged accepted
+    # items the caller never saw).
     tasks: dict[asyncio.Task[Any], InputQueue[Any]] = {
-        asyncio.create_task(q.get(), name=f"wait_for_any[{q.name}]"): q for q in queues
+        asyncio.create_task(q._drain_one(), name=f"wait_for_any[{q.name}]"): q for q in queues
     }
     try:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-        # Cancel pending waiters; their .get() coros unwind cleanly
-        # (InputQueue.get handles CancelledError by removing the waiter).
+        # Cancel pending waiters; their _drain_one coros unwind cleanly
+        # (CancelledError handler removes the waiter and restores any
+        # late-set result to the deque head).
         for t in pending:
             t.cancel()
-        # Await cancellations so exceptions don't leak.
-        await asyncio.gather(*pending, return_exceptions=True)
-        winner = next(iter(done))
-        return tasks[winner].name, winner.result()
+        # Await cancellations so exceptions don't leak and the
+        # CancelledError-restore branch in _drain_one actually runs.
+        for t in pending:
+            try:
+                await t
+            except BaseException:
+                pass
+        # Multiple done tasks are possible. Pick the winner by queue-list
+        # order (matches dict insertion order, which matches the order
+        # tasks were created from `queues`) — same FIFO-by-position
+        # contract the fast path documents. ``done`` is a set; iterating
+        # it directly would be non-deterministic.
+        winner_task = next(t for t in tasks if t in done)
+        winner_q = tasks[winner_task]
+        winner_item = winner_task.result()
+        for t in done:
+            if t is winner_task:
+                continue
+            q = tasks[t]
+            try:
+                lost_item = t.result()
+            except BaseException:
+                continue
+            q._items.appendleft(lost_item)
+        # Fire on_get for the winner only.
+        winner_q._fire_on_get(winner_item)
+        return winner_q.name, winner_item
     except BaseException:
-        # On outer cancellation, cancel everything in flight.
+        # Outer cancellation: cancel any tasks still in flight, await
+        # all of them so each _drain_one's CancelledError handler can
+        # restore late-set results, then explicitly restore the result
+        # of any task that completed before cancellation propagated
+        # (those didn't go through the CancelledError branch — they
+        # finished with a value that nobody would otherwise consume).
         for t in tasks:
-            t.cancel()
+            if not t.done():
+                t.cancel()
+        for t, q in tasks.items():
+            try:
+                await t
+            except BaseException:
+                pass
+            if t.done() and not t.cancelled():
+                try:
+                    q._items.appendleft(t.result())
+                except BaseException:
+                    pass
         raise

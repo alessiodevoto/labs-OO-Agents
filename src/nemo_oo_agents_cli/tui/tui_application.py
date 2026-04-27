@@ -64,6 +64,25 @@ def terminal_cols(default: int = 120, minimum: int = 20) -> int:
 PROMPT_MARKER = "❯ "
 
 
+def _coalesce_string_into_queue(inq: Any, text: str) -> None:
+    """Push *text* onto *inq*, merging into the trailing item if it's a string.
+
+    UX policy, lifted out of ``submit_message``: when a user types
+    multiple lines in quick succession (Enter, type more, Enter), we
+    want one composite multi-line item — not N tiny items the agent
+    handles one-by-one. The trailing queued item is the merge target
+    only if it's a ``str``; non-string items (anything a producer puts
+    that isn't a typed message) are preserved unchanged.
+    """
+    tail = inq.pop_last()
+    if isinstance(tail, str):
+        inq.put(f"{tail}\n{text}")
+        return
+    if tail is not None:
+        inq.put(tail)
+    inq.put(text)
+
+
 class TUIApplication:
     """Owns a single, long-lived ``prompt_toolkit.Application`` for the TUI."""
 
@@ -73,7 +92,6 @@ class TUIApplication:
         *,
         on_command: Callable[[str], Awaitable[None] | None] | None = None,
         on_bang: Callable[[str], Awaitable[None] | None] | None = None,
-        on_user_message: Callable[[str], Awaitable[None] | None] | None = None,
         completer: Completer | None = None,
         session_label: Callable[[], str] | None = None,
     ) -> None:
@@ -92,14 +110,16 @@ class TUIApplication:
                 ``last_bang_command()``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
                 completion. When omitted no completion is offered.
+
+        The per-message echo ("queued → accepted" transition, user-bar
+        render, TUIUserInput log) is wired on the agent's
+        ``_user_messages_in`` InputQueue via ``set_on_get``. The
+        dispatcher itself doesn't call back — that would double-fire
+        the echo when the agent dequeues a message mid-turn.
         """
         self.agent = agent
         self._on_command = on_command
         self._on_bang = on_bang
-        # Public — Session assigns this after construction too (its
-        # _on_user_message closure needs helpers defined AFTER the app
-        # is built). Treat it as a settable callback, not a hidden slot.
-        self.on_user_message: Callable[[str], Awaitable[None] | None] | None = on_user_message
         self._session_label_fn: Callable[[], str] | None = session_label
         self.state = QueueState()
 
@@ -150,6 +170,13 @@ class TUIApplication:
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
+        # True while the dispatcher is inside an ``agent.respond()`` call.
+        # ``is_thinking()`` checks this flag rather than the user_messages
+        # queue's waiter count — counting waiters conflated "dispatcher
+        # idle between turns" with "agent mid-turn awaiting clarification
+        # via await self.user_messages.get()". The latter case had the
+        # spinner stop while the agent was genuinely working.
+        self._in_respond: bool = False
 
         # Single producer-many-consumers path for transcript content:
         # emit_block() enqueues one ANSI chunk; a single background task
@@ -433,7 +460,7 @@ class TUIApplication:
         """Invoke one user callback; return the scheduled Task or None.
 
         Used by every "call an out-of-band function from the TUI" site
-        (``on_command``, ``on_bang``, ``on_user_message``).
+        (``on_command``, ``on_bang``).
 
         - Synchronous callback (``None``, a regular function, or one
           that raised): returns ``None``. Errors are surfaced into the
@@ -513,13 +540,13 @@ class TUIApplication:
     def submit_message(self, user_message: str) -> None:
         """Treat ``user_message`` as if the user just typed and submitted it.
 
-        Pushes the text onto the agent's user_messages InputQueue
-        (which emits a ``Notification`` event) and lazy-starts the
-        dispatcher task. The ``on_user_message`` echo (grey user bar
-        in scrollback, session bookkeeping) fires later — when the
-        dispatcher actually pumps this message into ``respond()`` —
-        so a message typed while the agent is working shows only in
-        the queue pane until its turn comes up.
+        Pushes the text onto the agent's user_messages InputQueue and
+        lazy-starts the dispatcher task. The user-bar echo + session
+        bookkeeping fire later — on the InputQueue's ``on_get`` hook,
+        when the message is actually dequeued — so a message typed
+        while the agent is working only shows in the queue pane until
+        its turn comes up. The hook fires identically whether the
+        dispatcher or agent code pulls the item.
 
         Consecutive submissions that land while the dispatcher is
         still busy are *merged* into the trailing queue item with a
@@ -538,29 +565,7 @@ class TUIApplication:
         if inq is None:
             self.emit_block("[submit_message dropped] agent has no user_messages queue\n")
             return
-        # Merge into the trailing queued message if there is one — so
-        # successive Enters compose a single multi-line item rather
-        # than producing N tiny ones for the agent to handle one-by-one.
-        #
-        # ``pop_last_with_tag`` returns (item, tag) WITHOUT retracting
-        # the Notification (unlike ``pop_last``, which is for the
-        # un-queue UX). On merge we re-push the merged item under the
-        # original tag — so there's still exactly one Notification per
-        # in-flight queued message, and that single notification is
-        # the one ``pop_last`` would retract if the user later un-queues.
-        tail_pair = inq.pop_last_with_tag()
-        if tail_pair is not None and isinstance(tail_pair[0], str):
-            old_item, old_tag = tail_pair
-            inq.put(
-                f"{old_item}\n{user_message}",
-                emit_notification=False,
-                inherit_tag=old_tag,
-            )
-        else:
-            if tail_pair is not None:
-                old_item, old_tag = tail_pair
-                inq.put(old_item, emit_notification=False, inherit_tag=old_tag)
-            inq.put(user_message)
+        _coalesce_string_into_queue(inq, user_message)
         self._ensure_dispatcher_task()
 
     def _ensure_dispatcher_task(self) -> None:
@@ -587,11 +592,13 @@ class TUIApplication:
     async def _dispatcher_loop(self) -> None:
         """Drive ``agent.respond()`` turn-by-turn until ``STOP``.
 
-        Fires ``on_user_message`` at each "pump" point where a
-        user_messages item is about to enter ``respond()`` — that's
-        the moment a message transitions from "queued" to "accepted",
-        so the grey user-bar echoes into scrollback exactly once,
-        right when the agent starts working on it.
+        The "queued → accepted" echo (user-bar render, TUIUserInput
+        log) is fired by the InputQueue's ``on_get`` hook — installed
+        by ``Session`` — not from this dispatcher loop. That way the
+        echo is symmetric: it fires both when the dispatcher takes
+        the next user_messages item AND when the agent dequeues one
+        mid-turn via ``await self.user_messages.get()``. Calling the
+        hook here would double-render the dispatcher case.
         """
         from nemo_oo_agents import wait_for_any
         from nemo_oo_agents.runtime.input_queue import InputQueue
@@ -600,6 +607,9 @@ class TUIApplication:
         assert agent is not None
 
         user_messages_in: InputQueue = agent._user_messages_in
+        # Discovery of declared input queues lives on the agent so the
+        # WAIT race here and the queue_status context block stay in
+        # sync — see BaseTUIAgent.input_queues().
 
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
@@ -609,29 +619,23 @@ class TUIApplication:
         restored: dict[str, Any] | None = None
 
         while True:
-            if queue_name == "user_messages":
-                # Echo the user-bar and run session bookkeeping at the
-                # exact transition from queued → accepted.
-                self._run_callback(self.on_user_message, str(item))
+            self._in_respond = True
+            try:
+                result = await agent.respond((queue_name, item), restored=restored)
+            finally:
+                self._in_respond = False
 
-            result = await agent.respond((queue_name, item), restored=restored)
-
-            # Be tolerant if the LLM returned something slightly off-shape;
-            # treat missing fields as safe defaults.
-            kind = getattr(result, "kind", "STOP")
-            restored = getattr(result, "persist", None) or None
+            kind = result.kind
+            restored = result.persist or None
 
             if kind == "STOP":
                 return
             if kind == "WAIT":
-                # Iterate hidden InputQueues on the agent — one per
-                # logical input source (the OutputQueue facades are
-                # readers; we always race the underlying InputQueues).
-                queues = [v for v in vars(agent).values() if isinstance(v, InputQueue)]
+                queues = agent.input_queues()
                 if not queues:
                     return
                 queue_name, item = await wait_for_any(queues)
-            else:  # GET_USER_INPUT (default)
+            else:  # GET_USER_INPUT
                 queue_name = "user_messages"
                 item = await user_messages_in.get()
             self._on_dispatcher_dequeued()
@@ -652,8 +656,10 @@ class TUIApplication:
     def _on_agent_done(self, task: asyncio.Task) -> None:
         """Fired when the dispatcher exits (STOP, error, or cancellation).
 
-        On cancellation with messages still pending, we lazy-restart so
-        Esc (soft-cancel) doesn't strand queued input.
+        On cancellation OR exception with messages still pending we
+        lazy-restart so neither soft-cancel (Esc) nor a crashed turn
+        strands queued input — the user can keep typing and the next
+        message wakes the dispatcher again. STOP exits cleanly.
         """
         if task.cancelled():
             self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
@@ -664,6 +670,9 @@ class TUIApplication:
         exc = task.exception()
         if exc is not None:
             self.emit_block(f"Agent error: {exc}\n")
+            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+            if q is not None and q.qsize() > 0:
+                self._ensure_dispatcher_task()
 
     # ── output pipeline -----------------------------------------------
 
@@ -850,7 +859,7 @@ class TUIApplication:
             except Exception:
                 # Best-effort — a single failed write shouldn't wedge
                 # the consumer. Fall through and pick up the next block.
-                pass
+                continue
 
     def exit(self) -> None:
         if self._app.is_running:
@@ -865,20 +874,17 @@ class TUIApplication:
         return self.input_buffer.cursor_position
 
     def is_thinking(self) -> bool:
-        """True while the dispatcher is actively running a turn (not idle-waiting).
+        """True while the dispatcher is inside ``agent.respond()``.
 
-        The dispatcher task stays alive for the whole session — it's
-        "live" even when blocked on the user_messages InputQueue's
-        ``.get()`` between turns. We distinguish the two states via
-        the queue's waiter count: if something is blocked on ``get()``
-        the agent is idle; otherwise it's thinking.
+        Tracked by the ``_in_respond`` flag rather than the user_messages
+        queue's waiter count: the agent can ``await self.user_messages.get()``
+        mid-turn (clarification flow), and during that wait the queue has
+        a waiter — but the agent is genuinely thinking, not idle. The
+        flag captures the dispatcher → respond() boundary directly.
         """
         if self._agent_task is None or self._agent_task.done():
             return False
-        inq = getattr(self.agent, "_user_messages_in", None) if self.agent else None
-        if inq is not None and inq.has_waiters():
-            return False
-        return True
+        return self._in_respond
 
     def commands_dispatched(self) -> list[str]:
         """Slash commands the user has submitted, in order."""

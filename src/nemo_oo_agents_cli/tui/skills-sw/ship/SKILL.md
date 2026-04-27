@@ -53,7 +53,7 @@ if unfinished:
 ## Gate 2 — test suite green
 
 ```python
-test_results = umbrella.vars.get("test_results") or {}
+test_results = self.todo.get_var(umbrella.id, "test_results") or {}
 if not test_results.get("passed"):
     # Re-run to be sure — maybe state has changed since /tdd
     final = await self.bash.run("pytest --tb=short")
@@ -63,15 +63,15 @@ if not test_results.get("passed"):
             f"```\n{final.stdout[-2000:]}\n```"
         )
         return_result(RespondResult(kind="GET_USER_INPUT"))
-    umbrella.v.test_results = {
-                      "cmd": "pytest --tb=short", "passed": True,
-                       "stdout_tail": final.stdout[-1000:]}
+    self.todo.set_var(umbrella.id, "test_results",
+                      {"cmd": "pytest --tb=short", "passed": True,
+                       "stdout_tail": final.stdout[-1000:]})
 ```
 
 ## Gate 3 — no unaddressed blockers from /review
 
 ```python
-findings = umbrella.vars.get("review_findings") or []
+findings = self.todo.get_var(umbrella.id, "review_findings") or []
 blocking = [f for f in findings if f.get("severity") == "blocking"]
 if blocking:
     lines = ["Not shippable — unaddressed blocking findings:\n"]
@@ -88,10 +88,10 @@ Lightweight: just show the user the AC list so they confirm each
 visually. Don't try to verify programmatically — the tests do that.
 
 ```python
-spec = umbrella.vars.get("spec") or {}
+spec = self.todo.get_var(umbrella.id, "spec") or {}
 ac = spec.get("acceptance_criteria", [])
-commits = umbrella.vars.get("commits") or []
-diff_summary = umbrella.vars.get("diff_summary") or ""
+commits = self.todo.get_var(umbrella.id, "commits") or []
+diff_summary = self.todo.get_var(umbrella.id, "diff_summary") or ""
 
 lines = [
     f"# Ship gate — {umbrella.title}",

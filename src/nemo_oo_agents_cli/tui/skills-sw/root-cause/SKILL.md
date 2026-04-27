@@ -65,7 +65,7 @@ one command that fails deterministically.
 # Once you have a command that fails:
 result = await self.bash.run("<your repro command>")
 assert result.return_code != 0, "command didn't fail — is this actually the bug?"
-umbrella.v.repro_cmd = "<the command>"
+self.todo.set_var(umbrella.id, "repro_cmd", "<the command>")
 self.todo.comment(umbrella.id, f"🔧 reproduces via: <command>")
 ```
 
@@ -89,8 +89,8 @@ await self.files.write(test_path, test_code)
 # Run it — confirm it's RED for the right reason (not a syntax error):
 result = await self.bash.run(f"pytest {test_path} -v")
 assert result.return_code != 0
-umbrella.v.failing_test_code = test_code
-umbrella.v.failing_test_path = test_path
+self.todo.set_var(umbrella.id, "failing_test_code", test_code)
+self.todo.set_var(umbrella.id, "failing_test_path", test_path)
 self.todo.comment(umbrella.id, f"🧪 {test_path} RED — reproduces the bug")
 ```
 
@@ -111,7 +111,7 @@ Two anti-patterns to avoid:
 When you think you have it:
 
 ```python
-umbrella.v.root_cause = (
+self.todo.set_var(umbrella.id, "root_cause",
     "session.py:42 reads self._token then writes on refresh without "
     "holding self._lock, so a concurrent refresh sees stale token and "
     "overwrites the new one."
@@ -125,29 +125,29 @@ Ordered list of concrete changes. Each item names a file and what
 will change. No diffs, no code yet.
 
 ```python
-umbrella.v.fix_plan = [
+self.todo.set_var(umbrella.id, "fix_plan", [
     "Add threading.Lock to Session.__init__",
     "Wrap refresh() critical section in self._lock",
     "Update test_login_race to simulate concurrent refresh",
-]
+])
 self.todo.comment(umbrella.id, "📋 fix plan captured (3 steps)")
 ```
 
 ## Present the report
 
 ```python
-spec = umbrella.vars.get("spec") or {}
+spec = self.todo.get_var(umbrella.id, "spec") or {}
 lines = [
     f"# Root-cause — {umbrella.title}",
     "",
-    f"**Repro:** `{umbrella.vars.get('repro_cmd', '?')}`",
-    f"**Failing test:** `{umbrella.vars.get('failing_test_path', '?')}` (RED)",
+    f"**Repro:** `{self.todo.get_var(umbrella.id, 'repro_cmd')}`",
+    f"**Failing test:** `{self.todo.get_var(umbrella.id, 'failing_test_path')}` (RED)",
     "",
     "## Root cause",
-    umbrella.vars.get("root_cause") or "_(not yet identified)_",
+    self.todo.get_var(umbrella.id, "root_cause") or "_(not yet identified)_",
     "",
     "## Fix plan",
-    *(f"{i + 1}. {step}" for i, step in enumerate(umbrella.vars.get("fix_plan") or [])),
+    *(f"{i + 1}. {step}" for i, step in enumerate(self.todo.get_var(umbrella.id, "fix_plan") or [])),
     "",
     "---",
     f"Ready to implement? `/tdd {umbrella.id}` will flip the test "

@@ -122,6 +122,79 @@ async def test_session_cancel_background_tasks_is_safe_when_empty() -> None:
     assert session._background_tasks == set()
 
 
+async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
+    """Regression guard for the original bug: the user-bar echo wiring
+    used to assign to ``self._app.on_user_message``, an attribute that
+    nothing reads. The fix installs ``Session._on_user_message`` on
+    the InputQueue's ``on_get`` hook, so the echo fires when the
+    dispatcher dequeues the message.
+    """
+    from unittest.mock import Mock, patch
+
+    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._renderer = Mock()
+    session._app = Mock()
+    session._app.color_depth = 8
+    session._session_manager = Mock()
+    session._session_manager.user_named = True  # skip auto-name path
+    session._first_message = None
+    # _colors is a read-only property that reads the global theme; no setup needed.
+
+    queue: InputQueue[str] = InputQueue("user_messages")
+    # The exact wiring Session.run() performs.
+    queue.set_on_get(session._on_user_message)
+
+    queue.put("hi from dispatcher")
+    with patch("nemo_oo_agents_cli.tui.session._build_user_bar", return_value="BAR"):
+        item = await queue.get()
+    assert item == "hi from dispatcher"
+
+    session._session_manager.record_user.assert_called_once_with("hi from dispatcher")
+    session._renderer.reset_turn.assert_called_once()
+    session._app.emit_block.assert_called_once_with("BAR")
+
+
+async def test_session_on_user_message_fires_for_mid_turn_dequeue() -> None:
+    """Symmetry: ``on_get`` lives on the queue (not the dispatcher loop)
+    precisely so the echo fires when the agent drains mid-turn via
+    ``await self.user_messages.get()`` — not just when the dispatcher
+    dequeues. If a future refactor moves the call into the dispatcher
+    loop, the mid-turn drain path silently drops user-bar / TUIUserInput.
+    """
+    from unittest.mock import Mock, patch
+
+    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._renderer = Mock()
+    session._app = Mock()
+    session._app.color_depth = 8
+    session._session_manager = Mock()
+    session._session_manager.user_named = True
+    session._first_message = None
+    # _colors is a read-only property that reads the global theme; no setup needed.
+
+    inq: InputQueue[str] = InputQueue("user_messages")
+    inq.set_on_get(session._on_user_message)
+    # Mid-turn drain goes through the OutputQueue read facade, the same
+    # surface the LLM uses.
+    reader = inq.reader
+
+    inq.put("clarification")
+    with patch("nemo_oo_agents_cli.tui.session._build_user_bar", return_value="BAR"):
+        item = await reader.get()
+    assert item == "clarification"
+
+    # Must fire exactly once — symmetric with the dispatcher path.
+    session._session_manager.record_user.assert_called_once_with("clarification")
+    session._renderer.reset_turn.assert_called_once()
+    session._app.emit_block.assert_called_once_with("BAR")
+
+
 async def test_session_cancel_background_tasks_skips_done_tasks() -> None:
     """Tasks that already finished aren't cancelled (a no-op), but the
     set is still cleared."""

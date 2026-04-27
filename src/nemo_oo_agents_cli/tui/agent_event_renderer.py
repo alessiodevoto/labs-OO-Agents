@@ -6,17 +6,25 @@
 ``ToolCallEvent`` and ``PythonOutput`` events and forwards them to
 ``emit_text`` as Rich renderables. It also owns the monkey-patched
 ``agent._render_message`` hook so ``self.message()`` output lands in
-the transcript in the right order relative to code cells.
+the transcript.
 
-State (all per-turn):
+State (per-turn):
 
 - ``_agent_has_messaged`` — True after the first ``self.message()`` in
   the current turn. Drives the one-time ``"OO ─"`` rule that separates
   agent output from user input.
-- ``_pending_messages`` — buffer for ``self.message()`` calls.
-  Unconditionally buffered; drained on every ``PythonOutput`` so
-  messages always land BELOW the code-preview + output block for the
-  cell above them.
+
+``self.message()`` emits inline. There was a previous attempt to buffer
+messages and only flush them after the next ``PythonOutput`` / tool
+call, so they'd visually land *below* the preceding code cell; that
+created a silent-loss bug where any message emitted after the last
+``PythonOutput`` of a turn sat in the buffer until the user typed
+something else (``reset_turn`` was the only reliable flush path). The
+ordering constraint isn't worth the correctness cost: ``self.message()``
+is called mid-cell, the ``∴`` preview fires on the enclosing
+``ToolCallEvent`` *before* the cell body runs, and cell output arrives
+*after* the cell body — so inline emit naturally lands between preview
+and output.
 
 The class has no reference to ``Session``. Callers pass ``emit_text``
 (the ANSI-enqueue function), a ``show_python`` getter, and a shared
@@ -87,7 +95,6 @@ class AgentEventRenderer:
         self._colors = colors
         self._unsubscribes: list[Callable[[], None]] = []
         self._agent_has_messaged = False
-        self._pending_messages: list[str] = []
         # Assigned by attach() with whatever was on agent._render_message
         # before; detach() restores to this value. Declaring it here
         # means detach() can read it without a defensive getattr and
@@ -148,32 +155,27 @@ class AgentEventRenderer:
             self._agent._render_message = self._prior_render_message
 
     def reset_turn(self) -> None:
-        """Called on new user submission — flush any stragglers from the
-        previous turn and reset the per-turn ``OO ─`` guard.
+        """Called on new user submission — reset the per-turn ``OO ─`` guard.
 
-        Messages emitted after the last ``PythonOutput`` of a turn stay
-        in the buffer (there's no "turn ended" event). Flushing on the
-        next user submission ensures they're never silently dropped —
-        they appear just above the new user bar rather than being lost
-        forever.
+        Nothing else to clean up now that ``self.message()`` emits
+        inline; the OO rule wants to re-fire once per turn so each
+        turn gets its own separator between agent output and user
+        input.
         """
-        if self._pending_messages:
-            self._flush_messages()
         self._agent_has_messaged = False
 
     # ── message rendering (agent self.message()) ───────────────────────
 
     def _render_message(self, text: str) -> None:
-        """Hook plugged into ``agent._render_message``. Buffers
-        unconditionally so every message lands AFTER the nearest
-        preceding code block's ``PythonOutput`` flush — matching the
-        visual contract "messages always below the anchor above them".
+        """Hook plugged into ``agent._render_message``.
 
-        A CodeAct prefill runs at the start of every turn, so the
-        buffer drains quickly; messages don't sit visibly queued in
-        normal flow.
+        Emits the message inline as a Markdown block. Ordering vs
+        surrounding events is naturally correct because ``self.message()``
+        is called mid-cell, after the ``∴`` preview fires on the
+        enclosing ``ToolCallEvent`` and before the cell's
+        ``PythonOutput`` arrives.
         """
-        self._pending_messages.append(str(text))
+        self._emit_markdown(str(text))
 
     def _emit_markdown(self, text: str) -> None:
         if not self._agent_has_messaged:
@@ -182,11 +184,6 @@ class AgentEventRenderer:
                 Rule(Text("OO ", style=self._colors["mauve"]), style="dim", align="left")
             )
         self._emit_text(Markdown(str(text)))
-
-    def _flush_messages(self) -> None:
-        """Drain ``_pending_messages`` in order, each as a markdown block."""
-        while self._pending_messages:
-            self._emit_markdown(self._pending_messages.pop(0))
 
     # ── agent event handlers ───────────────────────────────────────────
 
@@ -197,15 +194,10 @@ class AgentEventRenderer:
 
     def _on_tool_call(self, event: _ToolCallEvent) -> None:
         name = getattr(event, "name", "")
-        if name == "return_result":
-            # ``return_result`` invoked as its own tool call (not inline
-            # inside ``execute_python``) emits no PythonOutput, so
-            # ``_on_python_output`` never fires the turn-end flush.
-            # Any buffered ``self.message()`` calls would otherwise stay
-            # stuck in ``_pending_messages`` past the agent's stop.
-            self._flush_messages()
-            return
         if name != "execute_python":
+            # ``return_result`` and other tool calls have no visible
+            # rendering of their own — self.message() output (if any)
+            # was already emitted inline when the agent called it.
             return
         tool_call_id = getattr(event, "tool_call_id", "")
         arguments = getattr(event, "arguments", {})
@@ -236,9 +228,6 @@ class AgentEventRenderer:
         tool_call_id = getattr(event, "tool_call_id", "")
         code = self._pending_code.pop(tool_call_id, None)
         if tool_call_id.startswith("prefill_"):
-            # Still flush any pending messages so they don't land below
-            # a LATER cell's output.
-            self._flush_messages()
             return
 
         stdout = str(getattr(event, "stdout", "") or "")
@@ -261,17 +250,13 @@ class AgentEventRenderer:
             if stderr.strip():
                 self._emit_text(Rule(Text("oo stderr", style=red), style="dim", align="left"))
                 self._emit_text(Text(stderr.rstrip("\n"), style=red))
-            self._flush_messages()
             return
 
         # Preview mode: stdout is for the agent; user sees results via
-        # self.message(). Only show stderr so errors aren't silent. Then
-        # flush any self.message() calls so they appear BELOW the code
-        # preview.
+        # self.message(). Only show stderr so errors aren't silent.
         if stderr.strip():
             for line in stderr.rstrip("\n").split("\n"):
                 self._emit_text(Text(f"  │ {line}", style="red"))
-        self._flush_messages()
 
     def _on_summary(self, event: _SummaryEvent) -> None:
         """Render a dim one-line notice when a summary/truncation is applied.

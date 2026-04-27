@@ -21,25 +21,11 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 # Export core types
 # Export agent and decorators
 
+from context_blocks import ContextWindowStats, DynamicContext  # noqa: E402
 from nemo_oo_agents._logging import enable_logging  # noqa: E402
 from nemo_oo_agents._visible import visible  # noqa: E402
 from nemo_oo_agents.agent import Agent  # noqa: E402
 from nemo_oo_agents.agentdoc import hidden  # noqa: E402
-
-
-# Lazy imports to break circular dependency: context_blocks -> agentdoc shim -> nemo_oo_agents
-def __getattr__(name):
-    if name == "ContextWindowStats":
-        from context_blocks import ContextWindowStats
-
-        return ContextWindowStats
-    if name == "DynamicContext":
-        from context_blocks import DynamicContext
-
-        return DynamicContext
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors

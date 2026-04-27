@@ -2,22 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for ``AgentEventRenderer``.
 
-The renderer owns two pieces of per-turn state (``_pending_messages``,
-``_agent_has_messaged``) and three event handlers. These tests construct
-the renderer directly with a ``_FakeAgent`` and a list-append
-``emit_text`` so we can assert on the exact sequence of emitted Rich
-renderables — no prompt_toolkit, no block queue, no frontend.
+The renderer owns one piece of per-turn state (``_agent_has_messaged``)
+and three event handlers. These tests construct the renderer directly
+with a ``_FakeAgent`` and a list-append ``emit_text`` so we can assert
+on the exact sequence of emitted Rich renderables — no prompt_toolkit,
+no block queue, no frontend.
 
-Covers the gaps flagged by the post-refactor test-coverage review:
-- ``self.message()`` always buffers and flushes AFTER the nearest
-  ``PythonOutput`` so messages land BELOW the code-preview + output
-  block for the cell above them — even the first message of a turn
-- ``reset_turn()`` flushes stragglers from a turn that ended after the
-  last cell, so they're never silently dropped
-- prefill tool-call-ids short-circuit the full-cell render but still
-  flush pending messages
-- ``show_python=True`` path renders the full cell (oo python / oo stdout)
-- ``detach()`` restores any prior ``_render_message`` hook
+Covers:
+- ``self.message()`` emits inline as a Markdown block the moment it's
+  called — no buffering. (See the module docstring for why the old
+  buffer-until-next-PythonOutput scheme was removed.)
+- The first ``self.message()`` of a turn emits the ``"OO ─"`` rule
+  once; subsequent messages don't re-emit it until ``reset_turn()``.
+- prefill tool-call-ids short-circuit the full-cell render (no
+  user-visible code / stdout for internal inspection calls).
+- ``show_python=True`` path renders the full cell
+  (``oo python`` / ``oo stdout``).
+- ``detach()`` restores any prior ``_render_message`` hook.
 """
 
 from __future__ import annotations
@@ -128,137 +129,88 @@ def _fire_summary(
 # ── tests ──────────────────────────────────────────────────────────────
 
 
-def test_message_mid_cell_buffers_and_flushes_below_output() -> None:
-    """``self.message()`` called between ToolCall and PythonOutput renders
-    AFTER the cell, not in the middle of it. Pins the buffering
-    invariant that makes cells feel like notebook cells."""
-    agent, emitted, r = _mk(show_python=False)
-    r.attach()
-
-    _fire_tool_call(agent.event_manager, "print('hi')")
-    # Agent called self.message() DURING the cell — via the render-hook.
-    assert agent._render_message is not None
-    agent._render_message("mid-cell note")
-    _fire_python_output(agent.event_manager, stderr="warn")
-
-    # Order: code preview (∴ line), stderr line (│ warn), then the
-    # post-cell markdown (OO rule + Markdown). The message MUST come
-    # after the stderr line, never before.
-    kinds = [type(e).__name__ for e in emitted]
-    assert kinds.count("Text") >= 2  # preview + stderr line
-    assert any(isinstance(e, Markdown) for e in emitted)
-    markdown_idx = next(i for i, e in enumerate(emitted) if isinstance(e, Markdown))
-    stderr_idx = next(i for i, e in enumerate(emitted) if isinstance(e, Text) and "warn" in str(e))
-    assert stderr_idx < markdown_idx, (
-        "message must render AFTER stderr, not interleaved with the cell"
-    )
-
-
-def test_reset_turn_flushes_stragglers_from_previous_turn() -> None:
-    """Messages emitted after the last ``PythonOutput`` of a turn (or
-    during a turn that was cancelled mid-cell) stay in the buffer.
-    ``reset_turn()`` on the next user submission must flush them
-    visibly so they're never silently dropped."""
-    agent, emitted, r = _mk(show_python=False)
-    r.attach()
-
-    # Simulate a turn that emitted a message after its last cell (or
-    # a cancelled-mid-cell turn) — message stays buffered.
-    agent._render_message("stranded")
-    assert r._pending_messages == ["stranded"]
-    assert not any(isinstance(e, Markdown) for e in emitted)
-
-    # Next user submission: reset_turn flushes the straggler.
-    r.reset_turn()
-    assert r._pending_messages == []
-    assert any(isinstance(e, Markdown) for e in emitted)
-
-
-def test_first_message_of_turn_never_emits_before_code_preview() -> None:
-    """Regression pin: the FIRST ``self.message()`` of a turn — even
-    when called AFTER the CodeAct prefill flushed — must NOT emit
-    before a subsequent code preview. Every message is buffered until
-    the next ``PythonOutput`` flushes it.
-
-    Historically a short-lived refactor had `_render_message` emit
-    immediately when no cell was "open", which let the first post-prefill
-    message appear ABOVE the first real code preview. This test pins the
-    opposite order: all messages land below the cell above them."""
-    agent, emitted, r = _mk(show_python=False)
-    r.attach()
-
-    # Turn 1: CodeAct prefill runs first (framework does this every turn).
-    _fire_tool_call(agent.event_manager, "bind_self()", tool_call_id="prefill_t1")
-    _fire_python_output(agent.event_manager, stdout="", tool_call_id="prefill_t1")
-
-    # Now the agent generates its response: one self.message() call,
-    # THEN a real code cell with its own message inside.
-    agent._render_message("opening remark")
-    # Snapshot emission count before the real code cell — the opening
-    # remark must NOT have landed yet.
-    before_real_cell = len(emitted)
-    _fire_tool_call(agent.event_manager, "do_it()", tool_call_id="t2")
-    agent._render_message("mid-cell detail")
-    _fire_python_output(agent.event_manager, stdout="done", tool_call_id="t2")
-
-    # No Markdown emitted between the prefill flush and the real
-    # code-preview firing — the opening-remark message was buffered.
-    pre_preview_slice = emitted[: before_real_cell + 1]  # +1 to include the preview
-    markdowns_before_real = [e for e in pre_preview_slice if isinstance(e, Markdown)]
-    assert markdowns_before_real == [], (
-        "message leaked above the code preview — the first-message regression returned"
-    )
-
-    # Both messages land AFTER the real code preview (they're in the
-    # tail emitted by _on_python_output's flush).
-    real_preview_idx = next(
-        i for i, e in enumerate(emitted) if isinstance(e, Text) and "do_it" in str(e)
-    )
-    markdowns = [i for i, e in enumerate(emitted) if isinstance(e, Markdown)]
-    assert len(markdowns) == 2
-    for m in markdowns:
-        assert m > real_preview_idx
-
-
-def test_return_result_tool_call_flushes_pending_messages() -> None:
-    """When ``return_result`` fires as its own tool call (not inline in
-    ``execute_python``), no ``PythonOutput`` event follows — so the
-    turn-end flush used to be skipped and ``self.message()`` calls
-    bufferered before the stop were silently dropped.
-
-    Regression guard: the renderer must flush pending messages on
-    ``return_result`` tool calls so the user sees the agent's last words.
+def test_message_emits_inline_not_buffered() -> None:
+    """Regression: ``self.message()`` renders inline the moment it's
+    called, rather than being buffered until the next
+    ``PythonOutput``. The old buffer-then-flush scheme stranded
+    messages for the full lifetime of the last turn whenever the
+    flush triggers (``PythonOutput``, ``return_result``) didn't fire
+    after the final ``self.message()`` — the user only saw them after
+    typing their next input. Inline emit kills that class of bug.
     """
     agent, emitted, r = _mk(show_python=False)
     r.attach()
 
-    # Prior cell ran and flushed (e.g. the agent wrote a message then
-    # issued return_result without wrapping it in execute_python).
-    _fire_tool_call(agent.event_manager, "print('work')", tool_call_id="t1")
-    _fire_python_output(agent.event_manager, stdout="work", tool_call_id="t1")
+    _fire_tool_call(agent.event_manager, "print('hi')")
+    assert agent._render_message is not None
+    agent._render_message("mid-cell note")
 
-    # Agent calls self.message() from outside a code cell (e.g. inside
-    # respond() after the last execute_python), then the LLM issues
-    # return_result as a separate tool.
+    # Message must have rendered immediately — not held until the
+    # cell completes.
+    markdowns = [e for e in emitted if isinstance(e, Markdown)]
+    assert len(markdowns) == 1
+    assert "mid-cell note" in str(markdowns[0].markup)
+
+    # Subsequent PythonOutput shouldn't add more Markdown renderables
+    # (no buffer to flush any more).
+    _fire_python_output(agent.event_manager, stderr="warn")
+    markdowns_after = [e for e in emitted if isinstance(e, Markdown)]
+    assert len(markdowns_after) == 1
+
+
+def test_message_between_preview_and_cell_output_preserves_natural_order() -> None:
+    """``self.message()`` is called *inside* the cell body, so the
+    ``∴`` code preview (fired on the enclosing ``ToolCallEvent``)
+    renders first, then the message renders inline, and finally the
+    cell's stderr/stdout lands when the ``PythonOutput`` event
+    arrives. This is the natural ordering inline emit produces.
+    """
+    agent, emitted, r = _mk(show_python=False)
+    r.attach()
+
+    _fire_tool_call(agent.event_manager, "print('hi')")
+    agent._render_message("mid-cell note")
+    _fire_python_output(agent.event_manager, stderr="warn")
+
+    preview_idx = next(
+        i for i, e in enumerate(emitted) if isinstance(e, Text) and "print" in str(e)
+    )
+    message_idx = next(i for i, e in enumerate(emitted) if isinstance(e, Markdown))
+    stderr_idx = next(i for i, e in enumerate(emitted) if isinstance(e, Text) and "warn" in str(e))
+    assert preview_idx < message_idx < stderr_idx, (
+        "expected preview → message → stderr; got "
+        f"preview={preview_idx} message={message_idx} stderr={stderr_idx}"
+    )
+
+
+def test_return_result_tool_call_is_a_renderer_noop() -> None:
+    """``return_result`` as its own tool call emits no user-visible
+    rendering from this class — ``self.message()`` output, if any,
+    was already emitted inline when the agent called it, so there is
+    nothing for ``_on_tool_call(name='return_result')`` to do.
+    """
+    agent, emitted, r = _mk(show_python=False)
+    r.attach()
+
     agent._render_message("Final word")
+    # Inline emit — the message is already on the transcript.
+    assert any(isinstance(e, Markdown) and "Final word" in str(e.markup) for e in emitted)
+
+    before = list(emitted)
     agent.event_manager.fire(
         "ToolCallEvent",
         SimpleNamespace(name="return_result", tool_call_id="rr1", arguments={"result": {}}),
     )
-
-    # "Final word" should have rendered as Markdown.
-    assert any(isinstance(e, Markdown) and "Final word" in str(e.markup) for e in emitted), (
-        "return_result tool call must flush pending self.message() calls"
+    assert emitted == before, (
+        "return_result must be a no-op; nothing to flush in the inline-emit world"
     )
-    # Nothing remains buffered.
-    assert r._pending_messages == []
 
 
-def test_prefill_tool_call_does_not_render_code_but_does_flush() -> None:
-    """Prefill executions (internal inspection, e.g. ``prefill_abc``) show
-    a friendly message instead of code — and the matching PythonOutput
-    short-circuits the full cell render while still flushing any
-    pending messages."""
+def test_prefill_tool_call_does_not_render_code_output() -> None:
+    """Prefill executions (internal inspection, e.g. ``prefill_abc``)
+    show a friendly preview instead of code — and the matching
+    ``PythonOutput`` short-circuits the full cell render so stdout
+    from the prefill doesn't leak into the transcript."""
     agent, emitted, r = _mk(show_python=False)
     r.attach()
 
@@ -270,7 +222,7 @@ def test_prefill_tool_call_does_not_render_code_but_does_flush() -> None:
     assert any(isinstance(e, Text) and "Inspecting inputs" in str(e) for e in emitted)
     # The stdout from the prefill should NOT render — it's internal noise.
     assert not any(isinstance(e, Text) and "noise" in str(e) for e in emitted)
-    # The buffered message WAS flushed.
+    # self.message() between preview and prefill-output rendered inline.
     assert any(isinstance(e, Markdown) for e in emitted)
 
 
@@ -307,10 +259,10 @@ def test_detach_restores_prior_render_message_hook() -> None:
     r.attach()
     assert agent._render_message is not observer_calls.append  # chained
 
-    # A message fires the observer AND queues on the renderer.
+    # A message fires the observer AND the renderer emits it inline.
     agent._render_message("hi")
     assert observer_calls == ["hi"]
-    assert r._pending_messages == ["hi"]
+    assert any(isinstance(e, Markdown) and "hi" in str(e.markup) for e in emitted)
 
     r.detach()
     # Prior hook restored — observer still works, renderer does not
@@ -345,24 +297,24 @@ def test_empty_reasoning_content_is_ignored() -> None:
     assert emitted == []
 
 
-def test_reset_turn_no_buffered_messages_is_noop() -> None:
-    """``reset_turn`` with an empty buffer just clears flags; doesn't
-    emit a stray ``OO ─`` rule."""
+def test_reset_turn_is_quiet() -> None:
+    """``reset_turn`` just clears the per-turn ``OO ─`` guard flag —
+    it must never emit a stray rule or re-render anything."""
     agent, emitted, r = _mk(show_python=False)
     r.attach()
 
-    # First turn: one message buffers, then flushes via PythonOutput.
+    # First turn: one message renders inline + fires the OO rule once.
     agent._render_message("turn 1")
-    _fire_tool_call(agent.event_manager, "x=1", tool_call_id="t1")
-    _fire_python_output(agent.event_manager, tool_call_id="t1")
-    assert any(isinstance(e, Rule) for e in emitted)  # OO rule fires once
-    assert r._pending_messages == []  # flushed
+    assert any(isinstance(e, Rule) for e in emitted)
     emitted.clear()
 
-    # reset_turn with nothing pending.
+    # reset_turn is a no-op on the emission side.
     r.reset_turn()
-    assert emitted == []  # no stray output
-    assert r._agent_has_messaged is False
+    assert emitted == []
+
+    # Next turn's first message fires a fresh OO rule (guard was reset).
+    agent._render_message("turn 2")
+    assert any(isinstance(e, Rule) for e in emitted)
 
 
 def test_attach_is_idempotent() -> None:
