@@ -101,8 +101,12 @@ class AgentSnapshot(BaseModel):
                     ) from exc
                 context_blocks.append(StaticContextBlock(key=key, value=serialized))
 
+        # Tag allocation lives on the backend now, so the snapshot's
+        # next_tag_num is informational only — restore reads the canonical
+        # value from the backend itself. We record max_tag_num()+1 here
+        # so older readers still see a sensible value.
         em_state = EventManagerState(
-            next_tag_num=agent.event_manager._next_tag_num,
+            next_tag_num=agent.event_manager._backend.max_tag_num() + 1,
         )
 
         attributes: dict[str, Any] = {}
@@ -168,13 +172,10 @@ class AgentSnapshot(BaseModel):
                 else:
                     agent.context_manager[block.key] = value
 
-        # Use the higher of the snapshot value and the backend's actual max tag,
-        # because events may have been added after the snapshot was saved (e.g.
-        # session metadata events written during session close).
-        agent.event_manager._next_tag_num = max(
-            self.event_manager.next_tag_num,
-            agent.event_manager._next_tag_num,
-        )
+        # Tag allocation lives on the backend; the backend re-derives its
+        # next-tag counter lazily from max_tag_num() of the stored events,
+        # so a resumed session always picks up correctly. Nothing to do
+        # here — the snapshot's recorded next_tag_num is informational.
 
         for attr_name, attr_value in self.attributes.items():
             setattr(agent, attr_name, deserialize(attr_value, self.type_allowlist))

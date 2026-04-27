@@ -3,8 +3,13 @@
 """Storage manager protocol for agent persistence.
 
 Defines the StorageManager interface — the single object users pass to
-agents for full persistence support. It centralizes persistable events, including event streaming
+agents for full persistence support. It centralizes persistable events
 (via an EventBackend) and state snapshots.
+
+The Agent owns its EventManager; storage owns only the EventBackend
+underneath. This separation means swapping storage (``/clear``,
+``/session new``, etc.) preserves subscribers and middleware on the
+agent's stable EventManager — only the persistence target changes.
 
 See docs/plans/2026-03-10-serialization.md for the full design.
 """
@@ -13,7 +18,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
-    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nemo_oo_agents.runtime.event_backend import EventBackend
 
 
 @runtime_checkable
@@ -21,7 +26,7 @@ class StorageManager(Protocol):
     """Unified storage interface for agent persistence.
 
     Implementations centralize all agent storage:
-    - Event management (owns the EventManager and its backend)
+    - Event persistence (owns the EventBackend)
     - Snapshot save and restore
 
     The StorageManager is the single object users pass to agents
@@ -36,8 +41,8 @@ class StorageManager(Protocol):
         storage = PostgresStorageManager("postgresql://...")
         agent = MyAgent(storage=storage)
 
-        # Events stream automatically via storage.event_manager.
-        # Snapshot explicitly:
+        # Events stream automatically through agent.event_manager,
+        # which writes to storage.event_backend. Snapshot explicitly:
         snapshot_id = agent.save()
 
         # Restore:
@@ -45,12 +50,13 @@ class StorageManager(Protocol):
     """
 
     @property
-    def event_manager(self) -> "EventManager":
-        """The EventManager for this storage.
+    def event_backend(self) -> "EventBackend":
+        """The EventBackend for this storage.
 
-        Owns the EventBackend and provides the full event pipeline
-        (add, query, collapse, subscribe). The Agent delegates all
-        event operations through this.
+        Provides persistence for events (store, get, query). The Agent
+        owns the EventManager; this backend is the persistence target
+        the manager writes through. Swapping storage means swapping
+        this backend underneath the agent's stable EventManager.
         """
         ...
 

@@ -56,13 +56,15 @@ def _make_sm(tmp_path, *, model="m", agent_cls="A", working_dir="", session_id=N
 def _make_mock_agent(storage: SQLiteStorageManager) -> MagicMock:
     """Mock agent wired to a real ``SQLiteStorageManager``.
 
-    ``event_manager`` delegates to the real backend so ``clear()`` would
-    actually destroy data (proves the bug was real) and so survival is
-    verifiable (proves the fix works).
+    The agent owns a real ``EventManager`` bound to the storage's
+    backend so ``clear()`` would actually destroy data (proves the bug
+    was real) and so survival is verifiable (proves the fix works).
     """
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
     agent = MagicMock()
     agent._storage = storage
-    agent.event_manager = storage.event_manager
+    agent.event_manager = EventManager(backend=storage.event_backend)
     agent.respond = AsyncMock()
     # on() must return a callable (unsubscribe fn) for any renderer wiring.
     agent.event_manager.on = MagicMock(return_value=lambda: None)

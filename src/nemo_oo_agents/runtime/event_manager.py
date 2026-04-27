@@ -102,9 +102,6 @@ class EventManager:
         self._backend: EventBackend = backend if backend is not None else InMemoryBackend()
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
 
-        # Tag counter — synced from backend so resumed sessions don't collide.
-        self._next_tag_num: int = self._backend.max_tag_num() + 1
-
         # Runtime event query override (set via set_event_query())
         self._event_query: EventQuery | None = None
 
@@ -147,13 +144,15 @@ class EventManager:
 
         # Optionally store with assigned tag
         if record:
-            # Does the event already have a tag? Use it. Otherwise assign one.
+            # Does the event already have a tag? Use it. Otherwise let the
+            # backend allocate one — backend-driven allocation guarantees
+            # that multiple managers writing through the same backend
+            # never hand out the same tag.
             if isinstance(event, Summary) and event.summary_tag:
                 tag = event.summary_tag
                 self._validate_tag(tag)
             else:
-                tag = str(self._next_tag_num)
-                self._next_tag_num += 1
+                tag = self._backend.allocate_next_tag()
 
             # Set tag on event and store via backend
             event.tag = tag
@@ -202,6 +201,18 @@ class EventManager:
                 pass  # already removed — idempotent
 
         return unsubscribe
+
+    def set_backend(self, backend: EventBackend) -> None:
+        """Swap the persistence backend underneath this manager.
+
+        Handlers, middleware, middleware identity, and the event query
+        are preserved — only the place events get stored changes. This
+        is what storage swaps (``/clear``, ``/session new``, ``/session
+        <id>`` in the TUI) call so subscribers stay attached across the
+        swap. Tag allocation lives on the backend itself, so the new
+        backend hands out tags starting from its own high-water mark.
+        """
+        self._backend = backend
 
     def set_event_query(self, query: "EventQuery | None") -> None:
         """Set runtime event query for filtering context events.
@@ -491,8 +502,10 @@ class EventManager:
 
     def clear(self) -> None:
         """Clear all events and reset counters."""
+        # Backend's clear() resets its tag counter; nothing else for the
+        # manager to reset since handlers/middleware/event_query are
+        # subscriber state, not event state.
         self._backend.clear()
-        self._next_tag_num = 1
 
     # === Archive Operations ===
 

@@ -67,15 +67,24 @@ class TestSnapshotRoundtrip:
         assert isinstance(raw["status"], DynamicContext)
         assert raw["status"].expr == "self.__class__.__name__"
 
-    def test_event_manager_tag_num_preserved(self, agent):
-        """Event manager's _next_tag_num counter survives a snapshot roundtrip."""
-        agent.event_manager._next_tag_num = 42
+    def test_event_manager_snapshot_records_tag_high_water(self, agent):
+        """Snapshot records the backend's tag high-water mark (informational).
 
-        snap = snapshot_to_json(agent)
-        agent2 = SimpleAgent()
-        snapshot_from_json(snap, agent2)
+        Tag allocation lives on the EventBackend, so the snapshot's
+        next_tag_num is informational only — actual collision-avoidance
+        on resume is handled by ``backend.allocate_next_tag()`` deriving
+        from ``max_tag_num()`` of the live storage. This test pins the
+        recorded value so older snapshot readers still see something
+        sensible.
+        """
+        from nemo_oo_agents.events import EventBase
 
-        assert agent2.event_manager._next_tag_num == 42
+        agent.event_manager.add(EventBase())  # tag "1"
+        agent.event_manager.add(EventBase())  # tag "2"
+
+        snap = AgentSnapshot.from_agent(agent)
+        # Backend has tags 1, 2; next allocation would be 3.
+        assert snap.event_manager.next_tag_num == 3
 
     def test_user_attributes_roundtrip(self, agent):
         """Public, JSON-serializable user attributes survive a snapshot roundtrip."""
@@ -160,10 +169,14 @@ class TestAgentSnapshot:
 
     def test_model_dump_roundtrip(self, agent):
         """AgentSnapshot survives a model_dump/model_validate roundtrip."""
+        from nemo_oo_agents.events import EventBase
+
         agent.context_manager["notes"] = "hello"
         agent.context_manager.set_dynamic("status", "self.__class__.__name__")
         agent.score = 42
-        agent.event_manager._next_tag_num = 10
+        # Add events so the backend's high-water mark is non-trivial.
+        for _ in range(9):
+            agent.event_manager.add(EventBase())
 
         original = AgentSnapshot.from_agent(agent)
         data = snapshot_to_dict(original)
@@ -171,20 +184,18 @@ class TestAgentSnapshot:
 
         assert restored.version == original.version
         assert len(restored.context) == len(original.context)
-        assert restored.event_manager.next_tag_num == 10
+        assert restored.event_manager.next_tag_num == 10  # 9 events stored, next would be 10
         assert restored.attributes == {"score": 42}
 
     def test_restore_via_model(self, agent):
         """AgentSnapshot.restore mutates agent correctly."""
         agent.context_manager["key"] = "value"
-        agent.event_manager._next_tag_num = 7
 
         snap = AgentSnapshot.from_agent(agent)
         agent2 = SimpleAgent()
         snap.restore(agent2)
 
         assert agent2.context_manager["key"] == "value"
-        assert agent2.event_manager._next_tag_num == 7
 
     def test_restore_version_mismatch(self):
         """restore raises if snapshot version was tampered with."""

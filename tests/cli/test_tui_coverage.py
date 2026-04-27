@@ -1620,13 +1620,11 @@ class TestTUIAgentInit:
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         agent._summarizers = []
-        # event_manager is a property; patch it via property mock
+        # event_manager is now an instance attribute, set via assignment.
         mock_em = MagicMock()
         mock_em.keys.return_value = []
-        with patch.object(
-            type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)
-        ):
-            status = agent.get_summarization_status()
+        agent.event_manager = mock_em
+        status = agent.get_summarization_status()
         assert "active_events" in status
         assert status["has_summarizer"] is False
 
@@ -1643,10 +1641,8 @@ class TestTUIAgentInit:
         agent._summarizers = [mock_summarizer]
         mock_em = MagicMock()
         mock_em.keys.return_value = ["t1", "t1..t2"]
-        with patch.object(
-            type(agent), "event_manager", new_callable=lambda: property(lambda self: mock_em)
-        ):
-            status = agent.get_summarization_status()
+        agent.event_manager = mock_em
+        status = agent.get_summarization_status()
         assert status["has_summarizer"] is True
         assert status["current_tokens"] == 5000
         assert status["summary_count"] == 1  # one ".." tag

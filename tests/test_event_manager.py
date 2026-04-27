@@ -193,8 +193,7 @@ def test_clear():
 
     hm.clear()
     assert len(hm) == 0
-    # Tag counter must restart from 1 after clear
-    assert hm._next_tag_num == 1
+    # Tag counter (now on the backend) must restart from 1 after clear
     tag = hm.add(Task(prompt="After clear"))
     assert tag == "1"
 
@@ -243,7 +242,7 @@ def test_in_memory_backend_max_tag_num_with_range_tag():
 
 
 def test_event_manager_init_syncs_from_prepopulated_backend():
-    """EventManager started with an existing backend must sync _next_tag_num."""
+    """A backend that already has events must hand out tag = max+1 next."""
     from nemo_oo_agents.events import EventBase
 
     backend = InMemoryBackend()
@@ -252,12 +251,11 @@ def test_event_manager_init_syncs_from_prepopulated_backend():
     backend.store("3", EventBase())
 
     em = EventManager(backend=backend)
-    assert em._next_tag_num == 4  # max(3) + 1
+    assert em.add(Task(prompt="next")) == "4"
 
 
 def test_event_manager_init_empty_backend_starts_at_one():
     em = EventManager()
-    assert em._next_tag_num == 1
     tag = em.add(Task(prompt="first"))
     assert tag == "1"
 
@@ -1010,3 +1008,76 @@ def test_emit_handler_exception_does_not_skip_others():
 
     hm.add(Task(prompt="test"))
     assert "good" in calls  # good_handler must still fire
+
+
+def test_set_backend_preserves_subscribers():
+    """Pins the bug fix: subscribers stay attached when the backend is swapped.
+
+    Regression for the silent-preview bug — when ``/clear`` swapped the
+    agent's storage, the old EventManager went away with it and any
+    handler subscribed at startup (e.g. the TUI's AgentEventRenderer)
+    pointed at a dead manager. The structural fix moves backend swap
+    onto a stable EventManager so subscribers keep firing across the
+    swap.
+    """
+    hm = EventManager(backend=InMemoryBackend())
+    received = []
+    hm.on("Task", lambda e: received.append(e.prompt))
+
+    hm.add(Task(prompt="before-swap"))
+
+    new_backend = InMemoryBackend()
+    hm.set_backend(new_backend)
+
+    hm.add(Task(prompt="after-swap"))
+
+    assert received == ["before-swap", "after-swap"]
+    # The post-swap event landed in the new backend; the pre-swap one didn't.
+    pre_swap_in_new = any(
+        getattr(e, "prompt", None) == "before-swap" for e in new_backend.all_events()
+    )
+    post_swap_in_new = any(
+        getattr(e, "prompt", None) == "after-swap" for e in new_backend.all_events()
+    )
+    assert post_swap_in_new and not pre_swap_in_new
+
+
+def test_set_backend_resets_tag_allocation_to_new_backend():
+    """After set_backend, tag allocation tracks the new backend's high-water mark."""
+    em = EventManager(backend=InMemoryBackend())
+    em.add(Task(prompt="a"))  # tag "1"
+    em.add(Task(prompt="b"))  # tag "2"
+
+    # Swap to a backend that already has events through tag "5".
+    populated = InMemoryBackend()
+    for tag in ("1", "2", "3", "4", "5"):
+        ev = Task(prompt=f"existing-{tag}")
+        ev.tag = tag
+        populated.store(tag, ev)
+
+    em.set_backend(populated)
+    new_tag = em.add(Task(prompt="new"))
+    # Must skip past the existing tags rather than colliding.
+    assert int(new_tag) > 5
+
+
+def test_multiple_managers_share_backend_without_tag_collision():
+    """Two EventManagers writing through the same backend never reuse a tag.
+
+    This is the invariant that lets the TUI's SessionManager keep a
+    light EventManager bound to the storage backend while the agent
+    uses its own stable EventManager — both safe because tag allocation
+    lives on the backend.
+    """
+    backend = InMemoryBackend()
+    em1 = EventManager(backend=backend)
+    em2 = EventManager(backend=backend)
+
+    tags = [
+        em1.add(Task(prompt="a")),
+        em2.add(Task(prompt="b")),
+        em1.add(Task(prompt="c")),
+        em2.add(Task(prompt="d")),
+    ]
+    assert len(set(tags)) == len(tags)
+    assert tags == ["1", "2", "3", "4"]

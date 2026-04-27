@@ -31,7 +31,6 @@ from nemo_oo_agents.events import (
     Summary,
     Task,
 )
-from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 
@@ -148,6 +147,10 @@ class SQLiteEventBackend:
         self._conn = conn
         self._insertion_counter = self._max_insertion_order() + 1
         self._registry: dict[str, type[EventBase]] = dict(_CORE_TYPES)
+        # Tag counter — lazy-init from storage so a resumed DB picks up
+        # at the right number, and tags handed out (but not yet stored)
+        # don't get re-issued.
+        self._next_tag_num: int | None = None
 
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
@@ -302,6 +305,19 @@ class SQLiteEventBackend:
             self._conn.execute("DELETE FROM events")
             self._conn.execute("DELETE FROM active_tags")
         self._insertion_counter = 0
+        self._next_tag_num = None
+
+    def allocate_next_tag(self) -> str:
+        if self._next_tag_num is None:
+            self._next_tag_num = self.max_tag_num() + 1
+        tag = str(self._next_tag_num)
+        self._next_tag_num += 1
+        return tag
+
+    def peek_next_tag(self) -> str:
+        if self._next_tag_num is None:
+            return str(self.max_tag_num() + 1)
+        return str(self._next_tag_num)
 
     def max_tag_num(self) -> int:
         # Extract the trailing number from each tag in SQL:
@@ -442,14 +458,13 @@ class SQLiteStorageManager:
             self._conn.execute("PRAGMA journal_mode=WAL")
             _ensure_schema(self._conn)
             self._backend = SQLiteEventBackend(self._conn)
-            self._event_manager = EventManager(backend=self._backend)
         except Exception:
             self.close()
             raise
 
     @property
-    def event_manager(self) -> "EventManager":
-        return self._event_manager
+    def event_backend(self) -> "SQLiteEventBackend":
+        return self._backend
 
     def save_snapshot(self, agent: "Agent") -> str:
         snapshot = AgentSnapshot.from_agent(agent)

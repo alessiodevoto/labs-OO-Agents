@@ -7,6 +7,7 @@ from pathlib import Path
 
 from context_blocks import Metadata
 from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.storage import SQLiteStorageManager
 from unifiedllm import CompletionClient
 
@@ -29,15 +30,17 @@ def test_close_commits_pending_events():
         # Create storage and add some events
         storage = SQLiteStorageManager(db_path)
 
-        # Add a metadata event through the event manager
-        storage.event_manager.add(Metadata(content="Test event before close"))
+        # Add a metadata event through a manager bound to storage's backend
+        em = EventManager(backend=storage.event_backend)
+        em.add(Metadata(content="Test event before close"))
 
         # Close without explicit commit - the fix should handle this
         storage.close()
 
         # Reopen the database and verify the event was persisted
         storage2 = SQLiteStorageManager(db_path)
-        events = storage2.event_manager.values()  # Use values() instead of get_all()
+        em2 = EventManager(backend=storage2.event_backend)
+        events = em2.values()
         storage2.close()
 
         assert len(events) >= 1, "Event should be persisted after close"
@@ -84,19 +87,22 @@ def test_session_swap_preserves_old_session():
 
         # Session 1: Create and add events
         storage1 = SQLiteStorageManager(session1_path)
-        storage1.event_manager.add(Metadata(content="Session 1 message 1"))
-        storage1.event_manager.add(Metadata(content="Session 1 message 2"))
+        em1 = EventManager(backend=storage1.event_backend)
+        em1.add(Metadata(content="Session 1 message 1"))
+        em1.add(Metadata(content="Session 1 message 2"))
 
         # Simulate /clear: close session 1 and start session 2
         storage1.close()  # This should commit pending events
 
         storage2 = SQLiteStorageManager(session2_path)
-        storage2.event_manager.add(Metadata(content="Session 2 message 1"))
+        em2 = EventManager(backend=storage2.event_backend)
+        em2.add(Metadata(content="Session 2 message 1"))
         storage2.close()
 
         # Simulate /session resume: reopen session 1
         storage1_reopened = SQLiteStorageManager(session1_path)
-        events = storage1_reopened.event_manager.values()  # Use values() instead of get_all()
+        em1_reopened = EventManager(backend=storage1_reopened.event_backend)
+        events = em1_reopened.values()
         storage1_reopened.close()
 
         # Verify session 1's events are still there
@@ -115,7 +121,8 @@ def test_multiple_close_calls_safe():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test_session.db"
         storage = SQLiteStorageManager(db_path)
-        storage.event_manager.add(Metadata(content="Test event"))
+        em = EventManager(backend=storage.event_backend)
+        em.add(Metadata(content="Test event"))
 
         # Close multiple times - should not raise
         storage.close()
@@ -123,7 +130,8 @@ def test_multiple_close_calls_safe():
 
         # Verify data is still intact
         storage2 = SQLiteStorageManager(db_path)
-        events = storage2.event_manager.values()  # Use values() instead of get_all()
+        em2 = EventManager(backend=storage2.event_backend)
+        events = em2.values()
         storage2.close()
 
         assert len(events) >= 1, "Event should be persisted"

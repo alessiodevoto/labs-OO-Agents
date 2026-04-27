@@ -603,8 +603,10 @@ Standard Python builtins and agent instance (`self`) are available."""
             return_result_tool = self._build_return_result_tool(return_type, call.method_name)
             tools = [execute_python_tool, return_result_tool]
 
-            # Use the task event's tag as the call ID so the LLM sees a stable reference
-            object.__setattr__(call, "id", str(runtime.event_manager._next_tag_num))
+            # Use the task event's tag as the call ID so the LLM sees a stable reference.
+            # Tag allocation lives on the backend now — peek_next_tag() returns the tag
+            # the imminent add(Task) will be assigned, without consuming it.
+            object.__setattr__(call, "id", runtime.event_manager._backend.peek_next_tag())
             task_content = await self._build_task_message(runtime, original_call=call)
             runtime.event_manager.add(Task(prompt=task_content))
 

@@ -4,8 +4,7 @@
 
 from typing import TYPE_CHECKING
 
-from nemo_oo_agents.runtime.event_backend import InMemoryBackend
-from nemo_oo_agents.runtime.event_manager import EventManager
+from nemo_oo_agents.runtime.event_backend import EventBackend, InMemoryBackend
 
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
@@ -23,11 +22,11 @@ class InMemoryStorageManager:
     """
 
     def __init__(self) -> None:
-        self._event_manager = EventManager(backend=InMemoryBackend())
+        self._event_backend: EventBackend = InMemoryBackend()
 
     @property
-    def event_manager(self) -> EventManager:
-        return self._event_manager
+    def event_backend(self) -> EventBackend:
+        return self._event_backend
 
     def save_snapshot(self, agent: "Agent") -> str:
         from nemo_oo_agents.errors.storage import StorageNotConfiguredError

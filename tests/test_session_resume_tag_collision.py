@@ -1,10 +1,14 @@
 """Regression test: resumed sessions must not reuse tag numbers already in the backend.
 
-Bug: After restoring from a snapshot, _next_tag_num was set from the snapshot's
-recorded value. If events were added to the backend *after* the snapshot was
-taken (e.g. session-close metadata), those events occupy higher tag numbers.
-The restored agent would then start assigning from the snapshot value, colliding
-with those later events.
+Bug: An earlier design cached ``_next_tag_num`` on the EventManager and
+restored it from the snapshot's recorded value. If events were added to
+the backend *after* the snapshot was taken (e.g. session-close metadata),
+those events occupied higher tag numbers and the restored agent would
+collide with them.
+
+Tag allocation now lives on the EventBackend itself and is lazy-initialised
+from ``max_tag_num()``, so the restored backend always picks the next
+available tag regardless of what the snapshot recorded.
 """
 
 from __future__ import annotations
@@ -50,9 +54,10 @@ def test_next_tag_num_does_not_collide_after_resume(tmp_path):
     agent2 = _SimpleAgent(storage=storage2)
     storage2.restore_latest_snapshot(agent2)
 
-    # The next tag assigned must be strictly greater than 5 (the highest in the backend)
-    next_tag = agent2.event_manager._next_tag_num
-    assert next_tag > 5, f"_next_tag_num={next_tag} will collide with existing tags up to 5"
+    # The next tag the backend would hand out must be strictly greater
+    # than 5 (the highest tag already in storage).
+    next_tag = int(agent2.event_manager._backend.peek_next_tag())
+    assert next_tag > 5, f"next allocation={next_tag} will collide with existing tags up to 5"
 
     # Verify that actually emitting a new event doesn't produce a colliding tag
     existing_tags = {e.tag for e in agent2.event_manager._backend.all_events()}
