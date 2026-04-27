@@ -96,14 +96,10 @@ class SessionManager:
         self._name: str | None = None
         self._user_named: bool = False
 
-        # SessionManager owns a thin EventManager bound to its storage's
-        # backend so it can write TUI metadata (start, rename, user
-        # input) without depending on the agent — which doesn't exist
-        # yet at SessionManager-construction time, and after a /clear
-        # swap is still pointing at the *old* backend at this moment.
-        # Tag allocation happens on the backend itself, so this manager
-        # and the agent's manager can coexist on the same backend
-        # without ever colliding on tag numbers.
+        # Thin EventManager bound to storage so SessionManager can
+        # write TUI metadata without depending on the agent (which
+        # doesn't exist yet at construction). Tag allocation lives on
+        # the backend, so this manager and the agent's coexist safely.
         self._event_manager = EventManager(backend=storage.event_backend)
 
         # TUI event types are auto-registered in the global _EVENT_REGISTRY

@@ -207,11 +207,8 @@ class Agent(metaclass=AgentMeta):
         # Generate agent ID
         self._agent_id = str(uuid4())
 
-        # Storage manager - default to InMemoryStorageManager (no persistence).
-        # The agent owns its EventManager for its lifetime; storage owns only
-        # the EventBackend underneath. Storage swaps (e.g. /clear, /session
-        # new) replace the backend via event_manager.set_backend(...) so
-        # subscribers and middleware stay attached across the swap.
+        # Storage owns the EventBackend; the agent owns the EventManager.
+        # Storage swaps repoint the manager via event_manager.set_backend().
         self._storage = storage or InMemoryStorageManager()
         self.event_manager = EventManager(backend=self._storage.event_backend)
 

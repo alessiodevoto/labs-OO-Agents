@@ -147,10 +147,10 @@ class SQLiteEventBackend:
         self._conn = conn
         self._insertion_counter = self._max_insertion_order() + 1
         self._registry: dict[str, type[EventBase]] = dict(_CORE_TYPES)
-        # Tag counter — lazy-init from storage so a resumed DB picks up
-        # at the right number, and tags handed out (but not yet stored)
-        # don't get re-issued.
-        self._next_tag_num: int | None = None
+        # Tag counter — eager-init from storage so a resumed DB picks
+        # up at the right number. ``store()`` keeps it coherent when a
+        # caller writes a tag higher than the current value.
+        self._next_tag_num: int = self.max_tag_num() + 1
 
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
@@ -196,6 +196,8 @@ class SQLiteEventBackend:
     # -- EventBackend protocol --
 
     def store(self, tag: str, event: EventBase) -> None:
+        from nemo_oo_agents.runtime.event_backend import _tag_max_num
+
         data = self._serialize(event)
         order = self._insertion_counter
         self._insertion_counter += 1
@@ -210,6 +212,7 @@ class SQLiteEventBackend:
                 "INSERT INTO active_tags (position, tag) VALUES (?, ?)",
                 (pos, tag),
             )
+        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
 
     def get(self, tag: str) -> EventBase | None:
         row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
@@ -305,19 +308,12 @@ class SQLiteEventBackend:
             self._conn.execute("DELETE FROM events")
             self._conn.execute("DELETE FROM active_tags")
         self._insertion_counter = 0
-        self._next_tag_num = None
+        self._next_tag_num = 1
 
     def allocate_next_tag(self) -> str:
-        if self._next_tag_num is None:
-            self._next_tag_num = self.max_tag_num() + 1
         tag = str(self._next_tag_num)
         self._next_tag_num += 1
         return tag
-
-    def peek_next_tag(self) -> str:
-        if self._next_tag_num is None:
-            return str(self.max_tag_num() + 1)
-        return str(self._next_tag_num)
 
     def max_tag_num(self) -> int:
         # Extract the trailing number from each tag in SQL:

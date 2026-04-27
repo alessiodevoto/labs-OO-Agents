@@ -1081,3 +1081,50 @@ def test_multiple_managers_share_backend_without_tag_collision():
     ]
     assert len(set(tags)) == len(tags)
     assert tags == ["1", "2", "3", "4"]
+
+
+def test_direct_store_keeps_tag_counter_coherent():
+    """A caller writing a high tag directly via ``backend.store()`` must
+    not collide with the next ``allocate_next_tag()``.
+
+    This pins the counter-staleness fix: ``store()`` updates
+    ``_next_tag_num`` so any subsequent allocation skips past the
+    just-stored tag, regardless of whether the tag came via
+    ``allocate_next_tag()`` or a direct ``store()`` (e.g. snapshot
+    re-hydration, tests, or any caller that pre-assigns a tag).
+    """
+    from nemo_oo_agents.events import EventBase
+
+    backend = InMemoryBackend()
+    em = EventManager(backend=backend)
+    em.add(Task(prompt="a"))  # tag "1"
+
+    pre_existing = EventBase()
+    pre_existing.tag = "99"
+    backend.store("99", pre_existing)
+
+    assert em.add(Task(prompt="b")) == "100"
+
+
+def test_clear_after_set_backend_clears_current_backend_only():
+    """``em.clear()`` after ``set_backend()`` clears the new backend, not the old.
+
+    Pins that swap-then-clear doesn't accidentally wipe the original
+    storage and that fresh allocation restarts from "1" on the new one.
+    """
+    old_backend = InMemoryBackend()
+    em = EventManager(backend=old_backend)
+    em.add(Task(prompt="old1"))
+    em.add(Task(prompt="old2"))
+
+    new_backend = InMemoryBackend()
+    em.set_backend(new_backend)
+    em.add(Task(prompt="new1"))
+
+    em.clear()
+
+    # New backend was cleared; old backend untouched.
+    assert len(new_backend) == 0
+    assert len(old_backend) == 2
+    # New backend's allocator restarts from "1" after clear.
+    assert em.add(Task(prompt="fresh")) == "1"

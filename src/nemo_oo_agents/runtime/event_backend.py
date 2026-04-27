@@ -197,42 +197,13 @@ class EventBackend(Protocol):
         """Remove all events and reset state."""
         ...
 
-    def max_tag_num(self) -> int:
-        """Return the highest numeric tag value across all stored events.
-
-        For simple tags like ``"5"``, the value is 5.
-        For range tags like ``"2..40"``, the value is 40.
-
-        Returns:
-            The highest tag number, or 0 if no events are stored.
-        """
-        ...
-
     def allocate_next_tag(self) -> str:
         """Allocate and return the next sequential tag.
 
-        Tag allocation lives on the backend (not on EventManager) so
-        that multiple managers writing through the same backend — e.g.
-        the agent's stable EventManager and a SessionManager that
-        records TUI metadata — never hand out the same tag.
-
-        The returned tag is always one larger than the highest tag
-        number currently in storage; ``store(tag, event)`` is expected
-        to follow.
-
-        Returns:
-            The newly allocated string tag (e.g. ``"5"``).
-        """
-        ...
-
-    def peek_next_tag(self) -> str:
-        """Return the tag the next ``allocate_next_tag()`` call will return.
-
-        Does not allocate. Used by callers that need to know the tag
-        of an event before they add it — e.g. setting a CodeAct
-        ``call.id`` to match the imminent Task event's tag. The
-        guarantee only holds if no other writer allocates between the
-        peek and the subsequent add.
+        Tag allocation lives on the backend so multiple EventManagers
+        writing through the same backend (e.g. the agent's stable
+        manager and a SessionManager recording TUI metadata) never hand
+        out the same tag. ``store(tag, event)`` is expected to follow.
         """
         ...
 
@@ -256,17 +227,18 @@ class InMemoryBackend:
         self._events: list[EventBase] = []
         self._tag_to_event: dict[str, EventBase] = {}
         self._active_tags: list[str] = []
-        # Monotonic tag counter — the high-water mark of any tag ever
-        # allocated, including tags handed out but not yet stored. Lazy
-        # allocation reads max from storage on first call so a fresh
+        # Monotonic tag counter. Eager-init from storage so a fresh
         # backend (or one populated externally) starts at the right
-        # number.
-        self._next_tag_num: int | None = None
+        # number. ``store()`` keeps the counter coherent if a caller
+        # writes a tag higher than the current value, so direct stores
+        # and ``allocate_next_tag()`` never collide.
+        self._next_tag_num: int = self.max_tag_num() + 1
 
     def store(self, tag: str, event: EventBase) -> None:
         self._events.append(event)
         self._tag_to_event[tag] = event
         self._active_tags.append(tag)
+        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
 
     def get(self, tag: str) -> EventBase | None:
         return self._tag_to_event.get(tag)
@@ -342,7 +314,7 @@ class InMemoryBackend:
         self._events.clear()
         self._tag_to_event.clear()
         self._active_tags.clear()
-        self._next_tag_num = None
+        self._next_tag_num = 1
 
     def max_tag_num(self) -> int:
         if not self._tag_to_event:
@@ -350,16 +322,9 @@ class InMemoryBackend:
         return max(_tag_max_num(tag) for tag in self._tag_to_event)
 
     def allocate_next_tag(self) -> str:
-        if self._next_tag_num is None:
-            self._next_tag_num = self.max_tag_num() + 1
         tag = str(self._next_tag_num)
         self._next_tag_num += 1
         return tag
-
-    def peek_next_tag(self) -> str:
-        if self._next_tag_num is None:
-            return str(self.max_tag_num() + 1)
-        return str(self._next_tag_num)
 
     def __len__(self) -> int:
         return len(self._events)

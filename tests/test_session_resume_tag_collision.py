@@ -54,14 +54,14 @@ def test_next_tag_num_does_not_collide_after_resume(tmp_path):
     agent2 = _SimpleAgent(storage=storage2)
     storage2.restore_latest_snapshot(agent2)
 
-    # The next tag the backend would hand out must be strictly greater
-    # than 5 (the highest tag already in storage).
-    next_tag = int(agent2.event_manager._backend.peek_next_tag())
-    assert next_tag > 5, f"next allocation={next_tag} will collide with existing tags up to 5"
-
-    # Verify that actually emitting a new event doesn't produce a colliding tag
+    # Emitting a new event must produce a tag strictly greater than 5
+    # (the highest tag already in storage) and not collide with any
+    # existing tag.
     existing_tags = {e.tag for e in agent2.event_manager._backend.all_events()}
     new_tag = agent2.event_manager.add(EventBase())
+    assert int(new_tag) > 5, (
+        f"new event got tag {new_tag!r}; will collide with existing tags up to 5"
+    )
     assert new_tag not in existing_tags, (
         f"new event was assigned tag {new_tag!r} which already exists in the backend"
     )

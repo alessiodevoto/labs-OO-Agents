@@ -749,22 +749,14 @@ class Session:
     # ------------------------------------------------------------------
 
     def _swap_session_manager(self, new_sm: "SessionManager") -> None:
-        """Close the current session and switch to *new_sm*.
-
-        Storage swap: ``agent._storage`` is replaced AND the agent's
-        ``EventManager`` is re-pointed at the new storage's
-        ``EventBackend`` via ``set_backend``. The manager itself keeps
-        its identity, handlers, and middleware — so subscribers attached
-        once at startup (e.g. the TUI's ``AgentEventRenderer``) keep
-        receiving events across the swap.
-        """
+        """Close the current session and switch to *new_sm*."""
         if self._session_manager is not None:
             self._session_manager.close()
         self._session_manager = new_sm
-        # Point the agent at the new storage AND swap the backend
-        # underneath its stable EventManager. Without the set_backend
-        # call, the manager's _backend would still point at the old
-        # storage and writes would land in the wrong DB.
+        # Point the agent at the new storage AND repoint the agent's
+        # stable EventManager at the new backend. The set_backend call
+        # is what keeps subscribers (e.g. AgentEventRenderer) alive
+        # across the swap.
         if hasattr(self.agent, "_storage"):
             self.agent._storage = new_sm._storage
             self.agent.event_manager.set_backend(new_sm._storage.event_backend)

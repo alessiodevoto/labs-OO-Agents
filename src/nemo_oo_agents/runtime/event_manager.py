@@ -203,15 +203,7 @@ class EventManager:
         return unsubscribe
 
     def set_backend(self, backend: EventBackend) -> None:
-        """Swap the persistence backend underneath this manager.
-
-        Handlers, middleware, middleware identity, and the event query
-        are preserved — only the place events get stored changes. This
-        is what storage swaps (``/clear``, ``/session new``, ``/session
-        <id>`` in the TUI) call so subscribers stay attached across the
-        swap. Tag allocation lives on the backend itself, so the new
-        backend hands out tags starting from its own high-water mark.
-        """
+        """Swap the persistence backend; handlers and middleware are preserved."""
         self._backend = backend
 
     def set_event_query(self, query: "EventQuery | None") -> None:

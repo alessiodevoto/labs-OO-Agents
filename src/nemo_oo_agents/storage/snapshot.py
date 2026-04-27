@@ -6,7 +6,6 @@
 Pydantic models provide validation and JSON serialization out of the box.
 """
 
-import logging
 from typing import Any, Final, Literal
 
 from pydantic import BaseModel, field_serializer, field_validator
@@ -17,8 +16,6 @@ from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_va
 from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
 
 SNAPSHOT_VERSION: Final = 2
-
-logger = logging.getLogger(__name__)
 
 
 class StaticContextBlock(BaseModel):
@@ -37,12 +34,6 @@ class DynamicContextBlock(BaseModel):
     expr: str
 
 
-class EventManagerState(BaseModel):
-    """Serializable subset of EventManager state."""
-
-    next_tag_num: int = 1
-
-
 class AgentSnapshot(BaseModel):
     """Intermediate representation of serializable agent state.
 
@@ -52,7 +43,6 @@ class AgentSnapshot(BaseModel):
 
     version: int = SNAPSHOT_VERSION
     context: list[StaticContextBlock | DynamicContextBlock] = []
-    event_manager: EventManagerState = EventManagerState()
     attributes: dict[str, Any] = {}
     type_allowlist: set[str] = set()
 
@@ -101,14 +91,6 @@ class AgentSnapshot(BaseModel):
                     ) from exc
                 context_blocks.append(StaticContextBlock(key=key, value=serialized))
 
-        # Tag allocation lives on the backend now, so the snapshot's
-        # next_tag_num is informational only — restore reads the canonical
-        # value from the backend itself. We record max_tag_num()+1 here
-        # so older readers still see a sensible value.
-        em_state = EventManagerState(
-            next_tag_num=agent.event_manager._backend.max_tag_num() + 1,
-        )
-
         attributes: dict[str, Any] = {}
         agent_cls = type(agent)
         for attr_name, attr_value in agent.__dict__.items():
@@ -134,7 +116,6 @@ class AgentSnapshot(BaseModel):
         return AgentSnapshot(
             version=SNAPSHOT_VERSION,
             context=context_blocks,
-            event_manager=em_state,
             attributes=attributes,
             type_allowlist=all_allowlist,
         )
@@ -171,11 +152,6 @@ class AgentSnapshot(BaseModel):
                     agent.context_manager.set_protected(block.key, value)
                 else:
                     agent.context_manager[block.key] = value
-
-        # Tag allocation lives on the backend; the backend re-derives its
-        # next-tag counter lazily from max_tag_num() of the stored events,
-        # so a resumed session always picks up correctly. Nothing to do
-        # here — the snapshot's recorded next_tag_num is informational.
 
         for attr_name, attr_value in self.attributes.items():
             setattr(agent, attr_name, deserialize(attr_value, self.type_allowlist))
