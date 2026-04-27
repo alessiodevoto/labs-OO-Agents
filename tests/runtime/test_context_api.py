@@ -91,7 +91,7 @@ def test_delitem_raises_for_missing_key():
 def test_delitem_raises_for_protected_key():
     ctx = _ctx()
     ctx._context._blocks["guarded"] = "value"
-    ctx._context._protected_keys.add("guarded")
+    ctx._context.protected_keys.add("guarded")
     with pytest.raises(ProtectedBlockError):
         del ctx["guarded"]
 
@@ -177,6 +177,6 @@ def test_pop_raises_for_missing_without_default():
 def test_pop_raises_for_protected_key():
     ctx = _ctx()
     ctx._context._blocks["guarded"] = "value"
-    ctx._context._protected_keys.add("guarded")
+    ctx._context.protected_keys.add("guarded")
     with pytest.raises(ProtectedBlockError):
         ctx.pop("guarded")

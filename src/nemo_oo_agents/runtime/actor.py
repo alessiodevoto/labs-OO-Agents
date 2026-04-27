@@ -2460,7 +2460,6 @@ async def {name}({params_str}) -> {return_type}:
             return value
 
         build_result = await build_context(
-            framework_blocks=self.agent._framework_blocks,
             context_manager=self.agent.context_manager,
             event_manager=self.agent.event_manager,
             strategy=strategy,
