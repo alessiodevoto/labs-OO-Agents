@@ -64,6 +64,25 @@ def terminal_cols(default: int = 120, minimum: int = 20) -> int:
 PROMPT_MARKER = "❯ "
 
 
+def _coalesce_string_into_queue(inq: Any, text: str) -> None:
+    """Push *text* onto *inq*, merging into the trailing item if it's a string.
+
+    UX policy, lifted out of ``submit_message``: when a user types
+    multiple lines in quick succession (Enter, type more, Enter), we
+    want one composite multi-line item — not N tiny items the agent
+    handles one-by-one. The trailing queued item is the merge target
+    only if it's a ``str``; non-string items (anything a producer puts
+    that isn't a typed message) are preserved unchanged.
+    """
+    tail = inq.pop_last()
+    if isinstance(tail, str):
+        inq.put(f"{tail}\n{text}")
+        return
+    if tail is not None:
+        inq.put(tail)
+    inq.put(text)
+
+
 class TUIApplication:
     """Owns a single, long-lived ``prompt_toolkit.Application`` for the TUI."""
 
@@ -151,6 +170,13 @@ class TUIApplication:
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
+        # True while the dispatcher is inside an ``agent.respond()`` call.
+        # ``is_thinking()`` checks this flag rather than the user_messages
+        # queue's waiter count — counting waiters conflated "dispatcher
+        # idle between turns" with "agent mid-turn awaiting clarification
+        # via await self.user_messages.get()". The latter case had the
+        # spinner stop while the agent was genuinely working.
+        self._in_respond: bool = False
 
         # Single producer-many-consumers path for transcript content:
         # emit_block() enqueues one ANSI chunk; a single background task
@@ -539,16 +565,7 @@ class TUIApplication:
         if inq is None:
             self.emit_block("[submit_message dropped] agent has no user_messages queue\n")
             return
-        # Merge into the trailing queued message if it's a str — so
-        # successive Enters compose a single multi-line item rather
-        # than producing N tiny ones for the agent to handle one-by-one.
-        tail = inq.pop_last()
-        if isinstance(tail, str):
-            inq.put(f"{tail}\n{user_message}")
-        else:
-            if tail is not None:
-                inq.put(tail)
-            inq.put(user_message)
+        _coalesce_string_into_queue(inq, user_message)
         self._ensure_dispatcher_task()
 
     def _ensure_dispatcher_task(self) -> None:
@@ -590,6 +607,9 @@ class TUIApplication:
         assert agent is not None
 
         user_messages_in: InputQueue = agent._user_messages_in
+        # Discovery of declared input queues lives on the agent so the
+        # WAIT race here and the queue_status context block stay in
+        # sync — see BaseTUIAgent.input_queues().
 
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
@@ -599,24 +619,23 @@ class TUIApplication:
         restored: dict[str, Any] | None = None
 
         while True:
-            result = await agent.respond((queue_name, item), restored=restored)
+            self._in_respond = True
+            try:
+                result = await agent.respond((queue_name, item), restored=restored)
+            finally:
+                self._in_respond = False
 
-            # Be tolerant if the LLM returned something slightly off-shape;
-            # treat missing fields as safe defaults.
-            kind = getattr(result, "kind", "STOP")
-            restored = getattr(result, "persist", None) or None
+            kind = result.kind
+            restored = result.persist or None
 
             if kind == "STOP":
                 return
             if kind == "WAIT":
-                # Iterate hidden InputQueues on the agent — one per
-                # logical input source (the OutputQueue facades are
-                # readers; we always race the underlying InputQueues).
-                queues = [v for v in vars(agent).values() if isinstance(v, InputQueue)]
+                queues = agent.input_queues()
                 if not queues:
                     return
                 queue_name, item = await wait_for_any(queues)
-            else:  # GET_USER_INPUT (default)
+            else:  # GET_USER_INPUT
                 queue_name = "user_messages"
                 item = await user_messages_in.get()
             self._on_dispatcher_dequeued()
@@ -637,8 +656,10 @@ class TUIApplication:
     def _on_agent_done(self, task: asyncio.Task) -> None:
         """Fired when the dispatcher exits (STOP, error, or cancellation).
 
-        On cancellation with messages still pending, we lazy-restart so
-        Esc (soft-cancel) doesn't strand queued input.
+        On cancellation OR exception with messages still pending we
+        lazy-restart so neither soft-cancel (Esc) nor a crashed turn
+        strands queued input — the user can keep typing and the next
+        message wakes the dispatcher again. STOP exits cleanly.
         """
         if task.cancelled():
             self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
@@ -649,6 +670,9 @@ class TUIApplication:
         exc = task.exception()
         if exc is not None:
             self.emit_block(f"Agent error: {exc}\n")
+            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+            if q is not None and q.qsize() > 0:
+                self._ensure_dispatcher_task()
 
     # ── output pipeline -----------------------------------------------
 
@@ -850,20 +874,17 @@ class TUIApplication:
         return self.input_buffer.cursor_position
 
     def is_thinking(self) -> bool:
-        """True while the dispatcher is actively running a turn (not idle-waiting).
+        """True while the dispatcher is inside ``agent.respond()``.
 
-        The dispatcher task stays alive for the whole session — it's
-        "live" even when blocked on the user_messages InputQueue's
-        ``.get()`` between turns. We distinguish the two states via
-        the queue's waiter count: if something is blocked on ``get()``
-        the agent is idle; otherwise it's thinking.
+        Tracked by the ``_in_respond`` flag rather than the user_messages
+        queue's waiter count: the agent can ``await self.user_messages.get()``
+        mid-turn (clarification flow), and during that wait the queue has
+        a waiter — but the agent is genuinely thinking, not idle. The
+        flag captures the dispatcher → respond() boundary directly.
         """
         if self._agent_task is None or self._agent_task.done():
             return False
-        inq = getattr(self.agent, "_user_messages_in", None) if self.agent else None
-        if inq is not None and inq.has_waiters():
-            return False
-        return True
+        return self._in_respond
 
     def commands_dispatched(self) -> list[str]:
         """Slash commands the user has submitted, in order."""

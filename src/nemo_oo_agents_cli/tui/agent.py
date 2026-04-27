@@ -267,20 +267,26 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             # with the system prompt.
             self.context.set("web", doc(self.web), immutable=True)
 
+    def input_queues(self) -> list[InputQueue]:
+        """Return all ``InputQueue`` instances declared as agent fields.
+
+        Single discovery rule: walk ``vars(self).values()`` and pick out
+        ``InputQueue`` instances. Used by ``_queue_status`` to render the
+        dynamic context block AND by the dispatcher loop's ``WAIT`` race
+        — both need the same set; centralising the walk here means a
+        future "queues live in a dict / are auto-registered" change has
+        one place to update.
+        """
+        return [q for q in vars(self).values() if isinstance(q, InputQueue)]
+
     def _queue_status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
         """Join every non-empty ``InputQueue``'s ``status()`` block.
 
-        Walks the agent's instance attributes for ``InputQueue``
-        instances and defers the per-queue rendering to each queue's
-        ``status()`` — so ``self.user_messages.status()`` and this
-        composite view stay in sync. Returns an empty string when every
-        queue is drained.
+        Defers per-queue rendering to each queue's ``status()`` — so
+        ``self.user_messages.status()`` and this composite view stay in
+        sync. Returns an empty string when every queue is drained.
         """
-        parts = [
-            q.status(max_items=max_items, max_chars=max_chars)
-            for q in vars(self).values()
-            if isinstance(q, InputQueue)
-        ]
+        parts = [q.status(max_items=max_items, max_chars=max_chars) for q in self.input_queues()]
         return "\n".join(p for p in parts if p)
 
     def message(self, text: str) -> None:

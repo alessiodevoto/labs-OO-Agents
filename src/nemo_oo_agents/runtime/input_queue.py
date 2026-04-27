@@ -102,6 +102,42 @@ class InputQueue[T]:
 
     # ---- consumer side -----------------------------------------------
 
+    async def _drain_one(self) -> T:
+        """Block until an item arrives; return it WITHOUT firing on_get.
+
+        Internal: the public ``get()`` wraps this and fires ``on_get``.
+        ``wait_for_any`` calls ``_drain_one`` directly so it can fire
+        ``on_get`` exactly once for the race winner, even when multiple
+        racing tasks complete in the same loop tick.
+
+        Safe to cancel: a cancelled drain removes its waiter without
+        consuming any item. If a producer set the waiter's result
+        between the cancel and the unwind, the item is restored to the
+        head of the deque so a later consumer can claim it.
+        """
+        if self._items:
+            return self._items.popleft()
+        loop = asyncio.get_running_loop()
+        waiter: asyncio.Future[T] = loop.create_future()
+        self._waiters.append(waiter)
+        try:
+            return await waiter
+        except asyncio.CancelledError:
+            try:
+                self._waiters.remove(waiter)
+            except ValueError:
+                pass
+            # If we were cancelled but a producer already set our result,
+            # the item would be lost — push it back onto the queue. We
+            # do NOT fire on_get here: the item is back in the backlog
+            # and will fire when some other consumer actually dequeues it.
+            if waiter.done() and not waiter.cancelled():
+                try:
+                    self._items.appendleft(waiter.result())
+                except BaseException:
+                    pass
+            raise
+
     async def get(self) -> T:
         """Block until an item arrives, then return it.
 
@@ -112,45 +148,29 @@ class InputQueue[T]:
         exactly once per returned item, whether it came straight off
         the backlog or was handed directly through a pending waiter.
         """
-        if self._items:
-            item = self._items.popleft()
-        else:
-            loop = asyncio.get_event_loop()
-            waiter: asyncio.Future[T] = loop.create_future()
-            self._waiters.append(waiter)
-            try:
-                item = await waiter
-            except asyncio.CancelledError:
-                try:
-                    self._waiters.remove(waiter)
-                except ValueError:
-                    pass
-                # If we were cancelled but a producer already set our result,
-                # the item would be lost — push it back onto the queue. We
-                # do NOT fire on_get here: the item is back in the backlog
-                # and will fire when some other consumer actually dequeues it.
-                if waiter.done() and not waiter.cancelled():
-                    try:
-                        self._items.appendleft(waiter.result())
-                    except BaseException:
-                        pass
-                raise
-
+        item = await self._drain_one()
         self._fire_on_get(item)
         return item
 
     def _fire_on_get(self, item: T) -> None:
-        """Fire ``on_get`` for *item*, swallowing and logging any error.
+        """Fire ``on_get`` for *item*, swallowing any exception.
 
-        A buggy hook must not prevent the caller from receiving the
-        item it just dequeued — dropping the item would be worse than
-        a missing UI echo.
+        Catches ``BaseException`` deliberately. ``get()`` has already
+        popped *item* from the deque by the time this is called; if the
+        hook raises out of ``get()``, the caller's ``await`` never
+        binds and the item is lost. The hook is fire-and-forget UI
+        bookkeeping — nothing it does should prevent the caller from
+        receiving the item it just dequeued. The trade-off is that a
+        ``KeyboardInterrupt`` raised while the hook is actively running
+        won't propagate; that is a narrow window in exchange for the
+        item-delivery guarantee, and the hook is small enough that the
+        window is not meaningful in practice.
         """
         if self._on_get is None:
             return
         try:
             self._on_get(item)
-        except Exception:
+        except BaseException:
             logger.exception("InputQueue(%s).on_get raised", self.name)
 
     def set_on_get(self, callback: Callable[[T], None] | None) -> None:
@@ -291,6 +311,14 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
 
     Cancels losing waiters cleanly: their items stay on their queues,
     nothing is dropped. Raises ``ValueError`` if the list is empty.
+
+    Race-completion semantics: ``asyncio.wait(FIRST_COMPLETED)`` may
+    return more than one done task when multiple ``put`` calls land
+    on adjacent loop ticks. The first done task wins and returns;
+    the others are restored to the head of their source queues so no
+    item is silently dropped. ``on_get`` fires only for the winner —
+    that's why this races on the internal ``_drain_one`` (which does
+    not fire ``on_get``) rather than on ``get()``.
     """
     if not queues:
         raise ValueError("wait_for_any() requires at least one queue")
@@ -301,27 +329,62 @@ async def wait_for_any(queues: list[InputQueue[Any]]) -> tuple[str, Any]:
         if not q.is_empty():
             return q.name, await q.get()
 
-    # Slow path: race their get() coroutines. Wrap each in a task so
-    # we can cancel losers without losing items.
+    # Slow path: race the internal drain. We must NOT use q.get() here
+    # because get() fires on_get on every successful return; if multiple
+    # racing tasks complete in the same tick, every loser would have
+    # already fired its hook — observably wrong (UI logged accepted
+    # items the caller never saw).
     tasks: dict[asyncio.Task[Any], InputQueue[Any]] = {
-        asyncio.create_task(q.get(), name=f"wait_for_any[{q.name}]"): q for q in queues
+        asyncio.create_task(q._drain_one(), name=f"wait_for_any[{q.name}]"): q for q in queues
     }
     try:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-        # Cancel pending waiters; their .get() coros unwind cleanly
-        # (InputQueue.get handles CancelledError by removing the waiter).
+        # Cancel pending waiters; their _drain_one coros unwind cleanly
+        # (CancelledError handler removes the waiter and restores any
+        # late-set result to the deque head).
         for t in pending:
             t.cancel()
-        # Await cancellations so exceptions don't leak.
+        # Await cancellations so exceptions don't leak and the
+        # CancelledError-restore branch in _drain_one actually runs.
         for t in pending:
             try:
                 await t
-            except (asyncio.CancelledError, BaseException):
+            except BaseException:
                 pass
-        winner = next(iter(done))
-        return tasks[winner].name, winner.result()
+        # Multiple done tasks are possible. First one wins; restore the
+        # rest to the head of their source queues so nothing is lost.
+        done_list = list(done)
+        winner_task = done_list[0]
+        winner_q = tasks[winner_task]
+        winner_item = winner_task.result()
+        for t in done_list[1:]:
+            q = tasks[t]
+            try:
+                lost_item = t.result()
+            except BaseException:
+                continue
+            q._items.appendleft(lost_item)
+        # Fire on_get for the winner only.
+        winner_q._fire_on_get(winner_item)
+        return winner_q.name, winner_item
     except BaseException:
-        # On outer cancellation, cancel everything in flight.
+        # Outer cancellation: cancel any tasks still in flight, await
+        # all of them so each _drain_one's CancelledError handler can
+        # restore late-set results, then explicitly restore the result
+        # of any task that completed before cancellation propagated
+        # (those didn't go through the CancelledError branch — they
+        # finished with a value that nobody would otherwise consume).
         for t in tasks:
-            t.cancel()
+            if not t.done():
+                t.cancel()
+        for t, q in tasks.items():
+            try:
+                await t
+            except BaseException:
+                pass
+            if t.done() and not t.cancelled():
+                try:
+                    q._items.appendleft(t.result())
+                except BaseException:
+                    pass
         raise
