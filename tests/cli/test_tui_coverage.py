@@ -599,16 +599,18 @@ class TestSwitchCommand:
         assert ok is True
         assert msg is None
 
-    async def test_model_not_in_registry_passes_through(
-        self, mock_console, mock_config, mock_agent
-    ):
-        """Unknown models pass through to litellm — /switch should succeed."""
+    async def test_model_not_in_registry(self, mock_console, mock_config, mock_agent):
         import unifiedllm
 
         cmd = SwitchCommand(mock_console, mock_config, mock_agent)
-        with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
+        original_models = unifiedllm.MODELS
+        unifiedllm.MODELS = {"prov/m": None}
+        try:
             result = await cmd.execute(["nonexistent/model"])
-        assert result.success is True
+        finally:
+            unifiedllm.MODELS = original_models
+        assert result.success is False
+        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_successful_switch(self, mock_console, mock_config, mock_agent):
         import unifiedllm
@@ -799,14 +801,14 @@ class TestMCPCommandValidation:
 class TestMCPCommandExecute:
     async def test_no_mcp_module(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch.dict("sys.modules", {"nemo_oo_agents.mcp": None}):
+        with patch.dict("sys.modules", {"mcp_nemo_oo_agents": None}):
             result = await cmd.execute(["list"])
         assert result.success is False
         assert any("MCP" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_list(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["s1", "s2"]
             result = await cmd.execute(["list"])
         assert result.success is True
@@ -814,7 +816,7 @@ class TestMCPCommandExecute:
 
     async def test_connect_success(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["server1"]
             mock_mcp.create_from_server.return_value = MagicMock()
             result = await cmd.execute(["connect", "server1"])
@@ -823,7 +825,7 @@ class TestMCPCommandExecute:
 
     async def test_connect_server_not_found(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["other"]
             result = await cmd.execute(["connect", "missing"])
         assert result.success is False
@@ -831,7 +833,7 @@ class TestMCPCommandExecute:
 
     async def test_connect_failure_exception(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["server1"]
             mock_mcp.create_from_server.side_effect = Exception("conn fail")
             result = await cmd.execute(["connect", "server1"])
@@ -843,7 +845,7 @@ class TestMCPCommandExecute:
 
     async def test_disconnect_not_connected(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["server1"]
             result = await cmd.execute(["disconnect", "server1"])
         assert result.success is False
@@ -855,7 +857,7 @@ class TestMCPCommandExecute:
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
         cmd._mcp_connections.add("server1")
         mock_agent.server1 = MagicMock()
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["server1"]
             result = await cmd.execute(["disconnect", "server1"])
         assert result.success is True
@@ -865,7 +867,7 @@ class TestMCPCommandExecute:
         cmd = MCPCommand(mock_console, mock_config, mock_agent)
         cmd._mcp_connections.add("server1")
         # Make delattr fail
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
+        with patch("mcp_nemo_oo_agents.MCPManager") as mock_mcp:
             mock_mcp.list_servers.return_value = ["server1"]
             with patch("nemo_oo_agents_cli.tui.commands.delattr", side_effect=Exception("err")):
                 result = await cmd.execute(["disconnect", "server1"])
@@ -1255,7 +1257,7 @@ class TestCommandHandler:
 
     async def test_invalid_args_path(self, handler, mock_console):
         """Command found but args invalid → prints error."""
-        result = await handler.handle("/model arg1 arg2")
+        result = await handler.handle("/model extra_arg")
         assert result.success is False
         mock_console.render.assert_called()
 
@@ -1703,7 +1705,7 @@ class TestStartDevCommand:
 
     def test_import_error_shows_message(self):
         with patch.dict(
-            "sys.modules", {"nemo_oo_agents.viewer": None, "nemo_oo_agents.viewer.main": None}
+            "sys.modules", {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}
         ):
             result = self.runner.invoke(start_dev_command, [])
         assert result.exit_code != 0
@@ -1714,7 +1716,7 @@ class TestStartDevCommand:
         import sys
 
         with patch.dict(
-            sys.modules, {"nemo_oo_agents.viewer": None, "nemo_oo_agents.viewer.main": None}
+            sys.modules, {"nemo_oo_agents_viewer": None, "nemo_oo_agents_viewer.main": None}
         ):
             result = self.runner.invoke(start_dev_command, ["--port", "5002"])
         assert result.exit_code == 1
@@ -1728,8 +1730,8 @@ class TestStartDevCommand:
         with patch.dict(
             sys.modules,
             {
-                "nemo_oo_agents.viewer": mock_viewer,
-                "nemo_oo_agents.viewer.main": mock_viewer.main,
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer.main,
             },
         ):
             with patch("uvicorn.run") as mock_run:
@@ -1748,8 +1750,8 @@ class TestStartDevCommand:
         with patch.dict(
             sys.modules,
             {
-                "nemo_oo_agents.viewer": mock_viewer,
-                "nemo_oo_agents.viewer.main": mock_viewer_main,
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer_main,
             },
         ):
             with patch("uvicorn.run") as mock_run:
@@ -1769,8 +1771,8 @@ class TestStartDevCommand:
         with patch.dict(
             sys.modules,
             {
-                "nemo_oo_agents.viewer": mock_viewer,
-                "nemo_oo_agents.viewer.main": mock_viewer_main,
+                "nemo_oo_agents_viewer": mock_viewer,
+                "nemo_oo_agents_viewer.main": mock_viewer_main,
             },
         ):
             with patch("uvicorn.run"):

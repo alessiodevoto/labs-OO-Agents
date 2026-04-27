@@ -19,7 +19,6 @@ import asyncio
 from typing import Any
 
 from nemo_oo_agents import InputQueue
-from nemo_oo_agents.events import Notification
 from nemo_oo_agents.runtime.input_queue import OutputQueue
 from nemo_oo_agents_cli.tui.agent import TUIAgent
 from nemo_oo_agents_cli.tui.tui_application import TUIApplication
@@ -58,15 +57,129 @@ def test_user_messages_queue_is_hidden_from_doc():
     assert "user_messages" in api
 
 
-def test_pushing_emits_notification_to_event_manager():
+def test_tui_agent_uses_cached_block_formatter_by_default():
+    """``BaseTUIAgent`` wires ``CachedBlockFormatter`` so immutable
+    blocks (system prompt, doc(self), anything set with
+    ``immutable=True``) land in a stable SYSTEM prefix the provider
+    can cache across turns.
+    """
+    from context_blocks.renderers import CachedBlockFormatter
+
     agent = _fresh_agent()
-    agent._user_messages_in.put("hello")
-    notifications = [
-        ev for ev in agent.event_manager._backend.all_events() if isinstance(ev, Notification)
-    ]
-    assert len(notifications) == 1
-    assert notifications[0].source == "queue:user_messages"
-    assert "1 item" in notifications[0].description
+    assert isinstance(agent.render_config.block_formatter, CachedBlockFormatter)
+
+
+def test_tui_agent_caller_can_override_render_config():
+    """Explicit ``render_config=`` wins over the CachedBlockFormatter default."""
+    from context_blocks.formatter import XMLBlockFormatter
+    from context_blocks.render_config import RenderConfig
+    from unifiedllm import FakeLLMClient
+
+    explicit = RenderConfig(block_formatter=XMLBlockFormatter())
+    agent = TUIAgent(llm=FakeLLMClient(), render_config=explicit)
+    assert isinstance(agent.render_config.block_formatter, XMLBlockFormatter)
+
+
+def test_tui_agent_framework_blocks_split_class_vs_instance_state():
+    """``self`` (``doc(type(self))``) is class-level docs — genuinely stable,
+    stays in the cached prefix. ``state`` (``pformat(self, ...)``) is
+    instance state — skills attach at runtime, so it must be volatile.
+    ``strategy_prompt`` is also volatile — stock ``CodeActStrategy``
+    declares it non-immutable so the strategy instructions can shift
+    mid-session without thrashing the SYSTEM cache.
+    """
+    from nemo_oo_agents.strategies import CodeActStrategy
+
+    agent = _fresh_agent()
+    blocks = agent._framework_blocks
+
+    # Class-level doc — immutable, cacheable.
+    self_block = blocks["self"].value
+    assert self_block.immutable is True, (
+        "doc(type(self)) is class-level and must go in the cached prefix"
+    )
+    assert self_block.expr == "doc(type(self))"
+
+    # Instance state — volatile, picks up runtime-attached skills.
+    state_block = blocks["state"].value
+    assert state_block.immutable is False
+    assert "pformat(self" in state_block.expr
+
+    # system_prompt is still immutable — stable by construction.
+    assert blocks["system_prompt"].value.immutable is True
+
+    # Strategy override ``strategy_prompt`` — stock CodeActStrategy
+    # marks it non-immutable so mid-session strategy/prompt shifts
+    # don't invalidate the rest of the cached SYSTEM prefix.
+    overrides = CodeActStrategy().get_block_overrides()
+    assert overrides["strategy_prompt"].immutable is False, (
+        "CodeActStrategy must mark strategy_prompt volatile"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Queue status is surfaced through a dynamic context block
+# ---------------------------------------------------------------------------
+
+
+def test_queue_status_dynamic_block_is_registered():
+    """``BaseTUIAgent`` registers ``queue_status`` as a dynamic context
+    block so the LLM sees pending counts every turn, in place of the
+    per-put Notification events we used to emit."""
+    from context_blocks.models import DynamicContext
+
+    agent = _fresh_agent()
+    entry = dict(agent.context_manager._raw_items()).get("queue_status")
+    assert isinstance(entry, DynamicContext)
+    assert entry.expr == "self._queue_status(max_items=3, max_chars=80)"
+
+
+def test_queue_status_empty_when_all_queues_drained():
+    agent = _fresh_agent()
+    # No pending items → empty string (keeps the rendered block quiet).
+    assert agent._queue_status() == ""
+
+
+def test_queue_status_lists_pending_per_queue():
+    agent = _fresh_agent()
+    agent._user_messages_in.put("a")
+    agent._user_messages_in.put("b")
+    # Also add a second queue to verify multi-queue formatting.
+    agent._jobs_in = InputQueue("job_outputs", agent=agent)
+    agent._jobs_in.put({"id": 1})
+
+    status = agent._queue_status()
+    # One line per non-empty queue, stable enough to assert substrings.
+    assert "user_messages: 2 pending" in status
+    assert "job_outputs: 1 pending" in status
+
+
+def test_queue_status_skips_empty_queues():
+    agent = _fresh_agent()
+    agent._jobs_in = InputQueue("job_outputs", agent=agent)
+    agent._user_messages_in.put("only-this-one")
+
+    status = agent._queue_status()
+    assert "user_messages" in status
+    assert "job_outputs" not in status
+
+
+def test_queue_status_composes_each_non_empty_queues_status():
+    """``_queue_status`` delegates the per-queue rendering to each
+    queue's ``status()`` and joins the non-empty ones. Detailed
+    formatting (numbered items, overflow, newline flattening, non-str
+    preview) is covered in test_input_queue.py — this test just
+    verifies composition."""
+    agent = _fresh_agent()
+    agent._user_messages_in.put("hi")
+    agent._jobs_in = InputQueue("job_outputs", agent=agent)
+    agent._jobs_in.put({"id": 1})
+    agent._idle_in = InputQueue("idle", agent=agent)  # stays empty → dropped
+
+    status = agent._queue_status(max_items=3, max_chars=80)
+    assert agent._user_messages_in.status(max_items=3, max_chars=80) in status
+    assert agent._jobs_in.status(max_items=3, max_chars=80) in status
+    assert "idle" not in status
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +201,7 @@ def test_output_queue_exposes_only_get_and_name():
 
 async def _await_get_via_facade():
     agent = _fresh_agent()
-    agent._user_messages_in.put("hi", emit_notification=False)
+    agent._user_messages_in.put("hi")
     msg = await agent.user_messages.get()
     return msg
 
@@ -238,20 +351,13 @@ def test_dispatcher_wait_kind_races_all_declared_input_queues():
 
 
 # ---------------------------------------------------------------------------
-# Notification semantics end-to-end through TUIApplication
+# submit_message merge semantics (no events — just deque shape)
 # ---------------------------------------------------------------------------
 
 
-def _count_notifications(agent: TUIAgent) -> int:
-    return sum(
-        1 for ev in agent.event_manager._backend.all_events() if isinstance(ev, Notification)
-    )
-
-
-def test_three_consecutive_submits_while_busy_emit_one_notification():
+def test_three_consecutive_submits_while_busy_merge_into_one_item():
     """Three Enters typed while the dispatcher is busy compose a single
-    multi-line queue item AND emit exactly one Notification (the first
-    Enter's). Subsequent merges inherit the tag, no new event fires.
+    multi-line queue item, separated by ``\\n``.
     """
     agent = _fresh_agent()
     app = TUIApplication(agent=agent)
@@ -278,102 +384,9 @@ def test_three_consecutive_submits_while_busy_emit_one_notification():
         app.submit_message("two")
         app.submit_message("three")
         app.submit_message("four")
-        # Queue holds one merged item.
         assert agent._user_messages_in.snapshot() == ["two\nthree\nfour"]
-        # Notifications: one for "one" (delivered to the dispatcher's
-        # awaited get()? no — dispatcher hadn't started yet; "one" was
-        # queued and emitted), one for "two" (slow path, queue was
-        # empty after "one" was consumed). "three" and "four" merge
-        # into "two"'s slot, inheriting its tag — no new notification.
-        assert _count_notifications(agent) == 2
         proceed.set()
         await app._agent_task
-
-    asyncio.run(_run())
-
-
-def test_pop_last_retracts_notification_at_agent_level():
-    """The Up-arrow un-queue path: pop_last on the hidden InputQueue
-    must remove the previously emitted Notification from the agent's
-    event log so the LLM doesn't see "1 item pending" for an item the
-    user pulled back into the input buffer.
-    """
-    agent = _fresh_agent()
-    # Push directly to the InputQueue (mirrors what submit_message
-    # does) — no need to spin the dispatcher just to test retraction.
-    agent._user_messages_in.put("editing-this")
-    assert _count_notifications(agent) == 1
-    assert agent._user_messages_in.snapshot() == ["editing-this"]
-
-    # User presses Up arrow — the app's _pop_last_queued closure
-    # ultimately calls inq.pop_last(), which retracts the tag.
-    popped = agent._user_messages_in.pop_last()
-    assert popped == "editing-this"
-    assert _count_notifications(agent) == 0
-
-
-def test_direct_delivery_via_dispatcher_skips_notification():
-    """When the dispatcher is between turns awaiting ``get()`` and a
-    new message is submitted, ``put()`` hands it directly to the
-    waiter — and skips emitting a Notification (the await's return
-    value IS the notification).
-    """
-    agent = _fresh_agent()
-    app = TUIApplication(agent=agent)
-
-    seen_notifications_per_turn: list[int] = []
-
-    async def _respond(notification, restored=None):
-        # Snapshot count when the dispatcher hands us a message.
-        seen_notifications_per_turn.append(_count_notifications(agent))
-        if len(seen_notifications_per_turn) >= 2:
-            return _DispatchResult(kind="STOP")
-        return _DispatchResult(kind="GET_USER_INPUT")
-
-    agent.respond = _respond  # type: ignore[method-assign]
-
-    async def _run():
-        # Push #1: dispatcher hasn't started yet → queues → fires Notification.
-        app.submit_message("first")
-        # Wait until the dispatcher consumed "first" and is awaiting
-        # the next message via get() (has_waiters becomes True).
-        for _ in range(50):
-            await asyncio.sleep(0)
-            if agent._user_messages_in.has_waiters():
-                break
-        assert agent._user_messages_in.has_waiters()
-        before = _count_notifications(agent)
-        # Push #2: directly delivered to the waiter — no Notification.
-        app.submit_message("second")
-        await app._agent_task
-        after = _count_notifications(agent)
-        assert after == before, (
-            f"direct-delivery should not emit a Notification (before={before}, after={after})"
-        )
-
-    asyncio.run(_run())
-
-
-def test_dispatcher_get_keeps_notification_in_history():
-    """When the dispatcher pumps a queued item via ``get()``, the
-    Notification stays in the event log — it's real history (the
-    item arrived and was processed). Only ``pop_last`` retracts.
-    """
-    agent = _fresh_agent()
-    app = TUIApplication(agent=agent)
-
-    async def _respond(notification, restored=None):
-        return _DispatchResult(kind="STOP")
-
-    agent.respond = _respond  # type: ignore[method-assign]
-
-    async def _run():
-        app.submit_message("hello")
-        await app._agent_task
-        # Queue is now empty (dispatcher pumped it), but the
-        # Notification we emitted on submit is still in history.
-        assert agent._user_messages_in.qsize() == 0
-        assert _count_notifications(agent) == 1
 
     asyncio.run(_run())
 

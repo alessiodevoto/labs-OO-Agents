@@ -84,8 +84,13 @@ class TestCodeActStrategyProperties:
 class TestCodeActStrategyConfig:
     """Tests for CodeActStrategy configuration."""
 
-    def test_default_max_iterations(self):
-        """Default max_iterations should be None (unlimited)."""
+    def test_default_max_iterations_is_unlimited(self):
+        """Default ``max_iterations`` is ``None`` — unlimited iterations.
+
+        Long-running agent loops (especially in interactive contexts
+        like the TUI) shouldn't hit a finite default they didn't
+        opt into. Callers that *want* a cap pass it explicitly.
+        """
         strat = CodeActStrategy(config=CodeActConfig())
         assert strat.config.max_iterations is None
 
@@ -110,7 +115,7 @@ class TestCodeActStrategyConfig:
         assert strat.config.max_iterations == 5
 
     def test_default_config(self):
-        """CodeActStrategy() has default CodeActConfig."""
+        """``CodeActStrategy()`` defaults: unlimited iterations, no cell timeout."""
         strat = CodeActStrategy(config=CodeActConfig())
         assert strat.config.max_iterations is None
         assert strat.config.cell_timeout is None

@@ -3,33 +3,19 @@
 """Tests for ``InputQueue`` + ``wait_for_any``.
 
 No LLM / runtime required — just ``asyncio`` behaviour.
+
+Queue state is surfaced to the LLM through a dynamic context block
+(see ``BaseTUIAgent._queue_status``), not through events — so the
+``InputQueue`` itself has no event-manager coupling.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Any
 
 import pytest
 
-from nemo_oo_agents.events import Notification
 from nemo_oo_agents.runtime.input_queue import InputQueue, wait_for_any
-
-
-@dataclass
-class _FakeEventManager:
-    emitted: list[Any] = field(default_factory=list)
-
-    def add(self, event: Any) -> str:
-        self.emitted.append(event)
-        return str(len(self.emitted))
-
-
-@dataclass
-class _FakeAgent:
-    event_manager: _FakeEventManager = field(default_factory=_FakeEventManager)
-
 
 # ---------------------------------------------------------------------------
 # Basic producer/consumer
@@ -66,20 +52,14 @@ async def test_get_blocks_then_wakes():
 async def test_put_delivers_directly_when_waiter_exists():
     """When a waiter is pending, put() hands the item straight to the waiter.
 
-    The item should NOT land on the backing deque — qsize stays 0 —
-    and no Notification fires (the awaited return value IS the
-    notification; emitting another event for the same delivery would
-    just clutter the LLM's history).
+    The item should NOT land on the backing deque — qsize stays 0.
     """
-    agent = _FakeAgent()
-    q: InputQueue[int] = InputQueue("q", agent=agent)
+    q: InputQueue[int] = InputQueue("q")
     getter = asyncio.create_task(q.get())
     await asyncio.sleep(0)
     q.put(42)
     assert await asyncio.wait_for(getter, timeout=0.5) == 42
     assert q.qsize() == 0
-    # Fast-path delivery: no Notification emitted.
-    assert agent.event_manager.emitted == []
 
 
 @pytest.mark.asyncio
@@ -125,130 +105,167 @@ def test_peek_removed():
     assert not hasattr(q, "peek")
 
 
+def test_clear_empties_the_queue():
+    q: InputQueue[str] = InputQueue("q")
+    q.put("a")
+    q.put("b")
+    q.clear()
+    assert q.qsize() == 0
+    assert q.snapshot() == []
+
+
 # ---------------------------------------------------------------------------
-# Notification emission
+# on_get hook — fires once per returned item, on every path
 # ---------------------------------------------------------------------------
 
 
-def test_put_emits_notification_with_source_and_description():
-    agent = _FakeAgent()
-    q: InputQueue[str] = InputQueue("user_messages", agent=agent)
+@pytest.mark.asyncio
+async def test_on_get_fires_on_slow_path_backlog_drain():
+    """When the item was already on the deque, ``get()`` fires ``on_get``
+    before returning. The TUI relies on this for the mid-turn dequeue
+    case where the agent's ``await self.user_messages.get()`` drains
+    a message that was typed while the agent was busy."""
+    seen: list[str] = []
+    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    q.put("hi")
+    got = await q.get()
+    assert got == "hi"
+    assert seen == ["hi"]
+
+
+@pytest.mark.asyncio
+async def test_on_get_fires_on_fast_path_waiter_handoff():
+    """When a waiter was already blocked on ``get()`` and ``put()`` hands
+    the item straight through, the hook must still fire exactly once."""
+    seen: list[str] = []
+    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    getter = asyncio.create_task(q.get())
+    await asyncio.sleep(0)  # register the waiter
+    q.put("hello")
+    assert await asyncio.wait_for(getter, timeout=0.5) == "hello"
+    assert seen == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_on_get_fires_once_per_item_across_multiple_gets():
+    """Two puts, two gets → hook fires twice, in order."""
+    seen: list[str] = []
+    q: InputQueue[str] = InputQueue("user_messages", on_get=seen.append)
+    q.put("a")
+    q.put("b")
+    assert await q.get() == "a"
+    assert await q.get() == "b"
+    assert seen == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_on_get_does_not_fire_on_cancelled_get():
+    """If a waiter is cancelled, no item transitioned queued → accepted
+    — the hook must NOT fire. A producer that already set the waiter's
+    result pushes the item back onto the deque; the hook will fire when
+    some other consumer actually takes it."""
+    seen: list[str] = []
+    q: InputQueue[str] = InputQueue("q", on_get=seen.append)
+
+    getter = asyncio.create_task(q.get())
+    await asyncio.sleep(0)
+    getter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await getter
+
+    assert seen == []
+    # Now a real consumer — the hook should fire for them.
+    q.put("later")
+    assert await q.get() == "later"
+    assert seen == ["later"]
+
+
+@pytest.mark.asyncio
+async def test_on_get_hook_exception_is_swallowed_and_item_still_returned():
+    """A buggy hook must not eat the item. Dropping it on the floor is
+    strictly worse than a missing UI echo."""
+
+    def boom(_item: str) -> None:
+        raise RuntimeError("bad hook")
+
+    q: InputQueue[str] = InputQueue("q", on_get=boom)
+    q.put("payload")
+    # Must not raise.
+    got = await q.get()
+    assert got == "payload"
+
+
+@pytest.mark.asyncio
+async def test_set_on_get_late_binds():
+    """Session installs its ``_on_user_message`` hook AFTER the agent
+    has already created its ``_user_messages_in`` queue, so late
+    binding must work."""
+    seen: list[str] = []
+    q: InputQueue[str] = InputQueue("user_messages")  # no hook yet
+    q.set_on_get(seen.append)
+    q.put("x")
+    await q.get()
+    assert seen == ["x"]
+
+
+# ---------------------------------------------------------------------------
+# status() — pending-count + preview rendering on the queue itself
+# ---------------------------------------------------------------------------
+
+
+def test_status_empty_queue_returns_empty_string():
+    q: InputQueue[str] = InputQueue("user_messages")
+    assert q.status() == ""
+
+
+def test_status_includes_name_count_and_numbered_previews():
+    q: InputQueue[str] = InputQueue("user_messages")
     q.put("first")
     q.put("second")
-    assert len(agent.event_manager.emitted) == 2
-    first, second = agent.event_manager.emitted
-    assert isinstance(first, Notification)
-    # Source is namespaced so non-queue producers can use the same event.
-    assert first.source == "queue:user_messages"
-    assert "1 item" in first.description
-    assert second.source == "queue:user_messages"
-    assert "2 item" in second.description
+    status = q.status()
+    lines = status.splitlines()
+    assert lines[0] == "user_messages: 2 pending"
+    assert lines[1] == "  1. first"
+    assert lines[2] == "  2. second"
 
 
-def test_emit_notification_false_skips_event():
-    agent = _FakeAgent()
-    q: InputQueue[str] = InputQueue("q", agent=agent)
-    q.put("hidden", emit_notification=False)
-    assert agent.event_manager.emitted == []
-    assert q.qsize() == 1
+def test_status_flattens_newlines_and_clips_overlong_items():
+    q: InputQueue[str] = InputQueue("user_messages")
+    q.put("line1\nline2\nline3")
+    q.put("x" * 200)
+    status = q.status(max_items=3, max_chars=30)
+    # No raw newline inside preview content (only between lines).
+    preview_lines = status.splitlines()[1:]
+    for line in preview_lines:
+        # Strip "  N. " prefix; remaining content has no embedded \n.
+        assert "\n" not in line
+        assert len(line) <= len("  N. ") + 30
+    assert "↵" in status
 
 
-# ---------------------------------------------------------------------------
-# Notification retraction on pop_last
-# ---------------------------------------------------------------------------
+def test_status_overflow_summary_when_more_than_max_items():
+    q: InputQueue[int] = InputQueue("jobs")
+    for i in range(7):
+        q.put(i)
+    status = q.status(max_items=3)
+    assert "jobs: 7 pending" in status
+    assert "… 4 more" in status
 
 
-@dataclass
-class _RetractingEventManager:
-    """Stub that supports add()/remove() for tag tracking."""
-
-    emitted: list[Any] = field(default_factory=list)
-    removed: list[str] = field(default_factory=list)
-
-    def add(self, event: Any) -> str:
-        self.emitted.append(event)
-        return f"tag-{len(self.emitted)}"
-
-    def remove(self, tag: str) -> bool:
-        self.removed.append(tag)
-        return True
+def test_status_previews_non_string_items_via_pformat():
+    q: InputQueue[dict] = InputQueue("jobs")
+    q.put({"id": 42, "kind": "build"})
+    status = q.status()
+    assert "jobs: 1 pending" in status
+    assert "'id': 42" in status
 
 
-def _retracting_agent() -> Any:
-    @dataclass
-    class _A:
-        event_manager: _RetractingEventManager = field(default_factory=_RetractingEventManager)
-
-    return _A()
-
-
-def test_pop_last_retracts_the_notification():
-    """When the user un-queues a typed-but-unsent message via Up-arrow,
-    the Notification we emitted for it must be retracted so the LLM's
-    event log doesn't claim data is pending when it isn't.
-    """
-    agent = _retracting_agent()
-    q: InputQueue[str] = InputQueue("user_messages", agent=agent)
-    q.put("hello")
-    # One emission, no removals yet.
-    assert len(agent.event_manager.emitted) == 1
-    assert agent.event_manager.removed == []
-    # User pops it back to edit and never re-submits.
-    assert q.pop_last() == "hello"
-    assert agent.event_manager.removed == ["tag-1"]
-
-
-def test_pop_last_with_tag_does_not_retract():
-    """``pop_last_with_tag`` is for callers that want to re-push the
-    item under the same tag (the merge path). It must NOT retract."""
-    agent = _retracting_agent()
-    q: InputQueue[str] = InputQueue("user_messages", agent=agent)
-    q.put("hello")
-    pair = q.pop_last_with_tag()
-    assert pair is not None
-    item, tag = pair
-    assert item == "hello"
-    assert tag == "tag-1"
-    # Crucially: NOT retracted — the caller intends to re-push it.
-    assert agent.event_manager.removed == []
-
-
-def test_get_does_not_retract_notification():
-    """Notifications fire on push and stay in history when the
-    dispatcher pumps the item — that's real history (the message did
-    arrive). Only ``pop_last`` (un-queue) retracts.
-    """
-    agent = _retracting_agent()
-    q: InputQueue[str] = InputQueue("user_messages", agent=agent)
-    q.put("hello")
-    assert len(agent.event_manager.emitted) == 1
-    asyncio.run(q.get())
-    assert agent.event_manager.removed == []
-
-
-def test_inherit_tag_keeps_one_notification_after_merge():
-    """The merge path uses pop_last_with_tag + put(inherit_tag=...) so
-    the merged item still owns the single original Notification.
-    A subsequent pop_last retracts that one tag — no orphans."""
-    agent = _retracting_agent()
-    q: InputQueue[str] = InputQueue("user_messages", agent=agent)
-    q.put("first")
-    pair = q.pop_last_with_tag()
-    assert pair is not None
-    item, tag = pair
-    q.put(f"{item}\nsecond", emit_notification=False, inherit_tag=tag)
-    # Still exactly one Notification — no second one fired for the merge.
-    assert len(agent.event_manager.emitted) == 1
-    # Now the user un-queues the merged item — the original tag retracts.
-    assert q.pop_last() == "first\nsecond"
-    assert agent.event_manager.removed == ["tag-1"]
-
-
-def test_put_without_bound_agent_is_ok():
-    q: InputQueue[str] = InputQueue("q")  # no agent
-    q.put("x")
-    q.put("y")
-    assert q.qsize() == 2
+def test_output_queue_status_delegates_to_input_queue():
+    """OutputQueue exposes status() so the LLM can peek mid-turn without
+    reaching into the hidden producer-side queue."""
+    q: InputQueue[str] = InputQueue("user_messages")
+    q.put("waiting")
+    assert q.reader.status() == q.status()
 
 
 # ---------------------------------------------------------------------------

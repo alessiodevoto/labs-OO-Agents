@@ -76,17 +76,6 @@ def _key_sequence(key: str) -> str:
 # ── scriptable agent mock ----------------------------------------------------
 
 
-class _StubEventManager:
-    """Minimal event_manager stub so InputQueue can emit Notifications."""
-
-    def __init__(self) -> None:
-        self.added: list[Any] = []
-
-    def add(self, event: Any) -> str:  # pragma: no cover - trivial
-        self.added.append(event)
-        return str(len(self.added))
-
-
 class FakeAgent:
     """Scriptable stand-in for ``TUIAgent`` used by harness tests.
 
@@ -116,7 +105,6 @@ class FakeAgent:
         self.block = asyncio.Event()
         self.block.set()  # default: respond returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
-        self.event_manager = _StubEventManager()
         self._user_messages_in: InputQueue[str] = InputQueue("user_messages", agent=self)
         self.user_messages = self._user_messages_in.reader
         self.next_kind: str = "GET_USER_INPUT"
