@@ -8,7 +8,7 @@ to the LLM in the REPL.  Framework-internal names should never appear there.
 Three classes of leak are covered:
 
 1. **Hidden class attrs** — ``_abc_impl``, ``_execution_config``, ``_agent_llm``,
-   ``_enable_tracing``, ``_framework_blocks`` leak via ``_iter_agent_attrs``
+   ``_enable_tracing`` leak via ``_iter_agent_attrs``
    because they lack ``Annotated[..., hidden]`` annotations on Agent.
 
 2. **Module dict pollution** — ``_import_dynamic_classes`` writes discovered

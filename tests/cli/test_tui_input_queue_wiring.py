@@ -145,6 +145,47 @@ def test_queue_status_composes_each_non_empty_queues_status():
     assert "idle" not in status
 
 
+def test_tui_agent_framework_blocks_split_class_vs_instance_state():
+    """``self`` (``doc(type(self))``) is class-level docs — genuinely stable,
+    stays in the cached prefix. ``state`` (``pformat(self, ...)``) is
+    instance state — skills attach at runtime, so it must be volatile.
+    """
+    from context_blocks import DynamicContext
+    from nemo_oo_agents.strategies import CodeActStrategy
+
+    agent = _fresh_agent()
+    cm = agent.context_manager
+
+    # Framework blocks should be registered as protected
+    assert "self" in cm.protected_keys
+    assert "state" in cm.protected_keys
+    assert "system_prompt" in cm.protected_keys
+
+    # Class-level doc — immutable, cacheable.
+    self_block = cm._blocks["self"]
+    assert isinstance(self_block, DynamicContext)
+    assert self_block.immutable is True, (
+        "doc(type(self)) is class-level and must go in the cached prefix"
+    )
+    assert self_block.expr == "doc(type(self))"
+
+    # Instance state — volatile, picks up runtime-attached skills.
+    state_block = cm._blocks["state"]
+    assert isinstance(state_block, DynamicContext)
+    assert state_block.immutable is False
+    assert "pformat(self" in state_block.expr
+
+    # system_prompt is still immutable — stable by construction.
+    sp_block = cm._blocks["system_prompt"]
+    assert isinstance(sp_block, DynamicContext)
+    assert sp_block.immutable is True
+
+    # Strategy override ``strategy_prompt`` — stock CodeActStrategy
+    # provides a strategy_prompt block.
+    overrides = CodeActStrategy().get_block_overrides()
+    assert "strategy_prompt" in overrides
+
+
 # ---------------------------------------------------------------------------
 # OutputQueue facade
 # ---------------------------------------------------------------------------

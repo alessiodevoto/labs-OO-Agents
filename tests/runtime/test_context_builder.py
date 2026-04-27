@@ -33,11 +33,20 @@ async def _identity_resolve(key: str, value: str | DynamicContext) -> str:
     return value
 
 
-def _make_context_manager(blocks: dict[str, Any] | None = None) -> Any:
+def _make_context_manager(
+    blocks: dict[str, Any] | None = None,
+    protected_blocks: dict[str, Any] | None = None,
+) -> Any:
     """Create a minimal ContextManager object for testing."""
     from nemo_oo_agents.runtime.context_manager import ContextManager
 
-    cm = ContextManager(protected_keys=set())
+    cm = ContextManager()
+    if protected_blocks:
+        for key, value in protected_blocks.items():
+            if isinstance(value, DynamicContext):
+                cm.set_dynamic_protected(key, value.expr, immutable=value.immutable)
+            else:
+                cm.set_protected(key, value)
     if blocks:
         for key, value in blocks.items():
             if isinstance(value, DynamicContext):
@@ -137,66 +146,67 @@ class TestBuildResult:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Phase 1 — Framework blocks
+# Tests: Phase 1 — Protected (framework) blocks via context_manager
 # ---------------------------------------------------------------------------
 
 
-def _get_framework_blocks() -> dict:
-    """Get framework blocks from Agent class for tests that need them."""
-    from nemo_oo_agents.agent import Agent
+def _get_framework_context_manager():
+    """Get a ContextManager with default framework blocks registered as protected."""
+    return _make_context_manager(
+        protected_blocks={
+            "system_prompt": DynamicContext("self._system_prompt()", immutable=True),
+            "self": DynamicContext("doc(type(self))", immutable=True),
+            "state": DynamicContext("pformat(self, max_length=50, max_string=500, max_depth=4)"),
+        }
+    )
 
-    return Agent._framework_blocks
 
-
-class TestPhaseFrameworkBlocks:
-    """Tests for _phase_framework_blocks."""
+class TestProtectedFrameworkBlocks:
+    """Tests for protected (framework) blocks emitted by _phase_persistent_blocks."""
 
     @pytest.mark.asyncio
     async def test_adds_framework_blocks(self):
-        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
-        result = await _phase_framework_blocks(
-            [], _get_framework_blocks(), resolve_fn=_identity_resolve
-        )
+        cm = _get_framework_context_manager()
+        result, _ = await _phase_persistent_blocks([], cm, resolve_fn=_identity_resolve)
 
         keys = [b.key for b in result]
         assert "system_prompt" in keys
         assert "self" in keys
 
     @pytest.mark.asyncio
+    async def test_framework_blocks_not_user_blocks(self):
+        """Protected blocks should have user_block=False so they survive truncation."""
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
+
+        cm = _get_framework_context_manager()
+        result, _ = await _phase_persistent_blocks([], cm, resolve_fn=_identity_resolve)
+
+        for block in result:
+            assert block.metadata is not None
+            assert block.metadata.user_block is False, f"{block.key} should not be a user_block"
+
+    @pytest.mark.asyncio
     async def test_empty_resolved_content_still_renders(self):
-        """Empty string is valid content — blocks are included (only None skips)."""
-        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
+        """Empty string is valid content — blocks are included."""
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
         async def empty_resolve(key: str, value: str | DynamicContext) -> str:
             return ""
 
-        result = await _phase_framework_blocks(
-            [], _get_framework_blocks(), resolve_fn=empty_resolve
-        )
-        # Empty strings produce blocks (not skipped)
+        cm = _get_framework_context_manager()
+        result, _ = await _phase_persistent_blocks([], cm, resolve_fn=empty_resolve)
         assert len(result) > 0
         assert all(b.content == "" for b in result)
 
     @pytest.mark.asyncio
-    async def test_none_resolved_content_skips(self):
-        """None from resolve_fn means 'not applicable' — block is skipped."""
-        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
-
-        async def none_resolve(key: str, value: str | DynamicContext) -> str | None:
-            return None
-
-        result = await _phase_framework_blocks([], _get_framework_blocks(), resolve_fn=none_resolve)
-        assert len(result) == 0
-
-    @pytest.mark.asyncio
     async def test_does_not_mutate_input(self):
-        from nemo_oo_agents.runtime.context_builder import _phase_framework_blocks
+        from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
 
+        cm = _get_framework_context_manager()
         original: list[ResolvedBlock] = []
-        await _phase_framework_blocks(
-            original, _get_framework_blocks(), resolve_fn=_identity_resolve
-        )
+        await _phase_persistent_blocks(original, cm, resolve_fn=_identity_resolve)
         assert len(original) == 0
 
 
@@ -618,7 +628,6 @@ class TestBuildContext:
         cm = _make_context_manager({"notes": "My notes"})
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -633,10 +642,15 @@ class TestBuildContext:
     async def test_includes_framework_and_persistent_blocks(self):
         from nemo_oo_agents.runtime.context_builder import build_context
 
-        cm = _make_context_manager({"notes": "My notes"})
+        cm = _make_context_manager(
+            blocks={"notes": "My notes"},
+            protected_blocks={
+                "system_prompt": DynamicContext("self._system_prompt()", immutable=True),
+                "self": DynamicContext("doc(type(self))", immutable=True),
+            },
+        )
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -657,7 +671,6 @@ class TestBuildContext:
         original_cache = dict(cm._dynamic_cache)
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -680,7 +693,6 @@ class TestBuildContext:
         strategy.get_block_overrides.return_value = {"notes": "overridden notes"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -699,7 +711,6 @@ class TestBuildContext:
         event = UserEvent(content="Hello", tag="1")
         em = _make_event_manager([event])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -719,7 +730,6 @@ class TestBuildContext:
         cm = _make_context_manager({"notes": "original"})
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -735,20 +745,23 @@ class TestBuildContext:
 
     @pytest.mark.asyncio
     async def test_strategy_overrides_framework_block(self):
-        """Strategy overrides can replace framework blocks (e.g. system_prompt).
+        """Strategy overrides can replace protected blocks (e.g. system_prompt).
 
-        Verifies no duplicate keys: Phase 3 replaces the Phase 1 block in-place.
+        Verifies no duplicate keys: strategy phase replaces the persistent block in-place.
         """
         from nemo_oo_agents.runtime.context_builder import build_context
 
-        cm = _make_context_manager()
+        cm = _make_context_manager(
+            protected_blocks={
+                "system_prompt": DynamicContext("self._system_prompt()", immutable=True),
+            },
+        )
         em = _make_event_manager([])
         strategy = MagicMock()
         strategy.wants_framework_block.return_value = True
         strategy.get_block_overrides.return_value = {"system_prompt": "custom prompt"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -770,7 +783,6 @@ class TestBuildContext:
         cm = _make_context_manager({"notes": "original"})
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -805,11 +817,10 @@ class TestOverridePhaseInteractions:
     """Comprehensive tests for override priority and interaction across phases.
 
     Pipeline order (later phases override earlier):
-    1. Framework blocks (system_prompt, self, context_api, events_api)
-    2. Persistent blocks (self.context)
-    3. Strategy overrides (strategy.get_block_overrides())
-    4. Decorator context (@strategy(context={...}))
-    5. Scoped blocks (with scoped_blocks(...))
+    1. Persistent blocks (protected framework blocks + user blocks)
+    2. Strategy overrides (strategy.get_block_overrides())
+    3. Decorator context (@strategy(context={...}))
+    4. Scoped blocks (with scoped_blocks(...))
 
     These tests verify:
     - Override priority is correct (later wins)
@@ -820,17 +831,21 @@ class TestOverridePhaseInteractions:
 
     @pytest.mark.asyncio
     async def test_persistent_coexists_with_framework(self):
-        """Persistent blocks (Phase 2) coexist with framework blocks (Phase 1).
+        """User blocks coexist with protected framework blocks in context_manager.
 
-        Framework blocks are protected — persistent blocks can't replace them.
-        They can only add new keys or be replaced by later phases (3, 4, 5).
+        Protected blocks can't be overwritten by the LLM-facing API.
+        User blocks add new keys alongside them.
         """
         from nemo_oo_agents.runtime.context_builder import build_context
 
-        cm = _make_context_manager({"custom_key": "custom value"})
+        cm = _make_context_manager(
+            blocks={"custom_key": "custom value"},
+            protected_blocks={
+                "system_prompt": DynamicContext("self._system_prompt()", immutable=True),
+            },
+        )
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -838,8 +853,8 @@ class TestOverridePhaseInteractions:
         )
 
         keys = [b.key for b in result.blocks]
-        assert "system_prompt" in keys, "Framework block present"
-        assert "custom_key" in keys, "Persistent block present"
+        assert "system_prompt" in keys, "Protected block present"
+        assert "custom_key" in keys, "User block present"
 
     @pytest.mark.asyncio
     async def test_strategy_overrides_persistent(self):
@@ -853,7 +868,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"notes": "strategy notes"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -876,7 +890,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"focus": "strategy focus"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -896,7 +909,6 @@ class TestOverridePhaseInteractions:
         cm = _make_context_manager()
         em = _make_event_manager([])
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=None,
@@ -935,7 +947,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"focus": "strategy focus"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -960,7 +971,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"notes": None}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -984,7 +994,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"strategy_key": "strategy"}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,
@@ -1011,7 +1020,6 @@ class TestOverridePhaseInteractions:
         strategy.get_block_overrides.return_value = {"b": DynamicContext("self.dynamic_b()")}
 
         result = await build_context(
-            framework_blocks=_get_framework_blocks(),
             context_manager=cm,
             event_manager=em,
             strategy=strategy,

@@ -3,7 +3,7 @@
 """Agent base class."""
 
 import logging
-from typing import TYPE_CHECKING, Annotated, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 from uuid import uuid4
 
 from context_blocks import DynamicContext
@@ -71,16 +71,6 @@ def _validate_llm_param(llm: object, class_name: str) -> None:
         )
 
 
-class FrameworkBlock(NamedTuple):
-    """A framework context block definition.
-
-    Args:
-        value: The block value (static string or DynamicContext expression).
-    """
-
-    value: str | DynamicContext
-
-
 class Agent(metaclass=AgentMeta):
     """
     Base class for all agents with automatic method wrapping.
@@ -132,25 +122,6 @@ class Agent(metaclass=AgentMeta):
     # Enable tracing for Agent classes (convention for metaclass)
     _enable_tracing = True  # type: ignore[assignment]
 
-    # Framework context blocks — managed by _prepare_context(), protected from LLM mutation.
-    # These use DynamicContext() so they are re-evaluated each LLM turn.
-    # Each subclass gets its own copy via __init_subclass__, so mutations stay local.
-    # ``self`` documents the class (methods, docstrings, field types) —
-    # genuinely stable across turns, so it lives in the cacheable prefix.
-    # ``state`` is the instance's current field values (skill instances,
-    # tool working dirs, etc.) — re-evaluated each turn since skills can
-    # attach at runtime and field values change as the agent runs.
-    _framework_blocks: Annotated[dict[str, "FrameworkBlock"], hidden] = {
-        "system_prompt": FrameworkBlock(DynamicContext("self._system_prompt()", immutable=True)),
-        "self": FrameworkBlock(DynamicContext("doc(type(self))", immutable=True)),
-        "state": FrameworkBlock(
-            DynamicContext(
-                "pformat(self, max_length=50, max_string=500, max_depth=4)",
-                immutable=False,
-            )
-        ),
-    }
-
     def __init_subclass__(
         cls,
         llm: "UnifiedLLM | _InheritSentinel" = INHERIT,
@@ -176,10 +147,6 @@ class Agent(metaclass=AgentMeta):
         _validate_llm_param(llm, cls.__name__)
 
         super().__init_subclass__(**kwargs)
-
-        # Give each subclass its own copy so mutations don't bleed to parent classes.
-        if "_framework_blocks" not in cls.__dict__:
-            cls._framework_blocks = dict(cls._framework_blocks)
 
         if llm is not INHERIT:
             cls._agent_llm = llm  # type: ignore[attr-defined]
@@ -262,7 +229,20 @@ class Agent(metaclass=AgentMeta):
         self.event_query = self._resolve_event_query(event_query)
 
         # Initialize context state (always present, hidden)
-        self.context_manager = ContextManager(protected_keys=set(self._framework_blocks.keys()))
+        self.context_manager = ContextManager()
+
+        # Register framework blocks as protected (re-evaluated each LLM turn).
+        # ``self`` documents the class (methods, docstrings, field types) —
+        # genuinely stable across turns, so it lives in the cacheable prefix.
+        # ``state`` is the instance's current field values — re-evaluated each
+        # turn since skills can attach at runtime and field values change.
+        cm = self.context_manager
+        cm.set_dynamic_protected("system_prompt", "self._system_prompt()", immutable=True)
+        cm.set_dynamic_protected("self", "doc(type(self))", immutable=True)
+        cm.set_dynamic_protected(
+            "state",
+            "pformat(self, max_length=50, max_string=500, max_depth=4)",
+        )
 
         # Apply class-level context blocks (from __init_subclass__)
         class_context = getattr(self.__class__, "_agent_context_blocks", None)
@@ -289,20 +269,17 @@ class Agent(metaclass=AgentMeta):
         """Apply a dict of context block overrides.
 
         Used by __init__ to apply class-level and instance-level context.
+        Routing between protected and unprotected APIs is handled by
+        ContextManager.apply_override().
 
         Args:
             blocks: Dict of overrides:
                 - str: Static content
                 - DynamicContext("expr"): DynamicContext expression
-                - None: Remove block
+                - None: Remove block (including protected blocks)
         """
         for key, value in blocks.items():
-            if value is None:
-                self.context_manager.pop(key, None)
-            elif isinstance(value, DynamicContext):
-                self.context_manager.set_dynamic(key, value.expr)
-            else:
-                self.context_manager[key] = value
+            self.context_manager.apply_override(key, value)
 
     @hidden
     def _resolve_llm(self, instance_llm: "UnifiedLLM | None") -> "UnifiedLLM":

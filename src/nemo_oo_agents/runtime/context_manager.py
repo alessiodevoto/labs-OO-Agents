@@ -37,13 +37,14 @@ class ContextManager:
       Cache is populated by _update_resolved() after each _prepare_context() run,
       and invalidated on set_dynamic() or __setitem__().
 
-    Framework blocks (system_prompt, self, etc.) are managed separately
-    by _prepare_context() and cannot be set here.
+    Protected blocks (system_prompt, self, state) are registered via
+    set_protected() / set_dynamic_protected() and cannot be overwritten
+    by the LLM-facing API (set / set_dynamic / __setitem__ / __delitem__).
     """
 
-    def __init__(self, protected_keys: set[str] | None = None):
+    def __init__(self) -> None:
         self._blocks: dict[str, Any | DynamicContext] = {}
-        self._protected_keys: set[str] = protected_keys or set()
+        self.protected_keys: set[str] = set()
         self._dynamic_cache: dict[str, Any] = {}
         self._immutable: dict[str, bool] = {}
 
@@ -75,7 +76,7 @@ class ContextManager:
             ProtectedBlockError: If key is protected.
             TypeError: If value is a DynamicContext (use set_dynamic instead).
         """
-        if key in self._protected_keys:
+        if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
         if isinstance(value, DynamicContext):
@@ -100,7 +101,7 @@ class ContextManager:
         Raises:
             ProtectedBlockError: If key is protected.
         """
-        if key in self._protected_keys:
+        if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
         self._blocks[key] = DynamicContext(expr, immutable=immutable)
@@ -145,7 +146,7 @@ class ContextManager:
         """
         if key not in self._blocks:
             raise KeyError(key)
-        if key in self._protected_keys:
+        if key in self.protected_keys:
             raise ProtectedBlockError(key, "remove")
         del self._blocks[key]
         self._immutable.pop(key, None)
@@ -192,7 +193,7 @@ class ContextManager:
             if args:
                 return args[0]
             raise KeyError(key)
-        if key in self._protected_keys:
+        if key in self.protected_keys:
             raise ProtectedBlockError(key, "remove")
 
         # Get value before removal
@@ -215,6 +216,29 @@ class ContextManager:
         """
         self._dynamic_cache.pop(key, None)
 
+    def apply_override(self, key: str, value: "Any | DynamicContext | None") -> None:
+        """Apply a single context block override, routing through the correct API.
+
+        Handles both protected and unprotected keys. Used by Agent._apply_context_dict
+        to apply class-level and instance-level context overrides at init time.
+        """
+        is_protected = key in self.protected_keys
+        if value is None:
+            if is_protected:
+                self.remove_protected(key)
+            else:
+                self.pop(key, None)
+        elif isinstance(value, DynamicContext):
+            if is_protected:
+                self.set_dynamic_protected(key, value.expr)
+            else:
+                self.set_dynamic(key, value.expr)
+        else:
+            if is_protected:
+                self.set_protected(key, value)
+            else:
+                self[key] = value
+
     def _update_resolved(self, resolved: dict[str, Any]) -> None:
         """Cache resolved DynamicContext block values.
 
@@ -223,3 +247,57 @@ class ContextManager:
         directly from _blocks.
         """
         self._dynamic_cache.update(resolved)
+
+    # ------------------------------------------------------------------
+    # Internal protected-block API (used by Agent.__init__, not by LLMs)
+    # ------------------------------------------------------------------
+
+    def set_protected(self, key: str, value: Any, *, immutable: bool = False) -> None:
+        """Register a static block as protected.
+
+        Protected blocks are stored in ``_blocks`` like any other block but
+        are added to ``protected_keys`` so the LLM-facing API (set /
+        __setitem__ / __delitem__) rejects mutations.
+
+        Args:
+            key: Block key.
+            value: Static value.
+            immutable: Whether renderers may cache this block across turns.
+        """
+        if isinstance(value, DynamicContext):
+            raise TypeError(f"Use set_dynamic_protected({key!r}, ...) for DynamicContext blocks")
+        self.protected_keys.add(key)
+        self._blocks[key] = value
+        self._immutable[key] = immutable
+
+    def set_dynamic_protected(self, key: str, expr: str, *, immutable: bool = False) -> None:
+        """Register a dynamic block as protected.
+
+        Like ``set_protected`` but stores a ``DynamicContext`` marker so the
+        expression is re-evaluated each LLM turn.
+
+        Args:
+            key: Block key.
+            expr: Python expression to evaluate each turn.
+            immutable: Whether the expression output is stable across turns.
+        """
+        self.protected_keys.add(key)
+        self._blocks[key] = DynamicContext(expr, immutable=immutable)
+        self._immutable[key] = immutable
+        self._invalidate(key)
+
+    def remove_protected(self, key: str) -> None:
+        """Remove a protected block (used by _apply_context_dict with value=None).
+
+        Args:
+            key: Block key to remove.
+
+        Raises:
+            KeyError: If key not found.
+        """
+        if key not in self._blocks:
+            raise KeyError(key)
+        del self._blocks[key]
+        self.protected_keys.discard(key)
+        self._immutable.pop(key, None)
+        self._invalidate(key)
