@@ -32,6 +32,8 @@
 jobs_dir: /tmp/harbor_jobs/locomo_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s
+agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; uv sync + full install takes 8–15 min
 
 orchestrator:
   type: local
@@ -42,7 +44,7 @@ environment:
   type: apptainer
   override_memory_mb: 4096
   kwargs:
-    apptainer_binary: apptainer
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
     apptainer_fakeroot: true   # required for runuser inside container; needs AppArmor userns allowed (see #135)
     apptainer_image_cache_dir: ~/3p/sif_cache  # update to your local SIF cache path
     env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF

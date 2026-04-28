@@ -25,7 +25,7 @@ environment:
   type: apptainer
   override_memory_mb: 4096
   kwargs:
-    apptainer_binary: apptainer
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
     apptainer_fakeroot: true
     apptainer_image_cache_dir: ~/3p/sif_cache
     env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY

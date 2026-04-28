@@ -1,0 +1,40 @@
+# Harbor config for running DABStep with the skill-accumulating solver agent.
+#
+# DABStep solver: native port of mjeblick's DABstab solver (agent006 MR !381).
+# BenchmarkSolver mode: loads accumulated skill library (zero_shot_examples.py)
+# + 4-phase pipeline: discovery → solve (with skill few-shots) → extract.
+#
+# Without a pre-built skill library the solver runs zero-shot (empty library).
+# To accumulate skills first, run bootstrap/discover modes on a subset.
+#
+# Run:
+#   harbor run --config util/harbor/dabstep_solver.yaml
+
+jobs_dir: /tmp/harbor_jobs/dabstep_solver
+n_attempts: 1
+timeout_multiplier: 1.5
+agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; uv sync + full install takes 8–15 min
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: dabstep/solver
+      nemo_oo_agents_git_ref: "feat/gl-dabstep-benchmark-results"
+
+datasets:
+  - path: util/harbor/tasks/dabstep

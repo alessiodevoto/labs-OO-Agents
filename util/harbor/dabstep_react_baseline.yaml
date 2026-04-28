@@ -28,7 +28,7 @@ environment:
   type: apptainer
   override_memory_mb: 8192
   kwargs:
-    apptainer_binary: apptainer
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
     apptainer_fakeroot: true
     # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
     apptainer_image_cache_dir: ~/3p/sif_cache

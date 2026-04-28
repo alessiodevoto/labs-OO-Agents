@@ -1,0 +1,41 @@
+# Harbor config for running LoCoMo with the specialized LoCoMo memory agent.
+#
+# LoCoMo specialized agent: retrieval-augmented long-term memory QA (ported from agent006).
+# Uses temporal indexing + keyword-overlap retrieval across ~600-turn conversations.
+#
+# Run:
+#   harbor run --config util/harbor/locomo_specialized.yaml
+#
+# Smoke test (5 tasks):
+#   harbor run --config util/harbor/locomo_specialized.yaml \
+#       --path util/harbor/tasks/locomo_smoke
+
+jobs_dir: /tmp/harbor_jobs/locomo_specialized
+n_attempts: 1
+timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s
+agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; uv sync + full install takes 8–15 min
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: locomo
+      nemo_oo_agents_git_ref: "feat/gl-dabstep-benchmark-results"
+
+datasets:
+  - path: util/harbor/tasks/locomo
