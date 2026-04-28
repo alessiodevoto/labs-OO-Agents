@@ -667,12 +667,12 @@ class TestInstanceValuesExceptionHandling:
 
 
 class TestHelperMethodBindingFailure:
-    """HelperMethodManager.apply() reports binding errors."""
+    """HelperFunctionManager.apply() reports binding errors."""
 
     def test_errors_list_populated_on_exec_failure(self):
-        from nemo_oo_agents.strategies.generated_code import HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
 
         # Code that defines a helper with a decorator that doesn't exist
         code = "def helper(self):\n    return self.tool()\n"
@@ -687,7 +687,6 @@ class TestHelperMethodBindingFailure:
             agent,
             session_locals,
             namespace=namespace,
-            target_method_name="compute",
         )
 
         # The function should be successfully installed (no decorator issues)
@@ -699,7 +698,6 @@ class TestHelperMethodBindingFailure:
             agent,
             session_locals,
             namespace=namespace,
-            target_method_name="compute",
         )
 
         assert len(result.errors) > 0

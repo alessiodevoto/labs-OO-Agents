@@ -1589,11 +1589,11 @@ class TestCodeActStrategyPersistentState:
                 """Test helper method persistence."""
                 ...
 
-        # Define a helper method, then use it
+        # helpers are plain callables — call double(self, n), not self.double(n).
         fake_llm = FakeLLMClient(
             scripted_responses=[
                 _resp("", tool_calls=[_tool_call("def double(self, n):\n    return n * 2")]),
-                _resp("", tool_calls=[_tool_call("return self.double(21)")]),
+                _resp("", tool_calls=[_tool_call("return_result(double(self, 21))")]),
             ]
         )
 

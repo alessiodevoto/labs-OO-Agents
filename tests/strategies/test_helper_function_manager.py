@@ -1,22 +1,25 @@
-"""Tests for HelperMethodManager class vs instance guard.
+"""Tests for HelperFunctionManager class vs instance guard.
 
-TDD: These tests verify that HelperMethodManager:
-1. Rejects classes (only accepts instances)
-2. Binds methods to instances without leaking to the class
-3. Works correctly with the standard apply() flow
+Under, helpers are never attached to the agent. They live as plain
+callables in ``session_locals`` (and the exec namespace) so the LLM calls them
+as ``helper(self, x)`` — not ``self.helper(x)``. These tests verify that
+contract.
 """
 
 import pytest
 
-from nemo_oo_agents.strategies.generated_code import ExecutionNamespaceBuilder, HelperMethodManager
+from nemo_oo_agents.strategies.generated_code import (
+    ExecutionNamespaceBuilder,
+    HelperFunctionManager,
+)
 from unifiedllm import FakeLLMClient
 
 
-class TestHelperMethodManagerGuard:
-    """Tests for HelperMethodManager class vs instance guard."""
+class TestHelperFunctionManagerGuard:
+    """Tests for HelperFunctionManager class vs instance guard."""
 
     def test_rejects_class_instead_of_instance(self):
-        """HelperMethodManager should raise TypeError if passed a class."""
+        """HelperFunctionManager should raise TypeError if passed a class."""
         from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
@@ -24,7 +27,7 @@ class TestHelperMethodManagerGuard:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         namespace = ExecutionNamespaceBuilder.build(FakeAgent)  # Note: class, not instance
 
         with pytest.raises(TypeError, match="instance but received a class"):
@@ -33,11 +36,10 @@ class TestHelperMethodManagerGuard:
                 agent=FakeAgent,  # CLASS, not instance - should be rejected!
                 session_locals={},
                 namespace=namespace,
-                target_method_name="process",
             )
 
     def test_accepts_instance(self):
-        """HelperMethodManager should accept agent instances."""
+        """HelperFunctionManager should accept agent instances and install helpers as plain callables."""
         from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
@@ -45,25 +47,27 @@ class TestHelperMethodManagerGuard:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance)
+        session_locals: dict = {}
 
         result = manager.apply(
             code="def helper(self): return 42",
             agent=instance,
-            session_locals={},
+            session_locals=session_locals,
             namespace=namespace,
-            target_method_name="process",
         )
 
         assert "helper" in result.installed
-        assert hasattr(instance, "helper")
-        # Verify the bound method works
-        assert instance.helper() == 42
+        # Helper is a plain callable in session_locals — never attached to the agent.
+        assert not hasattr(instance, "helper")
+        helper = session_locals["helper"]
+        assert callable(helper)
+        assert helper(instance) == 42
 
     def test_method_does_not_leak_to_class(self):
-        """Helper methods bound to instance should not appear on other instances."""
+        """Helpers are plain callables in session_locals, never attached to any instance."""
         from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
@@ -71,7 +75,7 @@ class TestHelperMethodManagerGuard:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance1 = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance1)
 
@@ -80,19 +84,15 @@ class TestHelperMethodManagerGuard:
             agent=instance1,
             session_locals={},
             namespace=namespace,
-            target_method_name="process",
         )
 
-        # Verify instance1 has the method
-        assert hasattr(instance1, "helper")
-        assert instance1.helper() == 42
-
-        # Create new instance - should NOT have the helper
+        # Neither instance ever has the helper attached.
+        assert not hasattr(instance1, "helper")
         instance2 = FakeAgent()
-        assert not hasattr(instance2, "helper"), "Helper method leaked to new instance!"
+        assert not hasattr(instance2, "helper")
 
     def test_method_does_not_leak_to_class_definition(self):
-        """Helper methods should not be added to the class __dict__."""
+        """Helper methods must not appear in the agent class __dict__."""
         from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
@@ -100,7 +100,7 @@ class TestHelperMethodManagerGuard:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance)
 
@@ -109,14 +109,12 @@ class TestHelperMethodManagerGuard:
             agent=instance,
             session_locals={},
             namespace=namespace,
-            target_method_name="process",
         )
 
-        # The method should NOT appear in the class __dict__
         assert "helper" not in FakeAgent.__dict__, "Helper method leaked to class __dict__!"
 
     def test_async_helper_method_binding(self):
-        """Async helper methods should be bound correctly."""
+        """Async helper methods should be installed as plain callables in session_locals."""
         from nemo_oo_agents.agent import Agent
 
         class FakeAgent(Agent, llm=FakeLLMClient()):
@@ -124,49 +122,25 @@ class TestHelperMethodManagerGuard:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance)
+        session_locals: dict = {}
 
         result = manager.apply(
             code="async def async_helper(self): return await asyncio.sleep(0) or 42",
             agent=instance,
-            session_locals={},
+            session_locals=session_locals,
             namespace=namespace,
-            target_method_name="process",
         )
 
         assert "async_helper" in result.installed
-        assert hasattr(instance, "async_helper")
-
-    def test_rejects_method_with_same_name_as_target(self):
-        """Helper method with same name as target method should be rejected."""
-        from nemo_oo_agents.agent import Agent
-
-        class FakeAgent(Agent, llm=FakeLLMClient()):
-            async def process(self) -> dict:
-                """Process something."""
-                ...
-
-        manager = HelperMethodManager()
-        instance = FakeAgent()
-        namespace = ExecutionNamespaceBuilder.build(instance)
-
-        result = manager.apply(
-            code="def process(self): return {}",  # Same name as target
-            agent=instance,
-            session_locals={},
-            namespace=namespace,
-            target_method_name="process",
-        )
-
-        # Should be rejected, not installed
-        assert "process" in result.rejected
-        assert "process" not in result.installed
+        assert not hasattr(instance, "async_helper")
+        assert callable(session_locals["async_helper"])
 
 
-class TestHelperMethodManagerSessionLocals:
-    """Tests for session_locals handling in HelperMethodManager."""
+class TestHelperFunctionManagerSessionLocals:
+    """Tests for session_locals handling in HelperFunctionManager."""
 
     def test_helper_added_to_session_locals(self):
         """Helper methods should be added to session_locals for reuse."""
@@ -177,7 +151,7 @@ class TestHelperMethodManagerSessionLocals:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance)
         session_locals: dict = {}
@@ -187,16 +161,15 @@ class TestHelperMethodManagerSessionLocals:
             agent=instance,
             session_locals=session_locals,
             namespace=namespace,
-            target_method_name="process",
         )
 
         assert "helper" in session_locals
-        # The session_locals version should be the bound method
+        # session_locals stores plain callables (never bound methods).
         assert callable(session_locals["helper"])
 
 
-class TestHelperMethodManagerErrors:
-    """Tests for error handling in HelperMethodManager."""
+class TestHelperFunctionManagerErrors:
+    """Tests for error handling in HelperFunctionManager."""
 
     def test_records_decorator_validation_errors(self):
         """Errors from decorator validation should be recorded."""
@@ -207,29 +180,24 @@ class TestHelperMethodManagerErrors:
                 """Process something."""
                 ...
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         instance = FakeAgent()
         namespace = ExecutionNamespaceBuilder.build(instance)
 
-        # This code has a syntax that will fail during exec
-        # (referencing undefined variable)
+        # Body references undefined var — no compile-time error, only at call time.
         result = manager.apply(
             code="def helper(self): return undefined_variable",
             agent=instance,
             session_locals={},
             namespace=namespace,
-            target_method_name="process",
         )
 
-        # The method should still be installed (error happens at call time, not definition)
-        # Let's test with actual compile-time error
+        # Decorator-application failure.
         result = manager.apply(
             code="@nonexistent_decorator\ndef broken_helper(self): pass",
             agent=instance,
             session_locals={},
             namespace=namespace,
-            target_method_name="process",
         )
 
-        # Should have an error recorded
         assert len(result.errors) > 0 or "broken_helper" not in result.installed

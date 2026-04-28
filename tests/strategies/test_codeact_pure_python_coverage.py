@@ -270,7 +270,7 @@ class TestSanitizeCode:
         fenced = "```python\nasync def helper(self, x):\n    return x * 2\n```"
         cleaned, token = strip_code_fences(fenced)
         assert token == "```python"
-        # Must be valid Python (HelperMethodManager.apply calls ast.parse)
+        # Must be valid Python (HelperFunctionManager.apply calls ast.parse)
         tree = ast.parse(cleaned)
         assert any(isinstance(n, ast.AsyncFunctionDef) for n in tree.body)
 
@@ -1535,7 +1535,7 @@ class TestPurePythonHelperMethodErrors:
                 ...
 
         # Define a compute helper with the SAME name alongside other code.
-        # The HelperMethodManager will see 'compute' as a helper (separate from target body)
+        # The HelperFunctionManager will see 'compute' as a helper (separate from target body)
         # and reject it because it conflicts with the method being implemented.
         # Note: pure function definitions without 'self' as first arg won't trigger
         # the rejection; we need async def compute(self) as a standalone helper.
@@ -2740,55 +2740,22 @@ class TestCodeActExecuteCodeValidationErrors:
 
 
 # ---------------------------------------------------------------------------
-# CodeActStrategy._execute_code - helper method rejected (lines 1862-1868)
-# ---------------------------------------------------------------------------
-
-
-class TestCodeActExecuteCodeHelperRejected:
-    """Tests for _execute_code when helper method is rejected."""
-
-    @pytest.mark.asyncio
-    async def test_execute_code_returns_error_on_rejected_helper(self):
-        """_execute_code should return error result when helper method is rejected (lines 1862-1868)."""
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
-
-        strat = CodeActStrategy()
-        em = MagicMock()
-        em.add = MagicMock(return_value="evt1")
-        session = CodeActSession(
-            max_iterations=5, max_retries=3, target_method_name="compute", event_manager=em
-        )
-
-        rt = MagicMock()
-        rt.agent = MagicMock()
-        rt.event_manager = em
-
-        rejected_result = HelperApplyResult(installed=[], rejected=["compute"], errors=[])
-        with patch.object(HelperMethodManager, "apply", return_value=rejected_result):
-            result = await strat._execute_code(
-                rt,
-                "async def compute(self): return 99",
-                {},
-                session,
-                "compute",
-                tool_call_id="t1",
-            )
-
-        assert result.error is not None
-
-
-# ---------------------------------------------------------------------------
 # CodeActStrategy._execute_code - helper method binding error (lines 1871-1875)
+# "rejected on name collision" path no longer exists — helpers are
+# never attached to the agent, so same-name helper defs can't conflict.
 # ---------------------------------------------------------------------------
 
 
 class TestCodeActExecuteCodeHelperBindingError:
-    """Tests for _execute_code when helper method has binding error."""
+    """Tests for _execute_code when helper method compilation reports errors."""
 
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_on_helper_binding_error(self):
-        """_execute_code should return error result when helper fails to bind (lines 1871-1875)."""
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
+        """_execute_code should return error result when helper fails to compile (lines 1871-1875)."""
+        from nemo_oo_agents.strategies.generated_code import (
+            HelperApplyResult,
+            HelperFunctionManager,
+        )
 
         strat = CodeActStrategy()
         em = MagicMock()
@@ -2801,10 +2768,8 @@ class TestCodeActExecuteCodeHelperBindingError:
         rt.agent = MagicMock()
         rt.event_manager = em
 
-        error_result = HelperApplyResult(
-            installed=[], rejected=[], errors=["Failed to bind method"]
-        )
-        with patch.object(HelperMethodManager, "apply", return_value=error_result):
+        error_result = HelperApplyResult(installed=[], errors=["Failed to bind method"])
+        with patch.object(HelperFunctionManager, "apply", return_value=error_result):
             result = await strat._execute_code(
                 rt,
                 "x = 1",
@@ -3270,10 +3235,12 @@ class TestPurePythonHelperInstalled:
                 """Compute."""
                 ...
 
-        # Define a helper method then use it
+        # helpers are plain callables — LLM calls helper(self, x).
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp("async def helper(self, x):\n    return x * 2\nreturn await self.helper(21)"),
+                _resp(
+                    "async def helper(self, x):\n    return x * 2\nreturn await helper(self, 21)"
+                ),
             ]
         )
         agent = TestAgent(llm=fake_llm)
@@ -3362,12 +3329,12 @@ class TestCodeActHelperInstalled:
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                # First: define helper and call return_result from within
+                # helpers are plain callables — call my_helper(self, ...).
                 _resp(
                     "",
                     tool_calls=[
                         _tool_call(
-                            "async def my_helper(self, x):\n    return x + 1\nreturn_result(await self.my_helper(41))",
+                            "async def my_helper(self, x):\n    return x + 1\nreturn_result(await my_helper(self, 41))",
                             call_id="c1",
                         )
                     ],
@@ -3522,7 +3489,10 @@ class TestCodeActHelperInstalledLogging:
     async def test_execute_code_with_helper_that_gets_installed(self):
         """When helper is installed, _execute_code should log it (lines 1877-1878)."""
         from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import (
+            HelperApplyResult,
+            HelperFunctionManager,
+        )
 
         strat = CodeActStrategy()
         em = MagicMock()
@@ -3538,8 +3508,8 @@ class TestCodeActHelperInstalledLogging:
             return_value=ExecutionResult(stdout="42", error=None, defined_methods={})
         )
 
-        installed_result = HelperApplyResult(installed=["my_helper"], rejected=[], errors=[])
-        with patch.object(HelperMethodManager, "apply", return_value=installed_result):
+        installed_result = HelperApplyResult(installed=["my_helper"], errors=[])
+        with patch.object(HelperFunctionManager, "apply", return_value=installed_result):
             result = await strat._execute_code(
                 rt,
                 "async def my_helper(self): return 42",
@@ -3652,7 +3622,7 @@ class TestPurePythonContinuationPaths:
         fake_llm = FakeLLMClient(
             scripted_responses=[
                 _resp("async def my_helper(self):\n    return 42"),
-                _resp("return await self.my_helper()"),
+                _resp("return await my_helper(self)"),
             ]
         )
         agent = TestAgent(llm=fake_llm)
@@ -3897,7 +3867,7 @@ class TestPurePythonPrefillWithHelpers:
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp("return await self.helper()"),
+                _resp("return await helper(self)"),
             ]
         )
         agent = TestAgent(llm=fake_llm)

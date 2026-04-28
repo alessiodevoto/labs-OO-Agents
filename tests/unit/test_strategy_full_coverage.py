@@ -1069,13 +1069,18 @@ class TestPurePythonStrategyImportError:
 
 
 class TestPurePythonHelperMethodErrors:
-    """Cover lines 711-729: helper method binding errors and rejections."""
+    """Cover lines 711-729: helper method binding errors. removed the "rejected on target-name collision" path — the test
+    for that behavior was deleted.
+    """
 
     @pytest.mark.asyncio
     async def test_helper_method_binding_error(self):
         """When helper method binding produces errors, an error event is
         added and execution returns empty result (lines 722-729)."""
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import (
+            HelperApplyResult,
+            HelperFunctionManager,
+        )
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=3))
@@ -1091,15 +1096,14 @@ class TestPurePythonHelperMethodErrors:
         )
         agent = TestAgent(llm=fake_llm)
 
-        real_apply_method = HelperMethodManager.apply
+        real_apply_method = HelperFunctionManager.apply
         call_count = [0]
 
-        def counting_apply(self_hm, code, ag, session_locals, *, namespace, target_method_name):
+        def counting_apply(self_hm, code, ag, session_locals, *, namespace):
             call_count[0] += 1
             if call_count[0] == 1:
                 return HelperApplyResult(
                     installed=[],
-                    rejected=[],
                     errors=["Error defining method `helper`: SyntaxError: invalid syntax"],
                 )
             return real_apply_method(
@@ -1108,54 +1112,8 @@ class TestPurePythonHelperMethodErrors:
                 ag,
                 session_locals,
                 namespace=namespace,
-                target_method_name=target_method_name,
             )
 
-        with patch.object(HelperMethodManager, "apply", counting_apply):
+        with patch.object(HelperFunctionManager, "apply", counting_apply):
             result = await agent.do_task()
         assert result == 99
-
-    @pytest.mark.asyncio
-    async def test_helper_method_rejected_overwrite(self):
-        """When helper tries to overwrite target method, it is rejected
-        and an error event is added (lines 711-720)."""
-        from nemo_oo_agents.strategies.generated_code import HelperApplyResult, HelperMethodManager
-
-        class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(PurePythonStrategy(max_iterations=3))
-            async def do_task(self) -> int:
-                """Do a task."""
-                ...
-
-        fake_llm = FakeLLMClient(
-            scripted_responses=[
-                # Code that defines a method with the same name as target
-                _resp("def do_task(self):\n    return 42\nreturn do_task(self)"),
-                _resp("return 88"),
-            ]
-        )
-        agent = TestAgent(llm=fake_llm)
-
-        real_apply_method = HelperMethodManager.apply
-        call_count = [0]
-
-        def counting_apply(self_hm, code, ag, session_locals, *, namespace, target_method_name):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return HelperApplyResult(
-                    installed=[],
-                    rejected=["do_task"],
-                    errors=[],
-                )
-            return real_apply_method(
-                self_hm,
-                code,
-                ag,
-                session_locals,
-                namespace=namespace,
-                target_method_name=target_method_name,
-            )
-
-        with patch.object(HelperMethodManager, "apply", counting_apply):
-            result = await agent.do_task()
-        assert result == 88

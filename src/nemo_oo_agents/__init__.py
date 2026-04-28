@@ -30,6 +30,7 @@ from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors
 from nemo_oo_agents.errors import (  # noqa: E402
+    DynamicMethodAdditionError,
     GenerationError,
     NemoOOAgentsError,
     NemoOOAgentsRuntimeError,
@@ -125,6 +126,7 @@ __all__ = [
     "ValidationError",
     "RestrictedCodeError",
     "NemoOOAgentsRuntimeError",
+    "DynamicMethodAdditionError",
     "SerializationError",
     "SnapshotNotFoundError",
     "StorageNotConfiguredError",

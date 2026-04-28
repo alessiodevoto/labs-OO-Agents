@@ -23,7 +23,6 @@ Design constraints:
 """
 
 import inspect
-import sys
 import types
 from collections.abc import Callable
 from functools import wraps
@@ -91,16 +90,12 @@ def _make_adapter(func: Callable[..., Any], strategy: Any = None) -> Callable[..
     new_sig = orig_sig.replace(parameters=new_params)
 
     # Template coroutine with an ellipsis body — has_ellipsis_body detects this.
-    # We swap in func's module globals so get_type_hints resolves annotations there.
+    # Reuse func's own __globals__ so get_type_hints resolves annotations in
+    # the same scope the function was defined in. Works for module-level
+    # functions and for REPL-defined functions (where func.__module__ is None).
     async def _tmpl(self: Any, *args: Any, **kwargs: Any) -> Any: ...
 
-    if func.__module__ not in sys.modules:
-        raise RuntimeError(
-            f"Module '{func.__module__}' for standalone function '{func.__name__}' "
-            f"is not in sys.modules. Ensure the module is fully imported before decorating."
-        )
-    func_globals = vars(sys.modules[func.__module__])
-    adapted = types.FunctionType(_tmpl.__code__, func_globals, func.__name__)
+    adapted = types.FunctionType(_tmpl.__code__, func.__globals__, func.__name__)
 
     adapted.__doc__ = func.__doc__
     adapted.__name__ = func.__name__

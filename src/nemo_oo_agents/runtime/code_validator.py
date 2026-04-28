@@ -264,6 +264,41 @@ class _SecurityVisitor(ast.NodeVisitor):
                     code="E101",
                 )
             )
+        # Forbid base-class dunder accesses like `object.__setattr__` and
+        # `type.__setattr__` — they bypass Agent.__setattr__ via the C-level slot.
+        elif (
+            isinstance(node.value, ast.Name)
+            and node.value.id in ("object", "type")
+            and node.attr.startswith("__")
+            and node.attr.endswith("__")
+        ):
+            self.issues.append(
+                ValidationIssue(
+                    line=node.lineno,
+                    col=node.col_offset,
+                    message=f"Access to '{node.value.id}.{node.attr}' is forbidden - "
+                    "this would bypass agent runtime guards",
+                    code="E102",
+                )
+            )
+        # Forbid `super(...).__setattr__(...)` and similar — super() routes
+        # to the parent class's __setattr__, bypassing Agent.__setattr__.
+        elif (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "super"
+            and node.attr.startswith("__")
+            and node.attr.endswith("__")
+        ):
+            self.issues.append(
+                ValidationIssue(
+                    line=node.lineno,
+                    col=node.col_offset,
+                    message=f"Access to 'super().{node.attr}' is forbidden - "
+                    "this would bypass agent runtime guards",
+                    code="E102",
+                )
+            )
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> Any:

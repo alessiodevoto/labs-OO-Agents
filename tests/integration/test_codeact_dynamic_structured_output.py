@@ -1,13 +1,15 @@
-"""Test CodeActStrategy dynamically defining @strategy(PredictStrategy()) methods.
+"""Test CodeActStrategy dynamically defining @strategy(PredictStrategy()) functions.
 
 Reproduces the scenario where the LLM generates code inside execute_python() that:
-1. Defines a new method with @strategy(PredictStrategy()) and ellipsis body
-2. Calls that method in a loop to process batch inputs
-3. Returns the aggregated results via inline return_result()
+1. Defines a standalone async function (no `self`) with @strategy(PredictStrategy())
+   and an ellipsis body.
+2. Calls that function in parallel via `asyncio.gather` to process batch inputs.
+3. Returns the aggregated results via inline return_result().
 
-This exercises the full pipeline: HelperMethodManager binding → @strategy decorator
-→ ellipsis detection → PredictStrategy nested generation.
-
+Helpers are not attached to the agent — calls go through bare names, not
+`self.helper`. This exercises the full pipeline: HelperFunctionManager
+pre-compilation (for `_generated_source` / decorator detection) →
+standalone wrapper → PredictStrategy nested generation → fan-out.
 """
 
 import json
@@ -42,16 +44,15 @@ def _resp(content: str = "", tool_calls: list | None = None) -> LLMResponse:
     )
 
 
-# The code the LLM would generate inside execute_python
+# Standalone async function decorated with @strategy(PredictStrategy()),
+# called via asyncio.gather for parallel fan-out.
 CLASSIFY_BATCH_CODE = '''\
 @strategy(PredictStrategy())
-async def classify_one(self, text: str) -> Literal["positive", "negative", "neutral"]:
+async def classify_one(text: str) -> Literal["positive", "negative", "neutral"]:
     """Classify the sentiment of this single text."""
     ...
 
-results = []
-for t in texts:
-    results.append(await self.classify_one(t))
+results = await asyncio.gather(*(classify_one(t) for t in texts))
 return_result(results)
 '''
 
@@ -114,8 +115,12 @@ async def test_dynamic_structured_output_single_item():
 
 
 @pytest.mark.asyncio
-async def test_dynamic_structured_output_method_bound_to_instance():
-    """After execution, the dynamically-defined method should be on the agent instance."""
+async def test_dynamic_helper_is_not_bound_to_instance():
+    """Helpers defined in CodeAct cells are not attached to the agent.
+
+    The standalone wrapper makes `classify_one` callable as a bare name in the
+    REPL scope. It must not appear on the agent instance.
+    """
     texts = ["Test"]
 
     fake_llm = FakeLLMClient(
@@ -128,8 +133,9 @@ async def test_dynamic_structured_output_method_bound_to_instance():
     agent = SentimentAgent(llm=fake_llm)
     await agent.classify(texts)
 
-    assert hasattr(agent, "classify_one"), (
-        "classify_one should be bound to the agent instance after execution"
+    assert not hasattr(agent, "classify_one"), "classify_one must NOT be on the agent instance"
+    assert not hasattr(SentimentAgent, "classify_one"), (
+        "classify_one must NOT be on the agent class either"
     )
 
 
@@ -138,13 +144,11 @@ CLASSIFY_BATCH_CODE_WITH_IMPORT = '''\
 from typing import Literal
 
 @strategy(PredictStrategy())
-async def classify_one(self, text: str) -> Literal["positive", "negative", "neutral"]:
+async def classify_one(text: str) -> Literal["positive", "negative", "neutral"]:
     """Classify the sentiment of this single text."""
     ...
 
-results = []
-for t in texts:
-    results.append(await self.classify_one(t))
+results = await asyncio.gather(*(classify_one(t) for t in texts))
 return_result(results)
 '''
 
@@ -177,13 +181,11 @@ from typing import Literal
 from strategy import PredictStrategy, strategy
 
 @strategy(PredictStrategy())
-async def classify_one(self, text: str) -> Literal["positive", "negative", "neutral"]:
+async def classify_one(text: str) -> Literal["positive", "negative", "neutral"]:
     """Classify the sentiment of this single text."""
     ...
 
-results = []
-for t in texts:
-    results.append(await self.classify_one(t))
+results = await asyncio.gather(*(classify_one(t) for t in texts))
 return_result(results)
 '''
 

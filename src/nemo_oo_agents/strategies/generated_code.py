@@ -7,7 +7,7 @@ and instead returns structured issues that strategies can convert into feedback.
 
 Key invariants:
 - Keep runtime-level safety validation in `validate_planning_code()` (imports, exec/eval/compile).
-- Ensure helper methods are compiled with an execution namespace consistent with
+- Ensure helper functions are compiled with an execution namespace consistent with
   `ActorRuntime.execute_code()` to avoid NameError surprises (e.g. missing asyncio).
 """
 
@@ -37,13 +37,18 @@ def _pformat(value: Any, tc: TruncationConfig) -> str:
 
 @dataclass(frozen=True)
 class HelperApplyResult:
+    """Outcome of pre-compiling helper function defs from an LLM code cell.
+
+    installed — names added to session_locals as plain callables.
+    errors — compile/decoration errors surfaced back to the LLM before main exec.
+    """
+
     installed: list[str]
-    rejected: list[str]
-    errors: list[str] = field(default_factory=list)  # Errors during method binding
+    errors: list[str] = field(default_factory=list)
 
 
 class ExecutionNamespaceBuilder:
-    """Build an execution namespace for compiling helper methods.
+    """Build an execution namespace for compiling helper functions.
 
     This is designed to mirror the *effective* globals used by `ActorRuntime.execute_code()`.
     Strategies can extend via `extra`.
@@ -79,7 +84,7 @@ class ExecutionNamespaceBuilder:
                 "methods": methods,
                 "variables": variables,
                 "help": doc,  # Shadow built-in help() to prevent blocking on stdin
-                # decorators (for helper methods with @strategy)
+                # decorators (for helper functions with @strategy)
                 "strategy": strategy,
                 # Pretty printing with Rich-compatible API
                 "pprint": pprint,
@@ -277,8 +282,16 @@ def _exec_with_source_tracking(
     return func
 
 
-class HelperMethodManager:
-    """Extract, compile, and bind helper methods defined in the generated code block."""
+class HelperFunctionManager:
+    """Pre-compile helper function defs from an LLM code cell.
+
+    Runs before the main exec to:
+
+    1. Attach ``_generated_source`` so ``@strategy(...)`` decorators can detect
+       ellipsis bodies via ``has_ellipsis_body``.
+    2. Write the compiled functions into ``session_locals`` as plain callables
+       so subsequent cells see them as top-level names in ``exec_globals``.
+    """
 
     def apply(
         self,
@@ -287,65 +300,40 @@ class HelperMethodManager:
         session_locals: dict[str, Any],
         *,
         namespace: dict[str, Any],
-        target_method_name: str,
     ) -> HelperApplyResult:
-        # Guard: Reject classes - only accept instances
-        # This prevents the critical bug where methods get bound to
-        # the class itself, corrupting all subsequent instances.
         if inspect.isclass(agent):
-            raise TypeError(
-                f"Expected an agent instance but received a class: {agent}. "
-                f"Binding methods to a class would corrupt all instances."
-            )
+            raise TypeError(f"Expected an agent instance but received a class: {agent}.")
 
         try:
             tree = ast.parse(code)
         except SyntaxError:
-            return HelperApplyResult(installed=[], rejected=[])
+            return HelperApplyResult(installed=[])
 
         installed: list[str] = []
-        rejected: list[str] = []
         errors: list[str] = []
 
         for node in tree.body:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
 
-            # Only treat as methods if first arg is self.
-            if not node.args.args or node.args.args[0].arg != "self":
-                continue
-
             method_name = node.name
-            if method_name == target_method_name:
-                rejected.append(method_name)
-                continue
-
             method_code = ast.unparse(node)
 
-            # Execute the definition in a consistent namespace.
-            # For decorated functions, we need special handling to enable
-            # has_ellipsis_body() detection (which requires _generated_source).
             try:
                 func = _exec_with_source_tracking(node, method_code, namespace, method_name)
             except Exception as e:
-                # Record the error so it can be fed back to LLM
-                errors.append(f"Error defining method `{method_name}`: {type(e).__name__}: {e}")
+                errors.append(f"Error defining `{method_name}`: {type(e).__name__}: {e}")
                 continue
 
-            # func may be None if exec succeeded but function wasn't found
             func = func or namespace.get(method_name)
             if not callable(func):
                 continue
 
-            # Bind to the *instance* (avoid cross-instance leakage).
-            bound = types.MethodType(func, agent)
-            setattr(agent, method_name, bound)
-            if hasattr(agent, "_defined_methods_registry"):
-                agent._defined_methods_registry[method_name] = method_code
-            session_locals[method_name] = bound
+            # Store as a plain callable; never attached to the agent.
+            session_locals[method_name] = func
             installed.append(method_name)
 
-        return HelperApplyResult(installed=installed, rejected=rejected, errors=errors)
+        return HelperApplyResult(installed=installed, errors=errors)
 
 
 def _type_name(t: Any) -> str:

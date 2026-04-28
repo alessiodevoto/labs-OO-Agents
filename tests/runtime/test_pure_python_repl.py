@@ -191,9 +191,9 @@ def my_method(self, x):
         assert result.stdout == ""
         assert "my_method" in result.defined_methods
 
-        # Now call the method
+        # Now call the method.: it's a plain function, so pass self explicitly.
         method = result.defined_methods["my_method"]
-        method(5)  # Just verify it's callable
+        method(test_agent, 5)
         # The print happens but we'd need to capture it in a new execute_code call
 
 

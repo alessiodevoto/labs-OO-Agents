@@ -548,9 +548,8 @@ class PredictStrategy(GenerationStrategy):
         Returns:
             Tuple of (llm_response_object, event_id).
         """
-        # Call LLM with output_model for structured output
         response, event_id = await runtime.generate(
-            tools=[],  # No tools for predict strategy
+            tools=None,
             output_model=response_model,
         )
 

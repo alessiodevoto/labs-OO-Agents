@@ -6,7 +6,7 @@ Flow:
 1. Build prompt (task + agent state + available methods)
 2. Call LLM with NO tools - just get text output
 3. Validate code (REPL policy: no classes, await async methods)
-4. Extract and bind helper methods (before execution for same-turn use)
+4. Pre-compile helper functions (before execution for same-turn use)
 5. Execute output as Python via runtime.execute_code()
 6. If code has return statement OR method returns None → validate and complete
 7. Otherwise → send feedback (stdout, defined helpers) and continue loop
@@ -44,7 +44,7 @@ from nemo_oo_agents.strategies.composite import CompositeStrategy
 from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
     GeneratedCodeValidator,
-    HelperMethodManager,
+    HelperFunctionManager,
     ReturnValueValidator,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
@@ -175,55 +175,49 @@ class PurePythonStrategy(CompositeStrategy):
     @strategy(TemplateStrategy())
     async def strategy_instructions(self, runtime: RuntimeServices) -> str:
         """## PURE_PYTHON Mode
-        You are operating in ReACT/CodeAct loop mode. Where your interface to both the user and the system
-        is only through Python code.
+        You are operating in a ReACT/CodeAct loop. Your only interface to the user and the system is Python code.
 
         **Output**: Valid Python code only. No markdown, no fences.
 
-        **You are an instance of the class described with `self(doc)` (see above). You are performing your tasks in a persistent REPL session**:
-        - If you know the answer → `return result` immediately (one turn)
-        - If you need sub methods → define `async def helper(self, ...):` and annotate with strategy decorator. These methods are automatically added to the instance of the class and therefore they persist on `self` for next turn
-        - If there are methods defined on self (this is you) that seem useful, use them using await self.method(...) (for async methods) or self.method(...) (for sync methods) (but pay attention to not create recursions)
-        - Variables and methods persist across turns until you `return`
+        **You run in a persistent REPL session**. See `doc(self)` above for the class.
+        - If you know the answer → `return result` (one turn).
+        - Call existing methods on `self` with `await self.method(...)` (async) or `self.method(...)` (sync).
+        - Variables and helper functions you define persist across turns until you `return`.
+
+        **Helpers**: define plain functions at the top of the cell and call them by name.
+        ```python
+        def normalize(x):
+            return x.strip().lower()
+
+        cleaned = [normalize(v) for v in values]
+        ```
 
         **Available**:
-        - `reasoning("...")` - Your thinking (not shown to user)
-        - `message("...")` - Message to user
-        - `print(...)` - Debug output (returned to you next turn)
-        - `pprint(obj, ...)` - Pretty-print data structures with formatting
-        - `self` - Agent with all attributes/tools
+        - `reasoning("...")` — your thinking (not shown to the user)
+        - `message("...")` — message to the user
+        - `print(...)` / `pprint(obj, ...)` — debug output returned to you next turn
+        - `self` — the agent
         - Method parameters as local variables
 
-        **Delegating to Sub-Methods (@strategy with `...` body)**:
-        This is the core capability of the agent framework you are working in: any method that you are defining with (...) and a strategy decorator
-        will delegate performing the task to that sub method using a sophisticated LLM/Agent. In this way you can delegate hard subproblems to LLM powered
-        smart methods. This only works when you provide the ellipsis `...` in the body and decorate with @strategy and the appropriate strategy.
-        - For complex tasks, define sub-methods with `@strategy()` decorator and `...` body if there are no existing methods defined on `self` that can solve the task.
-        - Use `@strategy(PredictStrategy())` for fuzzy/LLM sub-tasks (text analysis, summarization, classification)
-        - Use `@strategy(PurePythonStrategy())` for structured breakdown - sub-method MUST solve simpler task than parent to avoid infinite recursion
-        - After defining sub-methods use them to complete the task.
+        **Delegating with `@strategy(...)`**: decorate a standalone async function with an ellipsis body to delegate to an LLM-powered sub-call. For fan-out over a list, `asyncio.gather` runs the calls in parallel.
 
-        <example>
-        # Task: Extract person names and organizations from these documents
-
-        reasoning("Need to extract named entities - this is a fuzzy NER task, best done with PredictStrategy")
+        ```python
         @strategy(PredictStrategy())
-        async def extract_from_text(self, text: str) -> dict:
-            \"\"\"Extract person names and organizations from text. Return dict with 'persons' and 'orgs' keys.\"\"\"
+        async def detect_language(message: str) -> str:
+            \"\"\"Return the ISO 639-1 language code for {{message}} (e.g. 'en', 'fr', 'de', 'ja').\"\"\"
             ...
 
-        all_persons = []
-        all_orgs = []
-        for doc in docs:
-            result = await self.extract_from_text(doc)
-            all_persons.extend(result.get("persons", []))
-            all_orgs.extend(result.get("orgs", []))
-        return {"persons": all_persons, "orgs": all_orgs}
-        </example>
+        codes = await asyncio.gather(*(detect_language(m) for m in messages))
+        return codes
+        ```
+
+        Strategy choice:
+        - `@strategy(PredictStrategy())` — language tasks (classification, extraction, interpretation). Single-shot.
+        - `@strategy(PurePythonStrategy())` — nested iterative sub-task. Must solve a strictly simpler subproblem than the parent.
 
         **Complete**: Use `return <value>` when done.
 
-        **Forbidden**: `import` statements. Use modules shown in "Already Imported"."""
+        **Forbidden**: `import` statements (use modules shown in "Already Imported"); attaching callables to the agent (`self.foo = fn`, `setattr(self, ...)`, `type(self).foo = fn`)."""
         ...
 
     @strategy(TemplateStrategy())
@@ -540,7 +534,7 @@ class PurePythonStrategy(CompositeStrategy):
             f"err={session.error_count}/{session.max_retries}"
         )
 
-        response, event_id = await runtime.generate(tools=[])
+        response, event_id = await runtime.generate(tools=None)
         raw_code = (response.content or "").strip()
 
         # Strip wrapper formats - LLM may use markdown fences, XML tags, or both nested
@@ -711,40 +705,29 @@ class PurePythonStrategy(CompositeStrategy):
             runtime.agent, extra={**builtins, **session.session_locals, **strategy_extras}
         )
 
-        # 3) Extract and bind helper methods BEFORE execution (same-turn use)
-        helper_manager = HelperMethodManager()
-        helper_result = helper_manager.apply(
+        # 3) Pre-compile helper function defs so @strategy decorators can see
+        # _generated_source at decoration time. Helpers are never attached to the agent.
+        helper_compiler = HelperFunctionManager()
+        helper_result = helper_compiler.apply(
             code,
             runtime.agent,
             session.session_locals,
             namespace=namespace,
-            target_method_name=target_method_name,
         )
-
-        if helper_result.rejected:
-            session.record_error()
-            error_msg = (
-                f"**Error**: Cannot define method(s) {helper_result.rejected} - "
-                f"they would overwrite the target method `{target_method_name}` that you're implementing.\n"
-                f"Choose different names for helper methods."
-            )
-            runtime.event_manager.add(Error(content=error_msg))
-            logger.warning(f"[PURE_PYTHON] Rejected helper methods: {helper_result.rejected}")
-            return ExecutionResult(stdout="", error=None, defined_methods={})
 
         if helper_result.errors:
             session.record_error()
-            error_msg = "**Error**: Failed to define helper method(s):\n" + "\n".join(
+            error_msg = "**Error**: Failed to define helper function(s):\n" + "\n".join(
                 f"- {e}" for e in helper_result.errors
             )
             runtime.event_manager.add(Error(content=error_msg))
-            logger.warning(f"[PURE_PYTHON] Helper method binding errors: {helper_result.errors}")
+            logger.warning(f"[PURE_PYTHON] Helper compile errors: {helper_result.errors}")
             return ExecutionResult(stdout="", error=None, defined_methods={})
 
         if helper_result.installed:
-            logger.debug(f"[PURE_PYTHON] Pre-bound helpers: {helper_result.installed}")
+            logger.debug(f"[PURE_PYTHON] Compiled helpers: {helper_result.installed}")
 
-        # 4) Execute with session locals (includes pre-bound methods)
+        # 4) Execute with session locals (includes pre-compiled helpers)
         execution_builtins = {**builtins, **session.session_locals}
 
         # Use iteration+1 for 1-indexed execution count (matches event emission after record_iteration)

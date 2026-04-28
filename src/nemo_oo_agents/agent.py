@@ -103,7 +103,6 @@ class Agent(metaclass=AgentMeta):
     _agent_id: Annotated[str, hidden, nosnapshot]
     _llm: Annotated["UnifiedLLM", hidden, nosnapshot]
     _truncation: Annotated["TruncationConfig", hidden, nosnapshot]
-    _defined_methods_registry: Annotated[dict[str, str], hidden, nosnapshot]
     context: Annotated["ContextApi", hidden, nosnapshot]
     events: Annotated["EventsApi", hidden, nosnapshot]
 
@@ -206,9 +205,6 @@ class Agent(metaclass=AgentMeta):
 
         # Generate agent ID
         self._agent_id = str(uuid4())
-
-        # Registry for LLM-defined method source code (for snapshot serialization)
-        self._defined_methods_registry: dict[str, str] = {}
 
         # Storage manager - default to InMemoryStorageManager (no persistence)
         self._storage = storage or InMemoryStorageManager()
@@ -420,6 +416,12 @@ class Agent(metaclass=AgentMeta):
 ## Context blocks
 {self.render_config.block_formatter.format_description()}
 """
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        from nemo_oo_agents.runtime.method_guard import guard_dynamic_method
+
+        guard_dynamic_method(self, name, value)
+        super().__setattr__(name, value)
 
     # -------------------------------------------------------------------------
     # agentdoc protocol implementations

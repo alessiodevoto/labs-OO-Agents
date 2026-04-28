@@ -504,9 +504,9 @@ class TestPurePythonHelperMethodErrors:
             session.record_error()
             ...  # lines 721-728
 
-    The HelperMethodManager rejects helper methods that would overwrite the
+    The HelperFunctionManager rejects helper methods that would overwrite the
     target method. Since PurePythonStrategy calls _execute_code() which calls
-    HelperMethodManager.apply(), and rejected increments error_count, after
+    HelperFunctionManager.apply(), and rejected increments error_count, after
     max_retries rejections, session is exhausted and GenerationError is raised.
 
     Note: The function-body-extraction step runs BEFORE helper processing, so
@@ -523,7 +523,7 @@ class TestPurePythonHelperMethodErrors:
         The LLM generates a code block that includes BOTH a helper function
         named 'process' (= the target) AND some plain code. Since there are
         non-function nodes in the body, _extract_function_body_if_wrapped()
-        returns the code unchanged. Then HelperMethodManager finds 'process' in
+        returns the code unchanged. Then HelperFunctionManager finds 'process' in
         the rejected list, calls session.record_error(), and returns empty result.
         After max_retries=2, GenerationError is raised.
 
@@ -539,7 +539,7 @@ class TestPurePythonHelperMethodErrors:
         # Define a helper named 'process' (same as target) WITH a plain statement
         # so _extract_function_body_if_wrapped does NOT extract (other_nodes is non-empty)
         # Note: the tree has both the function and a plain statement → other_nodes non-empty
-        # → extraction skipped → HelperMethodManager sees def process(self, ...) → rejected
+        # → extraction skipped → HelperFunctionManager sees def process(self, ...) → rejected
         conflicting_code = "x = 1\ndef process(self, x: int) -> int:\n    return x * 3"
 
         fake_llm = FakeLLMClient(
