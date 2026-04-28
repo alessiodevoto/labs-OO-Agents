@@ -530,6 +530,31 @@ class Session:
                     except Exception:
                         pass
                 self._session_manager.close()
+            self._print_exit_message()
+
+    def _print_exit_message(self) -> None:
+        """Print the parting line to stderr with session id + name.
+
+        Runs after session_manager.close() so the persisted session is
+        what the user sees referenced. Goes through ``sys.stderr``
+        (not the frontend) because the prompt_toolkit Application has
+        already cleaned up its terminal state and the frontend is
+        closed.
+        """
+        sm = self._session_manager
+        if sm is not None:
+            short = (sm.session_id or "")[:8]
+            name = sm.name
+            if name and short:
+                tag = f"{name} [{short}]"
+            elif short:
+                tag = f"[{short}]"
+            else:
+                tag = ""
+        else:
+            tag = ""
+        suffix = f" — {tag}" if tag else ""
+        sys.stderr.write(f"\n\x1b[2mGoodbye! Stay vibing.{suffix}\x1b[0m\n")
 
     # ------------------------------------------------------------------
     # Handlers — driven by TUIApplication, called in run()'s event loop.

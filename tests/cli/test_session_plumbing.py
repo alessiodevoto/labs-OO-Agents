@@ -122,6 +122,59 @@ async def test_session_cancel_background_tasks_is_safe_when_empty() -> None:
     assert session._background_tasks == set()
 
 
+def test_print_exit_message_includes_name_and_short_hash(capsys) -> None:
+    """When the session has a name and id, the exit message tags both
+    in the form ``name [first8charsofhash]`` — same shape as the
+    session-label rendered above the input bar."""
+    from unittest.mock import Mock
+
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._session_manager = Mock()
+    session._session_manager.session_id = "abc1234567890def"
+    session._session_manager.name = "my-debug-run"
+
+    session._print_exit_message()
+    err = capsys.readouterr().err
+    assert "Goodbye! Stay vibing." in err
+    assert "my-debug-run [abc12345]" in err
+
+
+def test_print_exit_message_short_hash_only_when_name_missing(capsys) -> None:
+    """Unnamed sessions still get the bracketed short-hash tag."""
+    from unittest.mock import Mock
+
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._session_manager = Mock()
+    session._session_manager.session_id = "deadbeefcafebabe"
+    session._session_manager.name = None
+
+    session._print_exit_message()
+    err = capsys.readouterr().err
+    assert "Goodbye! Stay vibing. — [deadbeef]" in err
+
+
+def test_print_exit_message_no_session_manager(capsys) -> None:
+    """Sessions without a session_manager still get the goodbye line,
+    just without a tag."""
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._session_manager = None
+
+    session._print_exit_message()
+    err = capsys.readouterr().err
+    assert "Goodbye! Stay vibing." in err
+    # Strip ANSI before checking for absence of a bracketed session tag.
+    import re
+
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", err)
+    assert "[" not in plain  # no bracketed tag
+
+
 async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
     """Regression guard for the original bug: the user-bar echo wiring
     used to assign to ``self._app.on_user_message``, an attribute that
