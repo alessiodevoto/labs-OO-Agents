@@ -58,7 +58,7 @@ from nemo_oo_agents.strategies.composite import CompositeStrategy
 from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
     GeneratedCodeValidator,
-    HelperMethodManager,
+    HelperFunctionManager,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
 from unifiedllm import Tool, ToolCall
@@ -492,7 +492,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         ## Strategy
 
-        Jupyter-like Python session. Parameters pre-loaded as locals; state persists. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn.
+        Jupyter-like Python session. Parameters pre-loaded as locals; state persists across cells. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn.
 
         **Your two tools:**
         - `execute_python(code)` — run a code cell
@@ -504,13 +504,41 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         Use `execute_python(...)` for lists/batches, arithmetic, multi-step computation, transforms, or iteration. Always iterate in code — never construct large arrays by hand.
 
-        For language tasks (classification, extraction, interpretation), use LLM reasoning — answer directly via `return_result`, or delegate to a `@strategy(PredictStrategy())` sub-method. Don't keyword-match or regex.
+        For language tasks (classification, extraction, interpretation), use LLM reasoning — answer directly via `return_result`, or delegate to a `@strategy(PredictStrategy())` standalone function (see below). Don't keyword-match or regex.
+
+        ## Helpers
+
+        Define helpers at the top of the cell and call them by name. Existing methods on `self` are usable via `await self.method(...)`. Helpers persist as REPL locals across cells in this session.
+
+        ```python
+        def normalize(x):
+            return x.strip().lower()
+
+        cleaned = [normalize(v) for v in values]
+        ```
+
+        ## Fan-out generation
+
+        For per-item LLM work over a list, decorate a standalone async function with `@strategy(PredictStrategy())` and an ellipsis body. `asyncio.gather` runs the calls in parallel.
+
+        ```python
+        @strategy(PredictStrategy())
+        async def detect_language(message: str) -> str:
+            \"\"\"Return the ISO 639-1 language code for {{message}} (e.g. 'en', 'fr', 'de', 'ja').\"\"\"
+            ...
+
+        codes = await asyncio.gather(*(detect_language(m) for m in messages))
+        return_result(codes)
+        ```
+
+        For iterative sub-tasks that need code execution, use `@strategy(CodeActStrategy())`. The sub-task must be strictly simpler than the current call to avoid infinite recursion.
 
         ## Restrictions (will throw)
 
         - `import` — use what's in the Execution Context
         - `eval`, `exec`, `compile`, `__import__`, `input`, `breakpoint`
         - `globals`, `locals`, `vars`, `asyncio.run`, `loop.run_until_complete`
+        - Attaching callables to the agent: `self.foo = fn`, `setattr(self, 'foo', fn)`, `type(self).foo = fn`
         """
         ...
 
@@ -1921,33 +1949,25 @@ Standard Python builtins and agent instance (`self`) are available."""
             runtime.agent, extra={**builtins, **session.session_locals, **strategy_extras}
         )
 
-        # Extract and bind helper methods before execution
-        helper_manager = HelperMethodManager()
-        helper_result = helper_manager.apply(
+        # Pre-compile helper function defs so @strategy decorators can see
+        # _generated_source at decoration time. Helpers are never attached to the agent.
+        helper_compiler = HelperFunctionManager()
+        helper_result = helper_compiler.apply(
             code,
             runtime.agent,
             session.session_locals,
             namespace=namespace,
-            target_method_name=target_method_name,
         )
 
-        if helper_result.rejected:
-            error_msg = (
-                f"Cannot define method(s) {helper_result.rejected} - "
-                f"they would overwrite the target method `{target_method_name}`."
-            )
-            logger.warning(f"[CODEACT] Rejected helper methods: {helper_result.rejected}")
-            return ExecutionResult(stdout="", error=Exception(error_msg), defined_methods={})
-
         if helper_result.errors:
-            error_msg = "Failed to define helper method(s):\n" + "\n".join(
+            error_msg = "Failed to define helper function(s):\n" + "\n".join(
                 f"- {e}" for e in helper_result.errors
             )
-            logger.warning(f"[CODEACT] Helper method binding errors: {helper_result.errors}")
+            logger.warning(f"[CODEACT] Helper compile errors: {helper_result.errors}")
             return ExecutionResult(stdout="", error=Exception(error_msg), defined_methods={})
 
         if helper_result.installed:
-            logger.debug(f"[CODEACT] Installed helpers: {helper_result.installed}")
+            logger.debug(f"[CODEACT] Compiled helpers: {helper_result.installed}")
 
         # Execute with session locals
         execution_builtins = {**builtins, **session.session_locals}

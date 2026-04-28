@@ -18,7 +18,7 @@ async def test_helper_method_can_use_asyncio_gather():
     This verifies that the helper method's execution namespace includes asyncio
     and matches ActorRuntime.execute_code() globals.
     """
-    # LLM generates a helper that uses asyncio.gather()
+    # helpers are plain callables — LLM calls them as helper(self, ...).
     code = """
 # Define a helper that processes items in parallel
 async def process_parallel(self, items: list[str]) -> list[str]:
@@ -27,7 +27,7 @@ async def process_parallel(self, items: list[str]) -> list[str]:
     return results
 
 # Use the helper
-result = await self.process_parallel(texts)
+result = await process_parallel(self, texts)
 return result
 """
 
@@ -51,8 +51,8 @@ return result
     # Verify the helper worked correctly
     assert result == ["processed_a", "processed_b", "processed_c"]
 
-    # Verify the helper was installed
-    assert hasattr(agent_instance, "process_parallel")
+    # helpers are no longer attached to the agent.
+    assert not hasattr(agent_instance, "process_parallel")
 
 
 @pytest.mark.asyncio
@@ -62,7 +62,7 @@ async def test_helper_method_can_use_doc_introspection():
     This verifies that helper methods have access to agentdoc introspection functions
     that are part of ExecutionNamespaceBuilder.
     """
-    # LLM generates a helper that uses doc() from agentdoc
+    # helpers are plain callables — LLM calls them as helper(self, ...).
     code = """
 
 
@@ -70,7 +70,7 @@ async def get_agent_info(self) -> str:
     # Use doc() to introspect the agent
     return doc(self)
 
-result = await self.get_agent_info()
+result = await get_agent_info(self)
 return result[:50]  # Return first 50 chars
 """
 

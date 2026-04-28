@@ -1437,33 +1437,58 @@ class TestInstallSummarizer:
     def test_policy_none_does_nothing(self):
         config = SummarizationConfig(policy="none")
         agent = self._mk_agent()
-        with patch(
-            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
-        ) as mock_install:
+        # TokenBudgetSummarizer is an Agent subclass, so mock.patch
+        # can't restore ``install`` via regular setattr. Do the swap by hand
+        # with ``type.__setattr__``.
+        from unittest.mock import MagicMock as _MM
+
+        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
+
+        mock_install = _MM()
+        original_install = TokenBudgetSummarizer.install
+        type.__setattr__(TokenBudgetSummarizer, "install", mock_install)
+        try:
             install_summarizer(config, agent)
+        finally:
+            type.__setattr__(TokenBudgetSummarizer, "install", original_install)
         mock_install.assert_not_called()
 
     def test_none_max_tokens_scales_from_model_context_window(self):
         """Default (None) → 80% of context_window. Prevents the ``ctx 8%``
         firing issue that made summarization feel constant on 1M-context
         models."""
+        from unittest.mock import MagicMock as _MM
+
+        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
+
         config = SummarizationConfig()  # max_tokens=None
         agent = self._mk_agent(context_window=1_000_000)
-        with patch(
-            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
-        ) as mock_install:
+        # patch via ``type.__setattr__`` (the Agent guard blocks teardown).
+        mock_install = _MM()
+        original_install = TokenBudgetSummarizer.install
+        type.__setattr__(TokenBudgetSummarizer, "install", mock_install)
+        try:
             install_summarizer(config, agent)
+        finally:
+            type.__setattr__(TokenBudgetSummarizer, "install", original_install)
         installed_cfg = mock_install.call_args.kwargs["config"]
         assert installed_cfg.max_tokens == 800_000
 
     def test_explicit_max_tokens_passed_through(self):
         """An explicit integer bypasses auto-scaling."""
+        from unittest.mock import MagicMock as _MM
+
+        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
+
         config = SummarizationConfig(max_tokens=50_000, preserve_recent=5)
         agent = self._mk_agent(context_window=1_000_000)
-        with patch(
-            "nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"
-        ) as mock_install:
+        mock_install = _MM()
+        original_install = TokenBudgetSummarizer.install
+        type.__setattr__(TokenBudgetSummarizer, "install", mock_install)
+        try:
             install_summarizer(config, agent)
+        finally:
+            type.__setattr__(TokenBudgetSummarizer, "install", original_install)
         installed_cfg = mock_install.call_args.kwargs["config"]
         assert installed_cfg.max_tokens == 50_000
         assert installed_cfg.preserve_recent == 5
@@ -1474,13 +1499,21 @@ class TestInstallSummarizer:
         the *resolved* LLM's context window each call), so no explicit
         ``max_event_tokens`` belongs in the agent's TruncationConfig.
         """
+        from unittest.mock import MagicMock as _MM
+
+        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         config = SummarizationConfig()
         agent = self._mk_agent(context_window=200_000)
         agent._truncation = TruncationConfig()
-        with patch("nemo_oo_agents.agents.summarization.TokenBudgetSummarizer.install"):
+        mock_install = _MM()
+        original_install = TokenBudgetSummarizer.install
+        type.__setattr__(TokenBudgetSummarizer, "install", mock_install)
+        try:
             install_summarizer(config, agent)
+        finally:
+            type.__setattr__(TokenBudgetSummarizer, "install", original_install)
         assert agent._truncation.max_event_tokens is None
 
 

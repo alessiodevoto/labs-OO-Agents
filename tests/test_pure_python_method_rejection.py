@@ -42,16 +42,17 @@ async def _helper(self, item: str) -> str:
 async def process_data(self, items: list[str]) -> list[str]:
     results = []
     for item in items:
-        results.append(await self._helper(item))
+        results.append(await _helper(self, item))
     return results
 
 print("done")  # Other non-function code - causes rejection
 """,
-            # Second attempt: LLM sees error, provides correct inline implementation
+            # Second attempt: LLM sees error, provides correct inline implementation.
+            # call the helper as a plain callable — ``helper(self, item)``.
             """
 results = []
 for item in items:
-    results.append(await self._helper(item))
+    results.append(await _helper(self, item))
 return results
 """,
         ]
@@ -63,8 +64,8 @@ return results
     # Should successfully process after retry
     assert result == ["HELLO", "WORLD"]
 
-    # Verify helper was installed
-    assert hasattr(my_agent, "_helper")
+    # helpers are plain callables in session_locals — not attached to agent.
+    assert not hasattr(my_agent, "_helper")
 
     # Verify that both responses were used (first was rejected due to other code, second succeeded)
     assert llm.call_count == 2, "Should have used both LLM responses (rejection + retry)"
@@ -76,7 +77,8 @@ async def test_helper_methods_are_not_rejected():
     llm = FakeLLMClient.with_code_responses(
         [
             """
-# Define helpers with different names (should be accepted)
+# Define helpers with different names (should be accepted).
+# helpers are plain callables — call as helper(self, ...), not self.helper(...).
 async def _helper1(self, x: str) -> str:
     return x.upper()
 
@@ -86,8 +88,8 @@ async def _helper2(self, x: str) -> str:
 
 # Return result immediately
 result = []
-result.append(await self._helper1(items[0]))
-result.append(await self._helper2(items[1]))
+result.append(await _helper1(self, items[0]))
+result.append(await _helper2(self, items[1]))
 return result
 """
         ]
@@ -97,8 +99,9 @@ return result
     result = await my_agent.process_data(["Hello", "WORLD"])
 
     assert result == ["HELLO", "world"]
-    assert hasattr(my_agent, "_helper1")
-    assert hasattr(my_agent, "_helper2")
+    # helpers live as plain callables in session_locals, not on the agent.
+    assert not hasattr(my_agent, "_helper1")
+    assert not hasattr(my_agent, "_helper2")
 
 
 @pytest.mark.asyncio
@@ -197,8 +200,7 @@ async def test_helper_method_plus_wrapped_target_method():
             """Find the first sentence with negative sentiment."""
             ...
 
-    # LLM returns helper method + wrapped target method
-    # Helper method checks if sentence contains negative words
+    # helpers are plain callables — call as helper(self, ...).
     wrapped_code = """async def is_negative(self, sentence: str) -> bool:
     negative_words = ["hate", "terrible", "bad", "awful"]
     return any(word in sentence.lower() for word in negative_words)
@@ -206,7 +208,7 @@ async def test_helper_method_plus_wrapped_target_method():
 
 async def find_negative_sentiment(self) -> str:
     for sentence in self.data1 + self.data2 + self.data3:
-        if await self.is_negative(sentence):
+        if await is_negative(self, sentence):
             return sentence
     return ""
 """
@@ -220,9 +222,8 @@ async def find_negative_sentiment(self) -> str:
     assert isinstance(result, str)
     assert result in ["I hate this", "Terrible product"]
 
-    # Verify helper method was installed
-    assert hasattr(agent_instance, "is_negative")
-    assert callable(agent_instance.is_negative)
+    # helpers are plain callables, not attached to the agent.
+    assert not hasattr(agent_instance, "is_negative")
 
     # Verify history was updated with unpacked code
     history_events = agent_instance.event_manager.values()

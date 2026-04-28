@@ -96,7 +96,9 @@ def my_method(self, x):
 
     @pytest.mark.asyncio
     async def test_captured_method_is_callable(self, test_agent):
-        """Captured method should be callable with args."""
+        """Captured method should be callable.: captured helpers are plain functions (not bound to the agent),
+        so callers pass ``self`` explicitly.
+        """
         code = """
 
 
@@ -107,8 +109,7 @@ def double(self, x):
 
         assert result.success
         method = result.defined_methods["double"]
-        # Method is bound to agent, so just call with remaining args
-        assert method(5) == 10
+        assert method(test_agent, 5) == 10
 
     @pytest.mark.asyncio
     async def test_captures_async_method(self, test_agent):

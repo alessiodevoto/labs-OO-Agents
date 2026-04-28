@@ -52,6 +52,7 @@ class AgentMeta(ABCMeta):
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
 
         # Check if this class enables tracing (convention-based)
+        # (guard for dynamic method addition is installed via __setattr__ below)
         # Classes set _enable_tracing = True to opt into tracing
         should_trace_class = getattr(cls, "_enable_tracing", False)
 
@@ -75,13 +76,20 @@ class AgentMeta(ABCMeta):
             else:
                 should_trace = mcs._should_trace(attr_name, attr_value, should_trace_class)
 
-            # Wrap if needs generation OR tracing
+            # Use type.__setattr__ to bypass our own __setattr__ guard during
+            # class construction.
             if should_generate or should_trace:
                 strategy = mcs._resolve_strategy(attr_value)
                 wrapped = mcs._create_wrapper(attr_value, should_generate, should_trace, strategy)
-                setattr(cls, attr_name, wrapped)
+                type.__setattr__(cls, attr_name, wrapped)
 
         return cls
+
+    def __setattr__(cls, name: str, value: Any) -> None:
+        from nemo_oo_agents.runtime.method_guard import guard_dynamic_method
+
+        guard_dynamic_method(cls, name, value)
+        super().__setattr__(name, value)
 
     @staticmethod
     def _should_generate(method_name: str, method_obj: Callable[..., Any]) -> bool:

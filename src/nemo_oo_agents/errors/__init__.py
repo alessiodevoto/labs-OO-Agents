@@ -100,6 +100,17 @@ class NemoOOAgentsRuntimeError(NemoOOAgentsError):
     pass
 
 
+class DynamicMethodAdditionError(AttributeError):
+    """Attempt to attach a method-like callable to an agent instance or class.
+
+    Raised by Agent.__setattr__ / AgentMeta.__setattr__ when generated code
+    tries `self.foo = lambda ...`, `setattr(self, 'foo', fn)`,
+    `type(self).foo = fn`, or similar.
+    """
+
+    pass
+
+
 # Serialization / Storage Errors
 from nemo_oo_agents.errors.storage import (  # noqa: E402, I001
     DeserializationError as DeserializationError,

@@ -9,7 +9,7 @@ Tests include:
 - Integration tests verifying agents actually use the override (TestAgentUsesDefaultStrategy)
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -138,17 +138,19 @@ class TestAgentUsesDefaultStrategy:
         # Create agent instance
         agent = TestAgent()
 
-        # Patch the strategy's execute method to verify it's called
-        with patch.object(CodeActStrategy, "execute", new_callable=AsyncMock) as mock_execute:
-            mock_execute.return_value = "result"
-
-            # Call the agent method
+        # CodeActStrategy uses AgentMeta so mock.patch.object cannot
+        # rebind its attrs (setattr is guarded). Do the swap-and-restore by hand
+        # via ``type.__setattr__``.
+        mock_execute = AsyncMock(return_value="result")
+        original_execute = CodeActStrategy.execute
+        type.__setattr__(CodeActStrategy, "execute", mock_execute)
+        try:
             await agent.do_something()
-
-            # Verify CodeActStrategy.execute was called (not PurePythonStrategy)
             assert mock_execute.called, (
                 "CodeActStrategy.execute should be called when set_default_strategy(CodeActStrategy()) is used"
             )
+        finally:
+            type.__setattr__(CodeActStrategy, "execute", original_execute)
 
     @pytest.mark.asyncio
     async def test_agent_uses_codeact_when_no_override(self):
@@ -169,15 +171,16 @@ class TestAgentUsesDefaultStrategy:
         # Create agent instance
         agent = TestAgent()
 
-        # Patch CodeActStrategy's execute method
-        with patch.object(CodeActStrategy, "execute", new_callable=AsyncMock) as mock_execute:
-            mock_execute.return_value = "result"
-
-            # Call the agent method
+        # use type.__setattr__ swap instead of patch.object — the
+        # Agent guard blocks teardown on regular setattr.
+        mock_execute = AsyncMock(return_value="result")
+        original_execute = CodeActStrategy.execute
+        type.__setattr__(CodeActStrategy, "execute", mock_execute)
+        try:
             await agent.do_something()
-
-            # Verify CodeActStrategy.execute was called
             assert mock_execute.called, "CodeActStrategy.execute should be called by default"
+        finally:
+            type.__setattr__(CodeActStrategy, "execute", original_execute)
 
 
 @pytest.fixture(autouse=True)

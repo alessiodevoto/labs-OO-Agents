@@ -7,7 +7,6 @@ Pydantic models provide validation and JSON serialization out of the box.
 """
 
 import logging
-import types
 from typing import Any, Final, Literal
 
 from pydantic import BaseModel, field_serializer, field_validator
@@ -17,7 +16,7 @@ from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_value
 from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
 
-SNAPSHOT_VERSION: Final = 1
+SNAPSHOT_VERSION: Final = 2
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,6 @@ class AgentSnapshot(BaseModel):
     version: int = SNAPSHOT_VERSION
     context: list[StaticContextBlock | DynamicContextBlock] = []
     event_manager: EventManagerState = EventManagerState()
-    methods: dict[str, str] = {}
     attributes: dict[str, Any] = {}
     type_allowlist: set[str] = set()
 
@@ -107,12 +105,6 @@ class AgentSnapshot(BaseModel):
             next_tag_num=agent.event_manager._next_tag_num,
         )
 
-        # NOTE: Only source code is captured. If a method carried decorator metadata
-        # (e.g. _plan_strategy via define_method), it would be lost on restore.
-        # Not an issue today — registered methods come from CodeAct code cells and
-        # HelperMethodManager, which produce plain undecorated functions.
-        methods = dict(getattr(agent, "_defined_methods_registry", {}))
-
         attributes: dict[str, Any] = {}
         agent_cls = type(agent)
         for attr_name, attr_value in agent.__dict__.items():
@@ -139,7 +131,6 @@ class AgentSnapshot(BaseModel):
             version=SNAPSHOT_VERSION,
             context=context_blocks,
             event_manager=em_state,
-            methods=methods,
             attributes=attributes,
             type_allowlist=all_allowlist,
         )
@@ -184,30 +175,6 @@ class AgentSnapshot(BaseModel):
             self.event_manager.next_tag_num,
             agent.event_manager._next_tag_num,
         )
-
-        if self.methods:
-            # SECURITY: exec() of stored source code means loading a snapshot is
-            # equivalent to arbitrary code execution. This is safe when snapshots
-            # come from the same process (InMemoryStorageManager) but if snapshots
-            # are ever persisted to disk or transferred over the network, the source
-            # must be treated as untrusted and signed/validated before restore.
-            from nemo_oo_agents.strategies.generated_code import ExecutionNamespaceBuilder
-
-            namespace = ExecutionNamespaceBuilder.build(agent)
-            for method_name, method_code in self.methods.items():
-                exec(  # noqa: S102
-                    compile(method_code, f"<snapshot:{method_name}>", "exec"),
-                    namespace,
-                )
-                func = namespace.get(method_name)
-                if callable(func):
-                    bound = types.MethodType(func, agent)
-                    setattr(agent, method_name, bound)
-                else:
-                    logger.warning(
-                        "Snapshot restore: method %r did not produce a callable", method_name
-                    )
-            agent._defined_methods_registry = dict(self.methods)
 
         for attr_name, attr_value in self.attributes.items():
             setattr(agent, attr_name, deserialize(attr_value, self.type_allowlist))

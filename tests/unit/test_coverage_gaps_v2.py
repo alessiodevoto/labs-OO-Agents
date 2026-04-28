@@ -1862,18 +1862,18 @@ class TestGetTypeHintStrUnparameterized:
 # =============================================================================
 
 
-class TestHelperMethodManagerNonCallable:
-    """HelperMethodManager.apply skips non-callable results (line 327)."""
+class TestHelperFunctionManagerNonCallable:
+    """HelperFunctionManager.apply skips non-callable results (line 327)."""
 
     def test_non_callable_func_is_skipped(self):
         """Line 327: If compiled func is not callable, skip it."""
-        from nemo_oo_agents.strategies.generated_code import HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
 
         class _FakeAgent:
             pass
 
         agent = _FakeAgent()
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
 
         # Inject a non-callable into namespace to simulate non-callable result
         namespace = {"not_a_func": 42}
@@ -1889,7 +1889,6 @@ class TestHelperMethodManagerNonCallable:
             agent,
             {},
             namespace=namespace,
-            target_method_name="main_method",
         )
         # 'not_a_func' was in namespace as 42 (not callable), so it should be skipped
         # But the compile step will overwrite it...
@@ -1898,11 +1897,11 @@ class TestHelperMethodManagerNonCallable:
 
     def test_type_error_on_class_input(self):
         """Guard: passing a class instead of instance raises TypeError."""
-        from nemo_oo_agents.strategies.generated_code import HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
 
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         with pytest.raises(TypeError, match="instance"):
-            manager.apply("", type, {}, namespace={}, target_method_name="method")
+            manager.apply("", type, {}, namespace={})
 
 
 class TestReturnValueValidatorPaths:
@@ -2094,18 +2093,18 @@ class TestReturnValueValidatorPaths:
 
     def test_helper_method_manager_non_callable_decorator_skipped(self):
         """Line 327: Decorator that returns None makes func non-callable → skipped."""
-        from nemo_oo_agents.strategies.generated_code import HelperMethodManager
+        from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
 
         class _FakeAgent:
             pass
 
         agent = _FakeAgent()
-        manager = HelperMethodManager()
+        manager = HelperFunctionManager()
         namespace = {"none_decorator": lambda f: None}
 
         # Decorator returns None → func not callable → line 327 continue
         code = "@none_decorator\ndef helper_method(self):\n    pass"
-        result = manager.apply(code, agent, {}, namespace=namespace, target_method_name="main")
+        result = manager.apply(code, agent, {}, namespace=namespace)
         assert "helper_method" not in result.installed  # Not installed (non-callable)
 
 

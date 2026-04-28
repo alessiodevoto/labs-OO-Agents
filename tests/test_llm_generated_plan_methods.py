@@ -58,18 +58,11 @@ return "Helper method created"
 
     assert result == "Helper method created"
 
-    # Verify the helper method was created
-    assert hasattr(my_agent, "_helper")
-    assert callable(my_agent._helper)
-
-    # Verify it's marked as needing generation (the key test!)
-    helper_method = getattr(my_agent.__class__, "_helper", None)
-    if helper_method:
-        # The method should have _needs_generation=True
-        assert hasattr(helper_method, "_needs_generation")
-        assert helper_method._needs_generation, (
-            "Helper method should be marked as needing generation"
-        )
+    # helpers are plain callables in session_locals — not attached to
+    # the agent instance or class. Existence of the decorated function is
+    # verified by the parent execution completing successfully; ``_needs_generation``
+    # is exercised in tests/test_ellipsis_detection_exec.py.
+    assert not hasattr(my_agent, "_helper")
 
 
 @pytest.mark.asyncio
@@ -104,16 +97,9 @@ return "Created 2 helpers"
 
     assert result == "Created 2 helpers"
 
-    # Both helpers should exist
-    assert hasattr(my_agent, "_helper1")
-    assert hasattr(my_agent, "_helper2")
-
-    # Both should be marked for generation
-    for helper_name in ["_helper1", "_helper2"]:
-        helper = getattr(my_agent.__class__, helper_name, None)
-        if helper:
-            assert hasattr(helper, "_needs_generation")
-            assert helper._needs_generation, f"{helper_name} should need generation"
+    # helpers live in session_locals as plain callables, not on the agent.
+    assert not hasattr(my_agent, "_helper1")
+    assert not hasattr(my_agent, "_helper2")
 
 
 @pytest.mark.asyncio

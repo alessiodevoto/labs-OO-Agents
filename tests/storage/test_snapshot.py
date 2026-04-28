@@ -3,12 +3,11 @@
 """Tests for AgentSnapshot edge cases.
 
 Covers:
-- Line 101: _agentdoc_ prefix fields are skipped in from_agent()
-- Line 105: callable attributes are skipped in from_agent()
-- Line 168: logger.warning when restored method code doesn't define a callable
+- Line 101: ``_agentdoc_``-prefixed fields are skipped in from_agent()
+- Line 105: callable attributes are skipped in from_agent() removed dynamic method restoration from AgentSnapshot — methods live on
+the class and are never reattached via a snapshot. Tests for the old
+``snap.methods`` / ``restore()`` method-warning paths have been removed.
 """
-
-import logging
 
 import pytest
 
@@ -37,40 +36,18 @@ class TestAgentSnapshotFromAgent:
         assert snap.attributes["value"] == 5
 
     def test_callable_attributes_are_skipped(self):
-        """from_agent() skips callable attributes set on the instance (line 105)."""
+        """from_agent() skips callable attributes set on the instance (line 105).: direct ``agent.my_fn = lambda: None`` is now blocked by the
+        Agent guard; route the callable straight into ``__dict__`` so we still
+        exercise the from_agent() filter.
+        """
         agent = _SimpleAgent()
-        agent.my_fn = lambda: None  # type: ignore[attr-defined]
+        agent.__dict__["my_fn"] = lambda: None
         agent.value = 7
 
         snap = AgentSnapshot.from_agent(agent)
 
         assert "my_fn" not in snap.attributes
         assert snap.attributes["value"] == 7
-
-
-class TestAgentSnapshotRestore:
-    """Tests for AgentSnapshot.restore() warning and non-callable handling."""
-
-    def test_restore_warns_when_method_code_does_not_define_callable(self, caplog):
-        """restore() emits a warning when exec'd code doesn't define the expected name (line 168)."""
-        agent = _SimpleAgent()
-
-        # 'process' is the method name but the code defines 'y', not 'process'
-        snap = AgentSnapshot(methods={"process": "y = 1"})
-
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.storage.snapshot"):
-            snap.restore(agent)
-
-        assert any("process" in record.message for record in caplog.records)
-        assert any("did not produce a callable" in record.message for record in caplog.records)
-
-    def test_restore_does_not_set_non_callable_as_method(self):
-        """After a failed restore, the method is NOT set on the agent."""
-        agent = _SimpleAgent()
-        snap = AgentSnapshot(methods={"process": "y = 1"})
-        snap.restore(agent)
-
-        assert not hasattr(agent, "process")
 
 
 class _UnsupportedThing:

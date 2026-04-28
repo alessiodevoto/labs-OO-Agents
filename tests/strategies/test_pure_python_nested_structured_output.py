@@ -38,7 +38,7 @@ async def _summarize_doc(self, doc: str) -> str:
 
 summaries = []
 for doc in documents:
-    summary = await self._summarize_doc(doc)
+    summary = await _summarize_doc(self, doc)
     summaries.append(summary)
 return summaries''',
             tool_calls=[],
@@ -70,7 +70,8 @@ return summaries''',
     # Verify
     assert result == ["Document summary"]
     assert llm.call_count == 2  # One for parent, one for nested helper
-    assert hasattr(agent_instance, "_summarize_doc")  # Helper method is bound
+    # helpers are plain callables, never attached to the agent.
+    assert not hasattr(agent_instance, "_summarize_doc")
 
 
 @pytest.mark.asyncio
@@ -89,7 +90,7 @@ async def _process_item(self, item: str) -> str:
 
 results = []
 for item in items:
-    result = await self._process_item(item)
+    result = await _process_item(self, item)
     results.append(result)
 return results''',
             tool_calls=[],

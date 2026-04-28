@@ -259,7 +259,7 @@ class ReflexionStrategy(GenerationStrategy):
 
         # Generate reflection with structured output
         response, _event_id = await runtime.generate(
-            tools=[],
+            tools=None,
             output_model=ReflectionOutput,
         )
 

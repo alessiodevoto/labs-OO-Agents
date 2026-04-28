@@ -680,7 +680,7 @@ class ActorRuntime:
             if has_mw:
                 from nemo_oo_agents.runtime.middleware import LLMCallContext
 
-                params: dict[str, Any] = {**kwargs, "tools": tools or []}
+                params: dict[str, Any] = {**kwargs, "tools": tools}
                 if output_model is not None:
                     params["output_model"] = output_model
                 ctx = LLMCallContext(
@@ -748,7 +748,7 @@ class ActorRuntime:
                 try:
                     response = await llm_client.acall(
                         messages,
-                        tools=tools or [],
+                        tools=tools,
                         output_model=output_model,
                         **kwargs,
                     )
@@ -773,7 +773,7 @@ class ActorRuntime:
                     _recovery_kw = {**kwargs, "max_tokens": _reduced}
                     response = await llm_client.acall(
                         messages,
-                        tools=tools or [],
+                        tools=tools,
                         output_model=output_model,
                         **_recovery_kw,
                     )
@@ -1296,15 +1296,13 @@ class ActorRuntime:
                             # Some built-in functions don't allow attribute assignment
                             pass
 
-                # Bind methods to agent
-                defined_methods: dict[str, Any] = {}
-                for method_name, method_code in method_sources.items():
-                    if method_name in exec_globals and callable(exec_globals[method_name]):
-                        func = exec_globals[method_name]
-                        bound = types.MethodType(func, self.agent)
-                        defined_methods[method_name] = bound
-                        if hasattr(self.agent, "_defined_methods_registry"):
-                            self.agent._defined_methods_registry[method_name] = method_code
+                # Helpers stay as REPL locals (captured via __repl_captured_locals__).
+                # The names list is kept in ExecutionResult.defined_methods for feedback only.
+                defined_methods: dict[str, Any] = {
+                    method_name: exec_globals[method_name]
+                    for method_name in method_sources
+                    if method_name in exec_globals and callable(exec_globals[method_name])
+                }
 
                 result = ExecutionResult(
                     stdout=stdout_buffer.getvalue(),
@@ -2249,99 +2247,6 @@ class ActorRuntime:
             # Restore previous context variable value
             # (handles nested generation sessions correctly)
             _in_generation_session.set(prev_in_session)
-
-    async def define_method(
-        self,
-        name: str,
-        params: list[str],
-        return_type: str = "None",
-        docstring: str = "",
-        strategy: Any = None,
-        body: str | None = None,
-    ) -> None:
-        """
-        Define a new @strategy method on the agent dynamically.
-
-        This is a runtime tool that allows generated code to define new methods.
-
-        Args:
-            name: Method name
-            params: List of parameter signatures (e.g., ["item: dict", "count: int"])
-            return_type: Return type annotation
-            docstring: Method docstring (used as prompt for generation)
-            strategy: Strategy instance (e.g., PurePythonStrategy()). Defaults to PurePythonStrategy()
-            body: Optional implementation code. If None, method has ellipsis body (triggers generation)
-
-        Example with body:
-            await runtime.define_method(
-                name="validate_item",
-                params=["item: dict"],
-                return_type="bool",
-                docstring="Validate a single item",
-                body="return len(item) > 0 and 'name' in item"
-            )
-
-        Example without body (needs generation):
-            await runtime.define_method(
-                name="complex_task",
-                params=["data: list"],
-                return_type="dict",
-                docstring="Process complex data",
-                # No body - will trigger generation when called
-            )
-        """
-        # Resolve strategy to instance (defaults to get_default_strategy())
-        from nemo_oo_agents.strategies import get_default_strategy
-
-        strat = strategy if strategy is not None else get_default_strategy()
-
-        # Build parameter list
-        params_str = ", ".join(["self"] + params) if params else "self"
-
-        # Create the function body
-        if body is None:
-            # No implementation - use ellipsis (will trigger generation)
-            method_body = "    ..."
-            needs_generation = True
-        else:
-            # Has implementation - use provided code
-            method_body = self._indent_code(body, "    ")
-            needs_generation = False
-
-        # Create the function dynamically
-        func_code = f"""
-
-
-async def {name}({params_str}) -> {return_type}:
-    '''{docstring}'''
-{method_body}
-"""
-
-        # Execute to create the function
-        namespace: dict[str, Any] = {}
-        exec(func_code, namespace)
-        func = namespace[name]
-
-        # Apply @strategy decorator metadata manually
-        func._agent_decorator = "plan"
-        func._plan_strategy = strat
-        func._needs_generation = needs_generation
-        # Attach generated source for later retrieval
-        try:
-            func._generated_source = func_code
-        except Exception:
-            pass
-
-        # Bind to agent instance
-        bound_method = types.MethodType(func, self.agent)
-
-        # Set on agent
-        setattr(self.agent, name, bound_method)
-        # Only register fully-realized methods (not ellipsis-body plan methods
-        # that still need LLM generation — those carry _needs_generation metadata
-        # that can't survive a simple source-code roundtrip).
-        if not needs_generation and hasattr(self.agent, "_defined_methods_registry"):
-            self.agent._defined_methods_registry[name] = func_code
 
     def _indent_code(self, code: str, indent: str) -> str:
         """Indent each line of code, preserving multiline string indentation."""

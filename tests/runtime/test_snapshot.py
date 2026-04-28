@@ -119,19 +119,6 @@ class TestSnapshotRoundtrip:
         with pytest.raises(SerializationError, match="not serializable"):
             snapshot_to_json(agent)
 
-    def test_methods_roundtrip(self, agent):
-        """LLM-defined methods are recompiled and callable after restore."""
-        method_code = "def greet(self, name):\n    return f'hello {name}'"
-        agent._defined_methods_registry["greet"] = method_code
-
-        snap = snapshot_to_json(agent)
-        agent2 = SimpleAgent()
-        snapshot_from_json(snap, agent2)
-
-        assert hasattr(agent2, "greet")
-        assert agent2.greet("world") == "hello world"
-        assert agent2._defined_methods_registry["greet"] == method_code
-
     def test_version_mismatch_raises(self, agent):
         """Restoring a snapshot with a mismatched version raises SerializationError."""
         snap = snapshot_to_json(agent)
@@ -154,7 +141,6 @@ class TestSnapshotRoundtrip:
 
         assert snap["version"] == SNAPSHOT_VERSION
         assert snap["attributes"] == {}
-        assert snap["methods"] == {}
 
 
 class TestAgentSnapshot:
@@ -226,18 +212,6 @@ class TestAgentSnapshot:
         # Pre-existing state survives (additive, not replacement)
         assert agent.context_manager["existing"] == "stays"
         assert agent.existing_attr == "also stays"
-
-    def test_restored_method_accesses_self(self, agent):
-        """A restored method can access attributes set during the same restore."""
-        agent.greeting = "hello"
-        method_code = "def greet(self):\n    return self.greeting"
-        agent._defined_methods_registry["greet"] = method_code
-
-        snap = snapshot_to_json(agent)
-        agent2 = SimpleAgent()
-        snapshot_from_json(snap, agent2)
-
-        assert agent2.greet() == "hello"
 
     def test_sequential_snapshots_are_independent(self, agent):
         """Multiple snapshots capture state at their point in time, independently."""
