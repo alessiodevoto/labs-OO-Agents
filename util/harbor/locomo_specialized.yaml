@@ -13,7 +13,7 @@
 jobs_dir: /raid/rcabral/home/harbor_jobs/locomo_specialized
 n_attempts: 1
 timeout_multiplier: 1.0
-environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s
+environment_build_timeout_multiplier: 8.0  # build_timeout_sec=120 → 960s; locomo tasks install 100+ apt packages
 agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; feature branch clone + uv sync can take 20–25 min
 
 orchestrator:
