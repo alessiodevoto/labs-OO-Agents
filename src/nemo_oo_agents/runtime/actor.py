@@ -88,6 +88,15 @@ def _harness_metrics_lifecycle(should_trace: bool):
 
 def _make_llm_metrics_bridge(hm: "HarnessMetrics") -> Callable[[str, Any], None]:
     """Create a callback that bridges unifiedllm metric events to HarnessMetrics."""
+    from nemo_oo_agents.runtime.token_usage import accumulate_tokens
+
+    def _handle_token_usage(usage: Any) -> None:
+        if isinstance(usage, dict):
+            accumulate_tokens(
+                input_tokens=usage.get("prompt_tokens", 0) or 0,
+                output_tokens=usage.get("completion_tokens", 0) or 0,
+            )
+
     _dispatch: dict[str, Callable[[Any], None]] = {
         "think_tag_extracted": lambda _: hm.record_think_tag_extracted(),
         "malformed_think_tag_fixed": lambda _: hm.record_malformed_think_tag(),
@@ -97,6 +106,7 @@ def _make_llm_metrics_bridge(hm: "HarnessMetrics") -> Callable[[str, Any], None]
         "json_nested_extraction": lambda _: hm.record_json_nested_extraction(),
         "json_double_decoded": lambda _: hm.record_json_double_decoded(),
         "reasoning_as_structured_output": lambda _: hm.record_reasoning_as_structured_output(),
+        "token_usage": _handle_token_usage,
     }
 
     def bridge(event: str, detail: Any = None) -> None:

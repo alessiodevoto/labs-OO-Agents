@@ -123,6 +123,8 @@ def _write_result(result: dict[str, Any], model: str, agent_type: str) -> None:
         "success": result.get("success", False),
         "response": result.get("response", ""),
         "error": result.get("error"),
+        "n_input_tokens": result.get("n_input_tokens"),
+        "n_output_tokens": result.get("n_output_tokens"),
     }
     out = LOGS_DIR / "result.json"
     out.write_text(json.dumps(payload, indent=2))
@@ -185,8 +187,12 @@ async def _run(
     # All agents share the same interface: {"user_message": instruction}.
     # Benchmark-specific parsing (system prompts, data paths, etc.) happens
     # inside the agent's _run_evaluation method.
+    from nemo_oo_agents.runtime.token_usage import get_task_tokens, start_task_tokens
+
     logger.info("Running agent %s (model=%s)...", agent_type, model)
+    start_task_tokens()
     result = await agent._run_evaluation({"user_message": instruction})
+    result.update(get_task_tokens())
     _write_result(result, model, agent_type)
     _write_answer(result)
 

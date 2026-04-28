@@ -1048,6 +1048,8 @@ class CompletionClient(UnifiedLLM):
             raw_response = sync_retry(_make_call, config=self.retry_config) if self.retry_config else _make_call()
 
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
+        if usage:
+            _record_llm_metric("token_usage", usage)
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
@@ -1198,6 +1200,8 @@ class CompletionClient(UnifiedLLM):
             )
 
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
+        if usage:
+            _record_llm_metric("token_usage", usage)
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
