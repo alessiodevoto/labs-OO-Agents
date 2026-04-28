@@ -14,6 +14,7 @@
 jobs_dir: /raid/rcabral/home/harbor_jobs/dabstep_specialized
 n_attempts: 1
 timeout_multiplier: 2.0   # multi-agent pipeline takes longer
+agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; uv sync under high system load can take 25+ min
 
 orchestrator:
   type: local
