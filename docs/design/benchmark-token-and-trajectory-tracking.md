@@ -8,145 +8,222 @@ implementation is intentionally minimal: a `ContextVar`-based accumulator in
 `token_usage.py` fed by a single new entry in `actor.py`'s unifiedllm metrics
 bridge, with three lines of integration in `runner.py`.
 
-This doc records the broader design exploration triggered by that work — what
-the right long-term shape is if trajectory capture for RL/SFT becomes a
-requirement — and why that doesn't change the immediate MR.
+This doc records the broader design space — what the right long-term shape is
+if trajectory capture for RL/SFT becomes a requirement, how that relates to the
+NeMo Flow middleware already on `main`, and whether implementing a trajectory
+layer would double the existing code.
 
 ---
 
-## Why not NeMo Flow for token counting?
+## What NeMo Flow middleware uniquely provides
 
-`nemo_flow_middleware.py` (already on `main`) can also produce token counts as
-a side effect of its ATIF trajectory export, via an `LLMEndEvent` subscriber.
-We chose not to use it here for three reasons:
+Before comparing options it is worth being precise about what `nemo_flow_middleware.py`
+actually does, because it bundles two concerns that can be separated:
 
-**1. It ignores the event system this MR uses.**  
-unifiedllm already fires a `"token_usage"` event after every LLM call carrying
-`{"prompt_tokens": ..., "completion_tokens": ...}`.  The NeMo Flow LLM
-middleware ignores that event entirely and instead routes the full LLM call
-through `nemo_flow.llm.execute()`, which requires JSON-serializing
-`LLMResponse` through a Rust core.  That forces a three-path serialization
-fallback:
+**Guardrails** — Request intercept propagation.  When a NeMo Flow guardrail
+modifies an LLM request (e.g. injects a system message, changes temperature,
+rewrites code), the middleware propagates those changes back into `ctx` before
+the real LLM call.  Without this, request-modifying guardrails would have no
+effect.  The tool middleware does the same for code rewrites.  This is the
+capability that nothing else in the framework provides.
 
-```python
-raw = getattr(resp, "raw_response", None)
-if raw is not None and hasattr(raw, "model_dump"):
-    return raw.model_dump(mode="json")   # litellm ModelResponse
-if hasattr(resp, "model_dump"):
-    return resp.model_dump(mode="json")  # Pydantic
-if hasattr(resp, "assistant_message"):   # unifiedllm dataclass
-    ...
+**Trajectory / ATIF capture** — After the real LLM call, the middleware
+serializes the response and returns it to NeMo Flow's Rust core, which fires
+event subscribers and the ATIF exporter.  This is where the three-path
+serialization fallback, the `captured_ctx` side-effect pattern, and the
+tools-exclusion gap all live.
+
+`nemo_flow_agent_call_middleware` (scope push/pop) belongs to the first
+category — it gives ATIF per-method granularity and is clean code with no
+serialization complexity.
+
+The design question is whether these two concerns belong in the same middleware.
+
+---
+
+## The four options
+
+### Option A — Merge MR!124 as-is
+
+Token counts only.  The `ContextVar` accumulator is fed by unifiedllm's
+`"token_usage"` event — a clean, already-firing signal that carries
+`{prompt_tokens, completion_tokens}` after every LLM call.
+
+```
+unifiedllm "token_usage" event → _make_llm_metrics_bridge → accumulate_tokens()
 ```
 
-This couples the integration to internal shapes of both `unifiedllm` and
-`litellm`.  MR!124 reads the same usage dict directly from the event — no
-coupling, no serialization.
-
-**2. It has a private NVIDIA-registry dependency.**  
-`nemo_flow` is an optional extra requiring internal GitLab registry
-credentials.  Token counting shouldn't require auth to an internal package
-registry.
-
-**3. The trajectory it produces has known gaps.**  
-The NeMo Flow ATIF export excludes `tools` (non-JSON-serializable at the Rust
-boundary), maps tool outputs to `"status: complete"` rather than actual return
-values, and flattens the scope hierarchy.  This makes it unsuitable as training
-data without additional post-processing.
+**What you get:** `n_input_tokens`, `n_output_tokens` per Harbor trial.  
+**What you don't get:** message content, tool calls/outputs, trajectory for
+RL/SFT.  
+**NeMo Flow relationship:** completely independent.  Both can coexist without
+interaction — they touch different code paths.  
+**Verdict:** right scope for cost reporting; dead end for training data.
 
 ---
 
-## The evolution path: trajectory middleware
+### Option B — Trajectory middleware (no NeMo Flow dep)
 
-If RL/SFT trajectory capture becomes a requirement, the right direction is a
-**trajectory middleware** that uses the same `ContextVar` + `intercept()` pattern
-as this MR, but collects full message content rather than just counts.
+A lightweight intercept middleware that accumulates full trajectory data using
+the same ContextVar pattern as MR!124.  Uses the `event_manager.intercept()`
+API — the same one NeMo Flow uses, but without routing through a Rust core.
 
-The `event_manager.intercept(MIDDLEWARE_LLM_CALL, ...)` API gives access to
-`LLMCallContext` with `ctx.messages` (full input) and `ctx.response` (full
-output including usage).  A lightweight middleware at that layer can accumulate
-a trajectory without routing through an external runtime:
+`LLMCallContext` carries `ctx.messages` (full input) and `ctx.response` (full
+output including usage), so no serialization gymnastics are needed.  A second
+intercept on `MIDDLEWARE_EXECUTE_PYTHON` captures tool calls and their actual
+return values — fixing the gap NeMo Flow's tool middleware has (it only records
+`"status: complete"`).
 
 ```python
-# trajectory.py  (~80 lines, no external deps)
+# trajectory.py  (~100 lines, no external deps)
 
 _trajectory_var: ContextVar[list[dict] | None] = ContextVar("trajectory", default=None)
 
-def start_trajectory() -> None:
-    _trajectory_var.set([])
-
-def get_trajectory() -> list[dict]:
-    return list(_trajectory_var.get() or [])
-
-async def _trajectory_middleware(ctx: LLMCallContext, nxt: LLMCallNext) -> LLMCallContext:
+async def _llm_step_middleware(ctx: LLMCallContext, nxt: LLMCallNext) -> LLMCallContext:
     ctx = await nxt(ctx)
     t = _trajectory_var.get()
     if t is not None and ctx.response is not None:
         t.append({
+            "type": "llm",
             "messages": ctx.messages,
             "response": ctx.response.assistant_message,
             "usage": ctx.response.usage,
         })
     return ctx
 
-def install_trajectory(event_manager: EventManager) -> Callable[[], None]:
-    return event_manager.intercept(MIDDLEWARE_LLM_CALL, _trajectory_middleware)
-```
-
-A second intercept on `MIDDLEWARE_EXECUTE_PYTHON` captures tool calls and
-outputs, fixing the gap the NeMo Flow tool middleware left:
-
-```python
-async def _tool_middleware(ctx: ExecutePythonContext, nxt: ExecutePythonNext) -> ExecutePythonContext:
+async def _tool_step_middleware(ctx: ExecutePythonContext, nxt: ExecutePythonNext) -> ExecutePythonContext:
     ctx = await nxt(ctx)
     t = _trajectory_var.get()
     if t is not None:
         t.append({
-            "tool": "execute_python",
+            "type": "tool",
             "code": ctx.code,
             "output": getattr(ctx.result, "returned_value", None),
+            "stdout": getattr(ctx.result, "stdout", None),
         })
     return ctx
+
+def install_trajectory(event_manager: EventManager) -> Callable[[], None]:
+    u1 = event_manager.intercept(MIDDLEWARE_LLM_CALL, _llm_step_middleware)
+    u2 = event_manager.intercept(MIDDLEWARE_EXECUTE_PYTHON, _tool_step_middleware)
+    def uninstall():
+        u1(); u2()
+    return uninstall
 ```
 
-In `runner.py`:
+Token counts become a derived field — sum `step["usage"]` across the trajectory
+— so `token_usage.py` from MR!124 can be deleted.
 
-```python
-uninstall = install_trajectory(agent.event_manager)
-start_task_tokens()
-result = await agent._run_evaluation({"user_message": instruction})
-result.update(get_task_tokens())
-result["trajectory"] = get_trajectory()   # list of turn dicts
-uninstall()
-```
+**What you get:** full trajectory (messages, responses, tool I/O), token counts
+as a side effect.  
+**What you don't get:** NeMo Flow guardrails, ATIF format directly.  
+**ATIF:** write a `trajectory_to_atif()` converter (~30 lines).  Given NeMo
+Flow's own ATIF gaps (no tool outputs, flattened scope hierarchy), a
+purpose-built converter would produce *better* ATIF than NeMo Flow's exporter.  
+**NeMo Flow relationship:** fully independent.  If NeMo Flow middleware is also
+active, both chains run — trajectory middleware captures cleanly *after*
+guardrail modifications have already been applied to `ctx`, so the trajectory
+reflects what was actually sent.  
+**Verdict:** right design for RL/SFT; build this when training data is a real
+requirement.
 
 ---
 
-## Comparison
+### Option C — Simplified NeMo Flow + trajectory middleware
 
-| | This MR | NeMo Flow middleware | Trajectory middleware |
-|---|---|---|---|
-| Token counts | ✅ direct | ✅ Rust round-trip | ✅ from `ctx.response.usage` |
-| Full messages | ✗ | ✅ | ✅ |
-| Tool calls + outputs | ✗ | ✗ (excluded at Rust boundary) | ✅ |
-| Scope / call hierarchy | ✗ | partial (flattened) | ✅ (ContextVar call stack) |
-| External dependency | none | NeMo Flow (private registry) | none |
-| Serialization complexity | none | 3-path fallback | single `model_dump()` |
-| Lines of new code | ~55 | 355 | ~120 |
+This is the direct answer to the doubling question.
+
+With trajectory middleware handling capture, NeMo Flow's LLM and tool
+middleware no longer need to serialize responses back to the Rust core for ATIF.
+They can be simplified to **guardrails only**: propagate request modifications
+from NeMo Flow interceptors into `ctx`, let the chain run (trajectory middleware
+fires here), and return `{}` to NeMo Flow.
+
+```python
+async def nemo_flow_guardrail_middleware(ctx: LLMCallContext, nxt: LLMCallNext) -> LLMCallContext:
+    """Apply NeMo Flow guardrails only. Trajectory middleware handles capture."""
+    request = LLMRequest({}, safe_params)
+    captured_ctx: LLMCallContext | None = None
+
+    async def _wrapper(req: Any) -> Any:
+        nonlocal captured_ctx
+        _propagate_modifications(req, ctx)   # guardrail request modifications
+        captured_ctx = await nxt(ctx)        # real call; trajectory MW fires here
+        return {}                            # NeMo Flow gets no response to capture
+
+    await nemo_flow.llm.execute(model_name, request, _wrapper)
+    return captured_ctx  # type: ignore[return-value]
+```
+
+The three-path serialization fallback is gone.  The `captured_ctx` side-effect
+pattern survives — it is inherent to NeMo Flow's callback-based `execute()` API
+and cannot be eliminated without changes to NeMo Flow itself.
+
+`nemo_flow_agent_call_middleware` stays unchanged — it is already clean.
+`nemo_flow_tool_middleware` similarly simplifies: propagate tool interceptors,
+return `codec.to_json(None)`.
+
+**Is this doubling?** No.  The two chains handle different concerns: NeMo Flow
+owns guardrail processing; trajectory middleware owns data capture.  Each LLM
+call passes through both, but they do distinct work.
+
+**What you get:** NeMo Flow guardrails + scope management; full trajectory from
+the trajectory middleware; token counts as a derived field.  
+**What you give up:** NeMo Flow's ATIF exporter — replaced by a converter from
+trajectory data, which has better fidelity (tool outputs, correct hierarchy).  
+**Verdict:** cleanest design if both guardrails and trajectory capture are
+required simultaneously.
 
 ---
 
-## Relationship between MR!124 and the trajectory design
+### Option D — Keep both full implementations as-is
 
-If the trajectory middleware lands, `token_usage.py` becomes redundant — token
-counts can be summed from `step["usage"]` across the trajectory.  The runner
-integration would simplify to:
+Run both `nemo_flow_llm_middleware` (full response serialization for ATIF) and
+trajectory middleware on every LLM call.  Both capture the response; NeMo
+Flow's ATIF exporter and the trajectory accumulator produce parallel records.
 
-```python
-result.update(sum_tokens(get_trajectory()))   # replaces start/get_task_tokens
-result["trajectory"] = get_trajectory()
-```
+This is genuine doubling for the capture concern.  NeMo Flow's ATIF has known
+gaps (no tool outputs, flattened hierarchy); trajectory middleware has complete
+data.  The two outputs would diverge over time as one is maintained and the
+other isn't, producing two partially-correct sources of truth for the same
+event.
 
-**This MR is still worth merging independently.**  Token counting is immediately
-useful for cost reporting and doesn't block anything.  The trajectory work is a
-larger, separate effort.  If and when it lands, removing `token_usage.py` is a
-clean one-file deletion with no other side effects.
+**Verdict:** avoid.
+
+---
+
+## Summary
+
+| | A (this MR) | B (trajectory) | C (simplified NF + trajectory) | D (both full) |
+|---|---|---|---|---|
+| Token counts | ✅ | ✅ derived | ✅ derived | ✅ both |
+| Full trajectory | ✗ | ✅ | ✅ | partial |
+| Tool outputs captured | ✗ | ✅ | ✅ | ✗ |
+| NeMo Flow guardrails | ✗ | ✗ | ✅ | ✅ |
+| Scope management | ✗ | ✗ | ✅ | ✅ |
+| ATIF export | ✗ | via converter | via converter | NeMo Flow (gaps) |
+| External dep | none | none | NeMo Flow | NeMo Flow |
+| Doubles NeMo Flow? | n/a | no | no | **yes** |
+| `captured_ctx` antipattern | ✗ | ✗ | remains (guardrails only) | remains (full) |
+| Serialization complexity | none | none | removed | 3-path fallback |
+
+---
+
+## Recommendation
+
+**Merge MR!124 now (Option A).** It is self-contained and immediately useful
+for cost reporting.  `token_usage.py` is a clean deletion when trajectory
+middleware lands.
+
+**Build trajectory middleware when RL/SFT is a concrete requirement (Option
+B).** At that point, `token_usage.py` is deleted; token counts come from the
+trajectory.  No NeMo Flow dependency needed.
+
+**Adopt Option C if NeMo Flow guardrails become a production requirement** —
+e.g. runtime prompt injection, temperature overrides by policy, content
+filtering at inference time.  Until then, the NeMo Flow middleware can stay on
+`main` available for opt-in use without being in the benchmark runner's hot
+path.
+
+**The most important decision is avoiding Option D.**  Two full capture
+implementations producing diverging data is worse than either alone.
