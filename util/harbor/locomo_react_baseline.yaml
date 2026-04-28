@@ -28,7 +28,7 @@ agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; uv sync + full insta
 
 orchestrator:
   type: local
-  n_concurrent_trials: 1   # LoCoMo conversations are large (~16K tokens each)
+  n_concurrent_trials: 4   # 4 concurrent; each task uses ~16K tokens but API rate allows parallel runs
   quiet: false
 
 environment:
