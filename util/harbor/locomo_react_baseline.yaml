@@ -28,7 +28,7 @@ agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; uv sync under high s
 
 orchestrator:
   type: local
-  n_concurrent_trials: 2   # reduced from 4; high system load causes agent setup timeouts at higher concurrency
+  n_concurrent_trials: 4
   quiet: false
 
 environment:
