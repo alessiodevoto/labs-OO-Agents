@@ -43,7 +43,7 @@ agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; uv sync under high s
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 2
   quiet: false
 
 environment:

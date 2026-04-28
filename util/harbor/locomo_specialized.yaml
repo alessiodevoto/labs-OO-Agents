@@ -18,7 +18,7 @@ agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; feature branch clone
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 2
   quiet: false
 
 environment:

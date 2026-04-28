@@ -28,7 +28,7 @@ agent_setup_timeout_multiplier: 5.0  # 360s × 5.0 = 1800s; uv sync under high s
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4   # 4 concurrent; each task uses ~16K tokens but API rate allows parallel runs
+  n_concurrent_trials: 2   # reduced from 4; high system load causes agent setup timeouts at higher concurrency
   quiet: false
 
 environment:

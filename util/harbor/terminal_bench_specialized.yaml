@@ -20,7 +20,7 @@ verifier_timeout_multiplier: 6.0  # verifier_timeout_sec=180 → 1080s; some ver
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 2
   quiet: false
 
 environment:
