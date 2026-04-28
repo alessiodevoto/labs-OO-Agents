@@ -603,10 +603,12 @@ Standard Python builtins and agent instance (`self`) are available."""
             return_result_tool = self._build_return_result_tool(return_type, call.method_name)
             tools = [execute_python_tool, return_result_tool]
 
-            # Use the task event's tag as the call ID so the LLM sees a stable reference
-            object.__setattr__(call, "id", str(runtime.event_manager._next_tag_num))
+            # Use the task event's tag as the call ID so the LLM sees a stable reference.
+            # _build_task_message reads only method_name/docstring, so it's safe to build
+            # before the event lands and assign the returned tag back to call.id.
             task_content = await self._build_task_message(runtime, original_call=call)
-            runtime.event_manager.add(Task(prompt=task_content))
+            tag = runtime.event_manager.add(Task(prompt=task_content))
+            object.__setattr__(call, "id", tag)
 
         logger.info(
             f"[CODEACT] Starting session for {call.method_name}: "

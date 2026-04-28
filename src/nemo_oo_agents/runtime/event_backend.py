@@ -197,14 +197,13 @@ class EventBackend(Protocol):
         """Remove all events and reset state."""
         ...
 
-    def max_tag_num(self) -> int:
-        """Return the highest numeric tag value across all stored events.
+    def allocate_next_tag(self) -> str:
+        """Allocate and return the next sequential tag.
 
-        For simple tags like ``"5"``, the value is 5.
-        For range tags like ``"2..40"``, the value is 40.
-
-        Returns:
-            The highest tag number, or 0 if no events are stored.
+        Tag allocation lives on the backend so multiple EventManagers
+        writing through the same backend (e.g. the agent's stable
+        manager and a SessionManager recording TUI metadata) never hand
+        out the same tag. ``store(tag, event)`` is expected to follow.
         """
         ...
 
@@ -228,11 +227,18 @@ class InMemoryBackend:
         self._events: list[EventBase] = []
         self._tag_to_event: dict[str, EventBase] = {}
         self._active_tags: list[str] = []
+        # Monotonic tag counter. Eager-init from storage so a fresh
+        # backend (or one populated externally) starts at the right
+        # number. ``store()`` keeps the counter coherent if a caller
+        # writes a tag higher than the current value, so direct stores
+        # and ``allocate_next_tag()`` never collide.
+        self._next_tag_num: int = self.max_tag_num() + 1
 
     def store(self, tag: str, event: EventBase) -> None:
         self._events.append(event)
         self._tag_to_event[tag] = event
         self._active_tags.append(tag)
+        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
 
     def get(self, tag: str) -> EventBase | None:
         return self._tag_to_event.get(tag)
@@ -308,11 +314,17 @@ class InMemoryBackend:
         self._events.clear()
         self._tag_to_event.clear()
         self._active_tags.clear()
+        self._next_tag_num = 1
 
     def max_tag_num(self) -> int:
         if not self._tag_to_event:
             return 0
         return max(_tag_max_num(tag) for tag in self._tag_to_event)
+
+    def allocate_next_tag(self) -> str:
+        tag = str(self._next_tag_num)
+        self._next_tag_num += 1
+        return tag
 
     def __len__(self) -> int:
         return len(self._events)

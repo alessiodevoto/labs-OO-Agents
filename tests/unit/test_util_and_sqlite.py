@@ -890,7 +890,7 @@ class TestSQLiteStorageManager:
         from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         sm = SQLiteStorageManager(":memory:")
-        assert sm.event_manager is not None
+        assert sm.event_backend is not None
         sm.close()
 
     def test_file_based_creation(self, tmp_path):
@@ -898,7 +898,7 @@ class TestSQLiteStorageManager:
 
         db_path = tmp_path / "test.db"
         sm = SQLiteStorageManager(db_path)
-        assert sm.event_manager is not None
+        assert sm.event_backend is not None
         sm.close()
         assert db_path.exists()
 
@@ -906,7 +906,7 @@ class TestSQLiteStorageManager:
         from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         with SQLiteStorageManager(":memory:") as sm:
-            assert sm.event_manager is not None
+            assert sm.event_backend is not None
         # After __exit__, connection is closed (further operations would fail)
 
     def test_get_latest_snapshot_id_empty(self):
@@ -923,12 +923,12 @@ class TestSQLiteStorageManager:
         assert sm.get_latest_snapshot_created_at() is None
         sm.close()
 
-    def test_event_manager_property(self):
-        from nemo_oo_agents.runtime.event_manager import EventManager
+    def test_event_backend_property(self):
+        from nemo_oo_agents.runtime.event_backend import EventBackend
         from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
         sm = SQLiteStorageManager(":memory:")
-        assert isinstance(sm.event_manager, EventManager)
+        assert isinstance(sm.event_backend, EventBackend)
         sm.close()
 
     def test_backend_uses_insertion_counter(self):

@@ -84,6 +84,8 @@ class SessionManager:
         *,
         resumed: bool = False,
     ) -> None:
+        from nemo_oo_agents.runtime.event_manager import EventManager
+
         from .tui_events import TUI_EVENT_TYPES, TUISessionStart
 
         self.session_id = session_id or str(uuid.uuid4())
@@ -94,12 +96,18 @@ class SessionManager:
         self._name: str | None = None
         self._user_named: bool = False
 
+        # Thin EventManager bound to storage so SessionManager can
+        # write TUI metadata without depending on the agent (which
+        # doesn't exist yet at construction). Tag allocation lives on
+        # the backend, so this manager and the agent's coexist safely.
+        self._event_manager = EventManager(backend=storage.event_backend)
+
         # TUI event types are auto-registered in the global _EVENT_REGISTRY
         # via __pydantic_init_subclass__, so these per-instance register calls
         # are no longer strictly necessary.  Kept for backward compatibility
         # with any code that relies on the per-backend registry.
         for cls in TUI_EVENT_TYPES:
-            storage.event_manager.register_event_type(cls)
+            self._event_manager.register_event_type(cls)
 
         if resumed:
             # Restore name/user_named from existing events
@@ -109,7 +117,7 @@ class SessionManager:
                 self._user_named = meta.user_named
         else:
             # Write session-start metadata event
-            storage.event_manager.add(
+            self._event_manager.add(
                 TUISessionStart(
                     model=model,
                     agent_cls=agent_cls,
@@ -137,7 +145,7 @@ class SessionManager:
         self._name = name
         if user_named:
             self._user_named = True
-        self._storage.event_manager.add(
+        self._event_manager.add(
             TUISessionRename(
                 name=name,
                 user_named=user_named,
@@ -152,7 +160,7 @@ class SessionManager:
         """Store the user's raw input as a TUIUserInput metadata event."""
         from .tui_events import TUIUserInput
 
-        self._storage.event_manager.add(TUIUserInput(text=text))
+        self._event_manager.add(TUIUserInput(text=text))
 
     def close(self) -> None:
         if getattr(self, "_closed", False):

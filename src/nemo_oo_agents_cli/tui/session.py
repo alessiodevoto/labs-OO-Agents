@@ -753,9 +753,13 @@ class Session:
         if self._session_manager is not None:
             self._session_manager.close()
         self._session_manager = new_sm
-        # Point the agent at the new storage so it doesn't write to the now-closed DB.
+        # Point the agent at the new storage AND repoint the agent's
+        # stable EventManager at the new backend. The set_backend call
+        # is what keeps subscribers (e.g. AgentEventRenderer) alive
+        # across the swap.
         if hasattr(self.agent, "_storage"):
             self.agent._storage = new_sm._storage
+            self.agent.event_manager.set_backend(new_sm._storage.event_backend)
         # Propagate to registry and all command instances so /session export etc. use new ID.
         self.registry.session_manager = new_sm
         for cmd in self.registry.commands():

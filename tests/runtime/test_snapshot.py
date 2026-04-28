@@ -67,15 +67,10 @@ class TestSnapshotRoundtrip:
         assert isinstance(raw["status"], DynamicContext)
         assert raw["status"].expr == "self.__class__.__name__"
 
-    def test_event_manager_tag_num_preserved(self, agent):
-        """Event manager's _next_tag_num counter survives a snapshot roundtrip."""
-        agent.event_manager._next_tag_num = 42
-
-        snap = snapshot_to_json(agent)
-        agent2 = SimpleAgent()
-        snapshot_from_json(snap, agent2)
-
-        assert agent2.event_manager._next_tag_num == 42
+    def test_event_manager_state_not_in_snapshot(self, agent):
+        """Snapshots no longer carry next_tag_num; allocation lives on the backend."""
+        snap_dict = snapshot_to_dict(AgentSnapshot.from_agent(agent))
+        assert "event_manager" not in snap_dict
 
     def test_user_attributes_roundtrip(self, agent):
         """Public, JSON-serializable user attributes survive a snapshot roundtrip."""
@@ -163,7 +158,6 @@ class TestAgentSnapshot:
         agent.context_manager["notes"] = "hello"
         agent.context_manager.set_dynamic("status", "self.__class__.__name__")
         agent.score = 42
-        agent.event_manager._next_tag_num = 10
 
         original = AgentSnapshot.from_agent(agent)
         data = snapshot_to_dict(original)
@@ -171,20 +165,17 @@ class TestAgentSnapshot:
 
         assert restored.version == original.version
         assert len(restored.context) == len(original.context)
-        assert restored.event_manager.next_tag_num == 10
         assert restored.attributes == {"score": 42}
 
     def test_restore_via_model(self, agent):
         """AgentSnapshot.restore mutates agent correctly."""
         agent.context_manager["key"] = "value"
-        agent.event_manager._next_tag_num = 7
 
         snap = AgentSnapshot.from_agent(agent)
         agent2 = SimpleAgent()
         snap.restore(agent2)
 
         assert agent2.context_manager["key"] == "value"
-        assert agent2.event_manager._next_tag_num == 7
 
     def test_restore_version_mismatch(self):
         """restore raises if snapshot version was tampered with."""

@@ -56,13 +56,15 @@ def _make_sm(tmp_path, *, model="m", agent_cls="A", working_dir="", session_id=N
 def _make_mock_agent(storage: SQLiteStorageManager) -> MagicMock:
     """Mock agent wired to a real ``SQLiteStorageManager``.
 
-    ``event_manager`` delegates to the real backend so ``clear()`` would
-    actually destroy data (proves the bug was real) and so survival is
-    verifiable (proves the fix works).
+    The agent owns a real ``EventManager`` bound to the storage's
+    backend so ``clear()`` would actually destroy data (proves the bug
+    was real) and so survival is verifiable (proves the fix works).
     """
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
     agent = MagicMock()
     agent._storage = storage
-    agent.event_manager = storage.event_manager
+    agent.event_manager = EventManager(backend=storage.event_backend)
     agent.respond = AsyncMock()
     # on() must return a callable (unsubscribe fn) for any renderer wiring.
     agent.event_manager.on = MagicMock(return_value=lambda: None)
@@ -234,3 +236,56 @@ async def test_session_new_does_not_destroy_old_session_data(tmp_path):
         f"/session new destroyed the old session's data — expected 1 turn, got {len(turns)}"
     )
     assert turns[0].content == "keep this"
+
+
+# ── subscriber survives storage swap (the original silent-preview bug) ─
+
+
+@pytest.mark.asyncio
+async def test_subscriber_survives_clear_swap(tmp_path):
+    """Pins the original silent-preview bug: a handler subscribed once
+    on ``agent.event_manager`` keeps firing after ``/clear`` swaps the
+    storage underneath. Before the structural fix this test would fail
+    because ``agent.event_manager`` was a property and the swap would
+    orphan the subscription on the abandoned manager."""
+    from nemo_oo_agents.events import Task
+
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+        # Replace the renderer-style mocked subscription with a real
+        # handler so we can prove it fires across the swap.
+        from nemo_oo_agents.runtime.event_manager import EventManager
+
+        agent.event_manager = EventManager(backend=old_sm._storage.event_backend)
+        received: list[str] = []
+        agent.event_manager.on("Task", lambda e: received.append(e.prompt))
+
+        # Pre-swap: handler fires.
+        agent.event_manager.add(Task(prompt="before"))
+        assert received == ["before"]
+
+        # Run /clear and apply the swap that Session._swap_session_manager would do.
+        cmd = ClearCommand(
+            agent=agent,
+            config=MagicMock(default_model="test"),
+            frontend=AsyncMock(),
+            session_manager=old_sm,
+        )
+        result = await cmd.execute([])
+        new_sm = result.new_session_manager
+        assert new_sm is not None
+        agent._storage = new_sm._storage
+        agent.event_manager.set_backend(new_sm._storage.event_backend)
+
+        # Post-swap: handler still fires; event lands in the new backend.
+        agent.event_manager.add(Task(prompt="after"))
+        assert received == ["before", "after"]
+        new_tags = [e.tag for e in new_sm._storage.event_backend.all_events()]
+        assert any(
+            isinstance(e, Task) and e.prompt == "after"
+            for e in new_sm._storage.event_backend.all_events()
+        ), f"'after' event missing from new backend; tags present: {new_tags}"
+
+        new_sm.close()
+        old_sm.close()

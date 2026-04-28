@@ -96,7 +96,7 @@ class Agent(metaclass=AgentMeta):
     # Framework attributes — hidden from LLM, excluded from snapshots
     runtime: Annotated["ActorRuntime", hidden, nosnapshot]
     _storage: Annotated["StorageManager", hidden, nosnapshot]
-    event_manager: Annotated["EventManager", hidden, nosnapshot]  # pyright: ignore[reportRedeclaration]
+    event_manager: Annotated["EventManager", hidden, nosnapshot]
     context_manager: Annotated["ContextManager", hidden, nosnapshot]
     event_query: Annotated["EventQuery | None", hidden, nosnapshot]
     render_config: Annotated["RenderConfig", hidden, nosnapshot]
@@ -201,13 +201,16 @@ class Agent(metaclass=AgentMeta):
         # circular dependencies between agent.py and the runtime package.
         from nemo_oo_agents.runtime.actor import ActorRuntime
         from nemo_oo_agents.runtime.context_manager import ContextManager
+        from nemo_oo_agents.runtime.event_manager import EventManager
         from nemo_oo_agents.storage import InMemoryStorageManager
 
         # Generate agent ID
         self._agent_id = str(uuid4())
 
-        # Storage manager - default to InMemoryStorageManager (no persistence)
+        # Storage owns the EventBackend; the agent owns the EventManager.
+        # Storage swaps repoint the manager via event_manager.set_backend().
         self._storage = storage or InMemoryStorageManager()
+        self.event_manager = EventManager(backend=self._storage.event_backend)
 
         # Resolve LLM client with cascading resolution
         instance_llm = None if llm is INHERIT else llm
@@ -392,11 +395,6 @@ class Agent(metaclass=AgentMeta):
     def agent_id(self) -> str:
         """Agent ID."""
         return self._agent_id
-
-    @property  # type: ignore[no-redef]
-    def event_manager(self) -> "EventManager":
-        """Event manager — owned by the StorageManager."""
-        return self._storage.event_manager
 
     @property
     @hidden

@@ -31,7 +31,6 @@ from nemo_oo_agents.events import (
     Summary,
     Task,
 )
-from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 
@@ -148,6 +147,10 @@ class SQLiteEventBackend:
         self._conn = conn
         self._insertion_counter = self._max_insertion_order() + 1
         self._registry: dict[str, type[EventBase]] = dict(_CORE_TYPES)
+        # Tag counter — eager-init from storage so a resumed DB picks
+        # up at the right number. ``store()`` keeps it coherent when a
+        # caller writes a tag higher than the current value.
+        self._next_tag_num: int = self.max_tag_num() + 1
 
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
@@ -193,6 +196,8 @@ class SQLiteEventBackend:
     # -- EventBackend protocol --
 
     def store(self, tag: str, event: EventBase) -> None:
+        from nemo_oo_agents.runtime.event_backend import _tag_max_num
+
         data = self._serialize(event)
         order = self._insertion_counter
         self._insertion_counter += 1
@@ -207,6 +212,7 @@ class SQLiteEventBackend:
                 "INSERT INTO active_tags (position, tag) VALUES (?, ?)",
                 (pos, tag),
             )
+        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
 
     def get(self, tag: str) -> EventBase | None:
         row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
@@ -302,6 +308,12 @@ class SQLiteEventBackend:
             self._conn.execute("DELETE FROM events")
             self._conn.execute("DELETE FROM active_tags")
         self._insertion_counter = 0
+        self._next_tag_num = 1
+
+    def allocate_next_tag(self) -> str:
+        tag = str(self._next_tag_num)
+        self._next_tag_num += 1
+        return tag
 
     def max_tag_num(self) -> int:
         # Extract the trailing number from each tag in SQL:
@@ -442,14 +454,13 @@ class SQLiteStorageManager:
             self._conn.execute("PRAGMA journal_mode=WAL")
             _ensure_schema(self._conn)
             self._backend = SQLiteEventBackend(self._conn)
-            self._event_manager = EventManager(backend=self._backend)
         except Exception:
             self.close()
             raise
 
     @property
-    def event_manager(self) -> "EventManager":
-        return self._event_manager
+    def event_backend(self) -> "SQLiteEventBackend":
+        return self._backend
 
     def save_snapshot(self, agent: "Agent") -> str:
         snapshot = AgentSnapshot.from_agent(agent)

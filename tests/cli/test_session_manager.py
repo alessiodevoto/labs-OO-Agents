@@ -57,7 +57,7 @@ class TestSessionManagerBasic:
         with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
             sm = _make_sm(tmp_path)
             sm.record_user("first")
-            sm._storage.event_manager.add(TUIAgentMessage(content="reply"))
+            sm._event_manager.add(TUIAgentMessage(content="reply"))
             sm.record_user("second")
             sid = sm.session_id
             sm.close()
@@ -113,7 +113,7 @@ class TestListSessions:
             sm = _make_sm(tmp_path)
             sm.record_user("one")
             sm.record_user("two")
-            sm._storage.event_manager.add(TUIAgentMessage(content="reply"))
+            sm._event_manager.add(TUIAgentMessage(content="reply"))
             sid = sm.session_id
             sm.close()
 

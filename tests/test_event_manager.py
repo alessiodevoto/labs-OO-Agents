@@ -193,8 +193,7 @@ def test_clear():
 
     hm.clear()
     assert len(hm) == 0
-    # Tag counter must restart from 1 after clear
-    assert hm._next_tag_num == 1
+    # Tag counter (now on the backend) must restart from 1 after clear
     tag = hm.add(Task(prompt="After clear"))
     assert tag == "1"
 
@@ -243,7 +242,7 @@ def test_in_memory_backend_max_tag_num_with_range_tag():
 
 
 def test_event_manager_init_syncs_from_prepopulated_backend():
-    """EventManager started with an existing backend must sync _next_tag_num."""
+    """A backend that already has events must hand out tag = max+1 next."""
     from nemo_oo_agents.events import EventBase
 
     backend = InMemoryBackend()
@@ -252,12 +251,11 @@ def test_event_manager_init_syncs_from_prepopulated_backend():
     backend.store("3", EventBase())
 
     em = EventManager(backend=backend)
-    assert em._next_tag_num == 4  # max(3) + 1
+    assert em.add(Task(prompt="next")) == "4"
 
 
 def test_event_manager_init_empty_backend_starts_at_one():
     em = EventManager()
-    assert em._next_tag_num == 1
     tag = em.add(Task(prompt="first"))
     assert tag == "1"
 
@@ -1010,3 +1008,158 @@ def test_emit_handler_exception_does_not_skip_others():
 
     hm.add(Task(prompt="test"))
     assert "good" in calls  # good_handler must still fire
+
+
+def test_set_backend_preserves_subscribers():
+    """Pins the bug fix: subscribers stay attached when the backend is swapped.
+
+    Regression for the silent-preview bug — when ``/clear`` swapped the
+    agent's storage, the old EventManager went away with it and any
+    handler subscribed at startup (e.g. the TUI's AgentEventRenderer)
+    pointed at a dead manager. The structural fix moves backend swap
+    onto a stable EventManager so subscribers keep firing across the
+    swap.
+    """
+    hm = EventManager(backend=InMemoryBackend())
+    received = []
+    hm.on("Task", lambda e: received.append(e.prompt))
+
+    hm.add(Task(prompt="before-swap"))
+
+    new_backend = InMemoryBackend()
+    hm.set_backend(new_backend)
+
+    hm.add(Task(prompt="after-swap"))
+
+    assert received == ["before-swap", "after-swap"]
+    # The post-swap event landed in the new backend; the pre-swap one didn't.
+    pre_swap_in_new = any(
+        getattr(e, "prompt", None) == "before-swap" for e in new_backend.all_events()
+    )
+    post_swap_in_new = any(
+        getattr(e, "prompt", None) == "after-swap" for e in new_backend.all_events()
+    )
+    assert post_swap_in_new and not pre_swap_in_new
+
+
+def test_set_backend_resets_tag_allocation_to_new_backend():
+    """After set_backend, tag allocation tracks the new backend's high-water mark."""
+    em = EventManager(backend=InMemoryBackend())
+    em.add(Task(prompt="a"))  # tag "1"
+    em.add(Task(prompt="b"))  # tag "2"
+
+    # Swap to a backend that already has events through tag "5".
+    populated = InMemoryBackend()
+    for tag in ("1", "2", "3", "4", "5"):
+        ev = Task(prompt=f"existing-{tag}")
+        ev.tag = tag
+        populated.store(tag, ev)
+
+    em.set_backend(populated)
+    new_tag = em.add(Task(prompt="new"))
+    # Must skip past the existing tags rather than colliding.
+    assert int(new_tag) > 5
+
+
+def test_multiple_managers_share_backend_without_tag_collision():
+    """Two EventManagers writing through the same backend never reuse a tag.
+
+    This is the invariant that lets the TUI's SessionManager keep a
+    light EventManager bound to the storage backend while the agent
+    uses its own stable EventManager — both safe because tag allocation
+    lives on the backend.
+    """
+    backend = InMemoryBackend()
+    em1 = EventManager(backend=backend)
+    em2 = EventManager(backend=backend)
+
+    tags = [
+        em1.add(Task(prompt="a")),
+        em2.add(Task(prompt="b")),
+        em1.add(Task(prompt="c")),
+        em2.add(Task(prompt="d")),
+    ]
+    assert len(set(tags)) == len(tags)
+    assert tags == ["1", "2", "3", "4"]
+
+
+def test_direct_store_keeps_tag_counter_coherent():
+    """A caller writing a high tag directly via ``backend.store()`` must
+    not collide with the next ``allocate_next_tag()``.
+
+    This pins the counter-staleness fix: ``store()`` updates
+    ``_next_tag_num`` so any subsequent allocation skips past the
+    just-stored tag, regardless of whether the tag came via
+    ``allocate_next_tag()`` or a direct ``store()`` (e.g. snapshot
+    re-hydration, tests, or any caller that pre-assigns a tag).
+    """
+    from nemo_oo_agents.events import EventBase
+
+    backend = InMemoryBackend()
+    em = EventManager(backend=backend)
+    em.add(Task(prompt="a"))  # tag "1"
+
+    pre_existing = EventBase()
+    pre_existing.tag = "99"
+    backend.store("99", pre_existing)
+
+    assert em.add(Task(prompt="b")) == "100"
+
+
+def test_clear_after_set_backend_clears_current_backend_only():
+    """``em.clear()`` after ``set_backend()`` clears the new backend, not the old.
+
+    Pins that swap-then-clear doesn't accidentally wipe the original
+    storage and that fresh allocation restarts from "1" on the new one.
+    """
+    old_backend = InMemoryBackend()
+    em = EventManager(backend=old_backend)
+    em.add(Task(prompt="old1"))
+    em.add(Task(prompt="old2"))
+
+    new_backend = InMemoryBackend()
+    em.set_backend(new_backend)
+    em.add(Task(prompt="new1"))
+
+    em.clear()
+
+    # New backend was cleared; old backend untouched.
+    assert len(new_backend) == 0
+    assert len(old_backend) == 2
+    # New backend's allocator restarts from "1" after clear.
+    assert em.add(Task(prompt="fresh")) == "1"
+
+
+def test_collapse_then_add_continues_tag_progression():
+    """``add()`` after ``collapse()`` must allocate a tag past the collapsed range.
+
+    Collapse stores a range tag (e.g. ``"2..4"``) via ``backend.store()``.
+    The store coherence fix relies on ``_tag_max_num("2..4") = 4`` so the
+    counter doesn't go backwards. This test pins that progression — if
+    range-tag parsing in ``_tag_max_num`` ever regresses, collapse would
+    silently corrupt the counter.
+    """
+    em = EventManager()
+    for i in range(5):
+        em.add(Task(prompt=f"e{i + 1}"))  # tags "1".."5", counter at 6
+    em.collapse("2", "4", summary_text="s")  # stores "2..4"; counter still 6
+
+    # Next allocated tag must be 6 — beyond both the original tag "5"
+    # and the range tag "2..4"'s end value of 4.
+    assert em.add(Task(prompt="next")) == "6"
+
+
+def test_collapse_does_not_rewind_counter_when_range_end_below_max():
+    """A ``collapse()`` whose range ends below the current high-water
+    mark must not pull the counter backwards via the store coherence
+    update.
+
+    With 5 events stored (counter=6), collapsing "2..3" stores a tag
+    whose ``_tag_max_num`` is 3. The coherence fix uses ``max(_next, …)``
+    so the counter stays at 6, not 4.
+    """
+    em = EventManager()
+    for i in range(5):
+        em.add(Task(prompt=f"e{i + 1}"))
+    em.collapse("2", "3")
+    assert em.add(Task(prompt="after")) == "6"

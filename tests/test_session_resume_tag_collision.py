@@ -1,10 +1,14 @@
 """Regression test: resumed sessions must not reuse tag numbers already in the backend.
 
-Bug: After restoring from a snapshot, _next_tag_num was set from the snapshot's
-recorded value. If events were added to the backend *after* the snapshot was
-taken (e.g. session-close metadata), those events occupy higher tag numbers.
-The restored agent would then start assigning from the snapshot value, colliding
-with those later events.
+Bug: An earlier design cached ``_next_tag_num`` on the EventManager and
+restored it from the snapshot's recorded value. If events were added to
+the backend *after* the snapshot was taken (e.g. session-close metadata),
+those events occupied higher tag numbers and the restored agent would
+collide with them.
+
+Tag allocation now lives on the EventBackend itself and is lazy-initialised
+from ``max_tag_num()``, so the restored backend always picks the next
+available tag regardless of what the snapshot recorded.
 """
 
 from __future__ import annotations
@@ -50,13 +54,14 @@ def test_next_tag_num_does_not_collide_after_resume(tmp_path):
     agent2 = _SimpleAgent(storage=storage2)
     storage2.restore_latest_snapshot(agent2)
 
-    # The next tag assigned must be strictly greater than 5 (the highest in the backend)
-    next_tag = agent2.event_manager._next_tag_num
-    assert next_tag > 5, f"_next_tag_num={next_tag} will collide with existing tags up to 5"
-
-    # Verify that actually emitting a new event doesn't produce a colliding tag
+    # Emitting a new event must produce a tag strictly greater than 5
+    # (the highest tag already in storage) and not collide with any
+    # existing tag.
     existing_tags = {e.tag for e in agent2.event_manager._backend.all_events()}
     new_tag = agent2.event_manager.add(EventBase())
+    assert int(new_tag) > 5, (
+        f"new event got tag {new_tag!r}; will collide with existing tags up to 5"
+    )
     assert new_tag not in existing_tags, (
         f"new event was assigned tag {new_tag!r} which already exists in the backend"
     )
@@ -141,3 +146,48 @@ def test_sqlite_max_tag_num_simple_tags():
     _insert_raw_tag(backend, "99")
     _insert_raw_tag(backend, "42")
     assert backend.max_tag_num() == 99
+
+
+def test_sqlite_direct_store_keeps_tag_counter_coherent(tmp_path):
+    """SQLite-side parity for ``test_direct_store_keeps_tag_counter_coherent``.
+
+    The store-coherence fix lives in both backends; this exercises the
+    SQLite branch through a real ``SQLiteStorageManager`` so a regression
+    in either implementation gets caught.
+    """
+    storage = SQLiteStorageManager(tmp_path / "session.db")
+    em = _SimpleAgent(storage=storage).event_manager
+    em.add(EventBase())  # tag "1"
+
+    pre_existing = EventBase()
+    pre_existing.tag = "99"
+    storage.event_backend.store("99", pre_existing)
+
+    new_tag = em.add(EventBase())
+    assert new_tag == "100"
+    storage.close()
+
+
+def test_sqlite_multiple_managers_share_backend_without_tag_collision(tmp_path):
+    """SQLite-side parity for ``test_multiple_managers_share_backend_without_tag_collision``.
+
+    Mirrors the InMemory test on a real SQLite backend — covers the
+    TUI's runtime configuration where the agent's stable EventManager
+    and the SessionManager's thin EventManager both write through the
+    same storage's backend.
+    """
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
+    storage = SQLiteStorageManager(tmp_path / "session.db")
+    em1 = EventManager(backend=storage.event_backend)
+    em2 = EventManager(backend=storage.event_backend)
+
+    tags = [
+        em1.add(EventBase()),
+        em2.add(EventBase()),
+        em1.add(EventBase()),
+        em2.add(EventBase()),
+    ]
+    assert tags == ["1", "2", "3", "4"]
+    assert len(set(tags)) == len(tags)
+    storage.close()
