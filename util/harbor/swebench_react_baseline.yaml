@@ -25,7 +25,7 @@ verifier_timeout_multiplier: 2.0  # verifier_timeout_sec=3000 → 6000s; scikit-
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4   # increased for throughput; 96-CPU machine handles 4 concurrent well
+  n_concurrent_trials: 2   # reduced from 4; scikit-learn verifier runs parallelized pytest (32/500 tasks) causing load spikes
   quiet: false
 
 environment:
