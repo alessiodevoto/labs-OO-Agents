@@ -1128,3 +1128,38 @@ def test_clear_after_set_backend_clears_current_backend_only():
     assert len(old_backend) == 2
     # New backend's allocator restarts from "1" after clear.
     assert em.add(Task(prompt="fresh")) == "1"
+
+
+def test_collapse_then_add_continues_tag_progression():
+    """``add()`` after ``collapse()`` must allocate a tag past the collapsed range.
+
+    Collapse stores a range tag (e.g. ``"2..4"``) via ``backend.store()``.
+    The store coherence fix relies on ``_tag_max_num("2..4") = 4`` so the
+    counter doesn't go backwards. This test pins that progression — if
+    range-tag parsing in ``_tag_max_num`` ever regresses, collapse would
+    silently corrupt the counter.
+    """
+    em = EventManager()
+    for i in range(5):
+        em.add(Task(prompt=f"e{i + 1}"))  # tags "1".."5", counter at 6
+    em.collapse("2", "4", summary_text="s")  # stores "2..4"; counter still 6
+
+    # Next allocated tag must be 6 — beyond both the original tag "5"
+    # and the range tag "2..4"'s end value of 4.
+    assert em.add(Task(prompt="next")) == "6"
+
+
+def test_collapse_does_not_rewind_counter_when_range_end_below_max():
+    """A ``collapse()`` whose range ends below the current high-water
+    mark must not pull the counter backwards via the store coherence
+    update.
+
+    With 5 events stored (counter=6), collapsing "2..3" stores a tag
+    whose ``_tag_max_num`` is 3. The coherence fix uses ``max(_next, …)``
+    so the counter stays at 6, not 4.
+    """
+    em = EventManager()
+    for i in range(5):
+        em.add(Task(prompt=f"e{i + 1}"))
+    em.collapse("2", "3")
+    assert em.add(Task(prompt="after")) == "6"

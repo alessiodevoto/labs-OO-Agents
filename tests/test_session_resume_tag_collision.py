@@ -146,3 +146,48 @@ def test_sqlite_max_tag_num_simple_tags():
     _insert_raw_tag(backend, "99")
     _insert_raw_tag(backend, "42")
     assert backend.max_tag_num() == 99
+
+
+def test_sqlite_direct_store_keeps_tag_counter_coherent(tmp_path):
+    """SQLite-side parity for ``test_direct_store_keeps_tag_counter_coherent``.
+
+    The store-coherence fix lives in both backends; this exercises the
+    SQLite branch through a real ``SQLiteStorageManager`` so a regression
+    in either implementation gets caught.
+    """
+    storage = SQLiteStorageManager(tmp_path / "session.db")
+    em = _SimpleAgent(storage=storage).event_manager
+    em.add(EventBase())  # tag "1"
+
+    pre_existing = EventBase()
+    pre_existing.tag = "99"
+    storage.event_backend.store("99", pre_existing)
+
+    new_tag = em.add(EventBase())
+    assert new_tag == "100"
+    storage.close()
+
+
+def test_sqlite_multiple_managers_share_backend_without_tag_collision(tmp_path):
+    """SQLite-side parity for ``test_multiple_managers_share_backend_without_tag_collision``.
+
+    Mirrors the InMemory test on a real SQLite backend — covers the
+    TUI's runtime configuration where the agent's stable EventManager
+    and the SessionManager's thin EventManager both write through the
+    same storage's backend.
+    """
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
+    storage = SQLiteStorageManager(tmp_path / "session.db")
+    em1 = EventManager(backend=storage.event_backend)
+    em2 = EventManager(backend=storage.event_backend)
+
+    tags = [
+        em1.add(EventBase()),
+        em2.add(EventBase()),
+        em1.add(EventBase()),
+        em2.add(EventBase()),
+    ]
+    assert tags == ["1", "2", "3", "4"]
+    assert len(set(tags)) == len(tags)
+    storage.close()
