@@ -15,7 +15,7 @@
 # Run:
 #   harbor run --config util/harbor/dabstep_react_baseline.yaml
 
-jobs_dir: /tmp/harbor_jobs/dabstep_react_baseline
+jobs_dir: /raid/rcabral/home/harbor_jobs/dabstep_react_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
 

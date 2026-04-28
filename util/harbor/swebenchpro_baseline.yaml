@@ -30,7 +30,7 @@
 # DO NOT start the harbor run until SIF pre-pulling is complete (pull_swebenchpro_sifs.py).
 # SWE-bench Pro images are large (~500MB–2GB each); pulling during a live run will be slow.
 
-jobs_dir: /tmp/harbor_jobs/swebenchpro_baseline
+jobs_dir: /raid/rcabral/home/harbor_jobs/swebenchpro_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
 

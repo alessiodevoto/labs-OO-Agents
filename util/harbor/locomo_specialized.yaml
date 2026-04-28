@@ -10,7 +10,7 @@
 #   harbor run --config util/harbor/locomo_specialized.yaml \
 #       --path util/harbor/tasks/locomo_smoke
 
-jobs_dir: /tmp/harbor_jobs/locomo_specialized
+jobs_dir: /raid/rcabral/home/harbor_jobs/locomo_specialized
 n_attempts: 1
 timeout_multiplier: 1.0
 environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s

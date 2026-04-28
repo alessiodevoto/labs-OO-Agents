@@ -17,7 +17,7 @@
 # Run (all 10 tasks):
 #   harbor run --config util/harbor/dabstep_baseline.yaml --dataset path:tasks/dabstep/all
 
-jobs_dir: /tmp/harbor_jobs/dabstep_baseline
+jobs_dir: /raid/rcabral/home/harbor_jobs/dabstep_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
 

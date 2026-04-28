@@ -12,7 +12,7 @@
 # Run (500 tasks — requires SIF cache from ~/3p/sif_cache):
 #   NEMO_OO_AGENTS_GIT_URL="..." harbor run --config util/harbor/swebench_opt1.yaml
 
-jobs_dir: /tmp/harbor_jobs/swebench_opt1
+jobs_dir: /raid/rcabral/home/harbor_jobs/swebench_opt1
 n_attempts: 1
 timeout_multiplier: 1.5   # opt1 pipeline takes longer; give 50% extra time
 

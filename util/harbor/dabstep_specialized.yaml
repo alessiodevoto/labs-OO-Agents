@@ -11,7 +11,7 @@
 # Run:
 #   NEMO_OO_AGENTS_GIT_URL="..." harbor run --config util/harbor/dabstep_specialized.yaml
 
-jobs_dir: /tmp/harbor_jobs/dabstep_specialized
+jobs_dir: /raid/rcabral/home/harbor_jobs/dabstep_specialized
 n_attempts: 1
 timeout_multiplier: 2.0   # multi-agent pipeline takes longer
 

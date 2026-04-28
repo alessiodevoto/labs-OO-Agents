@@ -10,7 +10,7 @@
 # Run:
 #   harbor run --config util/harbor/dabstep_solver.yaml
 
-jobs_dir: /tmp/harbor_jobs/dabstep_solver
+jobs_dir: /raid/rcabral/home/harbor_jobs/dabstep_solver
 n_attempts: 1
 timeout_multiplier: 1.5
 agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; uv sync + full install takes 8–15 min

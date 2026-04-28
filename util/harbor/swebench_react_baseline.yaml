@@ -16,7 +16,7 @@
 # Run:
 #   harbor run --config util/harbor/swebench_react_baseline.yaml
 
-jobs_dir: /tmp/harbor_jobs/swebench_react_baseline
+jobs_dir: /raid/rcabral/home/harbor_jobs/swebench_react_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
 environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s
