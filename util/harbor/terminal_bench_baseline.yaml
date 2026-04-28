@@ -31,7 +31,7 @@ jobs_dir: /raid/rcabral/home/harbor_jobs/terminal_bench_baseline
 n_attempts: 1
 timeout_multiplier: 1.0
 environment_build_timeout_multiplier: 5.0  # build_timeout_sec=120 → 600s for ubuntu-24-04 containers
-agent_setup_timeout_multiplier: 3.0  # 360s × 3.0 = 1080s; ubuntu-24-04 pip bootstrap + uv sync takes 8–15 min
+agent_setup_timeout_multiplier: 6.0  # 360s × 6.0 = 2160s; python-3-13 image apt-get build-essential + git clone + uv sync can take 30+ min
 verifier_timeout_multiplier: 6.0  # verifier_timeout_sec=180 → 1080s; some verifiers compile/run heavy code (pcap-to-netflow, build-pov-ray)
 
 orchestrator:
