@@ -192,20 +192,43 @@ event.
 
 ---
 
+## These options are layers, not alternatives
+
+Options B and C are not mutually exclusive choices.  Option B is the trajectory
+middleware — a piece of code.  Option C is that same trajectory middleware with
+the simplified NeMo Flow guardrail layer added on top.  You build B first; you
+optionally layer C on top when guardrails become a requirement.  The additive
+structure is:
+
+```
+Option A   token counts from unifiedllm event (this MR)
+Option B   + trajectory middleware — LLM + tool capture, no NeMo Flow dep
+Option C   + simplified NeMo Flow guardrail middleware on top of B
+Option D   + full NeMo Flow capture running in parallel with B  ← avoid
+```
+
+Adopting Option C does not remove Option B.  The same `install_trajectory()`
+call is present in both.  The difference is whether you also activate the
+simplified NeMo Flow guardrail middleware — which you only do when NeMo Flow is
+installed and runtime guardrails are needed.
+
+---
+
 ## Summary
 
-| | A (this MR) | B (trajectory) | C (simplified NF + trajectory) | D (both full) |
+| | A (this MR) | B (trajectory) | C (B + NF guardrails) | D (B + full NF) |
 |---|---|---|---|---|
 | Token counts | ✅ | ✅ derived | ✅ derived | ✅ both |
-| Full trajectory | ✗ | ✅ | ✅ | partial |
-| Tool outputs captured | ✗ | ✅ | ✅ | ✗ |
+| Full trajectory | ✗ | ✅ | ✅ | ✅ + partial duplicate |
+| Tool outputs captured | ✗ | ✅ | ✅ | ✅ + ✗ in NF |
 | NeMo Flow guardrails | ✗ | ✗ | ✅ | ✅ |
 | Scope management | ✗ | ✗ | ✅ | ✅ |
 | ATIF export | ✗ | via converter | via converter | NeMo Flow (gaps) |
-| External dep | none | none | NeMo Flow | NeMo Flow |
+| External dep | none | none | NeMo Flow (optional) | NeMo Flow |
 | Doubles NeMo Flow? | n/a | no | no | **yes** |
 | `captured_ctx` antipattern | ✗ | ✗ | remains (guardrails only) | remains (full) |
-| Serialization complexity | none | none | removed | 3-path fallback |
+| Serialization complexity | none | none | removed from NF | 3-path fallback |
+| Includes Option B? | — | ✅ | ✅ | ✅ |
 
 ---
 
@@ -215,15 +238,18 @@ event.
 for cost reporting.  `token_usage.py` is a clean deletion when trajectory
 middleware lands.
 
-**Build trajectory middleware when RL/SFT is a concrete requirement (Option
-B).** At that point, `token_usage.py` is deleted; token counts come from the
-trajectory.  No NeMo Flow dependency needed.
+**Build trajectory middleware (Option B) when RL/SFT is a concrete
+requirement.** At that point `token_usage.py` is deleted; token counts come
+from the trajectory.  Option B stands alone with no NeMo Flow dependency.
 
-**Adopt Option C if NeMo Flow guardrails become a production requirement** —
-e.g. runtime prompt injection, temperature overrides by policy, content
-filtering at inference time.  Until then, the NeMo Flow middleware can stay on
-`main` available for opt-in use without being in the benchmark runner's hot
-path.
+**Layer on simplified NeMo Flow guardrails (reaching Option C) only if runtime
+guardrails become a production requirement** — e.g. prompt injection, temperature
+overrides by policy, content filtering at inference time.  Until then, the
+existing NeMo Flow middleware stays on `main` available for opt-in use, without
+being in the benchmark runner's hot path.  Option C does not require removing
+or replacing Option B — it adds one more middleware install on top.
 
-**The most important decision is avoiding Option D.**  Two full capture
-implementations producing diverging data is worse than either alone.
+**The decision to avoid is Option D.**  Once Option B is built, the full NeMo
+Flow capture layer (serializing responses through the Rust core for ATIF)
+becomes redundant alongside it.  Running both produces two diverging records of
+the same events.
