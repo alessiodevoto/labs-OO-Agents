@@ -227,7 +227,7 @@ def _check_writable(path: Path) -> None:
             f"another process is holding a writer lock on {path}: {e}\n"
             f"Diagnose with:\n"
             f"  lsof {path}\n"
-            f"  pgrep -af nemo_oo_agents_viewer\n"
+            f"  pgrep -af nemo_oo_agents.viewer\n"
             f"Then kill any stale viewer, or pick a different TRACE_STORE_DB."
         ) from e
     finally:
