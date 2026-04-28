@@ -532,20 +532,20 @@ class DABStepAgent(
 - **`data_summary` block**: Summaries of all DataFrames, JSON files, text files
 - **`relevant_rules` block**: Business rules found by RulesLawyer
 
-## Available Helper Functions (use with self.!)
+## Available Helper Functions (module-level, call directly)
 ```python
-self.fee_matches(fee, card_scheme, account_type, capture_delay, is_credit, aci, mcc, intracountry, vol, fraud_pct)
-self.applies_to_all(value)
-self.volume_matches(fee_vol, actual_vol)
-self.fraud_level_matches(fee_fraud, actual_fraud_pct)
-self.capture_delay_matches(fee_delay, merchant_delay)  # OPT62: range matching
-self.calc_fee(fee, amount)
-self.find_lowest_fee(matching_fees, amount)
-self.round_eur(value)           # OPT59: ONLY for 14-decimal questions
-self.format_numeric_answer(value, guidelines)
+fee_matches(fee, card_scheme, account_type, capture_delay, is_credit, aci, mcc, intracountry, vol, fraud_pct)
+applies_to_all(value)
+volume_matches(fee_vol, actual_vol)
+fraud_level_matches(fee_fraud, actual_fraud_pct)
+capture_delay_matches(fee_delay, merchant_delay)  # OPT62: range matching
+calc_fee(fee, amount)
+find_lowest_fee(matching_fees, amount)
+round_eur(value)           # OPT59: ONLY for 14-decimal questions
+format_numeric_answer(value, guidelines)
 ```
 
-## CRITICAL: Use self.fee_matches() — do NOT write your own fee matching!
+## CRITICAL: Use fee_matches() — do NOT write your own fee matching!
 
 ## CRITICAL: ACI vs Card Scheme (OPT61)
 - ACI values: single letters A, B, C, D, E, F, G (payments.csv `aci` column)
@@ -562,16 +562,6 @@ self.format_numeric_answer(value, guidelines)
         self.dataframes: dict[str, pd.DataFrame] = {}
         self.relevant_rules: dict[str, RelevantRule] = {}
 
-        # Make helper functions available to LLM-generated code via self.*
-        self.applies_to_all = applies_to_all
-        self.volume_matches = volume_matches
-        self.fraud_level_matches = fraud_level_matches
-        self.capture_delay_matches = capture_delay_matches
-        self.fee_matches = fee_matches
-        self.calc_fee = calc_fee
-        self.find_lowest_fee = find_lowest_fee
-        self.round_eur = round_eur
-        self.format_numeric_answer = format_numeric_answer
 
     def _load_data(self, data_dir: str) -> None:
         """Load all data files from directory."""
@@ -743,10 +733,10 @@ self.format_numeric_answer(value, guidelines)
 
         **B. Filter Fees using helper:**
         ```python
-        matching = [f for f in fees if self.fee_matches(
+        matching = [f for f in fees if fee_matches(
             f, card_scheme, account_type, merchant['capture_delay'],
             is_credit, aci, mcc, intracountry, monthly_vol, fraud_rate)]
-        best = self.find_lowest_fee(matching, txn['eur_amount'])
+        best = find_lowest_fee(matching, txn['eur_amount'])
         ```
 
         **C. For "Compare ALL X" questions (e.g. which ACI has lowest fees):**
@@ -756,8 +746,8 @@ self.format_numeric_answer(value, guidelines)
 
         ### Step 5: Verify Format
         - **14-DECIMAL RULE (OPT59)**: guidelines say "14 decimals" →
-          1. `value = self.round_eur(value)`  # -0.941192 → -0.94
-          2. `answer = self.format_numeric_answer(value, guidelines)`  # "-0.94000000000000"
+          1. `value = round_eur(value)`  # -0.941192 → -0.94
+          2. `answer = format_numeric_answer(value, guidelines)`  # "-0.94000000000000"
         - 2/3/6 decimals: do NOT use round_eur, format directly.
 
         ### Step 6: Validate Before Returning
