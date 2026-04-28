@@ -55,10 +55,11 @@ def command(port: int, host: str, db_path_opt: str | None):
     os.environ["TRACE_STORE_DB"] = str(db_path)
 
     try:
-        from nemo_oo_agents_viewer.main import app
+        from nemo_oo_agents.viewer.main import app
     except ImportError:
         click.secho(
-            "Error: nemo-oo-agents-viewer is not installed.\nInstall it with:  uv add nemo_oo_agents[viewer]",
+            "Error: viewer dependencies are not installed.\n"
+            "Install them with:  uv sync --extra viewer",
             fg="red",
             err=True,
         )
@@ -70,13 +71,8 @@ def command(port: int, host: str, db_path_opt: str | None):
 
     logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
 
-    # Include the application logger in uvicorn's log config so
-    # nemo_oo_agents_viewer.* messages (info, warning, error) reach the console.
-    # uvicorn.run() calls dictConfig() internally which reconfigures the
-    # root logger, wiping any prior basicConfig() handler.  Adding our
-    # logger directly to the config dict survives that reset.
     log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
-    log_config["loggers"]["nemo_oo_agents_viewer"] = {
+    log_config["loggers"]["nemo_oo_agents.viewer"] = {
         "handlers": ["default"],
         "level": "INFO",
         "propagate": False,

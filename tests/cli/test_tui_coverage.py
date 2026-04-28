@@ -1825,8 +1825,8 @@ class TestStartDevCommand:
             with patch.dict(
                 sys.modules,
                 {
-                    "nemo_oo_agents_viewer": mock_viewer,
-                    "nemo_oo_agents_viewer.main": mock_viewer_main,
+                    "nemo_oo_agents.viewer": mock_viewer,
+                    "nemo_oo_agents.viewer.main": mock_viewer_main,
                 },
             ):
                 with patch("uvicorn.run"):
@@ -1862,8 +1862,8 @@ class TestStartDevCommand:
             with patch.dict(
                 sys.modules,
                 {
-                    "nemo_oo_agents_viewer": mock_viewer,
-                    "nemo_oo_agents_viewer.main": mock_viewer_main,
+                    "nemo_oo_agents.viewer": mock_viewer,
+                    "nemo_oo_agents.viewer.main": mock_viewer_main,
                 },
             ):
                 with patch("uvicorn.run"):

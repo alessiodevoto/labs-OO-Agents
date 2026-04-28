@@ -313,7 +313,7 @@ ignore = [
 "tests/test_pure_functions_gl105.py" = ["UP007", "UP045", "UP046"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["nemo_oo_agents", "nemo_oo_agents_viewer", "eval_pipeline", "evaluation", "unifiedllm", "agentdoc", "context_blocks"]
+known-first-party = ["nemo_oo_agents", "eval_pipeline", "evaluation", "unifiedllm", "agentdoc", "context_blocks"]
 
 [tool.pyright]
 pythonVersion = "3.12"
