@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for ``InputQueue`` + ``wait_for_any``.
+"""Tests for ``Channel`` + ``QueueManager``.
 
 No LLM / runtime required — just ``asyncio`` behaviour.
 
 Queue state is surfaced to the LLM through a dynamic context block
-(see ``BaseTUIAgent._queue_status``), not through events — so the
-``InputQueue`` itself has no event-manager coupling.
+(``queues``, composed via ``QueueManager.status()``), not through
+events. Event-mode channels are tested separately where they need an
+``event_manager`` — most tests here are queue-mode.
 """
 
 from __future__ import annotations
@@ -435,3 +436,83 @@ async def test_race_no_queue_channels_raises():
     qm = QueueManager()
     with pytest.raises(ValueError):
         await qm.race()
+
+
+# ---------------------------------------------------------------------------
+# Robustness — locks the bug-hunt findings on MR !139
+# ---------------------------------------------------------------------------
+
+
+def test_channel_init_rejects_unknown_mode():
+    """Mode is a string parameter; ``Literal["queue", "event"]`` doesn't
+    enforce at runtime. A typo'd mode (e.g. ``"evnet"``) used to fall
+    through to queue-mode logic in ``put()`` and silently buffer items
+    that would never be ``get()``'d. Constructor must reject unknown
+    values explicitly.
+    """
+    with pytest.raises(ValueError, match="mode"):
+        Channel("foo", "evnet")  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_race_propagates_drain_one_failure_and_restores_other_channels():
+    """If ``_drain_one`` raises a non-CancelledError (hypothetical
+    today; future-proof guard), ``race()`` must:
+
+    1. Propagate the exception (not swallow it),
+    2. Restore items consumed by losing channels back to their head,
+    3. Not double-restore — the failed channel's already-popped item
+       is acceptably lost (Task.result() raises on retrieval, the
+       cleanup branch swallows it).
+
+    Locks the contract that future ``_drain_one`` failure modes don't
+    silently strand items across the channel set.
+    """
+
+    class _ExplodingChannel(Channel):
+        async def _drain_one(self):
+            # Simulate an internal failure that completes the task with
+            # an exception rather than a value.
+            raise RuntimeError("simulated drain failure")
+
+    # Build a manager with one exploding channel + one normal channel.
+    # The exploding one must be FIRST in registration order so it wins
+    # the race (race picks by registration order on multi-done).
+    qm = QueueManager()
+    explode = _ExplodingChannel("explode", "queue")
+    qm._channels["explode"] = explode
+    normal = qm.queue("normal")
+
+    waiter = asyncio.create_task(qm.race())
+    await asyncio.sleep(0)
+    # Trigger the drain on both. Exploding channel's _drain_one raises;
+    # normal channel's get-task completes with "saved".
+    explode.put("would-have-won")
+    normal.put("saved")
+
+    with pytest.raises(RuntimeError, match="simulated drain failure"):
+        await asyncio.wait_for(waiter, timeout=0.5)
+
+    # Loser's item must still be reachable on its source channel. The
+    # exploding channel may or may not retain its put — that's
+    # acceptable (the failed task's value is unreachable via Task.result).
+    assert normal.snapshot() == ["saved"]
+
+
+@pytest.mark.asyncio
+async def test_race_documented_exceptions_only():
+    """``race()`` should raise only the exceptions documented in its
+    contract: ``ValueError`` (no queue-mode channels) and propagation
+    of any exception raised inside racing tasks. No catch-alls that
+    would hide bugs from the dispatcher.
+
+    Smoke test that the empty case raises ValueError and the happy
+    path doesn't raise anything.
+    """
+    qm = QueueManager()
+    with pytest.raises(ValueError):
+        await qm.race()
+
+    qm.queue("q1").put("hi")
+    items = await qm.race()
+    assert items == [("q1", "hi")]

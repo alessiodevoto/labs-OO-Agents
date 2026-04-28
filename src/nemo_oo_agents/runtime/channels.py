@@ -132,6 +132,12 @@ class Channel[T]:
         on_get: Callable[[T], None] | None = None,
         preview: Callable[[T], str] | None = None,
     ) -> None:
+        if mode not in ("queue", "event"):
+            raise ValueError(
+                f"Channel mode must be 'queue' or 'event', got {mode!r}. "
+                "Use QueueManager.queue() / QueueManager.event() factories "
+                "rather than constructing Channel directly."
+            )
         self.name = name
         self.mode: ChannelMode = mode
         self._agent = agent
@@ -497,6 +503,18 @@ class QueueManager:
         fires only for the winner — that's why this races on the
         internal ``_drain_one`` (which does not fire ``on_get``)
         rather than on ``get()``.
+
+        Exception contract:
+        - Raises ``ValueError`` if no queue-mode channels are
+          registered. Callers (the dispatcher) handle this as
+          "exit cleanly".
+        - Propagates outer cancellation (``CancelledError``) after
+          cancelling and awaiting all in-flight drain tasks.
+        - Propagates any non-CancelledError raised by ``_drain_one``
+          (currently impossible — ``_drain_one`` only raises
+          ``CancelledError``). Future ``_drain_one`` failure modes
+          will surface to the caller; loser items will still be
+          restored. See ``test_race_propagates_drain_one_failure_*``.
         """
         queue_channels = [ch for ch in self._channels.values() if ch.mode == "queue"]
         if not queue_channels:
