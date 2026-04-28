@@ -177,6 +177,11 @@ async def _run(
         if hasattr(agent, "feedback") and agent.feedback is not None:
             agent.feedback.swebench = swebench_tools
 
+    if "terminal" in tools:
+        from nemo_oo_agents_benchmarks.tools import TerminalBenchTools
+
+        object.__setattr__(agent, "terminal", TerminalBenchTools(workdir="/app"))
+
     # All agents share the same interface: {"user_message": instruction}.
     # Benchmark-specific parsing (system prompts, data paths, etc.) happens
     # inside the agent's _run_evaluation method.

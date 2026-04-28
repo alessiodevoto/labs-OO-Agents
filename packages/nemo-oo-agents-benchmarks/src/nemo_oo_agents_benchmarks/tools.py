@@ -163,3 +163,43 @@ class SWEBenchLocalTools:
     def _resolve(self, filepath: str) -> Path:
         p = Path(filepath)
         return p if p.is_absolute() else Path(self._workdir) / p
+
+
+class TerminalBenchTools:
+    """Shell execution tool for Terminal Bench agents running inside a container.
+
+    Provides ``execute()`` for running arbitrary shell commands in the container.
+    Commands run as root with the given ``workdir`` as the current directory.
+    """
+
+    def __init__(self, workdir: str = "/app") -> None:
+        self._workdir = workdir
+
+    async def execute(self, command: str, timeout: float = 300.0) -> str:
+        """Execute a shell command inside the container and return combined stdout+stderr.
+
+        Args:
+            command: Shell command to run (passed to bash -c).
+            timeout: Maximum seconds to wait (default 300s).
+
+        Returns:
+            Combined stdout and stderr output as a string.
+        """
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=self._workdir,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                return f"[Command timed out after {timeout}s]"
+            output = stdout.decode(errors="replace") if stdout else ""
+            if proc.returncode != 0:
+                output += f"\n[Exit code: {proc.returncode}]"
+            return output
+        except Exception as e:
+            return f"[Error executing command: {e}]"
