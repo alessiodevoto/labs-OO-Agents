@@ -700,3 +700,115 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 18: A/B — Pydantic Answer(answer, reason) vs bare int|None ----
+  # Same fixtures as truncation_aware_*, but using TruncationComprehensionAgentBare
+  # (no reason field). Direct measure of how much uplift comes from the schema.
+
+  - name: truncation_aware_today_verbose_bare
+    description: "Bare int|None agent on today's verbose form"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_today_verbose.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_xml_bare
+    description: "Bare int|None agent on <list len=N>[...]</list>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_xml.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_pascal_bare
+    description: "Bare int|None agent on List(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_pascal.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_bare
+    description: "Bare int|None agent on list(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 18: A/B — Pydantic Answer(answer, reason) vs bare int|None ----
+  # Same fixtures as truncation_aware_*, but using TruncationComprehensionAgentBare
+  # (no reason field). Direct measure of how much uplift comes from the schema.
+
+  - name: truncation_aware_today_verbose_bare
+    description: "Bare int|None agent on today's verbose form"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_today_verbose.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_xml_bare
+    description: "Bare int|None agent on <list len=N>[...]</list>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_xml.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_pascal_bare
+    description: "Bare int|None agent on List(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_pascal.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_bare
+    description: "Bare int|None agent on list(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentBare
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0

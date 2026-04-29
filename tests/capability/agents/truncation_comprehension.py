@@ -49,3 +49,26 @@ class TruncationComprehensionAgent(Agent):
         Include a brief reason string explaining your choice.
         """
         ...
+
+
+# A/B control for measuring the uplift from the Pydantic Answer(answer, reason)
+# schema vs a bare int|None return. Class docstring matches the main agent so
+# the system-prompt persona is identical between the two; only the return type
+# differs.
+class TruncationComprehensionAgentBare(Agent):
+    """You read rendered Python output (lists, dicts, captured streams) and answer
+    questions about it.
+    """
+
+    @strategy(PredictStrategy())
+    async def answer(
+        self,
+        context: Annotated[str, "The rendered Python output the question is about"],
+        question: Annotated[str, "A question to answer."],
+    ) -> int | None:
+        """
+        Based on the `context`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return None if the answer cannot be determined.
+        """
+        ...
