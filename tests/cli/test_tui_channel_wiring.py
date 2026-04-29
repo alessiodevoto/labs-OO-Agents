@@ -45,6 +45,54 @@ def test_tui_agent_has_input_and_output_queue_for_user_messages():
     assert agent.user_messages.name == "user_messages"
 
 
+def test_self_v_proxy_round_trips_through_vars_dict():
+    """``self.v.foo = "bar"`` lands in ``self.vars["foo"]`` and reads
+    back via the proxy. Same shape as ``Todo.v`` / ``TodoVars``."""
+    import pytest as _pytest
+
+    agent = _fresh_agent()
+    agent.v.spec = "bug-fix-plan"
+    agent.v.cursor = 7
+
+    assert agent.vars["spec"] == "bug-fix-plan"
+    assert agent.vars["cursor"] == 7
+    assert agent.v.spec == "bug-fix-plan"
+    assert "spec" in agent.v
+    del agent.v.spec
+    assert "spec" not in agent.vars
+    with _pytest.raises(AttributeError, match="nonexistent"):
+        _ = agent.v.nonexistent
+
+
+def test_self_v_visible_to_doc():
+    """``self.v`` / ``self.vars`` is part of the LLM-facing surface so
+    the agent knows where to put persistent variables."""
+    from nemo_oo_agents.agentdoc import doc
+
+    agent = _fresh_agent()
+    api = doc(agent)
+    assert "vars" in api or "self.v" in api
+
+
+def test_tuiagent_docstring_explains_self_v_persistence():
+    """The agent's docstring documents the persistence ladder so the
+    LLM knows REPL locals (cleared every turn) vs ``persist`` (one turn)
+    vs ``self.v`` (snapshot-backed, survives sessions) vs
+    ``self.todo.<t>.v`` (per-todo). Locks the prompt language."""
+    agent = _fresh_agent()
+    docstring = type(agent).__doc__ or ""
+    assert "self.v" in docstring
+
+
+def test_tuiagent_docstring_encourages_cell_intent_comments():
+    """The agent's docstring asks for a ``# Doing X next`` comment at
+    the top of each ``execute_python`` cell — the TUI surfaces these
+    so the user can follow what the agent is doing live."""
+    agent = _fresh_agent()
+    docstring = type(agent).__doc__ or ""
+    assert "Doing" in docstring or "doing next" in docstring.lower()
+
+
 def test_user_messages_queue_is_hidden_from_doc():
     """The hidden InputQueue must NOT appear in the LLM's API listing."""
     from nemo_oo_agents.agentdoc import doc

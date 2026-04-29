@@ -203,6 +203,43 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
 # drive a state machine from respond().
 
 
+class AgentVars:
+    """Attribute-access proxy for an agent's persistent ``vars`` dict.
+
+    Mirrors ``TodoVars``: write ``self.v.spec = "..."`` instead of
+    ``self.vars["spec"] = "..."``. Reads and writes go straight
+    through to ``self.vars`` so snapshot serialization is unaffected.
+
+    Use for variables that need to survive across turns and across
+    sessions but aren't tied to a specific todo. (For per-todo state,
+    use ``self.todo.<id>.v`` — same shape, narrower scope.)
+    """
+
+    def __init__(self, agent: Any):
+        object.__setattr__(self, "_agent", agent)
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self._agent.vars[key]
+        except KeyError:
+            raise AttributeError(f"No var {key!r} on agent") from None
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        self._agent.vars[key] = value
+
+    def __delattr__(self, key: str) -> None:
+        try:
+            del self._agent.vars[key]
+        except KeyError:
+            raise AttributeError(f"No var {key!r} on agent") from None
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._agent.vars
+
+    def __repr__(self) -> str:
+        return repr(self._agent.vars)
+
+
 @hidden
 class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     """Base class for agents that work with the NeMo OO Agents TUI.
@@ -238,6 +275,10 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     # Read-only facade (just .get() / .status() / .name) is what the
     # LLM sees as ``self.user_messages``.
     user_messages: Annotated[_ChannelReader, nosnapshot]
+    # Persistent variables for the LLM — survives across turns AND
+    # across sessions (snapshot-backed). Accessed via the ``self.v``
+    # proxy for dot-attribute reads/writes (``self.v.spec = "..."``).
+    vars: dict[str, Any]
 
     def __init__(self, llm=None, **kwargs):
         # Use the cached block formatter so immutable blocks (system
@@ -251,6 +292,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         )
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
+        self.vars = {}
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
@@ -270,6 +312,32 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             # mark it immutable — it goes into the cacheable prefix
             # with the system prompt.
             self.context.set("web", doc(self.web), immutable=True)
+
+    @property
+    def v(self) -> AgentVars:
+        """Attribute-access proxy for ``self.vars`` — the agent's
+        persistent variable dict.
+
+        Use for state that should survive across turns and sessions
+        but isn't tied to a specific todo. Snapshot-backed via
+        ``self.vars``.
+
+        Usage::
+
+            self.v.spec = "implement queue mode"
+            self.v.cursor = 0
+            print(self.v.spec)
+            del self.v.cursor
+
+        Compare:
+        - REPL locals → cleared between turns.
+        - ``persist={"k": v}`` on RespondResult → carries to the next
+          turn only, returned via ``restored``.
+        - ``self.v.k = v`` → snapshot-backed, survives turns + sessions.
+        - ``self.todo.<t>.v.k = v`` → same as ``self.v`` but scoped to
+          one todo.
+        """
+        return AgentVars(self)
 
     def message(self, text: str) -> None:
         """Send a Markdown message to the user.
@@ -493,16 +561,24 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     - Run **one** thing at a time and observe the result before the next
       step. Don't build giant blocks that stop at the first error.
-    - **REPL variables persist within a single ``respond()`` turn but are
-      cleared between turns.** A turn ends when you call
-      ``return_result(RespondResult(...))``; the next turn's REPL starts
-      from scratch except for whatever you passed in ``persist``.
-    - **Carry state across turns via ``persist``.** Pack the names you need
-      into the ``persist`` dict of the ``RespondResult`` you return, e.g.
-      ``persist={"plan": plan, "cursor": cursor}``. They come back on the
-      next call as the ``restored`` dict — unpack with ``.get("plan")``.
-    - For long-lived plans/progress, ``self.todo.set_var(t.id, "k", v)``
-      is snapshot-backed and survives across sessions, not just turns.
+    - **Start each cell with a ``# Doing X next`` comment.** One short
+      line at the top of every ``execute_python`` describing the next
+      step. The TUI surfaces these so the user can follow the work
+      live; cells without one read as opaque to anyone watching.
+    - **Where state lives — the persistence ladder, in increasing
+      lifetime:**
+        1. **REPL locals** — cleared between turns. Names defined in
+           one ``execute_python`` are gone in the next.
+        2. **``persist={"k": v}``** on the returned ``RespondResult`` —
+           carries to the next turn only, comes back as ``restored``.
+        3. **``self.v.k = v``** — snapshot-backed, survives turns AND
+           sessions. Use for long-lived agent state (current plan,
+           cursor into a long task, learned facts).
+        4. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
+           scoped to one todo. Use when the variable belongs to that
+           specific work item.
+      When in doubt, prefer ``self.v`` over ``persist`` — the latter
+      is for short-lived turn-to-turn state.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
