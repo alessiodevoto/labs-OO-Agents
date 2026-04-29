@@ -60,7 +60,7 @@ def _make_mock_session(tmp_path):
     agent.event_manager = MagicMock()
     agent.event_manager.on = MagicMock(return_value=lambda: None)
     agent.event_manager.keys = MagicMock(return_value=[])
-    agent.respond = AsyncMock()
+    agent.handle = AsyncMock()
 
     frontend = AsyncMock()
     frontend.render = AsyncMock()

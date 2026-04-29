@@ -127,7 +127,7 @@ async def test_input_cursor_home_and_end():
 
 
 async def test_commands_slash_dispatches_without_calling_agent():
-    """``/help`` routes to the command registry, not ``agent.respond()``."""
+    """``/help`` routes to the command registry, not ``agent.handle()``."""
     async with TUIHarness() as h:
         await h.type_keys("/help")
         await h.press("enter")
@@ -234,9 +234,9 @@ async def test_commands_bang_suspends_app_and_runs_shell():
 
 
 def _blocking_agent() -> FakeAgent:
-    """Agent whose ``respond()`` blocks until we manually set ``block``."""
+    """Agent whose ``handle()`` blocks until we manually set ``block``."""
     agent = FakeAgent()
-    agent.block = asyncio.Event()  # unset → respond() blocks on wait()
+    agent.block = asyncio.Event()  # unset → handle() blocks on wait()
     return agent
 
 
@@ -277,7 +277,7 @@ async def test_slash_command_while_agent_working_dispatches_immediately():
     """Forever-loop model: slash commands no longer queue — they fire right away.
 
     Contrast with the old contract where /exit typed mid-turn waited
-    for the agent to finish. Now the agent's respond() runs for the
+    for the agent to finish. Now the agent's handle() runs for the
     whole session, so there's no "next turn" to flush commands into.
     """
     agent = _blocking_agent()
@@ -309,7 +309,7 @@ async def test_queue_delivered_as_next_turn_when_agent_finishes():
         await h.wait_for(lambda: h.app.is_thinking())
         await h.type_keys("queued")
         await h.press("enter")
-        # Let the agent finish → queued message becomes the next respond()
+        # Let the agent finish → queued message becomes the next handle()
         agent.block.set()
         await h.wait_for(lambda: agent.messages_received == ["first", "queued"])
 
@@ -319,7 +319,7 @@ async def test_interleaved_cmd_msg_msg_commands_fire_immediately():
     messages queue (and consecutive ones merge).
 
     Contrast with the old contract: messages and commands queued
-    together, flushed in order after respond() returned. Now
+    together, flushed in order after handle() returned. Now
     commands sidestep the agent's input queue and fire as soon as
     typed; consecutive queued messages compose a single multi-line
     item via the dispatcher's submit-merge.

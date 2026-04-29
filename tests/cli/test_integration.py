@@ -9,7 +9,7 @@ def test_tui_agent_instantiation():
 
     # Check all expected methods exist
     expected_methods = [
-        "respond",
+        "handle",
         "classify_intent",
         "answer_question",
         "_legacy_brainstorm",
@@ -34,14 +34,13 @@ def test_tui_agent_phase_tracking_initial_state():
     assert agent._workflow_state == {}
 
 
-def test_respond_is_per_turn_with_notification_and_restored():
-    """``respond()`` is invoked per turn by the outer dispatcher, taking
-    a ``(queue_name, item)`` notification and an optional ``restored``
-    dict. Replaces the older orchestrator-era signature check."""
+def test_handle_is_per_turn_with_notification():
+    """``handle()`` is invoked per turn by the outer dispatcher, taking
+    a ``(queue_name, item)`` notification. Replaces the older
+    orchestrator-era signature check."""
     import inspect
 
     from nemo_oo_agents_cli.tui.agent import BaseTUIAgent
 
-    sig = inspect.signature(BaseTUIAgent.respond)
-    assert list(sig.parameters.keys()) == ["self", "notification", "restored"]
-    assert sig.parameters["restored"].default is None
+    sig = inspect.signature(BaseTUIAgent.handle)
+    assert list(sig.parameters.keys()) == ["self", "notification"]

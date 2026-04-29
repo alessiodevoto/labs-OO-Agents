@@ -1647,19 +1647,17 @@ class TestTUIAgentInit:
         assert status["current_tokens"] == 5000
         assert status["summary_count"] == 1  # one ".." tag
 
-    def test_respond_signature_is_per_turn(self):
-        """respond() is a per-turn generation method decorated with
+    def test_handle_signature_is_per_turn(self):
+        """handle() is a per-turn generation method decorated with
         CodeActStrategy. Outer dispatcher calls it with
-        ``(queue_name, item)`` notifications and an optional
-        ``restored`` dict.
+        ``(queue_name, item)`` notifications.
         """
         import inspect
 
         from nemo_oo_agents_cli.tui.agent import BaseTUIAgent
 
-        sig = inspect.signature(BaseTUIAgent.respond)
-        assert list(sig.parameters.keys()) == ["self", "notification", "restored"]
-        assert sig.parameters["restored"].default is None
+        sig = inspect.signature(BaseTUIAgent.handle)
+        assert list(sig.parameters.keys()) == ["self", "notification"]
 
 
 # ===========================================================================

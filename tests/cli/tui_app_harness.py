@@ -79,7 +79,7 @@ def _key_sequence(key: str) -> str:
 class FakeAgent:
     """Scriptable stand-in for ``TUIAgent`` used by harness tests.
 
-    Matches the per-turn contract: ``respond((queue_name, item))``
+    Matches the per-turn contract: ``handle((queue_name, item))``
     is invoked once per turn by the dispatcher, and returns a
     ``RespondResult``-shaped object telling the dispatcher what to do
     next.
@@ -87,9 +87,9 @@ class FakeAgent:
     Control knobs:
 
     - ``self.script`` — callables run one per received message.
-    - ``self.block`` — when cleared, ``respond()`` awaits it before
+    - ``self.block`` — when cleared, ``handle()`` awaits it before
       returning, keeping the dispatcher (and spinner) visibly "working"
-      for as long as the test needs. Default: set, so respond returns
+      for as long as the test needs. Default: set, so handle returns
       quickly.
     - ``self.next_kind`` — the ``kind`` the FakeAgent returns by
       default. Tests flip it to ``"STOP"`` to end the session, or
@@ -102,7 +102,7 @@ class FakeAgent:
         self.script: list[Callable[[FakeAgent, str], Any]] = []
         self.messages_received: list[str] = []
         self.block = asyncio.Event()
-        self.block.set()  # default: respond returns immediately
+        self.block.set()  # default: handle returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
         # Tests don't need event-mode channels, so no event_manager.
         self.queue_manager = QueueManager(agent=self)
@@ -130,7 +130,7 @@ class FakeAgent:
         ).print(Markdown(text))
         self.emit(buf.getvalue())
 
-    async def respond(
+    async def handle(
         self,
         notification: tuple[str, Any],
     ) -> Any:
@@ -211,7 +211,7 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         try:
-            # Cancel any pending agent task so FakeAgent.respond() awaiting
+            # Cancel any pending agent task so FakeAgent.handle() awaiting
             # on agent.block doesn't get orphaned at teardown.
             if self.app is not None:
                 agent_task = getattr(self.app, "_agent_task", None)

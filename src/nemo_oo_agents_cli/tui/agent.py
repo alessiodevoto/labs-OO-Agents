@@ -87,13 +87,13 @@ RespondKind = Literal["GET_USER_INPUT", "WAIT", "STOP"]
 
 
 class RespondResult(BaseModel):
-    """Return value for ``respond()`` — signals what the outer loop should do next.
+    """Return value for ``handle()`` — signals what the outer loop should do next.
 
     Fields:
 
     - ``kind`` — one of:
         * ``"GET_USER_INPUT"`` — dispatcher awaits ``agent.user_messages.get()``
-          and re-enters ``respond(notification)`` with the new message.
+          and re-enters ``handle(notification)`` with the new message.
         * ``"WAIT"`` — dispatcher races every ``InputQueue`` declared on
           the agent (``wait_for_any``) and re-enters with the first arrival.
         * ``"STOP"`` — end the session; dispatcher exits without re-entering.
@@ -237,7 +237,7 @@ class AgentVars:
 class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     """Base class for agents that work with the NeMo OO Agents TUI.
 
-    Subclass this and implement ``respond()`` to build a custom TUI agent.
+    Subclass this and implement ``handle()`` to build a custom TUI agent.
     ``message()`` and ``name_session()`` are provided for free.
 
     **Input queues.** Every ``BaseTUIAgent`` has a ``self.user_messages``
@@ -251,7 +251,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     LLM can ``await self.user_messages.get()`` to dequeue mid-turn;
     everything else (put, snapshot, qsize, etc.) is dispatcher-only.
 
-    ``respond()`` runs *per turn* — the outer dispatcher calls it with
+    ``handle()`` runs *per turn* — the outer dispatcher calls it with
     the next notification ``(queue_name, item)``. Use ``self.v`` for
     state that should survive across turns.
     """
@@ -352,7 +352,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
     @hidden
     @strategy(CodeActStrategy())
-    async def respond(
+    async def handle(
         self,
         notification: tuple[str, Any],
     ) -> "RespondResult":
@@ -474,7 +474,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     ``self.message(...)`` and end the turn with
     ``return_result(RespondResult(kind="GET_USER_INPUT"))``.
     The dispatcher blocks on the next user message and re-enters
-    ``respond()`` with their answer.
+    ``handle()`` with their answer.
 
     Don't guess at interpretation and produce output the user has to reject.
 
@@ -573,7 +573,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     doesn't see them but the next turn does. Use sparingly: a one-liner when
     a decision is non-obvious.
 
-    The outer dispatcher calls ``respond(notification)`` once per turn.
+    The outer dispatcher calls ``handle(notification)`` once per turn.
     ``notification`` is a ``(queue_name, item)`` pair.
     """
 

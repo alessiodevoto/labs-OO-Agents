@@ -288,7 +288,7 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
         # Immediately STOP so the dispatcher exits cleanly after one turn.
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     assert agent._user_messages_in.qsize() == 0
     assert app._agent_task is None
@@ -319,7 +319,7 @@ def test_second_message_does_not_spawn_second_dispatcher():
         await proceed.wait()
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("first")
@@ -339,7 +339,7 @@ def test_second_message_does_not_spawn_second_dispatcher():
 
 def test_dispatcher_wait_kind_races_all_declared_channels():
     """kind="WAIT" should race every queue-mode channel registered on
-    the agent's ``QueueManager`` and re-enter respond() with whichever
+    the agent's ``QueueManager`` and re-enter handle() with whichever
     fires first."""
 
     agent = _fresh_agent()
@@ -356,7 +356,7 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
             return _DispatchResult(kind="WAIT")
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("first")
@@ -390,7 +390,7 @@ def test_three_consecutive_submits_while_busy_merge_into_one_item():
         await proceed.wait()
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("one")
@@ -422,7 +422,7 @@ def test_is_thinking_false_when_dispatcher_blocked_on_queue():
     async def _respond(notification):
         return _DispatchResult(kind="GET_USER_INPUT")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("hello")
@@ -467,7 +467,7 @@ def test_is_thinking_true_during_mid_turn_drain():
         await agent.user_messages.get()
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("first")
@@ -511,7 +511,7 @@ def test_dispatcher_does_not_call_on_get_hook_directly():
     async def _respond(notification):
         return _DispatchResult(kind="STOP")
 
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
     async def _run():
         app.submit_message("once")
