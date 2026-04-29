@@ -31,6 +31,7 @@ import types
 from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
 from nemo_oo_agents import Agent
+from nemo_oo_agents.runtime.token_usage import accumulate_tokens
 from unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
@@ -353,6 +354,11 @@ class ReActBaselineAgent(Agent, llm=FakeLLMClient()):
                     stop=_STOP_SEQUENCES,
                 )
                 assistant_text = llm_response.message or ""
+                usage = getattr(llm_response, "usage", None) or {}
+                accumulate_tokens(
+                    n_input=usage.get("prompt_tokens") or 0,
+                    n_output=usage.get("completion_tokens") or 0,
+                )
             except Exception as exc:
                 return {"response": "", "success": False, "error": f"LLM error: {exc}"}
 
