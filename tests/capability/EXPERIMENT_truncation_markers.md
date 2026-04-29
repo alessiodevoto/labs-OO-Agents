@@ -223,8 +223,13 @@ Note on pydantic / dataclass / json: these aren't fundamentally different shapes
 | Cycle (`<cycle>` markers) | `Node(id=1, name='root', children=…, parent=<cycle>)` | **113/120 (94%)** |
 | Generator (`<generator>` markers) | `{'name': 'log_stream', 'data': <generator>, 'count_so_far': 42}` | **119/120 (99%)** |
 | String — `'foo'+N` (rich legacy) | `log='2024-01-01 INFO startup\nERROR connection failed'+8500` | 64/96 (66%) |
-| String — `str(len=N, head=…)` | `log=str(len=8568, head='…')` | 71/96 (73%) |
-| **String — `str(len=N, head=…, tail=…)`** | `log=str(len=8568, head='…', tail='…')` | **93/96 (96%)** |
+| String — `str(len=N, head=…)` (head only) | `log=str(len=8568, head='…')` | 71/96 (73%) |
+| **String — `str(len=N, head=…, tail=…)`** | `log=str(len=8568, head='…', tail='…')` | **130/132 (98%)** |
+| String — `str(len=N, start=…, end=…)` | (same shape, start/end labels) | 127/132 (96%) |
+| String — `str(len=N, prefix=…, suffix=…)` | (same shape, prefix/suffix labels) | 126/132 (95%) |
+| **String — `str(len=N, [:50]='…', [-50:]='…')`** | (slice expressions as keys) | **129/132 (98%)** |
+
+**The string label barely matters** — `head`/`tail`, `[:50]`/`[-50:]`, `start`/`end`, `prefix`/`suffix` all score within 3pp of each other. What matters is the **shape**: total length upfront via `len=`, plus two visible chunks at the boundaries. The slice-key form has the practical advantage of making the offsets explicit (`[:50]` makes "first 50 chars" unambiguous without measuring), at the cost of being non-strictly-valid Python — but pformat output is already not strictly valid Python (e.g. `'foo'+N`, `... +N`), so this isn't a new compromise.
 
 Three significant findings here:
 
@@ -394,12 +399,12 @@ Flagship models close most of this gap on their own: claude-sonnet hits 100%, ot
 
 ---
 
-## Limitations
+## Caveats and limitations
 
+- **`gpt-oss-20b` was excluded** because the model could not reliably emit valid CodeAct tool calls. Under PredictStrategy it scored ~96% on the same fixtures; under CodeAct it scored 0% because it wrote plain-English meta-commentary inside tool-call message headers, causing API errors after framework retries. This is a tool-calling protocol failure, not a marker-comprehension failure. Excluding it is a model-suitability call, not a comment on the marker design.
 - **Sample size:** 24 samples per (style, question) cell. Enough to distinguish 0/24 from 24/24 cleanly; finer comparisons (e.g. 14 vs 16 of 24) are within noise.
 - **One container size** (100 items, 10 visible). Edge cases at very small or very large containers are not exercised here.
 - **Integer-typed answers** (because the agent's `int | None` constraint). String / boolean / structured answers might surface different failure modes; we trade off question variety for clean schema-validated comparison.
-- **PredictStrategy only** in the headline numbers. CodeAct comparison is in progress; tool-calling / multi-turn setups may behave differently.
 - **Position arithmetic is a stress test.** Many real LLM workloads don't ask "what is the Nth item" in a truncated list. Lower-failure tasks (sibling field extraction, simple counts, key lookup) hit ≥95% even on small models.
 
 ---

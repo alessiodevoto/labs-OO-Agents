@@ -1052,3 +1052,46 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 27: String-truncation label comparison ----
+  # Same shape (total upfront, two visible chunks at the boundaries),
+  # different field names. Tests whether label choice matters.
+
+  - name: truncation_str_v4_start_end
+    description: "str(len=N, start='...', end='...')"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v4_start_end.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_str_v5_prefix_suffix
+    description: "str(len=N, prefix='...', suffix='...')"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v5_prefix_suffix.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_str_v6_slice_keys
+    description: "str(len=N, [:50]='...', [-50:]='...') — slice expressions as kwarg keys"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v6_slice_keys.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
