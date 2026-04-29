@@ -1007,3 +1007,46 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 26: CodeAct variant on the headline awareness fixture ----
+  # Same context+questions as truncation_aware_lower, but with CodeActStrategy.
+  # Tests whether models do better when they can write Python to compute.
+
+  - name: truncation_aware_lower_codeact
+    description: "lower-style awareness, CodeAct strategy (write code to compute)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_records_codeact
+    description: "records-of-dicts under CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/truncation_aware_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_str_v3_codeact
+    description: "string head+tail truncation under CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/truncation_str_v3_head_tail.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0

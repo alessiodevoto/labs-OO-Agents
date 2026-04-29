@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 
 
 class Answer(BaseModel):
@@ -37,6 +37,29 @@ class TruncationComprehensionAgent(Agent):
     """
 
     @strategy(PredictStrategy())
+    async def answer(
+        self,
+        context: Annotated[str, "The rendered Python output the question is about"],
+        question: Annotated[str, "A question to answer."],
+    ) -> Answer:
+        """
+        Based on the `context`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return None if the answer cannot be determined.
+        Include a brief reason string explaining your choice.
+        """
+        ...
+
+
+# CodeAct variant — same persona and return type as TruncationComprehensionAgent,
+# but uses CodeActStrategy so the model can write Python to compute the answer
+# (parse the marker, count, etc.) instead of reasoning purely from the text.
+class TruncationComprehensionAgentCodeAct(Agent):
+    """You read rendered Python output (lists, dicts, captured streams) and answer
+    questions about it.
+    """
+
+    @strategy(CodeActStrategy())
     async def answer(
         self,
         context: Annotated[str, "The rendered Python output the question is about"],

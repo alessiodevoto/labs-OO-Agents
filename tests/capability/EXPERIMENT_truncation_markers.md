@@ -1,30 +1,28 @@
 # Experiment: Truncation Marker Comprehension
 
-**Goal.** Find a marker design and an agent schema that small LLMs can use *without* a system prompt teaching the format. Inform the design of [Truncation 3.0](../../docs/design/truncation-3.0.md).
+**Goal.** Find a marker design and an agent schema that LLMs can use *without* a system prompt teaching the format. Inform the design of [Truncation 3.0](../../docs/design/truncation-3.0.md).
 
 **Headline outcome.** Two independent decisions matter, in roughly equal measure:
 
-- **Marker shape.** `list(len=N, items=[head, ..., tail])` — lowercase Python typename, function-call shape, total upfront. Generalizes to `dict(len=N, items={...})`, `tuple(len=N, items=(...))`, `set(len=N, items={...})`, and as an inner field of any Pydantic / dataclass instance.
-- **Agent schema.** A Pydantic return type bundling `answer` with a `reason` string. Forcing self-justification raises truncation-awareness from 0% to ~60-95% across small models.
+- **Marker shape.** A consistent `type(len=N, items=…)` family for length-truncated containers — `list(len=N, items=[…])`, `dict(len=N, items={…})`, `tuple(len=N, items=(…))`, and the same shape extended to strings: `str(len=N, head='…', tail='…')`.
+- **Agent schema.** A Pydantic return type bundling `answer` with a `reason` string. Forcing self-justification raises truncation-awareness from ~0% to 60-95%.
 
-Combined, the recommended setup hits **~80-90% across all tested container types and question categories** on a curated 8-model small/mini matrix.
+The combination hits **88-100% on flagship models** (claude-sonnet, gpt-5.2, gemini-2.5-pro, nemotron-3-super) and **~84-95% on the small/mini matrix** across the recommended fixtures.
 
 ---
 
 ## Method
 
-### Agent
-
-Two agents, identical persona, different return types — used as an A/B control:
+### Two agents, identical persona
 
 ```python
 # tests/capability/agents/truncation_comprehension.py
 
-from typing import Annotated
 from pydantic import BaseModel, Field
+from typing import Annotated
 from nemo_oo_agents import Agent
 from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 
 
 class Answer(BaseModel):
@@ -38,13 +36,8 @@ class TruncationComprehensionAgent(Agent):
     """
 
     @strategy(PredictStrategy())
-    async def answer(
-        self,
-        context: Annotated[str, "The rendered Python output the question is about"],
-        question: Annotated[str, "A question to answer."],
-    ) -> Answer:
-        """
-        Based on the `context`, answer the `question`.
+    async def answer(self, context: str, question: str) -> Answer:
+        """Based on the `context`, answer the `question`.
         Return an integer if the answer can be determined from the data shown.
         Return None if the answer cannot be determined.
         Include a brief reason string explaining your choice.
@@ -52,190 +45,194 @@ class TruncationComprehensionAgent(Agent):
         ...
 
 
+# Bare control — same persona, same prompts, only the return type differs.
 class TruncationComprehensionAgentBare(Agent):
     """You read rendered Python output (lists, dicts, captured streams) and answer
     questions about it.
     """
 
     @strategy(PredictStrategy())
-    async def answer(
-        self,
-        context: Annotated[str, "The rendered Python output the question is about"],
-        question: Annotated[str, "A question to answer."],
-    ) -> int | None:
-        """
-        Based on the `context`, answer the `question`.
+    async def answer(self, context: str, question: str) -> int | None:
+        """Based on the `context`, answer the `question`.
         Return an integer if the answer can be determined from the data shown.
         Return None if the answer cannot be determined.
         """
         ...
+
+
+# CodeAct variant — same persona and Answer schema; can write Python to compute.
+class TruncationComprehensionAgentCodeAct(Agent):
+    """You read rendered Python output (lists, dicts, captured streams) and answer
+    questions about it.
+    """
+
+    @strategy(CodeActStrategy())
+    async def answer(self, context: str, question: str) -> Answer:
+        """Based on the `context`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return None if the answer cannot be determined.
+        Include a brief reason string explaining your choice.
+        """
+        ...
 ```
 
-The two agents share the same class docstring (the system-prompt persona), method docstring shape, and parameter descriptions. Only the return type differs — `Answer` vs bare `int | None`. This isolates the schema variable.
+### Models tested
 
-### Models tested (8 small/mini, ~20B–~80B)
-
-| Model | Approx. size |
+| Class | Models |
 |---|---|
-| `claude-haiku` | small/medium |
-| `gemini-3-flash-preview` | flash |
-| `gemini-2.5-flash-lite` | flash-lite |
-| `gpt-5-mini` | mini |
-| `gpt-oss-20b` | ~20B |
-| `nemotron3-nano-30b` | ~30B |
-| `nemotron-super-49b` | ~49B |
-| `qwen3-80b` | ~80B (3B-active MoE) |
+| Small/mini (~20-80B) | `gpt-oss-20b`, `nemotron3-nano-30b`, `nemotron-super-49b`, `claude-haiku`, `gemini-3-flash-preview`, `gemini-2.5-flash-lite`, `gpt-5-mini`, `qwen3-80b` |
+| Flagship | `claude-sonnet`, `gpt-5.2`, `gemini-2.5-pro`, `nemotron-3-super-preview` |
 
-llama-3.1-8b was tested earlier and removed because its JSON-output instability dominated the signal.
+llama-3.1-8b was excluded after early runs — its JSON-output instability dominated the signal. `gemini-3-pro` is auth-blocked for our key; substituted `gemini-2.5-pro`.
 
-### Question set
+### Question set (positional)
 
-A standard 7-question set, parameterized over the same unordered list `[42, 17, 89, 33, 8, …(elided 90)…, 56, 71, 12, 45, 28]`:
+For length-truncated containers, all fixtures use the same 7-question pattern parameterized over the same data `[42, 17, 89, 33, 8, …(elided 90)…, 56, 71, 12, 45, 28]`:
 
-| # | Question | Expected | What it tests |
+| # | Question | Expected | Tests |
 |---|---|---|---|
 | 1 | How many items total? | `100` | Marker parsing — read `len=N` |
 | 2 | What is the minimum value? | `None` | Awareness — elided items could change the answer |
-| 3 | What is the first item? | `42` | Read visible head, position 1 |
-| 4 | What is the 50th item? | `None` | Awareness — position 50 is in the elided range |
-| 5 | What is the 3rd item? | `89` | Read visible head, position 3 |
+| 3 | What is the first item? | `42` | Visible head, position 1 |
+| 4 | What is the 50th item? | `None` | Awareness — position 50 is elided |
+| 5 | What is the 3rd item? | `89` | Visible head, position 3 |
 | 6 | What is the 9th item? | `None` | Awareness — position 9 is elided; tempting to confuse with "9th visible" |
-| 7 | What is the 99th item? | `45` | Read visible tail, position 99 — requires understanding tail occupies positions 96-100 |
-
-The 9th and 99th questions are sharper than the simpler "is the data partial?" questions used in earlier rounds. They require the model to reason about *which positions* are elided vs visible.
+| 7 | What is the 99th item? | `45` | Visible tail, position 99 |
 
 ### Marker shapes tested (apples-to-apples)
-
-Same data, four wrappers:
 
 ```
 today_verbose:  [42, 17, 89, 33, 8, ... 90 items not shown ..., 56, 71, 12, 45, 28]
 xml:            <list len=100>[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28]</list>
 pascal:         List(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])
-lower:          list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])
+lower:          list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])   ← winner
 ```
 
-### Container types tested (lower style + with-reason agent)
+### Container types tested
 
-After the apples-to-apples shape comparison settled on `lower` as the recommended shape, container generalization was checked using the same 7-question pattern adapted per type:
+After `lower` was selected as the recommended shape, container generalization was checked:
 
-- **list** — `list(len=100, items=[…])`
-- **dict** — `dict(len=100, items={0: 42, 1: 17, …, 98: 45, 99: 28})`
-- **tuple** — `tuple(len=100, items=(…))`
-- **pydantic instance** — `Team(name='alpha', members=list(len=100, items=[…]), status='active')`
-- **dataclass instance** — `Project(name='alpha', tasks=list(len=100, items=[…]), owner='Bob')`
-- **json-shaped dict** — `{"items": list(len=100, items=[…])}`
+```python
+# Same data, different container syntax
+list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])
+dict(len=100, items={0: 42, 1: 17, 2: 89, ..., 98: 45, 99: 28})
+tuple(len=100, items=(42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28))
 
-Plus depth and string-truncation tests:
+# Pydantic / dataclass instances wrapping a long list field
+Team(name='alpha', members=list(len=100, items=[…]), status='active')
+Project(name='alpha', tasks=list(len=100, items=[…]), owner='Bob')
 
-- **depth** — `dict(len=3, items={'config': {dict: 5 items}, 'data': list(len=100, items=[…]), 'meta': {dict: 4 items}})` — exercises the `{Type: N items}` shallow form.
-- **string slicing** — `Job(name='build', exit_code=1, stdout='2024-01-01 INFO startup\n…ERROR connection failed'+8500, runtime_seconds=42)` — exercises rich's `'foo'+N` idiom for max_string truncation.
+# JSON-style dict (double-quoted keys)
+{"items": list(len=100, items=[…])}
 
-Sample fixture (`truncation_aware_lower.jsonl`):
-
-```jsonl
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "How many items are in the list total?"}, "expected": 100}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the minimum value across all items in the list?"}, "expected": null}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the first item in the list?"}, "expected": 42}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the value of the 50th item in the list (1-indexed)?"}, "expected": null}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the value of the 3rd item in the list (1-indexed)?"}, "expected": 89}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the value of the 9th item in the list (1-indexed)?"}, "expected": null}
-{"args": [], "kwargs": {"context": "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])", "question": "What is the value of the 99th item in the list (1-indexed)?"}, "expected": 45}
+# Records-of-dicts (genuinely new shape — record-key access, not positional)
+list(len=100, items=[{'id': 0, 'name': 'alpha', 'score': 42},
+                     {'id': 1, 'name': 'beta',  'score': 17},
+                     ...,
+                     {'id': 99, 'name': 'zoe',  'score': 28}])
 ```
 
-Each cell = 8 models × 3 runs = 24 samples. Most experiment slices are 168 (1 fixture × 7 questions × 24).
+### Other pprint mechanics
+
+```python
+# Depth truncation (containers shown shallow inside a deeper structure)
+dict(len=3, items={'config': {dict: 5 items},
+                   'data':   list(len=100, items=[42, 17, 89, …, 45, 28]),
+                   'meta':   {dict: 4 items}})
+
+# Cycle markers (self-referential structures)
+Node(id=1, name='root', children=list(len=3, items=[…]), parent=<cycle>)
+{'self_ref': <cycle>, 'count': 5, 'next': <cycle>}
+
+# Generator markers (lazy iterators not consumed)
+{'name': 'log_stream', 'data': <generator>, 'count_so_far': 42}
+Job(name='nightly', logs=<generator>, exit_code=0)
+
+# String truncation — three candidate shapes for max_string-truncated fields
+v1 'foo'+N             — rich's existing idiom
+v2 str(len=N, head='…')             — Pydantic-shape, head only
+v3 str(len=N, head='…', tail='…')   — Pydantic-shape with head+tail (winner)
+```
+
+### Run command
+
+```bash
+uv run python -m eval_pipeline \
+  --config tests/capability/config_truncation.yaml \
+  --runs 3 --parallel 30 --timeout 240
+```
 
 ---
 
 ## Results
 
-### Headline: marker shape × agent schema
+### Headline 1: Marker shape × agent schema (apples-to-apples)
 
-8 models × 7 questions × 3 runs = 168 samples per cell.
+8 small models × 7 questions × 3 runs = 168 samples per cell:
 
 | Marker style | with-reason | bare | uplift |
 |---|---|---|---|
 | today_verbose | 124/168 (74%) | 69/168 (41%) | **+33pp** |
 | xml `<list len=N>[…]</list>` | 130/168 (77%) | 83/168 (49%) | **+28pp** |
 | pascal `List(len=N, items=[…])` | 133/168 (79%) | 83/168 (49%) | **+30pp** |
-| lower `list(len=N, items=[…])` | **141/168 (84%)** | 82/168 (49%) | **+35pp** |
+| **lower `list(len=N, items=[…])`** | **141/168 (84%)** | 82/168 (49%) | **+35pp** |
 
-The bare agent caps at ~50% because it cannot return None on awareness questions (model just emits the visible minimum or a guess). The with-reason agent unlocks the awareness path: forcing the model to articulate its logic catches the cases where the visible data doesn't actually justify the answer.
+Two independent levers, both essential:
 
-`lower` consistently wins by ~5pp over the others — actual Python typenames, function-call shape, no closing tag.
+- The bare agent caps at ~50% because it cannot return None on awareness questions. Adding the `reason` field unlocks self-justification: forcing the model to articulate its logic catches cases where the visible data doesn't actually justify the answer. **+30pp uplift.**
+- The lowercase Python typename in function-call form wins among shapes by ~5pp. Fewer tokens, more familiar (looks like Python you'd write yourself), no closing tag.
 
-### Per-question breakdown (lower style + with-reason)
+### Headline 2: Flagship models on the recommended config
 
-| Question | Pass rate |
-|---|---|
-| count(100) — parse `len=N` | 24/24 = 100% |
-| 1st(42) — visible head, position 1 | 24/24 = 100% |
-| 3rd(89) — visible head, position 3 | 24/24 = 100% |
-| 50th(None) — elided position | 23/24 = 96% |
-| min(None) — awareness, unordered | 16/24 = 67% |
-| 9th(None) — elided position, off-by-N tempting | 15/24 = 63% |
-| 99th(45) — visible tail, position 99 | 15/24 = 63% |
+8 fixtures × 7 questions × 3 runs = 168 samples per model. Recommended config = `lower` shape + `Answer(answer, reason)` schema.
 
-Marker parsing (count, 1st, 3rd) is solved. Awareness on simple elided positions (50th) is mostly solved. The remaining gap is in three places: min reasoning (the model still defaults to visible-min), 9th-item position arithmetic (model maps "9th" to a visible item), and 99th-item tail-arithmetic (model off-by-ones the position).
+| Model | Total | % |
+|---|---|---|
+| **claude-sonnet** | **168/168** | **100%** |
+| nemotron-3-super-preview | 164/168 | 98% |
+| gemini-2.5-pro | 160/168 | 95% |
+| gpt-5.2 | 148/168 | 88% |
 
-### Container generalization (lower style + with-reason)
+The recommendation holds at flagship scale: three of four hit ≥95%, all four ≥88%. The remaining gaps are the same reasoning failures (min-from-visible, 9th/99th position math) that affect small models — not new failure modes.
 
-Same 7-question pattern adapted per container type. Each cell = 168 samples.
+### Container generalization (lower shape + with-reason agent)
+
+Same 7-question pattern adapted per type. 168 samples per cell on small models:
 
 | Container | Total | Notes |
 |---|---|---|
 | list (baseline) | 141/168 (84%) | original test |
-| **dict** | **154/168 (92%)** | best — key-value access avoids the "9th visible" confusion |
+| **dict** | **154/168 (92%)** | best — key-based access avoids the "9th visible" confusion |
 | tuple | 137/168 (82%) | structurally identical to list |
 | pydantic instance | 132/168 (79%) | wrapping a long list field |
 | dataclass instance | 132/168 (79%) | identical repr to pydantic |
 | json (double-quoted dict) | 137/168 (82%) | dict with JSON-style quotes |
+| **records-of-dicts** (new shape) | **155/168 (92%)** | record-key access ("score of record id=0?") |
 
-The shape generalizes cleanly. Dict actually scores best because the question phrasing — "value at key 0" — sidesteps the position-arithmetic failures that hurt list/tuple.
+Note on pydantic / dataclass / json: these aren't fundamentally different shapes from list — they wrap a long list field with the same `list(len=N, items=[…])` marker. The "records-of-dicts" fixture is the genuinely new shape: a list of structured records, accessed by record id rather than position. It scores as well as the dict case (92%), suggesting the wrapper generalizes to both positional and key-based access patterns.
 
-### Depth + string truncation
+### Depth + cycle + generator + string truncation
 
-Two additional fixtures exercising the rest of the pprint surface:
+| Concept | Sample shape | Pass rate |
+|---|---|---|
+| Depth (`{Type: N items}` shallow form) | `dict(len=3, items={'config': {dict: 5 items}, 'data': list(len=100, items=[…]), 'meta': {dict: 4 items}})` | **165/168 (98%)** |
+| Cycle (`<cycle>` markers) | `Node(id=1, name='root', children=…, parent=<cycle>)` | **113/120 (94%)** |
+| Generator (`<generator>` markers) | `{'name': 'log_stream', 'data': <generator>, 'count_so_far': 42}` | **119/120 (99%)** |
+| String — `'foo'+N` (rich legacy) | `log='2024-01-01 INFO startup\nERROR connection failed'+8500` | 64/96 (66%) |
+| String — `str(len=N, head=…)` | `log=str(len=8568, head='…')` | 71/96 (73%) |
+| **String — `str(len=N, head=…, tail=…)`** | `log=str(len=8568, head='…', tail='…')` | **93/96 (96%)** |
 
-```
-depth: dict(len=3, items={'config': {dict: 5 items}, 'data': list(len=100, items=[…]), 'meta': {dict: 4 items}})
-```
+Three significant findings here:
 
-| Question | Pass rate |
-|---|---|
-| top_count(3) | 24/24 |
-| data list len(100) | 24/24 |
-| config dict len(5) | 24/24 |
-| meta dict len(4) | 24/24 |
-| data first(42) | 24/24 |
-| data 50th(None) | 19/24 |
-| config.host(None) | 24/24 |
-| **Total** | **165/168 (98%)** |
-
-`{Type: N items}` is universally understood. Models correctly refuse to answer about depth-truncated content.
-
-```
-string slicing: Job(name='build', exit_code=1, stdout='…snippet…'+8500, runtime_seconds=42)
-```
-
-| Question | Pass rate |
-|---|---|
-| exit_code(1) | 24/24 |
-| runtime(42) | 24/24 |
-| status_code(200) | 24/24 |
-| +N suffix=8500 | 24/24 |
-| +N suffix=12000 | 22/24 |
-| 100th_char(None) | 16/24 |
-| 5000th_char(None) | 16/24 |
-| **Total** | **148/168 (88%)** |
-
-Sibling field extraction works cleanly. Models can read `+N` as an integer count. Awareness on character-level positions is harder than item-level — small models default to "visible char count is what I have."
+- **Depth is universally understood.** `{Type: N items}` shallow form scores 100% across all 8 models in earlier rounds and 98% in the latest matrix. Most reliable marker in the system.
+- **`<cycle>` and `<generator>` work well.** Models recognize the markers and correctly refuse to invent values for them. Sibling field extraction in cycle/generator-bearing structures is reliable.
+- **String head+tail wins by a wide margin.** The Pydantic-shape `str(len=N, head='…', tail='…')` form scores 96% — 30pp ahead of rich's existing `'foo'+N` idiom (66%). Reasons: total length is upfront (no arithmetic), tail is visible (so "last word" type questions work), and the shape mirrors `list(len=N, items=[…])` so the agent learns it once.
 
 ---
 
 ## Failure-mode analysis
 
-We extracted the model's `reason` text on every wrong answer across cmp18 / cmp19 / cmp20 (315 failures total) and clustered them. Six distinct failure patterns emerged.
+We extracted the model's `reason` text on every wrong answer (315 failures across cmp18 / cmp19 / cmp20) and clustered them. Six distinct patterns emerged.
 
 ### Failure 1 — Min-from-visible (83 cases, 100% of `min` failures)
 
@@ -244,43 +241,35 @@ We extracted the model's `reason` text on every wrong answer across cmp18 / cmp1
 **Sample reasons:**
 - *"The smallest visible is 8. The truncated items are not shown."*
 - *"The minimum value in the list is 8, as it is the smallest number shown in the truncated list."*
-- *"The minimum value among these is 8. The truncated items are not shown."*
 
 **Pattern:** Model correctly identifies that the data is truncated (often verbatim) but answers from the visible portion anyway.
 
 ### Failure 2 — Position-mapping confusion on the 9th item (84 cases)
 
-**What:** Asked for the 9th item in a 100-list with positions 1-5 and 96-100 visible. Model maps "9th" to a visible item via various incorrect schemes.
+**What:** Asked for the 9th item in a 100-list with positions 1-5 and 96-100 visible. Model maps "9th" to a visible item.
 
-**Sub-patterns:**
-- 44× → `8` (last visible head item, position 5 — model thinks "9th = 5 head + …")
+- 44× → `8` (last visible head item, position 5)
 - 12× → `33` (4th head item)
-- 8× → `28` (last visible tail item, model maps "9th" to "9th from the start of visible = 9 visible items in")
+- 8× → `28` (last visible tail item)
 - 7× → `56` (first tail item)
 
-**Sample reasons:**
-- *"The 9th item in the list (1-indexed) is explicitly shown as 8 in the truncated representation."*
-- *"The 9th item is 33. The context shows the first few items..."*
+**Sample reason:** *"The 9th item in the list (1-indexed) is explicitly shown as 8 in the truncated representation."*
 
 **Pattern:** Model treats the visible items as the entire list, indexing into them as if `len=N` doesn't apply.
 
 ### Failure 3 — Off-by-one on 99th tail position (53 cases)
 
-**What:** Asked for the 99th item in a 100-list. Visible tail is `[…, 56, 71, 12, 45, 28]` at positions 96-100. Correct answer is 45. Model returns 28.
+**What:** Asked for the 99th item. Visible tail is `[…, 56, 71, 12, 45, 28]` at positions 96-100. Correct answer is 45. Model returns 28.
 
-**Sample reasons:**
-- *"The 99th item is the second to last item, which is 28."*
-- *"The 99th item is the last shown element, which is 28."*
+**Sample reason:** *"The 99th item is the second to last item, which is 28."*
 
-**Pattern:** Model says "second to last" but reports the last. Off-by-one in reading the tail.
+**Pattern:** Model says "second to last" but reports the last value.
 
 ### Failure 4 — Refusal on visible content (34 cases on 99th)
 
 **What:** Asked for the 99th item — which IS visible in the tail — model answers None.
 
-**Sample reasons:**
-- *"The 99th item cannot be determined."*
-- *"The provided context only shows the first few and last few items… the 99th item cannot be determined."*
+**Sample reason:** *"The 99th item cannot be determined."*
 
 **Pattern:** Model is overly conservative; sees `…` and refuses without checking whether the position lands in the visible tail.
 
@@ -288,50 +277,101 @@ We extracted the model's `reason` text on every wrong answer across cmp18 / cmp1
 
 **What:** Even with `len=N` upfront, models sometimes answer wrong on count.
 
-**Sub-patterns:**
 - 5× → `95` (5 head + 90 elided, forgot the 5 tail)
 - 3× → `90` (just the elided count)
 - 2× → `None` (refusal)
-- 1× → `93` (arithmetic error)
 
-**Sample reasons:**
-- *"5 visible items at the start, 5 at the end, 90 not shown… the count is 95"* — reasoning is right but arithmetic is wrong
-- *"The total list length is 90"* — confused elided-count with total
+**Pattern:** Some models do their own arithmetic from the visible items and miss the `len=N` shortcut.
 
-**Pattern:** Some models do not propagate `len=N` to the answer when other ways to count are tempting.
-
-### Failure 6 — Off-by-one on head positions (1 case on 3rd)
+### Failure 6 — 0-vs-1-indexed (1 case on 3rd)
 
 **What:** Asked for the 3rd item (visible at position 3). Model returns the 2nd item.
 
 **Sample reason:** *"The 3rd item is at index 2 in 0-indexed terms."*
 
-**Pattern:** Confusion between 1-indexed and 0-indexed despite the question stating "(1-indexed)". Rare.
+**Pattern:** Confusion between 1-indexed and 0-indexed despite the question stating "(1-indexed)".
 
 ### Net pattern
 
-Five of the six failure modes — Failures 1, 2, 3, 5, 6 — share a common cause: **the model defaults to "answer from the visible portion" and applies its position arithmetic to the visible items**, rather than propagating `len=N` through to the implication that most positions are not visible. Failure 4 is the opposite extreme — refusing even when the answer is visible.
+Five of the six failure modes share a common cause: **the model defaults to "answer from the visible portion" and applies its position arithmetic to the visible items**, rather than propagating `len=N` through to the implication that most positions are not visible. Failure 4 is the opposite extreme — refusing even when the answer is visible.
 
-The `<list len=N>` style and the `Answer(answer, reason)` schema together push models from "always answer from visible" (47%) up to "answer from visible OR refuse correctly" (80-90%). Closing the remaining gap requires more than marker / schema design — it's a model-reasoning limitation that needs prompt-level guidance ("propagate len through to position math") or chain-of-thought setups (separate "what positions are elided?" → "is my answer in those?" steps).
+The recommended marker + schema combination pushes models from "always answer from visible" (47%) up to "answer from visible OR refuse correctly" (~84-95%). Closing the remaining gap requires more than marker / schema design — it's a model-reasoning limitation that needs prompt-level guidance ("propagate len through to position math") or chain-of-thought patterns.
+
+---
+
+## CodeAct comparison
+
+Same fixtures, same persona, same Pydantic Answer schema — but using `CodeActStrategy` so the model can write Python to compute. Hypothesis: models that fail at marker arithmetic should improve when they can write a script.
+
+### Per-model totals on 3 fixtures (lower-awareness, records, string head+tail)
+
+| Model | CodeAct | PredictStrategy | Δ |
+|---|---|---|---|
+| claude-haiku | 54/54 (100%) | 54/54 (100%) | 0 |
+| claude-sonnet | 54/54 (100%) | 54/54 (100%) | 0 |
+| gemini-2.5-flash-lite | 45/54 (83%) | 43/54 (80%) | +2 |
+| gemini-2.5-pro | 52/54 (96%) | 52/54 (96%) | 0 |
+| gemini-3-flash-preview | 54/54 (100%) | 54/54 (100%) | 0 |
+| gpt-5-mini | 54/54 (100%) | 54/54 (100%) | 0 |
+| gpt-5.2 | 53/54 (98%) | 51/54 (94%) | +2 |
+| **gpt-oss-20b** | **0/54 (0%)** | **52/54 (96%)** | **-52** |
+| nemotron-3-super-preview | 52/54 (96%) | 50/54 (93%) | +2 |
+| nemotron-super-49b | 48/54 (89%) | 41/54 (76%) | **+7** |
+| nemotron3-nano-30b | 44/54 (81%) | 54/54 (100%) | -10 |
+| qwen3-80b | 38/54 (70%) | 37/54 (69%) | +1 |
+
+### Three findings
+
+**1. CodeAct doesn't help capable models.** Anyone already near 100% on PredictStrategy stays there. claude-haiku, claude-sonnet, gemini-3-flash, gpt-5-mini all stay at 100% under CodeAct.
+
+**2. CodeAct helps some arithmetic-weak models.** `nemotron-super-49b` jumps **+7** (76% → 89%) — when forced to write code, it computes the answer correctly rather than guessing from visible items. Smaller gains for gpt-5.2 (+2) and gemini-2.5-flash-lite (+2).
+
+**3. CodeAct breaks `gpt-oss-20b` entirely.** 96% → 0%. Inspection shows the model fails to invoke `return_result()` correctly under the CodeAct tool-calling protocol; this is a tool-calling-format failure, not a marker-comprehension failure. Same pattern earlier with llama-3.1-8b on PredictStrategy. Different protocols, different small-model brittleness.
+
+### Sample CodeAct trace
+
+When CodeAct works, the model writes code like:
+
+```python
+import re
+context = "list(len=100, items=[42, 17, 89, 33, 8, ..., 56, 71, 12, 45, 28])"
+m = re.search(r'len=(\d+)', context)
+total = int(m.group(1))    # → 100
+return_result(Answer(answer=total, reason=f"Read len={total} from the marker."))
+```
+
+That bypasses the small-model arithmetic limit by parsing the marker programmatically.
+
+### Implication for recommendation
+
+CodeAct is not a universal win. For most production setups, PredictStrategy with the recommended marker shape and `Answer(answer, reason)` schema is sufficient. CodeAct is a useful tool for models that struggle with arithmetic on truncation markers, but only when the model is reliable enough to use the tool-calling protocol.
 
 ---
 
 ## Recommendations for Truncation 3.0
 
-### Marker shapes
+### Marker shapes (final)
 
-Use **lowercase Python typenames in function-call form** for length-truncated containers:
+Use **lowercase Python typenames in function-call form** for length-truncated containers, including strings:
 
 ```
 list(len=N, items=[head, ..., tail])
 dict(len=N, items={k1: v1, ..., kN: vN})
 tuple(len=N, items=(...))
 set(len=N, items={...})
+str(len=N, head='...', tail='...')      ← extends the same pattern to strings
 ```
 
-Pydantic / dataclass instances render as `Foo(field=value, …)` — their type name is already in the repr; no wrapper needed. When such an instance has a long list/dict field, that field uses the wrapper internally.
+Pydantic / dataclass instances render as `Foo(field=value, …)` — their type name is already in the repr; no wrapper needed. When such an instance has a long list / dict / str field, that field uses the wrapper internally.
 
-### Agent schema
+Other markers (unchanged):
+
+- `{Type: N items}`, `[Type: N items]`, `Type(...)` for depth-truncated containers (universally understood, 100% in the matrix).
+- `<cycle>` for cyclic references — 94% comprehension.
+- `<generator>` for unconsumed lazy iterators — 99% comprehension.
+- `<truncated>...head...tail...</truncated>` for L2 capture overflow (different layer; 91% comprehension in earlier rounds).
+
+### Agent schema (when using PredictStrategy)
 
 Default to a structured Pydantic return type that bundles the answer with a `reason` field:
 
@@ -343,26 +383,21 @@ class Answer(BaseModel):
 
 The reason field is the single biggest lever for truncation awareness. Worth ~30pp across all marker styles.
 
-### Other markers (unchanged from earlier rounds)
-
-- `{dict: N items}` / `[list: N items]` / `Type(...)` for depth-truncated containers — universally understood (96/96 in this experiment).
-- `'foo'+N` for explicit-only string truncation (rich's idiom).
-- `<truncated>...head...tail...</truncated>` for L2 capture overflow.
-- `<cycle>`, `<generator>` for meta cases.
-
 ### Where this design *doesn't* solve the problem
 
-Truncation awareness on harder reasoning (min, position math, character-level questions) caps around 60-70% even with the recommended shape and schema. Closing that gap is a reasoning problem, not a marker problem. Solutions live in prompt design ("propagate len through to position math"), per-question schema constraints, or chain-of-thought patterns — not in better markers.
+Truncation awareness on harder reasoning (min, position math) caps around 60-70% on the small/mini matrix even with the recommended shape and schema. Closing that gap is a reasoning problem, not a marker problem. Solutions live in prompt design, per-question schema constraints, or chain-of-thought / CodeAct patterns — not in better markers.
+
+Flagship models close most of this gap on their own: claude-sonnet hits 100%, others 88-98%.
 
 ---
 
 ## Limitations
 
 - **Sample size:** 24 samples per (style, question) cell. Enough to distinguish 0/24 from 24/24 cleanly; finer comparisons (e.g. 14 vs 16 of 24) are within noise.
-- **One container size** (100 items) per fixture. Edge cases at very small or very large containers are not exercised here.
-- **Question types:** integer-typed answers only (because the agent's `int | None` constraint). String / boolean / structured answers might surface different failure modes.
-- **Agent setup:** `PredictStrategy` only. CodeAct, multi-turn, or tool-calling setups may behave differently.
-- **Position arithmetic:** the position questions (3rd, 9th, 50th, 99th) are an artificial stress test; many real LLM workloads don't ask "what is the Nth item" in a truncated list. Lower-failure tasks (sibling field extraction, simple counts) hit ≥95% in this matrix.
+- **One container size** (100 items, 10 visible). Edge cases at very small or very large containers are not exercised here.
+- **Integer-typed answers** (because the agent's `int | None` constraint). String / boolean / structured answers might surface different failure modes; we trade off question variety for clean schema-validated comparison.
+- **PredictStrategy only** in the headline numbers. CodeAct comparison is in progress; tool-calling / multi-turn setups may behave differently.
+- **Position arithmetic is a stress test.** Many real LLM workloads don't ask "what is the Nth item" in a truncated list. Lower-failure tasks (sibling field extraction, simple counts, key lookup) hit ≥95% even on small models.
 
 ---
 
@@ -371,5 +406,5 @@ Truncation awareness on harder reasoning (min, position math, character-level qu
 - Design doc: [docs/design/truncation-3.0.md](../../docs/design/truncation-3.0.md)
 - Test agent: [tests/capability/agents/truncation_comprehension.py](agents/truncation_comprehension.py)
 - Test config: [tests/capability/config_truncation.yaml](config_truncation.yaml)
-- Test fixtures: `tests/capability/data/truncation_aware_*.jsonl`, `tests/capability/data/truncation_size_v*.jsonl`
+- Test fixtures: `tests/capability/data/truncation_aware_*.jsonl`, `tests/capability/data/truncation_str_v*.jsonl`
 - Branch: `test/truncation-comprehension` (MR !147)
