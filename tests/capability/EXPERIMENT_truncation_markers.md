@@ -184,6 +184,34 @@ Switching the agent from `-> str` to `-> int | None` was important infrastructur
 
 The original prompt said "Return null"; we re-ran with "Return None" (Python convention vs JSON). Results were **bit-identical** — same 0/24 on awareness questions across all 4 styles, same totals, same per-model splits. The bottleneck is the model defaulting to visible-data reasoning, not vocabulary the model fails to recognize.
 
+### 6. Forcing reasoning via a structured Pydantic output unlocks truncation awareness
+
+Switching the return type from `int | None` to a Pydantic model that bundles the answer with a brief justification:
+
+```python
+class Answer(BaseModel):
+    answer: int | None
+    reason: str
+```
+
+…changes the dynamics dramatically. Total pass rate jumps from **47% → 83-91%** (depending on prompt verbosity), and truncation-awareness questions go from 0/24 to 14-21/24 on the small models. The mechanism is straightforward: forcing the model to *articulate why* its answer is correct surfaces cases where the visible data doesn't actually justify the answer (e.g., "the minimum visible is 8 — but the elided 90 items could contain something smaller, so I should return None"). Without the reason field, the model just emits the visible minimum.
+
+Per-question results with `Answer` + short prompt (8 models × 3 runs = 24 samples per cell):
+
+| style | count | min(None) | first | 50th(None) | total |
+|---|---|---|---|---|---|
+| today_verbose | 11/24 | 15/24 | 24/24 | 24/24 | 74/96 (77%) |
+| xml | 24/24 | 15/24 | 24/24 | 18/24 | 81/96 (84%) |
+| pascal | 24/24 | 14/24 | 24/24 | 20/24 | 82/96 (85%) |
+| lower | 24/24 | 15/24 | 23/24 | 21/24 | 83/96 (86%) |
+
+Two takeaways:
+
+- The marker-design ranking holds: the three new len-upfront shapes (xml/pascal/lower) all beat today's verbose form, with `lower` (`list(len=N, items=[...])`) at 86% — the best on this prompt configuration.
+- The reason-field uplift is far larger than any marker-shape difference (47% → 86% from adding the field; ~5pp between the best and worst marker styles). **Structured-output prompting, not marker design, is where truncation awareness is won.**
+
+This shifts where the marker design "matters." Markers carry parsing weight (count, find-by-position) where they make a 30-percentage-point difference; awareness comes from the Pydantic schema forcing self-justification, where the marker style matters only marginally.
+
 ---
 
 ## Recommendations for Truncation 3.0

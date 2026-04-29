@@ -16,26 +16,36 @@ See docs/design/truncation-3.0.md.
 
 from typing import Annotated
 
+from pydantic import BaseModel, Field
+
 from nemo_oo_agents import Agent
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import PredictStrategy
 
 
+class Answer(BaseModel):
+    """Structured answer with reason trace.
+    """
+
+    answer: Annotated[int | None, Field(description="Integer answer, or None if cannot be determined")]
+    reason: Annotated[str, Field(description="Why you picked that answer (one or two sentences)")]
+
+
 class TruncationComprehensionAgent(Agent):
     """You read rendered Python output (lists, dicts, captured streams) and answer
-    questions about it. Some output is partial — you must distinguish what is
-    actually shown from what is missing, and not invent missing content.
+    questions about it.
     """
 
     @strategy(PredictStrategy())
     async def answer(
         self,
         context: Annotated[str, "The rendered Python output the question is about"],
-        question: Annotated[str, "A question whose answer is an integer or 'cannot determine'"],
-    ) -> int | None:
+        question: Annotated[str, "A question to answer."],
+    ) -> Answer:
         """
         Based on the `context`, answer the `question`.
         Return an integer if the answer can be determined from the data shown.
         Return None if the answer cannot be determined.
+        Include a brief reason string explaining your choice.
         """
         ...
