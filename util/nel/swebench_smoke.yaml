@@ -1,0 +1,74 @@
+# NEL smoke test — SWE-bench Verified (5 tasks, nemo-oo-agents)
+#
+# Uses harbor.swebench-verified evaluation (500-task set; limited to 5 here).
+# Per-instance SIFs (swebench_sweb.eval.x86_64.*.sif) are pre-built in Alex's
+# Lustre cache.
+#
+# NOTE: This smoke test uses the default agent_type (baseline), which has no
+# /testbed tools.  Acceptable for pipeline validation but won't produce
+# meaningful SWE-bench scores.  For production runs, add to extra:
+#   agent_kwargs:
+#     agent_type: swebench/basic
+#
+# Prerequisites:
+#   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
+#   export NVIDIA_INTERNAL_API_KEY="..."
+#
+# Submit:
+#   nel run --config util/nel/swebench_smoke.yaml
+#   nel status <hex>
+
+defaults:
+  - execution: internal/slurm/cw
+  - deployment: none
+  - _self_
+
+execution:
+  hostname: cw-dfw-cs-001-login-02
+  account: llmservice_nemo_reasoning
+  output_dir: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmarks/smoke/swebench
+  partition: cpu
+  walltime: 04:00:00
+  gres: gpu:0
+  num_instances: 1
+  mounts:
+    evaluation:
+      # Per-instance SIFs (swebench_sweb.eval.x86_64.*.sif) are in Alex's cache.
+      /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache: /tmp/sif-cache
+    mount_home: true
+
+target:
+  api_endpoint:
+    model_id: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    url: https://inference-api.nvidia.com/v1/chat/completions
+    type: chat
+    api_key_name: NVIDIA_INTERNAL_API_KEY
+
+evaluation:
+  env_vars:
+    APPTAINER_CACHEDIR: "lit:/tmp/sif-cache"
+    APPTAINER_TMPDIR: "lit:/tmp/sif-cache/tmp"
+    NEMO_OO_AGENTS_GIT_URL: "lit:${oc.env:NEMO_OO_AGENTS_GIT_URL}"
+    NEMO_OO_AGENTS_GIT_REF: "lit:${oc.env:NEMO_OO_AGENTS_GIT_REF,main}"
+
+  nemo_evaluator_config:
+    config:
+      params:
+        limit_samples: 5
+        parallelism: 5
+        max_new_tokens: 16384
+        extra:
+          agent: nemo-oo-agents
+          dataset: swebench-verified@1.0
+          n_attempts: 1
+          timeout_multiplier: 3.0
+          sandbox:
+            execution_backend: apptainer
+            config:
+              apptainer_image_cache_dir: /tmp/sif-cache
+              apptainer_fakeroot: false
+              apptainer_timeout_s: 10800
+
+  tasks:
+    - name: harbor.swebench-verified
+      container: gitlab-master.nvidia.com/dl/joc/competitive_evaluation/nvidia-core-evals/ci-llm/harbor:2026-04-23T10-21-2868aca3
