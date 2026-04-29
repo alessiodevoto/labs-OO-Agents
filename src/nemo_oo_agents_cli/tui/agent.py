@@ -28,6 +28,7 @@ with hidden:
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
+import asyncio  # noqa: F401
 import datetime  # noqa: F401
 import json  # noqa: F401
 import re  # noqa: F401
