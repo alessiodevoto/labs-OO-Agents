@@ -80,10 +80,14 @@ class TruncationComprehensionAgentCodeAct(Agent):
 
 | Class | Models |
 |---|---|
-| Small/mini (~20-80B) | `gpt-oss-20b`, `nemotron3-nano-30b`, `nemotron-super-49b`, `claude-haiku`, `gemini-3-flash-preview`, `gemini-2.5-flash-lite`, `gpt-5-mini`, `qwen3-80b` |
+| Small/mini (~30-80B) | `nemotron3-nano-30b`, `nemotron-super-49b`, `claude-haiku`, `gemini-3-flash-preview`, `gemini-2.5-flash-lite`, `gpt-5-mini`, `qwen3-80b` |
 | Flagship | `claude-sonnet`, `gpt-5.2`, `gemini-2.5-pro`, `nemotron-3-super-preview` |
 
-llama-3.1-8b was excluded after early runs — its JSON-output instability dominated the signal. `gemini-3-pro` is auth-blocked for our key; substituted `gemini-2.5-pro`.
+Two models excluded:
+- `llama-3.1-8b` — JSON-output instability under PredictStrategy dominated the signal in early rounds.
+- `gpt-oss-20b` — works at ~96% under PredictStrategy but breaks at 0% under CodeAct due to tool-calling protocol failures (writes plain English meta-commentary into structured tool-call headers, causing API rejections).
+
+`gemini-3-pro` is auth-blocked for our key; substituted `gemini-2.5-pro`.
 
 ### Question set (positional)
 
@@ -314,7 +318,6 @@ Same fixtures, same persona, same Pydantic Answer schema — but using `CodeActS
 | gemini-3-flash-preview | 54/54 (100%) | 54/54 (100%) | 0 |
 | gpt-5-mini | 54/54 (100%) | 54/54 (100%) | 0 |
 | gpt-5.2 | 53/54 (98%) | 51/54 (94%) | +2 |
-| **gpt-oss-20b** | **0/54 (0%)** | **52/54 (96%)** | **-52** |
 | nemotron-3-super-preview | 52/54 (96%) | 50/54 (93%) | +2 |
 | nemotron-super-49b | 48/54 (89%) | 41/54 (76%) | **+7** |
 | nemotron3-nano-30b | 44/54 (81%) | 54/54 (100%) | -10 |
@@ -326,7 +329,7 @@ Same fixtures, same persona, same Pydantic Answer schema — but using `CodeActS
 
 **2. CodeAct helps some arithmetic-weak models.** `nemotron-super-49b` jumps **+7** (76% → 89%) — when forced to write code, it computes the answer correctly rather than guessing from visible items. Smaller gains for gpt-5.2 (+2) and gemini-2.5-flash-lite (+2).
 
-**3. CodeAct breaks `gpt-oss-20b` entirely.** 96% → 0%. Inspection shows the model fails to invoke `return_result()` correctly under the CodeAct tool-calling protocol; this is a tool-calling-format failure, not a marker-comprehension failure. Same pattern earlier with llama-3.1-8b on PredictStrategy. Different protocols, different small-model brittleness.
+**3. Tool-calling protocol failures.** `nemotron3-nano-30b` slips from 100% on PredictStrategy to 81% on CodeAct (model invokes `return_result` correctly most of the time but occasionally emits malformed code). `gpt-oss-20b` (excluded from this matrix) was a starker case at 96%→0% — the model wrote plain-English meta-commentary into structured tool-call headers, causing the API to reject after 3 framework retries. Mirror image of llama-3.1-8b's PredictStrategy-JSON failures from earlier rounds. Different protocols, different small-model brittleness.
 
 ### Sample CodeAct trace
 
