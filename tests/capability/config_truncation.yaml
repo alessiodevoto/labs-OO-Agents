@@ -1106,26 +1106,26 @@ test_suite:
   # Headline measurement: how big is the gap.
 
   - name: truncation_realdata_predict
-    description: "Real-list data; PredictStrategy can only see the truncated preview"
+    description: "Real-list data; PredictStrategy. Expected=None for positions in elided range under default 25/25 pformat"
     tier: stable
     agent:
       module: tests.capability.agents.truncation_comprehension
       class: TruncationRealDataAgentPredict
     method: answer
-    data_file: tests/capability/data/truncation_realdata.jsonl
+    data_file: tests/capability/data/truncation_realdata_predict.jsonl
     scorers:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
 
   - name: truncation_realdata_codeact
-    description: "Real-list data; CodeAct can access the full list at runtime"
+    description: "Real-list data; CodeAct can access the full list at runtime. Expected=real values for everything"
     tier: stable
     agent:
       module: tests.capability.agents.truncation_comprehension
       class: TruncationRealDataAgentCodeAct
     method: answer
-    data_file: tests/capability/data/truncation_realdata.jsonl
+    data_file: tests/capability/data/truncation_realdata_codeact.jsonl
     scorers:
       - name: exact_match
         class: ExactMatchScorer
