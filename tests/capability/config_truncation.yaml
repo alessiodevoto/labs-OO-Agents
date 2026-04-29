@@ -812,3 +812,104 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 19: Container-type generalization (lower style + reason agent) ----
+  # Validates the winning marker design (lower) generalizes beyond bare lists.
+
+  - name: truncation_aware_lower_dict
+    description: "Top-level dict with int keys → values"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_tuple
+    description: "Top-level tuple"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_pydantic
+    description: "Pydantic instance (Team) wrapping a long list field"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_json
+    description: "JSON-shaped dict with double-quoted key wrapping a long list"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower_dataclass
+    description: "Dataclass instance (Project) wrapping a long list field"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 20: Depth truncation (nested with {Type: N items} shallow form) ----
+  # A structure that combines length truncation (data list of 100) AND depth
+  # truncation (config and meta dicts shown shallow).
+
+  - name: truncation_aware_depth
+    description: "Nested dict with length-truncated list + depth-truncated child dicts"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_depth.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 21: String truncation ('foo'+N rich idiom) ----
+  # Pydantic-style instance with a long string field max-string-truncated.
+
+  - name: truncation_aware_string_slice
+    description: "Instance with 'foo'+N truncated string field; recover sibling fields and the +N count"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_string_slice.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
