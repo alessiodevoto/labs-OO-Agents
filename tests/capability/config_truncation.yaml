@@ -19,9 +19,11 @@ description: "Tests whether models correctly interpret truncation markers in ren
 
 agent_models:
   # Matrix spans small/mini-class through flagship models.
-  # Excludes llama-3.1-8b (JSON output instability dominated, not marker comprehension).
+  # Excluded:
+  #   llama-3.1-8b — JSON output instability under PredictStrategy.
+  #   gpt-oss-20b  — works under PredictStrategy (~96%) but tool-calling
+  #                  protocol failures under CodeAct (0%).
   # Small/mini class:
-  - gpt-oss-20b              # ~20B
   - nemotron3-nano-30b       # ~30B
   - nemotron-super-49b       # ~49B
   - claude-haiku             #  small/medium
