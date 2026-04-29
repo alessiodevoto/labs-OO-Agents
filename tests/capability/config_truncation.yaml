@@ -642,3 +642,61 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 17: Apples-to-apples truncation-awareness ----
+  # Same data (unordered list), same 4 questions, 4 wrapper styles.
+  # Tests whether the model understands the LIST IS TRUNCATED, not just
+  # whether it can parse the count. Includes "min value?" which has UNKNOWN
+  # as the correct answer when data is unordered and 90% is elided.
+
+  - name: truncation_aware_today_verbose
+    description: "Today's pformat: [a, b, ... 90 items not shown ..., y, z]"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_today_verbose.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_xml
+    description: "XML wrapper: <list len=N>[...]</list>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_xml.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_pascal
+    description: "Pydantic PascalCase: List(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_pascal.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_aware_lower
+    description: "Pydantic lowercase Python typenames: list(len=N, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_lower.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0

@@ -31,20 +31,11 @@ class TruncationComprehensionAgent(Agent):
     async def answer(
         self,
         context: Annotated[str, "The rendered Python output the question is about"],
-        question: Annotated[str, "A concise question about the rendered output"],
-    ) -> str:
-        """Read this rendered Python output:
-
-        ```
-        {context}
-        ```
-
-        Answer this question concisely. Output only the answer with no
-        explanation, no quotes around it, no preamble.
-
-        If the answer cannot be determined from what is shown (because data
-        is partial or missing), output exactly: UNKNOWN
-
-        Question: {question}
+        question: Annotated[str, "A question whose answer is an integer or 'cannot determine'"],
+    ) -> int | None:
+        """
+        Based on the `context`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return null if the answer cannot be determined.
         """
         ...
