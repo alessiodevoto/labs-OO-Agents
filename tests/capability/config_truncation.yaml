@@ -19,10 +19,11 @@ description: "Tests whether models correctly interpret truncation markers in ren
 
 agent_models:
   # Curated small-model matrix for truncation comprehension.
-  # Spans 8B → ~80B-class to surface size-dependent comprehension differences.
-  - llama-3.1-8b           #  ~8B   smallest, baseline
+  # Excludes llama-3.1-8b (JSON output instability dominated, not marker comprehension).
+  # Spans ~20B → ~80B-class to surface marker-design differences.
   - gpt-oss-20b            # ~20B
   - nemotron3-nano-30b     # ~30B
+  - nemotron-super-49b     # ~49B
   - claude-haiku           #  small/medium
   - gemini-3-flash-preview #  flash-class
   - gemini-2.5-flash-lite  #  flash-lite (smallest Gemini)
@@ -445,3 +446,100 @@ test_suite:
 
           Pass=true if expected appears verbatim or is the core of the answer,
           OR (when expected is UNKNOWN) the answer says it cannot tell.
+
+  # ---- TEST 14: Size-marker shape optimization ----
+  # Five variants of length truncation tested against the 8-model matrix to find
+  # the shape with highest counting comprehension WITHOUT a teaching prompt.
+  # Baseline: today's verbose `... N items not shown ...` form (truncation_size_before).
+  # Goal: >95% pass rate across small models.
+
+  - name: truncation_size_v1_total_prefix
+    description: "Total upfront, no inline marker: [100 items: a, b, ..., y, z]"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v1_total_prefix.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v2_natural_prose
+    description: "Natural prose: [a, b, ... and 90 more items ..., y, z]"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v2_natural_prose.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v3_xml_len
+    description: "XML-style len attr: <list len=100>[a, b, ..., y, z]</list>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_xml_len.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v4_total_with_marker
+    description: "Total embedded in marker: [a, b, ... 90 of 100 items not shown ..., y, z]"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v4_total_with_marker.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v5_python_comment
+    description: "Python comment style: [a, b, # ...90 more..., y, z]  # 100 items total"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v5_python_comment.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v6_total_comment_first
+    description: "Total in comment BEFORE list: # 100 items total\\n[a, b, ..., y, z]"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v6_total_comment_first.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v7_len_attr
+    description: "Python len= convention: [a, b, ..., y, z]  # len=100"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v7_len_attr.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
