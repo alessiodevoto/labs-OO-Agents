@@ -85,12 +85,31 @@ class JobHandle:
     Tracks the lifecycle of one spawned coroutine or async generator.
     ``cancel()`` requests cancellation and awaits cleanup so generator
     ``finally`` blocks run before the call returns.
+
+    If ``buffer`` was passed to ``spawn()``, yielded values accumulate
+    in ``self.values``:
+    - ``buffer=False`` (default): no accumulation, ``.values`` is empty.
+    - ``buffer=True``: unbounded list of all yielded values.
+    - ``buffer=N`` (int): ring buffer keeping the last N values.
     """
 
-    def __init__(self, name: str, task: asyncio.Task[Any]) -> None:
+    def __init__(self, name: str, task: asyncio.Task[Any], buffer: bool | int = False) -> None:
         self.name = name
         self.state: JobState = "running"
         self._task = task
+        if buffer is True:
+            self._values: list[Any] | deque[Any] = []
+        elif isinstance(buffer, int) and buffer > 0:
+            self._values = deque(maxlen=buffer)
+        else:
+            self._values = None  # type: ignore[assignment]
+
+    @property
+    def values(self) -> list[Any]:
+        """All buffered values (or last N if ring buffer). Empty if buffer=False."""
+        if self._values is None:
+            return []
+        return list(self._values)
 
     async def cancel(self) -> None:
         """Cancel the underlying task and await its unwinding."""
@@ -643,6 +662,7 @@ class QueueManager:
         job: Coroutine[Any, Any, Any] | AsyncGenerator[Any, None],
         *,
         channel: str,
+        buffer: bool | int = False,
     ) -> JobHandle:
         """Run *job* in the background, routing output to *channel*.
 
@@ -658,7 +678,13 @@ class QueueManager:
         data channel — avoids type confusion). The handle's state
         transitions to ``"failed"``.
 
-        Returns a ``JobHandle`` with ``name``, ``state``, ``cancel()``.
+        Returns a ``JobHandle`` with ``name``, ``state``, ``cancel()``,
+        and ``values`` (buffered items if ``buffer`` is set).
+
+        ``buffer`` controls value accumulation on the handle:
+        - ``False`` (default): no buffering.
+        - ``True``: unbounded list of all yielded values.
+        - ``int > 0``: ring buffer keeping the last N values.
         """
         if channel not in self._channels:
             raise ValueError(
@@ -674,9 +700,13 @@ class QueueManager:
             try:
                 if is_agen:
                     async for value in job:  # type: ignore[union-attr]
+                        if handle._values is not None:
+                            handle._values.append(value)
                         data_ch.put(value)
                 else:
                     result = await job  # type: ignore[misc]
+                    if handle._values is not None:
+                        handle._values.append(result)
                     data_ch.put(result)
                 handle.state = "done"
             except asyncio.CancelledError:
@@ -700,7 +730,7 @@ class QueueManager:
                     self._event_manager.add(StreamEnd(channel_name=channel))
 
         task = asyncio.create_task(_run(), name=f"spawn[{channel}]")
-        handle = JobHandle(name=channel, task=task)
+        handle = JobHandle(name=channel, task=task, buffer=buffer)
         # Thread the handle back into _run via a task→handle map so the
         # closure can update state without capturing the handle before
         # it's constructed.

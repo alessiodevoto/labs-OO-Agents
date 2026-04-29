@@ -281,3 +281,66 @@ async def test_spawn_to_event_mode_channel():
     queue_outputs = [e for e in em.events if isinstance(e, QueueOutput)]
     assert len(queue_outputs) == 1
     assert queue_outputs[0].value == "hello"
+
+@pytest.mark.asyncio
+async def test_spawn_buffer_true_accumulates_all():
+    """buffer=True accumulates all yielded values on the handle."""
+    em = FakeEventManager()
+    qm = QueueManager(event_manager=em)
+    ch = qm.queue("data")
+
+    async def gen():
+        for i in range(5):
+            yield i
+
+    handle = qm.spawn(gen(), channel="data", buffer=True)
+
+    for _ in range(5):
+        await asyncio.wait_for(ch.get(), timeout=1.0)
+    await asyncio.sleep(0)
+
+    assert handle.values == [0, 1, 2, 3, 4]
+    assert handle.state == "done"
+
+
+@pytest.mark.asyncio
+async def test_spawn_buffer_int_ring():
+    """buffer=N keeps only the last N values (ring buffer)."""
+    em = FakeEventManager()
+    qm = QueueManager(event_manager=em)
+    ch = qm.queue("data")
+
+    async def gen():
+        for i in range(10):
+            yield i
+
+    handle = qm.spawn(gen(), channel="data", buffer=3)
+
+    for _ in range(10):
+        await asyncio.wait_for(ch.get(), timeout=1.0)
+    await asyncio.sleep(0)
+
+    assert handle.values == [7, 8, 9]
+    assert handle.state == "done"
+
+
+@pytest.mark.asyncio
+async def test_spawn_buffer_false_no_accumulation():
+    """buffer=False (default) does not accumulate values."""
+    em = FakeEventManager()
+    qm = QueueManager(event_manager=em)
+    ch = qm.queue("data")
+
+    async def gen():
+        for i in range(3):
+            yield i
+
+    handle = qm.spawn(gen(), channel="data")
+
+    for _ in range(3):
+        await asyncio.wait_for(ch.get(), timeout=1.0)
+    await asyncio.sleep(0)
+
+    assert handle.values == []
+    assert handle.state == "done"
+
