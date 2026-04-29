@@ -598,3 +598,47 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 16: Pydantic-repr style for basic-type wrappers ----
+  # Alternative to <list len=N>[...]</list> XML wrapper.
+  # Tests whether `List(len=N, items=[...])` (Pydantic-repr style) reads more
+  # naturally than the XML wrapper for small models.
+
+  - name: truncation_size_v8_pydantic_capital
+    description: "Pydantic-style PascalCase: List(len=100, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v8_pydantic_capital.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v9_python_lower
+    description: "Python builtin lowercase: list(len=100, items=[...])"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v9_python_lower.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v3_xml_4q
+    description: "Same 4 questions as v8/v9 but with <type len=N>...</type> XML wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_xml_4q.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
