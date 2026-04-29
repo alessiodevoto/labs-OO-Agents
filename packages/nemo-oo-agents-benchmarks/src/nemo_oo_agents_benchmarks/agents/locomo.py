@@ -26,6 +26,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, PredictStrategy, strategy
+from nemo_oo_agents.config.truncation_config import TruncationConfig
 from unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
@@ -80,18 +81,30 @@ class LoCoMoAgent(Agent, llm=FakeLLMClient()):
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner.
 
-        Extracts the question and conversation history from task_input,
-        assembles the retrieval context, and returns the agent answer.
+        The Harbor runner passes the full instruction.md as ``user_message``.
+        The instruction format is:
+            [preamble + conversation history]
+            ---
+            ## Question
+            **Type:** <type>
+            <question text>
+            Write your answer to `/app/answer.txt`. ...
+
+        We split on ``---`` to separate the conversation context from the
+        question, then pass both to ``_generate_answer``.
         """
-        question = (
+        full_text = (
             task_input.get("user_message")
             or task_input.get("user_prompt")
             or task_input.get("question")
             or task_input.get("description", "")
         )
 
-        if not question:
-            return {"response": "", "success": False, "error": "No question provided"}
+        if not full_text:
+            return {"response": "", "success": False, "error": "No instruction provided"}
+
+        # Split instruction into conversation context and question
+        conversation_text, question = self._parse_instruction(full_text)
 
         sessions = (
             task_input.get("sessions")
@@ -101,21 +114,61 @@ class LoCoMoAgent(Agent, llm=FakeLLMClient()):
         )
 
         try:
-            answer = await self.answer_from_memory(question=question, sessions=sessions)
+            answer = await self.answer_from_memory(
+                question=question,
+                sessions=sessions,
+                context_override=conversation_text,
+            )
             return {"response": str(answer), "success": True, "answer": answer}
         except Exception as e:
             return {"response": "", "success": False, "error": str(e)}
+
+    @staticmethod
+    def _parse_instruction(text: str) -> tuple[str, str]:
+        """Split instruction.md into (conversation_context, question).
+
+        If there is a ``---`` separator, everything before is the conversation
+        and the text after ``## Question`` is the actual question.
+        Otherwise the full text is used as the question.
+        """
+        if "\n---\n" in text:
+            parts = text.split("\n---\n", 1)
+            conversation = parts[0].strip()
+            question_block = parts[1].strip()
+            # Extract the question line(s): skip "## Question", "**Type:** ...",
+            # and the trailing "Write your answer..." instruction.
+            lines = question_block.splitlines()
+            question_lines = []
+            in_question = False
+            for line in lines:
+                if line.startswith("## Question"):
+                    in_question = True
+                    continue
+                if in_question:
+                    if line.startswith("**Type:**"):
+                        continue
+                    if line.startswith("Write your answer") or line.startswith("If the question"):
+                        break
+                    question_lines.append(line)
+            question = "\n".join(question_lines).strip()
+            return conversation, question or question_block
+        return "", text
 
     # ------------------------------------------------------------------
     # Orchestration (real Python -- no ellipsis)
     # ------------------------------------------------------------------
 
-    async def answer_from_memory(self, question: str, sessions: list | None = None) -> str:
+    async def answer_from_memory(
+        self,
+        question: str,
+        sessions: list | None = None,
+        context_override: str | None = None,
+    ) -> str:
         """Assemble retrieval context and call the LLM to answer a memory question.
 
-        Stores session state, builds the retrieval index, selects recent and
-        relevant sessions, and delegates to ``_generate_answer`` for the actual
-        LLM call.
+        If ``context_override`` is provided (e.g. the raw conversation text from
+        the instruction.md), it is used as-is instead of building from sessions.
+        Otherwise sessions are used to build a retrieval-augmented context.
         """
         if sessions is None:
             sessions = []
@@ -125,35 +178,40 @@ class LoCoMoAgent(Agent, llm=FakeLLMClient()):
         self.current_question = question
         self.session_index = self._build_session_index(sessions)
 
-        # Assemble context: recent sessions always included
-        parts: list[str] = []
+        if context_override:
+            # Use the raw conversation text from the instruction directly
+            context_text = context_override
+        else:
+            # Assemble context: recent sessions always included
+            parts: list[str] = []
 
-        recent = self._format_sessions(
-            self.sessions[-self.recent_sessions_count :], "Recent Conversations"
-        )
-        if recent:
-            parts.append(recent)
+            recent = self._format_sessions(
+                self.sessions[-self.recent_sessions_count :], "Recent Conversations"
+            )
+            if recent:
+                parts.append(recent)
 
-        # Add keyword-retrieved sessions (excluding recent ones)
-        if len(self.sessions) > self.recent_sessions_count:
-            relevant = self.get_relevant_sessions()
-            if relevant:
-                parts.append(relevant)
+            # Add keyword-retrieved sessions (excluding recent ones)
+            if len(self.sessions) > self.recent_sessions_count:
+                relevant = self.get_relevant_sessions()
+                if relevant:
+                    parts.append(relevant)
 
-        # Add temporal timeline for date-sensitive questions
-        if self.is_temporal_query():
-            temporal = self.get_temporal_context()
-            if temporal:
-                parts.append(temporal)
+            # Add temporal timeline for date-sensitive questions
+            if self.is_temporal_query():
+                temporal = self.get_temporal_context()
+                if temporal:
+                    parts.append(temporal)
 
-        context_text = "\n\n".join(parts)
+            context_text = "\n\n".join(parts)
+
         return await self._generate_answer(question=question, context=context_text)
 
     # ------------------------------------------------------------------
     # Generation method (single LLM call via PredictStrategy)
     # ------------------------------------------------------------------
 
-    @strategy(PredictStrategy())
+    @strategy(PredictStrategy(), truncation=TruncationConfig(max_block_chars=120_000))
     async def _generate_answer(self, question: str, context: str = "") -> str:
         """Answer the following question using the provided conversation history.
 
@@ -163,7 +221,9 @@ class LoCoMoAgent(Agent, llm=FakeLLMClient()):
         {context}
 
         Answer ONLY from information in the conversation history above.
-        Be precise. For temporal questions, reference specific dates.
+        Give a short, direct answer — a word, phrase, or single sentence.
+        Do NOT start with "Based on", "According to", or any other preamble.
+        For temporal questions, include the specific date or time period.
         If the answer is not present in the history, say exactly:
         "I cannot find that in our conversations"
         """
