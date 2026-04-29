@@ -562,7 +562,6 @@ format_numeric_answer(value, guidelines)
         self.dataframes: dict[str, pd.DataFrame] = {}
         self.relevant_rules: dict[str, RelevantRule] = {}
 
-
     def _load_data(self, data_dir: str) -> None:
         """Load all data files from directory."""
         self.data_dir = data_dir
