@@ -519,6 +519,11 @@ class Session:
             #    when the loop closes.
             # 3. Diagnostics, frontend close, snapshot, session close.
             self._renderer.detach()
+            # Shut down spawned jobs before cancelling background tasks
+            # so generator finally blocks run cleanly.
+            qm = getattr(self.agent, "queue_manager", None)
+            if qm is not None:
+                await qm.shutdown()
             await self._cancel_background_tasks()
             self._dump_exit_diagnostics()
             self.frontend.close()

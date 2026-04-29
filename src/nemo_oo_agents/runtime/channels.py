@@ -20,9 +20,10 @@ Design doc: docs/design/reactive-agent-queues.md (MR !134).
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from collections import deque
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
@@ -51,6 +52,60 @@ class QueueOutput(EventBase):
     value_type: str
     value_preview: str
     value: Annotated[Any, Field(repr=False)] = None
+
+
+class StreamEnd(EventBase):
+    """Emitted to the agent's event channel when a spawned job finishes.
+
+    Signals that no more values will arrive on ``channel_name``.
+    Lives here (not in events.py) per the additive-only constraint.
+    """
+
+    channel_name: str
+
+
+class JobError(EventBase):
+    """Emitted to the agent's event channel when a spawned job fails."""
+
+    channel_name: str
+    error_type: str
+    error_message: str
+
+
+# ---------------------------------------------------------------------------
+# JobHandle
+# ---------------------------------------------------------------------------
+
+JobState = Literal["running", "done", "cancelled", "failed"]
+
+
+class JobHandle:
+    """Handle returned by ``QueueManager.spawn()``.
+
+    Tracks the lifecycle of one spawned coroutine or async generator.
+    ``cancel()`` requests cancellation and awaits cleanup so generator
+    ``finally`` blocks run before the call returns.
+    """
+
+    def __init__(self, name: str, task: asyncio.Task[Any]) -> None:
+        self.name = name
+        self.state: JobState = "running"
+        self._task = task
+
+    async def cancel(self) -> None:
+        """Cancel the underlying task and await its unwinding."""
+        if self._task.done():
+            return
+        self._task.cancel()
+        try:
+            await self._task
+        except (asyncio.CancelledError, Exception):
+            pass
+        if self.state == "running":
+            self.state = "cancelled"
+
+    def __repr__(self) -> str:
+        return f"JobHandle(name={self.name!r}, state={self.state!r})"
 
 
 # ---------------------------------------------------------------------------
@@ -417,6 +472,7 @@ class QueueManager:
         # order, matching the FIFO-by-position contract the fast path
         # documents.
         self._channels: dict[str, Channel[Any]] = {}
+        self._handles: list[JobHandle] = []
 
     # ---- factories -------------------------------------------------------
 
@@ -579,3 +635,89 @@ class QueueManager:
                     except BaseException:
                         pass
             raise
+
+    # ---- spawn -----------------------------------------------------------
+
+    def spawn(
+        self,
+        job: Coroutine[Any, Any, Any] | AsyncGenerator[Any, None],
+        *,
+        channel: str,
+    ) -> JobHandle:
+        """Run *job* in the background, routing output to *channel*.
+
+        Coroutine input
+            ``await`` once; ``put(result)`` to the named channel on
+            completion; emit ``StreamEnd`` to the event channel.
+
+        Async generator input
+            Iterate; ``put(value)`` per yield until exhaustion or
+            cancellation; emit ``StreamEnd`` on close.
+
+        Errors mid-job emit ``JobError`` on the event channel (not the
+        data channel — avoids type confusion). The handle's state
+        transitions to ``"failed"``.
+
+        Returns a ``JobHandle`` with ``name``, ``state``, ``cancel()``.
+        """
+        if channel not in self._channels:
+            raise ValueError(
+                f"channel {channel!r} not registered; "
+                f"known channels: {list(self._channels)}"
+            )
+        data_ch = self._channels[channel]
+
+        is_agen = inspect.isasyncgen(job)
+
+        async def _run() -> None:
+            handle = _handles_by_task[asyncio.current_task()]  # type: ignore[arg-type]
+            try:
+                if is_agen:
+                    async for value in job:  # type: ignore[union-attr]
+                        data_ch.put(value)
+                else:
+                    result = await job  # type: ignore[misc]
+                    data_ch.put(result)
+                handle.state = "done"
+            except asyncio.CancelledError:
+                handle.state = "cancelled"
+                raise
+            except Exception as exc:
+                handle.state = "failed"
+                if self._event_manager is not None:
+                    self._event_manager.add(
+                        JobError(
+                            channel_name=channel,
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                        )
+                    )
+                logger.exception("spawn(%s) failed", channel)
+            finally:
+                if is_agen:
+                    await job.aclose()  # type: ignore[union-attr]
+                if self._event_manager is not None:
+                    self._event_manager.add(StreamEnd(channel_name=channel))
+
+        task = asyncio.create_task(_run(), name=f"spawn[{channel}]")
+        handle = JobHandle(name=channel, task=task)
+        # Thread the handle back into _run via a task→handle map so the
+        # closure can update state without capturing the handle before
+        # it's constructed.
+        _handles_by_task: dict[asyncio.Task[Any], JobHandle] = {}
+        _handles_by_task[task] = handle
+        self._handles.append(handle)
+        return handle
+
+    # ---- shutdown --------------------------------------------------------
+
+    async def shutdown(self) -> None:
+        """Cancel and await all outstanding spawned jobs.
+
+        Safe to call multiple times. After shutdown, the handles list
+        is cleared.
+        """
+        handles = list(self._handles)
+        self._handles.clear()
+        for h in handles:
+            await h.cancel()
