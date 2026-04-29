@@ -506,6 +506,10 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         For language tasks (classification, extraction, interpretation), use LLM reasoning — answer directly via `return_result`, or delegate to a `@strategy(PredictStrategy())` standalone function (see below). Don't keyword-match or regex.
 
+        ## Returning computed results
+
+        After computing in code, call `return_result(variable)` **from within** `execute_python()`. This passes the variable directly. Do NOT re-type computed values in a separate `return_result` tool call.
+
         ## Helpers
 
         Define helpers at the top of the cell and call them by name. Existing methods on `self` are usable via `await self.method(...)`. Helpers persist as REPL locals across cells in this session.
