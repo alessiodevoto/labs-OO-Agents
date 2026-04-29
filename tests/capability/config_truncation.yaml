@@ -1,0 +1,362 @@
+# Truncation comprehension capability tests.
+#
+# Each test concept (size, error, partial, marker) ships in two variants:
+#   - _before: today's pformat output (no <preview> wrapper, <truncated-output>)
+#   - _after:  truncation 3.0 output (<preview> wrapper, shorter <truncated>)
+#
+# Run before the implementation lands; treat scores as the empirical baseline
+# for whether the proposed marker design helps small LLMs comprehend partial data.
+#
+# Run with:
+#   uv run python -m eval_pipeline \
+#     --config tests/capability/config_truncation.yaml \
+#     --models claude-haiku,gemini-3-flash-preview,nemotron3-nano-30b \
+#     --runs 3 --parallel 8
+
+name: truncation_comprehension
+no_cache: true
+description: "Tests whether models correctly interpret truncation markers in rendered context"
+
+agent_models:
+  # Curated small-model matrix for truncation comprehension.
+  # Spans 8B → ~80B-class to surface size-dependent comprehension differences.
+  - llama-3.1-8b           #  ~8B   smallest, baseline
+  - gpt-oss-20b            # ~20B
+  - nemotron3-nano-30b     # ~30B
+  - claude-haiku           #  small/medium
+  - gemini-3-flash-preview #  flash-class
+  - gemini-2.5-flash-lite  #  flash-lite (smallest Gemini)
+  - gpt-5-mini             #  mini-class
+  - qwen3-80b              # ~80B (3B active MoE — functionally small)
+
+output_dir: results
+pass_threshold: 0.5
+
+test_suite:
+  # ---- TEST 1: size_from_preview ----
+  # Given a list rendered with "... N items not shown ..." pprint truncation,
+  # can the model compute the total item count from the visible head/tail + count?
+
+  - name: truncation_size_before
+    description: "Count items in a list with pprint's '... N items not shown ...' marker (no wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_after
+    description: "Count items in a list rendered with <preview>...</preview> wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 2: error_in_truncated_head ----
+  # Given a captured stream where the L2 head/tail block contains the answer,
+  # can the model find the relevant line inside the <truncated[-output]> wrapper?
+
+  - name: truncation_error_before
+    description: "Find error message inside <truncated-output> head (today's marker name)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_error_before.jsonl
+    scorers:
+      - name: substring_match
+        class: LLMJudgeScorer
+        weight: 1.0
+        model: nemotron3-nano-30b
+        rubric: |
+          Does the answer mention or contain the expected phrase?
+
+          Answer: {output}
+          Expected phrase: {expected}
+
+          Pass=true if the expected phrase appears verbatim or is clearly the
+          core of the answer (e.g., "connection refused at db:5432" passes for
+          expected "connection refused"). Pass=false if the answer says
+          UNKNOWN, gives a different error, or hallucinates content not present
+          in the input.
+
+  - name: truncation_error_after
+    description: "Find error message inside <truncated> head (3.0 marker name)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_error_after.jsonl
+    scorers:
+      - name: substring_match
+        class: LLMJudgeScorer
+        weight: 1.0
+        model: nemotron3-nano-30b
+        rubric: |
+          Does the answer mention or contain the expected phrase?
+
+          Answer: {output}
+          Expected phrase: {expected}
+
+          Pass=true if the expected phrase appears verbatim or is clearly the
+          core of the answer. Pass=false if the answer says UNKNOWN, gives a
+          different error, or hallucinates content not present in the input.
+
+  # ---- TEST 3: partial_data_acknowledged ----
+  # Given a partial container where the answer would be in the elided middle,
+  # the model must say UNKNOWN (not hallucinate). Tests "recognize partial".
+
+  - name: truncation_partial_before
+    description: "Refuse to answer when target data is in the elided middle (no wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_partial_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_partial_after
+    description: "Refuse to answer when target data is in the elided middle (<preview> wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_partial_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 4: marker_vs_content ----
+  # Given a list where one element happens to be a captured-stream string,
+  # can the model still index correctly? (Marker is content, not metadata.)
+
+  - name: truncation_marker_before
+    description: "Index into list past a captured-stream element (today's <truncated-output>)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_marker_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_marker_after
+    description: "Index into list past a captured-stream element (3.0 markers)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_marker_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 5: nested_value (extract from a fully-shown nested dict despite an adjacent truncated container) ----
+
+  - name: truncation_nested_value_before
+    description: "Extract a value from nested dict; sibling field is truncated (no wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_nested_value_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_nested_value_after
+    description: "Same, with <preview> wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_nested_value_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 6: nested_partial (refuse when target is in elided inner content) ----
+
+  - name: truncation_nested_partial_before
+    description: "Refuse when answer is in an elided inner list (no wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_nested_partial_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_nested_partial_after
+    description: "Same, with <preview> wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_nested_partial_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 7: pydantic_field (extract a field from a Pydantic-style instance) ----
+
+  - name: truncation_pydantic_field_before
+    description: "Extract a field from a Foo(field=value) instance; some have a truncated list field"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_pydantic_field_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_pydantic_field_after
+    description: "Same; the truncated-field case wears a <preview> wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_pydantic_field_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 8: pydantic_shallow (refuse when instance is depth-truncated to Foo(...)) ----
+
+  - name: truncation_pydantic_shallow_before
+    description: "Refuse when Pydantic instance is shown shallow as Foo(...) (no wrapper)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_pydantic_shallow_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_pydantic_shallow_after
+    description: "Same, with <preview> wrapper"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_pydantic_shallow_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 9: string_head (find content in the visible head of a truncated string) ----
+
+  - name: truncation_string_head_before
+    description: "Find a phrase in pprint's 'foo'+N string-truncation idiom (today)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_string_head_before.jsonl
+    scorers:
+      - name: substring_match
+        class: LLMJudgeScorer
+        weight: 1.0
+        model: nemotron3-nano-30b
+        rubric: |
+          Does the answer mention or contain the expected phrase?
+
+          Answer: {output}
+          Expected phrase: {expected}
+
+          Pass=true if the expected phrase appears verbatim or is clearly the
+          core of the answer. Pass=false if UNKNOWN or hallucinated.
+
+  - name: truncation_string_head_after
+    description: "Find a phrase in <truncated> head (3.0)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_string_head_after.jsonl
+    scorers:
+      - name: substring_match
+        class: LLMJudgeScorer
+        weight: 1.0
+        model: nemotron3-nano-30b
+        rubric: |
+          Does the answer mention or contain the expected phrase?
+
+          Answer: {output}
+          Expected phrase: {expected}
+
+          Pass=true if the expected phrase appears verbatim or is clearly the
+          core of the answer. Pass=false if UNKNOWN or hallucinated.
+
+  # ---- TEST 10: string_partial (refuse when content is in elided portion of a long string) ----
+
+  - name: truncation_string_partial_before
+    description: "Refuse when target is in elided portion of pprint's 'foo'+N string"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_string_partial_before.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_string_partial_after
+    description: "Refuse when target is in elided portion of <truncated> string (3.0)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_string_partial_after.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
