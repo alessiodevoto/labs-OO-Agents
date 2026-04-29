@@ -19,6 +19,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Agent
+from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 
@@ -67,6 +68,49 @@ class TruncationComprehensionAgentCodeAct(Agent):
     ) -> Answer:
         """
         Based on the `context`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return None if the answer cannot be determined.
+        Include a brief reason string explaining your choice.
+        """
+        ...
+
+
+# Real-data variant: data passed as a real list. Pformat renders it as a
+# truncated preview in the prefill (via spec(max_length=10)), but the actual
+# parameter has the full list. PredictStrategy version of this agent can only
+# answer from the preview; the CodeAct version can access `data` directly to
+# compute real answers (true min, true 50th item, etc.).
+class TruncationRealDataAgentPredict(Agent):
+    """You read rendered Python output (lists, dicts, captured streams) and answer
+    questions about it.
+    """
+
+    @strategy(PredictStrategy())
+    async def answer(
+        self,
+        data: Annotated[list[int], "A list of integers"],
+        question: Annotated[str, "A question to answer."],
+    ) -> Answer:
+        """Based on the `data`, answer the `question`.
+        Return an integer if the answer can be determined from the data shown.
+        Return None if the answer cannot be determined.
+        Include a brief reason string explaining your choice.
+        """
+        ...
+
+
+class TruncationRealDataAgentCodeAct(Agent):
+    """You read rendered Python output (lists, dicts, captured streams) and answer
+    questions about it.
+    """
+
+    @strategy(CodeActStrategy())
+    async def answer(
+        self,
+        data: Annotated[list[int], "A list of integers"],
+        question: Annotated[str, "A question to answer."],
+    ) -> Answer:
+        """Based on the `data`, answer the `question`.
         Return an integer if the answer can be determined from the data shown.
         Return None if the answer cannot be determined.
         Include a brief reason string explaining your choice.

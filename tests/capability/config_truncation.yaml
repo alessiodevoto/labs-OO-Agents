@@ -31,11 +31,13 @@ agent_models:
   - gemini-2.5-flash-lite    #  flash-lite (smallest Gemini)
   - gpt-5-mini               #  mini-class
   - qwen3-80b                # ~80B (3B-active MoE — functionally small)
+  - qwen3.5-35b              # ~35B (3B-active MoE)
   # Flagship class (added later — does the recommendation hold up-scale?):
   - gpt-5.2                  #  GPT-5 full
   - claude-sonnet            #  Claude Sonnet
-  - nemotron-3-super-preview # Nemotron-3 Super preview
-  - gemini-2.5-pro           #  Gemini 2.5 Pro (largest accessible)
+  - nemotron-3-super-v3      # Nemotron-3 Super v3 (replaces -preview)
+  - gemini-2.5-pro           #  Gemini 2.5 Pro
+  - gemini-3.1-pro-preview   #  Gemini 3.1 Pro preview (largest, 1M context)
 
 output_dir: results
 pass_threshold: 0.5
@@ -1091,6 +1093,39 @@ test_suite:
       class: TruncationComprehensionAgent
     method: answer
     data_file: tests/capability/data/truncation_str_v6_slice_keys.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 28: Real-data + CodeAct vs PredictStrategy ----
+  # Same 7 questions, but `data` is now passed as a real Python list (100 items).
+  # The prefill renders `data` as a truncated preview via pformat+spec(max_length=10),
+  # so PredictStrategy can only see ~10 items (must refuse on awareness).
+  # CodeAct can access the full list and compute real answers.
+  # Headline measurement: how big is the gap.
+
+  - name: truncation_realdata_predict
+    description: "Real-list data; PredictStrategy can only see the truncated preview"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationRealDataAgentPredict
+    method: answer
+    data_file: tests/capability/data/truncation_realdata.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_realdata_codeact
+    description: "Real-list data; CodeAct can access the full list at runtime"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationRealDataAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/truncation_realdata.jsonl
     scorers:
       - name: exact_match
         class: ExactMatchScorer

@@ -32,6 +32,15 @@ models:
     top_p: 0.7
     max_tokens: 16384
 
+  nemotron-3-super-v3:
+    model_name: openai/nvidia/nvidia/nemotron-3-super-v3
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 262144
+    temperature: 0.7
+    top_p: 0.7
+    max_tokens: 16384
+
   nemotron-super-49b:
     model_name: openai/nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5
     api_base: https://inference-api.nvidia.com/v1
@@ -52,6 +61,14 @@ models:
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 262144
     max_tokens: 65384
+
+  qwen3.5-35b:
+    model_name: openai/nvidia/qwen/qwen3.5-35b-a3b
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 131072
+    temperature: 0.7
+    max_tokens: 16384
 
   qwen-235b:
     model_name: openai/nvidia/qwen/qwen-235b
