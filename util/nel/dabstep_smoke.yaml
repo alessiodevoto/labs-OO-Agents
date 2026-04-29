@@ -64,4 +64,4 @@ evaluation:
 
   tasks:
     - name: harbor.dabstep
-      container: gitlab-master.nvidia.com/dl/joc/competitive_evaluation/nvidia-core-evals/ci-llm/harbor:0.4.1
+      container: gitlab-master.nvidia.com/dl/joc/competitive_evaluation/nvidia-core-evals/ci-llm/harbor:0.4.2-amd64
