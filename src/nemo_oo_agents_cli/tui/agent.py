@@ -97,23 +97,15 @@ class RespondResult(BaseModel):
           the agent (``wait_for_any``) and re-enters with the first arrival.
         * ``"STOP"`` — end the session; dispatcher exits without re-entering.
 
-    - ``persist`` — a dict of ``name -> value`` to carry into the next
-      ``respond()`` turn. The dispatcher passes this dict in as the
-      ``restored`` keyword argument. Omit or pass ``{}`` to clear.
+    Use ``self.v.<name> = value`` for state that should survive across
+    turns (snapshot-backed).
 
     Build from within the LLM's ``execute_python`` code::
 
-        return_result(RespondResult(
-            kind="GET_USER_INPUT",
-            persist={"plan": plan, "cursor": cursor},
-        ))
+        return_result(RespondResult(kind="GET_USER_INPUT"))
     """
 
     kind: RespondKind = Field(description="What the outer dispatcher should do next")
-    persist: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Variables to carry into the next respond() turn (name -> value)",
-    )
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -259,8 +251,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     everything else (put, snapshot, qsize, etc.) is dispatcher-only.
 
     ``respond()`` runs *per turn* — the outer dispatcher calls it with
-    the next notification ``(queue_name, item)`` and whatever
-    ``restored`` dict the previous turn asked to carry over.
+    the next notification ``(queue_name, item)``. Use ``self.v`` for
+    state that should survive across turns.
     """
 
     _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
@@ -331,8 +323,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         Compare:
         - REPL locals → cleared between turns.
-        - ``persist={"k": v}`` on RespondResult → carries to the next
-          turn only, returned via ``restored``.
         - ``self.v.k = v`` → snapshot-backed, survives turns + sessions.
         - ``self.todo.<t>.v.k = v`` → same as ``self.v`` but scoped to
           one todo.
@@ -364,14 +354,15 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     async def respond(
         self,
         notification: tuple[str, Any],
-        restored: dict[str, Any] | None = None,
     ) -> "RespondResult":
         """Handle a single turn of the conversation.
 
         Called once per inbound notification. Unpack ``notification``
-        (``(queue_name, item)``) and any ``restored`` variables from the
-        previous turn, do the work, then return a ``RespondResult``
-        telling the outer dispatcher what to do next.
+        (``(queue_name, item)``), do the work, then return a
+        ``RespondResult`` telling the outer dispatcher what to do next.
+
+        Use ``self.v.<name> = value`` for state that should survive
+        across turns (snapshot-backed via ``self.vars``).
 
         ## Turn anatomy
 
@@ -382,37 +373,21 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             # item is the actual queued value (str for user messages,
             # whatever producers push for other queues)
 
-        Restored state (optional — empty on the first turn):
-
-            restored = restored or {}
-            plan   = restored.get("plan")
-            cursor = restored.get("cursor")
-
         ## Returning
 
         End the turn with exactly one ``return_result(RespondResult(...))``.
 
         - Wait for the next user message::
 
-              return_result(RespondResult(
-                  kind="GET_USER_INPUT",
-                  persist={"plan": plan, "cursor": cursor},
-              ))
+              return_result(RespondResult(kind="GET_USER_INPUT"))
 
         - Wait for ANY producer queue (user or background job)::
 
-              return_result(RespondResult(
-                  kind="WAIT",
-                  persist={"job_id": job_id},
-              ))
+              return_result(RespondResult(kind="WAIT"))
 
         - End the session::
 
               return_result(RespondResult(kind="STOP"))
-
-        Names listed in ``persist`` become the next turn's ``restored``
-        kwarg. Omit ``persist`` (or pass ``{}``) and nothing carries
-        over — the next turn starts with a clean REPL.
 
         ## Available queues
 
@@ -496,7 +471,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     If the request is ambiguous, send a clarifying question via
     ``self.message(...)`` and end the turn with
-    ``return_result(RespondResult(kind="GET_USER_INPUT", persist=...))``.
+    ``return_result(RespondResult(kind="GET_USER_INPUT"))``.
     The dispatcher blocks on the next user message and re-enters
     ``respond()`` with their answer.
 
@@ -569,21 +544,17 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       lifetime:**
         1. **REPL locals** — cleared between turns. Names defined in
            one ``execute_python`` are gone in the next.
-        2. **``persist={"k": v}``** on the returned ``RespondResult`` —
-           carries to the next turn only, comes back as ``restored``.
-        3. **``self.v.k = v``** — snapshot-backed, survives turns AND
+        2. **``self.v.k = v``** — snapshot-backed, survives turns AND
            sessions. Use for long-lived agent state (current plan,
            cursor into a long task, learned facts).
-        4. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
+        3. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
            scoped to one todo. Use when the variable belongs to that
            specific work item.
-      When in doubt, prefer ``self.v`` over ``persist`` — the latter
-      is for short-lived turn-to-turn state.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
     - **Ending a turn.** Every turn ends with
-      ``return_result(RespondResult(kind=..., persist=...))``:
+      ``return_result(RespondResult(kind=...))``:
         * ``kind="GET_USER_INPUT"`` — wait for the next human message.
           Use after answering a question or asking a follow-up.
         * ``kind="WAIT"`` — wait for ANY declared input queue (useful
@@ -601,10 +572,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     doesn't see them but the next turn does. Use sparingly: a one-liner when
     a decision is non-obvious.
 
-    The outer dispatcher calls ``respond(notification, restored=...)``
-    once per turn. ``notification`` is a ``(queue_name, item)`` pair;
-    ``restored`` is whatever dict you handed back via ``persist`` last
-    time. On the very first turn, ``restored`` is ``None``.
+    The outer dispatcher calls ``respond(notification)`` once per turn.
+    ``notification`` is a ``(queue_name, item)`` pair.
     """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]

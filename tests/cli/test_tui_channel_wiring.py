@@ -10,7 +10,7 @@ These don't spin up a real LLM — they verify the plumbing:
   restarting.
 - The dispatcher reads ``RespondResult.kind`` and dispatches accordingly
   (GET_USER_INPUT → await user_messages_in; WAIT → race queues; STOP → exit).
-- The dispatcher passes ``restored`` into successive ``respond()`` calls.
+- State survives across turns via ``self.v`` (snapshot-backed vars).
 """
 
 from __future__ import annotations
@@ -76,9 +76,9 @@ def test_self_v_visible_to_doc():
 
 def test_tuiagent_docstring_explains_self_v_persistence():
     """The agent's docstring documents the persistence ladder so the
-    LLM knows REPL locals (cleared every turn) vs ``persist`` (one turn)
-    vs ``self.v`` (snapshot-backed, survives sessions) vs
-    ``self.todo.<t>.v`` (per-todo). Locks the prompt language."""
+    LLM knows REPL locals (cleared every turn) vs ``self.v``
+    (snapshot-backed, survives sessions) vs ``self.todo.<t>.v``
+    (per-todo). Locks the prompt language."""
     agent = _fresh_agent()
     docstring = type(agent).__doc__ or ""
     assert "self.v" in docstring
@@ -267,11 +267,10 @@ def test_output_queue_get_delegates_to_input_queue():
 
 
 class _DispatchResult:
-    """Minimal duck of ``RespondResult`` — the dispatcher reads .kind / .persist."""
+    """Minimal duck of ``RespondResult`` — the dispatcher reads .kind."""
 
-    def __init__(self, kind: str, persist: dict[str, Any] | None = None) -> None:
+    def __init__(self, kind: str) -> None:
         self.kind = kind
-        self.persist = persist or {}
 
 
 def test_submit_message_pushes_to_queue_and_starts_dispatcher():
@@ -282,10 +281,10 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
     agent = _fresh_agent()
     app = TUIApplication(agent=agent)
 
-    calls: list[tuple[tuple[str, Any], dict[str, Any] | None]] = []
+    calls: list[tuple[str, Any]] = []
 
-    async def _respond(notification, restored=None):
-        calls.append((notification, restored))
+    async def _respond(notification):
+        calls.append(notification)
         # Immediately STOP so the dispatcher exits cleanly after one turn.
         return _DispatchResult(kind="STOP")
 
@@ -300,8 +299,7 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
         assert app._agent_task is not None
         await app._agent_task
         assert len(calls) == 1
-        assert calls[0][0] == ("user_messages", "hello")
-        assert calls[0][1] is None
+        assert calls[0] == ("user_messages", "hello")
 
     asyncio.run(_run())
 
@@ -316,7 +314,7 @@ def test_second_message_does_not_spawn_second_dispatcher():
     started = asyncio.Event()
     proceed = asyncio.Event()
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         started.set()
         await proceed.wait()
         return _DispatchResult(kind="STOP")
@@ -339,35 +337,6 @@ def test_second_message_does_not_spawn_second_dispatcher():
     asyncio.run(_run())
 
 
-def test_dispatcher_forwards_persist_as_restored_next_turn():
-    """When respond() returns persist={"x": 1}, the next respond()
-    call should receive restored={"x": 1}."""
-
-    agent = _fresh_agent()
-    app = TUIApplication(agent=agent)
-
-    calls: list[tuple[tuple[str, Any], dict[str, Any] | None]] = []
-
-    async def _respond(notification, restored=None):
-        calls.append((notification, restored))
-        if len(calls) == 1:
-            return _DispatchResult(kind="GET_USER_INPUT", persist={"cursor": 42})
-        return _DispatchResult(kind="STOP")
-
-    object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
-
-    async def _run():
-        app.submit_message("hi")
-        await asyncio.sleep(0.05)
-        app.submit_message("again")
-        await app._agent_task
-        assert len(calls) == 2
-        assert calls[0] == (("user_messages", "hi"), None)
-        assert calls[1] == (("user_messages", "again"), {"cursor": 42})
-
-    asyncio.run(_run())
-
-
 def test_dispatcher_wait_kind_races_all_declared_channels():
     """kind="WAIT" should race every queue-mode channel registered on
     the agent's ``QueueManager`` and re-enter respond() with whichever
@@ -381,7 +350,7 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
 
     calls: list[tuple[str, Any]] = []
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         calls.append(notification)
         if len(calls) == 1:
             return _DispatchResult(kind="WAIT")
@@ -415,7 +384,7 @@ def test_three_consecutive_submits_while_busy_merge_into_one_item():
 
     proceed = asyncio.Event()
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         # Block forever so the dispatcher stays inside respond() and
         # subsequent submit_messages all hit the slow-merge path.
         await proceed.wait()
@@ -450,7 +419,7 @@ def test_is_thinking_false_when_dispatcher_blocked_on_queue():
     agent = _fresh_agent()
     app = TUIApplication(agent=agent)
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         return _DispatchResult(kind="GET_USER_INPUT")
 
     object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock
@@ -489,7 +458,7 @@ def test_is_thinking_true_during_mid_turn_drain():
     in_drain = asyncio.Event()
     proceed = asyncio.Event()
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         # Mid-turn drain: agent waits for the next user message.
         in_drain.set()
         await proceed.wait()
@@ -539,7 +508,7 @@ def test_dispatcher_does_not_call_on_get_hook_directly():
     fires: list[str] = []
     agent._user_messages_in.set_on_get(fires.append)
 
-    async def _respond(notification, restored=None):
+    async def _respond(notification):
         return _DispatchResult(kind="STOP")
 
     object.__setattr__(agent, "respond", _respond)  # bypass guard for test mock

@@ -574,8 +574,7 @@ class TUIApplication:
         The dispatcher is the outer loop around ``agent.respond()``:
         it reads the result's ``kind`` and waits on the appropriate
         queue before calling ``respond()`` again with the new
-        ``(queue_name, item)`` notification and whatever ``restored``
-        dict the previous turn asked to carry over.
+        ``(queue_name, item)`` notification.
 
         Lazy-started: on session load there's no task. The first user
         message triggers submit_message → put onto user_messages →
@@ -618,17 +617,15 @@ class TUIApplication:
         queue_name = "user_messages"
         item = await user_messages_in.get()
         self._on_dispatcher_dequeued()
-        restored: dict[str, Any] | None = None
 
         while True:
             self._in_respond = True
             try:
-                result = await agent.respond((queue_name, item), restored=restored)
+                result = await agent.respond((queue_name, item))
             finally:
                 self._in_respond = False
 
             kind = result.kind
-            restored = result.persist or None
 
             if kind == "STOP":
                 return
