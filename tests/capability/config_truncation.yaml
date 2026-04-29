@@ -18,17 +18,22 @@ no_cache: true
 description: "Tests whether models correctly interpret truncation markers in rendered context"
 
 agent_models:
-  # Curated small-model matrix for truncation comprehension.
+  # Matrix spans small/mini-class through flagship models.
   # Excludes llama-3.1-8b (JSON output instability dominated, not marker comprehension).
-  # Spans ~20B → ~80B-class to surface marker-design differences.
-  - gpt-oss-20b            # ~20B
-  - nemotron3-nano-30b     # ~30B
-  - nemotron-super-49b     # ~49B
-  - claude-haiku           #  small/medium
-  - gemini-3-flash-preview #  flash-class
-  - gemini-2.5-flash-lite  #  flash-lite (smallest Gemini)
-  - gpt-5-mini             #  mini-class
-  - qwen3-80b              # ~80B (3B active MoE — functionally small)
+  # Small/mini class:
+  - gpt-oss-20b              # ~20B
+  - nemotron3-nano-30b       # ~30B
+  - nemotron-super-49b       # ~49B
+  - claude-haiku             #  small/medium
+  - gemini-3-flash-preview   #  flash-class
+  - gemini-2.5-flash-lite    #  flash-lite (smallest Gemini)
+  - gpt-5-mini               #  mini-class
+  - qwen3-80b                # ~80B (3B-active MoE — functionally small)
+  # Flagship class (added later — does the recommendation hold up-scale?):
+  - gpt-5.2                  #  GPT-5 full
+  - claude-sonnet            #  Claude Sonnet
+  - nemotron-3-super-preview # Nemotron-3 Super preview
+  - gemini-2.5-pro           #  Gemini 2.5 Pro (largest accessible)
 
 output_dir: results
 pass_threshold: 0.5
