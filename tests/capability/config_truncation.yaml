@@ -360,3 +360,88 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 11: Consolidated `... +N` length idiom (vs today's verbose) ----
+  # Same questions as TEST 1 (size) and TEST 3 (partial) and TEST 6 (nested_partial)
+  # but with the proposed consolidated `... +N` length-truncation marker
+  # (replacing today's verbose `... N items not shown ...`).
+  # Compare scores against truncation_{size,partial,nested_partial}_before to see
+  # if consolidation hurts comprehension.
+
+  - name: truncation_size_consolidated
+    description: "Count items with consolidated '... +N' middle-elision marker (3.0)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_consolidated.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_partial_consolidated
+    description: "Refuse with consolidated '... +N' marker"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_partial_consolidated.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_nested_partial_consolidated
+    description: "Refuse on inner '... +N' elision in nested structure"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_nested_partial_consolidated.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 12: Depth marker '{Type: N items}' (unchanged in 3.0) ----
+
+  - name: truncation_depth_marker
+    description: "Comprehend '{Type: N items}' depth marker — extract sibling, refuse on contained"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_depth_marker.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 13: String slice 'foo'+N (rich legacy idiom; pformat keeps it) ----
+
+  - name: truncation_string_slice_legacy
+    description: "Comprehend rich's 'foo'+N string-truncation idiom"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_string_slice_legacy.jsonl
+    scorers:
+      - name: substring_match
+        class: LLMJudgeScorer
+        weight: 1.0
+        model: nemotron3-nano-30b
+        rubric: |
+          Does the answer mention or contain the expected phrase, or correctly say UNKNOWN?
+
+          Answer: {output}
+          Expected: {expected}
+
+          Pass=true if expected appears verbatim or is the core of the answer,
+          OR (when expected is UNKNOWN) the answer says it cannot tell.
