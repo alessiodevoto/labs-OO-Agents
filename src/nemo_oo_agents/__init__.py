@@ -46,6 +46,7 @@ from nemo_oo_agents.metaclass import AgentMeta, no_trace  # noqa: E402
 
 # Export prompt inspection utilities
 from nemo_oo_agents.prompts import PromptData, build_prompt_data, print_prompt  # noqa: E402
+from nemo_oo_agents.runtime.channels import Channel, QueueManager, QueueOutput  # noqa: E402
 
 # Export runtime API classes
 from nemo_oo_agents.runtime.context import ContextApi  # noqa: E402
@@ -54,7 +55,6 @@ from nemo_oo_agents.runtime.context_manager import ContextManager  # noqa: E402
 # Export event filtering
 from nemo_oo_agents.runtime.event_query import EventQuery  # noqa: E402
 from nemo_oo_agents.runtime.events import EventsApi  # noqa: E402
-from nemo_oo_agents.runtime.input_queue import InputQueue, wait_for_any  # noqa: E402
 from nemo_oo_agents.skill import Skill, TextSkill  # noqa: E402
 from nemo_oo_agents.skill_manager import SkillManager  # noqa: E402
 
@@ -84,8 +84,9 @@ __all__ = [
     "ContextApi",  # LLM-facing context API wrapper (Skill)
     "ContextManager",  # Context block state backend
     "EventsApi",  # Runtime events query API
-    "InputQueue",  # Async input queue w/ Notification emission
-    "wait_for_any",  # Race multiple input queues
+    "Channel",  # Named queue/event channel for agent input
+    "QueueManager",  # Channel registry + race + status
+    "QueueOutput",  # Event emitted by event-mode channels
     "LLMResponse",  # Re-exported from unifiedllm
     # Strategies
     "GenerationStrategy",

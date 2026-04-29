@@ -113,7 +113,7 @@ class TUIApplication:
 
         The per-message echo ("queued → accepted" transition, user-bar
         render, TUIUserInput log) is wired on the agent's
-        ``_user_messages_in`` InputQueue via ``set_on_get``. The
+        ``_user_messages_in`` Channel via ``set_on_get``. The
         dispatcher itself doesn't call back — that would double-fire
         the echo when the agent dequeues a message mid-turn.
         """
@@ -209,7 +209,7 @@ class TUIApplication:
 
         # Queue window: shown whenever the agent has unconsumed messages
         # in its user_messages input queue. Mirrors the pre-rewrite
-        # ``│ foo`` visual. Reads the hidden InputQueue
+        # ``│ foo`` visual. Reads the hidden Channel
         # (``_user_messages_in``) — the public ``user_messages`` is the
         # LLM-facing OutputQueue facade and doesn't expose snapshot.
         def _queue_pending() -> list[str]:
@@ -540,9 +540,9 @@ class TUIApplication:
     def submit_message(self, user_message: str) -> None:
         """Treat ``user_message`` as if the user just typed and submitted it.
 
-        Pushes the text onto the agent's user_messages InputQueue and
+        Pushes the text onto the agent's user_messages Channel and
         lazy-starts the dispatcher task. The user-bar echo + session
-        bookkeeping fire later — on the InputQueue's ``on_get`` hook,
+        bookkeeping fire later — on the Channel's ``on_get`` hook,
         when the message is actually dequeued — so a message typed
         while the agent is working only shows in the queue pane until
         its turn comes up. The hook fires identically whether the
@@ -593,23 +593,25 @@ class TUIApplication:
         """Drive ``agent.respond()`` turn-by-turn until ``STOP``.
 
         The "queued → accepted" echo (user-bar render, TUIUserInput
-        log) is fired by the InputQueue's ``on_get`` hook — installed
-        by ``Session`` — not from this dispatcher loop. That way the
-        echo is symmetric: it fires both when the dispatcher takes
-        the next user_messages item AND when the agent dequeues one
-        mid-turn via ``await self.user_messages.get()``. Calling the
-        hook here would double-render the dispatcher case.
+        log) is fired by the user_messages channel's ``on_get`` hook —
+        installed by ``Session`` — not from this dispatcher loop. That
+        way the echo is symmetric: it fires both when the dispatcher
+        takes the next user_messages item AND when the agent dequeues
+        one mid-turn via ``await self.user_messages.get()``. Calling
+        the hook here would double-render the dispatcher case.
+
+        ``QueueManager.race()`` returns ``list[(name, item)]`` —
+        currently always length 1, but the list shape is the contract
+        so future ``deliver=`` modes can return more items per call
+        without changing the dispatcher's loop body.
         """
-        from nemo_oo_agents import wait_for_any
-        from nemo_oo_agents.runtime.input_queue import InputQueue
+        from nemo_oo_agents.runtime.channels import Channel
 
         agent = self.agent
         assert agent is not None
 
-        user_messages_in: InputQueue = agent._user_messages_in
-        # Discovery of declared input queues lives on the agent so the
-        # WAIT race here and the queue_status context block stay in
-        # sync — see BaseTUIAgent.input_queues().
+        user_messages_in: Channel = agent._user_messages_in
+        qm = agent.queue_manager
 
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
@@ -631,10 +633,14 @@ class TUIApplication:
             if kind == "STOP":
                 return
             if kind == "WAIT":
-                queues = agent.input_queues()
-                if not queues:
+                # race() raises ValueError if no queue-mode channels
+                # are registered. Map that to the same "exit cleanly"
+                # behaviour the previous wait_for_any path had.
+                try:
+                    items = await qm.race()
+                except ValueError:
                     return
-                queue_name, item = await wait_for_any(queues)
+                queue_name, item = items[0]
             else:  # GET_USER_INPUT
                 queue_name = "user_messages"
                 item = await user_messages_in.get()

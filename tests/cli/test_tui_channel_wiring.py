@@ -18,8 +18,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from nemo_oo_agents import InputQueue
-from nemo_oo_agents.runtime.input_queue import OutputQueue
+from nemo_oo_agents.runtime.channels import Channel, _ChannelReader
 from nemo_oo_agents_cli.tui.agent import TUIAgent
 from nemo_oo_agents_cli.tui.tui_application import TUIApplication
 
@@ -39,11 +38,59 @@ def _fresh_agent() -> TUIAgent:
 def test_tui_agent_has_input_and_output_queue_for_user_messages():
     agent = _fresh_agent()
     # Hidden InputQueue with the full producer/dispatcher API.
-    assert isinstance(agent._user_messages_in, InputQueue)
+    assert isinstance(agent._user_messages_in, Channel)
     assert agent._user_messages_in.name == "user_messages"
     # LLM-facing OutputQueue facade — same name, just .get() / .name.
-    assert isinstance(agent.user_messages, OutputQueue)
+    assert isinstance(agent.user_messages, _ChannelReader)
     assert agent.user_messages.name == "user_messages"
+
+
+def test_self_v_proxy_round_trips_through_vars_dict():
+    """``self.v.foo = "bar"`` lands in ``self.vars["foo"]`` and reads
+    back via the proxy. Same shape as ``Todo.v`` / ``TodoVars``."""
+    import pytest as _pytest
+
+    agent = _fresh_agent()
+    agent.v.spec = "bug-fix-plan"
+    agent.v.cursor = 7
+
+    assert agent.vars["spec"] == "bug-fix-plan"
+    assert agent.vars["cursor"] == 7
+    assert agent.v.spec == "bug-fix-plan"
+    assert "spec" in agent.v
+    del agent.v.spec
+    assert "spec" not in agent.vars
+    with _pytest.raises(AttributeError, match="nonexistent"):
+        _ = agent.v.nonexistent
+
+
+def test_self_v_visible_to_doc():
+    """``self.v`` / ``self.vars`` is part of the LLM-facing surface so
+    the agent knows where to put persistent variables."""
+    from nemo_oo_agents.agentdoc import doc
+
+    agent = _fresh_agent()
+    api = doc(agent)
+    assert "vars" in api or "self.v" in api
+
+
+def test_tuiagent_docstring_explains_self_v_persistence():
+    """The agent's docstring documents the persistence ladder so the
+    LLM knows REPL locals (cleared every turn) vs ``persist`` (one turn)
+    vs ``self.v`` (snapshot-backed, survives sessions) vs
+    ``self.todo.<t>.v`` (per-todo). Locks the prompt language."""
+    agent = _fresh_agent()
+    docstring = type(agent).__doc__ or ""
+    assert "self.v" in docstring
+
+
+def test_tuiagent_docstring_encourages_cell_intent_comments():
+    """The agent's docstring asks for a ``# Doing X next`` comment at
+    the top of each ``execute_python`` cell — the TUI surfaces these
+    so the user can follow what the agent is doing live."""
+    agent = _fresh_agent()
+    docstring = type(agent).__doc__ or ""
+    assert "Doing" in docstring or "doing next" in docstring.lower()
 
 
 def test_user_messages_queue_is_hidden_from_doc():
@@ -85,63 +132,63 @@ def test_tui_agent_caller_can_override_render_config():
 # ---------------------------------------------------------------------------
 
 
-def test_queue_status_dynamic_block_is_registered():
-    """``BaseTUIAgent`` registers ``queue_status`` as a dynamic context
-    block so the LLM sees pending counts every turn, in place of the
-    per-put Notification events we used to emit."""
+def test_queues_dynamic_block_is_registered():
+    """``BaseTUIAgent`` registers ``queues`` as a dynamic context block
+    so the LLM sees pending counts every turn, composed across all
+    queue-mode channels in the manager."""
     from context_blocks.models import DynamicContext
 
     agent = _fresh_agent()
-    entry = dict(agent.context_manager._raw_items()).get("queue_status")
+    entry = dict(agent.context_manager._raw_items()).get("queues")
     assert isinstance(entry, DynamicContext)
-    assert entry.expr == "self._queue_status(max_items=3, max_chars=80)"
+    assert entry.expr == "self.queue_manager.status()"
 
 
-def test_queue_status_empty_when_all_queues_drained():
+def test_queues_status_empty_when_all_channels_drained():
     agent = _fresh_agent()
     # No pending items → empty string (keeps the rendered block quiet).
-    assert agent._queue_status() == ""
+    assert agent.queue_manager.status() == ""
 
 
-def test_queue_status_lists_pending_per_queue():
+def test_queues_status_lists_pending_per_channel():
     agent = _fresh_agent()
     agent._user_messages_in.put("a")
     agent._user_messages_in.put("b")
-    # Also add a second queue to verify multi-queue formatting.
-    agent._jobs_in = InputQueue("job_outputs", agent=agent)
-    agent._jobs_in.put({"id": 1})
+    # Add a second queue-mode channel to verify multi-channel formatting.
+    jobs = agent.queue_manager.queue("job_outputs")
+    jobs.put({"id": 1})
 
-    status = agent._queue_status()
-    # One line per non-empty queue, stable enough to assert substrings.
+    status = agent.queue_manager.status()
+    # One line per non-empty channel, stable enough to assert substrings.
     assert "user_messages: 2 pending" in status
     assert "job_outputs: 1 pending" in status
 
 
-def test_queue_status_skips_empty_queues():
+def test_queues_status_skips_empty_channels():
     agent = _fresh_agent()
-    agent._jobs_in = InputQueue("job_outputs", agent=agent)
+    agent.queue_manager.queue("job_outputs")  # registered but empty
     agent._user_messages_in.put("only-this-one")
 
-    status = agent._queue_status()
+    status = agent.queue_manager.status()
     assert "user_messages" in status
     assert "job_outputs" not in status
 
 
-def test_queue_status_composes_each_non_empty_queues_status():
-    """``_queue_status`` delegates the per-queue rendering to each
-    queue's ``status()`` and joins the non-empty ones. Detailed
-    formatting (numbered items, overflow, newline flattening, non-str
-    preview) is covered in test_input_queue.py — this test just
+def test_queues_status_composes_each_non_empty_channel():
+    """``QueueManager.status()`` delegates the per-channel rendering
+    to each channel's ``status()`` and joins the non-empty ones.
+    Detailed formatting (numbered items, overflow, newline flattening,
+    non-str preview) is covered in test_channels.py — this test just
     verifies composition."""
     agent = _fresh_agent()
     agent._user_messages_in.put("hi")
-    agent._jobs_in = InputQueue("job_outputs", agent=agent)
-    agent._jobs_in.put({"id": 1})
-    agent._idle_in = InputQueue("idle", agent=agent)  # stays empty → dropped
+    jobs = agent.queue_manager.queue("job_outputs")
+    jobs.put({"id": 1})
+    agent.queue_manager.queue("idle")  # stays empty → dropped
 
-    status = agent._queue_status(max_items=3, max_chars=80)
+    status = agent.queue_manager.status(max_items=3, max_chars=80)
     assert agent._user_messages_in.status(max_items=3, max_chars=80) in status
-    assert agent._jobs_in.status(max_items=3, max_chars=80) in status
+    assert jobs.status(max_items=3, max_chars=80) in status
     assert "idle" not in status
 
 
@@ -321,14 +368,14 @@ def test_dispatcher_forwards_persist_as_restored_next_turn():
     asyncio.run(_run())
 
 
-def test_dispatcher_wait_kind_races_all_declared_input_queues():
-    """kind="WAIT" should race every ``InputQueue`` attribute on the
-    agent (hidden ones included) and re-enter respond() with whichever
+def test_dispatcher_wait_kind_races_all_declared_channels():
+    """kind="WAIT" should race every queue-mode channel registered on
+    the agent's ``QueueManager`` and re-enter respond() with whichever
     fires first."""
 
     agent = _fresh_agent()
-    # Subclass-style: declare a second queue pair as instance attrs.
-    agent._jobs_in = InputQueue("job_outputs", agent=agent)
+    # Subclass-style: declare a second queue-mode channel via the manager.
+    agent._jobs_in = agent.queue_manager.queue("job_outputs")
     agent.job_outputs = agent._jobs_in.reader
     app = TUIApplication(agent=agent)
 
@@ -513,10 +560,10 @@ def test_coalesce_string_into_queue_non_string_tail_preserves_both():
     directly (no dispatcher start) so we exercise the non-string
     branch without needing an event loop.
     """
-    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents.runtime.channels import Channel
     from nemo_oo_agents_cli.tui.tui_application import _coalesce_string_into_queue
 
-    inq: InputQueue[Any] = InputQueue("user_messages")
+    inq: Channel[Any] = Channel("user_messages", "queue")
     inq.put({"job_id": 7})
     _coalesce_string_into_queue(inq, "hi")
 
@@ -526,10 +573,10 @@ def test_coalesce_string_into_queue_non_string_tail_preserves_both():
 def test_coalesce_string_into_queue_string_tail_merges():
     """String tail → coalesce with newline separator (the typical UX
     case: user types, Enter, types more, Enter while busy)."""
-    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents.runtime.channels import Channel
     from nemo_oo_agents_cli.tui.tui_application import _coalesce_string_into_queue
 
-    inq: InputQueue[str] = InputQueue("user_messages")
+    inq: Channel[str] = Channel("user_messages", "queue")
     inq.put("first line")
     _coalesce_string_into_queue(inq, "second line")
 
@@ -538,10 +585,10 @@ def test_coalesce_string_into_queue_string_tail_merges():
 
 def test_coalesce_string_into_queue_empty_queue():
     """Empty queue → just put the new string."""
-    from nemo_oo_agents.runtime.input_queue import InputQueue
+    from nemo_oo_agents.runtime.channels import Channel
     from nemo_oo_agents_cli.tui.tui_application import _coalesce_string_into_queue
 
-    inq: InputQueue[str] = InputQueue("user_messages")
+    inq: Channel[str] = Channel("user_messages", "queue")
     _coalesce_string_into_queue(inq, "alone")
     assert inq.snapshot() == ["alone"]
 
