@@ -918,3 +918,92 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 22: Records-of-dicts (genuinely new shape, not list-redux) ----
+  # JSON dict with stable record schema; tests record-key access vs positional.
+
+  - name: truncation_aware_records
+    description: "List of dict records with stable schema; lookup by record id"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 23: Cycle marker comprehension ----
+
+  - name: truncation_aware_cycle
+    description: "<cycle> markers in nested structures and self-referential dicts"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_cycle.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 24: Generator marker comprehension ----
+
+  - name: truncation_aware_generator
+    description: "<generator> markers for lazy iterators"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_aware_generator.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 25: String-truncation shape comparison (rich's max_string idiom) ----
+  # Three candidate shapes for displaying a string that was truncated by max_string.
+  # Tests "raw string truncation" (NOT L2 capture — different layer).
+
+  - name: truncation_str_v1_plus_n
+    description: "Rich's existing 'foo'+N idiom (head + count of elided chars)"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v1_plus_n.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_str_v2_str_len
+    description: "Pydantic-shape: str(len=N, head='...') — total length upfront"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v2_str_len.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_str_v3_head_tail
+    description: "Pydantic-shape: str(len=N, head='...', tail='...')"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_str_v3_head_tail.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
