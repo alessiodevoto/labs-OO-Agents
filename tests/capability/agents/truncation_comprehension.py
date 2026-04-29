@@ -36,6 +36,6 @@ class TruncationComprehensionAgent(Agent):
         """
         Based on the `context`, answer the `question`.
         Return an integer if the answer can be determined from the data shown.
-        Return null if the answer cannot be determined.
+        Return None if the answer cannot be determined.
         """
         ...

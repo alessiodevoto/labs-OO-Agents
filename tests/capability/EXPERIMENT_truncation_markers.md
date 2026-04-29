@@ -180,6 +180,10 @@ Better markers can't fix this. Solutions live elsewhere: prompt-level instructio
 
 Switching the agent from `-> str` to `-> int | None` was important infrastructure: it ensures off-task output (`"Well done!"`, corrupted tokens, empty strings) triggers PredictStrategy retries. But it cannot prevent a model from confidently returning `8` on the min question — that's a valid integer, schema-satisfied, just wrong. Retry can't help when the model produces *valid-but-incorrect* output.
 
+### 5. Wording change ("null" → "None") doesn't help
+
+The original prompt said "Return null"; we re-ran with "Return None" (Python convention vs JSON). Results were **bit-identical** — same 0/24 on awareness questions across all 4 styles, same totals, same per-model splits. The bottleneck is the model defaulting to visible-data reasoning, not vocabulary the model fails to recognize.
+
 ---
 
 ## Recommendations for Truncation 3.0
