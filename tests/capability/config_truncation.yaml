@@ -543,3 +543,58 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+  # ---- TEST 15: <type len=N> pattern across container types ----
+  # Validates the pattern generalizes beyond lists:
+  # <dict len=N>{...}</dict>, <Pydantic ...>, deeply nested, JSON-shaped.
+
+  - name: truncation_size_v3_dict
+    description: "<dict len=N>{...}</dict> — direct dict counting"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v3_pydantic
+    description: "Pydantic instance with truncated list field via <list len=N>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v3_nested
+    description: "Nested: outer dict + inner list, both with <type len=N>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_nested.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: truncation_size_v3_json
+    description: "JSON-shaped data with <dict len=N> / <list len=N>"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/truncation_size_v3_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
