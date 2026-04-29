@@ -356,8 +356,8 @@ class ReActBaselineAgent(Agent, llm=FakeLLMClient()):
                 assistant_text = llm_response.message or ""
                 usage = getattr(llm_response, "usage", None) or {}
                 accumulate_tokens(
-                    n_input=usage.get("prompt_tokens") or 0,
-                    n_output=usage.get("completion_tokens") or 0,
+                    input_tokens=usage.get("prompt_tokens") or 0,
+                    output_tokens=usage.get("completion_tokens") or 0,
                 )
             except Exception as exc:
                 return {"response": "", "success": False, "error": f"LLM error: {exc}"}
