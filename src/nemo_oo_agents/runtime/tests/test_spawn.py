@@ -280,9 +280,11 @@ async def test_spawn_to_event_mode_channel():
     # The result went through event_manager (QueueOutput from event channel put)
     # plus StreamEnd
     from nemo_oo_agents.runtime.channels import QueueOutput
+
     queue_outputs = [e for e in em.events if isinstance(e, QueueOutput)]
     assert len(queue_outputs) == 1
     assert queue_outputs[0].value == "hello"
+
 
 @pytest.mark.asyncio
 async def test_spawn_buffer_true_accumulates_all():

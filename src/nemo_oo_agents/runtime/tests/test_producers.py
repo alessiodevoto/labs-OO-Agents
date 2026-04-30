@@ -184,4 +184,3 @@ async def test_monitor_cancel_kills_subprocess():
     await asyncio.wait_for(ch.get(), timeout=1.0)
     await h.cancel()
     assert h.state == "cancelled"
-

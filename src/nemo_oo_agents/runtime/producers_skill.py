@@ -6,7 +6,6 @@ Attached to the agent as ``self.producers``. Methods return coroutines
 or async generators suitable for ``self.queue_manager.spawn(...)``.
 """
 
-
 from nemo_oo_agents.skill import Skill
 
 from . import producers as _mod
@@ -41,4 +40,3 @@ class ProducersSkill(Skill):
     def run_job(self, coro, job_id: str):
         """Wrap a coroutine with a job_id. Returns {"job_id": ..., "result": ...}."""
         return _mod.run_job(coro, job_id)
-
