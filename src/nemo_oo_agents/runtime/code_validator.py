@@ -862,7 +862,19 @@ def _collect_type_names(annotation: Any) -> set[str]:
     etc., and returns the names of any classes encountered. Standard typing
     constructs like ``Union``, ``Optional`` and the ``typing`` module itself
     are skipped — only names of concrete user-visible classes are returned.
+    Builtin types (``str``, ``int``, ``UnionType``, ...) are skipped at every
+    level so they don't pollute the protected set.
     """
+
+    def is_user_class(t: Any) -> bool:
+        if not isinstance(t, type):
+            return False
+        module = getattr(t, "__module__", None)
+        # Builtins (``str``, ``int``, ``list``) and runtime typing internals
+        # (``types.UnionType``, ``typing.Union``-style aliases) are never the
+        # kind of name an agent would redefine.
+        return module not in {"builtins", "types", "typing"}
+
     names: set[str] = set()
 
     def visit(node: Any) -> None:
@@ -874,24 +886,19 @@ def _collect_type_names(annotation: Any) -> set[str]:
             if args:
                 visit(args[0])
             return
-        # Generic alias like list[Answer] or dict[str, Answer].
+        # Generic alias like list[Answer], dict[str, Answer], Foo | Bar.
         origin = get_origin(node)
         if origin is not None:
-            # Origin itself can be a class (list, dict, ...) — skip builtins.
-            if isinstance(origin, type) and origin.__module__ != "builtins":
+            if is_user_class(origin):
                 names.add(origin.__name__)
             for arg in get_args(node):
                 visit(arg)
             return
         # Bare class.
-        if isinstance(node, type):
+        if is_user_class(node):
             names.add(node.__name__)
 
     visit(annotation)
-    # Builtin scalars never collide with user code in a meaningful way; the
-    # __repl_wrapper__ shadow is only a problem for names the agent could
-    # plausibly redefine as a Pydantic model or dataclass.
-    names.discard("NoneType")
     return names
 
 
