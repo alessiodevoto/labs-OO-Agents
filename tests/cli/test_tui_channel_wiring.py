@@ -18,11 +18,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from nemo_oo_agents_cli.tui.tui_application import DispatcherExit
-
 from nemo_oo_agents.runtime.channels import Channel, _ChannelReader
 from nemo_oo_agents_cli.tui.agent import TUIAgent
-from nemo_oo_agents_cli.tui.tui_application import TUIApplication
+from nemo_oo_agents_cli.tui.tui_application import DispatcherExit, TUIApplication
 
 
 def _fresh_agent() -> TUIAgent:

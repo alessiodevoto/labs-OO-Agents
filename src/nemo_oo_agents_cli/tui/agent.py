@@ -353,7 +353,10 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     @hidden
     @strategy(PredictStrategy())
     async def name_session(self, user_message: str) -> str:
-        """Generate an ultra-short 2-5 word session title (no punctuation, no quotes) for a conversation that starts with: {user_message}"""
+        """Generate an ultra-short 2-5 word session title.
+
+        Conversation starts with: {user_message}
+        """
         ...
 
     @hidden

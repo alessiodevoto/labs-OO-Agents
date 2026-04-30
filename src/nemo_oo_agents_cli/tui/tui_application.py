@@ -19,18 +19,6 @@ import asyncio
 import logging
 import re
 import shutil
-
-logger = logging.getLogger(__name__)
-
-
-class DispatcherExit(Exception):
-    """Raised by handle() to signal the dispatcher should exit.
-
-    Used by test harnesses. In the real TUI, exit is triggered by
-    /exit → external task cancellation, not by the LLM.
-    """
-
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -48,6 +36,17 @@ from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .queue_state import QueueState
+
+logger = logging.getLogger(__name__)
+
+
+class DispatcherExit(Exception):
+    """Raised by handle() to signal the dispatcher should exit.
+
+    Used by test harnesses. In the real TUI, exit is triggered by
+    /exit → external task cancellation, not by the LLM.
+    """
+
 
 # CSI + OSC stripper for the plain-text view of output_buffer. We keep
 # the original ANSI in _output_ansi; tests that assert on buffer text

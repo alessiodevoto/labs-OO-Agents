@@ -218,8 +218,8 @@ def test_prefill_tool_call_does_not_render_code_output() -> None:
     agent._render_message("post-inspect")
     _fire_python_output(agent.event_manager, stdout="noise", tool_call_id="prefill_a")
 
-    # Preview line says "Inspecting inputs..."
-    assert any(isinstance(e, Text) and "Inspecting inputs" in str(e) for e in emitted)
+    # Prefill preview is suppressed — no "Inspecting inputs" text emitted.
+    assert not any(isinstance(e, Text) and "Inspecting inputs" in str(e) for e in emitted)
     # The stdout from the prefill should NOT render — it's internal noise.
     assert not any(isinstance(e, Text) and "noise" in str(e) for e in emitted)
     # self.message() between preview and prefill-output rendered inline.

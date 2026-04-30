@@ -42,7 +42,7 @@ async def tail(path: str, *, poll_interval: float = 0.5):
     Starts from the current end of file. Polls every
     *poll_interval* seconds.
     """
-    fh = open(path, "r")
+    fh = open(path)
     try:
         fh.seek(0, 2)
         while True:
