@@ -189,9 +189,12 @@ class AgentEventRenderer:
 
     def _on_reasoning(self, event: _ReasoningEvent) -> None:
         content = getattr(event, "content", "") or ""
-        if content.strip():
-            first_line = content.strip().split("\n", 1)[0][:80]
-            self._emit_text(Text(f"💭 {first_line}", style="dim italic"))
+        if not content.strip():
+            return
+        first_line = content.strip().split("\n", 1)[0][:80]
+        if "inspecting inputs" in first_line.lower():
+            return
+        self._emit_text(Text(f"∴ Reasoning: {first_line}", style="dim italic"))
 
     def _on_tool_call(self, event: _ToolCallEvent) -> None:
         name = getattr(event, "name", "")
