@@ -1569,45 +1569,82 @@ class ResponsesClient(UnifiedLLM):
     def _sanitize_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
         """Recursively sanitize a JSON schema for Responses API strict mode.
 
-        Strict mode only allows a whitelist of keys and requires
-        additionalProperties: false on all object types. Pydantic adds
-        extra keys (title, default, etc.) that must be stripped.
+        Strict mode requires:
+        - Only whitelisted keys (no title, default, etc.)
+        - additionalProperties: false on all object types
+        - Every property must have a "type" key (no bare $ref)
+
+        This method resolves $ref inline and removes $defs to satisfy
+        the strict mode requirements.
         """
+        # First pass: resolve all $ref references by inlining definitions
+        schema = ResponsesClient._resolve_refs(schema)
+        # Second pass: strip disallowed keys and add required fields
+        return ResponsesClient._strip_schema(schema)
+
+    @staticmethod
+    def _resolve_refs(schema: dict[str, Any]) -> dict[str, Any]:
+        """Resolve $ref references by inlining $defs definitions."""
+        defs = schema.get("$defs", {})
+        if not defs:
+            return schema
+
+        def _inline(node):
+            if not isinstance(node, dict):
+                return node
+            if "$ref" in node:
+                ref_path = node["$ref"]
+                # Handle "#/$defs/Name" format
+                if ref_path.startswith("#/$defs/"):
+                    def_name = ref_path[len("#/$defs/"):]
+                    if def_name in defs:
+                        # Replace $ref with the inlined definition
+                        resolved = dict(defs[def_name])
+                        return _inline(resolved)
+                return node
+            result = {}
+            for k, v in node.items():
+                if k == "$defs":
+                    continue  # Drop $defs from output
+                elif k == "properties" and isinstance(v, dict):
+                    result[k] = {pk: _inline(pv) for pk, pv in v.items()}
+                elif k == "items" and isinstance(v, dict):
+                    result[k] = _inline(v)
+                elif k in ("anyOf", "oneOf") and isinstance(v, list):
+                    result[k] = [_inline(item) if isinstance(item, dict) else item for item in v]
+                else:
+                    result[k] = v
+            return result
+
+        return _inline(schema)
+
+    @staticmethod
+    def _strip_schema(schema: dict[str, Any]) -> dict[str, Any]:
+        """Strip disallowed keys and add additionalProperties: false recursively."""
         ALLOWED_KEYS = frozenset({
             "type", "description", "enum", "const", "properties",
             "required", "items", "additionalProperties", "anyOf",
-            "oneOf", "$ref", "$defs",
+            "oneOf",
         })
 
         sanitized = {k: v for k, v in schema.items() if k in ALLOWED_KEYS}
 
-        # Recurse into properties
         if "properties" in sanitized:
             sanitized["properties"] = {
-                k: ResponsesClient._sanitize_strict_schema(v) if isinstance(v, dict) else v
+                k: ResponsesClient._strip_schema(v) if isinstance(v, dict) else v
                 for k, v in sanitized["properties"].items()
             }
 
-        # Recurse into $defs
-        if "$defs" in sanitized:
-            sanitized["$defs"] = {
-                k: ResponsesClient._sanitize_strict_schema(v) if isinstance(v, dict) else v
-                for k, v in sanitized["$defs"].items()
-            }
-
-        # Recurse into items (arrays)
         if "items" in sanitized and isinstance(sanitized["items"], dict):
-            sanitized["items"] = ResponsesClient._sanitize_strict_schema(sanitized["items"])
+            sanitized["items"] = ResponsesClient._strip_schema(sanitized["items"])
 
-        # Recurse into anyOf/oneOf
         for key in ("anyOf", "oneOf"):
             if key in sanitized and isinstance(sanitized[key], list):
                 sanitized[key] = [
-                    ResponsesClient._sanitize_strict_schema(item) if isinstance(item, dict) else item
+                    ResponsesClient._strip_schema(item) if isinstance(item, dict) else item
                     for item in sanitized[key]
                 ]
 
-        # Add additionalProperties: false to object types
         if sanitized.get("type") == "object" and "additionalProperties" not in sanitized:
             sanitized["additionalProperties"] = False
 
