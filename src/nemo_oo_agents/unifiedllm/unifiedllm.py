@@ -1612,6 +1612,8 @@ class ResponsesClient(UnifiedLLM):
                     result[k] = _inline(v)
                 elif k in ("anyOf", "oneOf") and isinstance(v, list):
                     result[k] = [_inline(item) if isinstance(item, dict) else item for item in v]
+                elif k == "additionalProperties" and isinstance(v, dict):
+                    result[k] = _inline(v)
                 else:
                     result[k] = v
             return result
@@ -1644,6 +1646,10 @@ class ResponsesClient(UnifiedLLM):
                     ResponsesClient._strip_schema(item) if isinstance(item, dict) else item
                     for item in sanitized[key]
                 ]
+
+        # Recurse into additionalProperties when it's a schema (not just false)
+        if "additionalProperties" in sanitized and isinstance(sanitized["additionalProperties"], dict):
+            sanitized["additionalProperties"] = ResponsesClient._strip_schema(sanitized["additionalProperties"])
 
         if sanitized.get("type") == "object" and "additionalProperties" not in sanitized:
             sanitized["additionalProperties"] = False
