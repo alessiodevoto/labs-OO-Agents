@@ -1,11 +1,10 @@
-# NEL full run — SWE-bench Verified (500 tasks, nemo-oo-agents)
+# NEL full run — SWE-bench Verified (500 tasks, nemo-oo-agents swebench/basic)
 #
 # Uses harbor.swebench-verified evaluation (500-task set).
 # Per-instance SIFs (swebench_sweb.eval.x86_64.*.sif) are pre-built in Alex's
 # Lustre cache.
 #
-# NOTE: Uses baseline agent_type (no /testbed tools).  For proper SWE-bench
-# scores, framework.yml needs agent_type support (harbor 0.4.3+).
+# Uses swebench/basic agent (SWEBenchBasicAgent) — CodeAct with /testbed env context.
 #
 # Prerequisites:
 #   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
@@ -58,6 +57,8 @@ evaluation:
           dataset: swebench-verified@1.0
           n_attempts: 1
           timeout_multiplier: 3.0
+          agent_kwargs:
+            agent_type: swebench/basic
           sandbox:
             execution_backend: apptainer
             config:

@@ -1,19 +1,19 @@
-# NEL full run — Terminal Bench 2.0 (all tasks, nemo-oo-agents baseline)
+# NEL full run — Terminal Bench 2.0 (all tasks, nemo-oo-agents terminal-bench-2 specialized)
 #
 # Uses harbor.terminal-bench evaluation (terminal-bench@2.0 full dataset, 89 tasks).
 # Pre-built Terminal Bench SIFs are in Alex's Lustre cache.
 #
-# Uses the default baseline codeact agent.
+# Uses terminal-bench-2 agent (TerminalBench2Agent) — CodeAct with 150-iteration budget,
+# mandatory verification step, and dynamic self.terminal tool injection.
 #
-# Requires harbor_bootstrap.sqfs — provides Python/uvicorn to Python-less task containers
-# (TB2 has many containers without Python, e.g. alexgshaw/gpt2-codegolf:20251031).
+# Requires harbor_bootstrap.sqfs — provides Python/uvicorn to Python-less task containers.
 #
 # Prerequisites:
 #   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
 #   export NVIDIA_INTERNAL_API_KEY="..."
 #
 # Submit:
-#   nel run --config util/nel/terminal_bench_full.yaml
+#   nel run --config util/nel/terminal_bench_specialized_full.yaml
 #   nel status <hex>
 
 defaults:
@@ -24,14 +24,13 @@ defaults:
 execution:
   hostname: cw-dfw-cs-001-login-02
   account: llmservice_nemo_reasoning
-  output_dir: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmarks/full/terminal_bench
+  output_dir: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmarks/full/terminal_bench_specialized
   partition: cpu
-  walltime: 04:00:00
+  walltime: 08:00:00
   gres: gpu:0
   num_instances: 1
   mounts:
     evaluation:
-      # Pre-built Terminal Bench SIFs (terminal_bench_*.sif) are in Alex's cache.
       /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache: /tmp/sif-cache
     mount_home: true
 
@@ -59,6 +58,8 @@ evaluation:
           dataset: terminal-bench@2.0
           n_attempts: 1
           timeout_multiplier: 1.0
+          agent_kwargs:
+            agent_type: terminal-bench-2
           sandbox:
             execution_backend: apptainer
             config:

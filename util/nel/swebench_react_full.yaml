@@ -1,19 +1,17 @@
-# NEL full run — Terminal Bench 2.0 (all tasks, nemo-oo-agents baseline)
+# NEL full run — SWE-bench Verified (500 tasks, nemo-oo-agents react-baseline)
 #
-# Uses harbor.terminal-bench evaluation (terminal-bench@2.0 full dataset, 89 tasks).
-# Pre-built Terminal Bench SIFs are in Alex's Lustre cache.
+# Uses harbor.swebench-verified evaluation (500-task set).
+# Per-instance SIFs (swebench_sweb.eval.x86_64.*.sif) are pre-built in Alex's
+# Lustre cache.
 #
-# Uses the default baseline codeact agent.
-#
-# Requires harbor_bootstrap.sqfs — provides Python/uvicorn to Python-less task containers
-# (TB2 has many containers without Python, e.g. alexgshaw/gpt2-codegolf:20251031).
+# Uses react-baseline agent (ReActBaselineAgent) — Thought/Action/Observation loop.
 #
 # Prerequisites:
 #   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
 #   export NVIDIA_INTERNAL_API_KEY="..."
 #
 # Submit:
-#   nel run --config util/nel/terminal_bench_full.yaml
+#   nel run --config util/nel/swebench_react_full.yaml
 #   nel status <hex>
 
 defaults:
@@ -24,14 +22,14 @@ defaults:
 execution:
   hostname: cw-dfw-cs-001-login-02
   account: llmservice_nemo_reasoning
-  output_dir: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmarks/full/terminal_bench
+  output_dir: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/benchmarks/full/swebench_react
   partition: cpu
-  walltime: 04:00:00
+  walltime: 06:00:00
   gres: gpu:0
   num_instances: 1
   mounts:
     evaluation:
-      # Pre-built Terminal Bench SIFs (terminal_bench_*.sif) are in Alex's cache.
+      # Per-instance SIFs (swebench_sweb.eval.x86_64.*.sif) are in Alex's cache.
       /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache: /tmp/sif-cache
     mount_home: true
 
@@ -52,21 +50,22 @@ evaluation:
   nemo_evaluator_config:
     config:
       params:
-        parallelism: 20
+        parallelism: 40
         max_new_tokens: 16384
         extra:
           agent: nemo-oo-agents
-          dataset: terminal-bench@2.0
+          dataset: swebench-verified@1.0
           n_attempts: 1
-          timeout_multiplier: 1.0
+          timeout_multiplier: 3.0
+          agent_kwargs:
+            agent_type: react-baseline
           sandbox:
             execution_backend: apptainer
             config:
               apptainer_image_cache_dir: /tmp/sif-cache
               apptainer_fakeroot: false
-              apptainer_timeout_s: 7200
-              apptainer_bootstrap_overlay: /lustre/fsw/portfolios/llmservice/projects/llmservice_nemo_reasoning/users/rcabral/harbor_bootstrap.sqfs
+              apptainer_timeout_s: 10800
 
   tasks:
-    - name: harbor.terminal-bench
-      container: gitlab-master.nvidia.com/dl/joc/competitive_evaluation/nvidia-core-evals/ci-llm/harbor:0.4.3-amd64
+    - name: harbor.swebench-verified
+      container: gitlab-master.nvidia.com/dl/joc/competitive_evaluation/nvidia-core-evals/ci-llm/harbor:0.4.2-amd64
