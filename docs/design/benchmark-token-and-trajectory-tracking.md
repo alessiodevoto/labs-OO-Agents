@@ -1,16 +1,31 @@
 # Benchmark Token & Trajectory Tracking
 
+## What was implemented
+
+**Position 3** (see summary table below) — a `ContextVar`-based token
+accumulator with no trajectory capture.  Three files:
+
+- `src/nemo_oo_agents/runtime/token_usage.py` — `start_task_tokens()` /
+  `accumulate_tokens()` / `get_task_tokens()` backed by a `ContextVar`
+- `src/nemo_oo_agents/runtime/actor.py` — listens for `"token_usage"` events
+  fired by unifiedllm after each LLM call, calls `accumulate_tokens()`
+- `packages/nemo-oo-agents-benchmarks/src/.../runner.py` — calls
+  `start_task_tokens()` before `_run_evaluation`, merges `get_task_tokens()`
+  into the result dict so `n_input_tokens`/`n_output_tokens` land in
+  `agent/result.json`
+
+Landed on main directly (no MR) via commits `2254cd9b`, `87a60394`, `80e7e007`.
+ReAct baseline required a separate fix (`87a60394`) because it calls
+`self._llm.acall()` directly, bypassing `actor.py` entirely.
+
+---
+
 ## Context
 
-This MR (`feat/token-tracking`) adds per-task token counts (`n_input_tokens`,
-`n_output_tokens`) to each Harbor trial's `agent/result.json`.  The
-implementation is intentionally minimal: a `ContextVar`-based accumulator in
-`token_usage.py` fed by a single new entry in `actor.py`'s unifiedllm metrics
-bridge, with three lines of integration in `runner.py`.
-
-This doc records the broader design space — what the right long-term shape is
-if trajectory capture for RL/SFT becomes a requirement, and how that relates to
-the NeMo Flow middleware already on `main`.
+This doc records the broader design space explored before the above
+implementation — what the right long-term shape is if trajectory capture for
+RL/SFT becomes a requirement, and how that relates to the NeMo Flow middleware
+already on `main`.
 
 ---
 
@@ -135,7 +150,7 @@ still works; guardrails are simply absent.
 ### Position 3 — Skip NeMo Flow's capture, no replacement
 
 Don't activate `nemo_flow_middleware.py` in the benchmark runner at all.  Use
-MR!124's token counts for cost reporting.  Build trajectory capture only when
+pos. 3's token counts for cost reporting.  Build trajectory capture only when
 RL/SFT is a concrete requirement.
 
 This is the current position — NeMo Flow middleware is available on `main` for
@@ -143,9 +158,9 @@ opt-in use but is not in the benchmark runner's hot path.
 
 ---
 
-## Relationship to MR!124
+## Relationship to pos. 3
 
-MR!124 (this branch) implements token counts via unifiedllm's `"token_usage"`
+pos. 3 (this branch) implements token counts via unifiedllm's `"token_usage"`
 event — a lightweight signal that fires after every LLM call carrying
 `{prompt_tokens, completion_tokens}`.  It is completely independent of NeMo
 Flow.
@@ -154,14 +169,14 @@ Under Position 2, `token_usage.py` becomes redundant: token counts are summed
 from `step["usage"]` across the trajectory.  It is a clean one-file deletion
 with no other side effects.
 
-Under Position 3, MR!124 is the right scope for now — immediately useful for
+Under Position 3, pos. 3 is the right scope for now — immediately useful for
 cost reporting without committing to a trajectory design.
 
 ---
 
 ## Summary
 
-| | MR!124 (pos. 3) | NeMo Flow capture as-is (pos. 1) | Python trajectory (pos. 2) |
+| | **Implemented (pos. 3)** | NeMo Flow capture as-is (pos. 1) | Python trajectory (pos. 2) |
 |---|---|---|---|
 | Token counts | ✅ | ✅ (via ATIF) | ✅ derived |
 | Full message content | ✗ | ✅ | ✅ |
@@ -178,7 +193,7 @@ cost reporting without committing to a trajectory design.
 
 ## Recommendation
 
-**Stay at Position 3 (MR!124) for now.** Cost reporting is immediately useful;
+**Stay at Position 3 (pos. 3) for now.** Cost reporting is immediately useful;
 trajectory capture is not yet required.
 
 **Move to Position 2 when RL/SFT is a concrete requirement.** Build the Python
