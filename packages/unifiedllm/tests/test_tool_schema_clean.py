@@ -5,8 +5,7 @@
 import json
 from typing import Literal
 
-import pytest
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, create_model
 
 from unifiedllm import Tool
 
@@ -163,3 +162,28 @@ class TestToolSchemaNestedModels:
         assert result_schema["items"]["type"] == "object"
         assert "text" in result_schema["items"]["properties"]
 
+    def test_allof_with_description(self):
+        """allOf wrapping (Pydantic v2 with Field(description=...)) is unwrapped."""
+        from pydantic import Field
+
+        class Config(BaseModel):
+            host: str
+            port: int
+
+        class ServerResult(BaseModel):
+            config: Config = Field(description="Server configuration")
+
+        ReturnModel = create_model("Ret", result=(ServerResult, ...))
+        def rr(result=None): pass
+
+        tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
+        schema = tool.get_parameter_schema()
+
+        serialized = json.dumps(schema)
+        assert "$ref" not in serialized
+        assert "$defs" not in serialized
+        assert "allOf" not in serialized
+        result_props = schema["properties"]["result"]["properties"]
+        assert "config" in result_props
+        config_schema = result_props["config"]
+        assert "properties" in config_schema

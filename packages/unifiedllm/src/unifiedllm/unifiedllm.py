@@ -268,7 +268,6 @@ def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     """
     defs = schema.get("$defs", {})
     if not defs:
-        # No $defs to resolve — strip title from top level and return
         return schema
 
     def _inline(node):
@@ -289,10 +288,19 @@ def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
                 result[k] = {pk: _inline(pv) for pk, pv in v.items()}
             elif k in ("items", "additionalProperties") and isinstance(v, dict):
                 result[k] = _inline(v)
-            elif k in ("anyOf", "oneOf") and isinstance(v, list):
+            elif k in ("anyOf", "oneOf", "allOf") and isinstance(v, list):
                 result[k] = [_inline(i) if isinstance(i, dict) else i for i in v]
             else:
                 result[k] = v
+        # Unwrap single-item allOf (Pydantic wraps $ref in allOf when Field has description)
+        if "allOf" in result and len(result["allOf"]) == 1:
+            merged = dict(result["allOf"][0])
+            del result["allOf"]
+            # Preserve sibling keys (e.g., description) alongside the unwrapped schema
+            for k, v in result.items():
+                if k not in merged:
+                    merged[k] = v
+            result = merged
         return result
 
     return _inline(schema)
@@ -316,7 +324,7 @@ def _strip_schema_noise(schema: dict[str, Any]) -> dict[str, Any]:
             cleaned["items"] = _strip(cleaned["items"])
         if "additionalProperties" in cleaned and isinstance(cleaned["additionalProperties"], dict):
             cleaned["additionalProperties"] = _strip(cleaned["additionalProperties"])
-        for key in ("anyOf", "oneOf"):
+        for key in ("anyOf", "oneOf", "allOf"):
             if key in cleaned and isinstance(cleaned[key], list):
                 cleaned[key] = [_strip(i) if isinstance(i, dict) else i for i in cleaned[key]]
         return cleaned
