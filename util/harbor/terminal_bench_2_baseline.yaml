@@ -1,11 +1,10 @@
-# Harbor config for running nemo-oo-agents-benchmarks with the baseline (CodeAct) agent on Terminal Bench 2.0.
+# Harbor config for running nemo-oo-agents-benchmarks with the baseline agent on Terminal Bench 2.0.
 #
-# Terminal Bench 2 is a harder, higher-quality version of Terminal Bench 1.
-# Same concept — real-world CLI tasks in Docker/Apptainer containers — but
-# with more tasks, higher difficulty, and stricter grading.
+# Uses the harbor registry (terminal-bench@2.0) — tasks are cloned from GitHub
+# per-task; no pre-generation step needed.  89 tasks total.
 #
-# Dataset loaded from harbor registry: terminal-bench@2.0 (89 tasks)
-# github.com/laude-institute/terminal-bench-2.git
+# Terminal Bench 2 is harder and higher-quality than 1.0: more tasks, stricter
+# grading, and a wider range of domains.
 #
 # Prerequisites:
 #   1. apptainer installed
@@ -47,3 +46,4 @@ agents:
 datasets:
   - name: terminal-bench
     version: "2.0"
+    registry_path: /raid/rcabral/home/3p/harbor-nemo/registry.json
