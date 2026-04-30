@@ -36,6 +36,7 @@ from nemo_oo_agents.context_blocks.formatter import (
     MarkdownBlockFormatter,
     OpenAIProviderFormatter,
     ProviderFormatter,
+    ResponsesProviderFormatter,
     XMLBlockFormatter,
 )
 from nemo_oo_agents.context_blocks.models import (
@@ -80,6 +81,7 @@ __all__ = [
     "ProviderFormatter",
     "OpenAIProviderFormatter",
     "AnthropicProviderFormatter",
+    "ResponsesProviderFormatter",
     # Event base, metadata extension point, and union
     "EventBase",
     "Metadata",

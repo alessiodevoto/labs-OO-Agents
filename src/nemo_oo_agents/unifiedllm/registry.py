@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 
@@ -134,19 +134,23 @@ def reload_registry() -> dict[str, dict[str, Any]]:
     return MODELS
 
 
-def get_llm_client(name: str, **overrides) -> CompletionClient:
-    """Create a CompletionClient, optionally using registry config.
+def get_llm_client(name: str, **overrides) -> "UnifiedLLM":
+    """Create an LLM client, optionally using registry config.
 
     If ``name`` is a registry key, its config (model_name, endpoint, API key,
     defaults) is applied. Otherwise ``name`` is passed directly to litellm,
     which handles routing for every common public provider.
+
+    The ``client_type`` field in registry YAML selects the client class:
+    - ``"completion"`` (default): CompletionClient (Chat Completions API)
+    - ``"responses"``: ResponsesClient (Responses API)
 
     Args:
         name: Registry key or a litellm-supported model string.
         **overrides: Override any parameter (max_tokens, temperature, etc.)
 
     Returns:
-        Configured CompletionClient.
+        Configured UnifiedLLM instance (CompletionClient or ResponsesClient).
 
     Example::
 
@@ -156,8 +160,11 @@ def get_llm_client(name: str, **overrides) -> CompletionClient:
 
         # Custom alias from llm_config.yaml
         llm = get_llm_client("my-internal-model", max_tokens=1000)
+
+        # Responses API model (client_type: responses in YAML)
+        llm = get_llm_client("gpt-5.3-codex")
     """
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
 
     config = MODELS.get(name, {})
 
@@ -188,6 +195,11 @@ def get_llm_client(name: str, **overrides) -> CompletionClient:
 
     params.update(overrides)
 
-    client = CompletionClient(**params)
+    # Select client class based on registry config
+    client_type = config.get("client_type", "completion")
+    if client_type == "responses":
+        client = ResponsesClient(**params)
+    else:
+        client = CompletionClient(**params)
     client._registry_config = config  # For context_window lookup
     return client

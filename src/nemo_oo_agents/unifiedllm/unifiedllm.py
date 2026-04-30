@@ -1592,18 +1592,21 @@ class ResponsesClient(UnifiedLLM):
         """
         Sync version: Call LLM and parse response.
 
-        Responses API requires transformation of standardized tool messages.
-        Standard format: {"role": "tool", "tool_call_id": "...", "name": "...", "content": "..."}
-        Responses format: {"type": "function_call_output", "call_id": "...", "output": "..."}
+        Handles both native Responses format (from ResponsesProviderFormatter) and
+        legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        transformed_messages = self._transform_messages(messages)
+        input_messages, instructions = self._transform_messages(messages)
 
         api_params = {
             "model": self.model,
-            "input": transformed_messages,
+            "input": input_messages,
+            "truncation": "disabled",
             **self.config,
             **kwargs,
         }
+
+        if instructions:
+            api_params["instructions"] = instructions
 
         if "base_url" in api_params:
             api_params["api_base"] = api_params.pop("base_url")
@@ -1689,18 +1692,21 @@ class ResponsesClient(UnifiedLLM):
         """
         Async version: Call LLM and parse response.
 
-        Responses API requires transformation of standardized tool messages.
-        Standard format: {"role": "tool", "tool_call_id": "...", "name": "...", "content": "..."}
-        Responses format: {"type": "function_call_output", "call_id": "...", "output": "..."}
+        Handles both native Responses format (from ResponsesProviderFormatter) and
+        legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        transformed_messages = self._transform_messages(messages)
+        input_messages, instructions = self._transform_messages(messages)
 
         api_params = {
             "model": self.model,
-            "input": transformed_messages,
+            "input": input_messages,
+            "truncation": "disabled",
             **self.config,
             **kwargs,
         }
+
+        if instructions:
+            api_params["instructions"] = instructions
 
         if "base_url" in api_params:
             api_params["api_base"] = api_params.pop("base_url")
@@ -1776,26 +1782,75 @@ class ResponsesClient(UnifiedLLM):
             usage=usage,
         )
 
-    def _transform_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Transform standard message format to Responses API format"""
-        transformed = []
+    def _transform_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Transform messages to Responses API format and extract instructions.
+
+        Handles two input formats:
+        1. Native Responses format (from ResponsesProviderFormatter): messages contain
+           "type": "function_call" / "function_call_output" items alongside role-based messages.
+           System messages have {"role": "system", ...} and are extracted to instructions.
+        2. Legacy OpenAI Chat format: messages use {"role": "tool", "tool_call_id": ...} and
+           {"role": "assistant", "tool_calls": [...]}. These are converted to native format.
+
+        Returns (input_messages, instructions) where instructions is the concatenated
+        system message content (or None if no system messages).
+        """
+        instructions_parts: list[str] = []
+        transformed: list[dict[str, Any]] = []
+
         for msg in messages:
+            # System messages → extract to instructions
+            if msg.get("role") == "system":
+                content = msg.get("content", "")
+                if content:
+                    instructions_parts.append(content)
+                continue
+
+            # Already in native Responses format (from ResponsesProviderFormatter)
+            if "type" in msg:
+                transformed.append(msg)
+                continue
+
+            # Legacy OpenAI format: tool result messages
             if msg.get("role") == "tool":
                 transformed.append(
                     {
                         "type": "function_call_output",
                         "call_id": msg["tool_call_id"],
-                        "output": msg["content"],
+                        "output": msg.get("content", ""),
                     }
                 )
-            elif msg.get("role") in ["user", "system", "assistant"]:
+                continue
+
+            # Legacy OpenAI format: assistant messages with tool_calls
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tc in msg["tool_calls"]:
+                    fn = tc.get("function", {})
+                    transformed.append(
+                        {
+                            "type": "function_call",
+                            "call_id": tc["id"],
+                            "name": fn.get("name", ""),
+                            "arguments": fn.get("arguments", ""),
+                        }
+                    )
+                continue
+
+            # User/Assistant text messages → passthrough
+            if msg.get("role") in ["user", "assistant"]:
                 content = msg.get("content", "")
                 if content is None:
                     content = ""
                 transformed.append({"role": msg["role"], "content": content})
-            else:
-                transformed.append(msg)
-        return transformed
+                continue
+
+            # Unknown format → passthrough
+            transformed.append(msg)
+
+        instructions = "\n\n".join(instructions_parts) if instructions_parts else None
+        return transformed, instructions
 
     def _extract_text_from_output(self, response: Any) -> str:
         if hasattr(response, "output_text") and response.output_text:
