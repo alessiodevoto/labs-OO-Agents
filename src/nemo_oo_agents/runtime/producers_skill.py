@@ -6,7 +6,6 @@ Attached to the agent as ``self.producers``. Methods return coroutines
 or async generators suitable for ``self.queue_manager.spawn(...)``.
 """
 
-from __future__ import annotations
 
 from nemo_oo_agents.skill import Skill
 

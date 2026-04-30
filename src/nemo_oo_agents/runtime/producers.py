@@ -14,7 +14,6 @@ Usage::
     qm.spawn(cron(60), channel="ticks")
 """
 
-from __future__ import annotations
 
 import asyncio
 

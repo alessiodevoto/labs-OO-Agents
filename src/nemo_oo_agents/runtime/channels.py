@@ -17,7 +17,6 @@ registration + aggregation.
 Design doc: docs/design/reactive-agent-queues.md (MR !134).
 """
 
-from __future__ import annotations
 
 import asyncio
 import inspect
@@ -408,7 +407,7 @@ class Channel[T]:
         return f"Channel(name={self.name!r}, mode='event')"
 
     @property
-    def reader(self) -> _ChannelReader[T]:
+    def reader(self) -> "_ChannelReader[T]":
         """Read-only facade for LLM exposure.
 
         Use when attaching to an agent: keep the underlying ``Channel``
