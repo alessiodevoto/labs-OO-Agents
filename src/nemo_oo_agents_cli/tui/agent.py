@@ -574,6 +574,11 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         3. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
            scoped to one todo. Use when the variable belongs to that
            specific work item.
+    - **Use ``self.v`` aggressively** — store working state (file
+      paths, plan summaries, handles, progress cursors) so you can
+      resume coherently if context is summarized or the session
+      restarts. Anything you'd want to remember next turn goes in
+      ``self.v``.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.

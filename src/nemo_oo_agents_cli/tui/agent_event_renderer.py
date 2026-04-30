@@ -190,7 +190,8 @@ class AgentEventRenderer:
     def _on_reasoning(self, event: _ReasoningEvent) -> None:
         content = getattr(event, "content", "") or ""
         if content.strip():
-            self._emit_text(Text(content, style="dim italic"))
+            first_line = content.strip().split("\n", 1)[0][:80]
+            self._emit_text(Text(f"💭 {first_line}", style="dim italic"))
 
     def _on_tool_call(self, event: _ToolCallEvent) -> None:
         name = getattr(event, "name", "")
@@ -211,9 +212,9 @@ class AgentEventRenderer:
         if self._show_python():
             return
 
-        preview = (
-            "Inspecting inputs..." if tool_call_id.startswith("prefill_") else _code_preview(code)
-        )
+        if tool_call_id.startswith("prefill_"):
+            return
+        preview = _code_preview(code)
         if not preview:
             return
         first_line = preview.split("\n", 1)[0]
@@ -252,11 +253,10 @@ class AgentEventRenderer:
                 self._emit_text(Text(stderr.rstrip("\n"), style=red))
             return
 
-        # Preview mode: stdout is for the agent; user sees results via
-        # self.message(). Only show stderr so errors aren't silent.
+        # Preview mode: show a one-line error summary (muted red).
         if stderr.strip():
-            for line in stderr.rstrip("\n").split("\n"):
-                self._emit_text(Text(f"  │ {line}", style="red"))
+            first_err = stderr.strip().split("\n")[-1][:120]
+            self._emit_text(Text(f"  ⚠ {first_err}", style="dim red"))
 
     def _on_summary(self, event: _SummaryEvent) -> None:
         """Render a dim one-line notice when a summary/truncation is applied.
