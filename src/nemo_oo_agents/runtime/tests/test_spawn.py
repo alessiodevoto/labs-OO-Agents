@@ -170,8 +170,11 @@ async def test_error_mid_stream_emits_job_error():
     await asyncio.sleep(0.1)
     assert handle.state == "failed"
 
-    # Data channel has no error objects in it
-    assert ch.qsize() == 0
+    # Data channel now receives the JobError (so race() wakes the agent)
+    assert ch.qsize() == 1
+    error_item = await ch.get()
+    assert isinstance(error_item, JobError)
+    assert error_item.error_type == "ValueError"
 
     # Event channel got JobError + StreamEnd
     job_errors = [e for e in em.events if isinstance(e, JobError)]
@@ -343,4 +346,3 @@ async def test_spawn_buffer_false_no_accumulation():
 
     assert handle.values == []
     assert handle.state == "done"
-
