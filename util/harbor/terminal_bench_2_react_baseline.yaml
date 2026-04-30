@@ -1,0 +1,35 @@
+# Harbor config for running nemo-oo-agents-benchmarks with the ReAct baseline agent on Terminal Bench 2.0.
+#
+# Dataset loaded from harbor registry: terminal-bench@2.0 (89 tasks)
+# github.com/laude-institute/terminal-bench-2.git
+
+jobs_dir: /raid/rcabral/home/harbor_jobs/terminal_bench_2_react_baseline
+n_attempts: 1
+timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0
+agent_setup_timeout_multiplier: 6.0
+verifier_timeout_multiplier: 6.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: ~/3p/sif_cache
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: react-baseline
+
+datasets:
+  - name: terminal-bench
+    version: "2.0"

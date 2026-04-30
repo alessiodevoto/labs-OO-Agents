@@ -26,15 +26,22 @@ from pathlib import Path
 
 # Default job dirs to scan (all active benchmark configurations).
 _DEFAULT_JOB_DIRS = [
+    "/raid/rcabral/home/harbor_jobs/dabstep_baseline",
+    "/raid/rcabral/home/harbor_jobs/dabstep_react_baseline",
+    "/raid/rcabral/home/harbor_jobs/dabstep_specialized",
     "/raid/rcabral/home/harbor_jobs/locomo_baseline",
     "/raid/rcabral/home/harbor_jobs/locomo_react_baseline",
+    "/raid/rcabral/home/harbor_jobs/locomo_specialized",
+    "/raid/rcabral/home/harbor_jobs/membench_baseline",
+    "/raid/rcabral/home/harbor_jobs/membench_react_baseline",
+    "/raid/rcabral/home/harbor_jobs/swebench_baseline",
+    "/raid/rcabral/home/harbor_jobs/swebench_react_baseline",
     "/raid/rcabral/home/harbor_jobs/terminal_bench_baseline",
     "/raid/rcabral/home/harbor_jobs/terminal_bench_react_baseline",
     "/raid/rcabral/home/harbor_jobs/terminal_bench_specialized",
-    "/raid/rcabral/home/harbor_jobs/membench_baseline",
-    "/raid/rcabral/home/harbor_jobs/membench_react_baseline",
-    "/raid/rcabral/home/harbor_jobs/dabstep_baseline",
-    "/raid/rcabral/home/harbor_jobs/dabstep_react_baseline",
+    "/raid/rcabral/home/harbor_jobs/terminal_bench_2_baseline",
+    "/raid/rcabral/home/harbor_jobs/terminal_bench_2_react_baseline",
+    "/raid/rcabral/home/harbor_jobs/terminal_bench_2_specialized",
 ]
 
 
