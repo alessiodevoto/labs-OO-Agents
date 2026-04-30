@@ -22,6 +22,7 @@ with hidden:
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
+    from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
     from nemo_oo_agents.tools.todo import Todo
@@ -293,6 +294,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
+        self.producers = ProducersSkill()
         # Surface pending-queue counts (and a short preview of each item)
         # to the LLM every turn — the agent reads queue depth straight
         # from the ``queues`` context block. Composed via
@@ -541,10 +543,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     For commands that take more than ~10s, **spawn them** instead of
     blocking the turn with ``self.bash.run()``:
 
-        from nemo_oo_agents.runtime.producers import monitor
         ch = self.queue_manager.queue("ci")
         h = self.queue_manager.spawn(
-            monitor("make test"),
+            self.producers.monitor("make test"),
             channel="ci",
             buffer=100,  # ring buffer: last 100 lines
         )
