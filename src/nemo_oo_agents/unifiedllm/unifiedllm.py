@@ -1565,6 +1565,54 @@ class ReasoningCompletionClient(CompletionClient):
 
 
 class ResponsesClient(UnifiedLLM):
+    @staticmethod
+    def _sanitize_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+        """Recursively sanitize a JSON schema for Responses API strict mode.
+
+        Strict mode only allows a whitelist of keys and requires
+        additionalProperties: false on all object types. Pydantic adds
+        extra keys (title, default, etc.) that must be stripped.
+        """
+        ALLOWED_KEYS = frozenset({
+            "type", "description", "enum", "const", "properties",
+            "required", "items", "additionalProperties", "anyOf",
+            "oneOf", "$ref", "$defs",
+        })
+
+        sanitized = {k: v for k, v in schema.items() if k in ALLOWED_KEYS}
+
+        # Recurse into properties
+        if "properties" in sanitized:
+            sanitized["properties"] = {
+                k: ResponsesClient._sanitize_strict_schema(v) if isinstance(v, dict) else v
+                for k, v in sanitized["properties"].items()
+            }
+
+        # Recurse into $defs
+        if "$defs" in sanitized:
+            sanitized["$defs"] = {
+                k: ResponsesClient._sanitize_strict_schema(v) if isinstance(v, dict) else v
+                for k, v in sanitized["$defs"].items()
+            }
+
+        # Recurse into items (arrays)
+        if "items" in sanitized and isinstance(sanitized["items"], dict):
+            sanitized["items"] = ResponsesClient._sanitize_strict_schema(sanitized["items"])
+
+        # Recurse into anyOf/oneOf
+        for key in ("anyOf", "oneOf"):
+            if key in sanitized and isinstance(sanitized[key], list):
+                sanitized[key] = [
+                    ResponsesClient._sanitize_strict_schema(item) if isinstance(item, dict) else item
+                    for item in sanitized[key]
+                ]
+
+        # Add additionalProperties: false to object types
+        if sanitized.get("type") == "object" and "additionalProperties" not in sanitized:
+            sanitized["additionalProperties"] = False
+
+        return sanitized
+
     def _convert_tool_to_schema(self, tool: Tool) -> dict[str, Any]:
         """Convert Tool object to Responses API schema format"""
         schema = tool.get_parameter_schema()
@@ -1575,9 +1623,8 @@ class ResponsesClient(UnifiedLLM):
         has_optional_params = len(required) < len(properties)
         use_strict = not has_optional_params
 
-        # Responses API strict mode requires additionalProperties: false
-        if use_strict and "additionalProperties" not in schema:
-            schema["additionalProperties"] = False
+        if use_strict:
+            schema = self._sanitize_strict_schema(schema)
 
         return {
             "type": "function",
