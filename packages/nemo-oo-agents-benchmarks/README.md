@@ -362,6 +362,47 @@ harbor run --config util/harbor/terminal_bench_baseline.yaml
 
 ---
 
+## Running on DFW via NEL (Slurm)
+
+NEL (`nemo-evaluator-launcher`) submits Harbor jobs to the DFW Slurm cluster. Configs live in `util/nel/`.
+
+### Prerequisites
+
+```bash
+export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
+export NVIDIA_INTERNAL_API_KEY="sk-..."
+```
+
+### Smoke tests (5 tasks each)
+
+```bash
+nel run --config util/nel/terminal_bench_smoke.yaml
+nel run --config util/nel/swebench_smoke.yaml
+nel run --config util/nel/dabstep_smoke.yaml
+nel status <invocation-id>
+```
+
+LoCoMo and MemBench smoke configs exist but are blocked — those datasets aren't in the harbor registry yet and require `--path` support in `framework.yml` (harbor MR !14).
+
+### Updating the harbor container tag
+
+The container tag in each `util/nel/*.yaml` (`harbor:X.Y.Z-amd64`) is built by the `nvidia-core-evals` CI pipeline, which vendors the harbor fork as a git submodule. To get a new tag:
+
+1. Merge your changes into the harbor fork main (`core_evals_frameworks/harbor`)
+2. Open an MR in `nvidia-core-evals` bumping the submodule at `frameworks/llm/harbor/src` to the new harbor commit
+3. Once that MR merges, the CI pipeline builds a new `harbor:X.Y.Z-amd64` image
+4. Update the `container:` line in all `util/nel/*.yaml` configs to the new tag
+
+The submodule relationship:
+```
+nvidia-core-evals (project 153108)
+  └── frameworks/llm/harbor/src  ← submodule → harbor fork (project 229014)
+                                                  └── src/harbor/agents/installed/nemo_oo_agents.py
+                                                  └── core_evals/harbor/framework.yml
+```
+
+---
+
 ## Baseline benchmark results
 
 ### Terminal Bench — smoke test (5 tasks, bedrock-claude-sonnet-4-5-v1, gl-24)
