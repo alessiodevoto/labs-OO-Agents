@@ -25,6 +25,7 @@ environment:
     apptainer_binary: /raid/rcabral/home/conda-envs/apptainer/bin/apptainer
     apptainer_fakeroot: true
     apptainer_image_cache_dir: ~/3p/sif_cache
+    apptainer_bootstrap_overlay: /raid/rcabral/home/3p/harbor_bootstrap_overlay
     env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:

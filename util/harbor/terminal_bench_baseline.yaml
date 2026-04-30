@@ -49,6 +49,9 @@ environment:
     apptainer_fakeroot: true   # required for runuser inside container; needs AppArmor userns allowed (see #135)
     # Canonical SIF cache: ~/3p/sif_cache (outside any worktree, rsync to Lustre for sharing)
     apptainer_image_cache_dir: ~/3p/sif_cache
+    # Bootstrap overlay: provides /opt/harbor/bin/python3 + uvicorn for task images
+    # that ship no Python.  Build once with: bash util/harbor/build_bootstrap_overlay.sh
+    apptainer_bootstrap_overlay: /raid/rcabral/home/3p/harbor_bootstrap_overlay
     # Forward API keys into the container
     # Do NOT include OPENAI_API_KEY: the runner passes it as api_key override which
     # overrides the registry lookup for NVIDIA gateway models (NVIDIA_INTERNAL_API_KEY).
