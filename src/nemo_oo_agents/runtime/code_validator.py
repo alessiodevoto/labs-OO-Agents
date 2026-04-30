@@ -946,7 +946,7 @@ class ReturnTypeShadowValidator:
                     message=(
                         f"Cannot redefine '{node.name}' here — it is already in scope as "
                         f"the return type of this method. A local {kind} definition "
-                        f"shadows it with a __repl_wrapper__-scoped class, and "
+                        f"shadows it with a __repl_wrapper__-scoped {kind}, and "
                         f"return_result() will reject the resulting value as the wrong "
                         f"type. Use the existing '{node.name}' (already imported) instead."
                     ),
