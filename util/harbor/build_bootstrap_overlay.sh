@@ -37,21 +37,14 @@ echo "[harbor-bootstrap] Building Python 3.11 + uvicorn on Bullseye (glibc 2.31)
 #   bin/python3      — symlink → python3.11
 #   lib/python3.11/  — stdlib + site-packages (uvicorn, fastapi, anyio, httpx)
 #   lib/libpython*   — shared lib needed via LD_LIBRARY_PATH=/opt/harbor/lib
+#   lib/libssl.so.1.1 + libcrypto.so.1.1 — OpenSSL 1.1 for task images without it
+#
+# NOTE: All RUN commands are single lines (no heredoc comment-continuation parsing issues).
+# NOTE: tar extracts as opt/harbor/... (no --strip-components) so overlay mounts at /opt/harbor.
 docker build --platform linux/amd64 -t "$IMAGE_TAG" - << 'DOCKERFILE'
 FROM python:3.11-slim-bullseye AS builder
-
-RUN pip install --quiet uvicorn fastapi anyio httpx && \
-    pip cache purge && \
-    find /usr/local/lib -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-
-RUN set -e && \
-    mkdir -p /opt/harbor/bin /opt/harbor/lib && \
-    cp /usr/local/bin/python3.11 /opt/harbor/bin/python3.11 && \
-    ln -sf python3.11 /opt/harbor/bin/python3 && \
-    cp -a /usr/local/lib/python3.11 /opt/harbor/lib/ && \
-    find /usr/local/lib /usr/lib -name 'libpython3.11*.so*' \
-         -exec cp -P {} /opt/harbor/lib/ \; 2>/dev/null || true
-
+RUN pip install --quiet uvicorn fastapi anyio httpx && pip cache purge && find /usr/local/lib -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+RUN set -e && mkdir -p /opt/harbor/bin /opt/harbor/lib && cp /usr/local/bin/python3.11 /opt/harbor/bin/python3.11 && ln -sf python3.11 /opt/harbor/bin/python3 && cp -a /usr/local/lib/python3.11 /opt/harbor/lib/ && find /usr/local/lib /usr/lib -name 'libpython3.11*.so*' -exec cp -P {} /opt/harbor/lib/ ';' 2>/dev/null || true && find /usr/lib -name 'libssl.so.1.1' -exec cp -P {} /opt/harbor/lib/ ';' 2>/dev/null || true && find /usr/lib -name 'libcrypto.so.1.1' -exec cp -P {} /opt/harbor/lib/ ';' 2>/dev/null || true
 FROM busybox:stable-musl
 COPY --from=builder /opt/harbor /opt/harbor
 DOCKERFILE
@@ -59,7 +52,7 @@ DOCKERFILE
 echo "[harbor-bootstrap] Extracting /opt/harbor to: $OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
-docker run --rm "$IMAGE_TAG" tar cf - /opt | tar xf - -C "$OUTPUT_DIR" --strip-components=1
+docker run --rm "$IMAGE_TAG" tar cf - opt | tar xf - -C "$OUTPUT_DIR"
 docker rmi "$IMAGE_TAG" --force 2>/dev/null || true
 
 SIZE=$(du -sh "$OUTPUT_DIR" | cut -f1)
