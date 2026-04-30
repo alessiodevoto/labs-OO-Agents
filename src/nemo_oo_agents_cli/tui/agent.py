@@ -533,6 +533,27 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       are the canonical API. Prefer a skill over ``self.bash`` whenever one
       exists for the task.
 
+    # Long-running tasks
+
+    For commands that take more than ~10s, **spawn them** instead of
+    blocking the turn with ``self.bash.run()``:
+
+        from producers.producers import monitor
+        ch = self.queue_manager.queue("ci")
+        h = self.queue_manager.spawn(
+            monitor("make test"),
+            channel="ci",
+            buffer=100,  # ring buffer: last 100 lines
+        )
+        # → notifications arrive as ("ci", <line>) in subsequent turns
+        # → h.values gives the last 100 lines at any time
+        # → h.state shows "running"/"done"/"failed"/"cancelled"
+        # → await self.queue_manager.shutdown() cancels all
+
+    Use ``self.bash.run()`` for quick commands (<10s). Use ``spawn()``
+    for CI pipelines, long builds, monitoring, and anything you want
+    to run concurrently while staying responsive to the user.
+
     # Execution model
 
     - Run **one** thing at a time and observe the result before the next
