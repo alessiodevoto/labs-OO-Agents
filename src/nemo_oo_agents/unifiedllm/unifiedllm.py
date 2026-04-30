@@ -1573,13 +1573,18 @@ class ResponsesClient(UnifiedLLM):
         required = schema.get("required", [])
         properties = schema.get("properties", {})
         has_optional_params = len(required) < len(properties)
+        use_strict = not has_optional_params
+
+        # Responses API strict mode requires additionalProperties: false
+        if use_strict and "additionalProperties" not in schema:
+            schema["additionalProperties"] = False
 
         return {
             "type": "function",
             "name": tool.name,
             "description": tool.description,
             "parameters": schema,
-            "strict": not has_optional_params,
+            "strict": use_strict,
         }
 
     def call(

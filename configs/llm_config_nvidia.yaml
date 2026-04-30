@@ -142,7 +142,7 @@ models:
 
   gpt-5.3-codex:
     client_type: responses
-    model_name: openai/openai/gpt-5.3-codex
+    model_name: openai/openai/openai/gpt-5.3-codex
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 272000
