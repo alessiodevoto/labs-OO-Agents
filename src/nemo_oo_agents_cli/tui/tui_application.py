@@ -16,8 +16,11 @@ behaviour test needed it.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import shutil
+
+logger = logging.getLogger(__name__)
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -626,6 +629,7 @@ class TUIApplication:
                 self._in_respond = False
 
             kind = result.kind
+            logger.info("[DISPATCHER] handle() returned kind=%r", kind)
 
             if kind == "STOP":
                 return
