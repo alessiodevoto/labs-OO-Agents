@@ -714,14 +714,15 @@ class QueueManager:
                 raise
             except Exception as exc:
                 handle.state = "failed"
+                error = JobError(
+                    channel_name=channel,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
                 if self._event_manager is not None:
-                    self._event_manager.add(
-                        JobError(
-                            channel_name=channel,
-                            error_type=type(exc).__name__,
-                            error_message=str(exc),
-                        )
-                    )
+                    self._event_manager.add(error)
+                # Also put on data channel so race() wakes the agent
+                data_ch.put(error)
                 logger.exception("spawn(%s) failed", channel)
             finally:
                 if is_agen:
