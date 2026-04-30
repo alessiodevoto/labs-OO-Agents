@@ -1,7 +1,10 @@
-# Harbor config for running nemo-oo-agents-benchmarks with the ReAct baseline agent on Terminal Bench 2.0.
+# Harbor config for running nemo-oo-agents-benchmarks with the ReAct baseline on Terminal Bench 2.0.
 #
-# Dataset loaded from harbor registry: terminal-bench@2.0 (89 tasks)
-# github.com/laude-institute/terminal-bench-2.git
+# Uses the harbor registry (terminal-bench@2.0) — tasks are cloned from GitHub
+# per-task; no pre-generation step needed.  89 tasks total.
+#
+# Run:
+#   harbor run --config util/harbor/terminal_bench_2_react_baseline.yaml
 
 jobs_dir: /raid/rcabral/home/harbor_jobs/terminal_bench_2_react_baseline
 n_attempts: 1
@@ -33,3 +36,4 @@ agents:
 datasets:
   - name: terminal-bench
     version: "2.0"
+    registry_path: /raid/rcabral/home/3p/harbor-nemo/registry.json
