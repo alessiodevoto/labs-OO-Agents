@@ -16,6 +16,7 @@ behaviour test needed it.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import shutil
 from collections.abc import Awaitable, Callable
@@ -35,6 +36,17 @@ from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .queue_state import QueueState
+
+logger = logging.getLogger(__name__)
+
+
+class DispatcherExit(Exception):
+    """Raised by handle() to signal the dispatcher should exit.
+
+    Used by test harnesses. In the real TUI, exit is triggered by
+    /exit → external task cancellation, not by the LLM.
+    """
+
 
 # CSI + OSC stripper for the plain-text view of output_buffer. We keep
 # the original ANSI in _output_ansi; tests that assert on buffer text
@@ -97,8 +109,8 @@ class TUIApplication:
     ) -> None:
         """
         Args:
-            agent: Object with an async ``respond()`` method that pumps
-                input queues (see ``BaseTUIAgent.respond``).
+            agent: Object with an async ``handle()`` method that pumps
+                input queues (see ``BaseTUIAgent.handle``).
             on_command: Called with the raw slash text (e.g. ``"/help"``)
                 whenever the user submits one. Session wires this to its
                 CommandRegistry. If omitted, commands still land in
@@ -170,7 +182,7 @@ class TUIApplication:
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Task | None = None
-        # True while the dispatcher is inside an ``agent.respond()`` call.
+        # True while the dispatcher is inside an ``agent.handle()`` call.
         # ``is_thinking()`` checks this flag rather than the user_messages
         # queue's waiter count — counting waiters conflated "dispatcher
         # idle between turns" with "agent mid-turn awaiting clarification
@@ -426,7 +438,7 @@ class TUIApplication:
 
         Slash/bang commands dispatch immediately. Plain text is pushed
         onto ``agent.user_messages`` via ``submit_message`` — the agent's
-        forever-loop ``respond()`` picks it up when it calls
+        forever-loop ``handle()`` picks it up when it calls
         ``self.get_next_input(...)``.
 
         Returning False tells prompt_toolkit to reset the buffer (clear
@@ -571,15 +583,14 @@ class TUIApplication:
     def _ensure_dispatcher_task(self) -> None:
         """Start the per-turn dispatcher if not already live.
 
-        The dispatcher is the outer loop around ``agent.respond()``:
+        The dispatcher is the outer loop around ``agent.handle()``:
         it reads the result's ``kind`` and waits on the appropriate
-        queue before calling ``respond()`` again with the new
-        ``(queue_name, item)`` notification and whatever ``restored``
-        dict the previous turn asked to carry over.
+        queue before calling ``handle()`` again with the new
+        ``(queue_name, item)`` notification.
 
         Lazy-started: on session load there's no task. The first user
         message triggers submit_message → put onto user_messages →
-        _ensure_dispatcher_task → dispatcher loops forever until STOP.
+        _ensure_dispatcher_task → dispatcher loops until exit or cancel.
         """
         if self.agent is None:
             return
@@ -590,7 +601,7 @@ class TUIApplication:
         self._ensure_spinner_task()
 
     async def _dispatcher_loop(self) -> None:
-        """Drive ``agent.respond()`` turn-by-turn until ``STOP``.
+        """Drive ``agent.handle()`` turn-by-turn until DispatcherExit or cancellation.
 
         The "queued → accepted" echo (user-bar render, TUIUserInput
         log) is fired by the user_messages channel's ``on_get`` hook —
@@ -615,36 +626,38 @@ class TUIApplication:
 
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
-        queue_name = "user_messages"
         item = await user_messages_in.get()
         self._on_dispatcher_dequeued()
-        restored: dict[str, Any] | None = None
+        notification: dict[str, list] = {"user_messages": [item]}
 
         while True:
             self._in_respond = True
             try:
-                result = await agent.respond((queue_name, item), restored=restored)
+                result = await agent.handle(notification)
+            except DispatcherExit:
+                return
             finally:
                 self._in_respond = False
 
-            kind = result.kind
-            restored = result.persist or None
+            logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
 
-            if kind == "STOP":
+            # Race all queue-mode channels for the next item(s).
+            try:
+                items = await qm.race()
+            except ValueError:
                 return
-            if kind == "WAIT":
-                # race() raises ValueError if no queue-mode channels
-                # are registered. Map that to the same "exit cleanly"
-                # behaviour the previous wait_for_any path had.
-                try:
-                    items = await qm.race()
-                except ValueError:
-                    return
-                queue_name, item = items[0]
-            else:  # GET_USER_INPUT
-                queue_name = "user_messages"
-                item = await user_messages_in.get()
+            # Drain all pending items across all channels, grouped by name.
+            pending: dict[str, list] = {}
+            for name, value in items:
+                pending.setdefault(name, []).append(value)
+            for ch in qm._channels.values():
+                if ch.mode == "queue":
+                    while not ch.is_empty():
+                        val = ch._items.popleft()
+                        ch._fire_on_get(val)
+                        pending.setdefault(ch.name, []).append(val)
             self._on_dispatcher_dequeued()
+            notification = pending
 
     def _on_dispatcher_dequeued(self) -> None:
         """React to a just-dequeued item: redraw queue pane, restart spinner.
@@ -880,13 +893,13 @@ class TUIApplication:
         return self.input_buffer.cursor_position
 
     def is_thinking(self) -> bool:
-        """True while the dispatcher is inside ``agent.respond()``.
+        """True while the dispatcher is inside ``agent.handle()``.
 
         Tracked by the ``_in_respond`` flag rather than the user_messages
         queue's waiter count: the agent can ``await self.user_messages.get()``
         mid-turn (clarification flow), and during that wait the queue has
         a waiter — but the agent is genuinely thinking, not idle. The
-        flag captures the dispatcher → respond() boundary directly.
+        flag captures the dispatcher → handle() boundary directly.
         """
         if self._agent_task is None or self._agent_task.done():
             return False

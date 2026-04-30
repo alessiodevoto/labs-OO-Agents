@@ -210,7 +210,7 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     def run(obj):
         """Execute on the event loop thread.
 
-        Coroutine:  run(agent.respond("hi"))
+        Coroutine:  run(agent.handle("hi"))
         Callable:   run(lambda: agent.events.get("356"))
         """
         if asyncio.iscoroutine(obj):
@@ -247,7 +247,7 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
         "\n\x1b[1;35m[NeMo OO Agents IPython]\x1b[0m\n"
         "  \x1b[2m'self' and 'agent' refer to the agent — same namespace as agent-generated code.\x1b[0m\n"
         "  \x1b[2mrun() dispatches to the event loop thread (needed for SQLite, async calls).\x1b[0m\n"
-        '  \x1b[2mExamples: run(agent.respond("hi"))  |  run(lambda: agent.events.get("356"))\x1b[0m\n'
+        '  \x1b[2mExamples: run(agent.handle("hi"))  |  run(lambda: agent.events.get("356"))\x1b[0m\n'
         "  \x1b[2mCtrl+D to return to TUI.\x1b[0m\n"
     )
 
@@ -296,7 +296,7 @@ class Session:
 
     Args:
         frontend: Any object implementing the ``Frontend`` protocol.
-        agent: An NeMo OO Agents agent with a ``respond(message)`` async method.
+        agent: An NeMo OO Agents agent with a ``handle(notification)`` async method.
         config: Loaded ``Config`` (holds tui / agent sub-configs).
         registry: Pre-built ``CommandRegistry``.
         session_manager: Optional ``SessionManager`` for persisting turns.
@@ -519,6 +519,11 @@ class Session:
             #    when the loop closes.
             # 3. Diagnostics, frontend close, snapshot, session close.
             self._renderer.detach()
+            # Shut down spawned jobs before cancelling background tasks
+            # so generator finally blocks run cleanly.
+            qm = getattr(self.agent, "queue_manager", None)
+            if qm is not None:
+                await qm.shutdown()
             await self._cancel_background_tasks()
             self._dump_exit_diagnostics()
             self.frontend.close()

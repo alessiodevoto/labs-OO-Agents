@@ -22,14 +22,20 @@ with hidden:
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
+    from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
 # Standard library — all visible in REPL
+import asyncio  # noqa: F401
+import datetime  # noqa: F401
 import json  # noqa: F401
 import re  # noqa: F401
+
+from nemo_oo_agents.runtime import producers  # noqa: F401
+from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
 
 # os is used by this module (NEMO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
@@ -82,38 +88,30 @@ with hidden:
     )
 
 
-RespondKind = Literal["GET_USER_INPUT", "WAIT", "STOP"]
+RespondKind = Literal["GET_USER_INPUT", "WAIT"]
 
 
 class RespondResult(BaseModel):
-    """Return value for ``respond()`` — signals what the outer loop should do next.
+    """Return value for ``handle()`` — signals what the outer loop should do next.
 
     Fields:
 
     - ``kind`` — one of:
         * ``"GET_USER_INPUT"`` — dispatcher awaits ``agent.user_messages.get()``
-          and re-enters ``respond(notification)`` with the new message.
+          and re-enters ``handle(notification)`` with the new message.
         * ``"WAIT"`` — dispatcher races every ``InputQueue`` declared on
           the agent (``wait_for_any``) and re-enters with the first arrival.
-        * ``"STOP"`` — end the session; dispatcher exits without re-entering.
 
-    - ``persist`` — a dict of ``name -> value`` to carry into the next
-      ``respond()`` turn. The dispatcher passes this dict in as the
-      ``restored`` keyword argument. Omit or pass ``{}`` to clear.
+
+    Use ``self.v.<name> = value`` for state that should survive across
+    turns (snapshot-backed).
 
     Build from within the LLM's ``execute_python`` code::
 
-        return_result(RespondResult(
-            kind="GET_USER_INPUT",
-            persist={"plan": plan, "cursor": cursor},
-        ))
+        return_result(RespondResult(kind="GET_USER_INPUT"))
     """
 
     kind: RespondKind = Field(description="What the outer dispatcher should do next")
-    persist: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Variables to carry into the next respond() turn (name -> value)",
-    )
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -244,7 +242,7 @@ class AgentVars:
 class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     """Base class for agents that work with the NeMo OO Agents TUI.
 
-    Subclass this and implement ``respond()`` to build a custom TUI agent.
+    Subclass this and implement ``handle()`` to build a custom TUI agent.
     ``message()`` and ``name_session()`` are provided for free.
 
     **Input queues.** Every ``BaseTUIAgent`` has a ``self.user_messages``
@@ -258,9 +256,9 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     LLM can ``await self.user_messages.get()`` to dequeue mid-turn;
     everything else (put, snapshot, qsize, etc.) is dispatcher-only.
 
-    ``respond()`` runs *per turn* — the outer dispatcher calls it with
-    the next notification ``(queue_name, item)`` and whatever
-    ``restored`` dict the previous turn asked to carry over.
+    ``handle()`` runs *per turn* — the outer dispatcher calls it with
+    the next notification (a ``dict[str, list]``). Use ``self.v`` for
+    state that should survive across turns.
     """
 
     _render_message: Annotated[Callable[[str], None] | None, hidden, nosnapshot]
@@ -296,6 +294,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
+        self.producers = ProducersSkill()
         # Surface pending-queue counts (and a short preview of each item)
         # to the LLM every turn — the agent reads queue depth straight
         # from the ``queues`` context block. Composed via
@@ -331,8 +330,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         Compare:
         - REPL locals → cleared between turns.
-        - ``persist={"k": v}`` on RespondResult → carries to the next
-          turn only, returned via ``restored``.
         - ``self.v.k = v`` → snapshot-backed, survives turns + sessions.
         - ``self.todo.<t>.v.k = v`` → same as ``self.v`` but scoped to
           one todo.
@@ -356,37 +353,34 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     @hidden
     @strategy(PredictStrategy())
     async def name_session(self, user_message: str) -> str:
-        """Generate an ultra-short 2-5 word session title (no punctuation, no quotes) for a conversation that starts with: {user_message}"""
+        """Generate an ultra-short 2-5 word session title.
+
+        Conversation starts with: {user_message}
+        """
         ...
 
     @hidden
     @strategy(CodeActStrategy())
-    async def respond(
+    async def handle(
         self,
-        notification: tuple[str, Any],
-        restored: dict[str, Any] | None = None,
+        notification: dict[str, list],
     ) -> "RespondResult":
         """Handle a single turn of the conversation.
 
-        Called once per inbound notification. Unpack ``notification``
-        (``(queue_name, item)``) and any ``restored`` variables from the
-        previous turn, do the work, then return a ``RespondResult``
-        telling the outer dispatcher what to do next.
+        Called once per inbound notification (or batch). Unpack
+        ``notification`` and do the work, then return a
+        ``RespondResult`` telling the outer dispatcher what to do next.
+
+        Use ``self.v.<name> = value`` for state that should survive
+        across turns (snapshot-backed via ``self.vars``).
 
         ## Turn anatomy
 
-        Notification:
+        Notification is always ``dict[str, list]`` — channel name →
+        list of items that arrived since last turn::
 
-            queue_name, item = notification
-            # queue_name is e.g. "user_messages" or "job_outputs"
-            # item is the actual queued value (str for user messages,
-            # whatever producers push for other queues)
-
-        Restored state (optional — empty on the first turn):
-
-            restored = restored or {}
-            plan   = restored.get("plan")
-            cursor = restored.get("cursor")
+            msgs = notification.get("user_messages", [])
+            lines = notification.get("ci", [])
 
         ## Returning
 
@@ -394,25 +388,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         - Wait for the next user message::
 
-              return_result(RespondResult(
-                  kind="GET_USER_INPUT",
-                  persist={"plan": plan, "cursor": cursor},
-              ))
+              return_result(RespondResult(kind="GET_USER_INPUT"))
 
         - Wait for ANY producer queue (user or background job)::
 
-              return_result(RespondResult(
-                  kind="WAIT",
-                  persist={"job_id": job_id},
-              ))
+              return_result(RespondResult(kind="WAIT"))
 
-        - End the session::
 
-              return_result(RespondResult(kind="STOP"))
-
-        Names listed in ``persist`` become the next turn's ``restored``
-        kwarg. Omit ``persist`` (or pass ``{}``) and nothing carries
-        over — the next turn starts with a clean REPL.
 
         ## Available queues
 
@@ -496,9 +478,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     If the request is ambiguous, send a clarifying question via
     ``self.message(...)`` and end the turn with
-    ``return_result(RespondResult(kind="GET_USER_INPUT", persist=...))``.
+    ``return_result(RespondResult(kind="GET_USER_INPUT"))``.
     The dispatcher blocks on the next user message and re-enters
-    ``respond()`` with their answer.
+    ``handle()`` with their answer.
 
     Don't guess at interpretation and produce output the user has to reject.
 
@@ -557,6 +539,26 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       are the canonical API. Prefer a skill over ``self.bash`` whenever one
       exists for the task.
 
+    # Long-running tasks
+
+    For commands that take more than ~10s, **spawn them** instead of
+    blocking the turn with ``self.bash.run()``:
+
+        ch = self.queue_manager.queue("ci")
+        h = self.queue_manager.spawn(
+            self.producers.monitor("make test"),
+            channel="ci",
+            buffer=100,  # ring buffer: last 100 lines
+        )
+        # → notifications arrive as ("ci", <line>) in subsequent turns
+        # → h.values gives the last 100 lines at any time
+        # → h.state shows "running"/"done"/"failed"/"cancelled"
+        # → await self.queue_manager.shutdown() cancels all
+
+    Use ``self.bash.run()`` for quick commands (<10s). Use ``spawn()``
+    for CI pipelines, long builds, monitoring, and anything you want
+    to run concurrently while staying responsive to the user.
+
     # Execution model
 
     - Run **one** thing at a time and observe the result before the next
@@ -569,27 +571,27 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       lifetime:**
         1. **REPL locals** — cleared between turns. Names defined in
            one ``execute_python`` are gone in the next.
-        2. **``persist={"k": v}``** on the returned ``RespondResult`` —
-           carries to the next turn only, comes back as ``restored``.
-        3. **``self.v.k = v``** — snapshot-backed, survives turns AND
+        2. **``self.v.k = v``** — snapshot-backed, survives turns AND
            sessions. Use for long-lived agent state (current plan,
            cursor into a long task, learned facts).
-        4. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
+        3. **``self.todo.<id>.v.k = v``** — same as ``self.v`` but
            scoped to one todo. Use when the variable belongs to that
            specific work item.
-      When in doubt, prefer ``self.v`` over ``persist`` — the latter
-      is for short-lived turn-to-turn state.
+    - **Use ``self.v`` aggressively** — store working state (file
+      paths, plan summaries, handles, progress cursors) so you can
+      resume coherently if context is summarized or the session
+      restarts. Anything you'd want to remember next turn goes in
+      ``self.v``.
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
     - **Ending a turn.** Every turn ends with
-      ``return_result(RespondResult(kind=..., persist=...))``:
+      ``return_result(RespondResult(kind=...))``:
         * ``kind="GET_USER_INPUT"`` — wait for the next human message.
           Use after answering a question or asking a follow-up.
         * ``kind="WAIT"`` — wait for ANY declared input queue (useful
           when a background job is running alongside the conversation).
-        * ``kind="STOP"`` — end the session on explicit "we're done"
-          signals (``/exit``, "quit", etc.).
+
 
     # Communication mechanics
 
@@ -601,10 +603,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     doesn't see them but the next turn does. Use sparingly: a one-liner when
     a decision is non-obvious.
 
-    The outer dispatcher calls ``respond(notification, restored=...)``
-    once per turn. ``notification`` is a ``(queue_name, item)`` pair;
-    ``restored`` is whatever dict you handed back via ``persist`` last
-    time. On the very first turn, ``restored`` is ``None``.
+    The outer dispatcher calls ``handle(notification)`` once per turn.
+    ``notification`` is a ``dict[str, list]`` — channel name → items.
     """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]
@@ -711,8 +711,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         """Build a fresh ``DoerAgent`` wired with this agent's tools and skills.
 
         Each doer has its own context window, so the parent's context doesn't
-        fill up with the doer's scratch work. Call ``.execute(todo_id, title,
-        notes)`` to run a single todo item to completion.
+        fill up with the doer's scratch work. Call ``.execute(todo)`` to
+        run a single todo item to completion.
         """
         return DoerAgent(
             llm=self._llm,

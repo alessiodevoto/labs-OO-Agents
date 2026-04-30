@@ -37,14 +37,13 @@ async def test_harness_delivers_named_key():
 
 
 @pytest.mark.asyncio
-async def test_fake_agent_receives_notification_and_restored():
-    """FakeAgent ``respond(notification, restored)`` records both inputs
+async def test_fake_agent_receives_notification_and_runs_script():
+    """FakeAgent ``respond(notification)`` records the message
     and invokes any scripted step on the item."""
     agent = FakeAgent()
     received: list[str] = []
     agent.queue(lambda _self, msg: received.append(msg))
-    result = await agent.respond(("user_messages", "hi"), restored={"prior": 1})
+    result = await agent.handle({"user_messages": ["hi"]})
     assert received == ["hi"]
     assert agent.messages_received == ["hi"]
-    assert agent.restored_seen == [{"prior": 1}]
     assert result.kind == "GET_USER_INPUT"

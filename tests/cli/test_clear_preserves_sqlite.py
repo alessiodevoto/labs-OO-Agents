@@ -65,7 +65,7 @@ def _make_mock_agent(storage: SQLiteStorageManager) -> MagicMock:
     agent = MagicMock()
     agent._storage = storage
     agent.event_manager = EventManager(backend=storage.event_backend)
-    agent.respond = AsyncMock()
+    agent.handle = AsyncMock()
     # on() must return a callable (unsubscribe fn) for any renderer wiring.
     agent.event_manager.on = MagicMock(return_value=lambda: None)
     return agent

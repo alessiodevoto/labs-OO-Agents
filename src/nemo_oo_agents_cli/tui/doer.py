@@ -32,6 +32,7 @@ with hidden:
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, TodoManager
+    from nemo_oo_agents.tools.todo import Todo
 
 
 def _discover_skills_dirs() -> list[Path]:
@@ -87,18 +88,18 @@ class DoerAgent(Agent):
             SkillManager.install(self, skills_dir=dirs)
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
-    async def execute(self, todo_id: str, todo_title: str, todo_notes: str) -> str:
+    async def execute(self, todo: "Todo") -> str:
         """Execute a single todo item and return a summary of what was done.
 
-        Todo: [{todo_id}] {todo_title}
-        Notes: {todo_notes}
+        Todo: [{todo.id}] {todo.title}
+        Notes: {todo.notes}
 
         Instructions:
         1. Read the todo title and notes carefully.
         2. Execute the work described using self.bash and self.files.
         3. When done, update the todo with what you learned:
-           self.todo.update("{todo_id}", notes="what you did and found")
-        4. Mark it complete: self.todo.done("{todo_id}")
+           self.todo.update("{todo.id}", notes="what you did and found")
+        4. Mark it complete: self.todo.done("{todo.id}")
         5. Return a concise summary of what you did and the outcome.
 
         Focus only on this one item. Do NOT work on other todos.
