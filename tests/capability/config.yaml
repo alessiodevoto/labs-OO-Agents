@@ -81,6 +81,7 @@ agent_models:
   - claude-haiku
   - gpt-5.2
   - gpt-5-mini
+  - gpt-5.3-codex
 
 output_dir: results  # Relative to this config file
 

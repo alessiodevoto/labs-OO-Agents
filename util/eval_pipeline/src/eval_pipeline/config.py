@@ -176,6 +176,7 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
         "max_thinking_tokens",
         "max_retries",
         "retry_on_empty_content",
+        "client_type",
     ):
         if key in config:
             fields[key] = config[key]

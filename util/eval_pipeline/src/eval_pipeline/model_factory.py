@@ -132,16 +132,26 @@ def list_models() -> list[str]:
     return list(data.get("models", {}).keys())
 
 
-def client(model_id: str, **kwargs) -> CompletionClient:
+def client(model_id: str, **kwargs) -> "CompletionClient":
     """Create a configured LLM client for a model ID.
 
+    Tries models.yaml first, then falls back to the unifiedllm registry
+    (which supports client_type dispatch for Responses API models).
+
     Args:
-        model_id: Full model ID from models.yaml
+        model_id: Full model ID from models.yaml or unifiedllm registry key
         **kwargs: Override config values (e.g., temperature, max_retries, retry_on_empty_content)
 
     Returns:
-        Configured CompletionClient from unifiedllm
+        Configured UnifiedLLM client (CompletionClient or ResponsesClient)
     """
+    # Try unifiedllm registry first — it handles client_type dispatch
+    try:
+        from unifiedllm.registry import MODELS as _REGISTRY, get_llm_client
+        if model_id in _REGISTRY:
+            return get_llm_client(model_id, **kwargs)
+    except ImportError:
+        pass
     import litellm
 
     from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
@@ -211,6 +221,12 @@ def client(model_id: str, **kwargs) -> CompletionClient:
             retry_on_empty_content=retry_on_empty_content,
         )
 
+    # Check if registry indicates this should use ResponsesClient
+    from unifiedllm.registry import MODELS as _REG_MODELS
+    _reg_cfg = _REG_MODELS.get(model_id, {})
+    if _reg_cfg.get("client_type") == "responses":
+        from unifiedllm import ResponsesClient
+        return ResponsesClient(model=litellm_model, **config)
     return CompletionClient(model=litellm_model, **config)
 
 
