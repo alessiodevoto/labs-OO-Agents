@@ -2418,23 +2418,104 @@ class TestReturnTypeShadowValidator:
             # (the abc origin is filtered).
             validator.validate("class Callable:\n    pass", context)
 
-        def test_string_forward_reference_is_a_silent_no_op(self, validator: UnifiedCodeValidator):
-            """`return_type` arrives as a string when ``from __future__ import
-            annotations`` is in effect and the framework hasn't resolved it.
+        def test_future_annotations_resolves_through_get_type_hints(self):
+            """End-to-end sanity: when an agent file uses ``from __future__
+            import annotations``, ``inspect.signature(method).return_annotation``
+            is the raw string ``'Answer'`` — but ``typing.get_type_hints()``
+            resolves it back to the class. The framework's CurrentCall
+            construction relies on this. If this test fails, the dabstep-style
+            agents (which all use future annotations) will silently bypass
+            return-type validation in the existing Pydantic path AND in
+            ReturnTypeShadowValidator."""
+            import inspect
+            from typing import get_type_hints
 
-            Currently the walker can't extract a name from a bare string and
-            silently treats this as 'no protected types'. This test pins the
-            *current* behavior so a future improvement (e.g. resolving via
-            ``typing.get_type_hints``) is a deliberate change, not an
-            accidental regression. If you change behavior here, update the
-            assertion and the docstring on ``_collect_type_names``."""
-            from nemo_oo_agents.runtime.code_validator import _collect_type_names
+            ns: dict = {}
+            exec(
+                compile(
+                    "from __future__ import annotations\n"
+                    "from pydantic import BaseModel\n"
+                    "class Answer(BaseModel):\n"
+                    "    value: int\n"
+                    "class A:\n"
+                    "    async def m(self) -> Answer: ...\n",
+                    "<future-ann-test>",
+                    "exec",
+                ),
+                ns,
+            )
+            method = ns["A"].m
+            assert isinstance(inspect.signature(method).return_annotation, str)
+            hints = get_type_hints(method, include_extras=True)
+            assert hints["return"] is ns["Answer"]
 
-            assert _collect_type_names("Answer") == set()
+        def test_string_forward_reference_resolves_via_namespace(
+            self, validator: UnifiedCodeValidator
+        ):
+            """Defensive: if a string forward ref slips through (e.g.
+            ``get_type_hints`` raised and the framework fell back to the raw
+            ``sig.return_annotation``), the walker should still try to resolve
+            it against the agent's exec_globals before giving up."""
+            from pydantic import BaseModel
 
-            context = TestReturnTypeShadowValidator._ctx_with_return_type("Answer")
-            # Validator is a no-op: even a same-name class def passes today.
-            validator.validate("class Answer:\n    value: int\nresult = Answer()", context)
+            class Answer(BaseModel):
+                value: int
+
+            # ``return_type`` is the bare string the framework couldn't resolve;
+            # but the agent's exec_globals contain the actual class.
+            context = ValidationContext(
+                code="",
+                available_names={"self", "Answer"},
+                importable_modules=set(),
+                return_type="Answer",
+                exec_globals={"Answer": Answer},
+                execution_count=2,
+            )
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate("class Answer:\n    value: int\nresult = Answer()", context)
+
+        def test_string_forward_reference_no_op_when_namespace_lacks_name(
+            self, validator: UnifiedCodeValidator
+        ):
+            """If the string can't be resolved (name not in exec_globals),
+            the walker degrades to a no-op rather than raising. This is the
+            'genuinely unresolvable' case — we'd rather under-protect than
+            crash on a perfectly-fine helper-class definition."""
+            context = ValidationContext(
+                code="",
+                available_names={"self"},
+                importable_modules=set(),
+                return_type="Mystery",
+                exec_globals={},
+                execution_count=2,
+            )
+            # No raise — the validator can't determine if 'Mystery' is the
+            # type and conservatively allows it. Better to under-protect than
+            # to false-positive on agent code that happens to use that name.
+            validator.validate("class Mystery:\n    pass", context)
+
+        def test_string_forward_reference_in_a_generic(self, validator: UnifiedCodeValidator):
+            """Forward refs nested inside generics (``list['Answer']``,
+            ``dict[str, 'Answer']``) also resolve via the namespace."""
+            from typing import ForwardRef
+
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            # ``list['Answer']`` materializes a list with a ForwardRef arg.
+            list_of_ref = list[ForwardRef("Answer")]
+            context = ValidationContext(
+                code="",
+                available_names={"self", "Answer"},
+                importable_modules=set(),
+                return_type=list_of_ref,
+                exec_globals={"Answer": Answer},
+                execution_count=2,
+            )
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate("class Answer(BaseModel):\n    value: int", context)
 
     class TestScopeBoundaries:
         """Only top-level definitions in the cell shadow the return type."""

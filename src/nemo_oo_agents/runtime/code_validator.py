@@ -43,7 +43,7 @@ import inspect
 import logging
 import types
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, Protocol, get_args, get_origin
+from typing import Annotated, Any, ForwardRef, Literal, Protocol, get_args, get_origin
 
 from nemo_oo_agents.errors import RestrictedCodeError as ValidationError
 from nemo_oo_agents.runtime.restrictions import (
@@ -855,7 +855,7 @@ class _ClassAssignmentVisitor(ast.NodeVisitor):
 # =============================================================================
 # Return-Type Shadow Validator
 # =============================================================================
-def _collect_type_names(annotation: Any) -> set[str]:
+def _collect_type_names(annotation: Any, namespace: dict[str, Any] | None = None) -> set[str]:
     """Collect concrete class names referenced by a return-type annotation.
 
     Walks ``Annotated[...]``, ``list[T]``, ``dict[K, V]``, ``T | U``, ``Optional[T]``,
@@ -864,6 +864,14 @@ def _collect_type_names(annotation: Any) -> set[str]:
     are skipped — only names of concrete user-visible classes are returned.
     Builtin types (``str``, ``int``, ``UnionType``, ...) are skipped at every
     level so they don't pollute the protected set.
+
+    String forward references (``"Answer"``, ``ForwardRef("Answer")``) — which
+    can leak through when ``from __future__ import annotations`` is in effect
+    and the framework's ``get_type_hints()`` call raised on construction — are
+    resolved against ``namespace`` if provided. If the name isn't in the
+    namespace, the walker degrades to a no-op for that branch rather than
+    raising; we'd rather under-protect than crash on a perfectly fine helper
+    class definition.
     """
 
     def is_user_class(t: Any) -> bool:
@@ -877,10 +885,28 @@ def _collect_type_names(annotation: Any) -> set[str]:
         # None of these are names an agent would meaningfully redefine.
         return module not in {"builtins", "types", "typing", "collections.abc"}
 
+    def resolve_forward_ref(name: str) -> Any:
+        """Look up a string name in the agent's exec_globals, if available."""
+        if namespace is None:
+            return None
+        return namespace.get(name)
+
     names: set[str] = set()
 
     def visit(node: Any) -> None:
         if node is None or node is type(None):
+            return
+        # String forward reference — resolve via the namespace.
+        if isinstance(node, str):
+            resolved = resolve_forward_ref(node)
+            if resolved is not None:
+                visit(resolved)
+            return
+        # ForwardRef objects (constructed by typing internals) wrap a name.
+        if isinstance(node, ForwardRef):
+            resolved = resolve_forward_ref(node.__forward_arg__)
+            if resolved is not None:
+                visit(resolved)
             return
         # Unwrap Annotated[T, ...] to its base type.
         if get_origin(node) is Annotated:
@@ -922,7 +948,7 @@ class ReturnTypeShadowValidator:
     """
 
     def validate(self, tree: ast.AST, context: ValidationContext) -> list[ValidationIssue]:
-        protected = _collect_type_names(context.return_type)
+        protected = _collect_type_names(context.return_type, context.exec_globals)
         if not protected:
             return []
 
