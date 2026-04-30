@@ -236,6 +236,9 @@ class AgentEventRenderer:
 
         stdout = str(getattr(event, "stdout", "") or "")
         stderr = str(getattr(event, "stderr", "") or "")
+        error = str(getattr(event, "error", "") or "")
+        if error and not stderr:
+            stderr = error
 
         # show_python=True: render a notebook-style cell — 'oo python'
         # rule, syntax-highlighted code, 'oo stdout' rule + stdout,
