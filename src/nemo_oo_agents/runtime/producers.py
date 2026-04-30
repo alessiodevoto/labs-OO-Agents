@@ -14,7 +14,6 @@ Usage::
     qm.spawn(cron(60), channel="ticks")
 """
 
-
 import asyncio
 
 
@@ -84,4 +83,3 @@ async def monitor(cmd: str):
         if proc.returncode is None:
             proc.kill()
             await proc.wait()
-

@@ -17,7 +17,6 @@ registration + aggregation.
 Design doc: docs/design/reactive-agent-queues.md (MR !134).
 """
 
-
 import asyncio
 import inspect
 import logging
@@ -687,8 +686,7 @@ class QueueManager:
         """
         if channel not in self._channels:
             raise ValueError(
-                f"channel {channel!r} not registered; "
-                f"known channels: {list(self._channels)}"
+                f"channel {channel!r} not registered; known channels: {list(self._channels)}"
             )
         data_ch = self._channels[channel]
 
