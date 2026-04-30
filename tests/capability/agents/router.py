@@ -3,10 +3,11 @@
 The subagents perform real computations that the router must aggregate.
 This prevents "cheating" by just returning expected agent names.
 
-Uses TypedDict for explicit return types to catch errors at type-check time.
+Uses Pydantic models for explicit return types so return_result validation
+catches structural errors at the boundary.
 """
 
-from typing import TypedDict
+from pydantic import BaseModel
 
 from nemo_oo_agents import Agent
 
@@ -15,7 +16,7 @@ from nemo_oo_agents import Agent
 # ============================================================================
 
 
-class AnalyzerResult(TypedDict):
+class AnalyzerResult(BaseModel):
     """Result from AnalyzerSubAgent.analyze()"""
 
     sum: float
@@ -23,7 +24,7 @@ class AnalyzerResult(TypedDict):
     count: int
 
 
-class ValidatorResult(TypedDict):
+class ValidatorResult(BaseModel):
     """Result from ValidatorSubAgent.validate()"""
 
     all_positive: bool
@@ -31,7 +32,7 @@ class ValidatorResult(TypedDict):
     is_sorted: bool
 
 
-class RouterResult(TypedDict):
+class RouterResult(BaseModel):
     """Result from RouterTestWrapper.process()"""
 
     agents_called: list[str]

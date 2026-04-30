@@ -7,7 +7,9 @@ with a data dependency between them:
 3. Using PayrollSystem to get salary by employee_id (NOT by name)
 """
 
-from typing import Annotated, TypedDict
+from typing import Annotated
+
+from pydantic import BaseModel
 
 from nemo_oo_agents import Agent
 
@@ -16,7 +18,7 @@ from nemo_oo_agents import Agent
 # ============================================================================
 
 
-class EmployeeRecord(TypedDict):
+class EmployeeRecord(BaseModel):
     """Full employee record from directory lookup."""
 
     employee_id: str
@@ -25,7 +27,7 @@ class EmployeeRecord(TypedDict):
     title: str
 
 
-class SalaryInfo(TypedDict):
+class SalaryInfo(BaseModel):
     """Salary information from payroll system."""
 
     employee_id: str
@@ -34,7 +36,7 @@ class SalaryInfo(TypedDict):
     total: int
 
 
-class LookupResult(TypedDict):
+class LookupResult(BaseModel):
     """Result from the employee salary lookup."""
 
     employee_name: str
