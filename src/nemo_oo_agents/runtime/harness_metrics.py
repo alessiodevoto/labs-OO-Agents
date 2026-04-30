@@ -161,6 +161,7 @@ class HarnessMetrics(BaseModel):
     # ── Code Validation ──
     missing_awaits_detected: list[str] = Field(default_factory=list)
     infinite_loops_detected: int = 0
+    return_types_redefined: list[str] = Field(default_factory=list)
 
     # ── Prefill ──
     prefill_type: str = ""
@@ -321,6 +322,9 @@ class HarnessMetrics(BaseModel):
 
     def infinite_loop(self) -> None:
         self.infinite_loops_detected += 1
+
+    def return_type_redefined(self, type_name: str) -> None:
+        self._append(self.return_types_redefined, type_name)
 
     # Prefill
     def prefill(self, prefill_type: str) -> None:

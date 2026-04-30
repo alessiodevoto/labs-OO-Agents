@@ -35,13 +35,15 @@ Usage:
 #   E402 — Forbidden class method call (self.X(...))
 # BlockingCallValidator:
 #   E310 — Blocking call that would freeze the event loop
+# ReturnTypeShadowValidator:
+#   E501 — Local class/function definition shadows the method's return type
 # =============================================================================
 import ast
 import inspect
 import logging
 import types
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol, get_args, get_origin
 
 from nemo_oo_agents.errors import RestrictedCodeError as ValidationError
 from nemo_oo_agents.runtime.restrictions import (
@@ -58,6 +60,7 @@ __all__ = [
     "BlockingCallValidator",
     "REPLPolicyValidator",
     "ClassAssignmentValidator",
+    "ReturnTypeShadowValidator",
     "ValidationContext",
     "ValidationError",
     "ValidationIssue",
@@ -92,6 +95,11 @@ class ValidationContext:
     execution_count: int = 1
     agent: Any = None  # Agent instance for method introspection
     exec_globals: dict[str, Any] = field(default_factory=dict)
+    # Return type of the currently executing generation method, when known.
+    # Drives ReturnTypeShadowValidator: if the generated code redefines a class
+    # whose name is part of this annotation, the resulting __repl_wrapper__-scoped
+    # class will not pass return_result Pydantic validation (see issue gl-143).
+    return_type: Any = None
 
 
 class Validator(Protocol):
@@ -845,6 +853,116 @@ class _ClassAssignmentVisitor(ast.NodeVisitor):
 
 
 # =============================================================================
+# Return-Type Shadow Validator
+# =============================================================================
+def _collect_type_names(annotation: Any) -> set[str]:
+    """Collect concrete class names referenced by a return-type annotation.
+
+    Walks ``Annotated[...]``, ``list[T]``, ``dict[K, V]``, ``T | U``, ``Optional[T]``,
+    etc., and returns the names of any classes encountered. Standard typing
+    constructs like ``Union``, ``Optional`` and the ``typing`` module itself
+    are skipped — only names of concrete user-visible classes are returned.
+    """
+    names: set[str] = set()
+
+    def visit(node: Any) -> None:
+        if node is None or node is type(None):
+            return
+        # Unwrap Annotated[T, ...] to its base type.
+        if get_origin(node) is Annotated:
+            args = get_args(node)
+            if args:
+                visit(args[0])
+            return
+        # Generic alias like list[Answer] or dict[str, Answer].
+        origin = get_origin(node)
+        if origin is not None:
+            # Origin itself can be a class (list, dict, ...) — skip builtins.
+            if isinstance(origin, type) and origin.__module__ != "builtins":
+                names.add(origin.__name__)
+            for arg in get_args(node):
+                visit(arg)
+            return
+        # Bare class.
+        if isinstance(node, type):
+            names.add(node.__name__)
+
+    visit(annotation)
+    # Builtin scalars never collide with user code in a meaningful way; the
+    # __repl_wrapper__ shadow is only a problem for names the agent could
+    # plausibly redefine as a Pydantic model or dataclass.
+    names.discard("NoneType")
+    return names
+
+
+class ReturnTypeShadowValidator:
+    """Reject local class/function definitions that shadow the return type.
+
+    Generated code runs inside ``async def __repl_wrapper__():`` (see
+    ``runtime/actor.py``), so a top-level ``class Answer(BaseModel): ...`` becomes
+    ``__repl_wrapper__.<locals>.Answer`` — a structurally identical but distinct
+    class object. ``return_result(...)`` then fails Pydantic's identity-based
+    ``isinstance`` check with an unhelpful ``Expected: Answer / Got: Answer``
+    message, and the LLM cannot recover (see issue gl-143).
+
+    The validator looks up the class names referenced by the method's declared
+    return type (via ``ValidationContext.return_type``) and rejects any local
+    ``class <Name>(...)`` or ``def <name>(...)`` definition that would shadow
+    one of them. Helpers with unrelated names (``def gcd(...)``,
+    ``class Helper(...)``) are not affected.
+    """
+
+    def validate(self, tree: ast.AST, context: ValidationContext) -> list[ValidationIssue]:
+        protected = _collect_type_names(context.return_type)
+        if not protected:
+            return []
+
+        # ``UnifiedCodeValidator.validate`` always parses with ``ast.parse(code)``,
+        # which returns an ``ast.Module``. The Validator protocol uses ``ast.AST``
+        # for flexibility; narrow here so .body access type-checks.
+        if not isinstance(tree, ast.Module):
+            return []
+
+        issues: list[ValidationIssue] = []
+        for node in tree.body:
+            kind: str | None = None
+            if isinstance(node, ast.ClassDef):
+                kind = "class"
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                kind = "function"
+            else:
+                continue
+            if node.name not in protected:
+                continue
+
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().return_type_redefined(node.name)
+
+            issues.append(
+                ValidationIssue(
+                    line=node.lineno,
+                    col=node.col_offset,
+                    message=(
+                        f"Cannot redefine '{node.name}' here — it is already in scope as "
+                        f"the return type of this method. A local {kind} definition "
+                        f"shadows it with a __repl_wrapper__-scoped class, and "
+                        f"return_result() will reject the resulting value as the wrong "
+                        f"type. Use the existing '{node.name}' (already imported) instead."
+                    ),
+                    code="E501",
+                    severity="error",
+                    fix_hint=(
+                        f"remove the local '{kind} {node.name}(...)' — '{node.name}' is "
+                        f"already available; construct it directly with "
+                        f"{node.name}(...)"
+                    ),
+                )
+            )
+        return issues
+
+
+# =============================================================================
 # Blocking Call Validator
 # =============================================================================
 class BlockingCallValidator:
@@ -1047,6 +1165,7 @@ class UnifiedCodeValidator:
                     restrictions=restrictions,
                 ),
                 ClassAssignmentValidator(),
+                ReturnTypeShadowValidator(),
             ]
             if include_repl_policy:
                 self.validators.append(REPLPolicyValidator())
@@ -1266,6 +1385,7 @@ def validate_code(
     forbidden_self_calls: list[str] | None = None,
     execution_count: int = 1,
     agent: Any = None,
+    return_type: Any = None,
 ) -> None:
     """Convenience function to validate code.
 
@@ -1279,6 +1399,9 @@ def validate_code(
         forbidden_self_calls: Method names that can't be called on self
         execution_count: Execution count for Cell In[N] format
         agent: Agent instance for method introspection
+        return_type: Return type annotation of the executing method, used by
+            ReturnTypeShadowValidator to reject local class definitions that
+            would shadow the return type in __repl_wrapper__ scope.
 
     Raises:
         ValidationError: If validation fails
@@ -1291,6 +1414,7 @@ def validate_code(
         forbidden_self_calls=set(forbidden_self_calls or []),
         execution_count=execution_count,
         agent=agent,
+        return_type=return_type,
     )
     validator = UnifiedCodeValidator()
     validator.validate(code, context)

@@ -1963,3 +1963,167 @@ class TestStripRedundantImports:
         assert lines[1] == "a = 1"  # was line 3, now line 2
         assert lines[2] == ""  # blank line preserved
         assert lines[3] == "b = 2"  # was line 5, now line 4
+
+
+# =============================================================================
+# ReturnTypeShadowValidator Tests
+# =============================================================================
+
+
+class TestReturnTypeShadowValidator:
+    """Generated code must not redefine the method's declared return type.
+
+    Inside ``__repl_wrapper__``, a local ``class Answer(BaseModel)`` becomes
+    ``__repl_wrapper__.<locals>.Answer`` — structurally identical to the original
+    ``Answer`` but a distinct class object. ``return_result()`` then fails
+    Pydantic's ``isinstance`` check with an unhelpful "Expected: Answer / Got:
+    Answer" error and the LLM cannot recover (issue gl-143).
+    """
+
+    @staticmethod
+    def _ctx_with_return_type(return_type):
+        """Build a ValidationContext seeded with a return type annotation."""
+        return ValidationContext(
+            code="",
+            available_names={"self", "asyncio"},
+            importable_modules={"asyncio"},
+            return_type=return_type,
+        )
+
+    class TestPatternsToReject:
+        """Definitions that shadow the return type must be rejected."""
+
+        def test_reject_class_shadow_of_pydantic_return_type(self, validator: UnifiedCodeValidator):
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                answer: int
+                reason: str
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = (
+                "class Answer(BaseModel):\n"
+                "    answer: int\n"
+                "    reason: str\n"
+                "result = Answer(answer=42, reason='because')"
+            )
+
+            with pytest.raises(ValidationError) as exc:
+                validator.validate(code, context)
+            assert "Cannot redefine 'Answer'" in str(exc.value)
+            assert "return_result" in str(exc.value)
+            assert "E501" not in str(exc.value)  # error code surfaces via field, not message
+            # iPython-style cell location is included.
+            assert "Cell In[" in str(exc.value)
+
+        def test_reject_class_shadow_inside_optional(self, validator: UnifiedCodeValidator):
+            """``Answer | None`` annotations still protect ``Answer``."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer | None)
+            code = "class Answer(BaseModel):\n    value: int"
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate(code, context)
+
+        def test_reject_class_shadow_inside_list(self, validator: UnifiedCodeValidator):
+            """``list[Answer]`` annotations still protect ``Answer``."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(list[Answer])
+            code = "class Answer(BaseModel):\n    value: int"
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate(code, context)
+
+        def test_reject_function_shadow_of_return_type(self, validator: UnifiedCodeValidator):
+            """A def with the same name as the return type also shadows it."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "def Answer(value):\n    return value"
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate(code, context)
+
+    class TestPatternsToAllow:
+        """Definitions that do not shadow the return type must be accepted."""
+
+        def test_allow_helper_class_with_unrelated_name(self, validator: UnifiedCodeValidator):
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "class Helper:\n    pass"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_allow_helper_function_with_unrelated_name(self, validator: UnifiedCodeValidator):
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "def gcd(a, b):\n    while b: a, b = b, a % b\n    return a"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_allow_construction_of_existing_return_type(self, validator: UnifiedCodeValidator):
+            """Constructing the existing class is the correct fix and must pass."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "result = Answer(value=42)"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_allow_when_return_type_is_unset(self, validator: UnifiedCodeValidator):
+            """Without a known return type, validator is a no-op."""
+            context = ValidationContext(
+                code="",
+                available_names={"self"},
+                importable_modules=set(),
+                return_type=None,
+            )
+            code = "class Answer:\n    pass"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_allow_when_return_type_is_builtin(self, validator: UnifiedCodeValidator):
+            """Builtin return types like ``str``/``int`` aren't user-redefinable in practice."""
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(str)
+            code = "def helper(): return 1"
+            validator.validate(code, context)  # must NOT raise
+
+    class TestTelemetry:
+        """Shadow rejections increment the harness metric."""
+
+        def test_redefinition_increments_harness_metric(self, validator: UnifiedCodeValidator):
+            from pydantic import BaseModel
+
+            from nemo_oo_agents.runtime.harness_metrics import (
+                HarnessMetrics,
+                _harness_metrics_var,
+            )
+
+            class Answer(BaseModel):
+                value: int
+
+            metrics = HarnessMetrics()
+            token = _harness_metrics_var.set(metrics)
+            try:
+                context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+                code = "class Answer:\n    value: int"
+                with pytest.raises(ValidationError):
+                    validator.validate(code, context)
+                assert metrics.return_types_redefined == ["Answer"]
+            finally:
+                _harness_metrics_var.reset(token)
