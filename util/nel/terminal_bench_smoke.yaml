@@ -40,7 +40,6 @@ target:
 evaluation:
   env_vars:
     APPTAINER_CACHEDIR: "lit:/tmp/sif-cache"
-    APPTAINER_TMPDIR: "lit:/tmp/sif-cache/tmp"
     # Read from shell env at submit time — must be set before running nel run.
     NEMO_OO_AGENTS_GIT_URL: "lit:${oc.env:NEMO_OO_AGENTS_GIT_URL}"
     NEMO_OO_AGENTS_GIT_REF: "lit:${oc.env:NEMO_OO_AGENTS_GIT_REF,main}"
