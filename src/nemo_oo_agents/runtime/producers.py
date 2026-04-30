@@ -69,14 +69,19 @@ async def monitor(cmd: str):
     """Stream stdout lines from a shell command as they appear.
 
     Yields each line (stripped) as it's written to stdout.
-    stderr is merged into stdout.
+    stderr is merged into stdout. Kills the subprocess on
+    cancellation/close to prevent orphans.
     """
     proc = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
-    async for line in proc.stdout:
-        yield line.decode().rstrip("\n")
-    await proc.wait()
-
+    try:
+        async for line in proc.stdout:
+            yield line.decode().rstrip("\n")
+        await proc.wait()
+    finally:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()

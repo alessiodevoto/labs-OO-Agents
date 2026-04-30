@@ -705,8 +705,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         """Build a fresh ``DoerAgent`` wired with this agent's tools and skills.
 
         Each doer has its own context window, so the parent's context doesn't
-        fill up with the doer's scratch work. Call ``.execute(todo_id, title,
-        notes)`` to run a single todo item to completion.
+        fill up with the doer's scratch work. Call ``.execute(todo)`` to
+        run a single todo item to completion.
         """
         return DoerAgent(
             llm=self._llm,

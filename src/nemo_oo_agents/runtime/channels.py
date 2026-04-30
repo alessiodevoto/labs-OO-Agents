@@ -729,12 +729,12 @@ class QueueManager:
                 if self._event_manager is not None:
                     self._event_manager.add(StreamEnd(channel_name=channel))
 
+        # Dict created before create_task so the closure can find the
+        # handle even if the task runs immediately (single-threaded
+        # guarantee, but clearer ordering).
+        _handles_by_task: dict[asyncio.Task[Any], JobHandle] = {}
         task = asyncio.create_task(_run(), name=f"spawn[{channel}]")
         handle = JobHandle(name=channel, task=task, buffer=buffer)
-        # Thread the handle back into _run via a task→handle map so the
-        # closure can update state without capturing the handle before
-        # it's constructed.
-        _handles_by_task: dict[asyncio.Task[Any], JobHandle] = {}
         _handles_by_task[task] = handle
         self._handles.append(handle)
         return handle

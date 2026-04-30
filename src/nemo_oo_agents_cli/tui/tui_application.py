@@ -591,7 +591,7 @@ class TUIApplication:
 
         Lazy-started: on session load there's no task. The first user
         message triggers submit_message → put onto user_messages →
-        _ensure_dispatcher_task → dispatcher loops forever until STOP.
+        _ensure_dispatcher_task → dispatcher loops until exit or cancel.
         """
         if self.agent is None:
             return
@@ -602,7 +602,7 @@ class TUIApplication:
         self._ensure_spinner_task()
 
     async def _dispatcher_loop(self) -> None:
-        """Drive ``agent.handle()`` turn-by-turn until ``STOP``.
+        """Drive ``agent.handle()`` turn-by-turn until DispatcherExit or cancellation.
 
         The "queued → accepted" echo (user-bar render, TUIUserInput
         log) is fired by the user_messages channel's ``on_get`` hook —
