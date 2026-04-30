@@ -538,7 +538,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     For commands that take more than ~10s, **spawn them** instead of
     blocking the turn with ``self.bash.run()``:
 
-        from producers.producers import monitor
+        from nemo_oo_agents.runtime.producers import monitor
         ch = self.queue_manager.queue("ci")
         h = self.queue_manager.spawn(
             monitor("make test"),
