@@ -12,7 +12,6 @@ import asyncio
 import pytest
 
 from nemo_oo_agents.runtime.channels import (
-    Channel,
     JobError,
     JobHandle,
     QueueManager,
