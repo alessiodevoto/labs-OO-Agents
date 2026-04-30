@@ -617,14 +617,14 @@ class TUIApplication:
 
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
-        queue_name = "user_messages"
         item = await user_messages_in.get()
         self._on_dispatcher_dequeued()
+        notification: tuple[str, Any] | list[tuple[str, Any]] = ("user_messages", item)
 
         while True:
             self._in_respond = True
             try:
-                result = await agent.handle((queue_name, item))
+                result = await agent.handle(notification)
             finally:
                 self._in_respond = False
 
@@ -633,15 +633,25 @@ class TUIApplication:
 
             if kind == "STOP":
                 return
-            # All other kinds: race all queue-mode channels for the
-            # next notification. No distinction between WAIT and
-            # GET_USER_INPUT — user_messages is just another channel.
+            # Race all queue-mode channels for the next item(s).
             try:
                 items = await qm.race()
             except ValueError:
                 return
-            queue_name, item = items[0]
+            # Drain any additional pending items across all channels
+            # so the agent sees everything that arrived since last turn.
+            pending: list[tuple[str, Any]] = list(items)
+            for ch in qm._channels.values():
+                if ch.mode == "queue":
+                    while not ch.is_empty():
+                        pending.append((ch.name, ch._items.popleft()))
+                        ch._fire_on_get(pending[-1][1])
             self._on_dispatcher_dequeued()
+            # Single item → tuple; multiple → list
+            if len(pending) == 1:
+                notification = pending[0]
+            else:
+                notification = pending
 
     def _on_dispatcher_dequeued(self) -> None:
         """React to a just-dequeued item: redraw queue pane, restart spinner.

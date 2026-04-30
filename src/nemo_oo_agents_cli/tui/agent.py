@@ -355,12 +355,12 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     @strategy(CodeActStrategy())
     async def handle(
         self,
-        notification: tuple[str, Any],
+        notification: tuple[str, Any] | list[tuple[str, Any]],
     ) -> "RespondResult":
         """Handle a single turn of the conversation.
 
-        Called once per inbound notification. Unpack ``notification``
-        (``(queue_name, item)``), do the work, then return a
+        Called once per inbound notification (or batch). Unpack
+        ``notification`` and do the work, then return a
         ``RespondResult`` telling the outer dispatcher what to do next.
 
         Use ``self.v.<name> = value`` for state that should survive
@@ -368,12 +368,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         ## Turn anatomy
 
-        Notification:
+        Notification (single or batch):
 
+            # Single:
             queue_name, item = notification
-            # queue_name is e.g. "user_messages" or "job_outputs"
-            # item is the actual queued value (str for user messages,
-            # whatever producers push for other queues)
+            # Batch (list of pending items):
+            for queue_name, item in notification:
+                ...
 
         ## Returning
 
