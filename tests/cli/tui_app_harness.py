@@ -92,8 +92,8 @@ class FakeAgent:
       for as long as the test needs. Default: set, so handle returns
       quickly.
     - ``self.next_kind`` — the ``kind`` the FakeAgent returns by
-      default. Tests flip it to ``"STOP"`` to end the session, or
-      ``"WAIT"`` to exercise multi-queue races.
+      default. Tests raise ``DispatcherExit`` to end the session, or
+      flip to ``"WAIT"`` to exercise multi-queue races.
     """
 
     def __init__(self) -> None:

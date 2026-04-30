@@ -21,6 +21,16 @@ import re
 import shutil
 
 logger = logging.getLogger(__name__)
+
+
+class DispatcherExit(Exception):
+    """Raised by handle() to signal the dispatcher should exit.
+
+    Used by test harnesses. In the real TUI, exit is triggered by
+    /exit → external task cancellation, not by the LLM.
+    """
+
+
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -625,14 +635,12 @@ class TUIApplication:
             self._in_respond = True
             try:
                 result = await agent.handle(notification)
+            except DispatcherExit:
+                return
             finally:
                 self._in_respond = False
 
-            kind = result.kind
-            logger.info("[DISPATCHER] handle() returned kind=%r", kind)
-
-            if kind == "STOP":
-                return
+            logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
             try:
                 items = await qm.race()
             except ValueError:

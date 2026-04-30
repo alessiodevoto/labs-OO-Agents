@@ -9,7 +9,7 @@ These don't spin up a real LLM — they verify the plumbing:
   lazy-starts the dispatcher; subsequent pushes flow through without
   restarting.
 - The dispatcher reads ``RespondResult.kind`` and dispatches accordingly
-  (GET_USER_INPUT → await user_messages_in; WAIT → race queues; STOP → exit).
+  All non-STOP kinds race all channels; DispatcherExit terminates the loop.
 - State survives across turns via ``self.v`` (snapshot-backed vars).
 """
 
@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+
+from nemo_oo_agents_cli.tui.tui_application import DispatcherExit
 
 from nemo_oo_agents.runtime.channels import Channel, _ChannelReader
 from nemo_oo_agents_cli.tui.agent import TUIAgent
@@ -286,7 +288,7 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
     async def _respond(notification):
         calls.append(notification)
         # Immediately STOP so the dispatcher exits cleanly after one turn.
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
@@ -317,7 +319,7 @@ def test_second_message_does_not_spawn_second_dispatcher():
     async def _respond(notification):
         started.set()
         await proceed.wait()
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
@@ -354,7 +356,7 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
         calls.append(notification)
         if len(calls) == 1:
             return _DispatchResult(kind="WAIT")
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
@@ -388,7 +390,7 @@ def test_three_consecutive_submits_while_busy_merge_into_one_item():
         # Block forever so the dispatcher stays inside respond() and
         # subsequent submit_messages all hit the slow-merge path.
         await proceed.wait()
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
@@ -465,7 +467,7 @@ def test_is_thinking_true_during_mid_turn_drain():
         # Pull from the LLM-facing facade — same path the agent would
         # use in ``execute_python``.
         await agent.user_messages.get()
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 
@@ -509,7 +511,7 @@ def test_dispatcher_does_not_call_on_get_hook_directly():
     agent._user_messages_in.set_on_get(fires.append)
 
     async def _respond(notification):
-        return _DispatchResult(kind="STOP")
+        raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
 

@@ -84,7 +84,7 @@ with hidden:
     )
 
 
-RespondKind = Literal["GET_USER_INPUT", "WAIT", "STOP"]
+RespondKind = Literal["GET_USER_INPUT", "WAIT"]
 
 
 class RespondResult(BaseModel):
@@ -97,7 +97,7 @@ class RespondResult(BaseModel):
           and re-enters ``handle(notification)`` with the new message.
         * ``"WAIT"`` — dispatcher races every ``InputQueue`` declared on
           the agent (``wait_for_any``) and re-enters with the first arrival.
-        * ``"STOP"`` — end the session; dispatcher exits without re-entering.
+
 
     Use ``self.v.<name> = value`` for state that should survive across
     turns (snapshot-backed).
@@ -388,9 +388,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
               return_result(RespondResult(kind="WAIT"))
 
-        - End the session::
 
-              return_result(RespondResult(kind="STOP"))
 
         ## Available queues
 
@@ -562,8 +560,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
           Use after answering a question or asking a follow-up.
         * ``kind="WAIT"`` — wait for ANY declared input queue (useful
           when a background job is running alongside the conversation).
-        * ``kind="STOP"`` — end the session on explicit "we're done"
-          signals (``/exit``, "quit", etc.).
+
 
     # Communication mechanics
 
