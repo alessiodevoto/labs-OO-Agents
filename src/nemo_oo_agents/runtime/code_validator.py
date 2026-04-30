@@ -870,10 +870,12 @@ def _collect_type_names(annotation: Any) -> set[str]:
         if not isinstance(t, type):
             return False
         module = getattr(t, "__module__", None)
-        # Builtins (``str``, ``int``, ``list``) and runtime typing internals
-        # (``types.UnionType``, ``typing.Union``-style aliases) are never the
-        # kind of name an agent would redefine.
-        return module not in {"builtins", "types", "typing"}
+        # Skip stdlib type machinery: builtins (``str``, ``int``, ``list``),
+        # runtime typing internals (``types.UnionType``, ``typing`` aliases),
+        # and the abstract collection types (``collections.abc.Iterable`` /
+        # ``Callable`` show up as the origin of ``Iterable[T]`` / ``Callable[..., T]``).
+        # None of these are names an agent would meaningfully redefine.
+        return module not in {"builtins", "types", "typing", "collections.abc"}
 
     names: set[str] = set()
 

@@ -2271,6 +2271,171 @@ class TestReturnTypeShadowValidator:
             code = "class Helper:\n    pass"
             validator.validate(code, context)  # must NOT raise
 
+        def test_protects_all_arms_of_three_way_union(self, validator: UnifiedCodeValidator):
+            from pydantic import BaseModel
+
+            class Alpha(BaseModel):
+                a: int
+
+            class Beta(BaseModel):
+                b: int
+
+            class Gamma(BaseModel):
+                c: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Alpha | Beta | Gamma)
+            for name in ("Alpha", "Beta", "Gamma"):
+                with pytest.raises(ValidationError, match=f"Cannot redefine '{name}'"):
+                    validator.validate(f"class {name}(BaseModel):\n    x: int", context)
+
+        def test_protects_mixed_kind_union(self, validator: UnifiedCodeValidator):
+            """A union of Pydantic + TypedDict + dataclass should protect every arm,
+            since the ``__repl_wrapper__`` shadow problem is type-system-agnostic."""
+            from dataclasses import dataclass
+            from typing import TypedDict
+
+            from pydantic import BaseModel
+
+            class Pyd(BaseModel):
+                p: int
+
+            class TD(TypedDict):
+                t: int
+
+            @dataclass
+            class DC:
+                d: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Pyd | TD | DC)
+            with pytest.raises(ValidationError, match="Cannot redefine 'Pyd'"):
+                validator.validate("class Pyd(BaseModel):\n    p: int", context)
+            with pytest.raises(ValidationError, match="Cannot redefine 'TD'"):
+                validator.validate("class TD(TypedDict):\n    t: int", context)
+            with pytest.raises(ValidationError, match="Cannot redefine 'DC'"):
+                validator.validate("class DC:\n    d: int", context)
+
+        def test_protects_union_with_none(self, validator: UnifiedCodeValidator):
+            """`A | B | None` protects A and B; None is silently dropped."""
+            from pydantic import BaseModel
+
+            class Alpha(BaseModel):
+                a: int
+
+            class Beta(BaseModel):
+                b: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Alpha | Beta | None)
+            with pytest.raises(ValidationError, match="Cannot redefine 'Alpha'"):
+                validator.validate("class Alpha(BaseModel):\n    a: int", context)
+            with pytest.raises(ValidationError, match="Cannot redefine 'Beta'"):
+                validator.validate("class Beta(BaseModel):\n    b: int", context)
+
+        def test_protects_union_nested_in_generic(self, validator: UnifiedCodeValidator):
+            """A union sitting inside ``dict[str, A | B]`` still protects A and B."""
+            from pydantic import BaseModel
+
+            class Alpha(BaseModel):
+                a: int
+
+            class Beta(BaseModel):
+                b: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(dict[str, Alpha | Beta])
+            with pytest.raises(ValidationError, match="Cannot redefine 'Alpha'"):
+                validator.validate("class Alpha(BaseModel):\n    a: int", context)
+            with pytest.raises(ValidationError, match="Cannot redefine 'Beta'"):
+                validator.validate("class Beta(BaseModel):\n    b: int", context)
+
+        def test_protects_type_brackets(self, validator: UnifiedCodeValidator):
+            """`type[Answer]` (the *class* of Answer) still protects Answer.
+
+            Origin is the builtin ``type`` (filtered); the argument is Answer
+            (protected). The agent-method declares it returns the class, but
+            the LLM redefining ``Answer`` is still wrong."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(type[Answer])
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate("class Answer(BaseModel):\n    value: int", context)
+
+        def test_literal_protects_nothing(self, validator: UnifiedCodeValidator):
+            """`Literal["yes", "no"]` has string args — no classes to protect."""
+            from typing import Literal
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Literal["yes", "no"])
+            code = "class Helper:\n    pass"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_typevar_protects_nothing(self, validator: UnifiedCodeValidator):
+            """A TypeVar return type isn't a class — nothing to protect."""
+            from typing import TypeVar
+
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            T = TypeVar("T", bound=Answer)
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(T)
+            # Defining a helper class is fine; nothing was extracted from T.
+            code = "class Helper:\n    pass"
+            validator.validate(code, context)  # must NOT raise
+
+        def test_iterable_origin_does_not_leak_as_protected(self, validator: UnifiedCodeValidator):
+            """Regression: `Iterable[Answer]` previously injected ``Iterable``
+            (from ``collections.abc``) into the protected set. The arg
+            ``Answer`` should be protected, but a helper named ``Iterable``
+            should still be allowed."""
+            from collections.abc import Iterable
+
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Iterable[Answer])
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate("class Answer(BaseModel):\n    value: int", context)
+            # A class named after the abc origin must NOT trigger the validator.
+            validator.validate("class Iterable:\n    pass", context)
+
+        def test_callable_origin_does_not_leak_as_protected(self, validator: UnifiedCodeValidator):
+            """Same regression as Iterable, for ``Callable[..., T]``."""
+            from collections.abc import Callable
+
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Callable[..., Answer])
+            with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
+                validator.validate("class Answer(BaseModel):\n    value: int", context)
+            # A class named ``Callable`` is not flagged by the validator
+            # (the abc origin is filtered).
+            validator.validate("class Callable:\n    pass", context)
+
+        def test_string_forward_reference_is_a_silent_no_op(self, validator: UnifiedCodeValidator):
+            """`return_type` arrives as a string when ``from __future__ import
+            annotations`` is in effect and the framework hasn't resolved it.
+
+            Currently the walker can't extract a name from a bare string and
+            silently treats this as 'no protected types'. This test pins the
+            *current* behavior so a future improvement (e.g. resolving via
+            ``typing.get_type_hints``) is a deliberate change, not an
+            accidental regression. If you change behavior here, update the
+            assertion and the docstring on ``_collect_type_names``."""
+            from nemo_oo_agents.runtime.code_validator import _collect_type_names
+
+            assert _collect_type_names("Answer") == set()
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type("Answer")
+            # Validator is a no-op: even a same-name class def passes today.
+            validator.validate("class Answer:\n    value: int\nresult = Answer()", context)
+
     class TestScopeBoundaries:
         """Only top-level definitions in the cell shadow the return type."""
 
