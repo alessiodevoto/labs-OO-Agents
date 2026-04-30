@@ -33,6 +33,9 @@ import datetime  # noqa: F401
 import json  # noqa: F401
 import re  # noqa: F401
 
+from nemo_oo_agents.runtime import producers  # noqa: F401
+from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
+
 # os is used by this module (NEMO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
 with hidden:
