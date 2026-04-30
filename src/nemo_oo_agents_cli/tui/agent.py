@@ -257,7 +257,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     everything else (put, snapshot, qsize, etc.) is dispatcher-only.
 
     ``handle()`` runs *per turn* — the outer dispatcher calls it with
-    the next notification ``(queue_name, item)``. Use ``self.v`` for
+    the next notification (a ``dict[str, list]``). Use ``self.v`` for
     state that should survive across turns.
     """
 
@@ -601,7 +601,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     a decision is non-obvious.
 
     The outer dispatcher calls ``handle(notification)`` once per turn.
-    ``notification`` is a ``(queue_name, item)`` pair.
+    ``notification`` is a ``dict[str, list]`` — channel name → items.
     """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]

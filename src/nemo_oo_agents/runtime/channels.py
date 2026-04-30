@@ -673,9 +673,9 @@ class QueueManager:
             Iterate; ``put(value)`` per yield until exhaustion or
             cancellation; emit ``StreamEnd`` on close.
 
-        Errors mid-job emit ``JobError`` on the event channel (not the
-        data channel — avoids type confusion). The handle's state
-        transitions to ``"failed"``.
+        Errors mid-job emit ``JobError`` on both the event channel
+        (for context rendering) and the data channel (so race() wakes
+        the agent). The handle's state transitions to ``"failed"``.
 
         Returns a ``JobHandle`` with ``name``, ``state``, ``cancel()``,
         and ``values`` (buffered items if ``buffer`` is set).
