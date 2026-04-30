@@ -633,7 +633,6 @@ class TUIApplication:
 
             if kind == "STOP":
                 return
-            # Race all queue-mode channels for the next item(s).
             try:
                 items = await qm.race()
             except ValueError:
