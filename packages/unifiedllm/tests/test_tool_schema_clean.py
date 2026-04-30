@@ -59,7 +59,9 @@ class TestToolSchemaNestedModels:
             value: int
 
         ReturnModel = create_model("Ret", result=(Inner, ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="return_result", description="Return.", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()
@@ -86,7 +88,9 @@ class TestToolSchemaNestedModels:
             address: Address
 
         ReturnModel = create_model("Ret", result=(Person, ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()
@@ -95,6 +99,7 @@ class TestToolSchemaNestedModels:
 
     def test_dict_with_model_values(self):
         """dict[str, SomeModel] produces additionalProperties with $ref."""
+
         class Item(BaseModel):
             name: str
             score: float
@@ -103,7 +108,9 @@ class TestToolSchemaNestedModels:
             items: dict[str, Item]
 
         ReturnModel = create_model("Ret", result=(Results, ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()
@@ -120,6 +127,7 @@ class TestToolSchemaNestedModels:
 
     def test_union_type_anyof(self):
         """Union types produce anyOf with $ref."""
+
         class TypeA(BaseModel):
             kind: Literal["a"]
             data: str
@@ -129,7 +137,9 @@ class TestToolSchemaNestedModels:
             count: int
 
         ReturnModel = create_model("Ret", result=(TypeA | TypeB, ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()
@@ -145,12 +155,15 @@ class TestToolSchemaNestedModels:
 
     def test_list_of_models(self):
         """list[SomeModel] produces items with $ref."""
+
         class Entry(BaseModel):
             text: str
             score: float
 
         ReturnModel = create_model("Ret", result=(list[Entry], ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()
@@ -174,7 +187,9 @@ class TestToolSchemaNestedModels:
             config: Config = Field(description="Server configuration")
 
         ReturnModel = create_model("Ret", result=(ServerResult, ...))
-        def rr(result=None): pass
+
+        def rr(result=None):
+            pass
 
         tool = Tool(name="rr", description="d", callable=rr, parameters_model=ReturnModel)
         schema = tool.get_parameter_schema()

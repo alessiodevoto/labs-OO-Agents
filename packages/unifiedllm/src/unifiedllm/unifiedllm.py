@@ -257,8 +257,6 @@ def extract_and_parse_json(text: str) -> dict[str, Any]:
         ) from e
 
 
-
-
 def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     """Resolve $ref references by inlining $defs definitions.
 
@@ -276,7 +274,7 @@ def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
         if "$ref" in node:
             ref_path = node["$ref"]
             if ref_path.startswith("#/$defs/"):
-                def_name = ref_path[len("#/$defs/"):]
+                def_name = ref_path[len("#/$defs/") :]
                 if def_name in defs:
                     return _inline(dict(defs[def_name]))
             return node
