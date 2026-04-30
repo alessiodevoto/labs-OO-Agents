@@ -44,3 +44,4 @@ def test_handle_is_per_turn_with_notification():
 
     sig = inspect.signature(BaseTUIAgent.handle)
     assert list(sig.parameters.keys()) == ["self", "notification"]
+    # notification is dict[str, list]

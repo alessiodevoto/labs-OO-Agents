@@ -360,7 +360,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     @strategy(CodeActStrategy())
     async def handle(
         self,
-        notification: tuple[str, Any] | list[tuple[str, Any]],
+        notification: dict[str, list],
     ) -> "RespondResult":
         """Handle a single turn of the conversation.
 
@@ -373,13 +373,11 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         ## Turn anatomy
 
-        Notification (single or batch):
+        Notification is always ``dict[str, list]`` — channel name →
+        list of items that arrived since last turn::
 
-            # Single:
-            queue_name, item = notification
-            # Batch (list of pending items):
-            for queue_name, item in notification:
-                ...
+            msgs = notification.get("user_messages", [])
+            lines = notification.get("ci", [])
 
         ## Returning
 

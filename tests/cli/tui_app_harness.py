@@ -132,7 +132,7 @@ class FakeAgent:
 
     async def handle(
         self,
-        notification: tuple[str, Any] | list[tuple[str, Any]],
+        notification: dict[str, list],
     ) -> Any:
         """Per-turn stub: record inputs, run a scripted step, return a result.
 
@@ -141,12 +141,9 @@ class FakeAgent:
         calls find what they need without the harness needing to
         import the TUI agent's Pydantic model.
         """
-        if isinstance(notification, list):
-            for queue_name, item in notification:
+        for items in notification.values():
+            for item in items:
                 self.messages_received.append(str(item))
-        else:
-            queue_name, item = notification
-            self.messages_received.append(str(item))
         if self.script:
             step = self.script.pop(0)
             await _maybe_await(step(self, item))

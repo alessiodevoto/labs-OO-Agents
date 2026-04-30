@@ -43,7 +43,7 @@ async def test_fake_agent_receives_notification_and_runs_script():
     agent = FakeAgent()
     received: list[str] = []
     agent.queue(lambda _self, msg: received.append(msg))
-    result = await agent.handle(("user_messages", "hi"))
+    result = await agent.handle({"user_messages": ["hi"]})
     assert received == ["hi"]
     assert agent.messages_received == ["hi"]
     assert result.kind == "GET_USER_INPUT"

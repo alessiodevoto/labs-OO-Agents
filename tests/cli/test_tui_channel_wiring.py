@@ -283,7 +283,7 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
     agent = _fresh_agent()
     app = TUIApplication(agent=agent)
 
-    calls: list[tuple[str, Any]] = []
+    calls: list[dict] = []
 
     async def _respond(notification):
         calls.append(notification)
@@ -301,7 +301,7 @@ def test_submit_message_pushes_to_queue_and_starts_dispatcher():
         assert app._agent_task is not None
         await app._agent_task
         assert len(calls) == 1
-        assert calls[0] == ("user_messages", "hello")
+        assert calls[0] == {"user_messages": ["hello"]}
 
     asyncio.run(_run())
 
@@ -350,7 +350,7 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
     agent.job_outputs = agent._jobs_in.reader
     app = TUIApplication(agent=agent)
 
-    calls: list[tuple[str, Any]] = []
+    calls: list[dict] = []
 
     async def _respond(notification):
         calls.append(notification)
@@ -366,8 +366,8 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
             await asyncio.sleep(0)
         agent._jobs_in.put({"id": 7})
         await app._agent_task
-        assert calls[0] == ("user_messages", "first")
-        assert calls[1] == ("job_outputs", {"id": 7})
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"job_outputs": [{"id": 7}]}
 
     asyncio.run(_run())
 
