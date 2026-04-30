@@ -633,18 +633,14 @@ class TUIApplication:
 
             if kind == "STOP":
                 return
-            if kind == "WAIT":
-                # race() raises ValueError if no queue-mode channels
-                # are registered. Map that to the same "exit cleanly"
-                # behaviour the previous wait_for_any path had.
-                try:
-                    items = await qm.race()
-                except ValueError:
-                    return
-                queue_name, item = items[0]
-            else:  # GET_USER_INPUT
-                queue_name = "user_messages"
-                item = await user_messages_in.get()
+            # All other kinds: race all queue-mode channels for the
+            # next notification. No distinction between WAIT and
+            # GET_USER_INPUT — user_messages is just another channel.
+            try:
+                items = await qm.race()
+            except ValueError:
+                return
+            queue_name, item = items[0]
             self._on_dispatcher_dequeued()
 
     def _on_dispatcher_dequeued(self) -> None:
