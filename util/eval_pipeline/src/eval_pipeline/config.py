@@ -539,6 +539,10 @@ def evaluator_from_config(
                 if extra_body:
                     config_dict["extra_body"] = extra_body
 
+                # Dispatch based on client_type from registry config
+                if getattr(s, 'client_type', None) == 'responses':
+                    from unifiedllm import ResponsesClient
+                    return ResponsesClient(retry_config=retry_config, **config_dict)
                 return CompletionClient(retry_config=retry_config, **config_dict)
 
             return factory
