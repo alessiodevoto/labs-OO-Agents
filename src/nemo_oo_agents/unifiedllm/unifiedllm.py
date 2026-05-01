@@ -351,7 +351,7 @@ def _strip_schema_noise(schema: dict[str, Any], *, strict: bool = False) -> dict
         if strict and cleaned.get("type") == "object":
             cleaned["additionalProperties"] = False
             cleaned.setdefault("properties", {})
-            cleaned.setdefault("required", list(cleaned["properties"].keys()))
+            cleaned["required"] = list(cleaned["properties"].keys())
         return cleaned
 
     return _strip(schema)
@@ -382,15 +382,20 @@ def _clean_schema(schema: dict[str, Any], *, strict: bool = False) -> dict[str, 
 def _strict_schema_valid(schema: dict[str, Any]) -> bool:
     """Check whether a schema satisfies OpenAI strict-mode requirements.
 
-    Every property node must have a ``type`` key (or ``anyOf``/``oneOf``).
-    Returns False if any property is an empty schema (e.g. from ``Any``).
+    Every property node must have a ``type`` key (or ``anyOf``/``oneOf``),
+    and every object must have ``required`` listing ALL property keys.
+    Returns False if any node violates these constraints.
     """
     def _check(node: dict[str, Any]) -> bool:
         if not isinstance(node, dict):
             return True
         # A property node needs type or a union discriminator
-        if node and "type" not in node and "anyOf" not in node and "oneOf" not in node:
+        if "type" not in node and "anyOf" not in node and "oneOf" not in node:
             return False
+        # Object nodes: required must list every property key
+        if node.get("type") == "object" and "properties" in node:
+            if set(node.get("required", [])) != set(node["properties"].keys()):
+                return False
         for v in node.get("properties", {}).values():
             if isinstance(v, dict) and not _check(v):
                 return False
