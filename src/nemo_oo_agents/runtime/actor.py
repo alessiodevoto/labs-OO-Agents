@@ -1013,6 +1013,7 @@ class ActorRuntime:
                         current_call = self._current_call
                         if current_call and hasattr(current_call, "method_name"):
                             forbidden_self_calls = {current_call.method_name}
+                        return_type = getattr(current_call, "return_type", None)
 
                         # Build importable_modules from actual module names (not aliases)
                         # e.g., 'import pandas as pd' means 'pandas' is importable, not 'os'
@@ -1033,6 +1034,7 @@ class ActorRuntime:
                             execution_count=execution_count,
                             agent=self.agent,
                             exec_globals=exec_globals,
+                            return_type=return_type,
                         )
 
                         # Run unified validation (security, blocking calls, REPL policy)
