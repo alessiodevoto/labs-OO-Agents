@@ -94,7 +94,10 @@ class TestResponsesProviderFormatter:
         assert result == [
             {"role": "system", "content": "You are a coding assistant."},
             {"role": "user", "content": "Add 2+2"},
-            {"type": "function_call", "call_id": "tc_1", "name": "execute_python", "arguments": json.dumps({"code": "2+2"})},
+            {
+                "type": "function_call", "call_id": "tc_1",
+                "name": "execute_python", "arguments": json.dumps({"code": "2+2"}),
+            },
             {"type": "function_call_output", "call_id": "tc_1", "output": "4"},
             {"role": "user", "content": "Now multiply by 3"},
         ]
@@ -142,7 +145,10 @@ class TestResponsesClientTransformMessages:
             {"role": "system", "content": "System prompt"},
             {"role": "user", "content": "Do something"},
             {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "tc1", "type": "function", "function": {"name": "execute_python", "arguments": '{"code": "1+1"}'}}
+                {
+                    "id": "tc1", "type": "function",
+                    "function": {"name": "execute_python", "arguments": '{"code": "1+1"}'},
+                }
             ]},
             {"role": "tool", "tool_call_id": "tc1", "content": "2"},
         ]

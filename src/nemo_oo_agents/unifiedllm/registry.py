@@ -134,7 +134,7 @@ def reload_registry() -> dict[str, dict[str, Any]]:
     return MODELS
 
 
-def get_llm_client(name: str, **overrides) -> "UnifiedLLM":
+def get_llm_client(name: str, **overrides) -> UnifiedLLM:
     """Create an LLM client, optionally using registry config.
 
     If ``name`` is a registry key, its config (model_name, endpoint, API key,
@@ -197,9 +197,6 @@ def get_llm_client(name: str, **overrides) -> "UnifiedLLM":
 
     # Select client class based on registry config
     client_type = config.get("client_type", "completion")
-    if client_type == "responses":
-        client = ResponsesClient(**params)
-    else:
-        client = CompletionClient(**params)
+    client = ResponsesClient(**params) if client_type == "responses" else CompletionClient(**params)
     client._registry_config = config  # For context_window lookup
     return client
