@@ -38,7 +38,11 @@ nemo-oo-agents-benchmarks = { workspace = true }
 [tool.uv]
 # Extra index URLs to search for packages (in addition to PyPI)
 # Ignore packages uploaded less than 7 days ago to mitigate supply-chain attacks
-exclude-newer = "2026-04-01T00:00:00Z"
+exclude-newer = "2026-05-01T00:00:00Z"
+# litellm requires python <3.14; skip impossible 3.14+ resolution splits
+environments = [
+    "python_full_version >= '3.12' and python_full_version < '3.14'",
+]
 
 [tool.uv.workspace]
 members = [
