@@ -6,7 +6,7 @@ license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "litellm>=1.79.1,<=1.80.11",
+    "litellm>=1.83.10,<=1.83.10",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
 ]
