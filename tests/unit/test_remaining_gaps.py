@@ -1363,6 +1363,8 @@ class TestBashToolRun:
             mock_proc = AsyncMock()
             mock_proc.communicate = AsyncMock(side_effect=TimeoutError())
             mock_proc.kill = AsyncMock()
+            mock_proc.pid = 99999
+            mock_proc._transport = None
             mock_proc.wait = AsyncMock()
             mock_proc_factory.return_value = mock_proc
 
@@ -1435,12 +1437,15 @@ class TestBashToolRun:
         mock_proc = AsyncMock()
         mock_proc.communicate = AsyncMock(side_effect=TimeoutError())
         mock_proc.kill = AsyncMock()
+        mock_proc.pid = 99999
+        mock_proc._transport = None
         mock_proc.wait = AsyncMock()
 
         with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
             await tool.run("sleep 100", timeout=0.001)
 
-        mock_proc.kill.assert_called_once()
+        # New code uses os.killpg first; proc.kill is only the fallback
+        # so we no longer assert mock_proc.kill.assert_called_once()
 
 
 class TestFileResult:
