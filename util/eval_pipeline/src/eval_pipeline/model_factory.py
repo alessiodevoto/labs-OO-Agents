@@ -132,7 +132,7 @@ def list_models() -> list[str]:
     return list(data.get("models", {}).keys())
 
 
-def client(model_id: str, **kwargs) -> "CompletionClient | ResponsesClient":
+def client(model_id: str, **kwargs) -> CompletionClient | ResponsesClient:
     """Create a configured LLM client for a model ID.
 
     Tries models.yaml first, then falls back to the unifiedllm registry
