@@ -373,6 +373,22 @@ class Channel[T]:
     def clear(self) -> None:
         self._items.clear()
 
+    def flush(self) -> int:
+        """Discard all pending items and cancel waiting consumers.
+
+        Returns the number of buffered items that were discarded.
+        Pending ``get()`` waiters are cancelled so they raise
+        ``asyncio.CancelledError`` rather than hanging forever on a
+        channel that has been flushed.
+        """
+        n = self.qsize()
+        self._items.clear()
+        while self._waiters:
+            waiter = self._waiters.popleft()
+            if not waiter.done():
+                waiter.cancel()
+        return n
+
     def status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
         """Pending-count summary + short preview of waiting items.
 
@@ -454,6 +470,14 @@ class _ChannelReader[T]:
         """
         return self._source.status(max_items=max_items, max_chars=max_chars)
 
+    def flush(self) -> int:
+        """Discard all pending items and cancel waiting consumers.
+
+        Delegates to ``Channel.flush()``. Returns the number of
+        buffered items that were discarded.
+        """
+        return self._source.flush()
+
     def __repr__(self) -> str:
         return f"ChannelReader(name={self.name!r})"
 
@@ -498,14 +522,22 @@ class QueueManager:
         name: str,
         *,
         on_get: Callable[[T], None] | None = None,
+        replace: bool = False,
     ) -> Channel[T]:
         """Register a queue-mode channel.
 
         The agent's producer side keeps the returned ``Channel``; the
         LLM-facing read facade is ``channel.reader``.
+
+        If *replace* is ``True`` and a channel with *name* already
+        exists, it is removed (via ``remove_channel``) before the new
+        one is created. Otherwise a duplicate name raises
+        ``ValueError``.
         """
         if name in self._channels:
-            raise ValueError(f"channel {name!r} already registered")
+            if not replace:
+                raise ValueError(f"channel {name!r} already registered")
+            self.remove_channel(name)
         ch: Channel[T] = Channel(name, "queue", agent=self._agent, on_get=on_get)
         self._channels[name] = ch
         return ch
@@ -515,16 +547,24 @@ class QueueManager:
         name: str,
         *,
         preview: Callable[[T], str] | None = None,
+        replace: bool = False,
     ) -> Channel[T]:
         """Register an event-mode channel.
 
         Requires ``event_manager`` on the manager. ``put()`` on the
         returned channel emits a ``QueueOutput`` event.
+
+        If *replace* is ``True`` and a channel with *name* already
+        exists, it is removed (via ``remove_channel``) before the new
+        one is created. Otherwise a duplicate name raises
+        ``ValueError``.
         """
         if self._event_manager is None:
             raise RuntimeError("QueueManager has no event_manager; event-mode channels require one")
         if name in self._channels:
-            raise ValueError(f"channel {name!r} already registered")
+            if not replace:
+                raise ValueError(f"channel {name!r} already registered")
+            self.remove_channel(name)
         ch: Channel[T] = Channel(
             name,
             "event",
@@ -542,6 +582,29 @@ class QueueManager:
 
     def names(self) -> list[str]:
         return list(self._channels.keys())
+
+    def remove_channel(self, name: str) -> None:
+        """Remove a channel by name.
+
+        Clears pending items, cancels any spawned jobs feeding the
+        channel (via ``task.cancel()``), and removes it from the
+        registry.
+
+        Raises ``KeyError`` if *name* is not registered.
+        """
+        ch = self._channels.pop(name)  # KeyError if not found
+        ch.flush()
+        # Cancel handles targeting this channel. task.cancel() is sync
+        # (it requests cancellation); the task will finish on its own.
+        remaining: list[JobHandle] = []
+        for h in self._handles:
+            if h.name == name:
+                h._task.cancel()
+                if h.state == "running":
+                    h.state = "cancelled"
+            else:
+                remaining.append(h)
+        self._handles = remaining
 
     # ---- composite status block -----------------------------------------
 
@@ -749,3 +812,24 @@ class QueueManager:
         self._handles.clear()
         for h in handles:
             await h.cancel()
+
+    # ---- job registry ----------------------------------------------------
+
+    def jobs(self) -> dict[str, JobState]:
+        """Return channel_name -> state for the most recent handle per channel."""
+        return {h.name: h.state for h in self._handles}
+
+    def job(self, name: str) -> JobHandle | None:
+        """Look up the most recent handle for a channel name."""
+        for h in reversed(self._handles):
+            if h.name == name:
+                return h
+        return None
+
+    async def cancel_job(self, name: str) -> bool:
+        """Cancel the job on the named channel. Returns True if found and cancelled."""
+        h = self.job(name)
+        if h is None:
+            return False
+        await h.cancel()
+        return True
