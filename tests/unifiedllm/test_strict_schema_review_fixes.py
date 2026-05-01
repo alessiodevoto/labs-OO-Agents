@@ -1,8 +1,8 @@
 """Tests for strict-mode schema fixes from review findings."""
-import pytest
+
 from pydantic import BaseModel, create_model
-from typing import Any, Optional
-from nemo_oo_agents.unifiedllm.unifiedllm import _clean_schema, _strict_schema_valid, Tool
+
+from nemo_oo_agents.unifiedllm.unifiedllm import _clean_schema, _strict_schema_valid
 
 
 class TestStrictSchemaRequiredArray:
@@ -11,9 +11,10 @@ class TestStrictSchemaRequiredArray:
     def test_nested_object_with_optional_fields_forces_all_required(self):
         """Strict mode must force ALL properties into required, even if the
         original schema has optional fields (partial required array)."""
+
         class Inner(BaseModel):
             name: str
-            age: Optional[int] = None  # Optional — NOT in Pydantic's required
+            age: int | None = None  # Optional — NOT in Pydantic's required
 
         ReturnResult = create_model("ReturnResult", result=(Inner, ...))
         raw = ReturnResult.model_json_schema()

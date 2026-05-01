@@ -326,11 +326,20 @@ def _strip_schema_noise(schema: dict[str, Any], *, strict: bool = False) -> dict
     """
     STRIP_KEYS = frozenset({"title", "default"})
     # Strict mode only allows these keys (OpenAI spec)
-    STRICT_ALLOWED = frozenset({
-        "type", "description", "enum", "const", "properties",
-        "required", "items", "additionalProperties", "anyOf",
-        "oneOf",
-    })
+    STRICT_ALLOWED = frozenset(
+        {
+            "type",
+            "description",
+            "enum",
+            "const",
+            "properties",
+            "required",
+            "items",
+            "additionalProperties",
+            "anyOf",
+            "oneOf",
+        }
+    )
 
     def _strip(node):
         if not isinstance(node, dict):
@@ -386,6 +395,7 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
     and every object must have ``required`` listing ALL property keys.
     Returns False if any node violates these constraints.
     """
+
     def _check(node: dict[str, Any]) -> bool:
         if not isinstance(node, dict):
             return True
@@ -393,9 +403,12 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
         if "type" not in node and "anyOf" not in node and "oneOf" not in node:
             return False
         # Object nodes: required must list every property key
-        if node.get("type") == "object" and "properties" in node:
-            if set(node.get("required", [])) != set(node["properties"].keys()):
-                return False
+        if (
+            node.get("type") == "object"
+            and "properties" in node
+            and set(node.get("required", [])) != set(node["properties"].keys())
+        ):
+            return False
         for v in node.get("properties", {}).values():
             if isinstance(v, dict) and not _check(v):
                 return False
@@ -406,6 +419,7 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
                 if isinstance(item, dict) and not _check(item):
                     return False
         return True
+
     return _check(schema)
 
 
@@ -1852,9 +1866,7 @@ class ResponsesClient(UnifiedLLM):
             usage=usage,
         )
 
-    def _transform_messages(
-        self, messages: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], str | None]:
+    def _transform_messages(self, messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str | None]:
         """Transform messages to Responses API format and extract instructions.
 
         Handles two input formats:
