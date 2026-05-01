@@ -224,6 +224,8 @@ async def test_create_writes_pyproject_and_init(tmp_path: Path):
 
     init_py = (tmp_path / "mylib" / "__init__.py").read_text()
     assert DESCRIPTION in init_py
+    assert "from nemo_oo_agents.skill import Skill" in init_py
+    assert "class Mylib(Skill):" in init_py
 
 
 @pytest.mark.asyncio
