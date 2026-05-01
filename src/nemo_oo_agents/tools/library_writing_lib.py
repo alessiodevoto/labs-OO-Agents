@@ -169,7 +169,16 @@ class LibraryWriting(Skill):
             dependencies = []
         """)
         (lib_dir / "pyproject.toml").write_text(pyproject)
-        (lib_dir / "__init__.py").write_text(f'"""{description}"""\n')
+
+        # Scaffold a Skill subclass so doc(self.<lib>) shows methods.
+        class_name = "".join(w.capitalize() for w in lib_name.split("_"))
+        init_content = (
+            f'"""{description}"""\n'
+            f"from nemo_oo_agents.skill import Skill\n\n\n"
+            f"class {class_name}(Skill):\n"
+            f'    """{first_line}"""\n'
+        )
+        (lib_dir / "__init__.py").write_text(init_content)
 
         return f"Created library '{lib_name}' at {lib_dir}"
 
