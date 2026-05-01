@@ -3,7 +3,6 @@
 """LibraryManager — scan, load, and hot-reload persistent agent libraries."""
 
 import importlib
-import inspect
 import logging
 import sys
 from pathlib import Path
@@ -18,16 +17,20 @@ logger = logging.getLogger(__name__)
 class LibraryManager:
     """Scans a libs directory and attaches each Python package as an agent attribute.
 
-    Each subdirectory containing a pyproject.toml is imported and set as
-    ``agent.<lib_name>``. Libraries should export a ``Skill`` subclass in
-    their ``__init__.py`` — this gives the agent full method discovery via
-    ``doc(agent.<lib_name>)``.
+    Each subdirectory containing a pyproject.toml is imported and attached
+    as ``agent.<lib_name>`` (i.e. ``self.<lib_name>`` from the agent's
+    perspective). Libraries should export a ``Skill`` subclass in their
+    ``__init__.py`` — this gives the agent full method discovery via
+    ``doc(self.<lib_name>)``.
 
     Libraries that don't export a Skill get a ``Skill(module)`` fallback
     that exposes the module's docstring and attributes.
 
+    Library modules are NOT injected as globals — the agent accesses them
+    exclusively through ``self.<lib_name>``.
+
         mgr = LibraryManager.install(agent, libs_dir=Path("libs"))
-        # agent.stats, agent.utils, ... are now set
+        # agent.stats, agent.utils, ... are now set as self.stats, self.utils
 
         mgr.reload()              # reload every installed library
 
@@ -82,19 +85,13 @@ class LibraryManager:
         2. Look for a user-defined ``Skill`` export (instance or subclass).
         3. Fall back to ``Skill(module, name=lib_name)`` if none found.
 
-        The bare module is always set on the agent's module so
-        ``stats.percentile(...)`` works in exec_globals.
+        The Skill (or fallback wrapper) is set as ``agent.<lib_name>``
+        so the agent accesses it via ``self.<lib_name>``.
         """
         from nemo_oo_agents.skill import Skill
         from nemo_oo_agents.skill_manager import skill_from_module
 
         module = self._import_module(lib_dir)
-
-        # Make bare module name accessible in agent's exec namespace.
-        agent_module = inspect.getmodule(type(self._agent))
-        if agent_module is not None:
-            setattr(agent_module, lib_name, module)
-            logger.info("Library %s set on agent module", lib_name)
 
         # Prefer a user-defined Skill export.
         user_skill = skill_from_module(module, lib_name, source=f"Library {lib_name!r}")

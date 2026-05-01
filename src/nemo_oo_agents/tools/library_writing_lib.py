@@ -27,7 +27,7 @@ class LintReport:
     """Result of linting a library file.
 
     written: True if the file was written to disk.
-    loaded:  True if the library was (re-)loaded into exec_globals.
+    loaded:  True if the library was (re-)loaded on the agent.
     errors:  Hard errors — E001 (forbidden builtins), E003 (star imports).
     warnings: Soft issues — E002 (import not in agent's allowed set).
     """
@@ -70,9 +70,14 @@ class LibraryWriting(Skill):
 
     When the library manager finds a ``Skill`` subclass (or a module-level
     ``skill = SomeSkill(...)`` instance), it attaches that as
-    ``agent.<lib_name>``. Without one, the module itself is wrapped
+    ``self.<lib_name>``. Without one, the module itself is wrapped
     via ``Skill(module)`` — you get the module docstring and attributes
     but not method-level discovery.
+
+    After ``write_file()`` or ``edit_file()`` hot-reloads the library,
+    the updated Skill is available immediately on ``self``. Access all
+    library functionality through ``self.<lib_name>`` — libraries are
+    not available as bare names.
 
     Example ``__init__.py``::
 
@@ -87,9 +92,8 @@ class LibraryWriting(Skill):
             def search(self, pattern: str) -> list[str]:
                 ...
 
-        # Consumer now has both:
+        # Consumer uses the Skill API via self:
         self.multigrep.search("todo")   # Skill API, visible in doc(self)
-        multigrep.MultiGrep             # bare module still reachable
 
     ## Lifecycle
 
@@ -98,10 +102,10 @@ class LibraryWriting(Skill):
 
         # 2. Write code (any .py file name)
         await self.libs.write_file("stats", "stats.py", source)
-        # → lints, writes, hot-reloads; stats is now available for use, no need to import it again
+        # → lints, writes, hot-reloads; self.stats is now available for use
 
-        # 3. Use it directly
-        result = stats.percentile(my_data, 95)
+        # 3. Use it via self
+        result = self.stats.percentile(my_data, 95)
 
         # 4. Edit
         await self.libs.edit_file("stats", "stats.py", old_block, new_block)

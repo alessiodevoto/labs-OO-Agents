@@ -5,8 +5,7 @@
 When an agent writes a library whose top-level ``__init__.py`` exports a
 ``Skill`` (either as a module-level ``skill`` instance or a ``Skill``
 subclass), the library manager attaches *that instance* as
-``agent.<lib_name>``. The bare module stays accessible on the agent's
-module for normal imports.
+``agent.<lib_name>``.
 
 Tests cover the four shapes:
 
@@ -164,9 +163,8 @@ class NeedsArgs(Skill):
     assert type(attached).__name__ == "test_lib_needs_args"
 
 
-def test_bare_module_still_in_agent_module_namespace(libs_root):
-    """The bare module is always reachable on the agent's module, regardless of
-    whether the library exports a Skill or not."""
+def test_bare_module_not_injected_as_global(libs_root):
+    """Libraries are NOT set on the agent's module namespace — only on self."""
     _make_library(
         libs_root,
         "test_lib_bare",
@@ -184,9 +182,15 @@ def helper(): return "helper"
     agent = _make_agent()
     LibraryManager.install(agent, libs_dir=libs_root)
 
+    # Skill is attached as agent attribute
     assert type(agent.test_lib_bare).__name__ == "MySk"
 
+    # Bare module is importable via sys.modules but NOT on the agent's module
     import importlib
+    import inspect
+
+    agent_module = inspect.getmodule(type(agent))
+    assert not hasattr(agent_module, "test_lib_bare")
 
     mod = importlib.import_module("test_lib_bare")
     assert mod.helper() == "helper"
