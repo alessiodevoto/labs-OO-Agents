@@ -503,6 +503,9 @@ class ResponsesProviderFormatter(ProviderFormatter):
                 continue
 
             if msg.tool_call is not None:
+                # Preserve assistant text that precedes the tool call
+                if msg.content and msg.role == Role.ASSISTANT:
+                    out.append({"role": "assistant", "content": msg.content})
                 out.append(
                     {
                         "type": "function_call",
@@ -524,7 +527,12 @@ class ResponsesProviderFormatter(ProviderFormatter):
             elif msg.images:
                 role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
                 content_parts: list[dict] = [{"type": "input_text", "text": msg.content or ""}]
-                content_parts.extend(msg.images)
+                for img in msg.images:
+                    if img.get("type") == "image_url":
+                        # Responses API requires input_image, not image_url
+                        content_parts.append({"type": "input_image", "image_url": img["image_url"]})
+                    else:
+                        content_parts.append(img)
                 out.append({"role": role.value, "content": content_parts})
             else:
                 if msg.role in (Role.RUNTIME_EVENT, Role.METADATA):

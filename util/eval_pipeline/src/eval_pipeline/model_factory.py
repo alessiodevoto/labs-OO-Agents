@@ -22,7 +22,7 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
 
 # Load .env with override=True to ensure .env values take precedence
 # over any pre-existing shell environment variables
@@ -132,7 +132,7 @@ def list_models() -> list[str]:
     return list(data.get("models", {}).keys())
 
 
-def client(model_id: str, **kwargs) -> CompletionClient:
+def client(model_id: str, **kwargs) -> "CompletionClient | ResponsesClient":
     """Create a configured LLM client for a model ID.
 
     Tries models.yaml first, then falls back to the unifiedllm registry
@@ -223,14 +223,6 @@ def client(model_id: str, **kwargs) -> CompletionClient:
             retry_on_empty_content=retry_on_empty_content,
         )
 
-    # Check if registry indicates this should use ResponsesClient
-    from unifiedllm.registry import MODELS as _REG_MODELS
-
-    _reg_cfg = _REG_MODELS.get(model_id, {})
-    if _reg_cfg.get("client_type") == "responses":
-        from unifiedllm import ResponsesClient
-
-        return ResponsesClient(model=litellm_model, **config)
     return CompletionClient(model=litellm_model, **config)
 
 
