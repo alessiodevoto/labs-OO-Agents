@@ -23,6 +23,44 @@ class _AccessLogFilter(logging.Filter):
         return not any(p in msg for p in _SUPPRESSED_PATHS)
 
 
+def _find_pid_on_port(port: int) -> str | None:
+    """Return the PID of the process listening on *port*, or None."""
+    import shutil
+    import subprocess
+
+    # Try lsof first (macOS + most Linux)
+    if shutil.which("lsof"):
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-ti", f":{port}"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if out:
+                # May return multiple PIDs; take the first.
+                return out.splitlines()[0]
+        except subprocess.CalledProcessError:
+            pass
+
+    # Fallback: ss (Linux)
+    if shutil.which("ss"):
+        try:
+            out = subprocess.check_output(
+                ["ss", "-tlnp", f"sport = :{port}"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            import re
+
+            m = re.search(r"pid=(\d+)", out)
+            if m:
+                return m.group(1)
+        except subprocess.CalledProcessError:
+            pass
+
+    return None
+
+
 @click.command()
 @click.option("--port", "-p", type=int, default=5001, help="Port number (default: 5001).")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0).")
@@ -84,4 +122,21 @@ def command(port: int, host: str, db_path_opt: str | None):
     click.echo(f"  DB:   {db_path}")
     click.echo()
 
-    uvicorn.run(app, host=host, port=port, log_config=log_config)
+    try:
+        uvicorn.run(app, host=host, port=port, log_config=log_config)
+    except SystemExit:
+        raise
+    except OSError as exc:
+        import errno as _errno
+
+        if exc.errno == _errno.EADDRINUSE:
+            pid = _find_pid_on_port(port)
+            pid_suffix = f" by process {pid}" if pid else ""
+            click.secho(
+                f"[Errno 48] error while attempting to bind on address "
+                f"('{host}', {port}): address already in use{pid_suffix}",
+                fg="red",
+                err=True,
+            )
+            raise SystemExit(1) from None
+        raise
