@@ -132,7 +132,7 @@ def list_models() -> list[str]:
     return list(data.get("models", {}).keys())
 
 
-def client(model_id: str, **kwargs) -> "CompletionClient":
+def client(model_id: str, **kwargs) -> CompletionClient:
     """Create a configured LLM client for a model ID.
 
     Tries models.yaml first, then falls back to the unifiedllm registry
@@ -147,7 +147,9 @@ def client(model_id: str, **kwargs) -> "CompletionClient":
     """
     # Try unifiedllm registry first — it handles client_type dispatch
     try:
-        from unifiedllm.registry import MODELS as _REGISTRY, get_llm_client
+        from unifiedllm.registry import MODELS as _REGISTRY
+        from unifiedllm.registry import get_llm_client
+
         if model_id in _REGISTRY:
             return get_llm_client(model_id, **kwargs)
     except ImportError:
@@ -223,9 +225,11 @@ def client(model_id: str, **kwargs) -> "CompletionClient":
 
     # Check if registry indicates this should use ResponsesClient
     from unifiedllm.registry import MODELS as _REG_MODELS
+
     _reg_cfg = _REG_MODELS.get(model_id, {})
     if _reg_cfg.get("client_type") == "responses":
         from unifiedllm import ResponsesClient
+
         return ResponsesClient(model=litellm_model, **config)
     return CompletionClient(model=litellm_model, **config)
 
