@@ -2614,6 +2614,8 @@ class TestBashToolTimeoutKillException:
         # Create a mock process whose kill() raises
         mock_proc = MagicMock()
         mock_proc.kill.side_effect = OSError("cannot kill")
+        mock_proc.pid = 99999
+        mock_proc._transport = None
         mock_proc.wait = AsyncMock()
         mock_proc.communicate = AsyncMock()
 

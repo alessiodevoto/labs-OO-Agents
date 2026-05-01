@@ -195,9 +195,12 @@ class BashTool:
                 # held stderr open leaves the transport stuck forever.
                 transport = getattr(proc, "_transport", None)
                 if transport is not None:
-                    for proto in getattr(transport, "_pipes", {}).values():
-                        if proto.pipe is not None and not proto.pipe.is_closing():
-                            proto.pipe.close()
+                    try:
+                        for proto in getattr(transport, "_pipes", {}).values():
+                            if proto.pipe is not None and not proto.pipe.is_closing():
+                                proto.pipe.close()
+                    except Exception:
+                        pass
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=2.0)
                 except Exception:
