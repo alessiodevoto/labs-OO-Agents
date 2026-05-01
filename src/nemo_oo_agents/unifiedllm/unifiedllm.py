@@ -1625,7 +1625,6 @@ class ReasoningCompletionClient(CompletionClient):
 class ResponsesClient(UnifiedLLM):
     def _convert_tool_to_schema(self, tool: Tool) -> dict[str, Any]:
         """Convert Tool object to Responses API schema format."""
-        # Decide strict mode: strict when every property is required
         schema_loose = tool.get_parameter_schema()
         required = schema_loose.get("required", [])
         properties = schema_loose.get("properties", {})
@@ -1633,9 +1632,13 @@ class ResponsesClient(UnifiedLLM):
 
         if use_strict:
             schema = tool.get_parameter_schema(strict=True)
-            # Strict mode requires a "type" key on every property.
-            # Types like Any produce an empty schema which can't satisfy this.
             if not _strict_schema_valid(schema):
+                logger.warning(
+                    "[ResponsesClient] Tool '%s' has parameters that cannot satisfy "
+                    "strict-mode schema requirements (e.g. Any type, untyped properties). "
+                    "Falling back to non-strict mode.",
+                    tool.name,
+                )
                 schema = schema_loose
                 use_strict = False
         else:
@@ -1961,6 +1964,11 @@ class OpenAIResponseClient(UnifiedLLM):
         if use_strict:
             schema = tool.get_parameter_schema(strict=True)
             if not _strict_schema_valid(schema):
+                logger.warning(
+                    "[OpenAIResponseClient] Tool '%s' has parameters that cannot "
+                    "satisfy strict-mode schema requirements. Falling back to non-strict.",
+                    tool.name,
+                )
                 schema = schema_loose
                 use_strict = False
         else:
