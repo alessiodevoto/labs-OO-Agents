@@ -22,6 +22,11 @@ from .retry_config import RetryConfig
 
 logger = logging.getLogger(__name__)
 
+# Bedrock/Anthropic reject requests where messages contain tool_call blocks but
+# no tools= param is passed (e.g. PredictStrategy after a CodeAct turn).
+# This flag tells litellm to auto-insert a dummy tool instead of raising.
+litellm.modify_params = True
+
 # Optional integration with nemo_oo_agents debug handler for LLM call tracking
 # This allows the debug signal handler to show pending LLM calls
 try:
