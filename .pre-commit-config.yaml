@@ -14,17 +14,17 @@ repos:
         types: [jupyter]
 
       # Python linting with ruff (fast, replaces flake8/isort/etc)
-      # Uses .venv path so hooks work even without venv activated
+      # Uses `uv run` so hooks work regardless of venv name or activation
       # Staged-files pass: auto-fix and fast feedback during development
       - id: ruff
         name: ruff
-        entry: .venv/bin/ruff check --fix --exit-non-zero-on-fix
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
         language: system
         types_or: [python, jupyter]
 
       - id: ruff-format
         name: ruff-format
-        entry: .venv/bin/ruff format
+        entry: uv run ruff format
         language: system
         types_or: [python, jupyter]
 
@@ -33,7 +33,7 @@ repos:
       # have optional deps and loose typing that produce false positives.
       - id: pyright
         name: pyright
-        entry: .venv/bin/pyright
+        entry: uv run pyright
         language: system
         types_or: [python]
         files: ^(src|packages)/
@@ -42,7 +42,7 @@ repos:
       # Catches lint/format issues in the full project even if not in staged files.
       - id: ruff-check-all
         name: ruff-check-all
-        entry: .venv/bin/ruff check .
+        entry: uv run ruff check .
         language: system
         pass_filenames: false
         always_run: true
@@ -52,7 +52,7 @@ repos:
       # even if they weren't staged in the current commit.
       - id: ruff-format-check-all
         name: ruff-format-check-all
-        entry: .venv/bin/ruff format --check .
+        entry: uv run ruff format --check .
         language: system
         pass_filenames: false
         always_run: true
@@ -60,39 +60,39 @@ repos:
       # General file hygiene
       - id: trailing-whitespace
         name: trailing-whitespace
-        entry: .venv/bin/python scripts/hooks/trailing_whitespace.py
+        entry: uv run python scripts/hooks/trailing_whitespace.py
         language: system
         types: [text]
 
       - id: end-of-file-fixer
         name: end-of-file-fixer
-        entry: .venv/bin/python scripts/hooks/end_of_file_fixer.py
+        entry: uv run python scripts/hooks/end_of_file_fixer.py
         language: system
         types: [text]
         exclude: frontend-react/dist/
 
       - id: check-yaml
         name: check-yaml
-        entry: .venv/bin/python scripts/hooks/check_yaml.py
+        entry: uv run python scripts/hooks/check_yaml.py
         language: system
         types: [yaml]
 
       - id: check-added-large-files
         name: check-added-large-files
-        entry: .venv/bin/python scripts/hooks/check_large_files.py
+        entry: uv run python scripts/hooks/check_large_files.py
         language: system
         types: [file]
         exclude: uv\.lock$
 
       - id: check-merge-conflict
         name: check-merge-conflict
-        entry: .venv/bin/python scripts/hooks/check_merge_conflict.py
+        entry: uv run python scripts/hooks/check_merge_conflict.py
         language: system
         types: [text]
 
       - id: check-spdx
         name: check-spdx
-        entry: .venv/bin/python scripts/hooks/check_spdx.py
+        entry: uv run python scripts/hooks/check_spdx.py
         language: system
         types: [python]
         files: ^(src|packages)/

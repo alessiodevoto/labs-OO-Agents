@@ -1371,6 +1371,95 @@ class _UserSkill:
         return body
 
 
+# ---------------------------------------------------------------------------
+# Jobs command
+# ---------------------------------------------------------------------------
+
+
+class JobsCommand(Command):
+    """Show running/completed background job queues."""
+
+    @property
+    def name(self) -> str:
+        return "jobs"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/jobs": "Show background job queue status"}
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        qm = getattr(self.agent, "queue_manager", None)
+        if qm is None:
+            return CommandResult.err("No queue manager available.")
+
+        job_states = qm.jobs()
+        if not job_states:
+            return CommandResult.ok(TextOutput("No background jobs.", "info"))
+
+        rows: list[list[str]] = []
+        for channel_name, state in sorted(job_states.items()):
+            handle = qm.job(channel_name)
+            buf_count = str(len(handle.values)) if handle and handle.values else ""
+            rows.append([channel_name, state, buf_count])
+
+        return CommandResult.ok(
+            TableOutput(
+                title="Background Jobs",
+                columns=["Channel", "State", "Buffered"],
+                rows=rows,
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# Show last Python command
+# ---------------------------------------------------------------------------
+
+
+class ShowLastPythonCommand(Command):
+    """Show the code of the last execute_python block, syntax-highlighted."""
+
+    @property
+    def name(self) -> str:
+        return "show-last-python"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/show-last-python": "Show the last execute_python code block"}
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        # Walk events backwards to find the most recent ToolCallEvent for execute_python
+        em = getattr(self.agent, "event_manager", None)
+        if em is None:
+            return CommandResult.err("No event manager available.")
+
+        code = None
+        # Iterate active tags in reverse to find the last execute_python
+        tags = em.keys()
+        for tag in reversed(tags):
+            event = em[tag]
+            event_type = getattr(event, "event_type", type(event).__name__)
+            if event_type == "ToolCallEvent":
+                name = getattr(event, "name", "")
+                if name == "execute_python":
+                    arguments = getattr(event, "arguments", {})
+                    code = arguments.get("code", "") if isinstance(arguments, dict) else ""
+                    if code:
+                        break
+
+        if not code:
+            return CommandResult.err("No execute_python block found in history.")
+
+        from .output import AgentMessage
+
+        return CommandResult.ok(
+            AgentMessage(
+                content=f"```python\n{code.strip()}\n```",
+                show_rule=False,
+            )
+        )
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -1393,6 +1482,8 @@ class CommandRegistry:
         "sandbox": SandboxCommand,
         "python": PythonCommand,
         "session": SessionCommand,
+        "jobs": JobsCommand,
+        "show-last-python": ShowLastPythonCommand,
     }
 
     def __init__(
