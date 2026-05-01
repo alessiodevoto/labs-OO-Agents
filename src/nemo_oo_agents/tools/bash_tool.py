@@ -4,7 +4,9 @@
 import asyncio
 import difflib
 import logging
+import os
 import shlex
+import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -149,11 +151,17 @@ class BashTool:
 
         proc = None
         try:
+            # start_new_session puts the shell and all its children into a
+            # dedicated process group (PGID == shell PID).  On timeout we
+            # killpg the whole group instead of just the shell — otherwise
+            # pipeline children survive, keep pipe FDs open, and
+            # proc.wait() blocks forever.
             proc = await asyncio.create_subprocess_shell(
                 exec_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(cwd),
+                start_new_session=True,
             )
 
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -169,13 +177,34 @@ class BashTool:
             )
 
         except TimeoutError:
-            # Kill the process on timeout
-            try:
-                if proc is not None:
-                    proc.kill()
-                    await proc.wait()
-            except Exception:
-                pass
+            if proc is not None:
+                # Kill the entire process group so pipeline children die too.
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except OSError:
+                    # Fallback: start_new_session may not have taken.
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                # Close pipe transports so asyncio's subprocess transport
+                # sees all pipes disconnected and _try_finish() resolves
+                # the wait() future.  Without this, a killed child that
+                # held stderr open leaves the transport stuck forever.
+                transport = getattr(proc, "_transport", None)
+                if transport is not None:
+                    try:
+                        for proto in getattr(transport, "_pipes", {}).values():
+                            if proto.pipe is not None and not proto.pipe.is_closing():
+                                proto.pipe.close()
+                    except Exception:
+                        pass
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                except Exception:
+                    pass
 
             return BashResult(
                 stdout="",
