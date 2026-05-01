@@ -593,7 +593,7 @@ class QueueManager:
         Raises ``KeyError`` if *name* is not registered.
         """
         ch = self._channels.pop(name)  # KeyError if not found
-        ch.clear()
+        ch.flush()
         # Cancel handles targeting this channel. task.cancel() is sync
         # (it requests cancellation); the task will finish on its own.
         remaining: list[JobHandle] = []
@@ -816,7 +816,7 @@ class QueueManager:
     # ---- job registry ----------------------------------------------------
 
     def jobs(self) -> dict[str, JobState]:
-        """Return channel_name -> state for all tracked handles."""
+        """Return channel_name -> state for the most recent handle per channel."""
         return {h.name: h.state for h in self._handles}
 
     def job(self, name: str) -> JobHandle | None:
