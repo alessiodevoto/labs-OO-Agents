@@ -21,8 +21,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.runtime.channels import Channel, JobHandle, QueueManager
-
+from nemo_oo_agents.runtime.channels import Channel, QueueManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -306,7 +305,7 @@ class TestQueueManagerJob:
             await asyncio.sleep(100)
             return "second"
 
-        h1 = qm.spawn(producer1(), channel="data")
+        qm.spawn(producer1(), channel="data")
         await asyncio.sleep(0.01)  # let first complete
 
         h2 = qm.spawn(producer2(), channel="data")
@@ -426,4 +425,3 @@ class TestIntegrationSpawnFlushReplaceRespawn:
         assert h.state == "cancelled"
 
         await qm.shutdown()
-
