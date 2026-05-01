@@ -200,7 +200,7 @@ class BashTool:
                             proto.pipe.close()
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=2.0)
-                except (TimeoutError, Exception):
+                except Exception:
                     pass
 
             return BashResult(
