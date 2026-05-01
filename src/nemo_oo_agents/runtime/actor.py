@@ -172,9 +172,7 @@ def _schemas_for_budget(tools: list[Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _resolve_provider_formatter(
-    llm_client: Any, default_formatter: Any
-) -> Any:
+def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     """Auto-select provider formatter based on LLM client type.
 
     ResponsesClient needs ResponsesProviderFormatter to emit native Responses

@@ -482,6 +482,7 @@ class AnthropicProviderFormatter(ProviderFormatter):
 
         return {"system": "\n\n".join(system_parts), "messages": out}
 
+
 class ResponsesProviderFormatter(ProviderFormatter):
     """Emit OpenAI Responses API native format (``list[dict]``).
 
