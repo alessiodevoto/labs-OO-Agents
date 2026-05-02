@@ -1777,25 +1777,27 @@ Standard Python builtins and agent instance (`self`) are available."""
         1. InspectInputsPrefill: Auto-generated code to inspect input parameters
         2. Pre-ellipsis code: User-defined setup code before the `...` marker
         """
-        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
 
         prefill_builtins = {**builtins, "_call": call}
 
-        # 1. InspectInputsPrefill (auto-generated parameter inspection)
-        # Shows raw inputs first, before any user processing
-        prefill = InspectInputsPrefill()
-        truncation_config = self._get_truncation_config(runtime)
-        inspect_code = prefill.get_code(call, config=truncation_config)
+        # 1. Prefill plugin (parameter inspection by default).
+        # ``CodeActConfig.prefill`` controls this: default is
+        # ``InspectInputsPrefill()``, ``None`` disables, custom Prefill
+        # replaces. See ``strategies.prefill.Prefill`` protocol.
+        prefill = self.config.prefill
+        if prefill is not None:
+            truncation_config = self._get_truncation_config(runtime)
+            inspect_code = prefill.get_code(call, config=truncation_config)
 
-        if inspect_code:
-            await self._execute_prefill_step(
-                runtime,
-                inspect_code,
-                prefill_builtins,
-                session,
-                call.method_name,
-                prefill_type="inspect_inputs",
-            )
+            if inspect_code:
+                await self._execute_prefill_step(
+                    runtime,
+                    inspect_code,
+                    prefill_builtins,
+                    session,
+                    call.method_name,
+                    prefill_type="inspect_inputs",
+                )
 
         # 2. Pre-ellipsis code (user-defined setup before ...)
         # Runs as separate execution - LLM sees variables persist from step 1

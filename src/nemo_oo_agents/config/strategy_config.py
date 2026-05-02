@@ -2,15 +2,33 @@
 # SPDX-License-Identifier: Apache-2.0
 """Strategy configuration for CodeAct, Predict, and Reflexion strategies."""
 
-from pydantic import BaseModel, ConfigDict
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.strategies.prefill import Prefill  # noqa: F401
+
+
+def _default_prefill() -> Any:
+    """Lazy default-factory for ``CodeActConfig.prefill``.
+
+    Imports inside the function so we avoid the
+    ``config -> strategies.prefill -> strategies.__init__ -> config`` cycle.
+    """
+    from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
+
+    return InspectInputsPrefill()
 
 
 class CodeActConfig(BaseModel):
     """Config for CodeActStrategy."""
 
-    model_config = ConfigDict(frozen=True)
+    # ``arbitrary_types_allowed`` lets us put a ``Prefill`` protocol instance
+    # in the config (Pydantic doesn't validate protocols natively).
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     max_iterations: int | None = None
     max_retries: int = 3
@@ -21,6 +39,35 @@ class CodeActConfig(BaseModel):
     max_tool_calls: int | None = None
     translate_tool_calls: bool = False
     restrictions: RestrictionsConfig = RestrictionsConfig()
+    # Prefill plugin to run before the main generation loop.
+    #
+    #   * Default — ``InspectInputsPrefill()`` auto-renders every parameter via
+    #     ``pformat`` (the slice-keys / items markers from truncation 3.0).
+    #   * ``None`` — disable prefill entirely. Pre-ellipsis code (statements
+    #     between the docstring and the ``...`` marker) still runs regardless.
+    #   * Custom ``Prefill`` instance — full control over turn-1 setup. The
+    #     ``Prefill`` protocol is a single method::
+    #
+    #         def get_code(self, call, config=None) -> str | None: ...
+    #
+    #     Returning a Python source string runs it as a synthetic prefill step
+    #     in the REPL session; returning ``None`` skips that step.
+    #
+    # To override the *strategy prompt* (the "## Strategy" instruction block),
+    # use the existing ``@strategy(..., context=ScopedContext(...))`` decorator
+    # API — the decorator-context phase runs after strategy overrides and wins:
+    #
+    #     @strategy(
+    #         CodeActStrategy(),
+    #         ScopedContext(context={"strategy_prompt": "Custom instructions."}),
+    #     )
+    #     async def my_method(self, ...): ...
+    # Typed as ``Any`` to sidestep Pydantic's forward-reference resolution for
+    # the ``Prefill`` protocol (which lives in ``strategies.prefill`` and would
+    # create an import cycle if eagerly resolved here). The runtime contract
+    # is ``Prefill | None`` — a duck-typed object with a ``get_code`` method
+    # or ``None`` to disable.
+    prefill: Any = Field(default_factory=_default_prefill)
 
     def merge_with(self, other: "CodeActConfig") -> "CodeActConfig":
         if not other.model_fields_set:
