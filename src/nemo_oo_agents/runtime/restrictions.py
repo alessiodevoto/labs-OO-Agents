@@ -40,11 +40,41 @@ DEFAULT_BLOCKED_CALLS: dict[str, frozenset[str]] = {
     "threading": frozenset({"Thread.join", "Lock.acquire", "Event.wait", "Condition.wait"}),
     "multiprocessing": frozenset({"Process.join", "Queue.get", "Queue.put"}),
     "asyncio": frozenset({"run", "run_coroutine_threadsafe", "run_until_complete", "run_forever"}),
+    "importlib": frozenset({"import_module"}),
 }
+
+
+# Tier 2: restricted — denied at AST import validation but not stripped from namespace.
+# Small default set of modules with dangerous side effects or security implications.
+# Developers can override: RestrictionsConfig(restricted_imports=frozenset()) for fully open,
+# or RestrictionsConfig(restricted_imports=RESTRICTED_MODULES) for strict lockdown.
+DEFAULT_RESTRICTED_IMPORTS: frozenset[str] = frozenset(
+    {
+        "os",
+        "shutil",
+        "pathlib",
+        "sys",
+        "ctypes",
+        "importlib",
+    }
+)
 
 
 class RestrictionsConfig(BaseModel):
     """Reusable config for code execution restrictions.
+
+    Three-tier module restriction model:
+
+    Tier 1 — **blocked** (hard block):
+        Stripped from exec_globals AND blocked at AST import validation.
+        Event-loop hazards: subprocess, socket, etc.
+
+    Tier 2 — **restricted** (soft block):
+        Blocked at AST import validation only.
+        Modules with side effects that shouldn't be casually imported.
+
+    Tier 3 — **allowed** (everything else):
+        Any installed module can be imported freely.
 
     Keeps defaults co-located with the constants they reference.
     Embed in strategy configs (e.g. CodeActConfig) for composition.
@@ -54,6 +84,7 @@ class RestrictionsConfig(BaseModel):
 
     blocked_modules: frozenset[str] = DEFAULT_BLOCKED_MODULES
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
+    restricted_imports: frozenset[str] = DEFAULT_RESTRICTED_IMPORTS
 
 
 def match_blocked_module(

@@ -95,6 +95,8 @@ class ValidationContext:
     execution_count: int = 1
     agent: Any = None  # Agent instance for method introspection
     exec_globals: dict[str, Any] = field(default_factory=dict)
+    restricted_imports: frozenset[str] = field(default_factory=frozenset)
+    blocked_modules: frozenset[str] = field(default_factory=frozenset)
     # Return type of the currently executing generation method, when known.
     # Drives ReturnTypeShadowValidator: if the generated code redefines a class
     # whose name is part of this annotation, the resulting __repl_wrapper__-scoped
@@ -177,6 +179,8 @@ class _SecurityVisitor(ast.NodeVisitor):
         self.issues: list[ValidationIssue] = []
         # Track aliases: local_name -> original_forbidden_name
         self.forbidden_aliases: dict[str, str] = {}
+        # Set by _is_module_available to differentiate tier-1 vs tier-2 denials
+        self._last_deny_tier: str | None = None
 
     def visit_Import(self, node: ast.Import) -> Any:
         """Check import statements."""
@@ -324,18 +328,23 @@ class _SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _is_module_available(self, module_name: str) -> bool:
-        """Check if module (or parent) is importable."""
-        modules = self.context.importable_modules
-        if not modules:
-            # Fallback to available_names for backwards compat
-            modules = self.context.available_names
+        """Check if module is importable under the deny-list model.
 
-        # Exact match
-        if module_name in modules:
-            return True
-        # Top-level package match (e.g., "asyncio" for "asyncio.tasks")
-        top_level = module_name.split(".")[0]
-        return top_level in modules
+        A module is denied if it matches either blocked_modules (tier 1)
+        or restricted_imports (tier 2). Everything else is allowed.
+        """
+        # Tier 1: always deny blocked modules (event-loop hazards)
+        if self.context.blocked_modules:
+            if match_blocked_module(module_name, self.context.blocked_modules) is not None:
+                self._last_deny_tier = "blocked"
+                return False
+        # Tier 2: deny restricted imports
+        if self.context.restricted_imports:
+            if match_blocked_module(module_name, self.context.restricted_imports) is not None:
+                self._last_deny_tier = "restricted"
+                return False
+        self._last_deny_tier = None
+        return True
 
     def _check_attr_modification_with_dunder(self, node: ast.Call, func_name: str) -> None:
         """Check if setattr/delattr is being used with dunder attribute names."""
@@ -373,22 +382,20 @@ class _SecurityVisitor(ast.NodeVisitor):
     def _make_import_error(
         self, node: ast.Import | ast.ImportFrom, module_name: str
     ) -> ValidationIssue:
-        """Create error for forbidden import."""
-        msg = (
-            f"import of '{module_name}' is forbidden. "
-            f"All imports are pre-loaded — use what's in scope. "
-            f"Also forbidden: eval(), exec(), compile(), __import__(), "
-            f"input(), globals(), locals(), breakpoint()"
-        )
-        if self.context.available_names:
-            useful = sorted(
-                n
-                for n in self.context.available_names
-                if not n.startswith("_") and (n[0].isupper() or n.islower())
+        """Create error for restricted or blocked import."""
+        tier = self._last_deny_tier or "restricted"
+        if tier == "blocked":
+            msg = (
+                f"import of '{module_name}' is blocked. "
+                f"This module can freeze the event loop and is not allowed in agent code."
             )
-            if useful:
-                hint = ", ".join(useful)
-                msg += f". Available in scope: {hint}"
+        else:
+            msg = (
+                f"import of '{module_name}' is restricted. "
+                f"This module is in the restricted_imports deny list. "
+                f"Also forbidden: eval(), exec(), compile(), __import__(), "
+                f"input(), globals(), locals(), breakpoint()"
+            )
         return ValidationIssue(
             line=node.lineno,
             col=node.col_offset,

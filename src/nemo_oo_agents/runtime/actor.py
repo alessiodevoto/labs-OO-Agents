@@ -1030,6 +1030,8 @@ class ActorRuntime:
                             agent_class=type(self.agent),
                             available_names=set(exec_globals.keys()),
                             importable_modules=importable_modules,
+                            restricted_imports=effective_restrictions.restricted_imports,
+                            blocked_modules=effective_restrictions.blocked_modules,
                             forbidden_self_calls=forbidden_self_calls,
                             execution_count=execution_count,
                             agent=self.agent,

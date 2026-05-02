@@ -354,11 +354,18 @@ class LibraryWriting(Skill):
 
         importable = self._importable_modules() | declared_deps
 
+        from nemo_oo_agents.runtime.restrictions import (
+            DEFAULT_BLOCKED_MODULES,
+            DEFAULT_RESTRICTED_IMPORTS,
+        )
+
         context = ValidationContext(
             code=source,
             agent_class=type(self._agent),
             available_names=set(),
             importable_modules=importable,
+            restricted_imports=DEFAULT_RESTRICTED_IMPORTS,
+            blocked_modules=DEFAULT_BLOCKED_MODULES,
         )
 
         issues = SecurityValidator().validate(tree, context)
