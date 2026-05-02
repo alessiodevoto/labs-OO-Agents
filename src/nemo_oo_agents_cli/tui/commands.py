@@ -1418,6 +1418,9 @@ class JobsCommand(Command):
             "/jobs <name>": "Show buffered output and queue status for a job",
         }
 
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        return True, None
+
     async def execute(self, args: list[str]) -> "CommandResult":
         qm = getattr(self.agent, "queue_manager", None)
         if qm is None:
