@@ -1467,7 +1467,7 @@ class JobsCommand(Command):
             lines = "\n".join(str(v) for v in shown)
             header = f"Delivered ({total} items)"
             if total > 20:
-                header += f" — showing last 20"
+                header += " — showing last 20"
             outputs.append(TextOutput(f"{header}:\n{lines}", "info"))
         else:
             outputs.append(TextOutput("Delivered: none yet", "info"))
