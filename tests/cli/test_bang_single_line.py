@@ -2,12 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Test for issue #156: single-line !command output persists in TUI."""
 
-import asyncio
-
 import pytest
 
 from .tui_app_harness import TUIHarness
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,25 +36,30 @@ async def test_render_bash_single_line_emits_one_block():
 
     class _TrackingStream:
         """Mimics _EmitStream but tracks flushes."""
+
         def __init__(self):
             self._buf: list[str] = []
+
         def write(self, text):
             if text:
                 self._buf.append(text)
             return len(text)
+
         def flush(self):
             if self._buf:
                 chunk = "".join(self._buf)
                 self._buf.clear()
                 emitted.append(chunk)
+
         def isatty(self):
             return True
+
+    from rich.console import Console
 
     from nemo_oo_agents_cli.tui.config import Config
     from nemo_oo_agents_cli.tui.frontend import TerminalFrontend
     from nemo_oo_agents_cli.tui.output import BashOutput
     from nemo_oo_agents_cli.tui.theme import CATPPUCCIN_THEME
-    from rich.console import Console
 
     # Build a TerminalFrontend with our tracking stream
     config = Config()
@@ -88,7 +90,4 @@ async def test_render_bash_single_line_emits_one_block():
         f"got {len(emitted)}: {emitted!r}"
     )
     # The single emit should end with a newline
-    assert emitted[0].endswith("\n"), (
-        f"Emitted block should end with newline, got: {emitted[0]!r}"
-    )
-
+    assert emitted[0].endswith("\n"), f"Emitted block should end with newline, got: {emitted[0]!r}"
