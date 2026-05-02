@@ -832,8 +832,8 @@ class QueueManager:
         if h is None:
             return False
         await h.cancel()
-        # Flush pending items so stale values don't get delivered after cancellation.
+        # Flush pending items and cancel waiting consumers.
         ch = self._channels.get(name)
-        if ch is not None and hasattr(ch, '_items'):
-            ch._items.clear()
+        if ch is not None:
+            ch.flush()
         return True
