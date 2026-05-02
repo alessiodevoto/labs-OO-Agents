@@ -1457,11 +1457,16 @@ class JobsCommand(Command):
         # Job state
         outputs.append(TextOutput(f"Job '{name}': {handle.state}", "info"))
 
-        # Delivered values (ring-buffer history)
+        # Delivered values (ring-buffer history, last 20 shown)
         values = handle.values
         if values:
-            lines = "\n".join(str(v) for v in values)
-            outputs.append(TextOutput(f"Delivered ({len(values)} items):\n{lines}", "info"))
+            total = len(values)
+            shown = values[-20:]
+            lines = "\n".join(str(v) for v in shown)
+            header = f"Delivered ({total} items)"
+            if total > 20:
+                header += f" — showing last 20"
+            outputs.append(TextOutput(f"{header}:\n{lines}", "info"))
         else:
             outputs.append(TextOutput("Delivered: none yet", "info"))
 
