@@ -241,7 +241,7 @@ class Completer:
 
     def _job_name_completions(self, text: str) -> list[CompletionItem]:
         prefix = "/jobs "
-        partial = text[len(prefix):].lower()
+        partial = text[len(prefix) :].lower()
         agent = getattr(self._registry, "agent", None)
         qm = getattr(agent, "queue_manager", None) if agent else None
         if qm is None:
