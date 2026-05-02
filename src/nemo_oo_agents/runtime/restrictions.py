@@ -9,7 +9,46 @@ Consumed by CodeActConfig (defaults), exec_globals stripping, and BlockingCallVa
 import types
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
+
+# Process-global override for restricted_imports.
+# When set (not None), RestrictionsConfig() uses this instead of its field default.
+_global_restricted_imports: frozenset[str] | None = None
+
+
+def set_restricted_imports(modules: frozenset[str] | None) -> None:
+    """Set the process-global import restriction list.
+
+    This overrides the default ``restricted_imports`` on every
+    ``RestrictionsConfig()`` constructed after this call.
+
+    Args:
+        modules: frozenset of module names to deny, or None to clear
+                 the override (revert to RestrictionsConfig field default).
+
+    Example::
+
+        from nemo_oo_agents.runtime.restrictions import (
+            set_restricted_imports, DEFAULT_RESTRICTED_IMPORTS,
+        )
+
+        # Deny a small set of dangerous modules
+        set_restricted_imports(DEFAULT_RESTRICTED_IMPORTS)
+
+        # Allow everything
+        set_restricted_imports(frozenset())
+
+        # Clear override (use RestrictionsConfig field default)
+        set_restricted_imports(None)
+    """
+    global _global_restricted_imports
+    _global_restricted_imports = modules
+
+
+def get_restricted_imports() -> frozenset[str] | None:
+    """Return the process-global restricted_imports override, or None if unset."""
+    return _global_restricted_imports
+
 
 # Fully blocked — stripped from exec_globals, block the event loop.
 # These modules have no legitimate async use in CodeAct.
@@ -85,6 +124,16 @@ class RestrictionsConfig(BaseModel):
     blocked_modules: frozenset[str] = DEFAULT_BLOCKED_MODULES
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
     restricted_imports: frozenset[str] = frozenset()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_global_restricted_imports(cls, data: Any) -> Any:
+        """Apply process-global restricted_imports if not explicitly set."""
+        if isinstance(data, dict) and "restricted_imports" not in data:
+            override = _global_restricted_imports
+            if override is not None:
+                data["restricted_imports"] = override
+        return data
 
 
 def match_blocked_module(

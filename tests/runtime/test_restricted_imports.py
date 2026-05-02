@@ -203,3 +203,92 @@ class TestValidationContextRestrictedImports:
         """restricted_imports can be set explicitly."""
         ctx = ValidationContext(restricted_imports=frozenset({"os", "sys"}))
         assert ctx.restricted_imports == frozenset({"os", "sys"})
+
+
+class TestProcessGlobalRestrictedImports:
+    """Tests for set_restricted_imports / get_restricted_imports process-global API."""
+
+    def setup_method(self):
+        """Clear global override before each test."""
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(None)
+
+    def teardown_method(self):
+        """Clear global override after each test."""
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(None)
+
+    def test_default_is_none(self):
+        from nemo_oo_agents.runtime.restrictions import get_restricted_imports
+
+        assert get_restricted_imports() is None
+
+    def test_set_and_get(self):
+        from nemo_oo_agents.runtime.restrictions import (
+            get_restricted_imports,
+            set_restricted_imports,
+        )
+
+        deny = frozenset({"os", "sys"})
+        set_restricted_imports(deny)
+        assert get_restricted_imports() == deny
+
+    def test_clear_with_none(self):
+        from nemo_oo_agents.runtime.restrictions import (
+            get_restricted_imports,
+            set_restricted_imports,
+        )
+
+        set_restricted_imports(frozenset({"os"}))
+        set_restricted_imports(None)
+        assert get_restricted_imports() is None
+
+    def test_global_overrides_config_default(self):
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(frozenset({"numpy", "pandas"}))
+        rc = RestrictionsConfig()
+        assert rc.restricted_imports == frozenset({"numpy", "pandas"})
+
+    def test_explicit_config_overrides_global(self):
+        """If restricted_imports is explicitly passed, global is ignored."""
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(frozenset({"numpy"}))
+        rc = RestrictionsConfig(restricted_imports=frozenset({"os"}))
+        assert rc.restricted_imports == frozenset({"os"})
+
+    def test_global_empty_frozenset_overrides_default(self):
+        """Setting frozenset() globally should override field default."""
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(frozenset())
+        rc = RestrictionsConfig()
+        assert rc.restricted_imports == frozenset()
+
+    def test_no_global_uses_field_default(self):
+        """Without global override, field default is used."""
+        rc = RestrictionsConfig()
+        assert rc.restricted_imports == frozenset()
+
+    def test_global_affects_validation(self):
+        """Process-global restricted_imports flows through to SecurityValidator."""
+        from nemo_oo_agents.runtime.restrictions import set_restricted_imports
+
+        set_restricted_imports(frozenset({"pandas"}))
+        rc = RestrictionsConfig()
+
+        context = ValidationContext(
+            code="",
+            restricted_imports=rc.restricted_imports,
+        )
+        validator = UnifiedCodeValidator()
+
+        # pandas should be restricted
+        with pytest.raises(ValidationError):
+            validator.validate("import pandas", context)
+
+        # json should be allowed
+        validator.validate("import json", context)
