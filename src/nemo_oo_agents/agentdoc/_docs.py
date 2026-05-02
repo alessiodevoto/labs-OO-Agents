@@ -142,6 +142,16 @@ class Spec:
             bool | None, "If False, collapse sub-type to a one-liner in doc()"
         ] = None,
         concise: Annotated[bool | None, "If True, show one-line docstring only in doc()"] = None,
+        max_length: Annotated[
+            int | None,
+            "Override max items per container in pformat — useful as Annotated parameter override (e.g. Annotated[list, spec(max_length=20)])",
+        ] = None,
+        max_string: Annotated[
+            int | None, "Override max characters per string in pformat for this annotation"
+        ] = None,
+        max_depth: Annotated[
+            int | None, "Override max nesting depth in pformat for this annotation"
+        ] = None,
     ) -> SpecAnnotation | None:
         """Specify documentation metadata — step 1.
 
@@ -193,6 +203,12 @@ class Spec:
             kwargs["expand"] = expand
         if concise is not None:
             kwargs["concise"] = concise
+        if max_length is not None:
+            kwargs["max_length"] = max_length
+        if max_string is not None:
+            kwargs["max_string"] = max_string
+        if max_depth is not None:
+            kwargs["max_depth"] = max_depth
 
         if target is _SENTINEL:
             return SpecAnnotation(**kwargs)

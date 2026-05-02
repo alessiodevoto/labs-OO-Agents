@@ -90,6 +90,24 @@ The wrapper is a *truncation marker* — its presence unambiguously signals elis
 
 **Why lower for unordered:** dict and set don't have meaningful positional slices, and `lower` is valid Python (`dict(len=N, items={...})` parses). Same outer wrapper as `slice_keys`, so the model only learns one shape.
 
+## Per-parameter overrides
+
+The framework's defaults (`max_length`, `max_string`, `max_depth` from the agent's `TruncationConfig`) cover the common case, but specific parameters sometimes need different bounds — a long config string the model should see in full, a numpy array the agent wants rendered with more items, a deep nested config that needs `max_depth` raised. Rather than give every type its own special handling, agents annotate the parameter:
+
+```python
+async def analyze(
+    self,
+    config: Annotated[str, spec(max_string=10000)],   # show full config
+    data:   Annotated[np.ndarray, spec(max_length=20)],  # 20 items not 10
+    deep:   Annotated[Config, spec(max_depth=8)],      # don't shallow-render
+    plain:  list,                                      # uses agent default
+) -> ...:
+```
+
+`Spec.__call__` accepts `max_length` / `max_string` / `max_depth` (in addition to the existing `hidden` / `description` / `expand` / `concise`); `CurrentCall.from_method` extracts them from each parameter's `Annotated` metadata; `format_parameters_as_code` builds a per-parameter formatter that honors the overrides and falls back to the agent-level config for everything else.
+
+This is the answer for non-native types (numpy / pandas / custom): if the default repr isn't right, the agent author uses an Annotated override. The framework doesn't ship type-specific extractors for third-party libraries.
+
 ## Bounds
 
 With `max_length` (= H + T), `max_string`, and `max_depth` all set, the renderer guarantees a polynomial bound on render size: **O((H+T)^max_depth × max_string)**. For typical (10, 100, 4) ≈ 1 MB upper bound for arbitrary Python values, including cyclic graphs (`<cycle>`) and generators (`<generator>`). For a hard byte ceiling (e.g., 16 KB per block), compose the renderer with the existing `TruncatingStringIO`.

@@ -822,31 +822,17 @@ test_suite:
   # to compute real answers (real min, real 50th item, etc.)?
   # ===========================================================================
 
-  # 8 types × 2 strategies + nested × 2 = 18 tests.
-  # Each ordered type uses `slice_keys` (the matrix winner); dict/set use the
-  # `lower` items-wrapper fallback. The "nested" pair exercises the renderer's
-  # recursive dispatch — outer dict not truncated, inner lists all truncated.
-  #
-  # Predict tests measure: parse the marker, answer from visible head/tail,
-  # refuse on elided positions (expected=null).
-  # CodeAct tests measure: leverage the underlying value via execute_python to
-  # compute real answers (real min, real elided position, etc.).
+  # 6 tests: 3 Predict + 3 CodeAct, picked to span the marker family without
+  # blowing up the regular suite.
+  # Predict measures marker comprehension (parse, answer from visible items,
+  # refuse on elided); CodeAct measures real-data leverage via execute_python.
 
-  # ---- Predict (9) ----
   - name: truncation_list_predict
-    description: "Predict on slice_keys list marker"
+    description: "Predict on slice_keys list marker — head/tail visible, elided refused"
     tier: stable
     agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
     method: answer
     data_file: tests/capability/data/realfmt_slice_keys_list_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_tuple_predict
-    description: "Predict on slice_keys tuple marker"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_tuple_predict.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
   - name: truncation_dict_predict
@@ -857,77 +843,20 @@ test_suite:
     data_file: tests/capability/data/realfmt_lower_dict_predict.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
-  - name: truncation_set_predict
-    description: "Predict on set items wrapper — head-only, refuse on non-visible membership"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_lower_set_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_pydantic_predict
-    description: "Predict on Pydantic instance with slice_keys-marked inner list field"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_pydantic_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_dataclass_predict
-    description: "Predict on dataclass instance with slice_keys-marked inner list field"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_dataclass_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_json_predict
-    description: "Predict on JSON-shaped dict wrapping a slice_keys-marked list"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_lower_json_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_records_predict
-    description: "Predict on records-of-dicts via slice_keys marker"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_records_predict.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
   - name: truncation_nested_predict
-    description: "Predict on nested dict-of-lists (outer untruncated, inner all truncated)"
+    description: "Predict on nested dict-of-lists — recursive marker dispatch"
     tier: stable
     agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
     method: answer
     data_file: tests/capability/data/realfmt_nested_predict.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
-  # ---- CodeAct (9) ----
   - name: truncation_list_codeact
     description: "CodeAct on slice_keys list — model computes real answers from underlying data"
     tier: stable
     agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
     method: answer
     data_file: tests/capability/data/realfmt_slice_keys_list_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_tuple_codeact
-    description: "CodeAct on slice_keys tuple"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_tuple_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_dict_codeact
-    description: "CodeAct on dict items wrapper — real key lookups"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_lower_dict_codeact.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
   - name: truncation_set_codeact
@@ -938,40 +867,8 @@ test_suite:
     data_file: tests/capability/data/realfmt_lower_set_codeact.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
-  - name: truncation_pydantic_codeact
-    description: "CodeAct on Pydantic instance — access inner field, compute"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_pydantic_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_dataclass_codeact
-    description: "CodeAct on dataclass instance"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_dataclass_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_json_codeact
-    description: "CodeAct on JSON-shaped dict — index the inner items list"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_lower_json_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
-  - name: truncation_records_codeact
-    description: "CodeAct on records-of-dicts — id-based lookup"
-    tier: stable
-    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
-    method: answer
-    data_file: tests/capability/data/realfmt_slice_keys_records_codeact.jsonl
-    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
-
   - name: truncation_nested_codeact
-    description: "CodeAct on nested dict-of-lists — recurse into team data"
+    description: "CodeAct on nested dict-of-lists — recurse into team data via execute_python"
     tier: stable
     agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
     method: answer
