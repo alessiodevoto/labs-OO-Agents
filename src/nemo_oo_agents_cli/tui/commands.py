@@ -1414,8 +1414,7 @@ class JobsCommand(Command):
     @classmethod
     def help_text(cls) -> dict[str, str]:
         return {
-            "/jobs": "List all background jobs",
-            "/jobs <name>": "Show buffered output and queue status for a job",
+            "/jobs [name]": "List background jobs, or inspect one by name",
         }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
@@ -1436,13 +1435,13 @@ class JobsCommand(Command):
         rows: list[list[str]] = []
         for channel_name, state in sorted(job_states.items()):
             handle = qm.job(channel_name)
-            buf_count = str(len(handle.values)) if handle and handle.values else ""
-            rows.append([channel_name, state, buf_count])
+            delivered = str(len(handle.values)) if handle and handle.values else ""
+            rows.append([channel_name, state, delivered])
 
         return CommandResult.ok(
             TableOutput(
                 title="Background Jobs",
-                columns=["Channel", "State", "Buffered"],
+                columns=["Channel", "State", "Delivered"],
                 rows=rows,
             )
         )
@@ -1458,13 +1457,13 @@ class JobsCommand(Command):
         # Job state
         outputs.append(TextOutput(f"Job '{name}': {handle.state}", "info"))
 
-        # Buffered values
+        # Delivered values (ring-buffer history)
         values = handle.values
         if values:
-            buf_text = f"\n".join(str(v) for v in values)
-            outputs.append(TextOutput(f"Buffer ({len(values)} items):\n{buf_text}", "info"))
+            lines = "\n".join(str(v) for v in values)
+            outputs.append(TextOutput(f"Delivered ({len(values)} items):\n{lines}", "info"))
         else:
-            outputs.append(TextOutput("Buffer: empty", "info"))
+            outputs.append(TextOutput("Delivered: none yet", "info"))
 
         # Queue status
         ch = qm._channels.get(name)

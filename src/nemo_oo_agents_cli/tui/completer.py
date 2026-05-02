@@ -253,7 +253,7 @@ class Completer:
             if partial and not name.lower().startswith(partial):
                 continue
             handle = qm.job(name)
-            buf = f" ({len(handle.values)} buffered)" if handle and handle.values else ""
+            buf = f" ({len(handle.values)} delivered)" if handle and handle.values else ""
             items.append(
                 CompletionItem(
                     text=prefix + name,
