@@ -19,10 +19,7 @@ if TYPE_CHECKING:
 
 
 # Built-in ! commands
-_BANG_BUILTINS: dict[str, str] = {
-    "!ipython": "Open embedded IPython shell with agent in scope",
-    "!bash": "Open an interactive bash shell",
-}
+_BANG_BUILTINS: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
