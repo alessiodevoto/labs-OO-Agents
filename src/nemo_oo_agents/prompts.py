@@ -115,6 +115,17 @@ async def _build_prompt_data_from_agent(
     strategy = getattr(wrapper, "_plan_strategy", None) or get_default_strategy()
     call = CurrentCall.from_method(original_func, args=args, kwargs=kwargs)
 
+    # Pre-expand docstring with call arguments (mirrors actor.py behavior).
+    # Without this, {param} placeholders in the user's docstring remain literal
+    # when embedded via {original_call.docstring} in the strategy template.
+    if call.docstring and call.kwargs:
+        import dataclasses
+
+        expanded_doc = await agent.runtime.expand_variables(
+            call.docstring, extra_context=call.kwargs, error_mode="silent"
+        )
+        call = dataclasses.replace(call, docstring=expanded_doc)
+
     # _build_messages falls back to _current_strategy_var when the method
     # has no explicit _plan_strategy (i.e. uses the default strategy).
     token = _current_strategy_var.set(strategy)
