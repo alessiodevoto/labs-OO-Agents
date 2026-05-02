@@ -1405,7 +1405,7 @@ class _UserSkill:
 
 
 class JobsCommand(Command):
-    """Show running/completed background job queues."""
+    """Show background jobs, or inspect one by name."""
 
     @property
     def name(self) -> str:
@@ -1413,12 +1413,18 @@ class JobsCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/jobs": "Show background job queue status"}
+        return {
+            "/jobs": "List all background jobs",
+            "/jobs <name>": "Show buffered output and queue status for a job",
+        }
 
     async def execute(self, args: list[str]) -> "CommandResult":
         qm = getattr(self.agent, "queue_manager", None)
         if qm is None:
             return CommandResult.err("No queue manager available.")
+
+        if args:
+            return self._detail(qm, args[0])
 
         job_states = qm.jobs()
         if not job_states:
@@ -1437,6 +1443,33 @@ class JobsCommand(Command):
                 rows=rows,
             )
         )
+
+    @staticmethod
+    def _detail(qm, name: str) -> "CommandResult":
+        handle = qm.job(name)
+        if handle is None:
+            return CommandResult.err(f"No job named '{name}'.")
+
+        outputs: list[Output] = []
+
+        # Job state
+        outputs.append(TextOutput(f"Job '{name}': {handle.state}", "info"))
+
+        # Buffered values
+        values = handle.values
+        if values:
+            buf_text = f"\n".join(str(v) for v in values)
+            outputs.append(TextOutput(f"Buffer ({len(values)} items):\n{buf_text}", "info"))
+        else:
+            outputs.append(TextOutput("Buffer: empty", "info"))
+
+        # Queue status
+        ch = qm._channels.get(name)
+        if ch is not None:
+            pending = ch.qsize() if hasattr(ch, "qsize") else 0
+            outputs.append(TextOutput(f"Queue pending: {pending}", "info"))
+
+        return CommandResult.ok(*outputs)
 
 
 # ---------------------------------------------------------------------------
