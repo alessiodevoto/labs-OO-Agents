@@ -278,9 +278,17 @@ class FileTool:
                 text=True,
                 timeout=2,
             )
-            return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            if result.returncode == 0:
+                return True
+            logger.warning(
+                "ripgrep (rg) exited with code %d; falling back to find/grep", result.returncode
+            )
+            return False
+        except FileNotFoundError:
             logger.warning("ripgrep (rg) not found; falling back to find/grep")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.warning("ripgrep (rg) timed out; falling back to find/grep")
             return False
 
     async def read(
@@ -587,7 +595,19 @@ class FileTool:
                 f"{shlex.quote(pattern)} {shlex.quote(path)}"
             )
         else:
-            cmd = f"grep -rn {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
+            # Exclude common junk directories to approximate rg's gitignore behavior
+            excludes = " ".join(
+                f"--exclude-dir={d}"
+                for d in (
+                    ".git",
+                    ".venv",
+                    "node_modules",
+                    "__pycache__",
+                    ".ruff_cache",
+                    ".pytest_cache",
+                )
+            )
+            cmd = f"grep -rn {excludes} {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
         result = await self.bash.run(cmd)
         # rg exits 1 when nothing matches — not an error for this API.
         return_code = (
