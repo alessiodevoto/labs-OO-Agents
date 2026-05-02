@@ -152,6 +152,8 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     import sys
     import typing as _typing
 
+    from prompt_toolkit.application import run_in_terminal
+
     from .output import TextOutput
 
     # Web frontends don't have a terminal — bail out early rather than hang
@@ -252,35 +254,24 @@ async def _handle_python_shell(agent: "Agent", frontend: "Frontend") -> None:
     )
 
     def _embed() -> None:
-        IPython.embed(
-            user_ns=ns,
-            banner1=banner,
-            banner2="",
-            exit_msg="\x1b[2mReturning to TUI...\x1b[0m\n",
-            colors="neutral",
-        )
+        # Restore real terminal streams so IPython's stdout isn't
+        # captured by _StrayStreamForwarder (whose emit_block path
+        # is blocked while run_in_terminal holds the lock).
+        saved_out, saved_err = sys.stdout, sys.stderr
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        try:
+            IPython.embed(
+                user_ns=ns,
+                banner1=banner,
+                banner2="",
+                exit_msg="\x1b[2mReturning to TUI...\x1b[0m\n",
+                colors="neutral",
+            )
+        finally:
+            sys.stdout, sys.stderr = saved_out, saved_err
 
-    await loop.run_in_executor(None, _embed)
-
-
-async def _handle_bash_shell(frontend: "Frontend") -> None:
-    """Drop into an interactive bash shell, then return to the TUI."""
-    import subprocess
-    import sys
-
-    from .output import TextOutput
-
-    if not sys.stdin.isatty():
-        await frontend.render(TextOutput("!bash requires an interactive terminal.", "warning"))
-        return
-
-    await frontend.stop_thinking()
-    await frontend.render(TextOutput("Entering bash. Type 'exit' to return.", "info"))
-
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, lambda: subprocess.run(["/bin/bash"]))
-
-    await frontend.render(TextOutput("Returned to TUI.", "info"))
+    await run_in_terminal(_embed, in_executor=True)
 
 
 # ---------------------------------------------------------------------------
@@ -836,17 +827,7 @@ class Session:
         if not cmd:
             return
 
-        # !ipython → embedded IPython shell
-        if cmd == "ipython":
-            await _handle_python_shell(self.agent, self.frontend)
-            return
-
-        # !bash → interactive bash shell
-        if cmd == "bash":
-            await _handle_bash_shell(self.frontend)
-            return
-
-        # Other !commands → run through bash (not recorded as conversation turns)
+        # !commands → run through bash (not recorded as conversation turns)
         if not hasattr(self.agent, "bash"):
             await self.frontend.render(
                 TextOutput(

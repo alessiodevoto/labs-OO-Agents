@@ -1169,6 +1169,36 @@ class EditCommand(Command):
         return CommandResult.ok(*outputs)
 
 
+
+
+# ---------------------------------------------------------------------------
+# IPython command
+# ---------------------------------------------------------------------------
+
+
+class IPythonCommand(Command):
+    """Drop into an embedded IPython shell with the agent in scope."""
+
+    @property
+    def name(self) -> str:
+        return "ipython"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/ipython": "Drop into IPython with agent in scope \u2014 Ctrl+D to return",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        from .session import _handle_python_shell
+
+        await _handle_python_shell(self.agent, self.frontend)
+        return CommandResult.ok(TextOutput("Returned to TUI.", "info"))
+
+
 # Session management command
 # ---------------------------------------------------------------------------
 
@@ -1471,6 +1501,7 @@ class CommandRegistry:
         "compact": CompactCommand,
         "context": ContextCommand,
         "edit": EditCommand,
+        "ipython": IPythonCommand,
         "model": ModelCommand,
         "models": ModelsCommand,
         "switch": SwitchCommand,

@@ -290,6 +290,8 @@ class TerminalFrontend:
         import tempfile
         from pathlib import Path
 
+        from prompt_toolkit.application import run_in_terminal
+
         suffix = Path(filename).suffix or ".txt"
         editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
 
@@ -298,8 +300,7 @@ class TerminalFrontend:
             os.close(tmp_fd)
             Path(tmp_path).write_text(content)
             self._console.stop_spinner()
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: subprocess.run([editor, tmp_path]))
+            await run_in_terminal(lambda: subprocess.run([editor, tmp_path]), in_executor=True)
             return Path(tmp_path).read_text(errors="replace")
         except Exception:
             return None
@@ -411,7 +412,7 @@ class TerminalFrontend:
             "commands",
             f"[{sapphire}]/help[/][{overlay}] for all  ·  [/][{sapphire}]/exit[/][{overlay}] to quit[/]",
         )
-        table.add_row("!python", f"[{overlay}]drop into IPython with agent in scope[/]")
+        table.add_row("!cmd", f"[{overlay}]run a bash command (e.g. !ls -la)[/]")
 
         self._console.console.print(table)
         self._console.console.print()
