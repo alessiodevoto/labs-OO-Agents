@@ -1435,13 +1435,15 @@ class JobsCommand(Command):
         rows: list[list[str]] = []
         for channel_name, state in sorted(job_states.items()):
             handle = qm.job(channel_name)
-            delivered = str(len(handle.values)) if handle and handle.values else ""
-            rows.append([channel_name, state, delivered])
+            delivered = str(len(handle.values)) if handle and handle.values else "0"
+            ch = qm._channels.get(channel_name)
+            queued = str(ch.qsize()) if ch and hasattr(ch, "qsize") else "0"
+            rows.append([channel_name, state, delivered, queued])
 
         return CommandResult.ok(
             TableOutput(
                 title="Background Jobs",
-                columns=["Channel", "State", "Delivered"],
+                columns=["Channel", "State", "Delivered", "Queued"],
                 rows=rows,
             )
         )
