@@ -24,15 +24,11 @@ from nemo_oo_agents.runtime.restrictions import (
 class TestRestrictedImportsConfig:
     """Tests for the new restricted_imports field on RestrictionsConfig."""
 
-    def test_default_restricted_imports_is_small_set(self):
-        """Default restricted_imports should be a small frozenset with dangerous modules."""
-        from nemo_oo_agents.runtime.restrictions import DEFAULT_RESTRICTED_IMPORTS
-
+    def test_default_restricted_imports_is_empty(self):
+        """Default restricted_imports should be empty (all imports allowed)."""
         rc = RestrictionsConfig()
-        assert rc.restricted_imports == DEFAULT_RESTRICTED_IMPORTS
+        assert rc.restricted_imports == frozenset()
         assert isinstance(rc.restricted_imports, frozenset)
-        # Should include os at minimum
-        assert "os" in rc.restricted_imports
 
     def test_default_restricted_imports_includes_key_modules(self):
         """DEFAULT_RESTRICTED_IMPORTS should include os, shutil, pathlib, sys, ctypes, importlib."""
@@ -150,16 +146,15 @@ class TestSecurityValidatorRestrictedImports:
         with pytest.raises(ValidationError):
             validator.validate(code, context)
 
-    def test_default_config_restricts_os(self, validator):
-        """With default RestrictionsConfig, 'os' should be restricted."""
+    def test_default_config_allows_os(self, validator):
+        """With default RestrictionsConfig (empty deny list), 'os' is allowed."""
         rc = RestrictionsConfig()
         context = ValidationContext(
             code="",
             restricted_imports=rc.restricted_imports,
         )
         code = "import os"
-        with pytest.raises(ValidationError):
-            validator.validate(code, context)
+        validator.validate(code, context)  # should not raise
 
     def test_default_config_allows_json(self, validator):
         """With default RestrictionsConfig, 'json' should be allowed."""

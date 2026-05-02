@@ -45,9 +45,9 @@ DEFAULT_BLOCKED_CALLS: dict[str, frozenset[str]] = {
 
 
 # Tier 2: restricted — denied at AST import validation but not stripped from namespace.
-# Small default set of modules with dangerous side effects or security implications.
-# Developers can override: RestrictionsConfig(restricted_imports=frozenset()) for fully open,
-# or RestrictionsConfig(restricted_imports=RESTRICTED_MODULES) for strict lockdown.
+# Empty by default (all imports allowed in sandboxed environments).
+# Developers can set DEFAULT_RESTRICTED_IMPORTS for a small deny list,
+# or RESTRICTED_MODULES for strict lockdown.
 DEFAULT_RESTRICTED_IMPORTS: frozenset[str] = frozenset(
     {
         "os",
@@ -84,7 +84,7 @@ class RestrictionsConfig(BaseModel):
 
     blocked_modules: frozenset[str] = DEFAULT_BLOCKED_MODULES
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
-    restricted_imports: frozenset[str] = DEFAULT_RESTRICTED_IMPORTS
+    restricted_imports: frozenset[str] = frozenset()
 
 
 def match_blocked_module(
