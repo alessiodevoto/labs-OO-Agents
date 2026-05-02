@@ -1,10 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test for issue #156: single-line !command output persists in TUI."""
 
 import asyncio
 
 import pytest
 
-from .tui_app_harness import FakeAgent, TUIHarness
+from .tui_app_harness import TUIHarness
 
 
 pytestmark = pytest.mark.asyncio
@@ -20,11 +22,9 @@ async def test_single_line_bang_output_persists_in_output_buffer():
     async with TUIHarness() as h:
         # Push a single-line block directly through emit_block
         h.app.emit_block("/Volumes/dev\n")
-        await asyncio.sleep(0.05)
-        output = h.capture_output()
-        assert "/Volumes/dev" in output, (
-            f"Single-line output should persist in output buffer, got: {output!r}"
-        )
+        # emit_block on-thread path updates output_buffer synchronously,
+        # but yield to let any queued callbacks run.
+        await h.wait_output_contains("/Volumes/dev")
 
 
 async def test_render_bash_single_line_emits_one_block():
@@ -56,8 +56,8 @@ async def test_render_bash_single_line_emits_one_block():
     from nemo_oo_agents_cli.tui.config import Config
     from nemo_oo_agents_cli.tui.frontend import TerminalFrontend
     from nemo_oo_agents_cli.tui.output import BashOutput
-    from rich.console import Console
     from nemo_oo_agents_cli.tui.theme import CATPPUCCIN_THEME
+    from rich.console import Console
 
     # Build a TerminalFrontend with our tracking stream
     config = Config()
