@@ -72,7 +72,14 @@ plus_n  : set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104, ...+95
 list(len=100, [:5]=[42, 17, 89, 33, 8], [-5:]=[56, 71, 12, 45, 28])
 dict(len=100, items={0: 42, 1: 17, ..., 95: 56, ..., 99: 28})
 set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104, ...})
+str(len=789516, [:250]='Lorem ipsum dolor...', [-250:]='...end of string')
 ```
+
+Strings use the same slice-keys family as lists/tuples — the matrix's
+string-shape comparison (truncation_str_v* fixtures) found the
+`str(len=N, [:H]='...', [-T:]='...')` shape ~25-30 pp ahead of the legacy
+`'foo'+N` form on string-comprehension questions, consistent with the
+container-shape result. One coherent marker family across all types.
 
 ## Recommendation
 

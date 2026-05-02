@@ -33,12 +33,14 @@ class TestPformat:
         assert "'b': 2" in result
 
     def test_string_truncation(self):
-        """Long strings should be truncated with max_string."""
+        """Long strings use the truncation 3.0 marker: str(len=N, [:H]=..., [-T:]=...)."""
         long_string = "x" * 1000
         result = _pformat(long_string, max_string=50)
 
-        assert "+950" in result  # Should show remaining chars
-        assert len(result) < 100  # Should be much shorter than original
+        assert result.startswith("str(len=1000,")  # marker carries exact length
+        assert "[:25]=" in result  # head slice
+        assert "[-25:]=" in result  # tail slice
+        assert len(result) < 200  # Bounded by max_string + marker overhead
 
     def test_list_truncation(self):
         """Long lists are wrapped in the truncation 3.0 slice-keys marker."""
@@ -179,7 +181,7 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "+950" in output  # Should show remaining chars
+        assert "str(len=1000," in output  # truncation 3.0 string marker
 
     def test_pprint_with_max_depth(self):
         """pprint() should respect max_depth."""

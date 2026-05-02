@@ -1293,30 +1293,39 @@ def _format_value_to_str(
 def _format_string(s: str, max_string: int | None) -> str:
     """Format a string, potentially truncating.
 
-    Automatically uses triple-quoted multiline format for complex strings:
-    - Contains newlines
-    - Contains both single and double quotes (would require escaping)
+    Untruncated strings render with the usual repr (or triple-quote multiline
+    form when the content has newlines or mixed quote types).
+
+    Truncated strings use the truncation 3.0 slice-keys marker — same shape
+    as ordered containers — so the count is upfront and head/tail chunks are
+    explicitly anchored to their character positions::
+
+        str(len=789516, [:250]='Lorem ipsum...', [-250:]='...end of string')
+
+    The matrix data (truncation_str_v* fixtures) showed the slice-keys form
+    beats the legacy ``'foo'+N`` shape by ~25-30 pp on string-comprehension
+    questions across the 13-model matrix; this is the same family the rest of
+    the renderer uses.
     """
-    # Apply truncation first if needed
-    truncated = False
-    remaining = 0
-    if max_string is not None and len(s) > max_string:
-        remaining = len(s) - max_string
-        s = s[:max_string]
-        truncated = True
+    needs_multiline = "\n" in s or ("'" in s and '"' in s)
 
-    # Detect if string is "complex" and needs triple-quote multiline format
-    has_newlines = "\n" in s
-    has_single_quotes = "'" in s
-    has_double_quotes = '"' in s
-    needs_multiline = has_newlines or (has_single_quotes and has_double_quotes)
+    # Untruncated → plain repr or triple-quote multiline.
+    if max_string is None or len(s) <= max_string:
+        return _format_multiline_string(s) if needs_multiline else repr(s)
 
-    result = _format_multiline_string(s) if needs_multiline else repr(s)
+    # Truncated → slice-keys marker. Split max_string evenly: ceiling head,
+    # floor tail. Falls back to head-only when max_string < 2.
+    n = len(s)
+    n_head = (max_string + 1) // 2
+    n_tail = max_string - n_head
+    head = s[:n_head]
+    tail = s[-n_tail:] if n_tail > 0 else ""
 
-    if truncated:
-        result = f"{result}+{remaining}"
-
-    return result
+    head_repr = repr(head)
+    if n_tail > 0:
+        tail_repr = repr(tail)
+        return f"str(len={n}, [:{n_head}]={head_repr}, [-{n_tail}:]={tail_repr})"
+    return f"str(len={n}, [:{n_head}]={head_repr})"
 
 
 def _format_multiline_string(s: str) -> str:

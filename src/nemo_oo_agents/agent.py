@@ -416,12 +416,13 @@ class Agent(metaclass=AgentMeta):
 {self.render_config.block_formatter.format_description()}
 
 ## Truncation
-- A bare Python literal (`[1, 2, 3]`, `{{1: 2}}`) is always complete.
+- A bare Python literal (`[1, 2, 3]`, `{{1: 2}}`, `'hello'`) is always complete.
 - Truncated values use a `type(len=N, ...)` marker:
     list(len=100, [:5]=[...], [-5:]=[...])
     tuple(len=100, [:5]=(...), [-5:]=(...))
     dict(len=100, items={{...}})
     set(len=100, items={{...}})
+    str(len=100000, [:250]='...', [-250:]='...')
 - The variable itself is **not** truncated — index/iterate it directly to operate on the full data.
 - `<truncated>...</truncated>` in captured stdout/stderr is **not recoverable**.
 """

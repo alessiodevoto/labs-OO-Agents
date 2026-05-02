@@ -84,15 +84,17 @@ class TestFormatParametersAsCodeUsesOverride:
         assert "plain = list(len=100, [:5]=[0, 1, 2, 3, 4], [-5:]=[95, 96, 97, 98, 99])" in out
 
     def test_max_string_override(self):
+        """Per-param max_string override produces a tighter str(len=N, ...) marker
+        than the agent-level default. Both params truncate but at different
+        widths — the marker's `[:H]=...` slice key reflects each param's H."""
         long = "x" * 1000
         call = _call(_StringDemo.render, {"short_str": long, "plain": long})
         out = call.format_parameters_as_code(tc=_tc(max_string=200))
 
-        # short_str truncates at 20 chars; plain truncates at 200
-        # rich-style 'foo'+N — short shows "xxxxxxxxxxxxxxxxxxxx"+980, plain shows
-        # 200 x's then the +N marker.
-        assert "+980" in out  # short_str
-        assert "+800" in out  # plain
+        # short_str: max_string=20 → [:10]/[-10]
+        assert "short_str = str(len=1000, [:10]=" in out
+        # plain: tc default max_string=200 → [:100]/[-100]
+        assert "plain = str(len=1000, [:100]=" in out
 
     def test_explicit_value_formatter_still_wins(self):
         # When the caller passes an explicit value_formatter, per-param specs

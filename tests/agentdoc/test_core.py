@@ -352,8 +352,8 @@ class TestConfig:
         config = DocConfig(max_value_chars=20)
         result = variables(obj, config=config)
 
-        # Should truncate long string (Rich-style: 'truncated'+N)
-        assert "'+" in result
+        # Truncated → str(len=N, [:H]='...', [-T:]='...') marker
+        assert "str(len=100," in result
 
     def test_config_hidden_prefixes(self):
         """Test config hides attributes with specific prefixes."""
@@ -706,8 +706,8 @@ class TestLargeValueTruncation:
 
         # Result should be small (under 1KB)
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
-        # Rich-style truncation: 'truncated'+N
-        assert "'+" in result  # Should show truncation with count
+        # Truncation 3.0 string marker: str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=100000," in result
 
     def test_huge_list_is_truncated(self):
         """Test that huge lists don't blow up context."""
@@ -811,12 +811,12 @@ class TestLargeValueTruncation:
         config_large = DocConfig(max_value_chars=1000)
         result_large = variables(obj, config=config_large)
 
-        # Small config should truncate (Rich-style: 'truncated'+N)
-        assert "'+" in result_small
+        # Small config should truncate → str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=" in result_small
         # Large config should not truncate (500 < 1000):
         # ensure some of the value is present and no truncation marker is used.
         assert "yyy" in result_large
-        assert "'+" not in result_large
+        assert "str(len=" not in result_large
 
     def test_doc_on_huge_builtin_with_max_length(self):
         """doc() on raw containers respects explicit max_length, shows head+tail."""
@@ -871,9 +871,8 @@ class TestDocTruncationHeader:
         # With new design: doc(instance) shows type, pformat(instance) shows values
         result = pformat(obj, max_string=500)
 
-        # Truncation marker should appear in the value (inline, not as header)
-        # Format is like: long_string='xxx...'+N
-        assert "'+" in result or "..." in result  # Truncation indicator
+        # Truncation marker should appear inline: str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=1000," in result
 
     def test_no_truncation_marker_when_no_truncation(self):
         """Truncation marker should NOT appear when value fits."""
@@ -886,7 +885,7 @@ class TestDocTruncationHeader:
         result = doc(obj)
 
         # No truncation marker should be present
-        assert "'+" not in result
+        assert "str(len=" not in result
 
 
 class TestPformatMatchesRich:
@@ -896,29 +895,24 @@ class TestPformatMatchesRich:
         not pytest.importorskip("rich", reason="rich not installed"),
         reason="rich not installed",
     )
-    def test_string_truncation_matches_rich(self):
-        """String truncation format should match Rich pprint."""
-        import sys
-        from io import StringIO
+    def test_string_truncation_uses_truncation_3_marker(self):
+        """String truncation uses the truncation 3.0 slice-keys marker.
 
-        from rich.pretty import pprint
-
+        We deliberately diverge from Rich's ``'foo'+N`` legacy form here —
+        the matrix data showed the slice-keys form (head + tail with the
+        total length up front) is ~25-30 pp easier for LLMs to read.
+        """
         from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = "x" * 100
-        max_string = 10
+        our_output = _pformat(data, max_string=10)
 
-        # Get Rich pprint output (capture stdout)
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        pprint(data, max_string=max_string)
-        rich_output = sys.stdout.getvalue().strip()
-        sys.stdout = old_stdout
-
-        # Get our output
-        our_output = _pformat(data, max_string=max_string)
-
-        assert our_output == rich_output, f"Mismatch:\nRich: {rich_output!r}\nOurs: {our_output!r}"
+        # str(len=100, [:5]='xxxxx', [-5:]='xxxxx')
+        assert our_output.startswith("str(len=100,")
+        assert "[:5]=" in our_output
+        assert "[-5:]=" in our_output
+        # Old "'foo'+N" form should NOT appear.
+        assert "'+" not in our_output
 
     @pytest.mark.skipif(
         not pytest.importorskip("rich", reason="rich not installed"),
@@ -1094,9 +1088,9 @@ class TestFormatValueFullVsSummary:
 
         # Full should be longer (shows more content)
         assert len(full) > len(summary)
-        # Both should have truncation marker
-        assert "+" in summary  # truncated at 50
-        assert "+" in full  # truncated at 500
+        # Both should carry the truncation 3.0 string marker
+        assert "str(len=1000," in summary  # truncated at 50
+        assert "str(len=1000," in full  # truncated at 500
 
     def test_full_shows_more_list_items(self):
         """format_value_full should show more list items, both use head+tail."""
