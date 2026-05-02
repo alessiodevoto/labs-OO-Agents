@@ -37,6 +37,43 @@
 
 **Per-model tiers** (combined): top — gemini-3.1-pro-preview, claude-sonnet, gemini-3-flash-preview (98–99%); strong — claude-haiku, gemini-2.5-pro, nemotron-3-super-v3, qwen3.5-35b (91–94%); mid — gpt-5-mini, gpt-5.2, nemotron3-nano-30b (79–83%); lagging — qwen3-80b, nemotron-super-49b, gemini-2.5-flash-lite (67–70%).
 
+## Inner-marker ablation (sets and dicts)
+
+For unordered types we picked the `items={...}` wrapper from the main matrix, but the *internal* shape of the items chunk wasn't measured — the choice was between a bare list of visible items, an internal `...` marker, or rich-style `...+N`. We ran a small targeted ablation (3 shapes × {dict, set} × Predict × 13 models, 546 samples, no system-prompt coaching, neutral "Answer None if you don't know" nudge) to settle it.
+
+**Results (91 samples per cell):**
+
+| | bare | dots | plus_n |
+|---|---|---|---|
+| **dict** | 85% | **90%** | **90%** |
+| **set**  | 64% | **76%** | 70% |
+
+Where the shapes are:
+
+```
+bare    : dict(len=100, items={0:42, 1:17, ..., 99:28})  ← no internal marker
+dots    : dict(len=100, items={0:42, 1:17, ..., 95:56, ..., 99:28})
+plus_n  : dict(len=100, items={0:42, 1:17, ..., 95:56, ...+90, 99:28})
+
+bare    : set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104})
+dots    : set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104, ...})
+plus_n  : set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104, ...+95})
+```
+
+(For dict, `bare` omits the head/tail separator entirely; for set, `bare` is just the head with no trailing marker.)
+
+**The inner marker is mandatory.** On the question "How many keys/elements total?", `bare` scores 77% while `dots` and `plus_n` both hit 100% — without an inner cue, models read the visible items *as* the full set. The outside `len=N` alone isn't enough.
+
+**`dots` beats `plus_n` overall** (76% vs 70% on set, tied on dict). `plus_n` wins one question (`min` on dict, where the explicit count makes the model more cautious about refusing, +23 pp), but loses or ties everywhere else. `dots` is also simpler — no extra arithmetic to render or explain.
+
+**Verdict**: keep `...` for the inner marker. Final shape stays:
+
+```
+list(len=100, [:5]=[42, 17, 89, 33, 8], [-5:]=[56, 71, 12, 45, 28])
+dict(len=100, items={0: 42, 1: 17, ..., 95: 56, ..., 99: 28})
+set(len=100, items={42, 17, 89, 33, 8, 100, 101, 102, 103, 104, ...})
+```
+
 ## Recommendation
 
 A two-state design:

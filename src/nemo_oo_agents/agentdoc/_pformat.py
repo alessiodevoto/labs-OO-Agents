@@ -1620,7 +1620,11 @@ def _format_sequence(
             else:
                 trial = f"{type_name}(len={n_total}, [:{n_head}]={head_str})"
         else:
-            items_str = brackets[0] + ", ".join(_fmt_to_str(x, 0) for x in head_items) + brackets[1]
+            # Unordered: include an internal "..." after the visible items so
+            # the partial-ness is obvious from inside the braces. The exact
+            # count is already in len=N; a bare "..." is the visual cue.
+            inner = ", ".join(_fmt_to_str(x, 0) for x in head_items) + ", ..."
+            items_str = brackets[0] + inner + brackets[1]
             trial = f"{type_name}(len={n_total}, items={items_str})"
         if len(trial) < 120:
             _stream.write(trial)
@@ -1677,6 +1681,8 @@ def _format_sequence(
                 indent=indent + 1,
             )
             _stream.write(",\n")
+        # Internal "..." marker — partial-ness obvious from inside the braces too.
+        _stream.write(f"{inner_indent}...\n")
         _stream.write("    " * indent + brackets[1] + ")")
 
 

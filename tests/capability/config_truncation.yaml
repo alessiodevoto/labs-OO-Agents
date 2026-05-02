@@ -2611,3 +2611,49 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 31: Inner-marker ablation for unordered types (dict, set) ----
+  # 3 shapes × 2 types × Predict only (CodeAct ceiling on these). Question:
+  # is `...` enough as the inner truncation cue, or do we need `+N`?
+  - name: ablation_lower_bare_dict_predict
+    description: "dict items with no inner marker"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_bare_dict_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+  - name: ablation_lower_dots_dict_predict
+    description: "dict items with internal '...' marker"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dots_dict_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+  - name: ablation_lower_plus_n_dict_predict
+    description: "dict items with internal '...+N' marker"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_plus_n_dict_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+  - name: ablation_lower_bare_set_predict
+    description: "set items with no inner marker"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_bare_set_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+  - name: ablation_lower_dots_set_predict
+    description: "set items with trailing '...'"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dots_set_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+  - name: ablation_lower_plus_n_set_predict
+    description: "set items with trailing '...+N'"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict_no_prompt, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_plus_n_set_predict.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]

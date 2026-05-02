@@ -195,11 +195,76 @@ def render_slice_keys(data: Any, type_tag: str, *, head: int = 5, tail: int = 5)
     return inner
 
 
+def _render_lower_unordered(
+    data: Any, type_tag: str, *, head: int = 5, tail: int = 5, inner_marker: str
+) -> str:
+    """Targeted-ablation renderer for unordered types (dict, set).
+
+    ``inner_marker`` controls the ellipsis between head and tail items
+    (or after the head for sets):
+
+      * "bare"   — no inner marker. ``items={a, b, c, d, e, f, g, h, i, j}``
+      * "dots"   — bare ellipsis. ``items={a, b, c, d, e, ..., g, h, i, j}``
+      * "plus_n" — rich-style elided count. ``items={a, ..., e, ...+90, ...}``
+
+    For ordered types we just delegate to the canonical ``render_lower`` —
+    this ablation is only about the inner-marker question for sets/dicts.
+    """
+    if type_tag not in ("dict", "set"):
+        return render_lower(data, type_tag, head=head, tail=tail)
+
+    items = _items_strs(data, type_tag)
+    n = _length(data, type_tag)
+    open_b, close_b = _container_open_close(type_tag)
+    py_name = _container_python_name(type_tag)
+
+    if n <= head + tail:
+        body = ", ".join(items)
+    else:
+        elided = n - head - tail if type_tag == "dict" else n - head
+        if type_tag == "dict":
+            head_part = ", ".join(items[:head])
+            tail_part = ", ".join(items[-tail:])
+            sep = {
+                "bare": ", ",
+                "dots": ", ..., ",
+                "plus_n": f", ...+{elided}, ",
+            }[inner_marker]
+            body = head_part + sep + tail_part
+        else:
+            # set: head-only (no stable order → no positional tail).
+            head_part = ", ".join(items[: head + tail])
+            suffix = {
+                "bare": "",
+                "dots": ", ...",
+                "plus_n": f", ...+{elided}",
+            }[inner_marker]
+            body = head_part + suffix
+
+    return f"{py_name}(len={n}, items={open_b}{body}{close_b})"
+
+
+def render_lower_bare(data: Any, type_tag: str, *, head: int = 5, tail: int = 5) -> str:
+    return _render_lower_unordered(data, type_tag, head=head, tail=tail, inner_marker="bare")
+
+
+def render_lower_dots(data: Any, type_tag: str, *, head: int = 5, tail: int = 5) -> str:
+    return _render_lower_unordered(data, type_tag, head=head, tail=tail, inner_marker="dots")
+
+
+def render_lower_plus_n(data: Any, type_tag: str, *, head: int = 5, tail: int = 5) -> str:
+    return _render_lower_unordered(data, type_tag, head=head, tail=tail, inner_marker="plus_n")
+
+
 RENDERERS = {
     "today_verbose": render_today_verbose,
     "xml": render_xml,
     "lower": render_lower,
     "slice_keys": render_slice_keys,
+    # Inner-marker ablation for unordered types (dict, set).
+    "lower_bare": render_lower_bare,
+    "lower_dots": render_lower_dots,
+    "lower_plus_n": render_lower_plus_n,
 }
 
 
@@ -221,6 +286,13 @@ class Wrapped:
         self._fmt = fmt
 
     def __repr__(self) -> str:
+        # "nested" delegates to the framework's pformat — the renderer family
+        # (slice-keys / items wrapper) applies recursively per container level
+        # via the framework's existing dispatch, so we just let it run.
+        if self._type_tag == "nested":
+            from nemo_oo_agents.agentdoc import pformat
+
+            return pformat(self._data, max_length=10, max_string=200, max_depth=4)
         return render(self._data, self._type_tag, self._fmt)
 
     # Container pass-throughs so CodeAct's natural code works on the underlying value.
