@@ -135,8 +135,8 @@ def list_models() -> list[str]:
 def client(model_id: str, **kwargs) -> CompletionClient | ResponsesClient:
     """Create a configured LLM client for a model ID.
 
-    Tries models.yaml first, then falls back to the unifiedllm registry
-    (which supports client_type dispatch for Responses API models).
+    Tries the unifiedllm registry first (which supports client_type dispatch
+    for Responses API models), then falls back to models.yaml.
 
     Args:
         model_id: Full model ID from models.yaml or unifiedllm registry key
