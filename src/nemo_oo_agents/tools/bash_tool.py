@@ -266,6 +266,22 @@ class FileTool:
             bash: BashTool instance for command execution
         """
         self.bash = bash
+        self._rg_available = self._check_rg_available()
+
+    @staticmethod
+    def _check_rg_available() -> bool:
+        """Check if ripgrep (rg) is installed and functional."""
+        try:
+            result = subprocess.run(
+                ["rg", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            return result.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            logger.warning("ripgrep (rg) not found; falling back to find/grep")
+            return False
 
     async def read(
         self, path: str, start_line: int | None = None, end_line: int | None = None
@@ -513,17 +529,19 @@ class FileTool:
             result = await self.files.find("*.py", "src/")
             py_files = result.lines  # Get list of matching paths
         """
-        if type in (None, "f"):
+        prune = (
+            r"\( -name .git -o -name .venv -o -name node_modules "
+            r"-o -name __pycache__ -o -name .ruff_cache "
+            r"-o -name .pytest_cache \) -prune -o"
+        )
+        if type in (None, "f") and self._rg_available:
             cmd = (
                 f"rg --files --hidden --no-require-git --glob {shlex.quote(pattern)} "
                 f"{shlex.quote(path)}"
             )
+        elif type in (None, "f"):
+            cmd = f"find {shlex.quote(path)} {prune} -type f -name {shlex.quote(pattern)} -print"
         else:
-            prune = (
-                r"\( -name .git -o -name .venv -o -name node_modules "
-                r"-o -name __pycache__ -o -name .ruff_cache "
-                r"-o -name .pytest_cache \) -prune -o"
-            )
             cmd = (
                 f"find {shlex.quote(path)} {prune} "
                 f"-type {shlex.quote(type)} -name {shlex.quote(pattern)} -print"
@@ -543,14 +561,10 @@ class FileTool:
         )
 
     async def grep(self, pattern: str, path: str, context: int = 0) -> FileResult:
-        """Search for a pattern in a file or directory, respecting ``.gitignore``.
+        """Search for a pattern in a file or directory.
 
-        Uses ``rg -n`` under the hood. Unlike plain ``grep``, this
-        works on directories without needing ``-r``, skips
-        ``.gitignore``'d paths automatically, and silently ignores
-        binary files — so handing a project root to ``grep`` no
-        longer fails with ``Is a directory`` or hangs on
-        ``.venv``/``.git``.
+        Uses ``rg -n`` when available for fast, gitignore-aware search.
+        Falls back to ``grep -rn`` when rg is not installed.
 
         Args:
             pattern: Regex pattern to search for.
@@ -567,9 +581,13 @@ class FileTool:
             matches = result.stdout  # Get matching lines
         """
         ctx_flag = f"-C {context} " if context > 0 else ""
-        cmd = (
-            f"rg -n --hidden --no-require-git {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
-        )
+        if self._rg_available:
+            cmd = (
+                f"rg -n --hidden --no-require-git {ctx_flag}"
+                f"{shlex.quote(pattern)} {shlex.quote(path)}"
+            )
+        else:
+            cmd = f"grep -rn {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
         result = await self.bash.run(cmd)
         # rg exits 1 when nothing matches — not an error for this API.
         return_code = (
