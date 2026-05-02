@@ -620,7 +620,20 @@ class QueueManager:
             for ch in self._channels.values()
             if ch.mode == "queue"
         ]
-        return "\n".join(p for p in parts if p)
+        body = "\n".join(p for p in parts if p)
+
+        # Cheat sheet: show cleanup commands when extra channels have items
+        extra = [
+            n
+            for n, ch in self._channels.items()
+            if n != "user_messages" and (ch.mode != "queue" or not ch.is_empty())
+        ]
+        if extra:
+            hints = " | ".join(f".remove_channel('{n}')" for n in extra)
+            cheat = f"💡 self.queue_manager{hints} | .shutdown()"
+            body = f"{body}\n{cheat}" if body else cheat
+
+        return body
 
     # ---- race ------------------------------------------------------------
 
