@@ -290,6 +290,9 @@ class FileTool:
         except subprocess.TimeoutExpired:
             logger.warning("ripgrep (rg) timed out; falling back to find/grep")
             return False
+        except Exception:
+            logger.warning("ripgrep (rg) check failed; falling back to find/grep", exc_info=True)
+            return False
 
     async def read(
         self, path: str, start_line: int | None = None, end_line: int | None = None
@@ -609,7 +612,7 @@ class FileTool:
             )
             cmd = f"grep -rn {excludes} {ctx_flag}{shlex.quote(pattern)} {shlex.quote(path)}"
         result = await self.bash.run(cmd)
-        # rg exits 1 when nothing matches — not an error for this API.
+        # rg and grep exit 1 when nothing matches — not an error for this API.
         return_code = (
             0 if result.return_code == 1 and not result.stderr.strip() else result.return_code
         )
