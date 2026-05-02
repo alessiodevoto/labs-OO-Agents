@@ -62,6 +62,10 @@ class Completer:
         if lower.startswith("/edit "):
             return self._path_completions(text[6:], prefix="/edit ")
 
+        # Job name completion after "/jobs "
+        if lower.startswith("/jobs "):
+            return self._job_name_completions(text)
+
         # Theme name completion
         if lower.startswith("/theme "):
             return self._theme_completions(text)
@@ -231,6 +235,30 @@ class Completer:
                     text=prefix + t.id,
                     display=prefix + t.id,
                     description=f"{icon} {t.title}",
+                )
+            )
+        return items
+
+    def _job_name_completions(self, text: str) -> list[CompletionItem]:
+        prefix = "/jobs "
+        partial = text[len(prefix) :].lower()
+        agent = getattr(self._registry, "agent", None)
+        qm = getattr(agent, "queue_manager", None) if agent else None
+        if qm is None:
+            return []
+
+        items: list[CompletionItem] = []
+        icons = {"running": "⏳", "done": "✅", "failed": "❌", "cancelled": "⏹"}
+        for name, state in sorted(qm.jobs().items()):
+            if partial and not name.lower().startswith(partial):
+                continue
+            handle = qm.job(name)
+            buf = f" ({len(handle.values)} delivered)" if handle and handle.values else ""
+            items.append(
+                CompletionItem(
+                    text=prefix + name,
+                    display=prefix + name,
+                    description=f"{icons.get(state, '?')} {state}{buf}",
                 )
             )
         return items

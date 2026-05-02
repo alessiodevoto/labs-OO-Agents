@@ -1405,7 +1405,7 @@ class _UserSkill:
 
 
 class JobsCommand(Command):
-    """Show running/completed background job queues."""
+    """Show background jobs, or inspect one by name."""
 
     @property
     def name(self) -> str:
@@ -1413,12 +1413,20 @@ class JobsCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {"/jobs": "Show background job queue status"}
+        return {
+            "/jobs [name]": "List background jobs, or inspect one by name",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
         qm = getattr(self.agent, "queue_manager", None)
         if qm is None:
             return CommandResult.err("No queue manager available.")
+
+        if args:
+            return self._detail(qm, args[0])
 
         job_states = qm.jobs()
         if not job_states:
@@ -1427,16 +1435,50 @@ class JobsCommand(Command):
         rows: list[list[str]] = []
         for channel_name, state in sorted(job_states.items()):
             handle = qm.job(channel_name)
-            buf_count = str(len(handle.values)) if handle and handle.values else ""
-            rows.append([channel_name, state, buf_count])
+            delivered = str(len(handle.values)) if handle and handle.values else "0"
+            ch = qm._channels.get(channel_name)
+            queued = str(ch.qsize()) if ch and hasattr(ch, "qsize") else "0"
+            rows.append([channel_name, state, delivered, queued])
 
         return CommandResult.ok(
             TableOutput(
                 title="Background Jobs",
-                columns=["Channel", "State", "Buffered"],
+                columns=["Channel", "State", "Delivered", "Queued"],
                 rows=rows,
             )
         )
+
+    @staticmethod
+    def _detail(qm, name: str) -> "CommandResult":
+        handle = qm.job(name)
+        if handle is None:
+            return CommandResult.err(f"No job named '{name}'.")
+
+        outputs: list[Output] = []
+
+        # Job state
+        outputs.append(TextOutput(f"Job '{name}': {handle.state}", "info"))
+
+        # Delivered values (ring-buffer history, last 20 shown)
+        values = handle.values
+        if values:
+            total = len(values)
+            shown = values[-20:]
+            lines = "\n".join(str(v) for v in shown)
+            header = f"Delivered ({total} items)"
+            if total > 20:
+                header += " — showing last 20"
+            outputs.append(TextOutput(f"{header}:\n{lines}", "info"))
+        else:
+            outputs.append(TextOutput("Delivered: none yet", "info"))
+
+        # Queue status
+        ch = qm._channels.get(name)
+        if ch is not None:
+            pending = ch.qsize() if hasattr(ch, "qsize") else 0
+            outputs.append(TextOutput(f"Queue pending: {pending}", "info"))
+
+        return CommandResult.ok(*outputs)
 
 
 # ---------------------------------------------------------------------------

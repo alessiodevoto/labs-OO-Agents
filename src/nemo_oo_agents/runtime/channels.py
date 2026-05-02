@@ -827,9 +827,13 @@ class QueueManager:
         return None
 
     async def cancel_job(self, name: str) -> bool:
-        """Cancel the job on the named channel. Returns True if found and cancelled."""
+        """Cancel the job on the named channel and flush pending items."""
         h = self.job(name)
         if h is None:
             return False
         await h.cancel()
+        # Flush pending items and cancel waiting consumers.
+        ch = self._channels.get(name)
+        if ch is not None:
+            ch.flush()
         return True
