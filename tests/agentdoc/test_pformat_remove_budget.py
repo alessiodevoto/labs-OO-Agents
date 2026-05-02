@@ -38,10 +38,10 @@ class TestPformatRemovesBudgetParams:
         assert "199" in result  # tail visible — no abort-early cut
 
     def test_pformat_max_length_still_applies_element_head_tail(self):
-        # TDD: will fail until Change 1 is implemented
-        # max_length is purely structural — shows head+tail, no char budget.
+        # max_length is purely structural — shows head+tail with truncation
+        # 3.0's slice-keys marker. No char budget.
         items = list(range(100))
         result = pformat(items, max_length=10)
         assert "0" in result  # head
         assert "99" in result  # tail
-        assert "not shown" in result  # element-level notice, not "... +N more"
+        assert "list(len=100," in result  # truncation 3.0 marker, not "... +N"

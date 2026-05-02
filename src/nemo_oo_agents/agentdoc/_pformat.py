@@ -1376,29 +1376,32 @@ def _format_dict(
 ) -> None:
     """Write a dictionary to *_stream*.
 
-    When max_length truncation fires, shows the first n_head and last n_tail
-    key-value pairs with a "... N items not shown ..." notice in the middle —
-    matching the numpy/pandas head+tail style. Dicts are insertion-ordered so
-    head and tail are well-defined.
+    Untruncated dicts render as plain Python literals (``{1: 2, 3: 4}``).
+
+    Truncated dicts use the truncation 3.0 ``items`` marker — the same outer
+    wrapper as truncated sets, since dict keys aren't positional anchors::
+
+        dict(len=100, items={0: 42, 1: 17, ..., 98: 45, 99: 28})
     """
+    type_name = _get_type_name(type(d)) if type(d) is not dict else "dict"
+
     if not d:
         _stream.write("{}")
         return
 
     all_items = list(d.items())
+    n_total = len(all_items)
+    truncated = max_length is not None and n_total > max_length
 
-    # Head+tail slicing for dicts (insertion-ordered).
-    tail_items: list = []
-    dropped = 0
-
-    if max_length is not None and len(all_items) > max_length:
-        n_head = (max_length + 1) // 2  # ceiling half
-        n_tail = max_length - n_head  # floor half
-        dropped = len(all_items) - n_head - n_tail
-        tail_items = all_items[-n_tail:] if n_tail > 0 else []
+    if truncated:
+        assert max_length is not None  # narrowed by `truncated`; pyright can't see it
+        n_head = (max_length + 1) // 2
+        n_tail = max_length - n_head
         head_items = all_items[:n_head]
+        tail_items = all_items[-n_tail:] if n_tail > 0 else []
     else:
         head_items = all_items
+        tail_items = []
 
     def _fmt_item_to_str(k: object, v: object, current_indent: int) -> tuple[str, str]:
         k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
@@ -1415,32 +1418,56 @@ def _format_dict(
         )
         return k_str, tmp.getvalue()
 
-    # Compact format when not expand_all (Rich pprint style)
-    if not expand_all:
-        trial = io.StringIO()
-        parts: list[str] = []
-
-        for k, v in head_items:
-            k_str, v_str = _fmt_item_to_str(k, v, 0)
-            parts.append(f"{k_str}: {v_str}")
-
-        if tail_items:
-            parts.append(f"... {dropped} items not shown ...")
-            for k, v in tail_items:
+    # Untruncated → plain Python literal.
+    if not truncated:
+        if not expand_all:
+            parts = []
+            for k, v in head_items:
                 k_str, v_str = _fmt_item_to_str(k, v, 0)
                 parts.append(f"{k_str}: {v_str}")
-        elif dropped > 0:
-            parts.append(f"... +{dropped}")
+            trial = "{" + ", ".join(parts) + "}"
+            if len(trial) < 120:
+                _stream.write(trial)
+                return
 
-        trial.write("{" + ", ".join(parts) + "}")
-        if len(trial.getvalue()) < 120:
-            _stream.write(trial.getvalue())
+        inner_indent = "    " * (indent + 1)
+        _stream.write("{\n")
+        for k, v in head_items:
+            k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
+            _stream.write(f"{inner_indent}{k_str}: ")
+            _format_value(
+                v,
+                _stream,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                expand_all=expand_all,
+                depth=depth + 1,
+                indent=indent + 1,
+            )
+            _stream.write(",\n")
+        _stream.write("    " * indent + "}")
+        return
+
+    # Truncated → marker form.
+    visible = head_items + tail_items
+    if not expand_all:
+        parts = []
+        for k, v in visible:
+            k_str, v_str = _fmt_item_to_str(k, v, 0)
+            parts.append(f"{k_str}: {v_str}")
+        # Insert a "..." separator between head and tail for readability.
+        if tail_items:
+            sep_idx = len(head_items)
+            parts.insert(sep_idx, "...")
+        trial = type_name + "(len=" + str(n_total) + ", items={" + ", ".join(parts) + "})"
+        if len(trial) < 120:
+            _stream.write(trial)
             return
 
-    # Expanded format (when expand_all=True or compact line too long)
+    # Expanded multi-line marker form.
     inner_indent = "    " * (indent + 1)
-    _stream.write("{\n")
-
+    _stream.write(f"{type_name}(len={n_total}, items={{\n")
     for k, v in head_items:
         k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
         _stream.write(f"{inner_indent}{k_str}: ")
@@ -1455,9 +1482,8 @@ def _format_dict(
             indent=indent + 1,
         )
         _stream.write(",\n")
-
     if tail_items:
-        _stream.write(f"{inner_indent}... {dropped} items not shown ...\n")
+        _stream.write(f"{inner_indent}...\n")
         for k, v in tail_items:
             k_str = _format_string(str(k), 50) if isinstance(k, str) else repr(k)
             _stream.write(f"{inner_indent}{k_str}: ")
@@ -1472,10 +1498,7 @@ def _format_dict(
                 indent=indent + 1,
             )
             _stream.write(",\n")
-    elif dropped > 0:
-        _stream.write(f"{inner_indent}... +{dropped}\n")
-
-    _stream.write("    " * indent + "}")
+    _stream.write("    " * indent + "})")
 
 
 def _format_sequence(
@@ -1491,36 +1514,56 @@ def _format_sequence(
 ) -> None:
     """Write a sequence (list, tuple, set, frozenset) to *_stream*.
 
-    For ordered containers (list, tuple) with max_length truncation, shows the
-    first n_head and last n_tail elements with a "... N items not shown ..."
-    notice in the middle — matching numpy/pandas head+tail style.
-    Unordered containers (set, frozenset) use head-only (no stable order).
+    Untruncated sequences render as plain Python literals (``[1, 2, 3]``).
+
+    Truncated sequences use the truncation 3.0 marker family:
+
+    * **Ordered** (``list``, ``tuple``) — slice-keys notation that explicitly
+      anchors the visible items to their positions::
+
+          list(len=100, [:5]=[42, 17, 89, 33, 8], [-5:]=[56, 71, 12, 45, 28])
+
+    * **Unordered** (``set``, ``frozenset``) — items-style wrapper, since
+      positional slices aren't meaningful::
+
+          set(len=100, items={42, 17, 89, ...})
+
+    The marker's *presence* signals truncation — a bare ``[1, 2, 3]`` is
+    always a complete value. See ``docs/design/truncation-3.0.md`` for the
+    rationale and the experimental data behind the format choice.
     """
     brackets = _get_brackets(type(seq))
+    type_name = _get_type_name(type(seq))
+    is_ordered = isinstance(seq, (list, tuple))
 
     if not seq:
         _stream.write(brackets[0] + brackets[1])
         return
 
     all_items = list(seq)
+    n_total = len(all_items)
+    truncated = max_length is not None and n_total > max_length
 
-    # Head+tail slicing for ordered containers; head-only for unordered.
-    is_ordered = isinstance(seq, (list, tuple))
-    tail_items: list = []
-    dropped = 0
-
-    if max_length is not None and len(all_items) > max_length:
+    if truncated:
+        # narrowed by `truncated`; pyright can't see it
+        assert max_length is not None
+        # Compute head/tail split. Ordered → balanced head + tail; unordered
+        # → all visible items go in the head (no positional anchor).
         if is_ordered:
             n_head = (max_length + 1) // 2  # ceiling half
             n_tail = max_length - n_head  # floor half
-            dropped = len(all_items) - n_head - n_tail
-            tail_items = all_items[-n_tail:] if n_tail > 0 else []
             head_items = all_items[:n_head]
+            tail_items = all_items[-n_tail:] if n_tail > 0 else []
         else:
-            dropped = len(all_items) - max_length
+            n_head = max_length
+            n_tail = 0
             head_items = all_items[:max_length]
+            tail_items = []
     else:
         head_items = all_items
+        tail_items = []
+        n_head = len(all_items)
+        n_tail = 0
 
     def _fmt_to_str(x: object, current_indent: int) -> str:
         tmp = io.StringIO()
@@ -1536,47 +1579,18 @@ def _format_sequence(
         )
         return tmp.getvalue()
 
-    # Compact format when not expand_all (Rich pprint style)
-    if not expand_all:
-        trial = io.StringIO()
-        parts: list[str] = []
+    # Untruncated → plain Python literal.
+    if not truncated:
+        if not expand_all:
+            trial_parts = [_fmt_to_str(x, 0) for x in head_items]
+            trial = brackets[0] + ", ".join(trial_parts) + brackets[1]
+            if len(trial) < 120:
+                _stream.write(trial)
+                return
 
-        for x in head_items:
-            parts.append(_fmt_to_str(x, 0))
-
-        if tail_items:
-            parts.append(f"... {dropped} items not shown ...")
-            for x in tail_items:
-                parts.append(_fmt_to_str(x, 0))
-        elif dropped > 0:
-            parts.append(f"... +{dropped}")
-
-        trial.write(brackets[0] + ", ".join(parts) + brackets[1])
-        if len(trial.getvalue()) < 120:
-            _stream.write(trial.getvalue())
-            return
-
-    # Expanded format (when expand_all=True or compact line too long)
-    inner_indent = "    " * (indent + 1)
-    _stream.write(brackets[0] + "\n")
-
-    for item in head_items:
-        _stream.write(inner_indent)
-        _format_value(
-            item,
-            _stream,
-            max_length=max_length,
-            max_string=max_string,
-            max_depth=max_depth,
-            expand_all=expand_all,
-            depth=depth + 1,
-            indent=indent + 1,
-        )
-        _stream.write(",\n")
-
-    if tail_items:
-        _stream.write(f"{inner_indent}... {dropped} items not shown ...\n")
-        for item in tail_items:
+        inner_indent = "    " * (indent + 1)
+        _stream.write(brackets[0] + "\n")
+        for item in head_items:
             _stream.write(inner_indent)
             _format_value(
                 item,
@@ -1589,10 +1603,81 @@ def _format_sequence(
                 indent=indent + 1,
             )
             _stream.write(",\n")
-    elif dropped > 0:
-        _stream.write(f"{inner_indent}... +{dropped}\n")
+        _stream.write("    " * indent + brackets[1])
+        return
 
-    _stream.write("    " * indent + brackets[1])
+    # Truncated → marker form.
+    if not expand_all:
+        if is_ordered:
+            head_str = brackets[0] + ", ".join(_fmt_to_str(x, 0) for x in head_items) + brackets[1]
+            if tail_items:
+                tail_str = (
+                    brackets[0] + ", ".join(_fmt_to_str(x, 0) for x in tail_items) + brackets[1]
+                )
+                trial = (
+                    f"{type_name}(len={n_total}, [:{n_head}]={head_str}, [-{n_tail}:]={tail_str})"
+                )
+            else:
+                trial = f"{type_name}(len={n_total}, [:{n_head}]={head_str})"
+        else:
+            items_str = brackets[0] + ", ".join(_fmt_to_str(x, 0) for x in head_items) + brackets[1]
+            trial = f"{type_name}(len={n_total}, items={items_str})"
+        if len(trial) < 120:
+            _stream.write(trial)
+            return
+
+    # Expanded multi-line marker form.
+    inner_indent = "    " * (indent + 1)
+    if is_ordered:
+        _stream.write(f"{type_name}(len={n_total},\n")
+        _stream.write(f"{inner_indent}[:{n_head}]={brackets[0]}\n")
+        for item in head_items:
+            _stream.write("    " + inner_indent)
+            _format_value(
+                item,
+                _stream,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                expand_all=expand_all,
+                depth=depth + 1,
+                indent=indent + 2,
+            )
+            _stream.write(",\n")
+        _stream.write(f"{inner_indent}{brackets[1]},\n")
+        if tail_items:
+            _stream.write(f"{inner_indent}[-{n_tail}:]={brackets[0]}\n")
+            for item in tail_items:
+                _stream.write("    " + inner_indent)
+                _format_value(
+                    item,
+                    _stream,
+                    max_length=max_length,
+                    max_string=max_string,
+                    max_depth=max_depth,
+                    expand_all=expand_all,
+                    depth=depth + 1,
+                    indent=indent + 2,
+                )
+                _stream.write(",\n")
+            _stream.write(f"{inner_indent}{brackets[1]},\n")
+        _stream.write("    " * indent + ")")
+    else:
+        _stream.write(f"{type_name}(len={n_total}, items={brackets[0]}\n")
+        for item in head_items:
+            _stream.write(inner_indent)
+            _format_value(
+                item,
+                _stream,
+                max_length=max_length,
+                max_string=max_string,
+                max_depth=max_depth,
+                expand_all=expand_all,
+                depth=depth + 1,
+                indent=indent + 1,
+            )
+            _stream.write(",\n")
+        _stream.write("    " * indent + brackets[1] + ")")
 
 
 def _get_brackets(seq_type: type) -> tuple[str, str]:
@@ -1606,3 +1691,16 @@ def _get_brackets(seq_type: type) -> tuple[str, str]:
     if seq_type is frozenset:
         return "frozenset({", "})"
     return "[", "]"
+
+
+def _get_type_name(seq_type: type) -> str:
+    """Type name to use as the truncation marker prefix (``list(len=N, ...)``)."""
+    if seq_type is list:
+        return "list"
+    if seq_type is tuple:
+        return "tuple"
+    if seq_type is set:
+        return "set"
+    if seq_type is frozenset:
+        return "frozenset"
+    return seq_type.__name__

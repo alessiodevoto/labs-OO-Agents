@@ -41,20 +41,20 @@ class TestPformat:
         assert len(result) < 100  # Should be much shorter than original
 
     def test_list_truncation(self):
-        """Long lists should be truncated with max_length."""
+        """Long lists are wrapped in the truncation 3.0 slice-keys marker."""
         long_list = list(range(100))
         result = _pformat(long_list, max_length=10)
 
-        assert "90 items not shown" in result  # Should show truncated count
+        assert "list(len=100," in result  # marker carries the exact count
         assert "0" in result  # First item visible (head)
         assert "99" in result  # Last item visible (tail)
 
     def test_dict_truncation(self):
-        """Long dicts should be truncated with max_length."""
+        """Long dicts are wrapped in the truncation 3.0 items marker."""
         long_dict = {f"key_{i}": i for i in range(100)}
         result = _pformat(long_dict, max_length=10)
 
-        assert "90 items not shown" in result  # Should show truncated count
+        assert "dict(len=100, items=" in result
 
     def test_depth_truncation(self):
         """Nested structures should be truncated with max_depth."""
@@ -165,7 +165,7 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "95 items not shown" in output  # Should show truncation
+        assert "list(len=100," in output  # truncation 3.0 marker
 
     def test_pprint_with_max_string(self):
         """pprint() should respect max_string."""
@@ -252,7 +252,7 @@ class TestComplexScenarios:
         ]
         result = _pformat(data, max_length=5, max_string=50)
 
-        assert "995 items not shown" in result  # Should truncate list
+        assert "list(len=1000," in result  # truncation 3.0 marker
         assert "'id': 0" in result  # First item visible (head)
         assert "'id': 999" in result  # Last item visible (tail)
 

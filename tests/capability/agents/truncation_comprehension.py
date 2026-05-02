@@ -19,16 +19,16 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Agent
-from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 
 
 class Answer(BaseModel):
-    """Structured answer with reason trace.
-    """
+    """Structured answer with reason trace."""
 
-    answer: Annotated[int | None, Field(description="Integer answer, or None if cannot be determined")]
+    answer: Annotated[
+        int | None, Field(description="Integer answer, or None if cannot be determined")
+    ]
     reason: Annotated[str, Field(description="Why you picked that answer (one or two sentences)")]
 
 

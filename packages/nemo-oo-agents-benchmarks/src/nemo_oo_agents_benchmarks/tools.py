@@ -194,7 +194,7 @@ class TerminalBenchTools:
             )
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 return f"[Command timed out after {timeout}s]"
             output = stdout.decode(errors="replace") if stdout else ""

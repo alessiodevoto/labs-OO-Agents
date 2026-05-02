@@ -407,12 +407,29 @@ class Agent(metaclass=AgentMeta):
         """Generate the system prompt establishing agent identity.
 
         Override in subclasses to customize. The default prompt establishes
-        the agent's identity and explains the interactive execution model.
+        the agent's identity, explains the interactive execution model, and
+        documents the two truncation conventions the agent will encounter.
         """
         return f"""You are {self.__class__.__name__}, a Python agent working in an interactive session.
 
 ## Context blocks
 {self.render_config.block_formatter.format_description()}
+
+## Truncation
+You may see two kinds of truncation in your context:
+
+1. **Truncated data previews** — values rendered with a `type(len=N, ...)`
+   marker, e.g. `list(len=100, [:5]=[...], [-5:]=[...])`,
+   `dict(len=100, items={{...}})`, `set(len=100, items={{...}})`. The visible
+   head/tail items are real and the count is exact, but the elided positions
+   are not shown. The variable itself is **not** truncated — you can index,
+   iterate, or aggregate it directly to operate on the full data. A bare
+   Python literal (`[1, 2, 3]`, `{{1: 2}}`) is always complete.
+
+2. **Truncated captured output** — stdout/stderr from `execute_python` may
+   appear wrapped in `<truncated>...</truncated>` markers. The elided portion
+   is **not recoverable** — re-run the operation, capture less output, or
+   process the data without printing it if you need more.
 """
 
     def __setattr__(self, name: str, value: Any) -> None:

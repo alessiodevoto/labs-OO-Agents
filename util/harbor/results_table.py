@@ -24,7 +24,6 @@ import argparse
 import json
 from pathlib import Path
 
-
 # Default job dirs to scan (all active benchmark configurations).
 _DEFAULT_JOB_DIRS = [
     "/raid/rcabral/home/harbor_jobs/locomo_baseline",
@@ -137,7 +136,11 @@ def _summarize(name: str, trials: list[dict]) -> dict:
 
     has_tokens = [t for t in completed if t["n_input_tokens"] is not None]
     total_in = sum(t["n_input_tokens"] for t in has_tokens) if has_tokens else None
-    total_out = sum(t["n_output_tokens"] for t in has_tokens if t["n_output_tokens"]) if has_tokens else None
+    total_out = (
+        sum(t["n_output_tokens"] for t in has_tokens if t["n_output_tokens"])
+        if has_tokens
+        else None
+    )
 
     # Error breakdown
     err_counts: dict[str, int] = {}
@@ -167,9 +170,9 @@ def _fmt_tokens(val):
     if val is None:
         return "—"
     if val >= 1_000_000:
-        return f"{val/1_000_000:.1f}M"
+        return f"{val / 1_000_000:.1f}M"
     if val >= 1_000:
-        return f"{val/1_000:.0f}K"
+        return f"{val / 1_000:.0f}K"
     return str(val)
 
 
@@ -212,7 +215,9 @@ def print_verbose(name: str, trials: list[dict]) -> None:
     for t in sorted(completed, key=lambda x: x["task_name"]):
         tok_str = ""
         if t["n_input_tokens"] is not None:
-            tok_str = f"  in={_fmt_tokens(t['n_input_tokens'])} out={_fmt_tokens(t['n_output_tokens'])}"
+            tok_str = (
+                f"  in={_fmt_tokens(t['n_input_tokens'])} out={_fmt_tokens(t['n_output_tokens'])}"
+            )
         reward_str = f"reward={t['reward']:.2f}" if t["reward"] is not None else "reward=?"
         print(f"  ✓ {t['task_name']:50s}  {reward_str}{tok_str}")
     for t in sorted(errors, key=lambda x: x["task_name"]):
@@ -228,13 +233,16 @@ def main() -> None:
         help="Harbor job directories to scan (default: all configured benchmarks).",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Print per-task breakdown after the summary table.",
     )
     args = parser.parse_args()
 
-    dirs = [Path(d) for d in args.job_dirs] if args.job_dirs else [Path(d) for d in _DEFAULT_JOB_DIRS]
+    dirs = (
+        [Path(d) for d in args.job_dirs] if args.job_dirs else [Path(d) for d in _DEFAULT_JOB_DIRS]
+    )
 
     summaries = []
     all_trials: dict[str, list[dict]] = {}

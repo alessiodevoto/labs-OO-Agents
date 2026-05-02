@@ -1130,3 +1130,1484 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 1.0
+
+  # ---- TEST 29: Format × Type × Strategy matrix ----
+  # Apples-to-apples comparison: same elided data shown in 4 marker formats
+  # across 4 container types under both Predict and CodeAct strategies.
+  # Formats: today_verbose, xml, lower, slice_keys (N/A for dict/set).
+  # Types: list, tuple, dict, set.
+  # 14 fixtures × 2 strategies = 28 test entries.
+  # Note: the agent receives `context` as a pre-rendered string. CodeAct can
+  # write Python to parse/reason but cannot reach the underlying list.
+
+  # --- list (4 formats × 2 strategies = 8) ---
+  - name: fmt_today_verbose_list_predict
+    description: "list × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_list_codeact
+    description: "list × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_list_predict
+    description: "list × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_list_codeact
+    description: "list × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_list_predict
+    description: "list × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_list_codeact
+    description: "list × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_list_predict
+    description: "list × slice_keys × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_list_codeact
+    description: "list × slice_keys × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_list.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- tuple (4 formats × 2 strategies = 8) ---
+  - name: fmt_today_verbose_tuple_predict
+    description: "tuple × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_tuple_codeact
+    description: "tuple × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_tuple_predict
+    description: "tuple × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_tuple_codeact
+    description: "tuple × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_tuple_predict
+    description: "tuple × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_tuple_codeact
+    description: "tuple × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_tuple_predict
+    description: "tuple × slice_keys × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_tuple_codeact
+    description: "tuple × slice_keys × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_tuple.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- dict (3 formats × 2 strategies = 6; slice_keys N/A — uses keys not positions) ---
+  - name: fmt_today_verbose_dict_predict
+    description: "dict × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_dict_codeact
+    description: "dict × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_dict_predict
+    description: "dict × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_dict_codeact
+    description: "dict × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_dict_predict
+    description: "dict × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_dict_codeact
+    description: "dict × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_dict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- set (3 formats × 2 strategies = 6; slice_keys N/A — sets unordered) ---
+  - name: fmt_today_verbose_set_predict
+    description: "set × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_set_codeact
+    description: "set × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_set_predict
+    description: "set × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_set_codeact
+    description: "set × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_set_predict
+    description: "set × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_set_codeact
+    description: "set × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_set.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- pydantic (3 formats × 2 strategies = 6; slice_keys N/A for nested-field shape) ---
+  - name: fmt_today_verbose_pydantic_predict
+    description: "pydantic × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_pydantic_codeact
+    description: "pydantic × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_pydantic_predict
+    description: "pydantic × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_pydantic_codeact
+    description: "pydantic × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_pydantic_predict
+    description: "pydantic × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_pydantic_codeact
+    description: "pydantic × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_pydantic.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- dataclass (3 formats × 2 strategies = 6) ---
+  - name: fmt_today_verbose_dataclass_predict
+    description: "dataclass × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_dataclass_codeact
+    description: "dataclass × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_dataclass_predict
+    description: "dataclass × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_dataclass_codeact
+    description: "dataclass × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_dataclass_predict
+    description: "dataclass × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_dataclass_codeact
+    description: "dataclass × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_dataclass.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- json (3 formats × 2 strategies = 6) ---
+  - name: fmt_today_verbose_json_predict
+    description: "json × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_json_codeact
+    description: "json × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_json_predict
+    description: "json × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_json_codeact
+    description: "json × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_json_predict
+    description: "json × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_json_codeact
+    description: "json × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_json.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # --- records (4 formats × 2 strategies = 8) ---
+  - name: fmt_today_verbose_records_predict
+    description: "records × today_verbose × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_today_verbose_records_codeact
+    description: "records × today_verbose × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_today_verbose_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_records_predict
+    description: "records × xml × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_xml_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_xml_records_codeact
+    description: "records × xml × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_xml_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_records_predict
+    description: "records × lower × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_lower_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_lower_records_codeact
+    description: "records × lower × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_lower_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_records_predict
+    description: "records × slice_keys × Predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgent
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: fmt_slice_keys_records_codeact
+    description: "records × slice_keys × CodeAct"
+    tier: stable
+    agent:
+      module: tests.capability.agents.truncation_comprehension
+      class: TruncationComprehensionAgentCodeAct
+    method: answer
+    data_file: tests/capability/data/fmt_slice_keys_records.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  # ---- TEST 30: realfmt matrix (Wrapped class + per-format renderer) ----
+  # 4 formats × 8 types × 2 strategies (slice_keys only applies to ordered
+  # types — list/tuple/records/pydantic/dataclass), 58 test entries total.
+  # The agent receives a Wrapped(data, type_tag, fmt) instance (via the
+  # eval_pipeline loader patch in truncation_formats); the framework prefill
+  # then renders it via Wrapped.__repr__ → our chosen marker shape. Predict
+  # only sees the marker (refuses on elided positions); CodeAct can compute
+  # real answers via container pass-throughs on the underlying value.
+  - name: realfmt_today_verbose_list_predict
+    description: "list × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_list_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_list_codeact
+    description: "list × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_list_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_tuple_predict
+    description: "tuple × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_tuple_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_tuple_codeact
+    description: "tuple × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_tuple_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_dict_predict
+    description: "dict × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_dict_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_dict_codeact
+    description: "dict × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_dict_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_set_predict
+    description: "set × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_set_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_set_codeact
+    description: "set × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_set_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_pydantic_predict
+    description: "pydantic × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_pydantic_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_pydantic_codeact
+    description: "pydantic × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_pydantic_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_dataclass_predict
+    description: "dataclass × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_dataclass_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_dataclass_codeact
+    description: "dataclass × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_dataclass_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_json_predict
+    description: "json × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_json_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_json_codeact
+    description: "json × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_json_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_records_predict
+    description: "records × today_verbose × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_records_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_today_verbose_records_codeact
+    description: "records × today_verbose × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_today_verbose_records_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_list_predict
+    description: "list × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_list_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_list_codeact
+    description: "list × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_list_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_tuple_predict
+    description: "tuple × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_tuple_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_tuple_codeact
+    description: "tuple × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_tuple_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_dict_predict
+    description: "dict × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_dict_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_dict_codeact
+    description: "dict × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_dict_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_set_predict
+    description: "set × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_set_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_set_codeact
+    description: "set × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_set_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_pydantic_predict
+    description: "pydantic × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_pydantic_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_pydantic_codeact
+    description: "pydantic × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_pydantic_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_dataclass_predict
+    description: "dataclass × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_dataclass_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_dataclass_codeact
+    description: "dataclass × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_dataclass_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_json_predict
+    description: "json × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_json_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_json_codeact
+    description: "json × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_json_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_records_predict
+    description: "records × xml × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_records_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_xml_records_codeact
+    description: "records × xml × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_xml_records_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_list_predict
+    description: "list × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_list_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_list_codeact
+    description: "list × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_list_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_tuple_predict
+    description: "tuple × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_tuple_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_tuple_codeact
+    description: "tuple × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_tuple_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_dict_predict
+    description: "dict × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dict_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_dict_codeact
+    description: "dict × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dict_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_set_predict
+    description: "set × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_set_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_set_codeact
+    description: "set × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_set_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_pydantic_predict
+    description: "pydantic × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_pydantic_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_pydantic_codeact
+    description: "pydantic × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_pydantic_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_dataclass_predict
+    description: "dataclass × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dataclass_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_dataclass_codeact
+    description: "dataclass × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dataclass_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_json_predict
+    description: "json × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_json_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_json_codeact
+    description: "json × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_json_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_records_predict
+    description: "records × lower × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_records_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_lower_records_codeact
+    description: "records × lower × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_records_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_list_predict
+    description: "list × slice_keys × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_list_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_list_codeact
+    description: "list × slice_keys × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_list_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_tuple_predict
+    description: "tuple × slice_keys × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_tuple_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_tuple_codeact
+    description: "tuple × slice_keys × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_tuple_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_pydantic_predict
+    description: "pydantic × slice_keys × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_pydantic_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_pydantic_codeact
+    description: "pydantic × slice_keys × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_pydantic_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_dataclass_predict
+    description: "dataclass × slice_keys × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_dataclass_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_dataclass_codeact
+    description: "dataclass × slice_keys × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_dataclass_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_records_predict
+    description: "records × slice_keys × predict"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_predict
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_records_predict.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
+
+  - name: realfmt_slice_keys_records_codeact
+    description: "records × slice_keys × codeact"
+    tier: stable
+    agent:
+      module: tests.capability.agents.realfmt_codeact
+      class: RealFmtAgent
+    method: answer
+    data_file: tests/capability/data/realfmt_slice_keys_records_codeact.jsonl
+    scorers:
+      - name: exact_match
+        class: ExactMatchScorer
+        weight: 1.0
