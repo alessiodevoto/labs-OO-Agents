@@ -182,6 +182,42 @@ class EventsApi(Skill):
         """
         return self._manager.get(key) is not None
 
+    def collapse(self, start_tag: str, end_tag: str, summary_text: str | None = None) -> str:
+        """Archive a range of events into a single Summary marker.
+
+        Replaces tags start_tag..end_tag with one summary tag.
+        Original events remain accessible by their individual tags.
+
+        Args:
+            start_tag: First tag to collapse (inclusive), e.g. "2".
+            end_tag: Last tag to collapse (inclusive), e.g. "40".
+            summary_text: Optional summary. None = truncation (no text).
+
+        Returns:
+            The summary tag, e.g. "2..40".
+
+        Examples:
+            events.collapse("2", "40")                       # truncate
+            events.collapse("2", "40", "User discussed X")   # summarize
+            summary = events[events.collapse("2", "40")]     # get the Summary event
+        """
+        return self._manager.collapse(start_tag, end_tag, summary_text)
+
+    def keys(self) -> list[str]:
+        """Return the list of active event tags in chronological order.
+
+        After a collapse, the range is replaced by a single "start..end" tag.
+
+        Returns:
+            List of tag strings, e.g. ["1", "2..40", "41", "42"].
+
+        Examples:
+            tags = events.keys()
+            first, last = tags[0], tags[-1]
+            events.collapse(first, last, "session summary")
+        """
+        return list(self._manager.keys())
+
     def __repr__(self) -> str:
         """String representation showing count of active events."""
         count = len(self._manager.keys())

@@ -76,3 +76,44 @@ def test_contains(api_with_event):
 def test_repr(api_with_event):
     api, _ = api_with_event
     assert "EventsApi" in repr(api)
+
+
+def test_collapse_returns_summary_tag():
+    """collapse() delegates to EventManager and returns the summary tag."""
+    agent = _TestAgent()
+    em = agent.event_manager
+    for _ in range(5):
+        em.add(Task(prompt="filler"))
+    tags = list(em.keys())
+    first, last = tags[0], tags[-1]
+    summary_tag = agent.events.collapse(first, last, summary_text="collapsed")
+    assert ".." in summary_tag
+    assert agent.events.get(summary_tag) is not None
+    # Individual collapsed tags remain accessible
+    assert agent.events.get(first) is not None
+    assert agent.events.get(last) is not None
+
+
+def test_keys_reflects_active_tags():
+    """keys() exposes the active tag list from the manager."""
+    agent = _TestAgent()
+    em = agent.event_manager
+    assert agent.events.keys() == list(em.keys())
+    em.add(Task(prompt="one"))
+    em.add(Task(prompt="two"))
+    keys = agent.events.keys()
+    assert len(keys) == 2
+    assert keys == list(em.keys())
+    # After collapse, range tag replaces individual tags in keys()
+    first, last = keys[0], keys[-1]
+    agent.events.collapse(first, last)
+    post_keys = agent.events.keys()
+    assert len(post_keys) == 1
+    assert ".." in post_keys[0]
+
+
+def test_collapse_invalid_range_raises():
+    """collapse() with invalid range propagates ValueError."""
+    agent = _TestAgent()
+    with pytest.raises((ValueError, KeyError)):
+        agent.events.collapse("999", "1000")
