@@ -148,11 +148,16 @@ class TestModuleWithoutPandasImport:
         return BareAgent()
 
     @pytest.mark.asyncio
-    async def test_import_pandas_as_pd_raises_restricted(self, agent):
-        """`import pandas as pd` raises RestrictedCodeError — correct."""
+    async def test_import_pandas_as_pd_raises_if_not_installed(self, agent):
+        """`import pandas as pd` raises ModuleNotFoundError when pandas is not installed.
+
+        With deny-list import policy (empty restricted_imports), all imports are
+        allowed through AST validation. The error surfaces at runtime if the module
+        isn't installed.
+        """
         result = await agent.runtime.execute_code("import pandas as pd")
-        assert isinstance(result.error, RestrictedCodeError), (
-            f"Expected RestrictedCodeError, got: {type(result.error).__name__}: {result.error}"
+        assert isinstance(result.error, (ModuleNotFoundError, RestrictedCodeError)), (
+            f"Expected ModuleNotFoundError or RestrictedCodeError, got: {type(result.error).__name__}: {result.error}"
         )
 
     @pytest.mark.asyncio

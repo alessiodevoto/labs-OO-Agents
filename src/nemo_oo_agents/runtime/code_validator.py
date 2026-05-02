@@ -134,6 +134,9 @@ FORBIDDEN_BUILTINS = frozenset(
         # Process termination
         "exit",
         "quit",
+        # Restriction mutation (prevents agent from loosening its own restrictions)
+        "set_restricted_imports",
+        "get_restricted_imports",
     }
 )
 
