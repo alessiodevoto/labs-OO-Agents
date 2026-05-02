@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for TUI screen suspension during /edit and /ipython.
 
 Verifies that external programs (editor, IPython) use prompt_toolkit's
@@ -8,7 +10,6 @@ screen corruption when the agent is running.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # open_editor
@@ -91,7 +92,6 @@ async def test_handle_python_shell_restores_streams():
         if in_executor:
             # Simulate what run_in_terminal(fn, in_executor=True) does:
             # run fn in a thread
-            result = [None]
             exc = [None]
 
             def _run():
@@ -149,4 +149,3 @@ async def test_ipython_command_help_text():
     ipython_cls = classes["ipython"]
     help_dict = ipython_cls.help_text()
     assert "/ipython" in help_dict
-
