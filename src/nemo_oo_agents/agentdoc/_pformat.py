@@ -1182,6 +1182,7 @@ def _format_value(
     expand_all: bool,
     depth: int,
     indent: int,
+    _seen: set[int] | None = None,
 ) -> None:
     """Write a regular Python value to *_stream* with truncation.
 
@@ -1194,7 +1195,13 @@ def _format_value(
         expand_all: Always expand containers.
         depth: Current nesting depth.
         indent: Current indentation level.
+        _seen: ``id()`` of containers currently being rendered (cycle guard).
+            Top-level callers leave this ``None``; recursive calls thread the
+            same set through so nested containers can detect re-entry.
     """
+    if _seen is None:
+        _seen = set()
+
     # Check depth limit
     if max_depth is not None and depth >= max_depth:
         _stream.write(_format_shallow(_object, max_string))
@@ -1215,6 +1222,7 @@ def _format_value(
             expand_all=expand_all,
             depth=depth,
             indent=indent,
+            _seen=_seen,
         )
         return
 
@@ -1228,6 +1236,7 @@ def _format_value(
             expand_all=expand_all,
             depth=depth,
             indent=indent,
+            _seen=_seen,
         )
         return
 
@@ -1401,6 +1410,7 @@ def _format_dict(
     expand_all: bool,
     depth: int,
     indent: int,
+    _seen: set[int] | None = None,
 ) -> None:
     """Write a dictionary to *_stream*.
 
@@ -1410,13 +1420,56 @@ def _format_dict(
     wrapper as truncated sets, since dict keys aren't positional anchors::
 
         dict(len=100, items={0: 42, 1: 17, ..., 98: 45, 99: 28})
+
+    Cycles: if ``_seen`` already contains ``id(d)``, emit ``<cycle>`` and
+    return. Same mechanism as ``_format_sequence`` — Python's built-in
+    ``Py_ReprEnter`` handles this for ``dict.__repr__``; our recursive
+    renderer needs to replicate it explicitly.
     """
+    if _seen is None:
+        _seen = set()
+    if id(d) in _seen:
+        _stream.write("<cycle>")
+        return
+
     type_name = _get_type_name(type(d)) if type(d) is not dict else "dict"
 
     if not d:
         _stream.write("{}")
         return
 
+    _seen.add(id(d))
+    try:
+        _format_dict_body(
+            d,
+            _stream,
+            type_name,
+            max_length=max_length,
+            max_string=max_string,
+            max_depth=max_depth,
+            expand_all=expand_all,
+            depth=depth,
+            indent=indent,
+            _seen=_seen,
+        )
+    finally:
+        _seen.discard(id(d))
+
+
+def _format_dict_body(
+    d,
+    _stream,
+    type_name,
+    *,
+    max_length,
+    max_string,
+    max_depth,
+    expand_all,
+    depth,
+    indent,
+    _seen,
+):
+    """Inner rendering body — split out so the cycle-guard try/finally above stays compact."""
     all_items = list(d.items())
     n_total = len(all_items)
     truncated = max_length is not None and n_total > max_length
@@ -1443,6 +1496,7 @@ def _format_dict(
             expand_all=expand_all,
             depth=depth + 1,
             indent=current_indent,
+            _seen=_seen,
         )
         return k_str, tmp.getvalue()
 
@@ -1472,6 +1526,7 @@ def _format_dict(
                 expand_all=expand_all,
                 depth=depth + 1,
                 indent=indent + 1,
+                _seen=_seen,
             )
             _stream.write(",\n")
         _stream.write("    " * indent + "}")
@@ -1508,6 +1563,7 @@ def _format_dict(
             expand_all=expand_all,
             depth=depth + 1,
             indent=indent + 1,
+            _seen=_seen,
         )
         _stream.write(",\n")
     if tail_items:
@@ -1524,6 +1580,7 @@ def _format_dict(
                 expand_all=expand_all,
                 depth=depth + 1,
                 indent=indent + 1,
+                _seen=_seen,
             )
             _stream.write(",\n")
     _stream.write("    " * indent + "})")
@@ -1539,6 +1596,7 @@ def _format_sequence(
     expand_all: bool,
     depth: int,
     indent: int,
+    _seen: set[int] | None = None,
 ) -> None:
     """Write a sequence (list, tuple, set, frozenset) to *_stream*.
 
@@ -1559,7 +1617,19 @@ def _format_sequence(
     The marker's *presence* signals truncation — a bare ``[1, 2, 3]`` is
     always a complete value. See ``docs/design/truncation-3.0.md`` for the
     rationale and the experimental data behind the format choice.
+
+    Cycles: if ``_seen`` already contains ``id(seq)``, emit ``<cycle>`` and
+    return. This matches Python's built-in ``Py_ReprEnter`` behaviour for
+    ``list.__repr__``/``dict.__repr__``, which our recursive renderer
+    otherwise wouldn't replicate (would RecursionError on
+    ``x = []; x.append(x)``).
     """
+    if _seen is None:
+        _seen = set()
+    if id(seq) in _seen:
+        _stream.write("<cycle>")
+        return
+
     brackets = _get_brackets(type(seq))
     type_name = _get_type_name(type(seq))
     is_ordered = isinstance(seq, (list, tuple))
@@ -1568,6 +1638,44 @@ def _format_sequence(
         _stream.write(brackets[0] + brackets[1])
         return
 
+    # Register this container as currently being rendered. All recursive calls
+    # below pass _seen, so any cycle back to this container emits ``<cycle>``.
+    _seen.add(id(seq))
+    try:
+        _format_sequence_body(
+            seq,
+            _stream,
+            brackets,
+            type_name,
+            is_ordered,
+            max_length=max_length,
+            max_string=max_string,
+            max_depth=max_depth,
+            expand_all=expand_all,
+            depth=depth,
+            indent=indent,
+            _seen=_seen,
+        )
+    finally:
+        _seen.discard(id(seq))
+
+
+def _format_sequence_body(
+    seq,
+    _stream,
+    brackets,
+    type_name,
+    is_ordered,
+    *,
+    max_length,
+    max_string,
+    max_depth,
+    expand_all,
+    depth,
+    indent,
+    _seen,
+):
+    """Inner rendering body — split out so the cycle-guard try/finally above stays compact."""
     all_items = list(seq)
     n_total = len(all_items)
     truncated = max_length is not None and n_total > max_length
@@ -1604,6 +1712,7 @@ def _format_sequence(
             expand_all=expand_all,
             depth=depth + 1,
             indent=current_indent,
+            _seen=_seen,
         )
         return tmp.getvalue()
 
@@ -1629,6 +1738,7 @@ def _format_sequence(
                 expand_all=expand_all,
                 depth=depth + 1,
                 indent=indent + 1,
+                _seen=_seen,
             )
             _stream.write(",\n")
         _stream.write("    " * indent + brackets[1])
@@ -1674,6 +1784,7 @@ def _format_sequence(
                 expand_all=expand_all,
                 depth=depth + 1,
                 indent=indent + 2,
+                _seen=_seen,
             )
             _stream.write(",\n")
         _stream.write(f"{inner_indent}{brackets[1]},\n")
@@ -1690,6 +1801,7 @@ def _format_sequence(
                     expand_all=expand_all,
                     depth=depth + 1,
                     indent=indent + 2,
+                    _seen=_seen,
                 )
                 _stream.write(",\n")
             _stream.write(f"{inner_indent}{brackets[1]},\n")
@@ -1707,6 +1819,7 @@ def _format_sequence(
                 expand_all=expand_all,
                 depth=depth + 1,
                 indent=indent + 1,
+                _seen=_seen,
             )
             _stream.write(",\n")
         # Internal "..." marker — partial-ness obvious from inside the braces too.
