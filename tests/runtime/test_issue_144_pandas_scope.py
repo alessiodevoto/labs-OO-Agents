@@ -117,13 +117,12 @@ class TestModuleWithPandasImport:
         assert "pandas" in result.stdout
 
     @pytest.mark.asyncio
-    async def test_pd_listed_in_scope_hint(self, agent):
-        """When another import is blocked, the error hint must include pd."""
+    async def test_blocked_import_shows_error(self, agent):
+        """Blocked modules (subprocess) still produce an error."""
         result = await agent.runtime.execute_code("import subprocess")
         assert result.error is not None
-        assert "pd" in str(result.error), (
-            f"pd missing from 'Available in scope' hint: {result.error}"
-        )
+        assert "subprocess" in str(result.error)
+        assert "blocked" in str(result.error).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -148,17 +147,19 @@ class TestModuleWithoutPandasImport:
         return BareAgent()
 
     @pytest.mark.asyncio
-    async def test_import_pandas_as_pd_raises_if_not_installed(self, agent):
-        """`import pandas as pd` raises ModuleNotFoundError when pandas is not installed.
+    async def test_import_pandas_succeeds_with_deny_list(self, agent):
+        """`import pandas as pd` succeeds under deny-list model.
 
-        With deny-list import policy (empty restricted_imports), all imports are
-        allowed through AST validation. The error surfaces at runtime if the module
-        isn't installed.
+        With deny-list import policy (empty restricted_imports default),
+        all imports pass AST validation. If the module is installed, it works.
+        If not installed, ModuleNotFoundError at runtime.
         """
         result = await agent.runtime.execute_code("import pandas as pd")
-        assert isinstance(result.error, (ModuleNotFoundError, RestrictedCodeError)), (
-            f"Expected ModuleNotFoundError or RestrictedCodeError, got: {type(result.error).__name__}: {result.error}"
-        )
+        # Either succeeds (pandas installed) or ModuleNotFoundError (not installed)
+        if result.error is not None:
+            assert isinstance(result.error, ModuleNotFoundError), (
+                f"Expected None or ModuleNotFoundError, got: {type(result.error).__name__}: {result.error}"
+            )
 
     @pytest.mark.asyncio
     async def test_pd_not_in_scope(self, agent):

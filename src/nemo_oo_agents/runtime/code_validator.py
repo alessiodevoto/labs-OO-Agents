@@ -12,7 +12,8 @@ Usage:
     context = ValidationContext(
         code=code,
         available_names=["self", "asyncio"],
-        importable_modules={"asyncio"},
+        restricted_imports=frozenset({"os", "sys"}),  # deny list
+        blocked_modules=DEFAULT_BLOCKED_MODULES,
     )
     validator.validate(code, context)  # Raises ValidationError on failure
 """
@@ -22,7 +23,7 @@ Usage:
 # =============================================================================
 # SecurityValidator:
 #   E001 — Forbidden builtin usage (exec, eval, compile, __import__, etc.)
-#   E002 — Forbidden import (module not in importable_modules)
+#   E002 — Restricted or blocked import (module in restricted_imports or blocked_modules)
 #   E003 — Forbidden dunder attribute access (__class__, __subclasses__, etc.)
 #   E004 — Forbidden escape via sys/os attributes (sys.modules, os.system, etc.)
 # REPLPolicyValidator:
@@ -90,7 +91,9 @@ class ValidationContext:
     code: str = ""
     agent_class: type | None = None
     available_names: set[str] = field(default_factory=set)
-    importable_modules: set[str] = field(default_factory=set)
+    importable_modules: set[str] = field(
+        default_factory=set
+    )  # Deprecated: use restricted_imports deny list instead
     forbidden_self_calls: set[str] = field(default_factory=set)
     execution_count: int = 1
     agent: Any = None  # Agent instance for method introspection
@@ -140,6 +143,14 @@ FORBIDDEN_BUILTINS = frozenset(
     }
 )
 
+# Function names forbidden as attribute calls (e.g. `mod.set_restricted_imports()`)
+FORBIDDEN_ATTR_CALLS = frozenset(
+    {
+        "set_restricted_imports",
+        "get_restricted_imports",
+    }
+)
+
 # Dangerous dunder attributes that enable sandbox escapes
 DANGEROUS_DUNDER_ATTRS = frozenset(
     {
@@ -160,11 +171,12 @@ class SecurityValidator:
 
     Checks for:
     - Forbidden builtins (exec, eval, compile, __import__, input, breakpoint, globals, locals)
-    - Forbidden imports (modules not in importable_modules)
+    - Restricted/blocked imports (modules in restricted_imports or blocked_modules deny lists)
     - Import * (always forbidden)
     - Dangerous dunder attribute access (__class__, __bases__, etc.)
     - Recursive self-calls (infinite recursion prevention)
     - Aliased forbidden builtins
+    - Forbidden attribute calls (set_restricted_imports, get_restricted_imports)
     """
 
     def validate(self, tree: ast.AST, context: ValidationContext) -> list[ValidationIssue]:
@@ -264,6 +276,19 @@ class _SecurityVisitor(ast.NodeVisitor):
                             code="E004",
                         )
                     )
+
+        # Check for forbidden attribute calls (e.g. mod.set_restricted_imports())
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr in FORBIDDEN_ATTR_CALLS:
+                self.issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=f"{node.func.attr}() is forbidden - "
+                        "this could modify runtime security restrictions",
+                        code="E001",
+                    )
+                )
 
         self.generic_visit(node)
 
@@ -1427,6 +1452,8 @@ def validate_code(
     agent_class: type | None = None,
     available_names: list[str] | None = None,
     importable_modules: set[str] | None = None,
+    restricted_imports: frozenset[str] | None = None,
+    blocked_modules: frozenset[str] | None = None,
     forbidden_self_calls: list[str] | None = None,
     execution_count: int = 1,
     agent: Any = None,
@@ -1440,7 +1467,9 @@ def validate_code(
         code: Python source code to validate
         agent_class: Agent class for decorator checking
         available_names: Names available in scope
-        importable_modules: Actual module names that can be imported
+        importable_modules: Deprecated — use restricted_imports instead
+        restricted_imports: Deny list of module names. None uses RestrictionsConfig default.
+        blocked_modules: Hard-blocked modules. None uses RestrictionsConfig default.
         forbidden_self_calls: Method names that can't be called on self
         execution_count: Execution count for Cell In[N] format
         agent: Agent instance for method introspection
@@ -1451,11 +1480,18 @@ def validate_code(
     Raises:
         ValidationError: If validation fails
     """
+    from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+
+    rc = RestrictionsConfig()
     context = ValidationContext(
         code=code,
         agent_class=agent_class,
         available_names=set(available_names or []),
         importable_modules=importable_modules or set(),
+        restricted_imports=restricted_imports
+        if restricted_imports is not None
+        else rc.restricted_imports,
+        blocked_modules=blocked_modules if blocked_modules is not None else rc.blocked_modules,
         forbidden_self_calls=set(forbidden_self_calls or []),
         execution_count=execution_count,
         agent=agent,

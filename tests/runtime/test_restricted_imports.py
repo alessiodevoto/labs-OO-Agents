@@ -292,3 +292,58 @@ class TestProcessGlobalRestrictedImports:
 
         # json should be allowed
         validator.validate("import json", context)
+
+
+class TestSetRestrictedImportsBlocked:
+    """Tests that set_restricted_imports/get_restricted_imports are blocked in agent code."""
+
+    @pytest.fixture
+    def validator(self) -> UnifiedCodeValidator:
+        return UnifiedCodeValidator()
+
+    def test_direct_call_blocked(self, validator):
+        """Direct call to set_restricted_imports() is blocked via FORBIDDEN_BUILTINS."""
+        context = ValidationContext(code="")
+        code = "set_restricted_imports(frozenset())"
+        with pytest.raises(ValidationError, match="set_restricted_imports.*forbidden"):
+            validator.validate(code, context)
+
+    def test_get_direct_call_blocked(self, validator):
+        """Direct call to get_restricted_imports() is blocked via FORBIDDEN_BUILTINS."""
+        context = ValidationContext(code="")
+        code = "get_restricted_imports()"
+        with pytest.raises(ValidationError, match="get_restricted_imports.*forbidden"):
+            validator.validate(code, context)
+
+    def test_aliased_import_call_blocked(self, validator):
+        """Aliased import of set_restricted_imports is blocked."""
+        context = ValidationContext(
+            code="",
+            restricted_imports=frozenset(),  # allow the import
+        )
+        code = """from nemo_oo_agents.runtime.restrictions import set_restricted_imports as foo
+foo(frozenset())"""
+        with pytest.raises(ValidationError, match="foo.*forbidden.*set_restricted_imports"):
+            validator.validate(code, context)
+
+    def test_attribute_call_blocked(self, validator):
+        """Attribute-style call r.set_restricted_imports() is blocked."""
+        context = ValidationContext(
+            code="",
+            restricted_imports=frozenset(),  # allow the import
+        )
+        code = """import nemo_oo_agents.runtime.restrictions as r
+r.set_restricted_imports(frozenset())"""
+        with pytest.raises(ValidationError, match="set_restricted_imports.*forbidden"):
+            validator.validate(code, context)
+
+    def test_attribute_get_call_blocked(self, validator):
+        """Attribute-style call r.get_restricted_imports() is blocked."""
+        context = ValidationContext(
+            code="",
+            restricted_imports=frozenset(),
+        )
+        code = """import nemo_oo_agents.runtime.restrictions as r
+r.get_restricted_imports()"""
+        with pytest.raises(ValidationError, match="get_restricted_imports.*forbidden"):
+            validator.validate(code, context)

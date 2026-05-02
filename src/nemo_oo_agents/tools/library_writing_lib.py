@@ -357,6 +357,7 @@ class LibraryWriting(Skill):
         from nemo_oo_agents.runtime.restrictions import (
             DEFAULT_BLOCKED_MODULES,
             DEFAULT_RESTRICTED_IMPORTS,
+            get_restricted_imports,
         )
 
         context = ValidationContext(
@@ -364,7 +365,7 @@ class LibraryWriting(Skill):
             agent_class=type(self._agent),
             available_names=set(),
             importable_modules=importable,
-            restricted_imports=DEFAULT_RESTRICTED_IMPORTS,
+            restricted_imports=get_restricted_imports() or DEFAULT_RESTRICTED_IMPORTS,
             blocked_modules=DEFAULT_BLOCKED_MODULES,
         )
 

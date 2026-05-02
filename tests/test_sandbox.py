@@ -26,19 +26,19 @@ total = sum(result)
 
 
 def test_validator_forbids_import_when_not_available():
-    """Test that validator forbids import statements for unavailable modules."""
+    """Test that validator forbids import of restricted modules."""
     code = "import os"
 
-    with pytest.raises(ValidationError, match="import of 'os' is forbidden"):
-        validate_code(code)
+    with pytest.raises(ValidationError, match="import of 'os' is restricted"):
+        validate_code(code, restricted_imports=frozenset({"os"}))
 
 
 def test_validator_forbids_from_import_when_not_available():
-    """Test that validator forbids from...import for unavailable modules."""
+    """Test that validator forbids from...import for restricted modules."""
     code = "from os import path"
 
-    with pytest.raises(ValidationError, match="import of 'os' is forbidden"):
-        validate_code(code)
+    with pytest.raises(ValidationError, match="import of 'os' is restricted"):
+        validate_code(code, restricted_imports=frozenset({"os"}))
 
 
 def test_validator_allows_import_when_available():
@@ -157,10 +157,10 @@ exec('pass')
 """
 
     with pytest.raises(ValidationError) as exc_info:
-        validate_code(code)
+        validate_code(code, restricted_imports=frozenset({"os"}))
 
     error_msg = str(exc_info.value)
-    # First error is the forbidden import (line 2)
+    # First error is the restricted import (line 2)
     assert "import" in error_msg and "os" in error_msg
     assert "Cell In[1], line 2" in error_msg
     # IPython-style shows source line and caret
@@ -169,16 +169,15 @@ exec('pass')
 
 
 def test_validator_shows_available_modules_in_error():
-    """Test that validator shows available modules when import fails."""
+    """Test that validator shows restricted module in error message."""
     code = "import numpy"
 
     with pytest.raises(ValidationError) as exc_info:
-        validate_code(code, available_names=["asyncio", "json", "self"])
+        validate_code(code, restricted_imports=frozenset({"numpy"}))
 
     error_msg = str(exc_info.value)
     assert "numpy" in error_msg
-    assert "Available in scope" in error_msg
-    assert "asyncio" in error_msg
+    assert "restricted" in error_msg
 
 
 @pytest.mark.asyncio
@@ -387,15 +386,17 @@ async def test_sandbox_forbids_unavailable_imports():
     agent_instance = TestAgent()
     runtime = ActorRuntime(agent_instance)
 
-    # numpy is not in scope, so this should fail
+    # Use a definitely-nonexistent module to test runtime import failure
     code = """
-import numpy
-result = numpy.array([1, 2, 3])
+import _nonexistent_module_xyzzy_12345
+result = _nonexistent_module_xyzzy_12345.foo()
 """
 
     result = await runtime.execute_code(code)
+    # With deny-list import policy (empty restricted_imports default), the module passes
+    # AST validation but fails at runtime since it doesn't exist.
     assert result.error is not None
-    assert "import of 'numpy' is forbidden" in str(result.error)
+    assert isinstance(result.error, ModuleNotFoundError)
 
 
 @pytest.mark.asyncio
@@ -677,45 +678,40 @@ def test_validator_importable_modules_allows_with_new_alias():
 
 
 def test_validator_importable_modules_blocks_alias_as_module():
-    """Test that import using alias name fails when it's not an actual module."""
+    """Test that import using alias name fails when it's in restricted_imports."""
     code = "import pd"
 
-    # pd is just an alias, not an actual module name
-    # importable_modules only contains 'pandas', not 'pd'
-    with pytest.raises(ValidationError, match="import of 'pd' is forbidden"):
+    # pd is restricted — should be blocked regardless of available_names
+    with pytest.raises(ValidationError, match="import of 'pd' is restricted"):
         validate_code(
             code,
             available_names=["pd"],
-            importable_modules={"pandas"},
+            restricted_imports=frozenset({"pd"}),
         )
 
 
 def test_validator_importable_modules_prevents_wrong_module():
-    """Test that wrongly aliased modules don't allow importing the alias name.
+    """Test that restricted modules are blocked even if aliased in available_names.
 
-    If someone has 'import numpy as os' in their agent file:
-    - 'os' is in available_names (the alias used in code)
-    - 'numpy' is in importable_modules (the actual module)
-    - 'import os' should FAIL because 'os' is not actually importable
-    - 'import numpy' should SUCCEED
+    'import os' should FAIL when os is in restricted_imports,
+    regardless of available_names or importable_modules.
     """
-    # LLM tries to import 'os' but it's actually numpy aliased as os
     code_os = "import os"
     code_numpy = "import numpy"
 
-    # 'os' is the alias, 'numpy' is the actual module
-    with pytest.raises(ValidationError, match="import of 'os' is forbidden"):
+    # os is restricted
+    with pytest.raises(ValidationError, match="import of 'os' is restricted"):
         validate_code(
             code_os,
-            available_names=["os"],  # alias
-            importable_modules={"numpy"},  # actual module name
+            available_names=["os"],
+            restricted_imports=frozenset({"os"}),
         )
 
-    # But 'import numpy' should work
+    # numpy is not restricted — should work
     validate_code(
         code_numpy,
         available_names=["os"],
-        importable_modules={"numpy"},
+        restricted_imports=frozenset({"os"}),
     )
 
 
@@ -768,18 +764,14 @@ def test_validator_importable_modules_from_import_with_alias():
 
 
 def test_validator_importable_modules_from_import_blocks_alias():
-    """Test that from-imports using alias name fails.
-
-    If agent has 'import numpy as np', 'from np import array' should fail
-    because 'np' is not a real module.
-    """
+    """Test that from-imports using a restricted module name fails."""
     code = "from np import array"
 
-    with pytest.raises(ValidationError, match="import of 'np' is forbidden"):
+    with pytest.raises(ValidationError, match="import of 'np' is restricted"):
         validate_code(
             code,
             available_names=["np"],
-            importable_modules={"numpy"},
+            restricted_imports=frozenset({"np"}),
         )
 
 
@@ -800,18 +792,17 @@ def test_validator_importable_modules_exact_submodule_match():
 
 
 def test_validator_importable_modules_exact_submodule_blocks_parent():
-    """Test that whitelisting a submodule doesn't allow the parent.
+    """Test that restricting a parent blocks the parent import.
 
-    If importable_modules only contains 'pandas.core',
-    'import pandas' should fail.
+    If 'pandas' is in restricted_imports, 'import pandas' should fail.
     """
     code = "import pandas"
 
-    with pytest.raises(ValidationError, match="import of 'pandas' is forbidden"):
+    with pytest.raises(ValidationError, match="import of 'pandas' is restricted"):
         validate_code(
             code,
             available_names=[],
-            importable_modules={"pandas.core"},  # only submodule whitelisted
+            restricted_imports=frozenset({"pandas"}),
         )
 
 
