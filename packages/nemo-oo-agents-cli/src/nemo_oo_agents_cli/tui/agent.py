@@ -25,6 +25,8 @@ with hidden:
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
+    from nemo_oo_agents.tools.shell_tools import ShellTools
+    from nemo_oo_agents.tools.repo_tools import RepoTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
@@ -652,6 +654,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             config=BashConfig(srt_settings=_srt if _srt.exists() else None),
         )
         self.files = FileTool(self.bash)
+        self.shell = ShellTools(cwd=config.working_dir)
+        self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
         self.libs = LibraryWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
 
