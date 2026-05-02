@@ -521,7 +521,8 @@ def _format_type_info(
             lines.append(f"{ind}    {field.name} = {value_str}")
 
         if truncated:
-            lines.append(f"{ind}    ... +{truncated}")
+            # Truncation 3.0: bare ``...`` (matches the rest of the family).
+            lines.append(f"{ind}    ...")
 
         return "\n".join(lines)
 
@@ -571,7 +572,8 @@ def _format_type_info(
         lines.append(line)
 
     if truncated_fields:
-        lines.append(f"{ind}    ... +{truncated_fields}")
+        # Truncation 3.0: bare ``...`` (matches the rest of the family).
+        lines.append(f"{ind}    ...")
 
     # Add extra instance attributes not in type fields (like tools assigned at runtime)
     if instance_values:
@@ -968,8 +970,10 @@ def _format_instance_repr(
     eligible_fields = [f for f in type_info.fields if f.repr]
     for field in eligible_fields:
         if max_length and field_count >= max_length:
-            omitted = len(eligible_fields) - field_count
-            parts.append(f"... +{omitted}")
+            # Truncation 3.0: bare ``...`` matches the inner-marker convention
+            # used everywhere else (dict items, set items, expanded multi-line).
+            # The legacy ``... +N`` form was the last holdout of the old shape.
+            parts.append("...")
             break
 
         # If __instance_values__ is implemented, only show fields it returned
@@ -1253,14 +1257,29 @@ def _format_value(
         )
         return
 
-    # Fallback to repr for other types
+    # Fallback to repr for other types (numpy arrays, pandas frames, custom classes, …).
+    # When the repr is over budget, emit the truncation 3.0 marker family —
+    # same shape as the rest of the renderer, prefixed with the actual type
+    # name so the LLM can tell what was truncated:
+    #     ndarray(repr_len=2773, [:H]='array([0, 1, 2, ...', [-T:]='...]')
     try:
         result = repr(_object)
     except Exception:
         _stream.write(f"<{type(_object).__name__}>")
         return
-    if max_string and len(result) > max_string:
-        _stream.write(result[:max_string] + f"... +{len(result) - max_string}")
+    if max_string is not None and len(result) > max_string:
+        n = len(result)
+        n_head = (max_string + 1) // 2
+        n_tail = max_string - n_head
+        type_name = type(_object).__name__
+        head_repr = repr(result[:n_head])
+        if n_tail > 0:
+            tail_repr = repr(result[-n_tail:])
+            _stream.write(
+                f"{type_name}(repr_len={n}, [:{n_head}]={head_repr}, [-{n_tail}:]={tail_repr})"
+            )
+        else:
+            _stream.write(f"{type_name}(repr_len={n}, [:{n_head}]={head_repr})")
         return
     _stream.write(result)
 

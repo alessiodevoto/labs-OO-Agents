@@ -1050,7 +1050,7 @@ class TestPformatTypes:
         assert "f1: str" in result
         assert "f2: str" in result
         assert "f3: str" in result
-        assert "... +3" in result
+        assert "..." in result  # truncation 3.0: bare ellipsis (was "... +3")
         assert "f6: str" not in result
 
     def test_pformat_enum_type(self):
