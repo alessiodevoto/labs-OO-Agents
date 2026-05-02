@@ -250,9 +250,13 @@ class TerminalFrontend:
 
     def _render_bash(self, output: BashOutput) -> None:
         if output.stdout:
-            self._console.console.print(output.stdout, end="")
-            if not output.stdout.endswith("\n"):
-                self._console.console.print()
+            # Ensure text ends with newline so _EmitStream produces exactly
+            # ONE flush (one emit_block call). Two separate flushes (text
+            # sans \n, then bare \n) create two run_in_terminal hops with
+            # a prompt repaint between them that overwrites single-line
+            # output. See issue #156.
+            text = output.stdout if output.stdout.endswith("\n") else output.stdout + "\n"
+            self._console.console.print(text, end="")
         if output.stderr:
             self._console.print_error(output.stderr)
 
