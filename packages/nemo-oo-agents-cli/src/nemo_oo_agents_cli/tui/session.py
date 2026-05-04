@@ -827,18 +827,20 @@ class Session:
         if not cmd:
             return
 
-        # !commands → run through bash (not recorded as conversation turns)
-        if not hasattr(self.agent, "bash"):
+        # !commands → run through shell (not recorded as conversation turns)
+        shell = getattr(self.agent, "shell", None) or getattr(self.agent, "bash", None)
+        if shell is None:
             await self.frontend.render(
                 TextOutput(
-                    "Direct bash commands (!) require an agent with bash support.",
+                    "Direct bash commands (!) require an agent with shell or bash support.",
                     "warning",
                 )
             )
             return
 
         try:
-            result = await self.agent.bash.run(cmd)  # type: ignore[union-attr]
+            run = getattr(shell, "bash", None) or getattr(shell, "run", None)
+            result = await run(cmd)  # type: ignore[misc]
             if result:
                 await self.frontend.render(
                     BashOutput(
