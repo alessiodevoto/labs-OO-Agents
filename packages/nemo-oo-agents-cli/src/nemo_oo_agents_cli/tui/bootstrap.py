@@ -331,6 +331,8 @@ def build_startup_info(result: BootstrapResult) -> "Output":
     sandbox_available: bool | None = None
     if hasattr(agent, "bash"):
         sandbox_available = agent.bash.sandbox_available  # type: ignore[union-attr]
+    elif hasattr(agent, "shell"):
+        sandbox_available = False  # ShellTools doesn't use SRT sandbox
 
     history_policy: str | None = None
     history_limit: int | None = None
