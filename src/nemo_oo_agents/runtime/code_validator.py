@@ -12,7 +12,8 @@ Usage:
     context = ValidationContext(
         code=code,
         available_names=["self", "asyncio"],
-        importable_modules={"asyncio"},
+        restricted_imports=frozenset({"os", "sys"}),  # deny list
+        blocked_modules=DEFAULT_BLOCKED_MODULES,
     )
     validator.validate(code, context)  # Raises ValidationError on failure
 """
@@ -22,7 +23,7 @@ Usage:
 # =============================================================================
 # SecurityValidator:
 #   E001 — Forbidden builtin usage (exec, eval, compile, __import__, etc.)
-#   E002 — Forbidden import (module not in importable_modules)
+#   E002 — Restricted or blocked import (module in restricted_imports or blocked_modules)
 #   E003 — Forbidden dunder attribute access (__class__, __subclasses__, etc.)
 #   E004 — Forbidden escape via sys/os attributes (sys.modules, os.system, etc.)
 # REPLPolicyValidator:
@@ -90,11 +91,15 @@ class ValidationContext:
     code: str = ""
     agent_class: type | None = None
     available_names: set[str] = field(default_factory=set)
-    importable_modules: set[str] = field(default_factory=set)
+    importable_modules: set[str] = field(
+        default_factory=set
+    )  # Deprecated: use restricted_imports deny list instead
     forbidden_self_calls: set[str] = field(default_factory=set)
     execution_count: int = 1
     agent: Any = None  # Agent instance for method introspection
     exec_globals: dict[str, Any] = field(default_factory=dict)
+    restricted_imports: frozenset[str] = field(default_factory=frozenset)
+    blocked_modules: frozenset[str] = field(default_factory=frozenset)
     # Return type of the currently executing generation method, when known.
     # Drives ReturnTypeShadowValidator: if the generated code redefines a class
     # whose name is part of this annotation, the resulting __repl_wrapper__-scoped
@@ -132,6 +137,17 @@ FORBIDDEN_BUILTINS = frozenset(
         # Process termination
         "exit",
         "quit",
+        # Restriction mutation (prevents agent from loosening its own restrictions)
+        "set_restricted_imports",
+        "get_restricted_imports",
+    }
+)
+
+# Function names forbidden as attribute calls (e.g. `mod.set_restricted_imports()`)
+FORBIDDEN_ATTR_CALLS = frozenset(
+    {
+        "set_restricted_imports",
+        "get_restricted_imports",
     }
 )
 
@@ -155,11 +171,12 @@ class SecurityValidator:
 
     Checks for:
     - Forbidden builtins (exec, eval, compile, __import__, input, breakpoint, globals, locals)
-    - Forbidden imports (modules not in importable_modules)
+    - Restricted/blocked imports (modules in restricted_imports or blocked_modules deny lists)
     - Import * (always forbidden)
     - Dangerous dunder attribute access (__class__, __bases__, etc.)
     - Recursive self-calls (infinite recursion prevention)
     - Aliased forbidden builtins
+    - Forbidden attribute calls (set_restricted_imports, get_restricted_imports)
     """
 
     def validate(self, tree: ast.AST, context: ValidationContext) -> list[ValidationIssue]:
@@ -181,8 +198,9 @@ class _SecurityVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> Any:
         """Check import statements."""
         for alias in node.names:
-            if not self._is_module_available(alias.name):
-                self.issues.append(self._make_import_error(node, alias.name))
+            available, deny_tier = self._is_module_available(alias.name)
+            if not available:
+                self.issues.append(self._make_import_error(node, alias.name, deny_tier))
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
@@ -202,8 +220,9 @@ class _SecurityVisitor(ast.NodeVisitor):
 
         # Check if module is available
         module_name = node.module or ""
-        if not self._is_module_available(module_name):
-            self.issues.append(self._make_import_error(node, module_name))
+        available, deny_tier = self._is_module_available(module_name)
+        if not available:
+            self.issues.append(self._make_import_error(node, module_name, deny_tier))
         else:
             # Track aliases of forbidden builtins
             for alias in node.names:
@@ -239,9 +258,10 @@ class _SecurityVisitor(ast.NodeVisitor):
                         code="E001",
                     )
                 )
-            # Check setattr/delattr/getattr with dunder names
+            # Check setattr/delattr/getattr with dunder names or forbidden attr calls
             elif func_name in ("setattr", "delattr", "getattr"):
                 self._check_attr_modification_with_dunder(node, func_name)
+                self._check_getattr_forbidden_attr_call(node, func_name)
 
         # Check for forbidden self.method() calls (prevents recursion)
         if self.context.forbidden_self_calls and isinstance(node.func, ast.Attribute):
@@ -257,6 +277,19 @@ class _SecurityVisitor(ast.NodeVisitor):
                             code="E004",
                         )
                     )
+
+        # Check for forbidden attribute calls (e.g. mod.set_restricted_imports())
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr in FORBIDDEN_ATTR_CALLS:
+                self.issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=f"{node.func.attr}() is forbidden - "
+                        "this could modify runtime security restrictions",
+                        code="E001",
+                    )
+                )
 
         self.generic_visit(node)
 
@@ -323,19 +356,25 @@ class _SecurityVisitor(ast.NodeVisitor):
             )
         self.generic_visit(node)
 
-    def _is_module_available(self, module_name: str) -> bool:
-        """Check if module (or parent) is importable."""
-        modules = self.context.importable_modules
-        if not modules:
-            # Fallback to available_names for backwards compat
-            modules = self.context.available_names
+    def _is_module_available(self, module_name: str) -> tuple[bool, str | None]:
+        """Check if module is importable under the deny-list model.
 
-        # Exact match
-        if module_name in modules:
-            return True
-        # Top-level package match (e.g., "asyncio" for "asyncio.tasks")
-        top_level = module_name.split(".")[0]
-        return top_level in modules
+        A module is denied if it matches either blocked_modules (tier 1)
+        or restricted_imports (tier 2). Everything else is allowed.
+
+        Returns:
+            (available, deny_tier) — deny_tier is "blocked" or "restricted"
+            when available is False, None otherwise.
+        """
+        # Tier 1: always deny blocked modules (event-loop hazards)
+        if self.context.blocked_modules:
+            if match_blocked_module(module_name, self.context.blocked_modules) is not None:
+                return False, "blocked"
+        # Tier 2: deny restricted imports
+        if self.context.restricted_imports:
+            if match_blocked_module(module_name, self.context.restricted_imports) is not None:
+                return False, "restricted"
+        return True, None
 
     def _check_attr_modification_with_dunder(self, node: ast.Call, func_name: str) -> None:
         """Check if setattr/delattr is being used with dunder attribute names."""
@@ -370,25 +409,40 @@ class _SecurityVisitor(ast.NodeVisitor):
                     )
                 )
 
+    def _check_getattr_forbidden_attr_call(self, node: ast.Call, func_name: str) -> None:
+        """Flag getattr(obj, 'name') where name is in FORBIDDEN_ATTR_CALLS."""
+        if func_name != "getattr" or len(node.args) < 2:
+            return
+        attr_arg = node.args[1]
+        if isinstance(attr_arg, ast.Constant) and isinstance(attr_arg.value, str):
+            if attr_arg.value in FORBIDDEN_ATTR_CALLS:
+                self.issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=f"getattr() with '{attr_arg.value}' is forbidden - "
+                        "this could modify runtime security restrictions",
+                        code="E001",
+                    )
+                )
+
     def _make_import_error(
-        self, node: ast.Import | ast.ImportFrom, module_name: str
+        self, node: ast.Import | ast.ImportFrom, module_name: str, deny_tier: str | None = None
     ) -> ValidationIssue:
-        """Create error for forbidden import."""
-        msg = (
-            f"import of '{module_name}' is forbidden. "
-            f"All imports are pre-loaded — use what's in scope. "
-            f"Also forbidden: eval(), exec(), compile(), __import__(), "
-            f"input(), globals(), locals(), breakpoint()"
-        )
-        if self.context.available_names:
-            useful = sorted(
-                n
-                for n in self.context.available_names
-                if not n.startswith("_") and (n[0].isupper() or n.islower())
+        """Create error for restricted or blocked import."""
+        tier = deny_tier or "restricted"
+        if tier == "blocked":
+            msg = (
+                f"import of '{module_name}' is blocked. "
+                f"This module can freeze the event loop and is not allowed in agent code."
             )
-            if useful:
-                hint = ", ".join(useful)
-                msg += f". Available in scope: {hint}"
+        else:
+            msg = (
+                f"import of '{module_name}' is restricted. "
+                f"This module is in the restricted_imports deny list. "
+                f"Also forbidden: eval(), exec(), compile(), __import__(), "
+                f"input(), globals(), locals(), breakpoint()"
+            )
         return ValidationIssue(
             line=node.lineno,
             col=node.col_offset,
@@ -1417,6 +1471,8 @@ def validate_code(
     agent_class: type | None = None,
     available_names: list[str] | None = None,
     importable_modules: set[str] | None = None,
+    restricted_imports: frozenset[str] | None = None,
+    blocked_modules: frozenset[str] | None = None,
     forbidden_self_calls: list[str] | None = None,
     execution_count: int = 1,
     agent: Any = None,
@@ -1430,7 +1486,9 @@ def validate_code(
         code: Python source code to validate
         agent_class: Agent class for decorator checking
         available_names: Names available in scope
-        importable_modules: Actual module names that can be imported
+        importable_modules: Deprecated — use restricted_imports instead
+        restricted_imports: Deny list of module names. None uses RestrictionsConfig default.
+        blocked_modules: Hard-blocked modules. None uses RestrictionsConfig default.
         forbidden_self_calls: Method names that can't be called on self
         execution_count: Execution count for Cell In[N] format
         agent: Agent instance for method introspection
@@ -1441,11 +1499,18 @@ def validate_code(
     Raises:
         ValidationError: If validation fails
     """
+    from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+
+    rc = RestrictionsConfig()
     context = ValidationContext(
         code=code,
         agent_class=agent_class,
         available_names=set(available_names or []),
         importable_modules=importable_modules or set(),
+        restricted_imports=restricted_imports
+        if restricted_imports is not None
+        else rc.restricted_imports,
+        blocked_modules=blocked_modules if blocked_modules is not None else rc.blocked_modules,
         forbidden_self_calls=set(forbidden_self_calls or []),
         execution_count=execution_count,
         agent=agent,

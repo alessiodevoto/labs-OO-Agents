@@ -354,11 +354,15 @@ class LibraryWriting(Skill):
 
         importable = self._importable_modules() | declared_deps
 
+        # Libraries are standard Python packages — no import restrictions.
+        # Only basic syntax/security validation applies (E001 errors).
         context = ValidationContext(
             code=source,
             agent_class=type(self._agent),
             available_names=set(),
             importable_modules=importable,
+            restricted_imports=frozenset(),
+            blocked_modules=frozenset(),
         )
 
         issues = SecurityValidator().validate(tree, context)

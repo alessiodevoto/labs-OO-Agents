@@ -101,6 +101,7 @@ class TestRestrictionsConfig:
         rc = RestrictionsConfig()
         assert rc.blocked_modules == DEFAULT_BLOCKED_MODULES
         assert rc.blocked_calls == DEFAULT_BLOCKED_CALLS
+        assert rc.restricted_imports == frozenset()
 
     def test_frozen(self):
         from pydantic import ValidationError

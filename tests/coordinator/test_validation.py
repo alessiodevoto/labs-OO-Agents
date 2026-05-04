@@ -27,18 +27,18 @@ class SimpleAgent(Agent, llm=_TEST_LLM):
 
 @pytest.mark.asyncio
 async def test_validation_rejects_forbidden_imports():
-    """Test that validation rejects forbidden imports."""
+    """Test that validation rejects blocked imports (event-loop hazards)."""
     agent_instance = SimpleAgent()
     runtime = ActorRuntime(agent_instance)
 
-    # Try to execute code with forbidden import
-    code = "import os\nself.count = 1"
+    # subprocess is in DEFAULT_BLOCKED_MODULES — always rejected
+    code = "import subprocess\nself.count = 1"
 
     result = await runtime.execute_code(code, validate=True)
 
     assert result.error is not None
     assert isinstance(result.error, ValidationError)
-    assert "import" in str(result.error).lower() or "forbidden" in str(result.error).lower()
+    assert "import" in str(result.error).lower() or "blocked" in str(result.error).lower()
 
 
 @pytest.mark.asyncio

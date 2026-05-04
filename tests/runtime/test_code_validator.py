@@ -60,11 +60,17 @@ def repl_validator() -> REPLPolicyValidator:
 
 @pytest.fixture
 def default_context() -> ValidationContext:
-    """Create a default validation context."""
+    """Create a default validation context with deny-list import restrictions."""
+    from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_MODULES
+
+    # Explicit deny list for testing — DEFAULT_RESTRICTED_IMPORTS is empty by design
+    # (no restrictions by default), but tests need specific modules restricted.
     return ValidationContext(
         code="",
         available_names={"self", "asyncio", "json"},
         importable_modules={"asyncio", "json"},
+        restricted_imports=frozenset({"os", "shutil", "pathlib", "sys", "ctypes", "importlib"}),
+        blocked_modules=DEFAULT_BLOCKED_MODULES,
     )
 
 
@@ -155,15 +161,15 @@ class TestSecurityValidator:
         ):
             """Import of modules not in importable_modules must be rejected."""
             code = "import os"
-            with pytest.raises(ValidationError, match="import.*'os'.*forbidden"):
+            with pytest.raises(ValidationError, match="import.*'os'.*restricted"):
                 validator.validate(code, default_context)
 
         def test_reject_from_import_unavailable_module(
             self, validator: UnifiedCodeValidator, default_context: ValidationContext
         ):
-            """From-import of modules not in importable_modules must be rejected."""
+            """From-import of restricted modules must be rejected."""
             code = "from os import path"
-            with pytest.raises(ValidationError, match="import.*'os'.*forbidden"):
+            with pytest.raises(ValidationError, match="import.*'os'.*restricted"):
                 validator.validate(code, default_context)
 
         def test_reject_import_star(
@@ -1172,18 +1178,19 @@ y = 3
         assert "Cell In[42]" in str(exc_info.value)
 
     def test_error_shows_available_modules(self, validator: UnifiedCodeValidator):
-        """Import error should show available modules."""
+        """Import error should show restricted module in message."""
         context = ValidationContext(
             code="",
             available_names={"asyncio", "json", "self"},
             importable_modules={"asyncio", "json"},
+            restricted_imports=frozenset({"numpy"}),
         )
         code = "import numpy"
         with pytest.raises(ValidationError) as exc_info:
             validator.validate(code, context)
         error_msg = str(exc_info.value)
         assert "numpy" in error_msg
-        assert "asyncio" in error_msg or "Available" in error_msg
+        assert "restricted" in error_msg
 
 
 # =============================================================================
