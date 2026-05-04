@@ -87,16 +87,7 @@ DEFAULT_BLOCKED_CALLS: dict[str, frozenset[str]] = {
 # Empty by default (all imports allowed in sandboxed environments).
 # Developers can set DEFAULT_RESTRICTED_IMPORTS for a small deny list,
 # or RESTRICTED_MODULES for strict lockdown.
-DEFAULT_RESTRICTED_IMPORTS: frozenset[str] = frozenset(
-    {
-        "os",
-        "shutil",
-        "pathlib",
-        "sys",
-        "ctypes",
-        "importlib",
-    }
-)
+DEFAULT_RESTRICTED_IMPORTS: frozenset[str] = frozenset()
 
 
 class RestrictionsConfig(BaseModel):

@@ -61,16 +61,15 @@ def repl_validator() -> REPLPolicyValidator:
 @pytest.fixture
 def default_context() -> ValidationContext:
     """Create a default validation context with deny-list import restrictions."""
-    from nemo_oo_agents.runtime.restrictions import (
-        DEFAULT_BLOCKED_MODULES,
-        DEFAULT_RESTRICTED_IMPORTS,
-    )
+    from nemo_oo_agents.runtime.restrictions import DEFAULT_BLOCKED_MODULES
 
+    # Explicit deny list for testing — DEFAULT_RESTRICTED_IMPORTS is empty by design
+    # (no restrictions by default), but tests need specific modules restricted.
     return ValidationContext(
         code="",
         available_names={"self", "asyncio", "json"},
         importable_modules={"asyncio", "json"},
-        restricted_imports=DEFAULT_RESTRICTED_IMPORTS,
+        restricted_imports=frozenset({"os", "shutil", "pathlib", "sys", "ctypes", "importlib"}),
         blocked_modules=DEFAULT_BLOCKED_MODULES,
     )
 

@@ -30,12 +30,11 @@ class TestRestrictedImportsConfig:
         assert rc.restricted_imports == frozenset()
         assert isinstance(rc.restricted_imports, frozenset)
 
-    def test_default_restricted_imports_includes_key_modules(self):
-        """DEFAULT_RESTRICTED_IMPORTS should include os, shutil, pathlib, sys, ctypes, importlib."""
+    def test_default_restricted_imports_constant_is_empty(self):
+        """DEFAULT_RESTRICTED_IMPORTS constant should be empty — no restrictions by default."""
         from nemo_oo_agents.runtime.restrictions import DEFAULT_RESTRICTED_IMPORTS
 
-        expected = {"os", "shutil", "pathlib", "sys", "ctypes", "importlib"}
-        assert expected <= DEFAULT_RESTRICTED_IMPORTS
+        assert DEFAULT_RESTRICTED_IMPORTS == frozenset()
 
     def test_custom_restricted_imports(self):
         """Developers can set a custom restricted_imports set."""

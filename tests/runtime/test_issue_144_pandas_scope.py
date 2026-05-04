@@ -17,7 +17,6 @@ framework contract so we catch regressions.
 import pytest
 
 from nemo_oo_agents import Agent
-from nemo_oo_agents.errors import RestrictedCodeError
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()

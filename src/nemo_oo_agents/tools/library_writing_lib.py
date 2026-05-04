@@ -354,22 +354,15 @@ class LibraryWriting(Skill):
 
         importable = self._importable_modules() | declared_deps
 
-        from nemo_oo_agents.runtime.restrictions import (
-            DEFAULT_BLOCKED_MODULES,
-            DEFAULT_RESTRICTED_IMPORTS,
-            get_restricted_imports,
-        )
-
-        global_override = get_restricted_imports()
+        # Libraries are standard Python packages — no import restrictions.
+        # Only basic syntax/security validation applies (E001 errors).
         context = ValidationContext(
             code=source,
             agent_class=type(self._agent),
             available_names=set(),
             importable_modules=importable,
-            restricted_imports=global_override
-            if global_override is not None
-            else DEFAULT_RESTRICTED_IMPORTS,
-            blocked_modules=DEFAULT_BLOCKED_MODULES,
+            restricted_imports=frozenset(),
+            blocked_modules=frozenset(),
         )
 
         issues = SecurityValidator().validate(tree, context)
