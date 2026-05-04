@@ -125,15 +125,22 @@ class RestrictionsConfig(BaseModel):
     blocked_calls: dict[str, frozenset[str]] = DEFAULT_BLOCKED_CALLS
     restricted_imports: frozenset[str] = frozenset()
 
-    @model_validator(mode="before")
+    @model_validator(mode="wrap")
     @classmethod
-    def _apply_global_restricted_imports(cls, data: Any) -> Any:
+    def _apply_global_restricted_imports(cls, data: Any, handler: Any) -> "RestrictionsConfig":
         """Apply process-global restricted_imports if not explicitly set."""
         if isinstance(data, dict) and "restricted_imports" not in data:
             override = _global_restricted_imports
             if override is not None:
                 data["restricted_imports"] = override
-        return data
+        result = handler(data)
+        # For non-dict inputs (e.g. model instances), apply override post-validation
+        # if restricted_imports still has the field default
+        if not isinstance(data, dict) and result.restricted_imports == frozenset():
+            override = _global_restricted_imports
+            if override is not None:
+                result = result.model_copy(update={"restricted_imports": override})
+        return result
 
 
 def match_blocked_module(

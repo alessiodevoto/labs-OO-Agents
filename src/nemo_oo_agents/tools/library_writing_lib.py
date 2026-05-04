@@ -360,12 +360,15 @@ class LibraryWriting(Skill):
             get_restricted_imports,
         )
 
+        global_override = get_restricted_imports()
         context = ValidationContext(
             code=source,
             agent_class=type(self._agent),
             available_names=set(),
             importable_modules=importable,
-            restricted_imports=get_restricted_imports() or DEFAULT_RESTRICTED_IMPORTS,
+            restricted_imports=global_override
+            if global_override is not None
+            else DEFAULT_RESTRICTED_IMPORTS,
             blocked_modules=DEFAULT_BLOCKED_MODULES,
         )
 

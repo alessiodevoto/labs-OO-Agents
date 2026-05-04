@@ -194,14 +194,13 @@ class _SecurityVisitor(ast.NodeVisitor):
         self.issues: list[ValidationIssue] = []
         # Track aliases: local_name -> original_forbidden_name
         self.forbidden_aliases: dict[str, str] = {}
-        # Set by _is_module_available to differentiate tier-1 vs tier-2 denials
-        self._last_deny_tier: str | None = None
 
     def visit_Import(self, node: ast.Import) -> Any:
         """Check import statements."""
         for alias in node.names:
-            if not self._is_module_available(alias.name):
-                self.issues.append(self._make_import_error(node, alias.name))
+            available, deny_tier = self._is_module_available(alias.name)
+            if not available:
+                self.issues.append(self._make_import_error(node, alias.name, deny_tier))
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
@@ -221,8 +220,9 @@ class _SecurityVisitor(ast.NodeVisitor):
 
         # Check if module is available
         module_name = node.module or ""
-        if not self._is_module_available(module_name):
-            self.issues.append(self._make_import_error(node, module_name))
+        available, deny_tier = self._is_module_available(module_name)
+        if not available:
+            self.issues.append(self._make_import_error(node, module_name, deny_tier))
         else:
             # Track aliases of forbidden builtins
             for alias in node.names:
@@ -258,9 +258,10 @@ class _SecurityVisitor(ast.NodeVisitor):
                         code="E001",
                     )
                 )
-            # Check setattr/delattr/getattr with dunder names
+            # Check setattr/delattr/getattr with dunder names or forbidden attr calls
             elif func_name in ("setattr", "delattr", "getattr"):
                 self._check_attr_modification_with_dunder(node, func_name)
+                self._check_getattr_forbidden_attr_call(node, func_name)
 
         # Check for forbidden self.method() calls (prevents recursion)
         if self.context.forbidden_self_calls and isinstance(node.func, ast.Attribute):
@@ -355,24 +356,25 @@ class _SecurityVisitor(ast.NodeVisitor):
             )
         self.generic_visit(node)
 
-    def _is_module_available(self, module_name: str) -> bool:
+    def _is_module_available(self, module_name: str) -> tuple[bool, str | None]:
         """Check if module is importable under the deny-list model.
 
         A module is denied if it matches either blocked_modules (tier 1)
         or restricted_imports (tier 2). Everything else is allowed.
+
+        Returns:
+            (available, deny_tier) — deny_tier is "blocked" or "restricted"
+            when available is False, None otherwise.
         """
         # Tier 1: always deny blocked modules (event-loop hazards)
         if self.context.blocked_modules:
             if match_blocked_module(module_name, self.context.blocked_modules) is not None:
-                self._last_deny_tier = "blocked"
-                return False
+                return False, "blocked"
         # Tier 2: deny restricted imports
         if self.context.restricted_imports:
             if match_blocked_module(module_name, self.context.restricted_imports) is not None:
-                self._last_deny_tier = "restricted"
-                return False
-        self._last_deny_tier = None
-        return True
+                return False, "restricted"
+        return True, None
 
     def _check_attr_modification_with_dunder(self, node: ast.Call, func_name: str) -> None:
         """Check if setattr/delattr is being used with dunder attribute names."""
@@ -407,11 +409,28 @@ class _SecurityVisitor(ast.NodeVisitor):
                     )
                 )
 
+    def _check_getattr_forbidden_attr_call(self, node: ast.Call, func_name: str) -> None:
+        """Flag getattr(obj, 'name') where name is in FORBIDDEN_ATTR_CALLS."""
+        if func_name != "getattr" or len(node.args) < 2:
+            return
+        attr_arg = node.args[1]
+        if isinstance(attr_arg, ast.Constant) and isinstance(attr_arg.value, str):
+            if attr_arg.value in FORBIDDEN_ATTR_CALLS:
+                self.issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=f"getattr() with '{attr_arg.value}' is forbidden - "
+                        "this could modify runtime security restrictions",
+                        code="E001",
+                    )
+                )
+
     def _make_import_error(
-        self, node: ast.Import | ast.ImportFrom, module_name: str
+        self, node: ast.Import | ast.ImportFrom, module_name: str, deny_tier: str | None = None
     ) -> ValidationIssue:
         """Create error for restricted or blocked import."""
-        tier = self._last_deny_tier or "restricted"
+        tier = deny_tier or "restricted"
         if tier == "blocked":
             msg = (
                 f"import of '{module_name}' is blocked. "
