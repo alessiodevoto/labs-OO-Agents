@@ -22,7 +22,7 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 # Load .env with override=True to ensure .env values take precedence
 # over any pre-existing shell environment variables
@@ -132,7 +132,7 @@ def list_models() -> list[str]:
     return list(data.get("models", {}).keys())
 
 
-def client(model_id: str, **kwargs) -> CompletionClient | ResponsesClient:
+def client(model_id: str, **kwargs) -> UnifiedLLM:
     """Create a configured LLM client for a model ID.
 
     Tries the unifiedllm registry first (which supports client_type dispatch
@@ -143,7 +143,7 @@ def client(model_id: str, **kwargs) -> CompletionClient | ResponsesClient:
         **kwargs: Override config values (e.g., temperature, max_retries, retry_on_empty_content)
 
     Returns:
-        Configured UnifiedLLM client (CompletionClient or ResponsesClient)
+        Configured UnifiedLLM client
     """
     # Try unifiedllm registry first — it handles client_type dispatch
     try:
@@ -226,7 +226,7 @@ def client(model_id: str, **kwargs) -> CompletionClient | ResponsesClient:
     return CompletionClient(model=litellm_model, **config)
 
 
-def client_for(role: str, **kwargs) -> CompletionClient:
+def client_for(role: str, **kwargs) -> UnifiedLLM:
     """Create a client for the default model of a role.
 
     Args:
@@ -234,7 +234,7 @@ def client_for(role: str, **kwargs) -> CompletionClient:
         **kwargs: Override config values
 
     Returns:
-        Configured CompletionClient from unifiedllm
+        Configured UnifiedLLM client
     """
     model_id = get_default(role)
     return client(model_id, **kwargs)

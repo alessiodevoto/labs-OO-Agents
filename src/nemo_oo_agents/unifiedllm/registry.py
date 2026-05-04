@@ -134,19 +134,21 @@ def reload_registry() -> dict[str, dict[str, Any]]:
     return MODELS
 
 
-def get_llm_client(name: str, **overrides) -> UnifiedLLM:
+def get_llm_client(name: str, *, client_type: str | None = None, **overrides) -> UnifiedLLM:
     """Create an LLM client, optionally using registry config.
 
     If ``name`` is a registry key, its config (model_name, endpoint, API key,
     defaults) is applied. Otherwise ``name`` is passed directly to litellm,
     which handles routing for every common public provider.
 
-    The ``client_type`` field in registry YAML selects the client class:
-    - ``"completion"`` (default): CompletionClient (Chat Completions API)
-    - ``"responses"``: ResponsesClient (Responses API)
+    Client class selection (first wins):
+    1. Explicit ``client_type`` parameter
+    2. ``client_type`` field in registry YAML
+    3. Default: ``"completion"``
 
     Args:
         name: Registry key or a litellm-supported model string.
+        client_type: ``"completion"`` or ``"responses"``. Overrides YAML config.
         **overrides: Override any parameter (max_tokens, temperature, etc.)
 
     Returns:
@@ -163,6 +165,9 @@ def get_llm_client(name: str, **overrides) -> UnifiedLLM:
 
         # Responses API model (client_type: responses in YAML)
         llm = get_llm_client("gpt-5.3-codex")
+
+        # Responses API without YAML — pass client_type directly
+        llm = get_llm_client("openai/gpt-5.3-codex", client_type="responses")
     """
     from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
 
@@ -195,8 +200,8 @@ def get_llm_client(name: str, **overrides) -> UnifiedLLM:
 
     params.update(overrides)
 
-    # Select client class based on registry config
-    client_type = config.get("client_type", "completion")
+    # Select client class: explicit param > YAML config > default
+    client_type = client_type or config.get("client_type", "completion")
     client = ResponsesClient(**params) if client_type == "responses" else CompletionClient(**params)
     client._registry_config = config  # For context_window lookup
     return client

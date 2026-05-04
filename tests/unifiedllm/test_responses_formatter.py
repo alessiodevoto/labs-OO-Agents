@@ -45,7 +45,9 @@ class TestResponsesProviderFormatter:
         messages = [
             RenderedMessage(
                 role=Role.ASSISTANT,
-                tool_call=ToolCallInfo(id="call_123", name="execute_python", arguments={"code": "print(1)"}),
+                tool_call=ToolCallInfo(
+                    id="call_123", name="execute_python", arguments={"code": "print(1)"}
+                ),
             ),
         ]
         formatter = ResponsesProviderFormatter()
@@ -165,7 +167,12 @@ class TestResponsesClientTransformMessages:
         assert instructions == "System prompt"
         assert input_msgs == [
             {"role": "user", "content": "Do something"},
-            {"type": "function_call", "call_id": "tc1", "name": "execute_python", "arguments": '{"code": "1+1"}'},
+            {
+                "type": "function_call",
+                "call_id": "tc1",
+                "name": "execute_python",
+                "arguments": '{"code": "1+1"}',
+            },
             {"type": "function_call_output", "call_id": "tc1", "output": "2"},
         ]
 

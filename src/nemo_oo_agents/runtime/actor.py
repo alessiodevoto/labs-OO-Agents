@@ -176,12 +176,18 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     """Auto-select provider formatter based on LLM client type.
 
     ResponsesClient needs ResponsesProviderFormatter to emit native Responses
-    API wire format. All other clients use the agent's configured formatter.
+    API wire format.  All other clients (including Anthropic via LiteLLM) use
+    the agent's configured formatter.
+
+    This is intentionally runtime-dispatched rather than config-driven:
+    Anthropic formatting is handled by LiteLLM (so OpenAIProviderFormatter
+    works), but the Responses API has a fundamentally different wire shape
+    that LiteLLM does not translate, requiring its own formatter.
     """
-    from unifiedllm import ResponsesClient
+    from nemo_oo_agents.unifiedllm import ResponsesClient
 
     if isinstance(llm_client, ResponsesClient):
-        from context_blocks.formatter import ResponsesProviderFormatter
+        from nemo_oo_agents.context_blocks.formatter import ResponsesProviderFormatter
 
         return ResponsesProviderFormatter()
     return default_formatter

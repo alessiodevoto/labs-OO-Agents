@@ -1866,7 +1866,9 @@ class ResponsesClient(UnifiedLLM):
             usage=usage,
         )
 
-    def _transform_messages(self, messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str | None]:
+    def _transform_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], str | None]:
         """Transform messages to Responses API format and extract instructions.
 
         Handles two input formats:

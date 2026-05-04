@@ -442,7 +442,7 @@ capability-test:
     - |
       uv run python -m eval_pipeline \
         --config tests/capability/config.yaml \
-        --models claude-haiku \
+        --models claude-haiku gpt-5.3-codex \
         --output-dir results/ci \
         --default_strategy codeact \
         --runs 3 \
