@@ -17,10 +17,71 @@ from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
 # ---------------------------------------------------------------------------
 
 
+class _FakeShell:
+    """Minimal ShellTools mock for LibraryWriting tests."""
+
+    async def edit(self, path, old_str, new_str):
+        from pathlib import Path
+
+        from nemo_oo_agents.tools._results import EditResult
+
+        p = Path(path)
+        content = p.read_text()
+        if content.count(old_str) != 1:
+            return EditResult(path=path, diff="", success=False, error="not unique")
+        p.write_text(content.replace(old_str, new_str, 1))
+        return EditResult(path=path, diff=f"-{old_str}\n+{new_str}", success=True)
+
+    async def grep(self, pattern, path=".", **kwargs):
+        import subprocess
+
+        from nemo_oo_agents.tools._results import SearchResult
+
+        r = subprocess.run(
+            ["grep", "-rn", pattern, path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        lines = [line for line in r.stdout.strip().split("\n") if line]
+        return SearchResult(matches=lines, total_matches=len(lines))
+
+    async def find(self, pattern, path=".", **kwargs):
+        import subprocess
+
+        from nemo_oo_agents.tools._results import SearchResult
+
+        r = subprocess.run(
+            ["find", path, "-name", pattern, "-not", "-path", "*/.*"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        lines = sorted(line for line in r.stdout.strip().split("\n") if line)
+        return SearchResult(matches=lines, total_matches=len(lines))
+
+    async def bash(self, command, timeout=120.0):
+        import subprocess
+
+        from nemo_oo_agents.tools._results import BashResult
+
+        r = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return BashResult(
+            stdout=r.stdout.strip(), stderr=r.stderr.strip(), return_code=r.returncode
+        )
+
+
 class _FakeAgent:
     """Minimal agent whose module is this test module."""
 
     runtime = SimpleNamespace()
+    shell = _FakeShell()
 
     def __setattr__(self, name: str, value: object) -> None:
         object.__setattr__(self, name, value)

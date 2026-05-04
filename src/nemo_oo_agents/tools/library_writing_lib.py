@@ -15,7 +15,6 @@ from typing import Any
 
 from nemo_oo_agents.library_manager import LibraryManager
 from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.tools.bash_tool import BashTool, FileTool
 
 # ---------------------------------------------------------------------------
 # LintReport
@@ -133,8 +132,7 @@ class LibraryWriting(Skill):
         self._agent = agent
         self._path = path
         self._path.mkdir(parents=True, exist_ok=True)
-        self._bash = BashTool(working_dir=self._path)
-        self._files = FileTool(self._bash)
+        self._shell = agent.shell
         libs_str = str(self._path)
         if libs_str not in sys.path:
             sys.path.insert(0, libs_str)
@@ -248,7 +246,7 @@ class LibraryWriting(Skill):
         Returns:
             LintReport string for .py files, plain confirmation otherwise.
         """
-        result = await self._files.edit_file(
+        result = await self._shell.edit(
             str(self._path / lib_name / path),
             search_block,
             replace_block,
@@ -283,8 +281,7 @@ class LibraryWriting(Skill):
         Returns:
             File contents as a string.
         """
-        result = await self._files.read(str(self._path / lib_name / path))
-        return result.stdout
+        return (self._path / lib_name / path).read_text()
 
     async def grep(self, pattern: str, directory: str = ".") -> str:
         """Search for a pattern across library files.
@@ -296,10 +293,9 @@ class LibraryWriting(Skill):
         Returns:
             Grep output as a string.
         """
-        import shlex
-
-        result = await self._bash.run(f"grep -rn {shlex.quote(pattern)} {shlex.quote(directory)}")
-        return str(result)
+        path = str(self._path / directory) if directory != "." else str(self._path)
+        result = await self._shell.grep(pattern, path)
+        return "\n".join(result.matches)
 
     async def repo_tree(self, directory: str = ".") -> str:
         """Show the directory tree of the libraries root (or a subdirectory).
@@ -310,10 +306,9 @@ class LibraryWriting(Skill):
         Returns:
             Tree output as a string.
         """
-        import shlex
-
-        result = await self._bash.run(f"find {shlex.quote(directory)} -not -path '*/.*' | sort")
-        return str(result)
+        path = str(self._path / directory) if directory != "." else str(self._path)
+        result = await self._shell.find("*", path)
+        return "\n".join(result.matches)
 
     async def run_tests(self, lib_name: str) -> str:
         """Run pytest on the library's tests/ directory.
@@ -328,10 +323,10 @@ class LibraryWriting(Skill):
         import sys as _sys
 
         tests_dir = self._path / lib_name / "tests"
-        result = await self._bash.run(
+        result = await self._shell.bash(
             f"PYTHONPATH={shlex.quote(str(self._path))}:$PYTHONPATH "
             f"{shlex.quote(_sys.executable)} -m pytest {shlex.quote(str(tests_dir))} -v",
-            timeout=60.0,
+            timeout=60,
         )
         return str(result)
 

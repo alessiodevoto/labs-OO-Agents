@@ -743,7 +743,6 @@ class SkillsCommand(Command):
                         "/history",
                         "/mcp",
                         "/skills",
-                        "/sandbox",
                         "/python",
                         "/session",
                     }
@@ -899,73 +898,6 @@ class TodoCommand(Command):
             lines.append(f"Notes: {t.notes}")
         lines.append(f"Created: {t.created_at}")
         return CommandResult.ok(TextOutput("\n".join(lines), "info"))
-
-
-# ---------------------------------------------------------------------------
-# Sandbox commands
-# ---------------------------------------------------------------------------
-
-
-class SandboxCommand(Command):
-    required_capabilities: ClassVar[frozenset[str]] = frozenset({"bash"})
-
-    @property
-    def name(self) -> str:
-        return "sandbox"
-
-    @classmethod
-    def help_text(cls) -> dict[str, str]:
-        return {
-            "/sandbox status": "Show sandbox status",
-            "/sandbox enable": "Enable sandbox for bash commands",
-            "/sandbox disable": "Disable sandbox for bash commands",
-        }
-
-    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if not args:
-            return False, "Usage: /sandbox <status|enable|disable>"
-        if args[0].lower() not in ("status", "enable", "disable"):
-            return False, f"Unknown subcommand `{args[0]}`"
-        return True, None
-
-    async def execute(self, args: list[str]) -> "CommandResult":
-        subcmd = args[0].lower()
-
-        if subcmd == "status":
-            available = self.agent.bash.sandbox_available
-            enabled = self.agent.bash.use_sandbox
-            note = ""
-            if enabled and not available:
-                note = "Warning: sandbox enabled but SRT not available \u2014 running unsandboxed"
-            elif enabled:
-                note = "Bash commands running in SRT sandbox"
-            else:
-                note = "Bash commands running without sandbox"
-
-            rows = [
-                ["SRT available", "Yes" if available else "No"],
-                ["Sandbox enabled", "Yes" if enabled else "No"],
-            ]
-            outputs: list[Output] = [
-                TableOutput(columns=["Field", "Value"], rows=rows, title="Sandbox Status")
-            ]
-            if note:
-                outputs.append(TextOutput(note, "status"))
-            return CommandResult.ok(*outputs)
-
-        if subcmd == "enable":
-            if not self.agent.bash.sandbox_available:
-                return CommandResult.err("SRT not available. Install to use sandboxing.")
-            if self.agent.bash.use_sandbox:
-                return CommandResult.ok(TextOutput("Sandbox already enabled", "info"))
-            self.agent.bash.use_sandbox = True
-            return CommandResult.ok(TextOutput("Sandbox enabled", "success"))
-
-        # disable
-        if not self.agent.bash.use_sandbox:
-            return CommandResult.ok(TextOutput("Sandbox already disabled", "info"))
-        self.agent.bash.use_sandbox = False
-        return CommandResult.ok(TextOutput("Sandbox disabled", "success"))
 
 
 # ---------------------------------------------------------------------------
@@ -1869,7 +1801,6 @@ class CommandRegistry:
         "mcp": MCPCommand,
         "skills": SkillsCommand,
         "todo": TodoCommand,
-        "sandbox": SandboxCommand,
         "python": PythonCommand,
         "session": SessionCommand,
         "jobs": JobsCommand,

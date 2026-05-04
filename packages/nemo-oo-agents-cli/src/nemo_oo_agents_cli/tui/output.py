@@ -119,7 +119,6 @@ class StartupInfo:
     vi_mode: bool
     history_policy: str | None = None
     history_limit: int | None = None
-    sandbox_available: bool | None = None
     tracing_enabled: bool = False
     trace_dir: str | None = None
     custom_agent: str | None = None
@@ -133,7 +132,6 @@ class StartupInfo:
             "vi_mode": self.vi_mode,
             "history_policy": self.history_policy,
             "history_limit": self.history_limit,
-            "sandbox_available": self.sandbox_available,
             "tracing_enabled": self.tracing_enabled,
             "trace_dir": self.trace_dir,
             "custom_agent": self.custom_agent,

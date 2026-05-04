@@ -279,11 +279,23 @@ class TextSkill(Skill):
                 f"Script {name!r} not found in {scripts_dir}. Available: {available}"
             )
 
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nemo_oo_agents.tools._bash_session import BashSession
 
         cmd = _build_script_command(script, args, interpreter=interpreter)
-        result = await BashTool(working_dir=self._skill_path).run(cmd, timeout=timeout)
-        return str(result)
+        session = BashSession(cwd=self._skill_path)
+        try:
+            await session.start()
+            stdout, stderr, exit_code = await session.run(cmd, timeout=timeout)
+        finally:
+            await session.close()
+
+        # Format output to match the previous BashResult.__str__() contract
+        output = stdout
+        if stderr:
+            output += f"\n[stderr]\n{stderr}"
+        if exit_code != 0:
+            output += f"\n[exit code: {exit_code}]"
+        return output
 
     def read_file(self, path: str) -> str:
         """Read a file from anywhere within this skill's directory.

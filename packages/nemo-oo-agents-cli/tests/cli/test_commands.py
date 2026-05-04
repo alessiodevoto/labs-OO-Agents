@@ -61,8 +61,6 @@ def mock_agent(mock_config):
         }
     )
     agent.bash = MagicMock()
-    agent.bash.use_sandbox = False
-    agent.bash.sandbox_available = True
     agent.bash.run = AsyncMock(
         return_value=MagicMock(stdout="test output", stderr="", return_code=0, sandboxed=True)
     )
@@ -226,104 +224,6 @@ async def test_history_tags_output(handler):
 
     assert result.success is True
     assert any(isinstance(o, TableOutput) for o in result.outputs)
-
-
-# ============================================================================
-# Sandbox Command Tests - Input/Output
-# ============================================================================
-
-
-@pytest.mark.asyncio
-async def test_sandbox_command_no_args_output(handler):
-    """Test /sandbox with no args - shows error."""
-    result = await handler.handle("/sandbox")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("Usage: /sandbox <status|enable|disable>" in o.content for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_command_invalid_subcommand_output(handler):
-    """Test /sandbox with invalid subcommand - shows error."""
-    result = await handler.handle("/sandbox invalid")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("invalid" in o.content for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_status_output(handler):
-    """Test /sandbox status - shows status."""
-    result = await handler.handle("/sandbox status")
-
-    assert result.success is True
-    assert any(isinstance(o, TableOutput) for o in result.outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_enable_output(handler, mock_agent):
-    """Test /sandbox enable - enables sandbox."""
-    mock_agent.bash.sandbox_available = True
-    mock_agent.bash.use_sandbox = False
-
-    result = await handler.handle("/sandbox enable")
-
-    assert result.success is True
-    assert mock_agent.bash.use_sandbox is True
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("enabled" in o.content.lower() for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_enable_already_enabled_output(handler, mock_agent):
-    """Test /sandbox enable when already enabled - shows message."""
-    mock_agent.bash.sandbox_available = True
-    mock_agent.bash.use_sandbox = True
-
-    result = await handler.handle("/sandbox enable")
-
-    assert result.success is True
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("already" in o.content.lower() for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_enable_no_srt_output(handler, mock_agent):
-    """Test /sandbox enable when SRT not available - shows error."""
-    mock_agent.bash.sandbox_available = False
-
-    result = await handler.handle("/sandbox enable")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("SRT" in o.content or "not available" in o.content for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_disable_output(handler, mock_agent):
-    """Test /sandbox disable - disables sandbox."""
-    mock_agent.bash.use_sandbox = True
-
-    result = await handler.handle("/sandbox disable")
-
-    assert result.success is True
-    assert mock_agent.bash.use_sandbox is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("disabled" in o.content.lower() for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_sandbox_disable_already_disabled_output(handler, mock_agent):
-    """Test /sandbox disable when already disabled - shows message."""
-    mock_agent.bash.use_sandbox = False
-
-    result = await handler.handle("/sandbox disable")
-
-    assert result.success is True
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("already" in o.content.lower() for o in text_outputs)
 
 
 # ============================================================================
@@ -662,25 +562,6 @@ async def test_mcp_list_tableoutput_fields(handler):
 
 
 @pytest.mark.asyncio
-async def test_sandbox_status_tableoutput_fields(handler):
-    """/sandbox status produces a TableOutput with correct title, columns, and rows."""
-    result = await handler.handle("/sandbox status")
-
-    tables = [o for o in result.outputs if isinstance(o, TableOutput)]
-    assert tables, "Expected a TableOutput from /sandbox status"
-    t = tables[0]
-    assert isinstance(t.columns, list)
-    assert isinstance(t.rows, list)
-    assert t.title == "Sandbox Status"
-    assert t.columns == ["Field", "Value"]
-    # Each row is [str, str]
-    for row in t.rows:
-        assert len(row) == 2
-        assert isinstance(row[0], str)
-        assert isinstance(row[1], str)
-
-
-@pytest.mark.asyncio
 async def test_skills_list_tableoutput_fields(registry, mock_frontend):
     """/skills list produces a TableOutput with correct title, columns, and rows."""
     from unittest.mock import patch as _patch
@@ -980,8 +861,6 @@ def test_all_skills_auto_attached_to_agent(skills_dir, mock_frontend, mock_confi
     }
     real_agent.event_manager = MagicMock()
     real_agent.bash = MagicMock()
-    real_agent.bash.use_sandbox = False
-    real_agent.bash.sandbox_available = True
     real_agent._llm = MagicMock()
 
     CommandRegistry(
@@ -1022,8 +901,6 @@ def test_user_invokable_skill_also_attached_to_agent(skills_dir, mock_frontend, 
     }
     agent.event_manager = MagicMock()
     agent.bash = MagicMock()
-    agent.bash.use_sandbox = False
-    agent.bash.sandbox_available = True
     agent._llm = MagicMock()
 
     CommandRegistry(
