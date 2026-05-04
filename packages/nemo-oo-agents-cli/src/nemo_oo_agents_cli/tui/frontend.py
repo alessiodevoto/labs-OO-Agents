@@ -367,7 +367,6 @@ class TerminalFrontend:
         overlay = COLORS["overlay1"]
         sapphire = COLORS["sapphire"]
         peach = COLORS["peach"]
-        yellow = COLORS["yellow"]
 
         self._console.console.print(
             Rule(
@@ -391,13 +390,6 @@ class TerminalFrontend:
                 "history",
                 f"{info.history_policy}  limit {info.history_limit:,} tokens",
             )
-
-        if info.sandbox_available is not None:
-            if info.sandbox_available:
-                sandbox_text = f"[{green}]available[/] — /sandbox to toggle"
-            else:
-                sandbox_text = f"[{yellow}]not available[/] — bash runs unsandboxed"
-            table.add_row("sandbox", sandbox_text)
 
         if info.tracing_enabled:
             trace_val = (

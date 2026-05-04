@@ -328,12 +328,6 @@ def build_startup_info(result: BootstrapResult) -> "Output":
 
     short_model = _short_model_name(config.tui.default_model)
 
-    sandbox_available: bool | None = None
-    if hasattr(agent, "bash"):
-        sandbox_available = agent.bash.sandbox_available  # type: ignore[union-attr]
-    elif hasattr(agent, "shell"):
-        sandbox_available = False  # ShellTools doesn't use SRT sandbox
-
     history_policy: str | None = None
     history_limit: int | None = None
     if isinstance(agent, TUIAgent):
@@ -355,7 +349,6 @@ def build_startup_info(result: BootstrapResult) -> "Output":
         vi_mode=config.tui.vi_mode,
         history_policy=history_policy,
         history_limit=history_limit,
-        sandbox_available=sandbox_available,
         tracing_enabled=result.tracing_enabled,
         trace_dir=trace_dir_str,
         custom_agent=custom_agent_name,

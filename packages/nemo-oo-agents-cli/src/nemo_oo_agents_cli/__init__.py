@@ -3,7 +3,6 @@
 """NeMo OO Agents CLI — extensible command-line toolkit.
 
 Usage:
-    nemo oo sandbox <agent_file>       # Run an agent in a sandbox
     nemo oo eval <config.yaml>         # Run an eval-pipeline job
     nemo oo start-dev                  # Start the viewer
     nemo oo traces cleanup             # Cleanup traces

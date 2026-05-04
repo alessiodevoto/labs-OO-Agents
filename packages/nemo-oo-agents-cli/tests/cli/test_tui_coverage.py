@@ -72,8 +72,6 @@ def make_mock_agent():
         }
     )
     agent.bash = MagicMock()
-    agent.bash.use_sandbox = False
-    agent.bash.sandbox_available = True
     return agent
 
 
@@ -361,7 +359,6 @@ from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     ModelCommand,
     ModelsCommand,
     PythonCommand,
-    SandboxCommand,
     SkillsCommand,
     SwitchCommand,
     _to_attr_name,
@@ -1020,87 +1017,6 @@ class TestSkillsCommandExecute:
         assert result.success is False
 
 
-class TestSandboxCommandValidation:
-    def test_no_args(self, mock_console, mock_config, mock_agent):
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args([])
-        assert ok is False
-
-    def test_invalid_subcmd(self, mock_console, mock_config, mock_agent):
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["bad"])
-        assert ok is False
-
-    def test_status_ok(self, mock_console, mock_config, mock_agent):
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["status"])
-        assert ok is True
-
-
-class TestSandboxCommandExecute:
-    async def test_status_enabled_unavailable(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.use_sandbox = True
-        mock_agent.bash.sandbox_available = False
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["status"])
-        assert result.success is True
-
-    async def test_status_enabled_available(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.use_sandbox = True
-        mock_agent.bash.sandbox_available = True
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["status"])
-        assert result.success is True
-
-    async def test_status_disabled(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.use_sandbox = False
-        mock_agent.bash.sandbox_available = True
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["status"])
-        assert result.success is True
-
-    async def test_enable_no_srt(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.sandbox_available = False
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["enable"])
-        assert result.success is False
-        assert any("SRT" in o.content for o in result.outputs if isinstance(o, TextOutput))
-
-    async def test_enable_already_enabled(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.sandbox_available = True
-        mock_agent.bash.use_sandbox = True
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["enable"])
-        assert result.success is True
-        assert any(
-            "already enabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
-        )
-
-    async def test_enable_success(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.sandbox_available = True
-        mock_agent.bash.use_sandbox = False
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["enable"])
-        assert result.success is True
-        assert mock_agent.bash.use_sandbox is True
-
-    async def test_disable_already_disabled(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.use_sandbox = False
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["disable"])
-        assert result.success is True
-        assert any(
-            "already disabled" in o.content for o in result.outputs if isinstance(o, TextOutput)
-        )
-
-    async def test_disable_success(self, mock_console, mock_config, mock_agent):
-        mock_agent.bash.use_sandbox = True
-        cmd = SandboxCommand(mock_console, mock_config, mock_agent)
-        result = await cmd.execute(["disable"])
-        assert result.success is True
-        assert mock_agent.bash.use_sandbox is False
-
-
 class TestPythonCommand:
     async def test_status_on(self, mock_console, mock_config, mock_agent):
         mock_config.show_python = True
@@ -1172,8 +1088,7 @@ class TestCommandRegistry:
     def test_filters_by_required_capabilities(self, mock_console, mock_config):
         agent = MagicMock(spec=[])  # no attributes at all
         reg = CommandRegistry(config=mock_config, agent=agent, frontend=mock_console)
-        # bash not available → sandbox/history should not be registered
-        assert reg.get_command("sandbox") is None
+        # bash not available → history should not be registered
         assert reg.get_command("history") is None
 
     def test_get_command_case_insensitive(self, mock_console, mock_config, mock_agent):
@@ -1246,7 +1161,7 @@ class TestCommandHandler:
         agent_no_caps = MagicMock(spec=[])  # no bash, no get_summarization_status
         reg = CommandRegistry(config=mock_config, agent=agent_no_caps, frontend=mock_console)
         h = CommandHandler(registry=reg, frontend=mock_console)
-        result = await h.handle("/sandbox")
+        result = await h.handle("/history")
         assert result.success is False
         assert any(
             "not available with this agent" in o.content
@@ -1267,15 +1182,9 @@ class TestCommandHandler:
 
     async def test_success_with_message(self, handler, mock_console):
         """Successful command with a message prints success."""
-        result = await handler.handle("/sandbox enable")
+        result = await handler.handle("/python on")
         if result.success:
             mock_console.render.assert_called()
-
-    async def test_failure_with_message(self, handler, mock_console, mock_agent):
-        mock_agent.bash.sandbox_available = False
-        result = await handler.handle("/sandbox enable")
-        assert result.success is False
-        mock_console.render.assert_called()
 
 
 # ===========================================================================
