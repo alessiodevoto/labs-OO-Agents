@@ -24,7 +24,7 @@ with hidden:
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
+    from nemo_oo_agents.tools import LibraryWriting, TodoManager
     from nemo_oo_agents.tools.repo_tools import RepoTools
     from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
@@ -613,8 +613,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]
     _workflow_state: Annotated[dict, hidden]
-    bash: Annotated[BashTool, nosnapshot]
-    files: Annotated[FileTool, nosnapshot]
+    shell: Annotated[ShellTools, nosnapshot]
+    repo: Annotated[RepoTools, nosnapshot]
     libs: Annotated[LibraryWriting, nosnapshot]
     todo: TodoManager
     _skills_dirs: Annotated[list, hidden, nosnapshot]
