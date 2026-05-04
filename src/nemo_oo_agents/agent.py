@@ -417,12 +417,15 @@ class Agent(metaclass=AgentMeta):
 
 ## Truncation
 - A bare Python literal (`[1, 2, 3]`, `{{1: 2}}`, `'hello'`) is always complete.
-- Truncated values use a `type(len=N, ...)` marker:
+- Truncated values use a `type(len=N, ...)` (or `type(repr_len=N, ...)`) marker:
     list(len=100, [:5]=[...], [-5:]=[...])
     tuple(len=100, [:5]=(...), [-5:]=(...))
     dict(len=100, items={{...}})
     set(len=100, items={{...}})
     str(len=100000, [:250]='...', [-250:]='...')
+    ndarray(repr_len=233, [:100]='...', [-100:]='...')
+- Structured instances (dataclasses, Pydantic, custom classes) render as `ClassName(field=value, ...)`; a trailing `...` means fields were elided:
+    Config(name='foo', enabled=True, ...)
 - The variable itself is **not** truncated — index/iterate it directly to operate on the full data.
 - `<truncated>...</truncated>` in captured stdout/stderr is **not recoverable**.
 """

@@ -1842,12 +1842,4 @@ def _get_brackets(seq_type: type) -> tuple[str, str]:
 
 def _get_type_name(seq_type: type) -> str:
     """Type name to use as the truncation marker prefix (``list(len=N, ...)``)."""
-    if seq_type is list:
-        return "list"
-    if seq_type is tuple:
-        return "tuple"
-    if seq_type is set:
-        return "set"
-    if seq_type is frozenset:
-        return "frozenset"
     return seq_type.__name__
