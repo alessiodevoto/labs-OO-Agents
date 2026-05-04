@@ -6,9 +6,12 @@ Quick reference for paths, examples, commands, and configuration.
 
 | Path | What |
 |------|------|
-| `src/nemo_oo_agents/` | Framework source |
-| `src/nemo_oo_agents_cli/` | Command line interface source and TUI agent |
-| `packages/` | Workspace packages (UnifiedLLM, AgentDoc, ContextBlocks, etc.) |
+| `src/nemo_oo_agents/` | Core framework source (the `nemo-oo-agents` published package) |
+| `src/nemo_oo_agents/context_blocks/` | Context block rendering subpackage |
+| `src/nemo_oo_agents/unifiedllm/` | LLM client subpackage |
+| `packages/nemo-oo-agents-cli/` | CLI + TUI (separately-published `nemo-oo-agents-cli`) |
+| `packages/nemo-oo-agents-benchmarks/` | Eval harness (separately-published `nemo-oo-agents-benchmarks`) |
+| `packages/nat_oo_agents/` | NeMo Agent Toolkit plugin (external; not published from this repo) |
 | `examples/` | Example agents (see below for details) |
 | `evaluation/` | Benchmark-agnostic evaluation framework (adapters, metrics) — see its `README.md` and `AGENTS.md` |
 | `docs/guides/` | Detailed framework guides |

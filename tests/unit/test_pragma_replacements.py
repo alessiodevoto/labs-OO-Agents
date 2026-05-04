@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # =============================================================================
 # Task 1: BlockSyntaxError handler (codeact.py — extracted method)
@@ -34,7 +34,7 @@ class TestHandleBlockSyntaxError:
         return CodeActSession(**defaults)
 
     def _make_error(self, key="bad_block", expr="not valid python {{{"):
-        from context_blocks.exceptions import BlockSyntaxError
+        from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
 
         return BlockSyntaxError(
             key=key,
@@ -575,7 +575,7 @@ class TestDynamicContextEvalFailure:
 
     @pytest.mark.asyncio
     async def test_bad_expression_returns_error_string(self):
-        from context_blocks import DynamicContext
+        from nemo_oo_agents.context_blocks import DynamicContext
         from nemo_oo_agents.runtime.actor import ActorRuntime
 
         # We test _resolve_value indirectly through _prepare_context,

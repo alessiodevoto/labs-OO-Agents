@@ -1,7 +1,7 @@
 # Harness Telemetry Spec
 
-**Status:** Implementation spec  
-**Issue:** #125  
+**Status:** Implementation spec
+**Issue:** #125
 **Replaces:** MR !47 (to be reimplemented from scratch)
 
 ## Problem
@@ -102,7 +102,7 @@ The agent framework (in `actor.py`) sets this ContextVar to a function that
 dispatches to `HarnessMetrics`:
 
 ```python
-from unifiedllm.unifiedllm import _llm_metrics_callback
+from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback
 
 def _make_llm_metrics_bridge(hm: HarnessMetrics) -> Callable[[str, Any], None]:
     dispatch = {

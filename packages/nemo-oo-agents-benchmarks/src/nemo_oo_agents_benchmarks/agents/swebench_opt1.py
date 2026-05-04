@@ -21,10 +21,10 @@ from pydantic import BaseModel, field_validator
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.config import CodeActConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 

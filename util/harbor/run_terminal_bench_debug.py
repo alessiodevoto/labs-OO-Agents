@@ -167,8 +167,8 @@ async def main(
     from nemo_oo_agents_benchmarks.agents.baseline import BaselineAgent
 
     from eval_pipeline import Evaluator
-    from unifiedllm import CompletionClient
-    from unifiedllm.registry import get_llm_client
+    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm.registry import get_llm_client
 
     _REGISTRY_PREFIXES = ("aws/", "nvidia/", "azure/", "gcp/")
 

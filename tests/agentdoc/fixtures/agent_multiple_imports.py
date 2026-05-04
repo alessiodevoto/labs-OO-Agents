@@ -7,7 +7,7 @@ from asyncio import sleep  # noqa: F401
 from datetime import datetime  # noqa: F401
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class AgentMultipleImports(Agent, llm=FakeLLMClient()):

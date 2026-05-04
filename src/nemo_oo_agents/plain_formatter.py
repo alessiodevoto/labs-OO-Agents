@@ -10,9 +10,9 @@ Use by setting _block_formatter on your agent:
         _block_formatter = PlainBlockFormatter()
 """
 
-from context_blocks.events import EventBase
-from context_blocks.formatter import FORMAT_PLAIN, FormatType, XMLBlockFormatter
-from context_blocks.utils import truncating_pformat
+from nemo_oo_agents.context_blocks.events import EventBase
+from nemo_oo_agents.context_blocks.formatter import FORMAT_PLAIN, FormatType, XMLBlockFormatter
+from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 # Default cap when no TruncationConfig is available (e.g. standalone use).
 # Matches TruncationConfig.max_block_chars default.

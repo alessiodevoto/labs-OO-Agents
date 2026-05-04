@@ -27,11 +27,11 @@ from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.config import CodeActConfig
-from unifiedllm import CompletionClient as _CompletionClient
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import CompletionClient as _CompletionClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 # Module-level imports available to LLM-generated code at runtime
 import json  # noqa: F401

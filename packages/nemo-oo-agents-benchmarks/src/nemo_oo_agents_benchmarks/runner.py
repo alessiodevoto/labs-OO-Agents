@@ -153,7 +153,7 @@ async def _run(
     api_base: str | None,
 ) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
-    from unifiedllm import get_llm_client
+    from nemo_oo_agents.unifiedllm import get_llm_client
 
     # Build LLM client — honour env-var overrides for local vLLM deployments.
     llm_overrides: dict[str, str] = {}

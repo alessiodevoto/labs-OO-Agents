@@ -9,7 +9,7 @@ Note: The output format uses Python class syntax per the agentdoc design doc.
 from nemo_oo_agents import Agent
 from nemo_oo_agents.agentdoc import doc
 from nemo_oo_agents.agentdoc.introspect import methods, variables
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

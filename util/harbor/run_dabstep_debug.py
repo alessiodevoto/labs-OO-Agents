@@ -60,8 +60,8 @@ DEFAULT_TASKS_FILE = (
 from difflib import SequenceMatcher  # noqa: E402
 
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
-from unifiedllm import CompletionClient  # noqa: E402
-from unifiedllm.registry import get_llm_client  # noqa: E402
+from nemo_oo_agents.unifiedllm import CompletionClient  # noqa: E402
+from nemo_oo_agents.unifiedllm.registry import get_llm_client  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # DABStep fuzzy scorer (adapted from harbor's scorer.py)

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, get_type_hints
 
 import yaml
 
-from unifiedllm import CompletionClient, RetryConfig
+from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
 
 from .eval_types import ModelSpec, Tier
 from .models import Task
@@ -39,7 +39,7 @@ def _enable_error_capture_if_requested():
     """
     global _error_capture_enabled
     if not _error_capture_enabled and os.getenv("CAPTURE_LLM_ERRORS"):
-        from unifiedllm.http_logging import enable_http_request_logging
+        from nemo_oo_agents.unifiedllm.http_logging import enable_http_request_logging
 
         # Determine output directory - use CAPTURE_LLM_ERRORS value if it's a path
         capture_setting = os.getenv("CAPTURE_LLM_ERRORS")
@@ -147,7 +147,7 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
     Raises:
         ValueError: If the registry name is not found.
     """
-    from unifiedllm.registry import MODELS
+    from nemo_oo_agents.unifiedllm.registry import MODELS
 
     config = MODELS.get(registry_name)
     if config is None:

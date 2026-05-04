@@ -5,14 +5,14 @@ in both OpenAI and Anthropic message formats. Both use LiteLLM's universal
 image_url format — no provider-specific conversion needed.
 """
 
-from context_blocks.events import ResultStatus
-from context_blocks.formatter import (
+from nemo_oo_agents.context_blocks.events import ResultStatus
+from nemo_oo_agents.context_blocks.formatter import (
     AnthropicProviderFormatter,
     OpenAIProviderFormatter,
     XMLBlockFormatter,
 )
-from context_blocks.models import BlockMetadata, ResolvedBlock, Role
-from context_blocks.renderer import render_context
+from nemo_oo_agents.context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from nemo_oo_agents.context_blocks.renderer import render_context
 from nemo_oo_agents.events import PythonOutput
 
 

@@ -9,7 +9,7 @@ Focus on:
 import pytest
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

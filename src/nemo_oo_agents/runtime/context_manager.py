@@ -21,8 +21,8 @@ Cache lifecycle for DynamicContext blocks:
 from collections.abc import ItemsView, Iterator, KeysView
 from typing import Any
 
-from context_blocks import DynamicContext
-from context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
+from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 
 
 class ContextManager:

@@ -87,8 +87,8 @@ class TestStrategyPromptOverrideUsesExistingAPI:
         apply it during phase 3 (decorator context). This is the documented path
         for replacing the default ``strategy_prompt`` block — guard it against
         accidental removal of the metadata-attachment behaviour."""
-        from context_blocks import ScopedContext
         from nemo_oo_agents import Agent
+        from nemo_oo_agents.context_blocks import ScopedContext
         from nemo_oo_agents.decorators import strategy
         from nemo_oo_agents.strategies import CodeActStrategy
 

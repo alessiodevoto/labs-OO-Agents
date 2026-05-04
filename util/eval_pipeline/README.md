@@ -16,7 +16,7 @@ pip install -e ./util/eval_pipeline
 
 ```python
 from eval_pipeline import Evaluator, ExactMatchScorer
-from unifiedllm import CompletionClient
+from nemo_oo_agents.unifiedllm import CompletionClient
 
 # Create your LLM clients
 gpt4 = CompletionClient(model="openai/gpt-4", api_key="...")

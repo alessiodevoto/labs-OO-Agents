@@ -11,12 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from context_blocks.models import ContextWindowStats
-from context_blocks.renderer import RenderResult
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.context_blocks.models import ContextWindowStats
+from nemo_oo_agents.context_blocks.renderer import RenderResult
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # Minimal stats object for mocking render_context return values
 _EMPTY_STATS = ContextWindowStats(

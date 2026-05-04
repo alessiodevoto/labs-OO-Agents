@@ -378,7 +378,10 @@ class TestArtwork:
 
     def _make(self):
         # Import must be done under patch to avoid module-level side effects
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             return quickstart.Artwork("Starry Night", "van Gogh", 1_000_000.0)
@@ -401,7 +404,10 @@ class TestStockHolding:
     """Tests for quickstart.StockHolding."""
 
     def _make(self):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             return quickstart.StockHolding("AAPL", 100, 150.0)
@@ -419,7 +425,10 @@ class TestJewelry:
     """Tests for quickstart.Jewelry."""
 
     def _make(self):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             return quickstart.Jewelry("Diamond Ring", 2.5, 10_000.0)
@@ -437,7 +446,10 @@ class TestCollectible:
     """Tests for quickstart.Collectible."""
 
     def _make(self, condition="mint"):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             return quickstart.Collectible("Baseball Card", 1000.0, condition)
@@ -468,7 +480,10 @@ class TestAutorun:
     """Tests for quickstart.autorun decorator."""
 
     def test_autorun_calls_asyncio_run(self):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             async def my_func():
@@ -485,7 +500,10 @@ class TestAutorun:
                 call_arg.close()  # clean up the coroutine
 
     def test_autorun_returns_original_function(self):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             async def my_func():
@@ -496,7 +514,10 @@ class TestAutorun:
                 assert result is my_func
 
     def test_autorun_prints_example_output(self):
-        with patch("dotenv.load_dotenv"), patch("unifiedllm.registry.get_llm_client"):
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
             from nemo_oo_agents.util import quickstart
 
             async def my_func():
@@ -697,7 +718,7 @@ class TestSQLiteEventBackendSetStatus:
     """Tests for SQLiteEventBackend.set_status."""
 
     def test_set_status_to_archived(self):
-        from context_blocks import EventStatus
+        from nemo_oo_agents.context_blocks import EventStatus
         from nemo_oo_agents.events import Message
 
         backend, _ = _make_backend()
@@ -709,7 +730,7 @@ class TestSQLiteEventBackendSetStatus:
         assert result.status == EventStatus.ARCHIVED
 
     def test_set_status_returns_false_for_missing(self):
-        from context_blocks import EventStatus
+        from nemo_oo_agents.context_blocks import EventStatus
 
         backend, _ = _make_backend()
         assert backend.set_status("nonexistent", EventStatus.ACTIVE) is False
@@ -813,7 +834,7 @@ class TestSQLiteEventBackendDeserialization:
     """Tests for _deserialize with unknown event types."""
 
     def test_unknown_event_type_falls_back_to_metadata(self, caplog):
-        from context_blocks import Metadata
+        from nemo_oo_agents.context_blocks import Metadata
 
         backend, _ = _make_backend()
         import json
@@ -848,7 +869,7 @@ class TestSQLiteEventBackendRegisterEventType:
     """Tests for register_event_type()."""
 
     def test_register_new_type(self):
-        from context_blocks import EventBase
+        from nemo_oo_agents.context_blocks import EventBase
 
         backend, _ = _make_backend()
 
@@ -870,7 +891,7 @@ class TestSQLiteEventBackendRegisterEventType:
 
     def test_register_different_class_same_key_warns(self, caplog):
         """Registering a different class for an existing key should warn."""
-        from context_blocks import EventBase
+        from nemo_oo_agents.context_blocks import EventBase
 
         backend, _ = _make_backend()
 

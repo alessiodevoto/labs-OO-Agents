@@ -1,8 +1,8 @@
 """Tests for Agent.__init__ render_config= parameter (Task 17)."""
 
-from context_blocks.formatter import MarkdownBlockFormatter, XMLBlockFormatter
-from context_blocks.render_config import RenderConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.context_blocks.formatter import MarkdownBlockFormatter, XMLBlockFormatter
+from nemo_oo_agents.context_blocks.render_config import RenderConfig
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 def make_llm():

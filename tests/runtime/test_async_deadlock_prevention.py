@@ -16,7 +16,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.errors import RestrictedCodeError
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 

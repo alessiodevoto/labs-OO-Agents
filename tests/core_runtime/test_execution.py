@@ -12,7 +12,7 @@ import pytest
 from nemo_oo_agents import strategy
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:

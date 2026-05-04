@@ -6,7 +6,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.events import LLMOutput, Task
 from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.runtime.events import EventsApi
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

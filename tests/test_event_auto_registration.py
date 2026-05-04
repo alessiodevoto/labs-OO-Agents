@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata
+from nemo_oo_agents.context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata
 
 
 @pytest.fixture(autouse=True)
@@ -132,7 +132,7 @@ class TestCollisionWarning:
         class CollisionA(EventBase):
             event_type: str = "collision_test_type"
 
-        with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
 
             class CollisionB(EventBase):
                 event_type: str = "collision_test_type"
@@ -150,7 +150,7 @@ class TestCollisionWarning:
         # "WidgetStatus" is now auto-registered.
         assert _EVENT_REGISTRY["WidgetStatus"] is WidgetStatus
 
-        with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
 
             class UnrelatedName(EventBase):
                 event_type: str = "WidgetStatus"
@@ -169,7 +169,7 @@ class TestCollisionWarning:
 
         assert _EVENT_REGISTRY.get("shared_type") is AlphaEvent
 
-        with caplog.at_level(logging.WARNING, logger="context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
 
             class BetaEvent(EventBase):
                 event_type: str = "shared_type"
@@ -214,7 +214,7 @@ class TestExistingEventsStillWork:
     """Verify that all existing core event types have correct event_type values."""
 
     def test_context_blocks_events(self):
-        from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+        from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
 
         assert UserEvent(content="hi").event_type == "UserEvent"
         assert AssistantEvent(content="hi").event_type == "AssistantEvent"

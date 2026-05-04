@@ -402,8 +402,13 @@ class SummarizationAgent(Agent):
         if not events:
             return ""
 
-        from context_blocks import BlockMetadata, ResolvedBlock, Role, format_message_content
-        from context_blocks.utils import truncating_pformat
+        from nemo_oo_agents.context_blocks import (
+            BlockMetadata,
+            ResolvedBlock,
+            Role,
+            format_message_content,
+        )
+        from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
         parts = []
         for tag, event in events:

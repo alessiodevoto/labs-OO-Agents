@@ -38,7 +38,7 @@ def _client_from_spec(spec):
     """Create LLM client from ModelSpec."""
     import os
 
-    from unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient
 
     api_key = os.environ.get(spec.api_key_env, "")
 

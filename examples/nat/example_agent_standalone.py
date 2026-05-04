@@ -8,7 +8,7 @@ Usage:
 """
 
 from nemo_oo_agents import Agent
-from unifiedllm import CompletionClient
+from nemo_oo_agents.unifiedllm import CompletionClient
 
 llm = CompletionClient(model="gpt-4o-mini")
 

@@ -26,7 +26,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from context_blocks import EventBase
+from nemo_oo_agents.context_blocks import EventBase
 
 logger = logging.getLogger(__name__)
 

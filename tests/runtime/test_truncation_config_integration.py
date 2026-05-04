@@ -4,7 +4,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.config.truncation_config import TruncationConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM
 _TEST_LLM = FakeLLMClient()
@@ -234,7 +234,7 @@ class TestTokenBudgetIntegration:
         Regression test: render_context() raises ValueError if context_limit is non-None
         but count_tokens is not provided. The actor must pass count_tokens to render_context().
         """
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         # Return a return_result tool call so CodeActStrategy completes successfully
         llm = FakeLLMClient.with_tool_call("return_result", {"result": "done"})
@@ -254,7 +254,7 @@ class TestTokenBudgetIntegration:
     @pytest.mark.asyncio
     async def test_max_event_tokens_does_not_crash_on_generation(self):
         """Agent with max_event_tokens set should not raise ValueError during generation."""
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient.with_tool_call("return_result", {"result": "summary"})
 
@@ -284,7 +284,7 @@ class TestTokenBudgetIntegration:
             model = "no-count-model"
 
             async def acall(self, messages, tools=None, output_model=None, **kwargs):
-                from unifiedllm import LLMResponse
+                from nemo_oo_agents.unifiedllm import LLMResponse
 
                 return LLMResponse(
                     raw_response=None,

@@ -21,7 +21,15 @@ dependencies and their licenses.
 
 ---
 
-## Optional: `[tui]`
+## `nemo-oo-agents-cli` (CLI + TUI)
+
+### click
+- **License:** BSD-3-Clause
+- **Homepage:** https://github.com/pallets/click
+
+### ipython
+- **License:** BSD-3-Clause
+- **Homepage:** https://github.com/ipython/ipython
 
 ### rich
 - **License:** MIT

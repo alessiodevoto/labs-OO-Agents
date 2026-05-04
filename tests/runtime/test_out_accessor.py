@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from context_blocks import ResultStatus
+from nemo_oo_agents.context_blocks import ResultStatus
 from nemo_oo_agents.events import PythonOutput
 
 

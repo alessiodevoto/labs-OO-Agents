@@ -3,7 +3,7 @@
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.events import LLMOutput, Task
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 def _format_events_for_test(events: list) -> list[dict]:

@@ -8,7 +8,7 @@ from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.metaclass import no_trace
 from nemo_oo_agents.strategies import ReflexionStrategy
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 
@@ -851,7 +851,7 @@ async def test_regular_methods_capture_source_code():
 
 def test_strategy_decorator_context_stored():
     """@strategy(context=...) stores context on the wrapper."""
-    from context_blocks import ScopedContext
+    from nemo_oo_agents.context_blocks import ScopedContext
 
     class TestAgent(Agent, llm=_TEST_LLM):
         @strategy(PurePythonStrategy(), context=ScopedContext(context={"focus": "testing"}))
@@ -862,7 +862,7 @@ def test_strategy_decorator_context_stored():
 
 def test_strategy_decorator_context_with_dynamic():
     """@strategy(context=...) supports DynamicContext values."""
-    from context_blocks import DynamicContext, ScopedContext
+    from nemo_oo_agents.context_blocks import DynamicContext, ScopedContext
 
     class TestAgent(Agent, llm=_TEST_LLM):
         @strategy(context=ScopedContext(context={"status": DynamicContext("self.get_status()")}))
@@ -897,7 +897,7 @@ async def test_no_trace_outer_strategy_inner_ordering_also_suppresses_hooks():
     from unittest.mock import MagicMock
 
     from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
-    from unifiedllm import FakeLLMClient, LLMResponse
+    from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
         return LLMResponse(
@@ -935,7 +935,7 @@ async def test_no_trace_decorator_suppresses_hooks_on_generation_method():
     from unittest.mock import MagicMock
 
     from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
-    from unifiedllm import FakeLLMClient, LLMResponse
+    from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
         return LLMResponse(
@@ -973,7 +973,7 @@ async def test_no_trace_on_generation_method_in_enable_tracing_class_suppresses_
     from unittest.mock import MagicMock
 
     from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
-    from unifiedllm import FakeLLMClient, LLMResponse
+    from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
     def _resp(content):
         return LLMResponse(

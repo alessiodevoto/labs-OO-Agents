@@ -22,7 +22,7 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 if TYPE_CHECKING:
-    from unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient
 
 # Load .env with override=True to ensure .env values take precedence
 # over any pre-existing shell environment variables
@@ -144,7 +144,7 @@ def client(model_id: str, **kwargs) -> CompletionClient:
     """
     import litellm
 
-    from unifiedllm import CompletionClient, RetryConfig
+    from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
 
     # Drop unsupported params (e.g., tool_choice for some Azure models via NVIDIA)
     litellm.drop_params = True
@@ -152,7 +152,7 @@ def client(model_id: str, **kwargs) -> CompletionClient:
     # Enable error capture if CAPTURE_LLM_ERRORS is set (only once globally)
     global _error_capture_enabled
     if not _error_capture_enabled and os.getenv("CAPTURE_LLM_ERRORS"):
-        from unifiedllm.http_logging import enable_http_request_logging
+        from nemo_oo_agents.unifiedllm.http_logging import enable_http_request_logging
 
         # Determine output directory - use CAPTURE_LLM_ERRORS value if it's a path
         capture_setting = os.getenv("CAPTURE_LLM_ERRORS")

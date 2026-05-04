@@ -14,7 +14,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
 from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
 from nemo_oo_agents.events import AfterTurn, Message
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:

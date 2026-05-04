@@ -75,7 +75,7 @@ sys.path.insert(0, str(ADAPTER_DIR))
 from adapter import QUESTION_TYPES, LoCoMoAdapter  # noqa: E402
 
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
-from unifiedllm import CompletionClient  # noqa: E402
+from nemo_oo_agents.unifiedllm import CompletionClient  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # LoCoMo token-level F1 scorer (matches harbor scorer.py logic)

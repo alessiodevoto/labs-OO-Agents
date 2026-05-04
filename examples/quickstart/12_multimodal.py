@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.media import Image
 from nemo_oo_agents.strategies import PredictStrategy
-from unifiedllm import get_llm_client
+from nemo_oo_agents.unifiedllm import get_llm_client
 
 load_dotenv(override=True)
 

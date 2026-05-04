@@ -9,7 +9,7 @@ import pytest
 
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Code where the LLM defines a helper class and uses it to compute the result.
 _CLASS_AND_USE_SNIPPET = """

@@ -18,15 +18,15 @@ These tests cover:
 
 import pytest
 
-from context_blocks import EventStatus
-from context_blocks.events import (
+from nemo_oo_agents.context_blocks import EventStatus
+from nemo_oo_agents.context_blocks.events import (
     AssistantEvent,
     ResultStatus,
     ToolCallEvent,
     ToolResult,
     UserEvent,
 )
-from context_blocks.models import Role
+from nemo_oo_agents.context_blocks.models import Role
 from nemo_oo_agents.events import LLMOutput, Task
 from nemo_oo_agents.runtime.event_backend import InMemoryBackend
 from nemo_oo_agents.storage.sqlite import SQLiteEventBackend

@@ -8,7 +8,7 @@ from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.config.strategy_config import PredictConfig
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.strategies import PredictStrategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

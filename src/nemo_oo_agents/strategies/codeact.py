@@ -36,9 +36,9 @@ from uuid import uuid4
 from pydantic import BaseModel, PydanticSchemaGenerationError, PydanticUserError, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
-from context_blocks.exceptions import BlockSyntaxError
 from nemo_oo_agents.agentdoc._structured import format_type as _format_type
+from nemo_oo_agents.context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
+from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import (
@@ -61,7 +61,7 @@ from nemo_oo_agents.strategies.generated_code import (
     HelperFunctionManager,
 )
 from nemo_oo_agents.strategies.template import TemplateStrategy
-from unifiedllm import Tool, ToolCall
+from nemo_oo_agents.unifiedllm import Tool, ToolCall
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.strategy_config import CodeActConfig

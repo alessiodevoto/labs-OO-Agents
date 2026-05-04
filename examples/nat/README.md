@@ -99,9 +99,6 @@ workflow:
   method: chat                          # Required: async method to invoke
   dependencies:                         # Directories to add to sys.path
     - ../../src
-    - ../../packages/unifiedllm/src
-    - ../../packages/agentdoc/src
-    - ../../packages/context-blocks/src
   tools:                                # Optional: list of NAT function names to inject
     - current_datetime
   llm_name: agent                       # Optional: name from llms: section

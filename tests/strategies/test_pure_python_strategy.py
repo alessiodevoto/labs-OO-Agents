@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nemo_oo_agents import Agent, strategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:
@@ -155,7 +155,7 @@ class TestPurePythonStrategyExecute:
         """execute() should respect custom max_iterations config."""
         from nemo_oo_agents.errors import GenerationError
         from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=2, max_retries=10))
@@ -187,7 +187,7 @@ class TestPurePythonStrategyExecute:
     async def test_llm_messages_added_to_history_with_content(self):
         """LLM assistant messages should be added to history."""
         from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=5))

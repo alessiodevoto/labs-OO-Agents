@@ -10,13 +10,13 @@ import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
-from context_blocks import ScopedContext
+from nemo_oo_agents.context_blocks import ScopedContext
 from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.strategies import GenerationStrategy as GenerationStrategyABC
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -46,7 +46,7 @@ def strategy(
 
     Examples:
         from nemo_oo_agents import EventQuery
-        from context_blocks import ScopedContext
+        from nemo_oo_agents.context_blocks import ScopedContext
 
         @strategy(CodeActStrategy(), ScopedContext(context={"focus": "security"}))
         async def analyze(self): ...

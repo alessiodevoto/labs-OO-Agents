@@ -20,7 +20,7 @@ import pytest
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.strategies import CodeActStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 _TEST_LLM = FakeLLMClient()
 

@@ -153,6 +153,7 @@ test-core:
       changes:
         - "src/**/*"
         - "tests/**/*"
+        - "packages/nemo-oo-agents-cli/**/*"
         - "conftest.py"
         - "pyproject.toml"
         - "uv.lock"
@@ -210,7 +211,7 @@ test-viewer:
 test-context-blocks:
   extends: .test-base
   script:
-    - uv run pytest packages/context-blocks/tests --junitxml=test-results-context-blocks.xml
+    - uv run pytest tests/context_blocks --junitxml=test-results-context-blocks.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -222,7 +223,8 @@ test-context-blocks:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/context-blocks/**/*"
+        - "src/nemo_oo_agents/context_blocks/**/*"
+        - "tests/context_blocks/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -233,7 +235,7 @@ test-context-blocks:
 test-unifiedllm:
   extends: .test-base
   script:
-    - uv run pytest packages/unifiedllm/tests --junitxml=test-results-unifiedllm.xml
+    - uv run pytest tests/unifiedllm --junitxml=test-results-unifiedllm.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -245,7 +247,8 @@ test-unifiedllm:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/unifiedllm/**/*"
+        - "src/nemo_oo_agents/unifiedllm/**/*"
+        - "tests/unifiedllm/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -315,6 +318,29 @@ test-benchmarks:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "packages/nemo-oo-agents-benchmarks/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-cli:
+  extends: .test-base
+  script:
+    - uv run pytest packages/nemo-oo-agents-cli/tests --junitxml=test-results-cli.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-cli.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nemo-oo-agents-cli/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -512,8 +538,11 @@ capability-test:
       when: always
     - when: never
 
-# Build package on tags
-build-package:
+# Build packages on tags. Tag vX.Y.Z cuts core, cli, and benchmarks at the
+# SAME version (lockstep) -- the version-bump step rewrites all three
+# pyproject.toml files. Each builder produces its own wheel + sdist into a
+# disjoint artifact dir so the publish jobs can fan out cleanly.
+.build-package-base:
   stage: build
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
@@ -532,33 +561,66 @@ build-package:
         VERSION="${CI_COMMIT_TAG#v}"
         # Validate version format (semver)
         if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9]+)*$'; then
-          # Backup and modify pyproject.toml
-          cp pyproject.toml pyproject.toml.bak
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
-          # Verify the modification was successful
-          if ! grep -q "^version = \"$VERSION\"" pyproject.toml; then
-            echo "Error: Failed to update version in pyproject.toml"
-            cp pyproject.toml.bak pyproject.toml
-            exit 1
-          fi
+          for pyproject in \
+              pyproject.toml \
+              packages/nemo-oo-agents-benchmarks/pyproject.toml \
+              packages/nemo-oo-agents-cli/pyproject.toml; do
+            cp "$pyproject" "$pyproject.bak"
+            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$pyproject"
+            if ! grep -q "^version = \"$VERSION\"" "$pyproject"; then
+              echo "Error: Failed to update version in $pyproject"
+              cp "$pyproject.bak" "$pyproject"
+              exit 1
+            fi
+          done
+          # Pin benchmarks/cli -> core to the exact released version (lockstep).
+          # The dep is written with underscore form to match this regex.
+          sed -i "s/\"nemo_oo_agents>=[0-9.]*\"/\"nemo_oo_agents==$VERSION\"/" \
+            packages/nemo-oo-agents-benchmarks/pyproject.toml \
+            packages/nemo-oo-agents-cli/pyproject.toml
         else
           echo "Error: Invalid version format: $VERSION (expected semver format: X.Y.Z)"
           exit 1
         fi
       fi
-  script:
-    - uv build
-    - uv cache prune --ci
-  artifacts:
-    paths:
-      - dist/*.whl
-      - dist/*.tar.gz
-    expire_in: 1 hour
   only:
     - tags
 
+build-package-core:
+  extends: .build-package-base
+  script:
+    - uv build --out-dir dist-core
+    - uv cache prune --ci
+  artifacts:
+    paths:
+      - dist-core/*.whl
+      - dist-core/*.tar.gz
+    expire_in: 1 hour
+
+build-package-benchmarks:
+  extends: .build-package-base
+  script:
+    - uv build --package nemo-oo-agents-benchmarks --out-dir dist-bench
+    - uv cache prune --ci
+  artifacts:
+    paths:
+      - dist-bench/*.whl
+      - dist-bench/*.tar.gz
+    expire_in: 1 hour
+
+build-package-cli:
+  extends: .build-package-base
+  script:
+    - uv build --package nemo-oo-agents-cli --out-dir dist-cli
+    - uv cache prune --ci
+  artifacts:
+    paths:
+      - dist-cli/*.whl
+      - dist-cli/*.tar.gz
+    expire_in: 1 hour
+
 # Publish to GitLab package registry on tags
-publish-package:
+.publish-package-base:
   stage: publish
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
@@ -568,12 +630,29 @@ publish-package:
   variables:
     UV_PUBLISH_USERNAME: gitlab-ci-token
     UV_PUBLISH_PASSWORD: $CI_JOB_TOKEN
-  script:
-    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
-  dependencies:
-    - build-package
   only:
     - tags
+
+publish-package-core:
+  extends: .publish-package-base
+  script:
+    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist-core/*
+  dependencies:
+    - build-package-core
+
+publish-package-benchmarks:
+  extends: .publish-package-base
+  script:
+    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist-bench/*
+  dependencies:
+    - build-package-benchmarks
+
+publish-package-cli:
+  extends: .publish-package-base
+  script:
+    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist-cli/*
+  dependencies:
+    - build-package-cli
 
 # =============================================================================
 # Docker Image Build and Deploy (main branch and MRs)

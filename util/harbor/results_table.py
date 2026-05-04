@@ -144,7 +144,7 @@ def _summarize(name: str, trials: list[dict]) -> dict:
     has_tokens = [t for t in completed if t["n_input_tokens"] is not None]
     total_in = sum(t["n_input_tokens"] for t in has_tokens) if has_tokens else None
     total_out = (
-        sum(t["n_output_tokens"] for t in has_tokens if t["n_output_tokens"])
+        sum(t["n_output_tokens"] for t in has_tokens if t["n_output_tokens"] is not None)
         if has_tokens
         else None
     )

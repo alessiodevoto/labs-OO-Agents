@@ -21,7 +21,7 @@ from nemo_oo_agents.runtime.code_validator import (
     ValidationError,
     strip_redundant_imports,
 )
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # =============================================================================
 # Fixtures

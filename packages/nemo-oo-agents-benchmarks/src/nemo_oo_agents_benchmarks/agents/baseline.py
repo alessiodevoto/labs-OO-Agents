@@ -34,10 +34,10 @@ from typing import TYPE_CHECKING, Any
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.tools import FileTool
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 # Data science imports — pre-loaded so they're available in the REPL sandbox.
 # Required for DABStep (financial data analysis benchmark).

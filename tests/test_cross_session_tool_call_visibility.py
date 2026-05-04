@@ -31,7 +31,7 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.storage import SQLiteStorageManager
 from nemo_oo_agents.storage.in_memory import InMemoryStorageManager
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # A distinctive string we can grep for in the serialized session 2 message list.
 _MARKER = "CROSS_SESSION_TOOLCALL_MARKER_d4e5f6"

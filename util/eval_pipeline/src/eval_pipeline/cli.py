@@ -552,7 +552,7 @@ async def main_async():
     # Enable HTTP logging BEFORE any LLM imports (must patch httpx first)
     disable_http_logging = None
     if args.http_logging:
-        from unifiedllm.http_logging import enable_http_request_logging
+        from nemo_oo_agents.unifiedllm.http_logging import enable_http_request_logging
 
         disable_http_logging = enable_http_request_logging(
             output_dir=args.http_logging,

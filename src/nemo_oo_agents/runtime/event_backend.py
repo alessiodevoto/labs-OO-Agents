@@ -14,7 +14,7 @@ The EventManager uses a backend for storage while handling:
 from collections.abc import Iterator
 from typing import Any, Protocol, runtime_checkable
 
-from context_blocks import EventBase, EventStatus
+from nemo_oo_agents.context_blocks import EventBase, EventStatus
 
 
 def _tag_max_num(tag: str) -> int:

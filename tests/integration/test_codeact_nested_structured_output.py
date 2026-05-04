@@ -18,11 +18,11 @@ from typing import Any
 
 import pytest
 
-from context_blocks import ScopedContext
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.config import CodeActConfig
+from nemo_oo_agents.context_blocks import ScopedContext
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # --- Helpers ---
 

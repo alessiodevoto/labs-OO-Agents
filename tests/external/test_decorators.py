@@ -4,7 +4,7 @@ from nemo_oo_agents import strategy
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

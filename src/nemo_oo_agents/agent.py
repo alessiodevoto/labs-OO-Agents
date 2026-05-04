@@ -6,18 +6,18 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any, cast
 from uuid import uuid4
 
-from context_blocks import DynamicContext
 from nemo_oo_agents.agentdoc import hidden
+from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.metaclass import AgentMeta
 from nemo_oo_agents.runtime.context_vars import _parent_agent_var
 from nemo_oo_agents.storage.markers import nosnapshot
 
 if TYPE_CHECKING:
-    from context_blocks.models import ContextWindowStats
-    from context_blocks.render_config import RenderConfig
     from nemo_oo_agents.agentdoc.ext import TypeInfo
     from nemo_oo_agents.config.execution_config import ExecutionConfig
     from nemo_oo_agents.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.context_blocks.models import ContextWindowStats
+    from nemo_oo_agents.context_blocks.render_config import RenderConfig
     from nemo_oo_agents.runtime.actor import ActorRuntime
     from nemo_oo_agents.runtime.context import ContextApi
     from nemo_oo_agents.runtime.context_manager import ContextManager
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.events import EventsApi
     from nemo_oo_agents.storage.manager import StorageManager
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ class Agent(metaclass=AgentMeta):
         self._truncation = self._resolve_truncation(truncation)
 
         # Resolve render config (instance overrides class default)
-        from context_blocks.render_config import RenderConfig as _RC
+        from nemo_oo_agents.context_blocks.render_config import RenderConfig as _RC
 
         self.render_config = render_config or _RC()
 

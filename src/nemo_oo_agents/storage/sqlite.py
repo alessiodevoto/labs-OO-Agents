@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from context_blocks import Event, EventBase, EventStatus, Metadata
-from context_blocks.events import _EVENT_REGISTRY
+from nemo_oo_agents.context_blocks import Event, EventBase, EventStatus, Metadata
+from nemo_oo_agents.context_blocks.events import _EVENT_REGISTRY
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,

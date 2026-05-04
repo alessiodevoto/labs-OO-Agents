@@ -9,7 +9,7 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.errors.formatting import format_error_for_llm
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM
 _TEST_LLM = FakeLLMClient()

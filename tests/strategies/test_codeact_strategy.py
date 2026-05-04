@@ -24,7 +24,7 @@ from nemo_oo_agents.strategies.codeact_errors import (
     get_type_example,
     get_type_hint_str,
 )
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 def _resp(content: str, tool_calls: list | None = None) -> LLMResponse:
@@ -1470,7 +1470,7 @@ class TestCodeActStrategyEventSequence:
     def test_prepend_reasoning_skips_to_next_on_invalid_json(self):
         """If the first execute_python has invalid JSON arguments, skip it and prepend to next."""
         from nemo_oo_agents.strategies.codeact import _prepend_reasoning
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         bad_tc = ToolCall(id="bad", name="execute_python", arguments="NOT VALID JSON")
         good_tc = ToolCall(id="c2", name="execute_python", arguments=json.dumps({"code": "x = 42"}))
@@ -1488,7 +1488,7 @@ class TestCodeActStrategyEventSequence:
     def test_prepend_reasoning_no_execute_python_unchanged(self):
         """If there's no execute_python in the list, all tool calls are returned unchanged."""
         from nemo_oo_agents.strategies.codeact import _prepend_reasoning
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         rr = ToolCall(id="ret", name="return_result", arguments=json.dumps({"result": 7}))
         result = _prepend_reasoning([rr], "some content")

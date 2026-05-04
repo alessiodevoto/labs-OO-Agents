@@ -16,7 +16,7 @@ Use `nemo_oo_agents.print_prompt` with a `FakeLLMClient` to render without makin
 
 ```python
 import asyncio, nemo_oo_agents, sys
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 from nemo_oo_agents_cli.tui.agent import TUIAgent
 
 async def main():
@@ -30,7 +30,7 @@ For a custom agent loaded from a file:
 
 ```python
 import asyncio, importlib.util, sys, nemo_oo_agents
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 spec = importlib.util.spec_from_file_location("agent_module", "path/to/my_agent.py")
 mod = importlib.util.module_from_spec(spec)

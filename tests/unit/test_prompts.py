@@ -13,7 +13,7 @@ from nemo_oo_agents.prompts import (
 )
 from nemo_oo_agents.strategies.current_call import CurrentCall
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

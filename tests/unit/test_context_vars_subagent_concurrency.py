@@ -32,7 +32,7 @@ import pytest
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.agent import _parent_agent_var
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -647,7 +647,7 @@ class TestScopedBlocksIsolation:
         """
         # Use CodeActStrategy for the outer parent so _scoped_blocks_var is set
         from nemo_oo_agents.strategies import CodeActStrategy
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         def _tool_call(code: str) -> ToolCall:
             import json

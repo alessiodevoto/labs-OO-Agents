@@ -21,7 +21,7 @@ from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from nemo_oo_agents.strategies.predict import PredictStrategy
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Module-level Pydantic models (required for PredictStrategy type resolution)

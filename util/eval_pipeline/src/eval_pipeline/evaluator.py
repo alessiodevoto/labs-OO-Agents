@@ -5,7 +5,7 @@ It is pure Python with no YAML knowledge - use config_adapter for YAML loading.
 
 Example:
     from eval_pipeline import Evaluator, ExactMatchScorer
-    from unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient
 
     evaluator = Evaluator(
         models={"gpt-4": CompletionClient(model="openai/gpt-4", ...)},

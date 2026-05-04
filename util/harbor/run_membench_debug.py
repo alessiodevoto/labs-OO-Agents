@@ -75,7 +75,7 @@ sys.path.insert(0, str(ADAPTER_DIR))
 from adapter import QUESTION_TYPES, SCENARIO_DIRS, MemBenchAdapter  # noqa: E402
 
 from eval_pipeline import Evaluator, ScoreResult, ScoringContext  # noqa: E402
-from unifiedllm import CompletionClient  # noqa: E402
+from nemo_oo_agents.unifiedllm import CompletionClient  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # MemBench scorer — extract first A/B/C/D letter, exact match

@@ -3,7 +3,7 @@
 import pytest
 
 from nemo_oo_agents import Agent, strategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class EvalAgent(Agent, llm=FakeLLMClient()):

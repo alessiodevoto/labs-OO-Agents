@@ -12,7 +12,7 @@ import asyncio
 import pytest
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (no scripted responses needed - we call execute_code directly)
 _TEST_LLM = FakeLLMClient()

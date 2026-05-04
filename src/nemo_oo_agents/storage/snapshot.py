@@ -10,7 +10,7 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, field_serializer, field_validator
 
-from context_blocks import DynamicContext
+from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_value
 from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize

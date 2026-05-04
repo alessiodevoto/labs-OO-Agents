@@ -29,7 +29,7 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.prompts import build_prompt_data
 from nemo_oo_agents.strategies.codeact import CodeActStrategy, _iter_agent_attrs
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

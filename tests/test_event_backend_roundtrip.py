@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import pytest
 
-from context_blocks import ToolCallEvent
-from context_blocks.events import AssistantEvent, UserEvent
-from context_blocks.models import Role
+from nemo_oo_agents.context_blocks import ResultStatus, ToolCallEvent, ToolResult
+from nemo_oo_agents.context_blocks.events import AssistantEvent, UserEvent
+from nemo_oo_agents.context_blocks.models import Role
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
@@ -233,8 +233,6 @@ def test_tool_call_event_result_preserved_after_update(backend):
     with the execution result. Both the initial store and the update must
     serialize/deserialize correctly.
     """
-    from context_blocks import ResultStatus, ToolResult
-
     event = ToolCallEvent(
         tool_call_id="tc-upd",
         name="execute_python",
