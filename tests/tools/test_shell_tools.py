@@ -369,6 +369,17 @@ class TestGrepContext:
         separator_count = sum(1 for m in r.matches if m == "--")
         assert r.total_matches <= len(r.matches) - separator_count
 
+    async def test_grep_context_total_excludes_context_lines(self, shell, tmp_path):
+        """total_matches must count only actual matches, not context lines."""
+        # Create files where we know the exact match count
+        (tmp_path / "a.py").write_text("line1\nMATCH_ME\nline3\nline4\nMATCH_ME\nline6\n")
+        r = await shell.grep("MATCH_ME", str(tmp_path / "a.py"), context=1)
+        # There are exactly 2 matches. With context=1, rg will output
+        # the match lines plus surrounding context lines and separators.
+        assert r.total_matches == 2, (
+            f"Expected 2 matches but got {r.total_matches}; matches={r.matches}"
+        )
+
 
 # ==========================================================================
 # repr

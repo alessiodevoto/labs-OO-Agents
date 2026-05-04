@@ -19,6 +19,7 @@ working directory in ``pprint(self)`` thanks to ``__repr__``.
 
 import difflib
 import logging
+import re
 import shlex
 from pathlib import Path
 
@@ -361,13 +362,13 @@ class ShellTools(Skill):
 
         all_lines = [ln for ln in stdout.splitlines() if ln.strip()] if stdout else []
         if context > 0:
-            # With -C, rg inserts "--" separators and context lines.
-            # Count only actual match lines (those with line-number ":" separator).
-            match_lines = [ln for ln in all_lines if ln != "--"]
-            total = len(match_lines)
+            # With -C, rg outputs match lines as "file:num:text" and context
+            # lines as "file:num-text" (note the dash vs colon after the
+            # line number).  Separators between groups are "--".
+            # Count only actual match lines.
+            total = sum(1 for ln in all_lines if ln != "--" and re.search(r"(?:^|:)\d+:", ln))
         else:
-            match_lines = all_lines
-            total = len(match_lines)
+            total = len(all_lines)
         return SearchResult(
             matches=all_lines[:max_matches],  # include context in output
             total_matches=total,  # but count only matches
