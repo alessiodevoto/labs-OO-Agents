@@ -33,28 +33,30 @@ class TestPformat:
         assert "'b': 2" in result
 
     def test_string_truncation(self):
-        """Long strings should be truncated with max_string."""
+        """Long strings use the truncation 3.0 marker: str(len=N, [:H]=..., [-T:]=...)."""
         long_string = "x" * 1000
         result = _pformat(long_string, max_string=50)
 
-        assert "+950" in result  # Should show remaining chars
-        assert len(result) < 100  # Should be much shorter than original
+        assert result.startswith("str(len=1000,")  # marker carries exact length
+        assert "[:25]=" in result  # head slice
+        assert "[-25:]=" in result  # tail slice
+        assert len(result) < 200  # Bounded by max_string + marker overhead
 
     def test_list_truncation(self):
-        """Long lists should be truncated with max_length."""
+        """Long lists are wrapped in the truncation 3.0 slice-keys marker."""
         long_list = list(range(100))
         result = _pformat(long_list, max_length=10)
 
-        assert "90 items not shown" in result  # Should show truncated count
+        assert "list(len=100," in result  # marker carries the exact count
         assert "0" in result  # First item visible (head)
         assert "99" in result  # Last item visible (tail)
 
     def test_dict_truncation(self):
-        """Long dicts should be truncated with max_length."""
+        """Long dicts are wrapped in the truncation 3.0 items marker."""
         long_dict = {f"key_{i}": i for i in range(100)}
         result = _pformat(long_dict, max_length=10)
 
-        assert "90 items not shown" in result  # Should show truncated count
+        assert "dict(len=100, items=" in result
 
     def test_depth_truncation(self):
         """Nested structures should be truncated with max_depth."""
@@ -165,7 +167,7 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "95 items not shown" in output  # Should show truncation
+        assert "list(len=100," in output  # truncation 3.0 marker
 
     def test_pprint_with_max_string(self):
         """pprint() should respect max_string."""
@@ -179,7 +181,7 @@ class TestPprint:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "+950" in output  # Should show remaining chars
+        assert "str(len=1000," in output  # truncation 3.0 string marker
 
     def test_pprint_with_max_depth(self):
         """pprint() should respect max_depth."""
@@ -252,7 +254,7 @@ class TestComplexScenarios:
         ]
         result = _pformat(data, max_length=5, max_string=50)
 
-        assert "995 items not shown" in result  # Should truncate list
+        assert "list(len=1000," in result  # truncation 3.0 marker
         assert "'id': 0" in result  # First item visible (head)
         assert "'id': 999" in result  # Last item visible (tail)
 

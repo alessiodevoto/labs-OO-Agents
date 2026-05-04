@@ -352,8 +352,8 @@ class TestConfig:
         config = DocConfig(max_value_chars=20)
         result = variables(obj, config=config)
 
-        # Should truncate long string (Rich-style: 'truncated'+N)
-        assert "'+" in result
+        # Truncated → str(len=N, [:H]='...', [-T:]='...') marker
+        assert "str(len=100," in result
 
     def test_config_hidden_prefixes(self):
         """Test config hides attributes with specific prefixes."""
@@ -706,8 +706,8 @@ class TestLargeValueTruncation:
 
         # Result should be small (under 1KB)
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
-        # Rich-style truncation: 'truncated'+N
-        assert "'+" in result  # Should show truncation with count
+        # Truncation 3.0 string marker: str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=100000," in result
 
     def test_huge_list_is_truncated(self):
         """Test that huge lists don't blow up context."""
@@ -722,8 +722,8 @@ class TestLargeValueTruncation:
 
         # Result should be small
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
-        # Should show truncation notice and tail items (head+tail format for lists)
-        assert "items not shown" in result and "999" in result  # tail item 99999
+        # Should show truncation marker and tail items (slice-keys form for lists)
+        assert "list(len=100000," in result and "999" in result  # tail item 99999
 
     def test_huge_dict_is_truncated(self):
         """Test that huge dicts don't blow up context."""
@@ -738,8 +738,8 @@ class TestLargeValueTruncation:
 
         # Result should be small (dict expands to multi-line)
         assert len(result) < 2000, f"pformat() output too large: {len(result)} chars"
-        # Should show truncation notice and tail items (head+tail format for dicts)
-        assert "items not shown" in result and "499" in result  # tail key key_49999
+        # Should show truncation marker and tail items (items wrapper for dicts)
+        assert "dict(len=50000, items=" in result and "499" in result  # tail key key_49999
 
     def test_deeply_nested_object_is_truncated(self):
         """Test that deeply nested objects don't blow up context."""
@@ -811,12 +811,12 @@ class TestLargeValueTruncation:
         config_large = DocConfig(max_value_chars=1000)
         result_large = variables(obj, config=config_large)
 
-        # Small config should truncate (Rich-style: 'truncated'+N)
-        assert "'+" in result_small
+        # Small config should truncate → str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=" in result_small
         # Large config should not truncate (500 < 1000):
         # ensure some of the value is present and no truncation marker is used.
         assert "yyy" in result_large
-        assert "'+" not in result_large
+        assert "str(len=" not in result_large
 
     def test_doc_on_huge_builtin_with_max_length(self):
         """doc() on raw containers respects explicit max_length, shows head+tail."""
@@ -825,7 +825,7 @@ class TestLargeValueTruncation:
         huge_list = list(range(100_000))
         result = _pformat_to_str(huge_list, max_length=10, max_string=500, max_depth=3)
 
-        assert "items not shown" in result  # head+tail notice
+        assert "list(len=100000," in result  # truncation marker
         assert "99999" in result  # tail item visible
         assert len(result) < 2000
 
@@ -871,9 +871,8 @@ class TestDocTruncationHeader:
         # With new design: doc(instance) shows type, pformat(instance) shows values
         result = pformat(obj, max_string=500)
 
-        # Truncation marker should appear in the value (inline, not as header)
-        # Format is like: long_string='xxx...'+N
-        assert "'+" in result or "..." in result  # Truncation indicator
+        # Truncation marker should appear inline: str(len=N, [:H]='...', [-T:]='...')
+        assert "str(len=1000," in result
 
     def test_no_truncation_marker_when_no_truncation(self):
         """Truncation marker should NOT appear when value fits."""
@@ -886,7 +885,7 @@ class TestDocTruncationHeader:
         result = doc(obj)
 
         # No truncation marker should be present
-        assert "'+" not in result
+        assert "str(len=" not in result
 
 
 class TestPformatMatchesRich:
@@ -896,29 +895,24 @@ class TestPformatMatchesRich:
         not pytest.importorskip("rich", reason="rich not installed"),
         reason="rich not installed",
     )
-    def test_string_truncation_matches_rich(self):
-        """String truncation format should match Rich pprint."""
-        import sys
-        from io import StringIO
+    def test_string_truncation_uses_truncation_3_marker(self):
+        """String truncation uses the truncation 3.0 slice-keys marker.
 
-        from rich.pretty import pprint
-
+        We deliberately diverge from Rich's ``'foo'+N`` legacy form here —
+        the matrix data showed the slice-keys form (head + tail with the
+        total length up front) is ~25-30 pp easier for LLMs to read.
+        """
         from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = "x" * 100
-        max_string = 10
+        our_output = _pformat(data, max_string=10)
 
-        # Get Rich pprint output (capture stdout)
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        pprint(data, max_string=max_string)
-        rich_output = sys.stdout.getvalue().strip()
-        sys.stdout = old_stdout
-
-        # Get our output
-        our_output = _pformat(data, max_string=max_string)
-
-        assert our_output == rich_output, f"Mismatch:\nRich: {rich_output!r}\nOurs: {our_output!r}"
+        # str(len=100, [:5]='xxxxx', [-5:]='xxxxx')
+        assert our_output.startswith("str(len=100,")
+        assert "[:5]=" in our_output
+        assert "[-5:]=" in our_output
+        # Old "'foo'+N" form should NOT appear.
+        assert "'+" not in our_output
 
     @pytest.mark.skipif(
         not pytest.importorskip("rich", reason="rich not installed"),
@@ -938,10 +932,10 @@ class TestPformatMatchesRich:
         # Tail: last 2 items
         assert "19" in our_output
         assert "18" in our_output
-        # Middle dropped with prose notice
-        assert "items not shown" in our_output
-        # Valid brackets
-        assert our_output.startswith("[") and our_output.endswith("]")
+        # Truncation 3.0 slice-keys marker
+        assert our_output.startswith("list(len=20,")
+        assert "[:3]=[" in our_output
+        assert "[-2:]=[" in our_output
 
     @pytest.mark.skipif(
         not pytest.importorskip("rich", reason="rich not installed"),
@@ -960,48 +954,44 @@ class TestPformatMatchesRich:
         assert "'k1'" in our_output
         # Tail: last 1 key
         assert "'k19'" in our_output
-        # Middle dropped with prose notice
-        assert "items not shown" in our_output
-        # Valid brackets
-        assert "{" in our_output and "}" in our_output
+        # Truncation 3.0 items wrapper for dicts
+        assert our_output.startswith("dict(len=20, items={")
+        assert our_output.endswith("})")
 
 
 class TestPformatAdditionalTypes:
     """Tests for _pformat with additional types (tuples, sets, etc)."""
 
     def test_tuple_truncation(self):
-        """Test tuple truncation uses head+tail format."""
+        """Tuple truncation uses the slice-keys marker with tuple parens."""
         from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = tuple(range(20))
         result = _pformat(data, max_length=5)
 
-        assert result.startswith("(")
-        assert result.endswith(")")
-        # Head+tail: shows first 3 and last 2 with prose notice
-        assert "items not shown" in result
+        assert result.startswith("tuple(len=20,")
+        assert "[:3]=(" in result
+        assert "[-2:]=(" in result
         assert "19" in result  # tail item visible
 
     def test_set_truncation(self):
-        """Test set truncation uses Rich-style format."""
+        """Set truncation uses the items wrapper (no positional anchor)."""
         from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = set(range(20))
         result = _pformat(data, max_length=5)
 
-        assert result.startswith("{")
-        assert result.endswith("}")
-        assert "... +15" in result
+        assert result.startswith("set(len=20, items={")
+        assert result.endswith("})")
 
     def test_frozenset_truncation(self):
-        """Test frozenset truncation uses Rich-style format."""
+        """Frozenset truncation uses the items wrapper."""
         from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = frozenset(range(20))
         result = _pformat(data, max_length=5)
 
-        assert "frozenset" in result
-        assert "... +15" in result
+        assert result.startswith("frozenset(len=20, items=")
 
 
 class TestPformatTypes:
@@ -1060,7 +1050,7 @@ class TestPformatTypes:
         assert "f1: str" in result
         assert "f2: str" in result
         assert "f3: str" in result
-        assert "... +3" in result
+        assert "..." in result  # truncation 3.0: bare ellipsis (was "... +3")
         assert "f6: str" not in result
 
     def test_pformat_enum_type(self):
@@ -1098,9 +1088,9 @@ class TestFormatValueFullVsSummary:
 
         # Full should be longer (shows more content)
         assert len(full) > len(summary)
-        # Both should have truncation marker
-        assert "+" in summary  # truncated at 50
-        assert "+" in full  # truncated at 500
+        # Both should carry the truncation 3.0 string marker
+        assert "str(len=1000," in summary  # truncated at 50
+        assert "str(len=1000," in full  # truncated at 500
 
     def test_full_shows_more_list_items(self):
         """format_value_full should show more list items, both use head+tail."""
@@ -1113,11 +1103,11 @@ class TestFormatValueFullVsSummary:
         summary = format_value_summary(data, config)
         full = format_value_full(data, config)
 
-        # Summary: max_length=10 → 5 head + 5 tail, 190 dropped
-        assert "190 items not shown" in summary
+        # Summary: max_length=10 → 5 head + 5 tail, marker carries len=200
+        assert "list(len=200," in summary
         assert "199" in summary  # tail visible
-        # Full: max_length=100 → 50 head + 50 tail, 100 dropped
-        assert "100 items not shown" in full
+        # Full: max_length=100 → 50 head + 50 tail, marker carries len=200
+        assert "list(len=200," in full
         assert "199" in full  # tail visible
 
 

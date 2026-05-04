@@ -1,14 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for element-aware head+tail truncation in pformat.
+"""Tests for the truncation 3.0 marker family in pformat.
 
-When max_length fires for ordered containers (list, tuple, dict), pformat should
-show the first n_head elements AND the last n_tail elements, with a prose notice
-in the middle — matching numpy/pandas style.
+When max_length fires, pformat emits a `type(len=N, ...)` marker:
 
-Unordered containers (set, frozenset) keep head-only (no stable order).
-Budget-based truncation (_budget / max_total_chars) keeps head-only (can't
-collect tail without materialising the full sequence).
+* Ordered (list, tuple) — slice-keys notation:
+  ``list(len=100, [:5]=[0, 1, 2, 3, 4], [-5:]=[95, 96, 97, 98, 99])``
+* Unordered (dict, set, frozenset) — items wrapper:
+  ``dict(len=100, items={0: 0, 1: 10, ..., 98: 980, 99: 990})``
+
+Untruncated values render as plain Python literals (`[1, 2, 3]`, `{1: 2}`,
+etc.) — the marker's *presence* is the truncation signal.
+
+See ``docs/design/truncation-3.0-experiment-summary.md`` for the format-choice
+rationale and the matrix data behind it.
 """
 
 import re
@@ -16,201 +21,157 @@ import re
 from nemo_oo_agents.agentdoc import pformat, truncating_pformat
 
 
-class TestListHeadTail:
-    """Lists with max_length show head AND tail elements."""
+class TestListMarker:
+    """Lists: slice-keys marker when truncated, plain repr when complete."""
 
-    def test_large_list_shows_tail(self):
-        """Items at the end of a large list are visible after truncation."""
+    def test_truncated_list_uses_slice_keys_marker(self):
         items = list(range(100))
         result = pformat(items, max_length=10)
-        # Head: items 0-4 must appear
-        assert "0" in result
-        assert "4" in result
-        # Tail: items 95-99 must appear (was lost before this fix)
-        assert "99" in result
-        assert "95" in result
+        # Marker prefix
+        assert result.startswith("list(len=100,")
+        # Slice keys with explicit head/tail counts
+        assert "[:5]=" in result
+        assert "[-5:]=" in result
+        # Visible head/tail items
+        for x in [0, 1, 2, 3, 4, 95, 96, 97, 98, 99]:
+            assert re.search(rf"\b{x}\b", result), result
 
-    def test_large_list_shows_not_shown_notice(self):
-        """The truncation notice tells how many items were dropped."""
-        items = list(range(100))
-        result = pformat(items, max_length=10)
-        assert "not shown" in result
-
-    def test_large_list_head_and_tail_split(self):
-        """Head takes ceiling(max_length/2), tail takes floor(max_length/2)."""
+    def test_truncated_list_excludes_elided_items(self):
         items = list(range(200))
         result = pformat(items, max_length=10)
-        # Head: 5 items (0..4), tail: 5 items (195..199)
-        assert "0" in result
-        assert "4" in result
-        assert "195" in result
-        assert "199" in result
-        # Item 5 should NOT appear (it's in the dropped middle)
-        # Item 194 should NOT appear (it's in the dropped middle)
-        assert not re.search(r"\b194\b", result)  # 194 as standalone number, not part of 1940+
+        # Items 5..194 are in the elided middle; pick a non-prefix sample
+        assert not re.search(r"\b194\b", result)
 
-    def test_list_under_max_length_unchanged(self):
-        """Lists within max_length show all items, no notice."""
-        items = [1, 2, 3]
-        result = pformat(items, max_length=10)
-        assert "1" in result
-        assert "2" in result
-        assert "3" in result
-        assert "not shown" not in result
+    def test_complete_list_is_plain_python_literal(self):
+        result = pformat([1, 2, 3], max_length=10)
+        assert result == "[1, 2, 3]"
 
-    def test_list_exactly_max_length_unchanged(self):
-        """List with exactly max_length items shows all, no truncation."""
+    def test_list_exactly_max_length_is_plain(self):
         items = list(range(10))
         result = pformat(items, max_length=10)
-        assert "not shown" not in result
-        for i in range(10):
-            assert str(i) in result
-
-    def test_list_max_length_one_shows_no_tail(self):
-        """max_length=1: only 1 item shown, no tail (can't split 1 into head+tail)."""
-        items = list(range(100))
-        result = pformat(items, max_length=1)
-        # Should have at most 1 head item (item 0)
-        assert "0" in result
-        # Should still have a truncation notice
-        assert "not shown" in result or "+99" in result or "more" in result
-
-    def test_list_max_length_two_shows_one_head_one_tail(self):
-        """max_length=2: first item (head) and last item (tail) shown."""
-        items = list(range(100))
-        result = pformat(items, max_length=2)
-        assert "0" in result  # head
-        assert "99" in result  # tail
-
-    def test_list_brackets_are_balanced(self):
-        """Output is syntactically valid — opening and closing brackets match."""
-        items = list(range(100))
-        result = pformat(items, max_length=10)
+        assert "len=" not in result
         assert result.startswith("[")
         assert result.endswith("]")
 
-    def test_list_items_dropped_count_in_notice(self):
-        """Notice reports the correct number of dropped items."""
-        items = list(range(100))  # 100 items, max_length=10 → 5 head + 5 tail → 90 dropped
+    def test_just_over_max_length_uses_marker(self):
+        items = list(range(11))
         result = pformat(items, max_length=10)
-        assert "90" in result  # 90 items not shown
-
-    def test_small_list_with_max_length_not_truncated(self):
-        """List shorter than max_length: all items shown."""
-        result = pformat([10, 20, 30], max_length=50)
-        assert "10" in result
-        assert "20" in result
-        assert "30" in result
-        assert "not shown" not in result
+        assert "list(len=11," in result
 
 
-class TestTupleHeadTail:
-    """Tuples show head+tail like lists (ordered)."""
+class TestTupleMarker:
+    """Tuples: slice-keys marker with tuple parens for the chunks."""
 
-    def test_large_tuple_shows_tail(self):
-        items = tuple(range(100))
-        result = pformat(items, max_length=10)
+    def test_truncated_tuple_uses_tuple_marker(self):
+        result = pformat(tuple(range(100)), max_length=10)
+        assert result.startswith("tuple(len=100,")
+        assert "[:5]=(" in result
+        assert "[-5:]=(" in result
         assert "99" in result
-        assert "not shown" in result
 
-    def test_tuple_brackets_balanced(self):
-        items = tuple(range(100))
-        result = pformat(items, max_length=10)
-        assert result.startswith("(")
-        assert result.endswith(")")
+    def test_complete_tuple_plain(self):
+        assert pformat((1, 2, 3)) == "(1, 2, 3)"
 
 
-class TestDictHeadTail:
-    """Dicts show head+tail keys when max_length fires (dicts are insertion-ordered)."""
+class TestDictMarker:
+    """Dicts: items wrapper when truncated, plain repr when complete."""
 
-    def test_large_dict_shows_last_keys(self):
-        """Last keys of a large dict appear after truncation."""
+    def test_truncated_dict_uses_items_marker(self):
         d = {str(i): i for i in range(100)}
         result = pformat(d, max_length=10)
-        # Head: keys '0'..'4'
+        assert result.startswith("dict(len=100, items={")
+        assert result.endswith("})")
+        # Head and tail keys appear
         assert "'0'" in result
-        # Tail: keys '95'..'99'
         assert "'99'" in result
+        # An explicit elision separator between head and tail
+        assert "..." in result
 
-    def test_large_dict_notice(self):
-        d = {str(i): i for i in range(100)}
-        result = pformat(d, max_length=10)
-        assert "not shown" in result
+    def test_complete_dict_plain(self):
+        result = pformat({"a": 1, "b": 2}, max_length=10)
+        assert result == "{'a': 1, 'b': 2}"
 
-    def test_dict_brackets_balanced(self):
-        d = {str(i): i for i in range(100)}
-        result = pformat(d, max_length=10)
+
+class TestSetMarker:
+    """Sets: items wrapper when truncated."""
+
+    def test_truncated_set_uses_items_marker(self):
+        result = pformat(set(range(100)), max_length=10)
+        assert result.startswith("set(len=100, items={")
+        assert result.endswith("})")
+
+    def test_truncated_frozenset_uses_items_marker(self):
+        result = pformat(frozenset(range(100)), max_length=10)
+        assert result.startswith("frozenset(len=100, items=")
+
+    def test_complete_set_plain(self):
+        result = pformat({1, 2, 3}, max_length=10)
+        # Sets aren't insertion-ordered for ints<sys.maxsize but are deterministic
+        # under CPython; check structure rather than exact ordering.
         assert result.startswith("{")
         assert result.endswith("}")
-
-    def test_small_dict_unchanged(self):
-        d = {"a": 1, "b": 2}
-        result = pformat(d, max_length=10)
-        assert "'a'" in result
-        assert "'b'" in result
-        assert "not shown" not in result
+        for x in (1, 2, 3):
+            assert str(x) in result
 
 
-class TestUnorderedCollections:
-    """Sets and frozensets: head-only (no stable order → tail not meaningful)."""
+class TestEmptyAndEdge:
+    def test_empty_list(self):
+        assert pformat([]) == "[]"
 
-    def test_set_does_not_crash(self):
-        """Large sets still truncate without raising."""
-        s = set(range(100))
-        result = pformat(s, max_length=10)
-        assert result  # non-empty
-        assert "{" in result or "frozenset" in result.lower() or "set" in result.lower()
+    def test_empty_dict(self):
+        assert pformat({}) == "{}"
 
-    def test_frozenset_does_not_crash(self):
-        s = frozenset(range(100))
-        result = pformat(s, max_length=10)
-        assert result
+    def test_max_length_one(self):
+        # head=1, tail=0 — only the head slice is rendered
+        result = pformat(list(range(100)), max_length=1)
+        assert "list(len=100, [:1]=[0])" == result
+
+    def test_max_length_two(self):
+        # head=1, tail=1
+        result = pformat(list(range(100)), max_length=2)
+        assert "list(len=100, [:1]=[0], [-1:]=[99])" == result
 
 
 class TestMaxCharsTruncation:
-    """max_chars cap belongs to truncating_pformat, not pformat."""
+    """max_chars cap belongs to truncating_pformat, not pformat — still bounded."""
 
     def test_max_chars_bounds_output(self):
-        """Large list with max_chars: output bounded, prose notice included."""
         items = list(range(1_000_000))
         result = truncating_pformat(items, max_chars=1000)
-        assert len(result) < 10_000  # bounded
+        assert len(result) < 10_000
 
 
 class TestExpandedFormat:
-    """Expanded (multiline) format paths for head+tail."""
+    """Expanded (multi-line) form mirrors the compact marker shape."""
 
-    def test_expanded_list_head_tail(self):
-        """Expanded list: head+tail notice present, brackets balanced, no comma before bracket."""
-        items = list(range(20))
-        result = pformat(items, max_length=6, expand_all=True)
-        assert result.startswith("[")
-        assert result.endswith("]")
-        assert "not shown" in result
+    def test_expanded_list_marker(self):
+        result = pformat(list(range(20)), max_length=6, expand_all=True)
+        assert result.startswith("list(len=20,")
+        assert "[:3]=[" in result
+        assert "[-3:]=[" in result
+        assert result.endswith(")")
+        assert ",]" not in result
         assert "0" in result
         assert "19" in result
-        assert ",]" not in result
 
-    def test_expanded_dict_head_tail(self):
-        """Expanded dict: head+tail notice present, brackets balanced."""
+    def test_expanded_dict_marker(self):
         d = {str(i): i for i in range(20)}
         result = pformat(d, max_length=6, expand_all=True)
-        assert result.startswith("{")
-        assert result.endswith("}")
-        assert "not shown" in result
+        assert result.startswith("dict(len=20, items={")
+        assert result.endswith("})")
         assert "'0'" in result
         assert "'19'" in result
 
 
 class TestNestedContainers:
-    """Nested containers: inner containers use their own max_length independently."""
+    """Inner containers use their own max_length independently."""
 
-    def test_outer_head_tail_inner_normal(self):
-        """Outer list gets head+tail; inner lists are formatted normally."""
+    def test_outer_truncated_inner_complete(self):
         outer = [[i, i + 1] for i in range(50)]
         result = pformat(outer, max_length=10)
-        # Outer: head+tail
-        assert "not shown" in result
-        assert "[0," in result or "[0" in result  # first item
-        # Last item [48, 49] should appear in tail
-        assert "49" in result
+        # Outer marker
+        assert "list(len=50," in result
+        # Inner pairs are short — plain literal
+        assert "[0, 1]" in result
+        # Last visible inner pair (index 49 → [49, 50])
+        assert "[49, 50]" in result

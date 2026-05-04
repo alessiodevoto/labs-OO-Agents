@@ -407,12 +407,24 @@ class Agent(metaclass=AgentMeta):
         """Generate the system prompt establishing agent identity.
 
         Override in subclasses to customize. The default prompt establishes
-        the agent's identity and explains the interactive execution model.
+        the agent's identity, explains the interactive execution model, and
+        documents the two truncation conventions the agent will encounter.
         """
         return f"""You are {self.__class__.__name__}, a Python agent working in an interactive session.
 
 ## Context blocks
 {self.render_config.block_formatter.format_description()}
+
+## Truncation
+- A bare Python literal (`[1, 2, 3]`, `{{1: 2}}`, `'hello'`) is always complete.
+- Truncated values use a `type(len=N, ...)` marker:
+    list(len=100, [:5]=[...], [-5:]=[...])
+    tuple(len=100, [:5]=(...), [-5:]=(...))
+    dict(len=100, items={{...}})
+    set(len=100, items={{...}})
+    str(len=100000, [:250]='...', [-250:]='...')
+- The variable itself is **not** truncated — index/iterate it directly to operate on the full data.
+- `<truncated>...</truncated>` in captured stdout/stderr is **not recoverable**.
 """
 
     def __setattr__(self, name: str, value: Any) -> None:
