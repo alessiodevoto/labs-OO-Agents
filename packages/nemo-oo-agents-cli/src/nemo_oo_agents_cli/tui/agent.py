@@ -24,7 +24,9 @@ with hidden:
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from nemo_oo_agents.tools import BashTool, FileTool, LibraryWriting, TodoManager
+    from nemo_oo_agents.tools import LibraryWriting, TodoManager
+    from nemo_oo_agents.tools.repo_tools import RepoTools
+    from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
@@ -529,15 +531,16 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     # Tools
 
-    - ``self.bash`` — shell commands. Returns ``BashResult(stdout, stderr, return_code)``.
-    - ``self.files`` — file I/O: ``.read()``, ``.write()``, ``.edit_file()``,
-      ``.list()``, ``.find()``, ``.grep()``. Prefer these over ``self.bash``
-      for file work (``cat``, ``ls``, ``find``, ``grep``, ``sed``).
+    - ``self.shell`` — persistent shell + file ops. ``bash()``, ``view()``,
+      ``edit()``, ``write()``, ``grep()``, ``find()``, ``ls()``.
+      ``cd`` and environment changes persist across calls.
+      See ``doc(self.shell)`` for full API.
+    - ``self.repo`` — repo intelligence: ``filemap()``, ``repo_map()``,
+      ``search_symbol()``. See ``doc(self.repo)``.
     - ``self.todo`` — plan/track multi-step work. See ``doc(self.todo)``.
     - Skills — attached as attributes (e.g. ``self.wtf_pm``). **Check
       ``doc(self.<skill>)`` before using a skill** — its method signatures
-      are the canonical API. Prefer a skill over ``self.bash`` whenever one
-      exists for the task.
+      are the canonical API.
 
     # Long-running tasks
 
@@ -555,7 +558,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # → h.state shows "running"/"done"/"failed"/"cancelled"
         # → await self.queue_manager.shutdown() cancels all
 
-    Use ``self.bash.run()`` for quick commands (<10s). Use ``spawn()``
+    Use ``self.shell.bash()`` for quick commands (<10s). Use ``spawn()``
     for CI pipelines, long builds, monitoring, and anything you want
     to run concurrently while staying responsive to the user.
 
@@ -610,8 +613,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     _config: Annotated[AgentConfig, hidden, nosnapshot]
     _phase: Annotated[str, hidden]
     _workflow_state: Annotated[dict, hidden]
-    bash: Annotated[BashTool, nosnapshot]
-    files: Annotated[FileTool, nosnapshot]
+    shell: Annotated[ShellTools, nosnapshot]
+    repo: Annotated[RepoTools, nosnapshot]
     libs: Annotated[LibraryWriting, nosnapshot]
     todo: TodoManager
     _skills_dirs: Annotated[list, hidden, nosnapshot]
@@ -642,16 +645,11 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         self._skills_dirs: list = []  # set by bootstrap with CLI --skills-dir + entry points
 
-        from nemo_oo_agents.config.tool_configs import BashConfig
         from nemo_oo_agents.paths import get_project_dir
 
         _project_dir = get_project_dir()
-        _srt = _project_dir / "srt_settings.json"
-        self.bash = BashTool(
-            working_dir=config.working_dir,
-            config=BashConfig(srt_settings=_srt if _srt.exists() else None),
-        )
-        self.files = FileTool(self.bash)
+        self.shell = ShellTools(cwd=config.working_dir)
+        self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
         self.libs = LibraryWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
 
@@ -716,8 +714,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         """
         return DoerAgent(
             llm=self._llm,
-            bash=self.bash,
-            files=self.files,
+            shell=self.shell,
+            repo=self.repo,
             todo=self.todo,
             skills_dirs=self._skills_dirs,
         )
@@ -731,7 +729,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         Instructions:
         1. Read the todo title and notes carefully.
-        2. Execute the work described using self.bash and self.files.
+        2. Execute the work described using self.shell (bash, view, edit, write, grep, find, ls).
         3. When done, update the todo with what you learned:
            self.todo.update("{todo.id}", notes="what you did and found")
         4. Mark it complete: self.todo.done("{todo.id}")

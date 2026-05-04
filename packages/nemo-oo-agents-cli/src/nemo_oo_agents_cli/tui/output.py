@@ -177,6 +177,7 @@ class BashOutput:
     stdout: str
     stderr: str
     return_code: int
+    command: str = ""
 
     def to_json(self) -> dict:
         return {

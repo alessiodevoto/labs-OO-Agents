@@ -15,6 +15,8 @@ Usage::
 """
 
 import asyncio
+import os
+import signal
 
 
 async def after(delay: float) -> None:
@@ -67,19 +69,30 @@ async def monitor(cmd: str):
     """Stream stdout lines from a shell command as they appear.
 
     Yields each line (stripped) as it's written to stdout.
-    stderr is merged into stdout. Kills the subprocess on
-    cancellation/close to prevent orphans.
+    stderr is merged into stdout.  Uses ``start_new_session=True``
+    for process-group isolation so multiple concurrent monitors
+    (and the agent itself) don't contend for ptys or interfere
+    with each other.  On cancellation the entire process group
+    is killed to prevent orphaned children.
     """
     proc = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True,
     )
+    assert proc.stdout is not None
     try:
         async for line in proc.stdout:
             yield line.decode().rstrip("\n")
         await proc.wait()
     finally:
         if proc.returncode is None:
-            proc.kill()
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
             await proc.wait()

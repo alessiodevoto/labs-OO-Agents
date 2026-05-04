@@ -99,7 +99,7 @@ class TestSnapshotRestore:
         assert agent2._workflow_state == {"plan": "my plan", "done": ["step1", "step2"]}
 
     def test_nosnapshot_fields_keep_fresh_values_after_restore(self, tmp_path):
-        """Fields marked nosnapshot (bash, files, libs, _config) are not overwritten."""
+        """Fields marked nosnapshot (shell, repo, libs, _config) are not overwritten."""
         db = tmp_path / "s.db"
 
         agent, storage = _make_agent(db)
@@ -109,10 +109,10 @@ class TestSnapshotRestore:
         # Fresh agent with a distinguishable config
         config2 = AgentConfig(working_dir="/tmp/other")
         agent2, storage2 = _make_agent(db, config=config2)  # type: ignore[arg-type]
-        original_bash = agent2.bash
+        original_shell = agent2.shell
         storage2.restore_latest_snapshot(agent2)
         storage2.close()
 
         # nosnapshot fields must not have been replaced by snapshot data
-        assert agent2.bash is original_bash
+        assert agent2.shell is original_shell
         assert agent2._config is config2

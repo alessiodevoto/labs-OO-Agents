@@ -249,6 +249,8 @@ class TerminalFrontend:
             self._console.print_status(output.footer)
 
     def _render_bash(self, output: BashOutput) -> None:
+        if output.command:
+            self._console.console.print(f"[bold dark_orange]❯ {output.command}[/]")
         if output.stdout:
             # Ensure text ends with newline so _EmitStream produces exactly
             # ONE flush (one emit_block call). Two separate flushes (text

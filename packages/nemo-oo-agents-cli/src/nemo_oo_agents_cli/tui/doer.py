@@ -3,7 +3,7 @@
 """Disposable Doer agent — executes a single todo item.
 
 Created fresh per ``do_it()`` call so no history accumulates between tasks.
-Shares the parent TUI agent's bash, files, and todo instances.
+Shares the parent TUI agent's shell, repo, and todo instances.
 """
 
 # Module-level imports visible to the Doer's CodeAct REPL
@@ -31,7 +31,9 @@ with hidden:
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
-    from nemo_oo_agents.tools import BashTool, FileTool, TodoManager
+    from nemo_oo_agents.tools import TodoManager
+    from nemo_oo_agents.tools.repo_tools import RepoTools
+    from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
 
 
@@ -58,28 +60,28 @@ class DoerAgent(Agent):
     """One-shot executor for a single todo item.
 
     You have these tools:
-    - self.bash — run shell commands (returns BashResult with .stdout, .stderr, .return_code)
-    - self.files — read/write files (.read(), .write(), .edit_file(), .list(), .find(), .grep())
+    - self.shell — persistent shell + file ops: bash(), view(), edit(), write(), grep(), find(), ls()
+    - self.repo — repo intelligence: filemap(), repo_map(), search_symbol()
     - self.todo — view and update the todo list (self.todo.status(), self.todo.done(), etc.)
     Plus any skills discovered via SkillManager (use doc(self) to see all).
     """
 
-    bash: Annotated[BashTool, nosnapshot]
-    files: Annotated[FileTool, nosnapshot]
+    shell: Annotated[ShellTools, nosnapshot]
+    repo: Annotated[RepoTools, nosnapshot]
     todo: Annotated[TodoManager, nosnapshot]
 
     def __init__(
         self,
         *,
-        bash: BashTool,
-        files: FileTool,
+        shell: ShellTools,
+        repo: RepoTools,
         todo: TodoManager,
         skills_dirs: list[Path] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.bash = bash
-        self.files = files
+        self.shell = shell
+        self.repo = repo
         self.todo = todo
 
         # Install plugin skills (WTF, etc.) discovered via entry points
@@ -96,7 +98,7 @@ class DoerAgent(Agent):
 
         Instructions:
         1. Read the todo title and notes carefully.
-        2. Execute the work described using self.bash and self.files.
+        2. Execute the work described using self.shell (bash, view, edit, write, grep, find, ls).
         3. When done, update the todo with what you learned:
            self.todo.update("{todo.id}", notes="what you did and found")
         4. Mark it complete: self.todo.done("{todo.id}")
