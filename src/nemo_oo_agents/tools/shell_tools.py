@@ -495,7 +495,8 @@ class ShellTools(Skill):
         errors: list[str] = []
         if path.suffix == ".py":
             stdout, stderr, code = await self._session.run(
-                f"python3 -c \"import ast; ast.parse(open('{path}').read())\"",
+                f'python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())"'
+                f" {_sq(str(path))}",
                 timeout=10,
             )
             if code != 0:

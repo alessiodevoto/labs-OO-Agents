@@ -345,6 +345,19 @@ class TestReset:
 # ==========================================================================
 # grep context
 # ==========================================================================
+class TestLintQuoting:
+    async def test_lint_handles_path_with_single_quote(self, shell, tmp_path):
+        """_lint must handle paths containing single quotes."""
+        weird_dir = tmp_path / "it's a test"
+        weird_dir.mkdir()
+        f = weird_dir / "good.py"
+        f.write_text("x = 1\ny = 2\n")
+        r = await shell.edit(str(f), old_str="y = 2", new_str="y = (")
+        # Should detect the NEW syntax error, not crash on the path
+        assert r.success
+        assert len(r.lint_errors) > 0
+
+
 class TestGrepContext:
     async def test_grep_context_total_excludes_separators(self, shell, sample_tree):
         r = await shell.grep("helper", str(sample_tree / "src"), context=1)
