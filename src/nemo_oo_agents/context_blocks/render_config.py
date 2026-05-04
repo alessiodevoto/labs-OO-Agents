@@ -6,8 +6,8 @@ from nemo_oo_agents.context_blocks.formatter import (
     BlockFormatter,
     OpenAIProviderFormatter,
     ProviderFormatter,
-    XMLBlockFormatter,
 )
+from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
 
 
 class RenderConfig(BaseModel):
@@ -19,7 +19,7 @@ class RenderConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    block_formatter: BlockFormatter = Field(default_factory=XMLBlockFormatter)
+    block_formatter: BlockFormatter = Field(default_factory=CachedBlockFormatter)
     provider_formatter: ProviderFormatter = Field(default_factory=OpenAIProviderFormatter)
 
     def merge_with(self, other: "RenderConfig | None") -> "RenderConfig":

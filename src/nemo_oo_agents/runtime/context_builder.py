@@ -82,7 +82,7 @@ async def _apply_overrides(
         if isinstance(value, DynamicContext):
             meta = BlockMetadata(expr=value.expr, immutable=value.immutable)
         else:
-            meta = BlockMetadata(expr=static_expr(key))
+            meta = BlockMetadata(expr=static_expr(key), immutable=True)
 
         new_block = ResolvedBlock(key=key, content=content, role=Role.SYSTEM, metadata=meta)
         if key in index:

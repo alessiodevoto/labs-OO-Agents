@@ -86,6 +86,13 @@ class CachedBlockFormatter(BlockFormatter):
 
         immutable, volatile = _partition(system_blocks)
 
+        # When no blocks declare immutability, fall back to XMLBlockFormatter-style:
+        # put everything in SYSTEM. The caching partition only activates when at
+        # least one block is explicitly marked immutable.
+        if not immutable:
+            immutable = volatile
+            volatile = []
+
         messages: list[RenderedMessage] = []
         if immutable:
             content, parts = _concat_parts(immutable)

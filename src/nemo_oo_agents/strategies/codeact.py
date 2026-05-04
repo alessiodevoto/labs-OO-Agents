@@ -345,7 +345,9 @@ class CodeActStrategy(CompositeStrategy):
             "strategy_prompt": DynamicContext(
                 "strategy.strategy_instructions(runtime)", immutable=True
             ),
-            "execution_context": DynamicContext("strategy.execution_context(runtime)"),
+            "execution_context": DynamicContext(
+                "strategy.execution_context(runtime)", immutable=True
+            ),
         }
 
     def get_block_order(self) -> list[str] | None:

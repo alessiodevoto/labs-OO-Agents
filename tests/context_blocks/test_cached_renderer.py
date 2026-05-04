@@ -59,15 +59,14 @@ class TestCachedBlockFormatterPartition:
         assert messages[0].role == Role.SYSTEM
         assert "<a>" in messages[0].content and "<b>" in messages[0].content
 
-    def test_all_volatile_emits_trailing_user_with_envelope(self):
+    def test_all_volatile_falls_back_to_system(self):
+        """When no blocks are immutable, all go to SYSTEM (XMLBlockFormatter-compatible)."""
         fmt = CachedBlockFormatter()
         messages = fmt.format([_volatile_block("plan", "do stuff")])
         assert len(messages) == 1
-        assert messages[0].role == Role.USER
-        assert "<context>" in messages[0].content
+        assert messages[0].role == Role.SYSTEM
         assert "<plan>" in messages[0].content
         assert "</plan>" in messages[0].content
-        assert "</context>" in messages[0].content
 
     def test_mixed_preserves_order_within_halves(self):
         fmt = CachedBlockFormatter()

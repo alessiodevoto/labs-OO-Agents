@@ -19,8 +19,6 @@ with hidden:
     from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
-    from nemo_oo_agents.context_blocks.render_config import RenderConfig
-    from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
@@ -281,15 +279,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     vars: dict[str, Any]
 
     def __init__(self, llm=None, **kwargs):
-        # Use the cached block formatter so immutable blocks (system
-        # prompt, doc(self), and anything the subclass marks
-        # ``immutable=True``) land in a stable SYSTEM prefix that the
-        # provider can cache across turns. Callers can override by
-        # passing their own ``render_config``.
-        kwargs.setdefault(
-            "render_config",
-            RenderConfig(block_formatter=CachedBlockFormatter()),
-        )
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
         self.vars = {}

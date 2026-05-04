@@ -106,7 +106,7 @@ def test_user_messages_queue_is_hidden_from_doc():
 
 
 def test_tui_agent_uses_cached_block_formatter_by_default():
-    """``BaseTUIAgent`` wires ``CachedBlockFormatter`` so immutable
+    """``RenderConfig`` defaults to ``CachedBlockFormatter`` so immutable
     blocks (system prompt, doc(self), anything set with
     ``immutable=True``) land in a stable SYSTEM prefix the provider
     can cache across turns.
