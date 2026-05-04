@@ -351,7 +351,7 @@ class ShellTools(Skill):
         if context > 0:
             parts.extend(["-C", str(context)])
         if include:
-            parts.extend(["-g", include])
+            parts.extend(["-g", _sq(include)])
         parts.extend(["-m", str(max_matches), "--", _sq(pattern), _sq(path)])
 
         stdout, _, code = await self._session.run(" ".join(parts), timeout=30)

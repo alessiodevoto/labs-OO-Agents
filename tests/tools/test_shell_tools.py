@@ -158,7 +158,6 @@ class TestEdit:
         assert "not found" in r.error.lower()
 
     async def test_edit_preserves_rest_of_file(self, shell, sample_py):
-        original = sample_py.read_text()
         await shell.edit(
             str(sample_py),
             old_str='print("hello world")',
@@ -239,6 +238,17 @@ class TestGrep:
         r = await shell.grep(".", str(sample_tree), include="*.md")
         assert r.total_matches > 0
         assert all(".md" in m or "README" in m for m in r.matches)
+
+    async def test_grep_include_glob_not_shell_expanded(self, shell, sample_tree):
+        """The include glob must be shell-quoted so bash doesn't expand it."""
+        # Bug: if the include glob isn't quoted, bash expands *.py against the
+        # session cwd before rg sees it, breaking the filter.
+        # To trigger: cd into a dir that HAS .py files, then grep with include.
+        await shell.bash(f"cd {sample_tree / 'src'}")
+        r = await shell.grep("def", str(sample_tree), include="*.py")
+        assert r.total_matches > 0, f"Expected matches for 'def' in *.py, got {r.matches}"
+        for m in r.matches:
+            assert ".py:" in m, f"Expected .py file match, got: {m}"
 
     async def test_grep_literal(self, shell, sample_tree):
         # Create a file with regex-special characters
