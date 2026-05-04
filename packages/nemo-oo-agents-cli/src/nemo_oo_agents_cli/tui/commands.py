@@ -1530,6 +1530,325 @@ class ShowLastPythonCommand(Command):
         )
 
 
+class EventsCommand(Command):
+    """Show event statistics or pretty-print a specific event by tag."""
+
+    @property
+    def name(self) -> str:
+        return "events"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/events [tag]": "Show event statistics or pretty-print an event by tag"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) > 1:
+            return False, "Usage: /events [tag]"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        em = getattr(self.agent, "event_manager", None)
+        if em is None:
+            return CommandResult.err("No event manager available.")
+
+        tag = args[0] if args else ""
+
+        if not tag:
+            return self._format_stats(em)
+        else:
+            return self._format_event(em, tag)
+
+    # ------------------------------------------------------------------
+    # Stats view
+    # ------------------------------------------------------------------
+
+    def _format_stats(self, em) -> "CommandResult":
+        """Generate event statistics summary."""
+        all_tags = em.keys()
+        if not all_tags:
+            return CommandResult.ok(TextOutput("No events recorded.", "info"))
+
+        type_counts: dict[str, int] = {}
+        status_counts: dict[str, int] = {}
+        first_ts = None
+        last_ts = None
+
+        for tag in all_tags:
+            event = em.get(tag)
+            if event is None:
+                continue
+            etype = getattr(event, "event_type", type(event).__name__)
+            type_counts[etype] = type_counts.get(etype, 0) + 1
+
+            if hasattr(event, "execution_status"):
+                s = str(event.execution_status)
+                label = s.rsplit(".", 1)[-1]
+                status_counts[label] = status_counts.get(label, 0) + 1
+
+            ts = getattr(event, "timestamp", None)
+            if ts:
+                if first_ts is None or ts < first_ts:
+                    first_ts = ts
+                if last_ts is None or ts > last_ts:
+                    last_ts = ts
+
+        total = sum(type_counts.values())
+        sorted_types = sorted(type_counts.items(), key=lambda x: -x[1])
+
+        icons = {
+            "ToolCallEvent": "\U0001f527",
+            "PythonOutput": "\U0001f4e4",
+            "Task": "\U0001f4cb",
+            "TUIUserInput": "\U0001f4ac",
+            "TUISessionStart": "\U0001f680",
+            "Summary": "\U0001f4dd",
+            "Error": "\u274c",
+        }
+
+        rows: list[list[str]] = []
+        for etype, count in sorted_types:
+            pct = f"{count * 100 // total}%"
+            icon = icons.get(etype, "\U0001f4cc")
+            rows.append([f"{icon} {etype}", str(count), pct])
+
+        outputs: list[Output] = []
+
+        # Time range
+        if first_ts and last_ts:
+            duration = last_ts - first_ts
+            mins = int(duration.total_seconds() // 60)
+            secs = int(duration.total_seconds() % 60)
+            ts_fmt = "%H:%M:%S"
+            time_line = (
+                f"Session: {first_ts.strftime(ts_fmt)} \u2192 "
+                f"{last_ts.strftime(ts_fmt)} ({mins}m {secs}s)"
+            )
+            outputs.append(TextOutput(time_line, "info"))
+
+        outputs.append(
+            TextOutput(
+                f"Total events: {total}  |  Tag range: {all_tags[0]} .. {all_tags[-1]}",
+                "info",
+            )
+        )
+
+        outputs.append(
+            TableOutput(
+                title="Event Types",
+                columns=["Type", "Count", "%"],
+                rows=rows,
+            )
+        )
+
+        if status_counts:
+            parts = []
+            for label, count in sorted(status_counts.items(), key=lambda x: -x[1]):
+                emoji = (
+                    "\u2705"
+                    if label == "complete"
+                    else "\u274c"
+                    if label == "error"
+                    else "\u26a0\ufe0f"
+                )
+                parts.append(f"{emoji} {label}: {count}")
+            outputs.append(TextOutput("Execution: " + "  |  ".join(parts), "info"))
+
+        # Recent events
+        recent_tags = all_tags[-10:]
+        recent_rows: list[list[str]] = []
+        for t in recent_tags:
+            event = em.get(t)
+            if event is None:
+                continue
+            etype = getattr(event, "event_type", type(event).__name__)
+            icon = icons.get(etype, "\U0001f4cc")
+            summary = self._one_line_summary(event, etype)
+            recent_rows.append([t, f"{icon} {summary}"])
+
+        outputs.append(
+            TableOutput(
+                title="Recent Events",
+                columns=["Tag", "Event"],
+                rows=recent_rows,
+            )
+        )
+
+        return CommandResult(success=True, outputs=outputs)
+
+    # ------------------------------------------------------------------
+    # Single-event view
+    # ------------------------------------------------------------------
+
+    def _format_event(self, em, tag: str) -> "CommandResult":
+        """Pretty-print a single event by tag."""
+        event = em.get(tag)
+        if event is None:
+            return CommandResult.err(f"No event found with tag '{tag}'")
+
+        etype = getattr(event, "event_type", type(event).__name__)
+
+        if etype == "ToolCallEvent":
+            return self._format_tool_call(event, tag)
+        elif etype == "PythonOutput":
+            return self._format_python_output(event, tag)
+        else:
+            return self._format_generic(event, tag, etype)
+
+    def _format_tool_call(self, event, tag: str) -> "CommandResult":
+        import json as _json
+
+        name = getattr(event, "name", "?")
+        ts = getattr(event, "timestamp", None)
+        ts_str = ts.strftime("%H:%M:%S.%f")[:-3] if ts else "?"
+        tool_call_id = getattr(event, "tool_call_id", "")
+        short_id = tool_call_id[-8:] if tool_call_id else ""
+        args = getattr(event, "arguments", {})
+        result = getattr(event, "result", None)
+
+        outputs: list[Output] = []
+
+        header_rows = [["Tool", name], ["Time", ts_str]]
+        if short_id:
+            header_rows.append(["Call ID", f"...{short_id}"])
+        outputs.append(
+            TableOutput(
+                title=f"\U0001f527 Tool Call [{tag}]",
+                columns=["", ""],
+                rows=header_rows,
+            )
+        )
+
+        from .output import AgentMessage
+
+        if name == "execute_python" and isinstance(args, dict) and "code" in args:
+            outputs.append(
+                AgentMessage(content=f"```python\n{args['code'].rstrip()}\n```", show_rule=False)
+            )
+        elif args:
+            try:
+                formatted = _json.dumps(args, indent=2, default=str)
+            except (TypeError, ValueError):
+                formatted = str(args)
+            outputs.append(
+                AgentMessage(content=f"**Arguments:**\n```json\n{formatted}\n```", show_rule=False)
+            )
+
+        if result is not None:
+            result_status = getattr(result, "result_status", None)
+            if result_status:
+                s = str(result_status)
+                status_str = s.rsplit(".", 1)[-1]
+                icon = "\u2705" if status_str == "complete" else "\u274c"
+                outputs.append(TextOutput(f"Result: {icon} {status_str}", "info"))
+
+        return CommandResult(success=True, outputs=outputs)
+
+    def _format_python_output(self, event, tag: str) -> "CommandResult":
+        status = str(getattr(event, "execution_status", "?"))
+        status_label = status.rsplit(".", 1)[-1]
+        status_icon = "\u2705" if status_label == "complete" else "\u274c"
+
+        ts = getattr(event, "timestamp", None)
+        ts_str = ts.strftime("%H:%M:%S.%f")[:-3] if ts else "?"
+        exec_count = getattr(event, "execution_count", None)
+        tool_call_id = getattr(event, "tool_call_id", "")
+        short_id = tool_call_id[-8:] if tool_call_id else ""
+
+        outputs: list[Output] = []
+
+        header_rows = [["Status", f"{status_icon} {status_label}"], ["Time", ts_str]]
+        if exec_count is not None:
+            header_rows.append(["Cell", f"In[{exec_count}]"])
+        if short_id:
+            header_rows.append(["Call ID", f"...{short_id}"])
+
+        outputs.append(
+            TableOutput(
+                title=f"\U0001f4e4 Python Output [{tag}]  {status_icon}",
+                columns=["", ""],
+                rows=header_rows,
+            )
+        )
+
+        from .output import AgentMessage
+
+        stdout = getattr(event, "stdout", "") or ""
+        if stdout.strip():
+            outputs.append(
+                AgentMessage(content=f"**Output:**\n```\n{stdout.rstrip()}\n```", show_rule=False)
+            )
+
+        stderr = getattr(event, "stderr", "") or ""
+        if stderr.strip():
+            outputs.append(
+                AgentMessage(content=f"**Stderr:**\n```\n{stderr.rstrip()}\n```", show_rule=False)
+            )
+
+        error = getattr(event, "error", "") or ""
+        if error.strip():
+            outputs.append(
+                AgentMessage(content=f"**Error:**\n```\n{error.rstrip()}\n```", show_rule=False)
+            )
+
+        return CommandResult(success=True, outputs=outputs)
+
+    def _format_generic(self, event, tag: str, etype: str) -> "CommandResult":
+        import json as _json
+
+        ts = getattr(event, "timestamp", None)
+        ts_str = ts.strftime("%H:%M:%S.%f")[:-3] if ts else "?"
+
+        outputs: list[Output] = []
+        outputs.append(TextOutput(f"\U0001f4cc {etype} [{tag}]  Time: {ts_str}", "info"))
+
+        try:
+            data = event.model_dump()
+            for k in ("event_type", "id", "metadata", "status", "tag", "timestamp"):
+                data.pop(k, None)
+            if data:
+                formatted = _json.dumps(data, indent=2, default=str)
+                from .output import AgentMessage
+
+                outputs.append(AgentMessage(content=f"```json\n{formatted}\n```", show_rule=False))
+        except Exception:
+            outputs.append(TextOutput(str(event), "info"))
+
+        return CommandResult(success=True, outputs=outputs)
+
+    @staticmethod
+    def _one_line_summary(event, etype: str) -> str:
+        """Generate a one-line summary for an event."""
+        if etype == "ToolCallEvent":
+            name = getattr(event, "name", "?")
+            args = getattr(event, "arguments", {})
+            if name == "execute_python" and isinstance(args, dict) and "code" in args:
+                for line in args["code"].split("\n"):
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        return f"{name} \u2014 {stripped[:60]}"
+            return name
+        elif etype == "PythonOutput":
+            status = str(getattr(event, "execution_status", "?"))
+            label = status.rsplit(".", 1)[-1]
+            icon = "\u2705" if label == "complete" else "\u274c"
+            stdout = getattr(event, "stdout", "") or ""
+            error = getattr(event, "error", "") or ""
+            if label != "complete" and error:
+                return f"{icon} {error.strip().splitlines()[-1][:60]}"
+            elif stdout:
+                return f"{icon} {stdout.strip().splitlines()[0][:60]}"
+            return f"{icon} {label}"
+        elif etype == "TUIUserInput":
+            text = getattr(event, "text", "") or ""
+            return text[:60] + ("..." if len(text) > 60 else "")
+        elif etype == "TUISessionStart":
+            return f"model={getattr(event, 'model', '?')}"
+        elif etype == "Task":
+            prompt = getattr(event, "prompt", "") or ""
+            return prompt.strip().splitlines()[0][:60] if prompt.strip() else ""
+        return str(event)[:60]
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -1555,6 +1874,7 @@ class CommandRegistry:
         "session": SessionCommand,
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,
+        "events": EventsCommand,
     }
 
     def __init__(

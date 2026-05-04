@@ -88,6 +88,14 @@ class Completer:
         if lower.startswith("/todo "):
             return self._todo_id_completions(text)
 
+        # Event tag completion — always return a non-empty list to
+        # prevent prompt_toolkit's CompletionsMenu from crashing on
+        # max() of an empty iterable.
+        if lower.startswith("/events "):
+            return self._event_tag_completions(text) or [
+                CompletionItem(text=text, display=text, description="(no matching tags)")
+            ]
+
         # Top-level slash commands + subcommands.
         # get_active_help() keys may include argument hints ("/wtf-status [label]").
         # We strip the hint for text (insertion) but keep it for display.
@@ -262,6 +270,85 @@ class Completer:
                 )
             )
         return items
+
+    # ------------------------------------------------------------------
+    # Event tag completion
+    # ------------------------------------------------------------------
+
+    def _event_tag_completions(self, text: str) -> list[CompletionItem]:
+        prefix = "/events "
+        partial = text[len(prefix) :]
+        agent = getattr(self._registry, "agent", None)
+        em = getattr(agent, "event_manager", None) if agent else None
+        if em is None:
+            return []
+
+        icons = {
+            "ToolCallEvent": "\U0001f527",
+            "PythonOutput": "\U0001f4e4",
+            "Task": "\U0001f4cb",
+            "TUIUserInput": "\U0001f4ac",
+            "TUISessionStart": "\U0001f680",
+            "Summary": "\U0001f4dd",
+            "Error": "\u274c",
+        }
+
+        items: list[CompletionItem] = []
+        for tag in em.keys():
+            if partial and not tag.startswith(partial):
+                continue
+            if tag == partial:
+                continue  # skip exact match — already typed
+            event = em.get(tag)
+            if event is None:
+                continue
+            etype = getattr(event, "event_type", type(event).__name__)
+            icon = icons.get(etype, "\U0001f4cc")
+
+            # One-line summary
+            summary = self._event_summary(event, etype)
+            items.append(
+                CompletionItem(
+                    text=prefix + tag,
+                    display=prefix + tag,
+                    description=f"{icon} {summary}",
+                )
+            )
+        return items
+
+    @staticmethod
+    def _event_summary(event, etype: str) -> str:
+        """One-line summary for event tag completion."""
+        if etype == "ToolCallEvent":
+            name = getattr(event, "name", "?")
+            args = getattr(event, "arguments", {})
+            if name == "execute_python" and isinstance(args, dict) and "code" in args:
+                for line in args["code"].split("\n"):
+                    s = line.strip()
+                    if s and not s.startswith("#"):
+                        return f"{name} \u2014 {s[:50]}"
+            return name
+        elif etype == "PythonOutput":
+            status = str(getattr(event, "execution_status", "?"))
+            label = status.rsplit(".", 1)[-1]
+            icon = "\u2705" if label == "complete" else "\u274c"
+            stdout = getattr(event, "stdout", "") or ""
+            error = getattr(event, "error", "") or ""
+            if label != "complete" and error:
+                return f"{icon} {error.strip().splitlines()[-1][:50]}"
+            elif stdout:
+                return f"{icon} {stdout.strip().splitlines()[0][:50]}"
+            return f"{icon} {label}"
+        elif etype == "TUIUserInput":
+            text = getattr(event, "text", "") or ""
+            return text[:50] + ("..." if len(text) > 50 else "")
+        elif etype == "TUISessionStart":
+            return f"model={getattr(event, 'model', '?')}"
+        elif etype == "Task":
+            prompt = getattr(event, "prompt", "") or ""
+            first = prompt.strip().splitlines()[0] if prompt.strip() else ""
+            return first[:50]
+        return str(event)[:50]
 
     # ------------------------------------------------------------------
     # Bang commands

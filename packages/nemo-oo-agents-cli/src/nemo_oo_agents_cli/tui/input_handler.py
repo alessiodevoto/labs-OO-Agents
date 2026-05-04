@@ -39,7 +39,16 @@ class SlashCommandCompleter(PtCompleter):
             # replacement, so we insert the suffix after what's already typed.
             suffix = item.text[len(text) :] if item.text.startswith(text) else item.text
             if not suffix and item.text == text:
-                continue  # exact match, nothing to insert
+                # Exact match — still yield it so prompt_toolkit's
+                # completion menu never receives an empty list (which
+                # crashes _get_menu_width with max() on empty iterable).
+                yield Completion(
+                    "",
+                    start_position=0,
+                    display=item.display,
+                    display_meta=item.description,
+                )
+                continue
             yield Completion(
                 suffix if item.text.startswith(text) else item.text,
                 start_position=0 if item.text.startswith(text) else -len(text),
