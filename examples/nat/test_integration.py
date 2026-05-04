@@ -10,7 +10,6 @@ Requires:
     - NAT installed (nvidia-nat-core)
     - nvidia-nat-nemo_oo_agents plugin installed (pip install -e ../../packages/nvidia_nat_nemo_oo_agents)
     - NeMo OO Agents importable (../../src on PYTHONPATH or installed)
-    - unifiedllm importable (../../packages/unifiedllm on PYTHONPATH or installed)
 
 Tests:
     test_tool_class_generation  - Native tool class created from mock NAT Function
@@ -30,9 +29,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Ensure nemo_oo_agents and unifiedllm are importable
+# Ensure nemo_oo_agents is importable
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "packages" / "unifiedllm" / "src"))
 
 
 # ---------------------------------------------------------------------------

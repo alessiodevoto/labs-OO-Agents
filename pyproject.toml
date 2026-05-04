@@ -1,6 +1,10 @@
 [project]
 name = "nemo-oo-agents"
-version = "0.1.0"
+# 0.2.0 = first release with the two-package split (gl-131): context_blocks
+# and unifiedllm folded into nemo_oo_agents.* subpackages. Old standalone
+# imports (`import unifiedllm`, `import context_blocks`) are removed; the
+# minor bump signals the namespace move so existing installs upgrade loudly.
+version = "0.2.0"
 description = "Code-generating agent orchestration system with event sourcing and serialized execution"
 license = {text = "Apache-2.0"}
 readme = "README.md"
@@ -9,11 +13,13 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "click>=8.1.0",
     "pydantic>=2.5.0",
-    "unifiedllm",
-    "context-blocks",
-    "ipython>=9.12.0",
+    # context_blocks + unifiedllm now ship as nemo_oo_agents.context_blocks /
+    # nemo_oo_agents.unifiedllm subpackages — pull their formerly-external deps in.
+    # >=1.83.0 ensures we land on the post-supply-chain-incident clean line
+    # (1.82.7 and 1.82.8 were yanked from PyPI after the March 2026 backdoor).
+    "litellm>=1.83.0",
+    "pyyaml>=6.0",
     "platformdirs>=4.9.4",
     # from mcp-nemo-oo-agents (now internal)
     "httpx>=0.27.0",
@@ -22,17 +28,12 @@ dependencies = [
 ]
 
 [project.scripts]
-nemo = "nemo_oo_agents_cli:main"
 trace-explorer = "nemo_oo_agents.trace_explorer:main"
 
-[project.entry-points."nemo_oo_tui.skills_dirs"]
-sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
-
 [tool.uv.sources]
-unifiedllm = { workspace = true }
-context-blocks = { workspace = true }
 eval_pipeline = { workspace = true }
 nemo-oo-agents-benchmarks = { workspace = true }
+nemo-oo-agents-cli = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -46,10 +47,9 @@ environments = [
 
 [tool.uv.workspace]
 members = [
-    "packages/unifiedllm",
-    "packages/context-blocks",
     "util/eval_pipeline",
     "packages/nemo-oo-agents-benchmarks",
+    "packages/nemo-oo-agents-cli",
 ]
 
 
@@ -72,130 +72,29 @@ viewer = [
 sandbox = [
     "openshell",
 ]
+# Optional: OpenAI Responses API client (nemo_oo_agents.unifiedllm.OpenAIResponseClient).
+# 2.x is required: client.responses.parse() (used by OpenAIResponseClient) was
+# only stabilized in openai 2.x; 1.x has no Responses API surface.
+unifiedllm-openai = [
+    "openai>=2.0.0,<3.0.0",
+]
 # mcp is now nemo_oo_agents.mcp (deps in main dependencies)
-# Scientific / plotting stack pre-loaded into the TUI agent REPL (np, pd, px, go, scipy, sklearn)
-tui = [
-    "numpy>=1.24.0",
-    "pandas>=2.0.0",
-    "plotly>=5.0.0",
-    "scipy>=1.10.0",
-    "scikit-learn>=1.3.0",
-]
-# Everything needed for `nemo oo term` — web terminal + plotting stack
-term = [
-    "nemo-oo-agents[tui]",
-    "uvicorn[standard]>=0.34.0",
-    "ptyprocess>=0.7.0",
-]
-nemo-oo-agents-benchmarks = [
-    "nemo-oo-agents-benchmarks",
-]
+# CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.
+# Data-science stack for the LLM REPL: `uv add nemo-oo-agents-cli[datascience]`.
+# Web-served TUI (`nemo oo term`):     `uv add nemo-oo-agents-cli[web]`.
 # nemo-flow is NOT listed as an optional dep because uv locks all extras
 # unconditionally, and nemo-flow lives on a private registry that requires auth.
 # This would block `uv sync` / `uv lock` for everyone without credentials.
 # Install manually:
 #   uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
 #   uv pip install nemo-flow --index-url https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/simple
-# BigCodeBench dependencies (libraries used across 1140 benchmark tasks)
-bigcodebench = [
-    "llvmlite>=0.46.0",
-    # Core scientific computing (334+ tasks)
-    "numpy>=1.24.0",
-    "pandas>=2.0.0",
-    # Visualization (314+ tasks)
-    "matplotlib>=3.5.0",
-    "seaborn>=0.12.0",
-    # ML/Statistics (182+ tasks)
-    "scikit-learn>=1.3.0",
-    "scipy>=1.10.0",
-    "statsmodels>=0.14.0",
-    # NLP (31+ tasks)
-    "nltk>=3.8.0",
-    "wordcloud>=1.9.0",
-    # Web/HTTP (40+ tasks)
-    "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0",
-    # Date/Time (16+ tasks)
-    "pytz>=2023.3",
-    "python-dateutil>=2.8.0",
-    # Image processing (10+ tasks)
-    "opencv-python>=4.8.0",
-    "Pillow>=10.0.0",
-    # Crypto (7+ tasks)
-    "cryptography>=41.0.0",
-    "rsa>=4.9",
-    # Flask ecosystem (5+ tasks)
-    "flask>=2.3.0",
-    "flask-restful>=0.3.10",
-    "flask-login>=0.6.3",
-    "flask-mail>=0.10.0",
-    # Django (4+ tasks)
-    "django>=4.2.0",
-    # Wikipedia API (1+ tasks)
-    "wikipedia>=1.4.0",
-    # Document processing (6+ tasks)
-    "python-docx>=1.1.0",  # docx
-    "openpyxl>=3.1.0",
-    "xlwt>=1.3.0",
-    # Mapping/Geo (6+ tasks)
-    "folium>=0.15.0",
-    "geopy>=2.4.0",
-    "geopandas>=0.14.0",
-    "shapely>=2.0.0",
-    # ML/Deep Learning (6+ tasks)
-    "keras>=3.0.0",
-    "tensorflow>=2.15.0",
-    # NLP additional (5+ tasks)
-    "textblob>=0.18.0",
-    "gensim>=4.3.0",
-    # Data utilities (4+ tasks)
-    "faker>=22.0.0",
-    "texttable>=1.7.0",
-    "xmltodict>=0.13.0",
-    # Math/Science (3+ tasks)
-    "sympy>=1.12.0",
-    # Audio (2+ tasks)
-    "librosa>=0.10.0",
-    "soundfile>=0.12.0",
-    # Web scraping (2+ tasks)
-    "mechanize>=0.4.0",
-    # Flask forms (2+ tasks)
-    "flask-wtf>=1.2.0",
-    "wtforms>=3.1.0",
-    "werkzeug>=3.0.0",
-    # Misc (1-2 tasks each)
-    "pycryptodome>=3.20.0",  # Crypto
-    "python-Levenshtein>=0.25.0",
-    "blake3>=0.4.0",
-    "natsort>=8.4.0",
-    "prettytable>=3.10.0",
-    "pyquery>=2.0.0",
-    "pytesseract>=0.3.10",
-    "sendgrid>=6.11.0",
-    "scikit-image>=0.22.0",  # skimage
-    "wordninja>=2.0.0",
-    "holidays>=0.40",
-    # Other common (various tasks)
-    "regex>=2023.0.0",
-    "psutil>=5.9.0",
-    "lxml>=4.9.0",
-    "pyyaml>=6.0.0",
-    "chardet>=5.0.0",
-]
-tui-optional = [
-    "numpy>=2.4.4",
-    "pandas>=3.0.2",
-    "plotly>=6.6.0",
-    "scikit-learn>=1.8.0",
-    "scipy>=1.17.1",
-]
 
 [build-system]
 requires = ["uv_build>=0.9.11,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["nemo_oo_agents", "nemo_oo_agents_cli"]
+module-name = ["nemo_oo_agents"]
 
 [dependency-groups]
 trace-viewer = [
@@ -217,6 +116,9 @@ dev = [
     "httpx[socks]>=0.28.1",
     "opentelemetry-exporter-otlp-proto-http>=1.39.1",
     "eval_pipeline",
+    # Workspace packages — keep benchmarks + cli installed/editable in dev sync
+    "nemo-oo-agents-benchmarks",
+    "nemo-oo-agents-cli",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
@@ -230,18 +132,19 @@ testpaths = [
     "tests",
     "tests/agentdoc",
     "tests/viewer",
-    "packages/context-blocks/tests",
-    "packages/unifiedllm/tests",
+    "tests/context_blocks",
+    "tests/unifiedllm",
     "tests/tracing",
     "tests/test_mcp",
     "packages/nemo-oo-agents-benchmarks/tests",
+    "packages/nemo-oo-agents-cli/tests/cli",
+    "packages/nemo-oo-agents-cli/tests/integration",
     "tests/trace_explorer",
 ]
 pythonpath = [
     "src",
-    "packages/context-blocks/src",
-    "packages/unifiedllm/src",
     "packages/nemo-oo-agents-benchmarks/src",
+    "packages/nemo-oo-agents-cli/src",
 ]
 addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
 markers = [
@@ -257,7 +160,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["src/nemo_oo_agents", "src/nemo_oo_agents_cli"]
+source = ["src/nemo_oo_agents", "packages/nemo-oo-agents-cli/src/nemo_oo_agents_cli"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
@@ -317,7 +220,7 @@ ignore = [
 "tests/test_pure_functions_gl105.py" = ["UP007", "UP045", "UP046"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["nemo_oo_agents", "eval_pipeline", "evaluation", "unifiedllm", "agentdoc", "context_blocks"]
+known-first-party = ["nemo_oo_agents", "eval_pipeline", "evaluation", "agentdoc"]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -326,13 +229,21 @@ venv = ".venv"
 # Resolve workspace packages when IDE uses project root (same as pytest pythonpath)
 extraPaths = [
     "src",
-    "packages/unifiedllm/src",
-    "packages/context-blocks/src",
+    "packages/nemo-oo-agents-cli/src",
 ]
 include = [
     "src",
     "packages"
 ]
-exclude = []
+# Excluded from pyright:
+# - benchmarks: pre-existing typing debt unrelated to core (clean up later).
+# - cli: pre-existing typing debt that surfaces when CLI is type-checked as
+#   its own package; clean up alongside benchmarks.
+# - nat_oo_agents: external NAT plugin; imports nat.* which is not a dev dep.
+exclude = [
+    "packages/nemo-oo-agents-benchmarks",
+    "packages/nemo-oo-agents-cli",
+    "packages/nat_oo_agents",
+]
 # Pydantic discriminated unions require narrowing event_type in subclasses
 reportIncompatibleVariableOverride = false

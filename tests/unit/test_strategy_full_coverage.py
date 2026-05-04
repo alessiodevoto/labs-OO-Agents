@@ -24,7 +24,7 @@ from nemo_oo_agents.strategies.codeact import (
 )
 from nemo_oo_agents.strategies.predict import PredictStrategy
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -199,7 +199,7 @@ class TestCodeActBlockSyntaxError:
     async def test_block_syntax_error_recovery(self):
         """When generate() raises BlockSyntaxError, the loop should
         handle it and continue to the next iteration (lines 625-627)."""
-        from context_blocks.exceptions import BlockSyntaxError
+        from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=3)))

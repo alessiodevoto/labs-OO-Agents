@@ -19,7 +19,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.events import EventBase
 from nemo_oo_agents.storage import SQLiteStorageManager
 from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
-from unifiedllm import CompletionClient
+from nemo_oo_agents.unifiedllm import CompletionClient
 
 _LLM = CompletionClient(model="openai/gpt-4o-mini", api_key="test")
 

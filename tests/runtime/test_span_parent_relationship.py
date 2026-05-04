@@ -15,7 +15,7 @@ from nemo_oo_agents import no_trace, strategy
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:

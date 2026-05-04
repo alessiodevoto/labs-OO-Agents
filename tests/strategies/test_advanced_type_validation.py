@@ -15,7 +15,7 @@ import pytest
 from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class TestIsInstanceOf:

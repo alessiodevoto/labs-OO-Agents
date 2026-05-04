@@ -33,7 +33,7 @@ from nemo_oo_agents.runtime.context_vars import (
     _pop_agent_call_id,
     _push_agent_call_id,
 )
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # ---------------------------------------------------------------------------
 # Helpers

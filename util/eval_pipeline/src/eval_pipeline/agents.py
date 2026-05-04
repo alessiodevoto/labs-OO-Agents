@@ -35,7 +35,7 @@ def load_agent_class(test: TestConfig) -> type:
 
 def client_from_spec(spec):
     """Create LLM client from ModelSpec."""
-    from unifiedllm import CompletionClient, RetryConfig
+    from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
 
     # Build config dict
     config = {
@@ -94,7 +94,7 @@ def agent_from_spec(spec) -> AgentWrapper:
     # Build client from config dict (empty config → no LLM needed)
     client = None
     if spec.client_config and spec.client_config.get("model"):
-        from unifiedllm import CompletionClient, RetryConfig
+        from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
 
         cc = dict(spec.client_config)
         # Resolve API key from env var name at construction time

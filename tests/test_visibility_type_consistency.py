@@ -15,7 +15,7 @@ from nemo_oo_agents import Agent, hidden
 from nemo_oo_agents.agentdoc import doc
 from nemo_oo_agents.agentdoc.visibility import filter_module_globals
 from nemo_oo_agents.runtime.actor import ActorRuntime
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 

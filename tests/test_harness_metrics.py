@@ -702,12 +702,12 @@ class TestLLMMetricsCallback:
     """Test the ContextVar callback protocol used by unifiedllm."""
 
     def test_record_llm_metric_noop_when_no_callback(self):
-        from unifiedllm.unifiedllm import _record_llm_metric
+        from nemo_oo_agents.unifiedllm.unifiedllm import _record_llm_metric
 
         _record_llm_metric("think_tag_extracted")
 
     def test_record_llm_metric_dispatches_to_callback(self):
-        from unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
+        from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
 
         events: list[tuple[str, Any]] = []
 
@@ -767,7 +767,7 @@ class TestLLMMetricsBridge:
     def test_end_to_end_callback_to_harness_metrics(self):
         """Full path: set callback via ContextVar, record metric, verify HarnessMetrics."""
         from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge
-        from unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
+        from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
 
         hm = HarnessMetrics()
         bridge = _make_llm_metrics_bridge(hm)

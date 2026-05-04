@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 # These imports are safe at module level (no circular dependencies)
-from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+from nemo_oo_agents.context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 from nemo_oo_agents.runtime.context_vars import (
     _get_agent_call_stack,
     _in_generation_session,

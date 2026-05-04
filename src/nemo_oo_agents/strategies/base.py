@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from nemo_oo_agents.metaclass import AgentMeta
 
 if TYPE_CHECKING:
-    from context_blocks import DynamicContext
     from nemo_oo_agents.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.context_blocks import DynamicContext
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
     from nemo_oo_agents.strategies.current_call import CurrentCall
 

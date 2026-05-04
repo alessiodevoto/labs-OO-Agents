@@ -19,11 +19,16 @@ Only conversation messages are simplified.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from context_blocks import RenderedMessage, ResolvedBlock, ToolCallEvent, ToolCallInfo
-from context_blocks.formatter import XMLBlockFormatter
-from context_blocks.models import Role
-from context_blocks.scoped import ScopedContext
-from context_blocks.utils import truncating_pformat
+from nemo_oo_agents.context_blocks import (
+    RenderedMessage,
+    ResolvedBlock,
+    ToolCallEvent,
+    ToolCallInfo,
+)
+from nemo_oo_agents.context_blocks.formatter import XMLBlockFormatter
+from nemo_oo_agents.context_blocks.models import Role
+from nemo_oo_agents.context_blocks.scoped import ScopedContext
+from nemo_oo_agents.context_blocks.utils import truncating_pformat
 from nemo_oo_agents.events import (
     Error,
     Feedback,
@@ -102,7 +107,7 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
 # ---------------------------------------------------------------------------
 
 
-class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # untyped base class from context_blocks
+class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # untyped base class from nemo_oo_agents.context_blocks
     """BlockFormatter that emits clean messages without XML wrappers or type wrappers.
 
     Handles three changes compared to XMLBlockFormatter + OpenAIProviderFormatter:

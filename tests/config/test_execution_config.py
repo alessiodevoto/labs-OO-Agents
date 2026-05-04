@@ -2,7 +2,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from nemo_oo_agents.config.execution_config import ExecutionConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 def test_execution_config_is_pydantic_model():

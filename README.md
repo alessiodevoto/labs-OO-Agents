@@ -30,9 +30,24 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv init my-agent-project
 cd my-agent-project
 
-# Add NeMo OO Agents
+# Core framework (most users only need this)
 uv add "nemo-oo-agents[viewer,tracing] @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
+
+# Optional: CLI + TUI (`nemo` command, web terminal, agent REPL)
+uv add "nemo-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-cli"
+
+# Optional: CLI + numpy/pandas/plotly/scipy/sklearn pre-loaded into the LLM REPL
+uv add "nemo-oo-agents-cli[datascience] @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-cli"
+
+# Optional: benchmark harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep)
+uv add "nemo-oo-agents-benchmarks @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-benchmarks"
 ```
+
+NeMo OO Agents ships as three lockstep packages from this repo:
+
+- **`nemo-oo-agents`** — the core framework. Includes `nemo_oo_agents` (the agent runtime), `nemo_oo_agents.context_blocks` (rendering), and `nemo_oo_agents.unifiedllm` (LLM client).
+- **`nemo-oo-agents-cli`** — the `nemo` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nemo oo term` web frontend (uvicorn/ptyprocess/fastapi, transitively pulls `[datascience]`).
+- **`nemo-oo-agents-benchmarks`** — eval harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) and the `nemo-harbor` runner. Heavy eval-only deps live in `[bigcodebench]`.
 
 ### API Keys
 
@@ -74,7 +89,7 @@ Methods with `...` bodies are called **generation methods** - they're implemente
 
 ```python
 from nemo_oo_agents.util.quickstart import *
-from unifiedllm import get_llm_client
+from nemo_oo_agents.unifiedllm import get_llm_client
 
 # Any litellm-supported model name works out of the box
 # Set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY in your environment
@@ -114,7 +129,7 @@ llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
 
-See [`packages/unifiedllm/src/unifiedllm/registry.py`](packages/unifiedllm/src/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control ([example](packages/unifiedllm/examples/basic_usage.py)).
+See [`src/nemo_oo_agents/unifiedllm/registry.py`](src/nemo_oo_agents/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 
 > **Key insight**: In NeMo OO Agents, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
 

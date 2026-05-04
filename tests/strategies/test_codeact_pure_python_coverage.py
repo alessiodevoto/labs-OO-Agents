@@ -32,7 +32,7 @@ from nemo_oo_agents.strategies.pure_python import (
     GenerationSession,
     PurePythonStrategy,
 )
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Helpers shared across tests

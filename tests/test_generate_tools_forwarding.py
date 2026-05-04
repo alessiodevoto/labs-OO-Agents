@@ -17,7 +17,7 @@ import pytest
 from pydantic import BaseModel
 
 from nemo_oo_agents import Agent, PredictStrategy, strategy
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: Any) -> LLMResponse:

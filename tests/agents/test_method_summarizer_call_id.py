@@ -24,7 +24,7 @@ from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig
 from nemo_oo_agents.events import AfterTurn
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # =============================================================================
 # Helpers

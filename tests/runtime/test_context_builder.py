@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from context_blocks import DynamicContext, ResolvedBlock, Role
-from context_blocks.events import ToolCallEvent, ToolResult, UserEvent
+from nemo_oo_agents.context_blocks import DynamicContext, ResolvedBlock, Role
+from nemo_oo_agents.context_blocks.events import ToolCallEvent, ToolResult, UserEvent
 
 # ---------------------------------------------------------------------------
 # Helpers

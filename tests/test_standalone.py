@@ -23,10 +23,10 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from context_blocks import ScopedContext
 from nemo_oo_agents import EventQuery, strategy
+from nemo_oo_agents.context_blocks import ScopedContext
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Module-level symbols — accessible to generated code via exec_globals

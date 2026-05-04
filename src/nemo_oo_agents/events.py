@@ -23,9 +23,9 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from context_blocks import EventBase as EventBase
-from context_blocks import ResultStatus as ResultStatus
-from context_blocks.models import Role
+from nemo_oo_agents.context_blocks import EventBase as EventBase
+from nemo_oo_agents.context_blocks import ResultStatus as ResultStatus
+from nemo_oo_agents.context_blocks.models import Role
 
 # Sentinel value to distinguish "no return" from "return None"
 _NO_RETURN = object()

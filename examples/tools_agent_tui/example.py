@@ -12,6 +12,10 @@ The agent manages a simple in-memory note store.  Tools:
     agent.get_notes(topic)           →  retrieve notes for a topic
     agent.delete_note(topic, index)  →  remove a note by index
 
+Requires the CLI/TUI package alongside core::
+
+    pip install 'nemo-oo-agents-cli[datascience]'
+
 Usage::
 
     python -m examples.tools_agent_tui.example
@@ -22,11 +26,12 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 
-from nemo_oo_agents import Agent
 from nemo_oo_agents_cli.tui.agent import RespondResult
 from nemo_oo_agents_cli.tui.config import DEFAULT_MODEL, Config
 from nemo_oo_agents_cli.tui.main import main
-from unifiedllm import FakeLLMClient, get_llm_client
+
+from nemo_oo_agents import Agent
+from nemo_oo_agents.unifiedllm import FakeLLMClient, get_llm_client
 
 # ---------------------------------------------------------------------------
 # LLM

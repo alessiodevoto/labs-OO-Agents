@@ -42,8 +42,8 @@ def _get_agent_cls(module_name: str) -> type:
     if module_name in _agent_cls_cache:
         return _agent_cls_cache[module_name]
 
-    from context_blocks.render_config import RenderConfig
     from nemo_oo_agents.config import TruncationConfig
+    from nemo_oo_agents.context_blocks.render_config import RenderConfig
     from nemo_oo_agents.runtime.actor import ActorRuntime
     from nemo_oo_agents.runtime.context_manager import ContextManager
     from nemo_oo_agents.runtime.event_manager import EventManager

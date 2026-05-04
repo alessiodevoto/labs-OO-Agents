@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
-from context_blocks import DynamicContext
 from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.agentdoc.visibility import is_hidden_field
+from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Error, Task

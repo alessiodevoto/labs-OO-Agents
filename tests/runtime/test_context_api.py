@@ -2,11 +2,11 @@
 
 import pytest
 
-from context_blocks import DynamicContext
-from context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 from nemo_oo_agents import Agent
+from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 from nemo_oo_agents.runtime.context import ContextApi
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 _llm = FakeLLMClient()
 

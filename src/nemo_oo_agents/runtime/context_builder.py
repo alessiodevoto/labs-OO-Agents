@@ -22,8 +22,8 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
-from context_blocks.utils import truncating_pformat
+from nemo_oo_agents.context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
+from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 if TYPE_CHECKING:
     from nemo_oo_agents.runtime.context_manager import ContextManager

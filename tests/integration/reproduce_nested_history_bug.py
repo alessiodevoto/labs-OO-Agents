@@ -51,7 +51,7 @@ from nemo_oo_agents.strategies.codeact import CodeActStrategy  # noqa: E402
 
 def get_llm_client(provider: str, model: str | None = None):
     """Get LLM client for the specified provider."""
-    from unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient
 
     # Default models per provider (litellm format)
     default_models = {

@@ -6,7 +6,7 @@ import math  # noqa: F401
 import sys  # agentdoc: hide  # noqa: F401
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class AgentHideInlineComment(Agent, llm=FakeLLMClient()):

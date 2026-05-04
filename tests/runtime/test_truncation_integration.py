@@ -8,7 +8,7 @@ via strategy execution tests.
 import pytest
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM
 _TEST_LLM = FakeLLMClient()

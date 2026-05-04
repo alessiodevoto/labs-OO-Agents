@@ -14,7 +14,7 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class _SimpleAgent(Agent, llm=FakeLLMClient()):

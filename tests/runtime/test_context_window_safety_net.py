@@ -20,7 +20,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.events import Message
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class _FakeLLM(FakeLLMClient):
@@ -73,7 +73,7 @@ class TestStructuredPayloadSafetyNet:
         """
         import litellm
 
-        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
         from nemo_oo_agents.events import PythonOutput
 
         llm = _mk_llm(200_000)
@@ -179,7 +179,7 @@ class TestStructuredPayloadSafetyNet:
           history.
         - Next turn's render doesn't redo the same drop work.
         """
-        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
         from nemo_oo_agents.events import PythonOutput
 
         llm = _mk_llm(200_000)
@@ -242,7 +242,7 @@ class TestStructuredPayloadSafetyNet:
         against the override, not the agent's original LLM."""
         import litellm
 
-        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
         from nemo_oo_agents.events import PythonOutput
 
         big_llm = _mk_llm(1_000_000)
@@ -462,7 +462,7 @@ class TestMaxOutputTokensBudget:
         """
         import litellm
 
-        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
         from nemo_oo_agents.events import PythonOutput
 
         llm = _mk_llm(131_072)
@@ -757,7 +757,7 @@ class TestEndToEndSmallContextWindow:
         should keep input under 2048 tokens (4096 - 2048 - margin)."""
         import litellm
 
-        from context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
         from nemo_oo_agents.events import PythonOutput
         from nemo_oo_agents.runtime.actor import _current_llm_var
 

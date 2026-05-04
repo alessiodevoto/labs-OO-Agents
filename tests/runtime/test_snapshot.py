@@ -16,7 +16,7 @@ from nemo_oo_agents.storage.json_snapshot import (
 )
 from nemo_oo_agents.storage.markers import nosnapshot
 from nemo_oo_agents.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 fake_llm = FakeLLMClient()
 
@@ -61,7 +61,7 @@ class TestSnapshotRoundtrip:
         agent2 = SimpleAgent()
         snapshot_from_json(snap, agent2)
 
-        from context_blocks import DynamicContext
+        from nemo_oo_agents.context_blocks import DynamicContext
 
         raw = dict(agent2.context_manager._raw_items())
         assert isinstance(raw["status"], DynamicContext)

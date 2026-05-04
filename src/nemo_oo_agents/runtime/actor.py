@@ -21,18 +21,18 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from context_blocks import (
+from nemo_oo_agents.agentdoc import TruncatingStringIO
+from nemo_oo_agents.agentdoc.introspect import methods, variables
+from nemo_oo_agents.context_blocks import (
     DynamicContext,
     ResolvedBlock,
     render_context,
 )
-from context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
-from nemo_oo_agents.agentdoc import TruncatingStringIO
-from nemo_oo_agents.agentdoc.introspect import methods, variables
+from nemo_oo_agents.context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
 
 if TYPE_CHECKING:
-    from context_blocks.models import ContextWindowStats
     from nemo_oo_agents.config.truncation_config import TruncationConfig
+    from nemo_oo_agents.context_blocks.models import ContextWindowStats
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
@@ -63,7 +63,7 @@ def _harness_metrics_lifecycle(should_trace: bool):
     _llm_cb_token = None
     if _hm is not None:
         try:
-            from unifiedllm.unifiedllm import _llm_metrics_callback
+            from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback
 
             _llm_cb_token = _llm_metrics_callback.set(_make_llm_metrics_bridge(_hm))
         except ImportError:
@@ -79,7 +79,7 @@ def _harness_metrics_lifecycle(should_trace: bool):
                     restore_harness_metrics(_prev_hm)
         if _llm_cb_token is not None:
             try:
-                from unifiedllm.unifiedllm import _llm_metrics_callback
+                from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback
 
                 _llm_metrics_callback.reset(_llm_cb_token)
             except ImportError:
@@ -2371,7 +2371,7 @@ class ActorRuntime:
                     return "None"
                 if isinstance(result, str):
                     return result
-                from context_blocks.utils import truncating_pformat
+                from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
                 return str(truncating_pformat(result, max_chars=tc.max_block_chars))
             return value

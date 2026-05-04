@@ -27,10 +27,10 @@ from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, PredictStrategy, strategy
 from nemo_oo_agents.config.truncation_config import TruncationConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 
 class LoCoMoAgent(Agent, llm=FakeLLMClient()):

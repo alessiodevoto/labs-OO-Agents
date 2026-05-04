@@ -6,8 +6,8 @@ a user-role message (not a tool result) so it doesn't require pairing
 validation - providers don't enforce pairing for user messages.
 """
 
-from context_blocks import ResultStatus
-from context_blocks.events import ToolCallEvent
+from nemo_oo_agents.context_blocks import ResultStatus
+from nemo_oo_agents.context_blocks.events import ToolCallEvent
 from nemo_oo_agents.events import PythonOutput
 from nemo_oo_agents.runtime.event_manager import EventManager
 

@@ -4,7 +4,7 @@ Usage in notebook:
     from presentation_utils import setup, trace, agent_pprint, list_traces
     setup()
 
-    from unifiedllm import get_llm_client
+    from nemo_oo_agents.unifiedllm import get_llm_client
     llm = get_llm_client("claude-sonnet-4-5-20250514")
 """
 

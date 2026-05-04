@@ -121,7 +121,6 @@ async def test_save_then_import_then_download_preserves_messages(fresh_viewer):
 
         # 3. Import the file into a fresh viewer via the actual CLI command.
         from click.testing import CliRunner
-
         from nemo_oo_agents_cli.commands.import_traces import command
 
         # The file's basename becomes the session_id during import; rename

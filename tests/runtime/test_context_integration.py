@@ -5,9 +5,9 @@ Tests the dict-like ContextApi API and integration with Agent.
 
 import pytest
 
-from context_blocks import DynamicContext
 from nemo_oo_agents.agent import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class TestContextManager:
@@ -63,7 +63,7 @@ class TestContextManager:
 
     def test_set_dynamic_rejects_invalid_expr(self):
         """set_dynamic() rejects invalid Python expressions."""
-        from context_blocks.exceptions import BlockSyntaxError
+        from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
 
         fake_llm = FakeLLMClient()
 
@@ -164,7 +164,7 @@ class TestContextManager:
 
     def test_dynamic_unresolved_raises_error(self):
         """Reading a dynamic block before resolution raises DynamicNotResolvedError."""
-        from context_blocks.exceptions import DynamicNotResolvedError
+        from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError
 
         fake_llm = FakeLLMClient()
 
@@ -202,7 +202,7 @@ class TestContextManager:
 
     def test_delete_existing_protected_key_raises_protected_error(self):
         """del context['system_prompt'] raises ProtectedBlockError when key is protected."""
-        from context_blocks.exceptions import ProtectedBlockError
+        from nemo_oo_agents.context_blocks.exceptions import ProtectedBlockError
 
         fake_llm = FakeLLMClient()
 
@@ -218,7 +218,7 @@ class TestContextManager:
 
     def test_pop_protected_key_raises_protected_error(self):
         """pop() on an existing protected key raises ProtectedBlockError."""
-        from context_blocks.exceptions import ProtectedBlockError
+        from nemo_oo_agents.context_blocks.exceptions import ProtectedBlockError
 
         fake_llm = FakeLLMClient()
 
@@ -246,7 +246,7 @@ class TestContextManager:
 
     def test_pop_existing_protected_key_raises_protected_error(self):
         """pop() on a protected key that is in _blocks raises ProtectedBlockError."""
-        from context_blocks.exceptions import ProtectedBlockError
+        from nemo_oo_agents.context_blocks.exceptions import ProtectedBlockError
 
         fake_llm = FakeLLMClient()
 
@@ -309,7 +309,7 @@ class TestBuildMessages:
         agent.context_manager.set_dynamic("status", "self.get_status()")
 
         # Before build: dynamic block not yet resolved — raises error
-        from context_blocks.exceptions import DynamicNotResolvedError
+        from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError
 
         with pytest.raises(DynamicNotResolvedError):
             _ = agent.context_manager["status"]
@@ -451,8 +451,8 @@ class TestAgentContextParam:
 
     def test_dynamic_importable_from_nemo_oo_agents(self):
         """DynamicContext is importable from nemo_oo_agents top-level."""
-        from context_blocks import DynamicContext as OrigDynamicContext
         from nemo_oo_agents import DynamicContext as D
+        from nemo_oo_agents.context_blocks import DynamicContext as OrigDynamicContext
 
         assert D is OrigDynamicContext
 
@@ -477,10 +477,10 @@ class TestScopedContextCurrentCallFiltering:
         """
         import json
 
-        from context_blocks import ScopedContext
         from nemo_oo_agents import EventQuery, strategy
+        from nemo_oo_agents.context_blocks import ScopedContext
         from nemo_oo_agents.strategies.codeact import CodeActStrategy
-        from unifiedllm import LLMResponse, ToolCall
+        from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
 
         # Script a single LLM response: execute_python with inline return_result
         fake_llm = FakeLLMClient(
@@ -537,8 +537,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_parameter_basic(self):
         """@strategy(context=ScopedContext(...)) basic usage works."""
-        from context_blocks import ScopedContext
         from nemo_oo_agents import strategy
+        from nemo_oo_agents.context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
 
@@ -571,8 +571,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_events(self):
         """@strategy(context=ScopedContext(events={...})) sets decorator events."""
-        from context_blocks import ScopedContext
         from nemo_oo_agents import strategy
+        from nemo_oo_agents.context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
 
@@ -590,8 +590,8 @@ class TestDecoratorEventsIntegration:
     @pytest.mark.asyncio
     async def test_decorator_context_with_both_context_and_events(self):
         """@strategy(context=ScopedContext(context={...}, events={...})) works."""
-        from context_blocks import ScopedContext
         from nemo_oo_agents import strategy
+        from nemo_oo_agents.context_blocks import ScopedContext
 
         fake_llm = FakeLLMClient()
 

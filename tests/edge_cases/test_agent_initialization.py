@@ -8,7 +8,7 @@ users forget to call super().__init__() in their custom Agent __init__ methods.
 import pytest
 
 from nemo_oo_agents import Agent
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 @pytest.mark.asyncio

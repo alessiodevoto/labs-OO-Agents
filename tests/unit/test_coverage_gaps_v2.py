@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # =============================================================================
 # runtime/actor.py
@@ -75,7 +75,7 @@ class TestActorGetCode:
 
     def test_get_code_nonexistent_method(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -94,7 +94,7 @@ class TestActorListMethods:
 
     def test_property_skipped_in_list_methods(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -119,7 +119,7 @@ class TestActorEvaluateExpression:
 
     async def test_completed_process_no_output(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -142,7 +142,7 @@ class TestActorEvaluateExpression:
 
     async def test_completed_process_returncode_only(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -165,7 +165,7 @@ class TestActorEvaluateExpression:
     async def test_repl_exception_is_swallowed(self):
         """Lines 1269-1270: exception when extracting REPL locals."""
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -198,7 +198,7 @@ class TestActorExpandVariables:
 
     async def test_silent_mode_none_value_keeps_placeholder(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -217,7 +217,7 @@ class TestActorExpandVariables:
     async def test_silent_mode_format_spec_error(self):
         """Lines 1380-1384: format spec fails in silent mode."""
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -241,7 +241,7 @@ class TestActorExpandVariables:
     async def test_silent_mode_format_spec_error_with_conversion(self):
         """Lines 1380-1384: conversion + format spec error in silent mode keeps placeholder."""
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -306,7 +306,7 @@ class TestActorGenerate:
     async def test_generate_without_method_context(self):
         """Line 380: RuntimeError when _current_method is None."""
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -327,7 +327,7 @@ class TestActorGenerate:
         """Line 392: RuntimeError when no LLM client in context."""
         from nemo_oo_agents.agent import Agent
         from nemo_oo_agents.runtime.actor import _current_llm_var, _current_method_var
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -997,7 +997,7 @@ class TestAgentInstanceValues:
 
     def test_property_that_raises_unexpected_exception(self):
         from nemo_oo_agents.agent import Agent
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         llm = FakeLLMClient()
 
@@ -1521,7 +1521,7 @@ class TestCodeValidatorVisitCallPaths:
 
         from nemo_oo_agents import Agent
         from nemo_oo_agents.runtime.code_validator import REPLPolicyValidator, ValidationContext
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class _A(Agent, llm=FakeLLMClient()):
             async def my_async(self): ...
@@ -1539,7 +1539,7 @@ class TestCodeValidatorVisitCallPaths:
 
         from nemo_oo_agents import Agent
         from nemo_oo_agents.runtime.code_validator import REPLPolicyValidator, ValidationContext
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class _A(Agent, llm=FakeLLMClient()):
             async def my_async(self): ...
@@ -1556,7 +1556,7 @@ class TestCodeValidatorVisitCallPaths:
 
         from nemo_oo_agents import Agent
         from nemo_oo_agents.runtime.code_validator import REPLPolicyValidator, ValidationContext
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class _A(Agent, llm=FakeLLMClient()):
             async def my_async(self): ...
@@ -1573,7 +1573,7 @@ class TestCodeValidatorVisitCallPaths:
 
         from nemo_oo_agents import Agent
         from nemo_oo_agents.runtime.code_validator import REPLPolicyValidator, ValidationContext
-        from unifiedllm import FakeLLMClient
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
 
         class _A(Agent, llm=FakeLLMClient()):
             async def my_async(self): ...

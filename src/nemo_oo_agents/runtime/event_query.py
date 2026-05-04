@@ -9,7 +9,7 @@ the event_manager.filter() API. It can be used at agent, decorator, and runtime 
 from dataclasses import dataclass
 from typing import Self
 
-from context_blocks import EventBase as EventBase
+from nemo_oo_agents.context_blocks import EventBase as EventBase
 
 
 @dataclass(frozen=True)

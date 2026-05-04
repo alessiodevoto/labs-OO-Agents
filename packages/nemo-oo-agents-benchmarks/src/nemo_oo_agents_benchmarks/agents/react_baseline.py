@@ -32,10 +32,10 @@ from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.runtime.token_usage import accumulate_tokens
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 

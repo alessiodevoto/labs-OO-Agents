@@ -10,8 +10,8 @@ This module provides:
 - SelfImprovementRunner: Runs tasks with iterative improvement loops
 - Metrics and reporting utilities
 
-For LLM clients, use the unifiedllm package directly:
-    from unifiedllm import CompletionClient, RetryConfig
+For LLM clients, use the nemo_oo_agents.unifiedllm subpackage:
+    from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
 
     client = CompletionClient(
         model="gpt-4o-mini",

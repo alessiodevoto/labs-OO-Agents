@@ -47,7 +47,7 @@ from nemo_oo_agents.strategies.codeact_lite import (
 )
 from nemo_oo_agents.strategies.current_call import CurrentCall
 from nemo_oo_agents.strategies.predict import PredictStrategy
-from unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1655,8 +1655,8 @@ class TestPlainProviderFormatterFormat:
     """Tests for PlainCodeActBlockFormatter.format() covering key branches."""
 
     def test_runtime_event_skipped(self):
-        from context_blocks import ResolvedBlock
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="runtime", content="", role=Role.RUNTIME_EVENT, event=None)
@@ -1666,8 +1666,8 @@ class TestPlainProviderFormatterFormat:
         assert messages[0].role == Role.SYSTEM
 
     def test_tool_call_event_with_result_no_python_output(self):
-        from context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         tce = ToolCallEvent(
@@ -1683,8 +1683,8 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0].content == "direct result"
 
     def test_tool_call_event_with_no_result_and_no_python_output(self):
-        from context_blocks import ResolvedBlock, ToolCallEvent
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         tce = ToolCallEvent(tool_call_id="tc2", name="some_tool", arguments={}, result=None)
@@ -1695,8 +1695,8 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0].content == ""
 
     def test_block_with_no_event_uses_content(self):
-        from context_blocks import ResolvedBlock
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="text", content="block content text", role=Role.USER, event=None)
@@ -1706,8 +1706,8 @@ class TestPlainProviderFormatterFormat:
         assert user_msgs[0].content == "block content text"
 
     def test_block_with_no_event_and_no_content(self):
-        from context_blocks import ResolvedBlock
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="empty", content="", role=Role.USER, event=None)
@@ -1717,8 +1717,8 @@ class TestPlainProviderFormatterFormat:
         assert user_msgs[0].content == ""
 
     def test_tool_call_with_python_output_uses_plain_content(self):
-        from context_blocks import ResolvedBlock, ToolCallEvent
-        from context_blocks.models import Role
+        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
+        from nemo_oo_agents.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         po = PythonOutput(

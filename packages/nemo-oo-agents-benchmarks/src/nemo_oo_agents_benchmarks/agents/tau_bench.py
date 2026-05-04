@@ -19,13 +19,14 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from context_blocks import DynamicContext
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents.agent import INHERIT, _InheritSentinel
 from nemo_oo_agents.config import CodeActConfig, TruncationConfig
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from unifiedllm import UnifiedLLM
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 # Module-level imports available to LLM-generated code at runtime
 import datetime  # noqa: F401
@@ -59,8 +60,10 @@ class TauBenchAgent(
         "domain_policy": DynamicContext(expr="self.taubench.policy"),
         "domain_tools": DynamicContext(expr="self.taubench.tools"),
     },
-    truncation=TruncationConfig(max_string=5000),
+    truncation=TruncationConfig(max_pprint_string=5000),
 ):
+    taubench: Any  # TauBenchTools injected at runtime by the runner
+
     """Tau Bench customer service agent for multi-turn tool-calling benchmark.
 
     You are a customer service agent helping customers. Follow the domain-specific
@@ -111,7 +114,7 @@ class TauBenchAgent(
     availability before communicating counts to customers.
     """
 
-    def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
+    def __init__(self, llm: UnifiedLLM | _InheritSentinel = INHERIT, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
 
     async def _run_evaluation(self, task_input: dict) -> dict:

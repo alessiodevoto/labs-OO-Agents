@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 
-from context_blocks.models import RenderedMessage, Role, ToolCallInfo
+from nemo_oo_agents.context_blocks.models import RenderedMessage, Role, ToolCallInfo
 from nemo_oo_agents.tracing._journal_builder import (
     build_journal_payload as _build_journal_payload,
 )
@@ -267,7 +267,7 @@ class TestPartsAndBlocks:
         """Block-aware formatters emit ``parts``; the payload replaces block
         content with ``{block_hash, key}`` refs and accumulates the blocks
         dict for dedup across turns."""
-        from context_blocks.models import BlockPart, TextPart
+        from nemo_oo_agents.context_blocks.models import BlockPart, TextPart
 
         msg = RenderedMessage(
             role=Role.SYSTEM,

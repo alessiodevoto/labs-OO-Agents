@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.events import ExecutionResult
 from nemo_oo_agents.runtime.actor import ActorRuntime
-from unifiedllm import LLMResponse
+from nemo_oo_agents.unifiedllm import LLMResponse
 
 # Sentinel indicating that ``AgentCallContext.result`` has not been set yet.
 # Distinguishes "middleware never ran the inner handler" from "method returned None".

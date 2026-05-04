@@ -1,0 +1,63 @@
+[project]
+name = "nemo-oo-agents-cli"
+# Lockstep with nemo-oo-agents core (CI rewrites both at tag time).
+version = "0.2.0"
+description = "CLI and TUI for nemo-oo-agents (`nemo` command, web terminal, agent REPL)"
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Underscore form so the CI version-bump sed regex (in .gitlab-ci.yml)
+    # matches and rewrites this constraint to ==X.Y.Z at tag time.
+    "nemo_oo_agents>=0.2.0",
+    "click>=8.1.0",
+    "ipython>=9.12.0",
+    # prompt-toolkit and rich were only transitive (via ipython and litellm
+    # respectively); declare them explicitly so we don't break if those
+    # transitive paths change.
+    "prompt-toolkit>=3.0.41,<3.1.0",
+    "rich>=13.0.0",
+    # Used directly in tui/agent.py and tui/models.py
+    "pydantic>=2.5.0",
+    # CLI/TUI config files
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+nemo = "nemo_oo_agents_cli:main"
+
+[project.entry-points."nemo_oo_tui.skills_dirs"]
+sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
+
+[project.optional-dependencies]
+# Data-science stack pre-loaded into the agent's REPL execution namespace
+# (np, pd, px, go, scipy, sklearn). Soft-imported via try/except in
+# nemo_oo_agents_cli.tui.agent — the CLI/TUI works without these too;
+# they exist purely so LLM-generated CodeAct cells can use these libs
+# without first failing on a missing import.
+datascience = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "plotly>=5.0.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+]
+# Web-served TUI (`nemo oo term`): uvicorn + ptyprocess + fastapi, plus
+# the data-science stack so the LLM has the same REPL capabilities as
+# in the local terminal.
+web = [
+    "nemo-oo-agents-cli[datascience]",
+    "uvicorn[standard]>=0.34.0",
+    "ptyprocess>=0.7.0",
+    "fastapi>=0.123.4",
+]
+
+[tool.uv.sources]
+nemo_oo_agents = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["nemo_oo_agents_cli"]

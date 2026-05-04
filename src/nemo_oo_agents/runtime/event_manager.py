@@ -17,8 +17,8 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from context_blocks import EventStatus
-from context_blocks.models import Role
+from nemo_oo_agents.context_blocks import EventStatus
+from nemo_oo_agents.context_blocks.models import Role
 from nemo_oo_agents.events import (
     EventBase,
     Summary,

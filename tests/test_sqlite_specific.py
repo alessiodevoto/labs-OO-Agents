@@ -10,8 +10,8 @@ These tests cover behavior that only applies to SQLiteEventBackend:
 import logging
 from typing import Literal
 
-from context_blocks import EventBase, Metadata
-from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+from nemo_oo_agents.context_blocks import EventBase, Metadata
+from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
 from nemo_oo_agents.storage.sqlite import _CONTEXT_BLOCKS_TYPES, SQLiteEventBackend
 
 # ---------------------------------------------------------------------------

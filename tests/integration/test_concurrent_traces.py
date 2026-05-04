@@ -22,7 +22,7 @@ from nemo_oo_agents.tracing._hooks_impl import (
     OpenInferenceHooks,
     _get_active_spans,
 )
-from unifiedllm import LLMResponse, ToolCall
+from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
 
 
 class FakeLLM:

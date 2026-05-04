@@ -234,8 +234,8 @@ async def test_real_llm_repeated_runs():
     """
     import os
 
+    from nemo_oo_agents.unifiedllm import CompletionClient
     from tests.capability.agents.router import RouterTestWrapper
-    from unifiedllm import CompletionClient
 
     # Use a fast, cheap model
     llm = CompletionClient(

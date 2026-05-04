@@ -7,7 +7,7 @@ A minimal viable runtime for agent orchestration with event sourcing,
 serialized execution, and complete transparency.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # ---------------------------------------------------------------------------
 # Library logging: add NullHandler so applications that don't configure
@@ -21,11 +21,11 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 # Export core types
 # Export agent and decorators
 
-from context_blocks import ContextWindowStats, DynamicContext  # noqa: E402
 from nemo_oo_agents._logging import enable_logging  # noqa: E402
 from nemo_oo_agents._visible import visible  # noqa: E402
 from nemo_oo_agents.agent import Agent  # noqa: E402
 from nemo_oo_agents.agentdoc import hidden  # noqa: E402
+from nemo_oo_agents.context_blocks import ContextWindowStats, DynamicContext  # noqa: E402
 from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors
@@ -73,7 +73,7 @@ from nemo_oo_agents.strategies import (  # noqa: E402
     set_default_strategy,
 )
 from nemo_oo_agents.token_counter import char_approximate_token_counter  # noqa: E402
-from unifiedllm import LLMResponse  # noqa: E402
+from nemo_oo_agents.unifiedllm import LLMResponse  # noqa: E402
 
 __all__ = [
     "__version__",

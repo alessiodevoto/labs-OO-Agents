@@ -9,7 +9,7 @@ archived events are represented by the Summary that replaced them in active_tags
 
 import pytest
 
-from context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
 from nemo_oo_agents.runtime.context_builder import _phase_events
 from nemo_oo_agents.runtime.event_manager import EventManager
 from nemo_oo_agents.storage.sqlite import SQLiteEventBackend

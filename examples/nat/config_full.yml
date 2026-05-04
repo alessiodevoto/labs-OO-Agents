@@ -18,9 +18,6 @@ workflow:
   _type: nemo_oo_agents_wrapper
   dependencies:
     - ../../src
-    - ../../packages/unifiedllm/src
-    - ../../packages/agentdoc/src
-    - ../../packages/context-blocks/src
   agent: example_agent.py:DemoAgent
   method: chat
   llm_name: agent

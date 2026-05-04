@@ -3,7 +3,7 @@
 import pytest
 
 from nemo_oo_agents.agent import Agent
-from unifiedllm import FakeLLMClient, LLMResponse
+from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 _TEST_LLM = FakeLLMClient()
 
@@ -577,7 +577,7 @@ class TestNestedGenerationReentry:
         by the re-entry guard)."""
         import json
 
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         exec_methods = []
 
@@ -686,7 +686,7 @@ class TestAgentCallMiddleware:
         import json
 
         from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         trail = []
 
@@ -729,7 +729,7 @@ class TestAgentCallMiddleware:
         import json
 
         from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         captured = {}
 
@@ -774,7 +774,7 @@ class TestAgentCallMiddleware:
         import json
 
         from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         seen_result = {}
 
@@ -862,7 +862,7 @@ class TestAgentCallMiddleware:
         """agent_call is outermost — llm_call and execute_python fire inside it."""
         import json
 
-        from unifiedllm import ToolCall
+        from nemo_oo_agents.unifiedllm import ToolCall
 
         order = []
 

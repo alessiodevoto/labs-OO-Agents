@@ -12,7 +12,7 @@ from nemo_oo_agents.strategies.generated_code import (
     ExecutionNamespaceBuilder,
     HelperFunctionManager,
 )
-from unifiedllm import FakeLLMClient
+from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class TestHelperFunctionManagerGuard:

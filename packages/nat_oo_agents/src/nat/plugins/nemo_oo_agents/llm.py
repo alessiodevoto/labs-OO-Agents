@@ -35,11 +35,11 @@ def _build_llm(
     """
     import os
 
-    from unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient
 
     # Check the registry for defaults
     try:
-        from unifiedllm.registry import MODELS
+        from nemo_oo_agents.unifiedllm.registry import MODELS
 
         registry_config = MODELS.get(model_name, {})
     except ImportError:

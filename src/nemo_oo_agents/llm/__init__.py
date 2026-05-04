@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """LLM client interfaces and implementations."""
 
-from unifiedllm import CompletionClient, LLMResponse, Tool, ToolCall
+from nemo_oo_agents.unifiedllm import CompletionClient, LLMResponse, Tool, ToolCall
 
 __all__ = [
     "CompletionClient",
