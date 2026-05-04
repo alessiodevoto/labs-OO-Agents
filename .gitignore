@@ -354,6 +354,7 @@ prpm.lock
 
 # Git worktrees
 .worktrees/
+worktrees/
 
 # Bridge session ID file — written by slack bridge into each agent worktree root
 .claude_session_id
