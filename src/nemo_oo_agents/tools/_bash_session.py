@@ -179,39 +179,21 @@ class BashSession:
         )
 
         if timed_out:
-            # Command may still be running (vi, less, python repl, etc.).
-            # Send SIGINT to the session's process group to interrupt
-            # the foreground job, then re-send sentinel for recovery.
-            try:
-                pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGINT)
-            except (ProcessLookupError, OSError):
-                pass
-
-            await asyncio.sleep(0.2)
-
-            # Re-send sentinel so session recovers for next run()
-            recovery = f"\necho {sentinel}\necho {sentinel} 1>&2\n"
-            try:
-                proc.stdin.write(recovery.encode())
-                await proc.stdin.drain()
-            except (BrokenPipeError, ConnectionResetError):
-                self._started = False  # session died
-
-            # Drain recovery sentinels (best-effort, short timeout)
-            async def _drain(stream: asyncio.StreamReader) -> None:
-                try:
-                    while True:
-                        raw = await asyncio.wait_for(stream.readline(), timeout=1.0)
-                        if not raw or sentinel in raw.decode("utf-8", errors="replace"):
-                            return
-                except TimeoutError:
-                    return
-
-            if self._started:
-                await asyncio.gather(_drain(proc.stdout), _drain(proc.stderr))
+            # The command may still be running (vi, less, python repl)
+            # or bash may be stuck in a quote context that swallowed
+            # our sentinels.  Either way the session is suspect —
+            # kill it and start fresh so the next run() is reliable.
+            logger.warning("Command timed out after %.1fs — resetting session", timeout)
+            await self.reset()
 
         return out.strip(), err.strip(), timed_out
+
+    async def reset(self) -> None:
+        """Kill the current session and start a fresh one, preserving cwd."""
+        cwd = self._cwd
+        await self.close()
+        self._cwd = cwd
+        await self.start()
 
     async def close(self) -> None:
         """Terminate the bash session cleanly."""

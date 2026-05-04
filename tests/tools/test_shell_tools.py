@@ -321,6 +321,43 @@ class TestLs:
 
 
 # ==========================================================================
+# reset
+# ==========================================================================
+class TestReset:
+    async def test_reset_preserves_cwd(self, shell, tmp_path):
+        sub = tmp_path / "mydir"
+        sub.mkdir()
+        await shell.bash(f"cd {sub}")
+        await shell.reset()
+        r = await shell.bash("pwd")
+        assert str(sub) in r.stdout
+
+    async def test_reset_recovers_from_timeout(self, shell):
+        # Trigger a timeout with a long-running command
+        r = await shell.bash("sleep 999", timeout=0.5)
+        assert not r.success
+        # Session should auto-reset and work for the next command
+        r2 = await shell.bash("echo recovered")
+        assert r2.success
+        assert "recovered" in r2.stdout
+
+
+# ==========================================================================
+# grep context
+# ==========================================================================
+class TestGrepContext:
+    async def test_grep_context_total_excludes_separators(self, shell, sample_tree):
+        r = await shell.grep("helper", str(sample_tree / "src"), context=1)
+        # With context, rg adds separator lines ("--") between groups.
+        # total_matches should count only match lines, not separators.
+        assert r.total_matches > 0
+        # Separators should still appear in the output for readability
+        # but not inflate the count
+        separator_count = sum(1 for m in r.matches if m == "--")
+        assert r.total_matches <= len(r.matches) - separator_count
+
+
+# ==========================================================================
 # repr
 # ==========================================================================
 class TestRepr:

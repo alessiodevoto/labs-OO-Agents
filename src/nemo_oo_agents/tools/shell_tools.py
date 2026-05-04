@@ -359,11 +359,18 @@ class ShellTools(Skill):
         if code == 1:  # rg: no matches
             return SearchResult(matches=[], total_matches=0)
 
-        lines = [ln for ln in stdout.splitlines() if ln.strip()] if stdout else []
-        total = len(lines)
+        all_lines = [ln for ln in stdout.splitlines() if ln.strip()] if stdout else []
+        if context > 0:
+            # With -C, rg inserts "--" separators and context lines.
+            # Count only actual match lines (those with line-number ":" separator).
+            match_lines = [ln for ln in all_lines if ln != "--"]
+            total = len(match_lines)
+        else:
+            match_lines = all_lines
+            total = len(match_lines)
         return SearchResult(
-            matches=lines[:max_matches],
-            total_matches=total,
+            matches=all_lines[:max_matches],  # include context in output
+            total_matches=total,  # but count only matches
             truncated=total >= max_matches,
         )
 
@@ -496,6 +503,14 @@ class ShellTools(Skill):
                     if line.strip():
                         errors.append(line.strip())
         return errors
+
+    async def reset(self) -> None:
+        """Kill and restart the bash session, preserving the working directory.
+
+        Use when the session is corrupted (e.g. after a timeout caused by
+        unbalanced quotes or a stuck interactive process).
+        """
+        await self._session.reset()
 
     async def close(self) -> None:
         """Shut down the persistent bash session."""
