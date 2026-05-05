@@ -106,7 +106,15 @@ class JournalExporter(SpanExporter):
         """
         import litellm
 
-        from nemo_oo_agents.tracing._litellm_journal import _INSTALL_LOCK
+        from nemo_oo_agents.tracing._litellm_journal import _INSTALL_LOCK, flush_pending
+
+        # Join the journal callback's daemon-thread POSTs before tearing
+        # down. OTel's built-in atexit hook calls ``TracerProvider.shutdown``
+        # → ``BatchSpanProcessor.shutdown`` → ``self.shutdown``; without this
+        # join, short-lived processes exit with in-flight journal POSTs
+        # killed mid-request, so the viewer receives spans with no message
+        # content (issue #168).
+        flush_pending(timeout=30.0)
 
         with _INSTALL_LOCK:
             self._callback.remove_destination(self._base_url)
