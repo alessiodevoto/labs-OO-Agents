@@ -293,7 +293,14 @@ class ReflexionStrategy(GenerationStrategy):
             return "None (no value returned)"
 
         # Show as much of the result as possible — the LLM must evaluate its quality.
-        return truncating_pformat(result, max_chars=tc.max_block_chars)
+        # event_format provides max_string/max_length/max_depth so nested strings
+        # within structured results are bounded by cfg.event_format rather than
+        # pformat's hidden 150-char fallback.
+        return truncating_pformat(
+            result,
+            max_chars=tc.max_block_chars,
+            **tc.event_format.model_dump(),
+        )
 
     def _format_reflection_feedback(
         self,

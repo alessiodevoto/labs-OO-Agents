@@ -26,13 +26,8 @@ from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, T
 
 
 def _pformat(value: Any, tc: TruncationConfig) -> str:
-    """Format a value using truncation config's pprint settings."""
-    return pformat(
-        value,
-        max_length=tc.max_pprint_elements,
-        max_string=tc.max_pprint_string,
-        max_depth=tc.max_pprint_depth,
-    )
+    """Format a value using truncation config's value-render settings."""
+    return pformat(value, **tc.event_format.model_dump())
 
 
 @dataclass(frozen=True)

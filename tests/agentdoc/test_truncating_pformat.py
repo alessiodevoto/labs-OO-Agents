@@ -37,25 +37,19 @@ class TestSafePformatUsesTruncatingStringIO:
         assert head_marker in result
         assert tail_marker in result
 
-    def test_notice_format_matches_truncating_string_io(self):
-        # TDD: will fail until Change 2 is implemented
-        # TruncatingStringIO.getvalue() format:
-        # "Output too large (N chars). Showing first X and last Y chars.
-        #  \n\n<head>\n\n... Z chars not shown ...\n\n<tail>"
+    def test_strings_pass_through_verbatim(self):
+        """Block-level string truncation has been removed. Strings now pass
+        through truncating_pformat verbatim regardless of max_chars (which is
+        only an OOM-safety net for non-string rendering)."""
         big = "a" * 10_000
         result = truncating_pformat(big, max_chars=100)
-        assert "Output too large" in result
-        assert "Showing first" in result
-        assert "and last" in result
-        assert "chars not shown" in result
+        assert result == big
 
     def test_string_fast_path_unchanged(self):
-        # String fast-path is unchanged; TruncatingStringIO is for non-strings
+        """String fast-path: returns input verbatim regardless of length / cap."""
         huge_str = "START" + "x" * 10_000 + "END"
         result = truncating_pformat(huge_str, max_chars=100)
-        assert "START" in result
-        assert "END" in result
-        assert "Output too large" in result
+        assert result == huge_str
 
     def test_no_broken_python_syntax_in_output(self):
         # TDD: will fail until Change 2 is implemented

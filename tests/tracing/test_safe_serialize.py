@@ -25,13 +25,16 @@ class TestSafeSerialize:
         assert "key" in result
         assert "value" in result
 
-    def test_large_string_truncated(self):
+    def test_large_string_passes_through_verbatim(self):
+        """Block-level string truncation has been removed. Strings now pass
+        through ``_safe_serialize`` verbatim — wire-protocol concerns (OTLP
+        size limits) are a separate follow-up."""
         large = "x" * 200_000
         result = OpenInferenceHooks._safe_serialize(large, max_chars=1000)
-        assert len(result) < 2000  # cap + notice overhead
-        assert "Output too large" in result
+        assert result == large
 
     def test_large_object_truncated(self):
+        """Non-strings still get the OOM-safety net via TruncatingStringIO."""
         big_list = list(range(100_000))
         result = OpenInferenceHooks._safe_serialize(big_list, max_chars=5000)
         assert len(result) < 10_000  # cap + notice overhead

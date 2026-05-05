@@ -10,9 +10,14 @@ Use by setting _block_formatter on your agent:
         _block_formatter = PlainBlockFormatter()
 """
 
+from typing import TYPE_CHECKING
+
 from nemo_oo_agents.context_blocks.events import EventBase
 from nemo_oo_agents.context_blocks.formatter import FORMAT_PLAIN, FormatType, XMLBlockFormatter
 from nemo_oo_agents.context_blocks.utils import truncating_pformat
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import FormatConfig
 
 # Default cap when no TruncationConfig is available (e.g. standalone use).
 # Matches TruncationConfig.max_block_chars default.
@@ -35,11 +40,24 @@ class PlainBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]
     def format_type(self) -> FormatType:
         return FORMAT_PLAIN
 
-    def format_event(self, event: EventBase, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
-        """Serialize event fields not marked repr=False as plain XML elements."""
+    def format_event(
+        self,
+        event: EventBase,
+        max_chars: int | None = None,
+        event_format: "FormatConfig | None" = None,
+    ) -> str:
+        """Serialize event fields not marked repr=False as plain XML elements.
+
+        ``event_format`` provides structural bounds (max_string / max_length /
+        max_depth) for nested values within event fields. ``max_chars`` is an
+        OOM-safety cap on the per-field render; defaults to ``_DEFAULT_MAX_CHARS``
+        when not supplied.
+        """
+        effective_max_chars = max_chars if max_chars is not None else _DEFAULT_MAX_CHARS
+        fc_kwargs = event_format.model_dump() if event_format is not None else {}
 
         def render(value: object) -> str:
-            return str(truncating_pformat(value, max_chars=max_chars))
+            return str(truncating_pformat(value, max_chars=effective_max_chars, **fc_kwargs))
 
         def is_empty(value: object) -> bool:
             return value is None or value == ""

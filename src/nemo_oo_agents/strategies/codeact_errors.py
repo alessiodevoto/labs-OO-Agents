@@ -161,13 +161,8 @@ def _format_expected_schema(return_type: Any) -> str:
 
 
 def _pformat(value: Any, tc: TruncationConfig) -> str:
-    """Format a value using the agent's pprint truncation settings."""
-    return pformat(
-        value,
-        max_length=tc.max_pprint_elements,
-        max_string=tc.max_pprint_string,
-        max_depth=tc.max_pprint_depth,
-    )
+    """Format a value using the agent's value-render truncation settings."""
+    return pformat(value, **tc.event_format.model_dump())
 
 
 def _format_value_for_error(

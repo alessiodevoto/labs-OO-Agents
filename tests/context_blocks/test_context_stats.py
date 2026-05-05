@@ -409,22 +409,23 @@ class TestContextWindowStatsEdgeCases:
         assert isinstance(stats, ContextWindowStats)
         assert all(isinstance(m, RenderedMessage) for m in messages)
 
-    def test_block_limit_and_context_limit_interaction(self):
-        """Per-block truncation happens before total budget check."""
+    def test_block_limit_no_longer_squashes_content(self):
+        """Block-level head/tail truncation has been removed. ``block_limit``
+        no longer caps individual blocks; the context_limit total-eviction
+        path drops whole blocks instead. A single oversize block now exceeds
+        the context_limit and gets dropped wholesale."""
         blocks = [
             ResolvedBlock(key="big", content="x" * 10000),
         ]
-        # block_limit=500 truncates to ~500 chars; context_limit=1000 is then not exceeded
         stats = render_context(
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=500,
             context_limit=1000,
             count_tokens=len,
         ).stats
-        assert stats.context_blocks_dropped == 0
-        assert stats.context_blocks_tokens <= 1000
+        # Block exceeded context_limit and was dropped
+        assert stats.context_blocks_dropped == 1
 
     def test_exports_from_context_blocks_package(self):
         """ContextWindowStats and RenderResult importable from context_blocks."""

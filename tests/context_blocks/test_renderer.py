@@ -131,8 +131,11 @@ class TestRenderContextBasic:
 class TestRenderContextTruncation:
     """Truncation tests."""
 
-    def test_truncation_with_limit(self):
-        """render_context() truncates system blocks when limit is set."""
+    def test_block_limit_no_longer_truncates(self):
+        """Block-level head/tail truncation has been removed; ``block_limit``
+        is preserved in the API but no longer head/tail-squashes content.
+        Per-value bounds come from cfg.context_blocks at render time;
+        whole-block eviction (L4) handles overflow at assembly."""
         long_content = "A" * 1000
         blocks = [ResolvedBlock(key="data", content=long_content)]
 
@@ -140,15 +143,14 @@ class TestRenderContextTruncation:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=100,
         ).output
 
         system_content = result[0]["content"]
-        # Should be meaningfully shorter: block_limit=100 + XML tag overhead
-        assert len(system_content) < 400, (
-            f"block_limit=100 but output is {len(system_content)} chars (original was {len(long_content)})"
-        )
-        assert "output too large" in system_content.lower()
+        # Long content survives intact
+        assert long_content in system_content
+        # No legacy wrapper
+        assert "output too large" not in system_content.lower()
+        assert "<truncated-output>" not in system_content
 
     def test_no_truncation_without_limit(self):
         """render_context() does not truncate when no limit is set."""
@@ -264,7 +266,6 @@ class TestRenderContextNoMutation:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=50,
         )
 
         # Original block must be unchanged
@@ -285,7 +286,6 @@ class TestRenderContextNoMutation:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=50,
         )
 
         # Original block must be unchanged
@@ -304,14 +304,12 @@ class TestRenderContextNoMutation:
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=100,
         ).output
 
         result2 = render_context(
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=100,
         ).output
 
         assert result1 == result2
@@ -549,11 +547,15 @@ class TestRenderContextEventSerialization:
         assert user_msg["role"] == "user"
         assert "Hello world" in user_msg["content"]
 
-    def test_event_serialization_happens_before_truncation(self):
-        """Truncation must see serialized content, not empty strings."""
+    def test_event_serialization_happens_at_render_time(self):
+        """Events are serialized at render time so block-level passes see real content.
+        After block-level truncation removal, ``block_limit`` is no longer a hard
+        cap — content passes through; bounds come from per-value annotations and
+        cfg.events.* knobs (here the raw string in UserEvent.content gets the
+        marker-family treatment via pformat with default max_string=10K, so a
+        200-char string remains untouched)."""
         from nemo_oo_agents.context_blocks.events import UserEvent
 
-        # Create an event whose serialized form will be > 50 chars
         long_content = "A" * 200
         event = UserEvent(content=long_content, tag="1")
         block = ResolvedBlock(
@@ -568,12 +570,13 @@ class TestRenderContextEventSerialization:
             [block],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            block_limit=50,  # per-block limit
         ).output
 
-        # Content should be truncated (not the original 200+ chars)
         user_msg = result[1]
-        assert "output too large" in user_msg["content"].lower()
+        # Content was serialized (not empty)
+        assert "UserEvent" in user_msg["content"] or long_content in user_msg["content"]
+        # No legacy wrapper
+        assert "output too large" not in user_msg["content"].lower()
 
     def test_tool_call_event_not_passed_to_format_event(self):
         """ToolCallEvent blocks must not be passed through format_event — ProviderFormatter handles them."""

@@ -532,19 +532,19 @@ class TestReflexionStrategyResultFormatting:
         assert "None" in result
         assert "no value" in result.lower()
 
-    def test_format_result_truncates_long_output(self):
-        """_format_result_for_reflection should truncate very long results."""
+    def test_format_result_passes_strings_through(self):
+        """Block-level string truncation has been removed; long string results
+        now pass through verbatim from `_format_result_for_reflection`. Per-
+        value bounds come from cfg.events.* for non-string values."""
         from nemo_oo_agents.config.truncation_config import TruncationConfig
         from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
-        # Use a small max_block_chars so truncation kicks in
         tc = TruncationConfig(max_block_chars=1000)
         long_result = "x" * 3000
         formatted = strategy._format_result_for_reflection(long_result, tc)
 
-        assert len(formatted) < 2100  # bounded output
-        assert "truncated" in formatted.lower()
+        assert long_result in formatted
 
 
 class TestReflexionStrategyHistoryInteraction:

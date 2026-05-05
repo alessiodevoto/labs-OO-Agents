@@ -22,7 +22,10 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import FormatConfig
 
 from nemo_oo_agents.context_blocks.events import EventBase, ToolCallEvent
 from nemo_oo_agents.context_blocks.models import (
@@ -31,7 +34,7 @@ from nemo_oo_agents.context_blocks.models import (
     Role,
     ToolCallInfo,
 )
-from nemo_oo_agents.context_blocks.utils import _MAX_PRE_FORMAT_CHARS, truncating_pformat
+from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 
 class FormatType(StrEnum):
@@ -85,18 +88,27 @@ class BlockFormatter(ABC):
         """
         ...
 
-    def format_event(self, event: EventBase, max_chars: int = _MAX_PRE_FORMAT_CHARS) -> str:
+    def format_event(
+        self,
+        event: EventBase,
+        max_chars: int | None = None,
+        event_format: "FormatConfig | None" = None,
+    ) -> str:
         """Serialize a non-tool-call event into string content.
 
-        Called by :func:`render_context` *before* truncation runs, so the
-        resulting string can be measured and trimmed by the block-level
-        truncation pipeline. ToolCallEvents are handled structurally by
-        :meth:`format` — they are not routed through ``format_event``.
+        Called by :func:`render_context` to materialize event content as a
+        string. ToolCallEvents are handled structurally by :meth:`format` —
+        they are not routed through ``format_event``.
 
-        Default: bounded repr via ``truncating_pformat``. Override for
-        alternative serialization (plain text, JSON, etc.).
+        Default: ``truncating_pformat`` with the event-level ``FormatConfig``
+        knobs. Strings pass through verbatim; non-strings render via pformat
+        with structural bounds (``max_string``, ``max_length``, ``max_depth``)
+        from ``event_format``. ``max_chars`` is an optional OOM-safety net.
         """
-        return truncating_pformat(event, max_chars=max_chars)
+        kwargs: dict[str, object] = {}
+        if event_format is not None:
+            kwargs.update(event_format.model_dump())
+        return truncating_pformat(event, max_chars=max_chars, **kwargs)
 
     def format_description(self) -> str:
         """Return a human-readable description of the block format.

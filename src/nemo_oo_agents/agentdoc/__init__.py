@@ -43,51 +43,39 @@ _TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 def truncating_pformat(
     obj: Annotated[Any, "Object to format"],
     *,
-    max_chars: Annotated[int, "Hard character cap on total output"] = _TRUNCATING_PFORMAT_MAX_CHARS,
+    max_chars: Annotated[int | None, "Optional cap; only used to bound non-string OOM"] = None,
     **kwargs: Any,
 ) -> str:
-    """Format *obj* as a string, bounded to prevent OOM.
+    """Format *obj* as a string. Strings pass through verbatim; non-strings go
+    through :func:`pformat` with the supplied structural kwargs.
 
-    Like :func:`pformat` but with a hard ``max_chars`` cap on total output length.
-    Uses :class:`TruncatingStringIO` internally so the cap fires *during* formatting —
-    not after building a potentially-huge intermediate string.
+    Per-value bounds (``max_string``, ``max_length``, ``max_depth``) come from
+    ``kwargs``. The legacy ``max_chars`` head/tail-squash mechanism has been
+    removed — block-level truncation is no longer applied here. Whole-block
+    eviction at context-assembly time (L4) handles overflow.
 
-    When the cap fires, a prose notice is prepended so the consumer knows the
-    value was large and how much was kept.  Both the head and tail are retained.
-
-    String fast-path: plain strings skip pformat entirely — the cap is applied
-    directly.  When truncated, both the head and tail are retained.
+    The ``max_chars`` parameter remains for backward compatibility but only
+    fires as a TruncatingStringIO OOM-safety cap on non-string rendering. It
+    no longer head/tail-truncates strings.
 
     Raises:
-        ValueError: if ``max_chars`` is <= 0.
+        ValueError: if ``max_chars`` is set and <= 0.
     """
-    if max_chars <= 0:
-        raise ValueError(f"truncating_pformat max_chars must be > 0, got {max_chars}")
+    if max_chars is not None and max_chars <= 0:
+        raise ValueError(f"truncating_pformat max_chars must be > 0 or None, got {max_chars}")
 
     if isinstance(obj, str):
-        if len(obj) <= max_chars:
-            return obj
-        # Head+tail for strings (already in memory)
-        head_chars = max_chars // 2
-        tail_chars = max_chars - head_chars
-        head = obj[:head_chars]
-        tail = obj[-tail_chars:]
-        dropped = len(obj) - head_chars - tail_chars
-        return (
-            f"<truncated-output>\n"
-            f"Output too large ({len(obj):,} chars). "
-            f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
-            f"{head}\n\n"
-            f"... {dropped:,} chars not shown ...\n\n"
-            f"{tail}\n"
-            f"</truncated-output>"
-        )
+        return obj
 
-    # Non-strings: delegate to _pformat with a TruncatingStringIO cap.
-    # Default max_string to max_chars so individual string fields don't get
-    # silently clipped before the overall cap fires.
-    kwargs.setdefault("max_string", max_chars)
-    stream = TruncatingStringIO(limit=max_chars)
+    # Non-strings: delegate to _pformat. If max_chars is set, use a
+    # TruncatingStringIO as a hard OOM-safety net. Per-value bounds
+    # (max_string, max_length, max_depth) come from kwargs.
+    if max_chars is None:
+        from io import StringIO
+
+        stream = StringIO()
+    else:
+        stream = TruncatingStringIO(limit=max_chars)
     _pformat(obj, stream, **kwargs)
     return stream.getvalue()
 

@@ -112,8 +112,8 @@ class CurrentCall:
                 When provided, takes precedence over ``tc``.
                 When both are None, defaults to ``repr``.
             tc: Optional TruncationConfig.  When provided (and ``value_formatter``
-                is None), uses ``pformat`` with the config's structural limits
-                (``max_pprint_elements``, ``max_pprint_string``, ``max_pprint_depth``).
+                is None), uses ``pformat`` with ``tc.prefill`` structural limits
+                (``max_length``, ``max_string``, ``max_depth``).
                 This matches how ``InspectInputsPrefill`` formats parameter values.
 
         Returns:
@@ -135,12 +135,7 @@ class CurrentCall:
             _tc = tc
 
             def _default_fmt(v: Any) -> str:
-                return pformat(
-                    v,
-                    max_length=_tc.max_pprint_elements,
-                    max_string=_tc.max_pprint_string,
-                    max_depth=_tc.max_pprint_depth,
-                )
+                return pformat(v, **_tc.prefill_format.model_dump())
 
             default_fmt = _default_fmt
         else:
@@ -159,9 +154,9 @@ class CurrentCall:
                 return default_fmt
             from nemo_oo_agents.agentdoc import pformat
 
-            tc_max_length = tc.max_pprint_elements if tc is not None else None
-            tc_max_string = tc.max_pprint_string if tc is not None else None
-            tc_max_depth = tc.max_pprint_depth if tc is not None else None
+            tc_max_length = tc.prefill_format.max_length if tc is not None else None
+            tc_max_string = tc.prefill_format.max_string if tc is not None else None
+            tc_max_depth = tc.prefill_format.max_depth if tc is not None else None
             ml = override.get("max_length", tc_max_length)
             ms = override.get("max_string", tc_max_string)
             md = override.get("max_depth", tc_max_depth)

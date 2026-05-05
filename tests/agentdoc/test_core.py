@@ -694,15 +694,16 @@ class TestLargeValueTruncation:
     """Tests for truncation of large member variables to prevent LLM context explosion."""
 
     def test_huge_string_is_truncated(self):
-        """Test that huge strings don't blow up context."""
+        """When the caller passes max_string, huge nested strings are bounded."""
 
         class HugeStringClass:
             def __init__(self):
                 self.huge_string = "x" * 100_000  # 100KB string
 
         obj = HugeStringClass()
-        # With new design: doc(instance) shows type, pformat(instance) shows values
-        result = pformat(obj)
+        # Hardcoded fallbacks were removed — pformat() with no kwargs renders
+        # full content. The caller is expected to pass bounds explicitly.
+        result = pformat(obj, max_string=200, max_length=10)
 
         # Result should be small (under 1KB)
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
@@ -710,15 +711,15 @@ class TestLargeValueTruncation:
         assert "str(len=100000," in result
 
     def test_huge_list_is_truncated(self):
-        """Test that huge lists don't blow up context."""
+        """When the caller passes max_length, huge nested lists are bounded."""
 
         class HugeListClass:
             def __init__(self):
                 self.huge_list = list(range(100_000))  # 100K items
 
         obj = HugeListClass()
-        # With new design: doc(instance) shows type, pformat(instance) shows values
-        result = pformat(obj)
+        # Caller passes explicit bounds — no hidden fallback.
+        result = pformat(obj, max_length=10, max_string=200)
 
         # Result should be small
         assert len(result) < 1000, f"pformat() output too large: {len(result)} chars"
@@ -726,15 +727,15 @@ class TestLargeValueTruncation:
         assert "list(len=100000," in result and "999" in result  # tail item 99999
 
     def test_huge_dict_is_truncated(self):
-        """Test that huge dicts don't blow up context."""
+        """When the caller passes max_length, huge nested dicts are bounded."""
 
         class HugeDictClass:
             def __init__(self):
                 self.huge_dict = {f"key_{i}": f"value_{i}" for i in range(50_000)}
 
         obj = HugeDictClass()
-        # With new design: doc(instance) shows type, pformat(instance) shows values
-        result = pformat(obj)
+        # Caller passes explicit bounds — no hidden fallback.
+        result = pformat(obj, max_length=10, max_string=200)
 
         # Result should be small (dict expands to multi-line)
         assert len(result) < 2000, f"pformat() output too large: {len(result)} chars"

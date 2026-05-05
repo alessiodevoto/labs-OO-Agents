@@ -142,9 +142,9 @@ class InspectInputsPrefill:
 
         # Use config values (literals so LLM sees what was called)
         if config is not None:
-            max_length = config.max_pprint_elements
-            max_string = config.max_pprint_string
-            max_depth = config.max_pprint_depth
+            max_length = config.prefill_format.max_length
+            max_string = config.prefill_format.max_string
+            max_depth = config.prefill_format.max_depth
         else:
             # Defaults if no config provided
             max_length = 50

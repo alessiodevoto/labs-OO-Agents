@@ -637,17 +637,17 @@ class TestTruncationConfigValidators:
         with pytest.raises(Exception, match="max_block_chars must be > 0"):
             TruncationConfig(max_block_chars=0)
 
-    def test_max_stdout_chars_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_max_stdout_negative_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(Exception, match="max_stdout_chars must be > 0"):
-            TruncationConfig(max_stdout_chars=-1)
+        with pytest.raises(Exception, match="max_stdout must be > 0"):
+            CaptureConfig(max_stdout=-1)
 
-    def test_max_stderr_chars_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_max_stderr_zero_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(Exception, match="max_stderr_chars must be > 0"):
-            TruncationConfig(max_stderr_chars=0)
+        with pytest.raises(Exception, match="max_stderr must be > 0"):
+            CaptureConfig(max_stderr=0)
 
     def test_max_context_tokens_zero_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig
@@ -667,82 +667,73 @@ class TestTruncationConfigValidators:
         cfg = TruncationConfig(max_context_tokens=None)
         assert cfg.max_context_tokens is None
 
-    def test_max_pprint_elements_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_value_max_length_zero_raises(self):
+        from nemo_oo_agents.config.truncation_config import FormatConfig
 
-        with pytest.raises(Exception, match="max_pprint_elements must be > 0 or None"):
-            TruncationConfig(max_pprint_elements=0)
+        with pytest.raises(Exception, match="max_length must be > 0 or None"):
+            FormatConfig(max_length=0)
 
-    def test_max_pprint_string_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_value_max_string_negative_raises(self):
+        from nemo_oo_agents.config.truncation_config import FormatConfig
 
-        with pytest.raises(Exception, match="max_pprint_string must be > 0 or None"):
-            TruncationConfig(max_pprint_string=-1)
+        with pytest.raises(Exception, match="max_string must be > 0 or None"):
+            FormatConfig(max_string=-1)
 
-    def test_max_pprint_depth_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_value_max_depth_zero_raises(self):
+        from nemo_oo_agents.config.truncation_config import FormatConfig
 
-        with pytest.raises(Exception, match="max_pprint_depth must be > 0 or None"):
-            TruncationConfig(max_pprint_depth=0)
+        with pytest.raises(Exception, match="max_depth must be > 0 or None"):
+            FormatConfig(max_depth=0)
 
-    def test_max_pprint_elements_none_valid(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_value_max_length_none_valid(self):
+        from nemo_oo_agents.config.truncation_config import FormatConfig
 
-        cfg = TruncationConfig(max_pprint_elements=None)
-        assert cfg.max_pprint_elements is None
+        cfg = FormatConfig(max_length=None)
+        assert cfg.max_length is None
 
-    def test_stdout_tail_chars_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_capture_tail_negative_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(Exception, match="stdout_tail_chars must be >= 0"):
-            TruncationConfig(stdout_tail_chars=-1)
+        with pytest.raises(Exception, match="tail must be >= 0"):
+            CaptureConfig(tail=-1)
 
-    def test_stdout_tail_chars_equal_to_max_stdout_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_capture_tail_equal_to_max_stdout_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(
-            Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"
-        ):
-            TruncationConfig(max_stdout_chars=1000, stdout_tail_chars=1000)
+        with pytest.raises(Exception, match="tail.*must be less than.*max_stdout"):
+            CaptureConfig(max_stdout=1000, tail=1000)
 
-    def test_stdout_tail_chars_greater_than_max_stdout_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_capture_tail_greater_than_max_stdout_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(
-            Exception, match="stdout_tail_chars.*must be less than.*max_stdout_chars"
-        ):
-            TruncationConfig(max_stdout_chars=1000, stdout_tail_chars=1500)
+        with pytest.raises(Exception, match="tail.*must be less than.*max_stdout"):
+            CaptureConfig(max_stdout=1000, tail=1500)
 
-    def test_stdout_tail_chars_equal_to_max_stderr_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_capture_tail_equal_to_max_stderr_raises(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        with pytest.raises(
-            Exception, match="stdout_tail_chars.*must be less than.*max_stderr_chars"
-        ):
-            TruncationConfig(
-                max_stdout_chars=50_000,
-                max_stderr_chars=1000,
-                stdout_tail_chars=1000,
-            )
+        with pytest.raises(Exception, match="tail.*must be less than.*max_stderr"):
+            CaptureConfig(max_stdout=50_000, max_stderr=1000, tail=1000)
 
-    def test_stdout_tail_chars_valid(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_capture_tail_valid(self):
+        from nemo_oo_agents.config.truncation_config import CaptureConfig
 
-        cfg = TruncationConfig(
-            max_stdout_chars=50_000,
-            max_stderr_chars=20_000,
-            stdout_tail_chars=5000,
-        )
-        assert cfg.stdout_tail_chars == 5000
+        cfg = CaptureConfig(max_stdout=50_000, max_stderr=20_000, tail=5000)
+        assert cfg.tail == 5000
 
     def test_multiple_errors_all_reported(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nemo_oo_agents.config.truncation_config import CaptureConfig, TruncationConfig
 
+        # Top-level error
+        with pytest.raises(Exception, match="max_block_chars"):
+            TruncationConfig(max_block_chars=0)
+
+        # Sub-config errors collect together
         with pytest.raises(Exception) as exc_info:
-            TruncationConfig(max_block_chars=0, max_stdout_chars=0)
+            CaptureConfig(max_stdout=0, max_stderr=-1)
         msg = str(exc_info.value)
-        assert "max_block_chars" in msg
-        assert "max_stdout_chars" in msg
+        assert "max_stdout" in msg
+        assert "max_stderr" in msg
 
     def test_merge_with_none_returns_self(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig

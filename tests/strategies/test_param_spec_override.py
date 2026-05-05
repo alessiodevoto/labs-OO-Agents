@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from nemo_oo_agents.agentdoc import spec
-from nemo_oo_agents.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 from nemo_oo_agents.strategies.current_call import CurrentCall
 
 
@@ -48,9 +48,9 @@ def _call(method, kwargs):
 
 def _tc(max_length=10, max_string=200, max_depth=4):
     return TruncationConfig(
-        max_pprint_elements=max_length,
-        max_pprint_string=max_string,
-        max_pprint_depth=max_depth,
+        prefill_format=FormatConfig(
+            max_length=max_length, max_string=max_string, max_depth=max_depth
+        )
     )
 
 
