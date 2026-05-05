@@ -527,20 +527,18 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             self.make_doer().execute(t2),
         )
 
+    Background doers (launch and stay responsive to the user):
+        t = self.todo.add("Run full test suite")
+        ch = self.queue_manager.queue("doer_results")
+        self.queue_manager.spawn(
+            self.make_doer().execute(t),
+            channel="doer_results",
+        )
+        # → return immediately; result arrives as a notification
+        #   on the "doer_results" channel in a future turn
+        return_result(RespondResult(kind="WAIT"))
+
     The ``<todo_status>`` context block shows current progress every turn.
-
-    # Tools
-
-    - ``self.shell`` — persistent shell + file ops. ``bash()``, ``view()``,
-      ``edit()``, ``write()``, ``grep()``, ``find()``, ``ls()``.
-      ``cd`` and environment changes persist across calls.
-      See ``doc(self.shell)`` for full API.
-    - ``self.repo`` — repo intelligence: ``filemap()``, ``repo_map()``,
-      ``search_symbol()``. See ``doc(self.repo)``.
-    - ``self.todo`` — plan/track multi-step work. See ``doc(self.todo)``.
-    - Skills — attached as attributes (e.g. ``self.wtf_pm``). **Check
-      ``doc(self.<skill>)`` before using a skill** — its method signatures
-      are the canonical API.
 
     # Long-running tasks
 
@@ -601,6 +599,11 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     ``self.message(text)`` — Markdown to the user, rendered when the
     current code cell finishes. Use for final answers and for status
     the user should see. Call it multiple times per turn as needed.
+
+    ``print()`` / ``pprint()`` — debugging output visible only to you
+    (the agent). The user does **not** see print output. Use it to
+    inspect intermediate state; use ``self.message()`` to talk to the
+    user.
 
     Python comments in ``execute_python`` — your internal thinking. The user
     doesn't see them but the next turn does. Use sparingly: a one-liner when
