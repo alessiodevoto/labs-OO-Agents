@@ -196,7 +196,7 @@ class TestPredictPromptSizeGuard:
 
         strategy = PredictStrategy()
         with pytest.raises(ValueError, match="silently truncated") as exc_info:
-            await strategy.execute(runtime, call)
+            await strategy.execute(runtime, call)  # type: ignore[arg-type]
 
         error_msg = str(exc_info.value)
         assert "test_method" in error_msg
@@ -211,7 +211,7 @@ class TestPredictPromptSizeGuard:
 
         strategy = PredictStrategy()
         with pytest.raises(ValueError, match="test_method"):
-            await strategy.execute(runtime, call)
+            await strategy.execute(runtime, call)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_error_message_mentions_max_block_chars_value(self):
@@ -221,7 +221,7 @@ class TestPredictPromptSizeGuard:
 
         strategy = PredictStrategy()
         with pytest.raises(ValueError, match="750"):
-            await strategy.execute(runtime, call)
+            await strategy.execute(runtime, call)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_small_prompt_passes_the_size_check(self):
@@ -234,7 +234,7 @@ class TestPredictPromptSizeGuard:
 
         strategy = PredictStrategy()
         with pytest.raises(Exception) as exc_info:
-            await strategy.execute(runtime, call)
+            await strategy.execute(runtime, call)  # type: ignore[arg-type]
         # The error must NOT be our truncation guard
         assert "silently truncated" not in str(exc_info.value)
 
@@ -246,7 +246,7 @@ class TestPredictPromptSizeGuard:
 
         strategy = PredictStrategy()
         with pytest.raises(ValueError) as exc_info:
-            await strategy.execute(runtime, call)
+            await strategy.execute(runtime, call)  # type: ignore[arg-type]
 
         # Should mention TruncationConfig with max_block_chars= in the suggestion
         assert "max_block_chars=" in str(exc_info.value)
@@ -305,8 +305,9 @@ class TestPredictPromptSizeGuardImages:
         """Guard fires when task_prompt > max_block_chars even if images are small.
 
         The guard correctly ignores image size — it checks text chars only.
-        When len(task_prompt) > max_block_chars, format_event shows a
-        <truncated-output> notice, confirming the prompt was cropped.
+        Block-level head/tail truncation has been removed; format_event now
+        passes long prompts through verbatim. The guard at predict.py:185 is
+        what raises a clear error before the LLM sees the oversize prompt.
         """
         from nemo_oo_agents.events import Task
         from nemo_oo_agents.plain_formatter import PlainBlockFormatter
@@ -319,9 +320,10 @@ class TestPredictPromptSizeGuardImages:
         # Guard condition: len(task_prompt) > max_block_chars → guard would fire
         assert len(long_prompt) > max_block_chars
 
-        # Confirm: format_event truncates the prompt (produces a truncation notice)
+        # format_event no longer head/tail-squashes — content passes through verbatim.
         formatted = PlainBlockFormatter().format_event(task, max_chars=max_block_chars)
-        assert "<truncated-output>" in formatted  # truncation visible in output
+        assert long_prompt in formatted  # full prompt present
+        assert "<truncated-output>" not in formatted  # legacy wrapper gone
         assert "image_url" not in formatted  # images still excluded from text
 
     def test_no_gap_for_prompt_within_limit(self):

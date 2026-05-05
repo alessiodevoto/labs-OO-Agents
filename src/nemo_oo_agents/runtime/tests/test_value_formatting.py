@@ -36,14 +36,18 @@ class TestPlainEventContentBounded:
         assert "Out[1]:" in result
         assert len(result) < 1_000_000  # full repr would be ~7 MB
 
-    def test_large_string_value_is_bounded(self) -> None:
-        """Out[n] with a 2 MB string must be bounded."""
+    def test_large_string_value_passes_through(self) -> None:
+        """Block-level string truncation has been removed; large string Out[n]
+        values now pass through verbatim. Per-field bounds for events come
+        from spec() annotations on PythonOutput.value once wired (issue !158).
+        """
         from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = self._make_output("y" * 2_000_000)
         result = plain_event_content(event)
         assert "Out[1]:" in result
-        assert len(result) < 600_000  # capped at MAX_PRE_FORMAT_CHARS + overhead
+        # Full string passes through
+        assert len(result) >= 2_000_000
 
     def test_small_value_preserved(self) -> None:
         """Normal small values are not affected."""

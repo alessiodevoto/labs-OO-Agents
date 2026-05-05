@@ -1058,12 +1058,12 @@ class ActorRuntime:
             # filling the context window.
             truncation_config = self.truncation_config
             stdout_buffer = TruncatingStringIO(
-                limit=truncation_config.max_stdout_chars,
-                tail_chars=truncation_config.stdout_tail_chars,
+                limit=truncation_config.capture.max_stdout,
+                tail_chars=truncation_config.capture.tail,
             )
             stderr_buffer = TruncatingStringIO(
-                limit=truncation_config.max_stderr_chars,
-                tail_chars=truncation_config.stdout_tail_chars,
+                limit=truncation_config.capture.max_stderr,
+                tail_chars=truncation_config.capture.tail,
             )
             stdout_token = _stdout_buffer_var.set(stdout_buffer)
             stderr_token = _stderr_buffer_var.set(stderr_buffer)
@@ -2347,6 +2347,10 @@ class ActorRuntime:
             "runtime": self,
         }
 
+        # Hoist the format kwargs out of the resolve loop — same FormatConfig for
+        # every block this turn, no need to re-dump per resolve.
+        ctx_block_kwargs = tc.context_block_format.model_dump()
+
         async def _resolve_value(key: str, value: str | DynamicContext) -> str:
             """Resolve a value (static str or DynamicContext) to a string.
 
@@ -2375,7 +2379,7 @@ class ActorRuntime:
                     return result
                 from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
-                return str(truncating_pformat(result, max_chars=tc.max_block_chars))
+                return str(truncating_pformat(result, **ctx_block_kwargs))
             return value
 
         build_result = await build_context(
@@ -2390,7 +2394,7 @@ class ActorRuntime:
             scoped_event_query=_scoped_events_var.get(),
             agent_event_query=getattr(self.agent, "event_query", None),
             current_call_id=self._agent_call_id,
-            pre_format_chars=tc.max_block_chars,
+            context_block_format=tc.context_block_format,
         )
 
         # Apply the resolved cache (the only side effect)
@@ -2457,11 +2461,11 @@ class ActorRuntime:
                 blocks,
                 block_formatter=self.agent.render_config.block_formatter,
                 provider_formatter=self.agent.render_config.provider_formatter,
-                block_limit=tc.max_block_chars,
                 context_limit=tc.max_context_tokens,
                 event_limit=effective_event_limit,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
+                event_format=tc.event_format,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
 

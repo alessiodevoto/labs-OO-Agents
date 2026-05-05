@@ -3,7 +3,11 @@
 import pytest
 
 from nemo_oo_agents import Agent
-from nemo_oo_agents.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.truncation_config import (
+    CaptureConfig,
+    FormatConfig,
+    TruncationConfig,
+)
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 # Module-level test LLM
@@ -23,9 +27,9 @@ class TestTruncationConfigResolution:
 
         # Should have default config
         assert agent._truncation is not None
-        assert agent._truncation.max_stdout_chars == 50_000
-        assert agent._truncation.max_stderr_chars == 20_000
-        assert agent._truncation.max_pprint_elements == 50
+        assert agent._truncation.capture.max_stdout == 50_000
+        assert agent._truncation.capture.max_stderr == 2_000
+        assert agent._truncation.event_format.max_length == 200
 
     def test_class_level_config(self):
         """Class-level config should override defaults."""
@@ -33,17 +37,19 @@ class TestTruncationConfigResolution:
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000, max_pprint_elements=100),
+            truncation=TruncationConfig(
+                capture=CaptureConfig(max_stdout=100000), event_format=FormatConfig(max_length=100)
+            ),
         ):
             pass
 
         agent = TestAgent()
 
         # Should have class-level config
-        assert agent._truncation.max_stdout_chars == 100_000
-        assert agent._truncation.max_pprint_elements == 100
+        assert agent._truncation.capture.max_stdout == 100_000
+        assert agent._truncation.event_format.max_length == 100
         # Other defaults preserved
-        assert agent._truncation.max_stderr_chars == 20_000
+        assert agent._truncation.capture.max_stderr == 2_000
 
     def test_instance_level_config(self):
         """Instance-level config should override class config."""
@@ -51,19 +57,21 @@ class TestTruncationConfigResolution:
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
         ):
             pass
 
         agent = TestAgent(
-            truncation=TruncationConfig(max_stdout_chars=200_000, max_pprint_depth=10)
+            truncation=TruncationConfig(
+                capture=CaptureConfig(max_stdout=200000), event_format=FormatConfig(max_depth=10)
+            )
         )
 
         # Instance config should win
-        assert agent._truncation.max_stdout_chars == 200_000
-        assert agent._truncation.max_pprint_depth == 10
+        assert agent._truncation.capture.max_stdout == 200_000
+        assert agent._truncation.event_format.max_depth == 10
         # Other class defaults preserved
-        assert agent._truncation.max_pprint_elements == 50
+        assert agent._truncation.event_format.max_length == 200
 
     def test_config_merge_behavior(self):
         """Configs should merge properly (later overrides earlier)."""
@@ -72,40 +80,44 @@ class TestTruncationConfigResolution:
             Agent,
             llm=_TEST_LLM,
             truncation=TruncationConfig(
-                max_stdout_chars=100_000,
-                max_pprint_elements=100,
+                capture=CaptureConfig(max_stdout=100000), event_format=FormatConfig(max_length=100)
             ),
         ):
             pass
 
         agent = TestAgent(
-            truncation=TruncationConfig(
-                max_pprint_elements=200,  # Override class
-                max_pprint_depth=5,  # New value
-            )
+            truncation=TruncationConfig(event_format=FormatConfig(max_length=200, max_depth=5))
         )
 
         # Merged result
-        assert agent._truncation.max_stdout_chars == 100_000  # From class
-        assert agent._truncation.max_pprint_elements == 200  # From instance
-        assert agent._truncation.max_pprint_depth == 5  # From instance
-        assert agent._truncation.max_stderr_chars == 20_000  # From default
+        assert agent._truncation.capture.max_stdout == 100_000  # From class
+        assert agent._truncation.event_format.max_length == 200  # From instance
+        assert agent._truncation.event_format.max_depth == 5  # From instance
+        assert agent._truncation.capture.max_stderr == 2_000  # From default
 
     def test_multiple_agents_independent_configs(self):
         """Multiple agents should have independent configs."""
 
-        class Agent1(Agent, llm=_TEST_LLM, truncation=TruncationConfig(max_stdout_chars=50_000)):
+        class Agent1(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=50000)),
+        ):
             pass
 
-        class Agent2(Agent, llm=_TEST_LLM, truncation=TruncationConfig(max_stdout_chars=100_000)):
+        class Agent2(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
+        ):
             pass
 
         agent1 = Agent1()
         agent2 = Agent2()
 
         # Should be independent
-        assert agent1._truncation.max_stdout_chars == 50_000
-        assert agent2._truncation.max_stdout_chars == 100_000
+        assert agent1._truncation.capture.max_stdout == 50_000
+        assert agent2._truncation.capture.max_stdout == 100_000
 
 
 class TestTruncationConfigUsage:
@@ -118,7 +130,7 @@ class TestTruncationConfigUsage:
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=1000),  # Very small limit
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=1000)),  # Very small limit
         ):
             pass
 
@@ -143,7 +155,7 @@ for i in range(100):
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stderr_chars=500),  # Very small limit
+            truncation=TruncationConfig(capture=CaptureConfig(max_stderr=500)),  # Very small limit
         ):
             pass
 
@@ -151,7 +163,7 @@ for i in range(100):
 
         # This test is simplified due to sandbox restrictions
         # The limit is verified by the unit tests
-        assert agent._truncation.max_stderr_chars == 500
+        assert agent._truncation.capture.max_stderr == 500
 
     @pytest.mark.asyncio
     async def test_different_agents_different_limits(self):
@@ -160,14 +172,14 @@ for i in range(100):
         class SmallLimitAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=500),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=500)),
         ):
             pass
 
         class LargeLimitAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=10_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=10000)),
         ):
             pass
 
@@ -198,7 +210,7 @@ class TestConfigMergeEdgeCases:
         agent = TestAgent(truncation=None)
 
         # Should have defaults
-        assert agent._truncation.max_stdout_chars == 50_000
+        assert agent._truncation.capture.max_stdout == 50_000
 
     def test_partial_override(self):
         """Partial configs should only override specified fields."""
@@ -207,21 +219,22 @@ class TestConfigMergeEdgeCases:
             Agent,
             llm=_TEST_LLM,
             truncation=TruncationConfig(
-                max_stdout_chars=100_000,
-                max_stderr_chars=30_000,
-                max_pprint_elements=100,
+                capture=CaptureConfig(max_stdout=100000, max_stderr=30000),
+                event_format=FormatConfig(max_length=100),
             ),
         ):
             pass
 
         agent = TestAgent(
-            truncation=TruncationConfig(max_pprint_elements=200)  # Only override this
+            truncation=TruncationConfig(
+                event_format=FormatConfig(max_length=200)
+            )  # Only override this
         )
 
-        # Only max_pprint_elements should be overridden
-        assert agent._truncation.max_stdout_chars == 100_000  # Preserved from class
-        assert agent._truncation.max_stderr_chars == 30_000  # Preserved from class
-        assert agent._truncation.max_pprint_elements == 200  # Overridden
+        # Only value.max_length should be overridden
+        assert agent._truncation.capture.max_stdout == 100_000  # Preserved from class
+        assert agent._truncation.capture.max_stderr == 30_000  # Preserved from class
+        assert agent._truncation.event_format.max_length == 200  # Overridden
 
 
 class TestTokenBudgetIntegration:
@@ -318,7 +331,7 @@ class TestMethodLevelTruncationConfig:
         """@strategy(truncation=...) should store the config as _strategy_truncation."""
         from nemo_oo_agents import strategy
 
-        tc = TruncationConfig(max_stdout_chars=1234)
+        tc = TruncationConfig(capture=CaptureConfig(max_stdout=1234))
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(truncation=tc)
@@ -374,14 +387,13 @@ class TestMethodLevelTruncationConfig:
                 captured_tc["config"] = runtime.truncation_config
                 return "captured"
 
-        method_tc = TruncationConfig(max_stdout_chars=12345)
+        method_tc = TruncationConfig(capture=CaptureConfig(max_stdout=12345))
 
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
             truncation=TruncationConfig(
-                max_stdout_chars=100_000,
-                max_pprint_elements=77,
+                capture=CaptureConfig(max_stdout=100000), event_format=FormatConfig(max_length=77)
             ),
         ):
             @strategy(CapturingStrategy(), truncation=method_tc)
@@ -397,9 +409,9 @@ class TestMethodLevelTruncationConfig:
         assert "config" in captured_tc
         tc = captured_tc["config"]
         # Method-level field wins
-        assert tc.max_stdout_chars == 12345
+        assert tc.capture.max_stdout == 12345
         # Agent-level field preserved (not in method override)
-        assert tc.max_pprint_elements == 77
+        assert tc.event_format.max_length == 77
 
     @pytest.mark.asyncio
     async def test_method_level_truncation_applied_to_execute_code(self):
@@ -434,9 +446,14 @@ class TestMethodLevelTruncationConfig:
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000),  # Large agent-level limit
+            truncation=TruncationConfig(
+                capture=CaptureConfig(max_stdout=100000)
+            ),  # Large agent-level limit
         ):
-            @strategy(CodeRunningStrategy(), truncation=TruncationConfig(max_stdout_chars=200))
+            @strategy(
+                CodeRunningStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=200)),
+            )
             async def run_code(self) -> str:
                 """Run code."""
                 ...
@@ -463,9 +480,12 @@ class TestMethodLevelTruncationConfig:
         class TestAgent(
             Agent,
             llm=llm,
-            truncation=TruncationConfig(max_stdout_chars=100_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
         ):
-            @strategy(CodeActStrategy(), truncation=TruncationConfig(max_stdout_chars=500))
+            @strategy(
+                CodeActStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=500)),
+            )
             async def small_limit(self) -> str:
                 """Small stdout limit."""
                 ...
@@ -478,7 +498,7 @@ class TestMethodLevelTruncationConfig:
         agent = TestAgent()
 
         # Both methods resolve at the agent level — verify the agent config is intact
-        assert agent._truncation.max_stdout_chars == 100_000
+        assert agent._truncation.capture.max_stdout == 100_000
 
         # The small_limit method's wrapper should have _strategy_truncation set
         small_fn = TestAgent.__dict__["small_limit"]
@@ -496,11 +516,10 @@ class TestMethodLevelTruncationConfig:
             Agent,
             llm=_TEST_LLM,
             truncation=TruncationConfig(
-                max_stdout_chars=100_000,
-                max_pprint_elements=100,
+                capture=CaptureConfig(max_stdout=100000), event_format=FormatConfig(max_length=100)
             ),
         ):
-            @strategy(truncation=TruncationConfig(max_stdout_chars=500))
+            @strategy(truncation=TruncationConfig(capture=CaptureConfig(max_stdout=500)))
             async def method(self) -> str:
                 """Method with partial truncation override."""
                 ...
@@ -515,9 +534,9 @@ class TestMethodLevelTruncationConfig:
         merged = agent._truncation.merge_with(method_tc)
 
         # Method field wins
-        assert merged.max_stdout_chars == 500
+        assert merged.capture.max_stdout == 500
         # Agent field preserved (not in method override)
-        assert merged.max_pprint_elements == 100
+        assert merged.event_format.max_length == 100
 
     @pytest.mark.asyncio
     async def test_truncation_config_reverts_after_method_returns(self):
@@ -544,12 +563,12 @@ class TestMethodLevelTruncationConfig:
                 captured["during"] = runtime.truncation_config
                 return "done"
 
-        method_tc = TruncationConfig(max_stdout_chars=99_999)
+        method_tc = TruncationConfig(capture=CaptureConfig(max_stdout=99999))
 
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
         ):
             @strategy(CapturingStrategy(), truncation=method_tc)
             async def run(self) -> str:
@@ -559,15 +578,15 @@ class TestMethodLevelTruncationConfig:
         agent = TestAgent()
 
         # Before: runtime reflects agent-level config
-        assert agent.runtime.truncation_config.max_stdout_chars == 100_000
+        assert agent.runtime.truncation_config.capture.max_stdout == 100_000
 
         await agent.run()
 
         # During: strategy saw the method-level override
-        assert captured["during"].max_stdout_chars == 99_999
+        assert captured["during"].capture.max_stdout == 99_999
 
         # After: runtime has reverted to agent-level config
-        assert agent.runtime.truncation_config.max_stdout_chars == 100_000
+        assert agent.runtime.truncation_config.capture.max_stdout == 100_000
 
     @pytest.mark.asyncio
     async def test_method_level_max_block_chars_limits_context_rendering(self):
@@ -644,11 +663,11 @@ class TestMethodLevelTruncationConfig:
             async def execute(self, runtime, call: CurrentCall):
                 # Yield once to allow the other task to interleave
                 await asyncio.sleep(0)
-                seen = runtime.truncation_config.max_stdout_chars
+                seen = runtime.truncation_config.capture.max_stdout
                 captured[call.method_name] = seen
                 # Yield again — if the context var leaked, seen would have changed
                 await asyncio.sleep(0)
-                assert runtime.truncation_config.max_stdout_chars == seen, (
+                assert runtime.truncation_config.capture.max_stdout == seen, (
                     "truncation_config changed after yielding — context var leaked between tasks"
                 )
                 return "done"
@@ -656,14 +675,20 @@ class TestMethodLevelTruncationConfig:
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
         ):
-            @strategy(CapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=1_000))
+            @strategy(
+                CapturingStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=1000)),
+            )
             async def method_a(self) -> str:
                 """Method A with small stdout limit."""
                 ...
 
-            @strategy(CapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=2_000))
+            @strategy(
+                CapturingStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=2000)),
+            )
             async def method_b(self) -> str:
                 """Method B with medium stdout limit."""
                 ...
@@ -699,7 +724,7 @@ class TestMethodLevelTruncationConfig:
                 return {}
 
             async def execute(self, runtime, call: CurrentCall):
-                captured["inner"] = runtime.truncation_config.max_stdout_chars
+                captured["inner"] = runtime.truncation_config.capture.max_stdout
                 return "done"
 
         class OuterCallingStrategy(GenerationStrategy):
@@ -713,23 +738,29 @@ class TestMethodLevelTruncationConfig:
                 return {}
 
             async def execute(self, runtime, call: CurrentCall):
-                captured["outer_before"] = runtime.truncation_config.max_stdout_chars
+                captured["outer_before"] = runtime.truncation_config.capture.max_stdout
                 await runtime.agent.inner()
                 # Config must be restored to outer's value after inner returns
-                captured["outer_after"] = runtime.truncation_config.max_stdout_chars
+                captured["outer_after"] = runtime.truncation_config.capture.max_stdout
                 return "done"
 
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_stdout_chars=100_000),
+            truncation=TruncationConfig(capture=CaptureConfig(max_stdout=100000)),
         ):
-            @strategy(OuterCallingStrategy(), truncation=TruncationConfig(max_stdout_chars=1_000))
+            @strategy(
+                OuterCallingStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=1000)),
+            )
             async def outer(self) -> str:
                 """Outer method."""
                 ...
 
-            @strategy(InnerCapturingStrategy(), truncation=TruncationConfig(max_stdout_chars=2_000))
+            @strategy(
+                InnerCapturingStrategy(),
+                truncation=TruncationConfig(capture=CaptureConfig(max_stdout=2000)),
+            )
             async def inner(self) -> str:
                 """Inner method called from outer's strategy."""
                 ...

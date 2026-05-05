@@ -924,8 +924,8 @@ def _format_instance_repr(
                 break
             value_str = _format_value_to_str(
                 value,
-                max_length=5,
-                max_string=max_string or 150,
+                max_length=max_length,
+                max_string=max_string,
                 max_depth=(max_depth - 1) if max_depth else None,
                 expand_all=False,
                 depth=0,
@@ -997,8 +997,8 @@ def _format_instance_repr(
             continue
         value_str = _format_value_to_str(
             value,
-            max_length=5,
-            max_string=max_string or 150,
+            max_length=max_length,
+            max_string=max_string,
             max_depth=(max_depth - 1) if max_depth else None,
             expand_all=False,
             depth=0,
@@ -1023,8 +1023,8 @@ def _format_instance_repr(
 
             value_str = _format_value_to_str(
                 value,
-                max_length=5,
-                max_string=max_string or 150,
+                max_length=max_length,
+                max_string=max_string,
                 max_depth=(max_depth - 1) if max_depth else None,
                 expand_all=False,
                 depth=0,
@@ -1108,9 +1108,10 @@ def _format_nested_instance(
     obj_type = type(obj)
     type_name = obj_type.__name__
 
-    # Use tighter defaults for nested display
-    nested_max_length = max_length if max_length is not None else 3
-    nested_max_string = max_string if max_string is not None else 150
+    # Propagate caller's bounds straight through. None = unlimited; explicit
+    # value = bound to that count/length. No hidden tighter defaults.
+    nested_max_length = max_length
+    nested_max_string = max_string
 
     # Get type info and values
     extractor = get_type_info_extractor(obj)
@@ -1138,7 +1139,7 @@ def _format_nested_instance(
 
     # Truncate fields if needed
     truncated_count = 0
-    if len(field_names) > nested_max_length:
+    if nested_max_length is not None and len(field_names) > nested_max_length:
         truncated_count = len(field_names) - nested_max_length
         field_names = field_names[:nested_max_length]
 
@@ -1147,12 +1148,12 @@ def _format_nested_instance(
     for name in field_names:
         if name in values:
             value = values[name]
-            # Recursively format the value with tighter limits
+            # Propagate caller's bounds — no hidden tightening.
             value_str = _format_value_to_str(
                 value,
-                max_length=2,
+                max_length=nested_max_length,
                 max_string=nested_max_string,
-                max_depth=(max_depth - 1) if max_depth else 1,
+                max_depth=(max_depth - 1) if max_depth else None,
                 expand_all=False,
                 depth=depth + 1,
                 indent=0,

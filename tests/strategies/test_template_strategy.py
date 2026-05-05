@@ -304,12 +304,12 @@ class TestTemplateTcContext:
             id="test_tc_1",
             method_name="test",
             decorator="plan",
-            docstring="elements={tc.max_pprint_elements}",
+            docstring="elements={tc.event_format.max_length}",
             kwargs={},
         )
 
         result = await strategy.execute(runtime, call)
-        assert str(DEFAULT_TRUNCATION_CONFIG.max_pprint_elements) in result
+        assert str(DEFAULT_TRUNCATION_CONFIG.event_format.max_length) in result
 
     @pytest.mark.asyncio
     async def test_tc_format_parameters_as_code_pattern(self):
@@ -344,13 +344,13 @@ class TestTemplateTcContext:
             id="test_tc_3",
             method_name="test",
             decorator="plan",
-            docstring="elements={tc.max_pprint_elements}",
+            docstring="elements={tc.event_format.max_length}",
             kwargs={"tc": "this_should_be_overridden"},
         )
 
         result = await strategy.execute(runtime, call)
         # The injected TruncationConfig wins — the string kwarg was overridden
-        assert str(DEFAULT_TRUNCATION_CONFIG.max_pprint_elements) in result
+        assert str(DEFAULT_TRUNCATION_CONFIG.event_format.max_length) in result
         assert "this_should_be_overridden" not in result
 
 

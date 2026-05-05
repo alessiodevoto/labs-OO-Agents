@@ -26,6 +26,7 @@ from nemo_oo_agents.context_blocks import BlockMetadata, DynamicContext, Resolve
 from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import FormatConfig
     from nemo_oo_agents.runtime.context_manager import ContextManager
     from nemo_oo_agents.runtime.event_query import EventQuery
     from nemo_oo_agents.strategies.base import GenerationStrategy
@@ -165,7 +166,7 @@ async def build_context(
     scoped_event_query: "EventQuery | None" = None,
     agent_event_query: "EventQuery | None" = None,
     current_call_id: str | None = None,
-    pre_format_chars: int | None = None,
+    context_block_format: "FormatConfig | None" = None,
 ) -> BuildResult:
     """Build the complete context block list from all sources.
 
@@ -201,7 +202,7 @@ async def build_context(
 
     # --- All persistent blocks (protected framework blocks + user blocks) ---
     blocks, resolved_cache = await _phase_persistent_blocks(
-        blocks, context_manager, resolve_fn, pre_format_chars=pre_format_chars
+        blocks, context_manager, resolve_fn, context_block_format=context_block_format
     )
 
     # --- Strategy block overrides ---
@@ -234,7 +235,7 @@ async def _phase_persistent_blocks(
     blocks: list[ResolvedBlock],
     context_manager: "ContextManager",
     resolve_fn: ResolveFunc,
-    pre_format_chars: int | None = None,
+    context_block_format: "FormatConfig | None" = None,
 ) -> tuple[list[ResolvedBlock], dict[str, Any]]:
     """Add persistent blocks from context_manager.
 
@@ -267,11 +268,13 @@ async def _phase_persistent_blocks(
             # Cache the resolved value for __getitem__ access
             resolved_cache[key] = resolved
         else:
-            # Static path: use value directly, cap all values to prevent OOM
+            # Static path: render value through cfg.context_block_format bounds.
+            # Strings pass verbatim; non-strings go through pformat with the
+            # supplied structural knobs (max_string / max_length / max_depth).
             if value is None:
                 content = "None"
             else:
-                kwargs = {} if pre_format_chars is None else {"max_chars": pre_format_chars}
+                kwargs = context_block_format.model_dump() if context_block_format else {}
                 content = truncating_pformat(value, **kwargs)
             meta = BlockMetadata(
                 expr=f'self.context["{key}"]', user_block=is_user, immutable=immutable

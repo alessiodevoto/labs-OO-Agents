@@ -91,20 +91,20 @@ class TestFormatParametersTcParam:
             kwargs={},
         )
 
-    def test_tc_applies_max_pprint_elements(self):
-        """When tc provided, large lists are truncated to max_pprint_elements, not shown in full."""
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+    def test_tc_applies_value_max_length(self):
+        """When tc provided, large lists are truncated to value.max_length, not shown in full."""
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 
         call = self._make_call(items=list(range(1000)))
-        tc = TruncationConfig(max_pprint_elements=5)
+        tc = TruncationConfig(prefill_format=FormatConfig(max_length=5))
         result = call.format_parameters_as_code(tc=tc)
         # Head+tail: 5 elements → first 3 + last 2. Middle items (e.g. 500) not shown.
         assert "500" not in result  # Middle element absent
-        assert "not shown" in result  # Truncation notice present
+        assert "list(len=1000," in result  # Marker-family truncation marker present
 
     def test_tc_applies_max_pprint_depth(self):
         """When tc provided, deeply nested structures are truncated at max_pprint_depth."""
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 
         nested = {"a": {"b": {"c": {"d": "deep_value"}}}}
         call = CurrentCall(
@@ -115,17 +115,17 @@ class TestFormatParametersTcParam:
             args=(nested,),
             kwargs={},
         )
-        tc = TruncationConfig(max_pprint_depth=2)
+        tc = TruncationConfig(prefill_format=FormatConfig(max_depth=2))
         result = call.format_parameters_as_code(tc=tc)
         # deep_value is at depth 4 — should not appear when max_pprint_depth=2
         assert "deep_value" not in result
 
     def test_value_formatter_takes_precedence_over_tc(self):
         """When both value_formatter and tc provided, value_formatter wins."""
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 
         call = _make_call(args=(list(range(1000)),))
-        tc = TruncationConfig(max_pprint_elements=5)
+        tc = TruncationConfig(prefill_format=FormatConfig(max_length=5))
         result = call.format_parameters_as_code(
             value_formatter=lambda v: "CUSTOM_OUTPUT",
             tc=tc,

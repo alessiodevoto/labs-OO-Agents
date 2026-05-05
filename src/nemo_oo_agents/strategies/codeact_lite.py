@@ -45,6 +45,7 @@ from nemo_oo_agents.strategies.codeact import CodeActStrategy
 _DEFAULT_MAX_CHARS = 20_000
 
 if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import FormatConfig
     from nemo_oo_agents.strategies.base import RuntimeServices
     from nemo_oo_agents.strategies.current_call import CurrentCall
 
@@ -56,7 +57,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
+def plain_event_content(
+    event: Any,
+    max_chars: int = _DEFAULT_MAX_CHARS,
+    event_format: "FormatConfig | None" = None,
+) -> str:
     """Render an event as plain text — no type wrappers, no metadata.
 
     Extracts human-readable content from event objects instead of using
@@ -67,6 +72,11 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
         max_chars: Hard character cap applied to pformat of non-string values
                    (e.g. Out[n] Python return values).  Comes from
                    TruncationConfig.max_block_chars via PlainProviderFormatter.
+        event_format: Structural bounds (max_string / max_length / max_depth)
+                   for nested values within event fields. Without these,
+                   pformat's structured-instance fallback caps nested strings
+                   at 150 chars and the LLM sees `str(len=N, [:75]=..., [-75:]=...)`
+                   instead of the actual content.
 
     Returns:
         Plain text content suitable for LLM consumption.
@@ -85,10 +95,12 @@ def plain_event_content(event: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
         if event.stderr and not event.error:
             parts.append(f"Stderr: {event.stderr}")
         if event.value is not None:
-            # truncating_pformat handles non-strings; strings bypass pformat but must
-            # still be capped so a 10 MB string return value doesn't create a
-            # huge intermediate allocation before block-level truncation fires.
-            value_str = truncating_pformat(event.value, max_chars=max_chars)
+            # truncating_pformat handles non-strings; strings pass verbatim.
+            # event_format provides max_string/max_length/max_depth so nested
+            # strings within structured values are bounded by cfg.event_format
+            # rather than pformat's hidden 150-char fallback.
+            fc_kwargs = event_format.model_dump() if event_format is not None else {}
+            value_str = truncating_pformat(event.value, max_chars=max_chars, **fc_kwargs)
             parts.append(f"Out[{event.execution_count}]: {value_str}")
         if event.captured_locals:
             parts.append(event.captured_locals)
@@ -123,10 +135,18 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
         max_chars: Hard character cap forwarded to ``plain_event_content``
             for non-string ``Out[n]`` values.  Set from
             ``TruncationConfig.max_block_chars`` by CodeActLiteStrategy.
+        event_format: Structural bounds for nested values inside event fields
+            (max_string / max_length / max_depth). Set from
+            ``TruncationConfig.event_format`` by CodeActLiteStrategy.
     """
 
-    def __init__(self, max_chars: int = _DEFAULT_MAX_CHARS):
+    def __init__(
+        self,
+        max_chars: int = _DEFAULT_MAX_CHARS,
+        event_format: "FormatConfig | None" = None,
+    ):
         self._max_chars = max_chars  # set from tc.max_block_chars by CodeActLiteStrategy
+        self._event_format = event_format  # set from tc.event_format by CodeActLiteStrategy
 
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
         # System blocks: reuse XML wrapping from the base class by calling it on
@@ -168,7 +188,11 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
                 # Tool result: merge PythonOutput content if available.
                 py_out_block = python_outputs.get(event.tool_call_id)
                 if py_out_block and py_out_block.event:
-                    content = plain_event_content(py_out_block.event, max_chars=self._max_chars)
+                    content = plain_event_content(
+                        py_out_block.event,
+                        max_chars=self._max_chars,
+                        event_format=self._event_format,
+                    )
                 elif event.result is not None:
                     content = event.result.content
                 else:
@@ -190,7 +214,11 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
 
             else:
                 if block.event is not None:
-                    content = plain_event_content(block.event, max_chars=self._max_chars)
+                    content = plain_event_content(
+                        block.event,
+                        max_chars=self._max_chars,
+                        event_format=self._event_format,
+                    )
                 else:
                     content = block.content or ""
                 messages.append(RenderedMessage(role=block.role, content=content))
@@ -258,6 +286,7 @@ class CodeActLiteStrategy(CodeActStrategy):
             update={
                 "block_formatter": PlainCodeActBlockFormatter(
                     max_chars=tc.max_block_chars,
+                    event_format=tc.event_format,
                 )
             }
         )

@@ -18,7 +18,10 @@ serialization produce new :class:`ResolvedBlock` instances via ``model_copy()``.
 """
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.config.truncation_config import FormatConfig
 
 from nemo_oo_agents.context_blocks.events import ToolCallEvent
 from nemo_oo_agents.context_blocks.formatter import (
@@ -36,7 +39,7 @@ from nemo_oo_agents.context_blocks.models import (
     ResolvedBlock,
     Role,
 )
-from nemo_oo_agents.context_blocks.utils import camel_to_snake, truncate_content
+from nemo_oo_agents.context_blocks.utils import camel_to_snake
 
 
 class RenderResult(NamedTuple):
@@ -73,30 +76,6 @@ def format_message_content(block: ResolvedBlock, format_type: str) -> str:
         return block.content
     # Markdown and any other value
     return _markdown_message_content(block)
-
-
-def _truncate_blocks(
-    blocks: list[ResolvedBlock],
-    per_block_limit: int | None,
-    format_type: str,
-) -> list[ResolvedBlock]:
-    """Apply per-block truncation to a list of blocks. Returns a new list."""
-    if per_block_limit is None:
-        return blocks
-
-    result: list[ResolvedBlock] = []
-    for block in blocks:
-        content, was_truncated = truncate_content(block.content, per_block_limit, format_type)
-        if was_truncated:
-            block = block.model_copy(
-                update={
-                    "content": content,
-                    "metadata": block.metadata.model_copy(update={"truncated": True}),
-                }
-            )
-        result.append(block)
-
-    return result
 
 
 def _apply_context_total_limit(
@@ -180,17 +159,24 @@ def render_context(
     *,
     block_formatter: BlockFormatter,
     provider_formatter: ProviderFormatter,
-    block_limit: int | None = None,
     context_limit: int | None = None,
     event_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
     pre_format_limit: int | None = None,
+    event_format: "FormatConfig | None" = None,
     model_context_window: int | None = None,
 ) -> RenderResult:
     """Render resolved blocks into provider-specific output with utilization stats.
 
-    Never mutates input blocks. Truncation and event serialization produce new
-    ``ResolvedBlock`` instances via ``model_copy()``.
+    Never mutates input blocks. Per-block head/tail truncation has been removed
+    — content passes through verbatim. Total-context / total-event eviction
+    (``context_limit`` / ``event_limit``) drops whole blocks when over budget.
+
+    ``event_format`` carries the structural bounds (max_string / max_length /
+    max_depth) for event-field rendering at trajectory build time. The
+    block_formatter's ``format_event`` is called with these bounds so that
+    nested string fields within events are bounded (otherwise pformat's
+    structured-instance fallback caps strings at 150 chars).
     """
     if count_tokens is None and (context_limit is not None or event_limit is not None):
         raise ValueError(
@@ -199,32 +185,32 @@ def render_context(
         )
 
     count_fn: Callable[[str], int] = count_tokens if count_tokens is not None else len
-    formatter_type = block_formatter.format_type
 
     # Partition for truncation only.
     system_blocks = [b for b in blocks if b.role == Role.SYSTEM]
     message_blocks = [b for b in blocks if b.role != Role.SYSTEM]
 
-    # Pre-serialize non-tool events so their content can be measured and trimmed.
+    # Pre-serialize non-tool events so their content can be measured.
     # ToolCallEvents stay at content="" — the BlockFormatter handles them structurally.
     serialized_messages: list[ResolvedBlock] = []
     for block in message_blocks:
         if block.event is not None and not isinstance(block.event, ToolCallEvent):
-            kwargs = {} if pre_format_limit is None else {"max_chars": pre_format_limit}
-            content = block_formatter.format_event(block.event, **kwargs)
+            content = block_formatter.format_event(
+                block.event,
+                max_chars=pre_format_limit,
+                event_format=event_format,
+            )
             block = block.model_copy(update={"content": content})
         serialized_messages.append(block)
     message_blocks = serialized_messages
 
-    # Per-block and total truncation.
-    system_blocks = _truncate_blocks(system_blocks, block_limit, formatter_type)
+    # Total-context / total-event eviction: drop whole blocks when over budget.
     context_blocks_dropped = 0
     if context_limit is not None:
         system_blocks, context_blocks_dropped = _apply_context_total_limit(
             system_blocks, context_limit, count_fn
         )
 
-    message_blocks = _truncate_blocks(message_blocks, block_limit, formatter_type)
     events_dropped = 0
     if event_limit is not None:
         message_blocks, events_dropped = _apply_event_total_limit(

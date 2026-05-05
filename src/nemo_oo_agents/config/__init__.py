@@ -8,7 +8,11 @@ from nemo_oo_agents.config.strategy_config import (
 )
 from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
 from nemo_oo_agents.config.tool_configs import BashConfig
-from nemo_oo_agents.config.truncation_config import TruncationConfig
+from nemo_oo_agents.config.truncation_config import (
+    CaptureConfig,
+    FormatConfig,
+    TruncationConfig,
+)
 
 __all__ = [
     "ExecutionConfig",
@@ -19,4 +23,6 @@ __all__ = [
     "TokenBudgetConfig",
     "BashConfig",
     "TruncationConfig",
+    "CaptureConfig",
+    "FormatConfig",
 ]

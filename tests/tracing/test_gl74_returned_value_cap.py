@@ -28,35 +28,25 @@ class TestGl74ReturnedValueCap:
         parsed = json.loads(serialized)
         assert isinstance(parsed, dict)
 
-    def test_large_string_return_value_is_capped(self):
-        # TDD: will fail until Change 4 is implemented
+    def test_large_string_return_value_passes_through_verbatim(self):
+        """Block-level string truncation removed; large strings flow through.
+        Wire-protocol concerns (OTLP payload size) are a follow-up."""
         huge = "x" * 200_000
         result = self._make_result(huge)
         serialized = self.hooks._safe_serialize_execution_result(result)
-        parsed = json.loads(serialized)  # Must be valid JSON
+        parsed = json.loads(serialized)  # Must still be valid JSON
         rv = parsed.get("returned_value", "")
-        assert len(rv) <= 55_000  # 50K cap + notice overhead
+        assert rv == huge
 
     def test_large_list_return_value_is_capped(self):
-        # TDD: will fail until Change 4 is implemented
+        """Non-string return values still get the OOM-safety net."""
         big = list(range(100_000))
         result = self._make_result(big)
         serialized = self.hooks._safe_serialize_execution_result(result)
         parsed = json.loads(serialized)
         rv = parsed.get("returned_value", "")
+        # Non-string render is bounded by TruncatingStringIO at max_chars
         assert len(rv) <= 55_000
-
-    def test_capped_output_uses_prose_notice(self):
-        # TDD: will fail until Change 4 is implemented
-        # truncating_pformat produces "Output too large..." prose, not raw s[:50000]
-        huge = "START" + "x" * 200_000 + "END"
-        result = self._make_result(huge)
-        serialized = self.hooks._safe_serialize_execution_result(result)
-        parsed = json.loads(serialized)
-        rv = parsed.get("returned_value", "")
-        assert "Output too large" in rv
-        assert "START" in rv  # head preserved
-        assert "END" in rv  # tail preserved
 
     def test_post_json_slicing_gone_output_is_valid_json(self):
         # TDD: will fail until Change 4 is implemented

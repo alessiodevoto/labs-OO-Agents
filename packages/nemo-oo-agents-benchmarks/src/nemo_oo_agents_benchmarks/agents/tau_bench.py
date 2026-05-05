@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.agent import INHERIT, _InheritSentinel
-from nemo_oo_agents.config import CodeActConfig, TruncationConfig
+from nemo_oo_agents.config import CodeActConfig, FormatConfig, TruncationConfig
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
@@ -60,7 +60,7 @@ class TauBenchAgent(
         "domain_policy": DynamicContext(expr="self.taubench.policy"),
         "domain_tools": DynamicContext(expr="self.taubench.tools"),
     },
-    truncation=TruncationConfig(max_pprint_string=5000),
+    truncation=TruncationConfig(event_format=FormatConfig(max_string=5000)),
 ):
     taubench: Any  # TauBenchTools injected at runtime by the runner
 
