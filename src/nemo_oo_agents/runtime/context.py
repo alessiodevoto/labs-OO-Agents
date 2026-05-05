@@ -65,13 +65,6 @@ class ContextApi(Skill):
         """
         self._context[key] = value
 
-    def set_static(self, key: str, value: Any) -> None:
-        """Set a static context block (placed in the cacheable prefix).
-
-        Use for data that won't change between turns.
-        """
-        self._context.set_static(key, value)
-
     def set_dynamic(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
         """Set a dynamic context block (placed in the volatile suffix).
 
