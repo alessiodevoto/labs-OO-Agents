@@ -72,12 +72,7 @@ viewer = [
 sandbox = [
     "openshell",
 ]
-# Optional: OpenAI Responses API client (nemo_oo_agents.unifiedllm.OpenAIResponseClient).
-# 2.x is required: client.responses.parse() (used by OpenAIResponseClient) was
-# only stabilized in openai 2.x; 1.x has no Responses API surface.
-unifiedllm-openai = [
-    "openai>=2.0.0,<3.0.0",
-]
+
 # mcp is now nemo_oo_agents.mcp (deps in main dependencies)
 # CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.
 # Data-science stack for the LLM REPL: `uv add nemo-oo-agents-cli[datascience]`.
