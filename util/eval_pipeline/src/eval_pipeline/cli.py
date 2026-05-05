@@ -728,7 +728,8 @@ async def main_async():
 
         else:
             # Single run (--agent or no override)
-            results = await evaluator.run(**run_kwargs)
+            agent_label = _derive_agent_label_from_spec(args.agent) if args.agent else None
+            results = await evaluator.run(**run_kwargs, agent_label=agent_label)
 
             # Print summary
             if args.quiet:

@@ -338,6 +338,8 @@ class Evaluator:
         # Setup output directory (unique per run: microseconds + optional runs/parallel)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         suffix = ""
+        if agent_label:
+            suffix += f"_{agent_label}"
         if runs != 1:
             suffix += f"_r{runs}"
         if parallel != 1:
