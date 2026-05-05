@@ -5,10 +5,11 @@
 Maintains a long-running bash subprocess with sentinel-based output capture.
 ``cd``, ``export``, ``source``, and other stateful commands persist across calls.
 
-Reliability notes (lessons from the main BashTool):
+Reliability notes:
+- create_subprocess_exec (no sh wrapper) so proc.pid IS bash directly
 - start_new_session=True for process-group isolation
-- On timeout: SIGINT to foreground process group (handles vi/less/repl hangs)
-- Recovery sentinel after interrupt so session stays usable
+- On timeout: kill child processes via pgrep -P, bash survives and emits sentinels
+- Env vars, cwd, aliases preserved across timeouts; falls back to reset if recovery fails
 - Process-group SIGTERM/SIGKILL on close()
 """
 
@@ -54,8 +55,10 @@ class BashSession:
         env["PS1"] = ""
         env["TERM"] = "dumb"
 
-        self._process = await asyncio.create_subprocess_shell(
-            "/bin/bash --norc --noprofile",
+        self._process = await asyncio.create_subprocess_exec(
+            "/bin/bash",
+            "--norc",
+            "--noprofile",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -68,7 +71,7 @@ class BashSession:
         # Drain any shell startup output
         await self._run_raw("true", timeout=5.0)
 
-    async def run(self, command: str, timeout: float = 120.0) -> tuple[str, str, int]:
+    async def run(self, command: str, timeout: float = 30.0) -> tuple[str, str, int]:
         """Run a command and return (stdout, stderr, exit_code).
 
         The session persists state: ``cd``, ``export``, etc. carry over.
@@ -76,7 +79,7 @@ class BashSession:
 
         Args:
             command: Shell command to execute.
-            timeout: Maximum seconds to wait (default 120s).
+            timeout: Maximum seconds to wait (default 30s).
 
         Returns:
             Tuple of (stdout, stderr, exit_code).
@@ -142,8 +145,9 @@ class BashSession:
     async def _run_raw(self, script: str, timeout: float = 30.0) -> tuple[str, str, bool]:
         """Send raw script and read until sentinel. Returns (stdout, stderr, timed_out).
 
-        On timeout (e.g. vi, less, python repl), sends SIGINT to the session's
-        process group then drains recovery sentinels so the session stays usable.
+        On timeout: kills child processes via pgrep -P and waits for bash to
+        emit sentinels.  Env vars, aliases, and cwd are preserved.  Falls back
+        to full session reset only if sentinel recovery fails.
         """
         proc = self._process
         if proc is None or proc.stdin is None:
@@ -179,14 +183,108 @@ class BashSession:
         )
 
         if timed_out:
-            # The command may still be running (vi, less, python repl)
-            # or bash may be stuck in a quote context that swallowed
-            # our sentinels.  Either way the session is suspect —
-            # kill it and start fresh so the next run() is reliable.
-            logger.warning("Command timed out after %.1fs — resetting session", timeout)
-            await self.reset()
+            # Kill only child processes — bash itself survives and emits sentinels.
+            recovered = await self._interrupt_and_drain(proc, sentinel, timeout)
+            if not recovered:
+                logger.warning(
+                    "Command timed out after %.1fs and recovery failed — resetting session",
+                    timeout,
+                )
+                await self.reset()
 
         return out.strip(), err.strip(), timed_out
+
+    async def _interrupt_and_drain(
+        self,
+        proc: asyncio.subprocess.Process,
+        sentinel: str,
+        original_timeout: float,
+    ) -> bool:
+        """Kill child processes and drain sentinels. Returns True if session recovered.
+
+        With create_subprocess_exec, proc.pid IS bash directly.
+        pgrep -P finds the actual command. After the command dies,
+        bash continues and emits our sentinels — session preserved.
+
+        Graduated escalation: SIGTERM children → 5s → SIGINT children → 2s.
+        """
+        assert proc.stdout is not None and proc.stderr is not None
+
+        async def try_drain(grace: float) -> bool:
+            """Attempt to read both sentinels within *grace* seconds."""
+            found = [False, False]
+
+            async def drain_one(stream: asyncio.StreamReader, idx: int) -> None:
+                while True:
+                    try:
+                        raw = await asyncio.wait_for(stream.readline(), timeout=grace)
+                    except TimeoutError:
+                        return
+                    if not raw:
+                        return
+                    line = raw.decode("utf-8", errors="replace")
+                    if sentinel in line:
+                        found[idx] = True
+                        return
+
+            await asyncio.gather(drain_one(proc.stdout, 0), drain_one(proc.stderr, 1))
+            return all(found)
+
+        async def kill_children(sig: int) -> None:
+            """Send signal to child processes of bash via pgrep.
+
+            Falls back to killpg (which also kills bash) if pgrep is
+            unavailable or finds no children.
+            """
+            killed_any = False
+            try:
+                pgrep = await asyncio.create_subprocess_exec(
+                    "pgrep",
+                    "-P",
+                    str(proc.pid),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(pgrep.communicate(), timeout=2.0)
+                if stdout:
+                    for pid_str in stdout.decode().split():
+                        if pid_str.strip():
+                            try:
+                                os.kill(int(pid_str), sig)
+                                killed_any = True
+                            except (ProcessLookupError, OSError):
+                                pass
+            except (TimeoutError, OSError, FileNotFoundError):
+                pass
+
+            if not killed_any:
+                # Fallback: signal the entire process group.
+                # This kills bash too, but the session will reset as last resort.
+                try:
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, sig)
+                except (ProcessLookupError, OSError):
+                    pass
+
+        # First attempt: SIGTERM children → wait for sentinels
+        await kill_children(signal.SIGTERM)
+        if await try_drain(5.0):
+            logger.info(
+                "Command timed out after %.1fs — killed child, session preserved",
+                original_timeout,
+            )
+            return True
+
+        # Second attempt: SIGKILL children → wait for sentinels
+        await kill_children(signal.SIGKILL)
+        if await try_drain(2.0):
+            logger.info(
+                "Command timed out after %.1fs — force-killed child, session preserved",
+                original_timeout,
+            )
+            return True
+
+        return False
 
     async def reset(self) -> None:
         """Kill the current session and start a fresh one, preserving cwd."""

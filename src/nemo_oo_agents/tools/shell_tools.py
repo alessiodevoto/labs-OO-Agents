@@ -101,7 +101,7 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     # bash
     # ------------------------------------------------------------------
-    async def bash(self, command: str, timeout: float = 120.0) -> BashResult:
+    async def bash(self, command: str, timeout: float = 30.0) -> BashResult:
         """Run a shell command in the persistent bash session.
 
         State persists: ``cd``, ``export``, ``source``, aliases, and
@@ -109,7 +109,7 @@ class ShellTools(Skill):
 
         Args:
             command: Shell command to execute.
-            timeout: Max seconds to wait (default: 120).
+            timeout: Max seconds to wait (default: 30).
 
         Returns:
             BashResult with stdout, stderr, return_code, and .text for display.
