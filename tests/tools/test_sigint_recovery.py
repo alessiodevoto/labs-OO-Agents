@@ -111,7 +111,7 @@ class TestTimeoutRecovery:
         if "hello" not in out:
             import warnings
 
-            warnings.warn("pgrep-based recovery not available; env vars lost on timeout")
+            warnings.warn("pgrep-based recovery not available; env vars lost on timeout", stacklevel=2)
 
     async def test_timeout_with_nested_processes(self, session):
         """Deeply nested processes (bash -c 'sleep') are also killed."""
@@ -124,7 +124,7 @@ class TestTimeoutRecovery:
         if "deep" not in out:
             import warnings
 
-            warnings.warn("pgrep-based recovery not available; env vars lost on timeout")
+            warnings.warn("pgrep-based recovery not available; env vars lost on timeout", stacklevel=2)
 
     async def test_fast_command_after_timeout(self, session):
         """Fast commands work immediately after timeout recovery."""
