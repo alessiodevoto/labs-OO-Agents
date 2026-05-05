@@ -1942,5 +1942,3 @@ class ResponsesClient(UnifiedLLM):
                             texts.append(content_item.text)  # type: ignore
                     return "\n".join(texts)
         return ""
-
-
