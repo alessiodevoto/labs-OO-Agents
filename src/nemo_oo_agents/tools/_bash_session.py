@@ -231,7 +231,12 @@ class BashSession:
             return all(found)
 
         async def kill_children(sig: int) -> None:
-            """Send signal to child processes of bash via pgrep."""
+            """Send signal to child processes of bash via pgrep.
+
+            Falls back to killpg (which also kills bash) if pgrep is
+            unavailable or finds no children.
+            """
+            killed_any = False
             try:
                 pgrep = await asyncio.create_subprocess_exec(
                     "pgrep",
@@ -246,10 +251,20 @@ class BashSession:
                         if pid_str.strip():
                             try:
                                 os.kill(int(pid_str), sig)
+                                killed_any = True
                             except (ProcessLookupError, OSError):
                                 pass
-            except (TimeoutError, OSError):
+            except (TimeoutError, OSError, FileNotFoundError):
                 pass
+
+            if not killed_any:
+                # Fallback: signal the entire process group.
+                # This kills bash too, but the session will reset as last resort.
+                try:
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, sig)
+                except (ProcessLookupError, OSError):
+                    pass
 
         # First attempt: SIGTERM children → wait for sentinels
         await kill_children(signal.SIGTERM)
