@@ -61,22 +61,22 @@ class ContextApi(Skill):
     def __setitem__(self, key: str, value: Any) -> None:
         self._context[key] = value
 
-    def set(self, key: str, value: Any, *, immutable: bool = False) -> None:
-        """Set a static context block, with optional immutability declaration.
+    def set(self, key: str, value: Any, *, static: bool = False) -> None:
+        """Set a context block, optionally marking it as stable across turns.
 
-        Pass ``immutable=True`` to declare that the block's content will not change
+        Pass ``static=True`` to declare that the block's content will not change
         between turns. Renderers that support prefix caching use this to place the
         block in the cacheable portion of the prompt.
         """
-        self._context.set(key, value, immutable=immutable)
+        self._context.set(key, value, static=static)
 
-    def set_dynamic(self, key: str, expr: str, *, immutable: bool = False) -> None:
+    def set_dynamic(self, key: str, expr: str, *, static: bool = False) -> None:
         """Set a dynamic context block that re-evaluates each turn.
 
-        Pass ``immutable=True`` to declare that the expression's output is stable
+        Pass ``static=True`` to declare that the expression's output is stable
         across turns (re-evaluated, but the result is the same).
         """
-        self._context.set_dynamic(key, expr, immutable=immutable)
+        self._context.set_dynamic(key, expr, static=static)
 
     def __getitem__(self, key: str) -> Any:
         # Protected keys are hidden from iteration (__contains__/keys()/len)

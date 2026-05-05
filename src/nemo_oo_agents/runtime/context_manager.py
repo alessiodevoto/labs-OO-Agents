@@ -46,7 +46,7 @@ class ContextManager:
         self._blocks: dict[str, Any | DynamicContext] = {}
         self.protected_keys: set[str] = set()
         self._dynamic_cache: dict[str, Any] = {}
-        self._immutable: dict[str, bool] = {}
+        self._static: dict[str, bool] = {}
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Set a static context block.
@@ -63,13 +63,13 @@ class ContextManager:
         """
         self.set(key, value)
 
-    def set(self, key: str, value: Any, *, immutable: bool = False) -> None:
-        """Set a static context block, with optional immutability declaration.
+    def set(self, key: str, value: Any, *, static: bool = False) -> None:
+        """Set a context block, optionally marking it as stable across turns.
 
         Args:
             key: Block key (unique identifier).
             value: Any value. Stored as-is; pprint formatting happens at render time.
-            immutable: Declare that this block's content will not change between
+            static: Declare that this block's content will not change between
                 turns. Renderers use this to place it in a cacheable prefix.
 
         Raises:
@@ -86,16 +86,16 @@ class ContextManager:
             )
 
         self._blocks[key] = value
-        self._immutable[key] = immutable
+        self._static[key] = static
         self._invalidate(key)
 
-    def set_dynamic(self, key: str, expr: str, *, immutable: bool = False) -> None:
+    def set_dynamic(self, key: str, expr: str, *, static: bool = False) -> None:
         """Set a dynamic context block that re-evaluates each turn.
 
         Args:
             key: Block key (unique identifier).
             expr: Python expression to evaluate each turn.
-            immutable: Declare that the expression's output is stable across
+            static: Declare that the expression's output is stable across
                 turns. Renderers use this to place it in a cacheable prefix.
 
         Raises:
@@ -104,13 +104,13 @@ class ContextManager:
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
-        self._blocks[key] = DynamicContext(expr, immutable=immutable)
-        self._immutable[key] = immutable
+        self._blocks[key] = DynamicContext(expr, static=static)
+        self._static[key] = static
         self._invalidate(key)
 
-    def is_immutable(self, key: str) -> bool:
-        """Return True if the block was set with immutable=True."""
-        return self._immutable.get(key, False)
+    def is_static(self, key: str) -> bool:
+        """Return True if the block was set with static=True."""
+        return self._static.get(key, False)
 
     def __getitem__(self, key: str) -> Any:
         """Get the value of a context block.
@@ -149,7 +149,7 @@ class ContextManager:
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "remove")
         del self._blocks[key]
-        self._immutable.pop(key, None)
+        self._static.pop(key, None)
         self._invalidate(key)
 
     def __contains__(self, key: object) -> bool:
@@ -204,7 +204,7 @@ class ContextManager:
             value = raw
 
         del self._blocks[key]
-        self._immutable.pop(key, None)
+        self._static.pop(key, None)
         self._invalidate(key)
         return value
 
@@ -252,7 +252,7 @@ class ContextManager:
     # Internal protected-block API (used by Agent.__init__, not by LLMs)
     # ------------------------------------------------------------------
 
-    def set_protected(self, key: str, value: Any, *, immutable: bool = False) -> None:
+    def set_protected(self, key: str, value: Any, *, static: bool = False) -> None:
         """Register a static block as protected.
 
         Protected blocks are stored in ``_blocks`` like any other block but
@@ -262,15 +262,15 @@ class ContextManager:
         Args:
             key: Block key.
             value: Static value.
-            immutable: Whether renderers may cache this block across turns.
+            static: Whether renderers may cache this block across turns.
         """
         if isinstance(value, DynamicContext):
             raise TypeError(f"Use set_dynamic_protected({key!r}, ...) for DynamicContext blocks")
         self.protected_keys.add(key)
         self._blocks[key] = value
-        self._immutable[key] = immutable
+        self._static[key] = static
 
-    def set_dynamic_protected(self, key: str, expr: str, *, immutable: bool = False) -> None:
+    def set_dynamic_protected(self, key: str, expr: str, *, static: bool = False) -> None:
         """Register a dynamic block as protected.
 
         Like ``set_protected`` but stores a ``DynamicContext`` marker so the
@@ -279,11 +279,11 @@ class ContextManager:
         Args:
             key: Block key.
             expr: Python expression to evaluate each turn.
-            immutable: Whether the expression output is stable across turns.
+            static: Whether the expression output is stable across turns.
         """
         self.protected_keys.add(key)
-        self._blocks[key] = DynamicContext(expr, immutable=immutable)
-        self._immutable[key] = immutable
+        self._blocks[key] = DynamicContext(expr, static=static)
+        self._static[key] = static
         self._invalidate(key)
 
     def remove_protected(self, key: str) -> None:
@@ -299,5 +299,5 @@ class ContextManager:
             raise KeyError(key)
         del self._blocks[key]
         self.protected_keys.discard(key)
-        self._immutable.pop(key, None)
+        self._static.pop(key, None)
         self._invalidate(key)

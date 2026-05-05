@@ -38,18 +38,18 @@ class DynamicContext(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     expr: Annotated[str, Field(description="Python expression to evaluate each turn")]
-    immutable: bool = Field(
+    static: bool = Field(
         default=False,
         description="Author's declaration that this block's content will not change "
         "between turns. Renderers use this to place the block in a cacheable prefix.",
     )
 
-    def __init__(self, expr: str, *, immutable: bool = False, **kwargs: Any):
+    def __init__(self, expr: str, *, static: bool = False, **kwargs: Any):
         """Create a DynamicContext block marker.
 
         Args:
             expr: Python expression to evaluate each turn.
-            immutable: Declare that the expression's output is stable across turns
+            static: Declare that the expression's output is stable across turns
                 (the author's hint — enables prefix caching in supporting renderers).
 
         Raises:
@@ -59,10 +59,10 @@ class DynamicContext(BaseModel):
             compile(expr, "<block_expr>", "eval")
         except SyntaxError as e:
             raise BlockSyntaxError(key="<dynamic>", expr=expr, original_error=e) from e
-        super().__init__(expr=expr, immutable=immutable, **kwargs)
+        super().__init__(expr=expr, static=static, **kwargs)
 
     def __repr__(self) -> str:
-        flag = ", immutable=True" if self.immutable else ""
+        flag = ", static=True" if self.static else ""
         return f"DynamicContext({self.expr!r}{flag})"
 
 
@@ -83,7 +83,7 @@ class BlockMetadata(BaseModel):
         description="Whether this is a user-set block (from self.context). "
         "User blocks are dropped first during context truncation.",
     )
-    immutable: bool = Field(
+    static: bool = Field(
         default=False,
         description="Author's declaration that the block's content is stable across "
         "turns. Renderers use this to place the block in a cacheable prefix. "

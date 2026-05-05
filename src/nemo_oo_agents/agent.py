@@ -236,8 +236,8 @@ class Agent(metaclass=AgentMeta):
         # ``state`` is the instance's current field values — re-evaluated each
         # turn since skills can attach at runtime and field values change.
         cm = self.context_manager
-        cm.set_dynamic_protected("system_prompt", "self._system_prompt()", immutable=True)
-        cm.set_dynamic_protected("self", "doc(type(self))", immutable=True)
+        cm.set_dynamic_protected("system_prompt", "self._system_prompt()", static=True)
+        cm.set_dynamic_protected("self", "doc(type(self))", static=True)
         cm.set_dynamic_protected(
             "state",
             "pformat(self, max_length=50, max_string=500, max_depth=4)",

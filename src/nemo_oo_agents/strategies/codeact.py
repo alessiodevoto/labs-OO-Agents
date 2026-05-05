@@ -343,10 +343,10 @@ class CodeActStrategy(CompositeStrategy):
     def get_block_overrides(self) -> dict[str, "str | DynamicContext | None"]:
         return {
             "strategy_prompt": DynamicContext(
-                "strategy.strategy_instructions(runtime)", immutable=False
+                "strategy.strategy_instructions(runtime)", static=False
             ),
             "execution_context": DynamicContext(
-                "strategy.execution_context(runtime)", immutable=True
+                "strategy.execution_context(runtime)", static=True
             ),
         }
 

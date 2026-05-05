@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the cached renderer (immutable-prefix / events / volatile-suffix)."""
+"""Tests for the cached renderer (static-prefix / events / dynamic-suffix)."""
 
 from nemo_oo_agents.context_blocks.events import AssistantEvent, UserEvent
 from nemo_oo_agents.context_blocks.formatter import (
@@ -12,57 +12,57 @@ from nemo_oo_agents.context_blocks.renderer import render_context
 from nemo_oo_agents.context_blocks.renderers.cached import CachedBlockFormatter
 
 
-def _immutable_block(key: str, content: str, expr: str | None = None) -> ResolvedBlock:
+def _static_block(key: str, content: str, expr: str | None = None) -> ResolvedBlock:
     return ResolvedBlock(
         key=key,
         content=content,
         role=Role.SYSTEM,
-        metadata=BlockMetadata(expr=expr, immutable=True),
+        metadata=BlockMetadata(expr=expr, static=True),
     )
 
 
-def _volatile_block(key: str, content: str, expr: str | None = None) -> ResolvedBlock:
+def _dynamic_block(key: str, content: str, expr: str | None = None) -> ResolvedBlock:
     return ResolvedBlock(
         key=key,
         content=content,
         role=Role.SYSTEM,
-        metadata=BlockMetadata(expr=expr, immutable=False, user_block=True),
+        metadata=BlockMetadata(expr=expr, static=False, user_block=True),
     )
 
 
 class TestImmutableMetadata:
-    def test_block_metadata_has_immutable_field(self):
-        meta = BlockMetadata(immutable=True)
-        assert meta.immutable is True
+    def test_block_metadata_has_static_field(self):
+        meta = BlockMetadata(static=True)
+        assert meta.static is True
 
-    def test_block_metadata_immutable_defaults_false(self):
-        assert BlockMetadata().immutable is False
+    def test_block_metadata_static_defaults_false(self):
+        assert BlockMetadata().static is False
 
-    def test_dynamic_context_accepts_immutable(self):
-        dc = DynamicContext("doc(self)", immutable=True)
-        assert dc.immutable is True
+    def test_dynamic_context_accepts_static(self):
+        dc = DynamicContext("doc(self)", static=True)
+        assert dc.static is True
         assert dc.expr == "doc(self)"
 
-    def test_dynamic_context_immutable_defaults_false(self):
-        assert DynamicContext("doc(self)").immutable is False
+    def test_dynamic_context_static_defaults_false(self):
+        assert DynamicContext("doc(self)").static is False
 
-    def test_dynamic_context_repr_shows_immutable(self):
-        assert "immutable=True" in repr(DynamicContext("x", immutable=True))
-        assert "immutable" not in repr(DynamicContext("x"))
+    def test_dynamic_context_repr_shows_static(self):
+        assert "static=True" in repr(DynamicContext("x", static=True))
+        assert "static" not in repr(DynamicContext("x"))
 
 
 class TestCachedBlockFormatterPartition:
-    def test_all_immutable_single_system_message(self):
+    def test_all_static_single_system_message(self):
         fmt = CachedBlockFormatter()
-        messages = fmt.format([_immutable_block("a", "A"), _immutable_block("b", "B")])
+        messages = fmt.format([_static_block("a", "A"), _static_block("b", "B")])
         assert len(messages) == 1
         assert messages[0].role == Role.SYSTEM
         assert "<a>" in messages[0].content and "<b>" in messages[0].content
 
     def test_all_volatile_falls_back_to_system(self):
-        """When no blocks are immutable, all go to SYSTEM (XMLBlockFormatter-compatible)."""
+        """When no blocks are static, all go to SYSTEM (XMLBlockFormatter-compatible)."""
         fmt = CachedBlockFormatter()
-        messages = fmt.format([_volatile_block("plan", "do stuff")])
+        messages = fmt.format([_dynamic_block("plan", "do stuff")])
         assert len(messages) == 1
         assert messages[0].role == Role.SYSTEM
         assert "<plan>" in messages[0].content
@@ -72,10 +72,10 @@ class TestCachedBlockFormatterPartition:
         fmt = CachedBlockFormatter()
         messages = fmt.format(
             [
-                _immutable_block("sys", "S"),
-                _volatile_block("plan", "P"),
-                _immutable_block("self_doc", "D"),
-                _volatile_block("state", "T"),
+                _static_block("sys", "S"),
+                _dynamic_block("plan", "P"),
+                _static_block("self_doc", "D"),
+                _dynamic_block("state", "T"),
             ]
         )
         assert len(messages) == 2
@@ -87,11 +87,11 @@ class TestCachedBlockFormatterPartition:
 
 
 class TestCachedRendererEndToEndOpenAI:
-    def test_immutable_becomes_system_message(self):
+    def test_static_becomes_system_message(self):
         # Non-dynamic-source block: ``expr=`` is suppressed even if provided
         # in metadata. Only ``self.context.set_dynamic()`` blocks render it.
         result = render_context(
-            [_immutable_block("sys", "You are X.", expr="self._system_prompt()")],
+            [_static_block("sys", "You are X.", expr="self._system_prompt()")],
             block_formatter=CachedBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
         ).output
@@ -100,8 +100,8 @@ class TestCachedRendererEndToEndOpenAI:
     def test_volatile_becomes_trailing_user(self):
         result = render_context(
             [
-                _immutable_block("sys", "S"),
-                _volatile_block("plan", "P", expr="self.context['plan']"),
+                _static_block("sys", "S"),
+                _dynamic_block("plan", "P", expr="self.context['plan']"),
             ],
             block_formatter=CachedBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
@@ -117,8 +117,8 @@ class TestCachedRendererEndToEndOpenAI:
         user_event = UserEvent(content="hi")
         user_event.tag = "1"
         blocks = [
-            _immutable_block("sys", "S"),
-            _volatile_block("plan", "P"),
+            _static_block("sys", "S"),
+            _dynamic_block("plan", "P"),
             ResolvedBlock(
                 key="event_1",
                 content="",
@@ -143,8 +143,8 @@ class TestCachedRendererEndToEndOpenAI:
         asst_event = AssistantEvent(content="done")
         asst_event.tag = "2"
         blocks = [
-            _immutable_block("sys", "S"),
-            _volatile_block("plan", "P"),
+            _static_block("sys", "S"),
+            _dynamic_block("plan", "P"),
             ResolvedBlock(
                 key="event_2",
                 content="",
@@ -164,7 +164,7 @@ class TestCachedRendererEndToEndOpenAI:
 
     def test_no_volatile_no_trailing_message(self):
         result = render_context(
-            [_immutable_block("sys", "S")],
+            [_static_block("sys", "S")],
             block_formatter=CachedBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
         ).output
@@ -182,7 +182,7 @@ class TestCachedRendererEndToEndOpenAI:
 class TestCachedRendererEndToEndAnthropic:
     def test_returns_system_and_messages_dict(self):
         result = render_context(
-            [_immutable_block("sys", "S"), _volatile_block("plan", "P")],
+            [_static_block("sys", "S"), _dynamic_block("plan", "P")],
             block_formatter=CachedBlockFormatter(),
             provider_formatter=AnthropicProviderFormatter(),
         ).output

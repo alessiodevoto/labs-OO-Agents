@@ -80,9 +80,9 @@ async def _apply_overrides(
             content = "None"
 
         if isinstance(value, DynamicContext):
-            meta = BlockMetadata(expr=value.expr, immutable=value.immutable)
+            meta = BlockMetadata(expr=value.expr, static=value.static)
         else:
-            meta = BlockMetadata(expr=static_expr(key), immutable=True)
+            meta = BlockMetadata(expr=static_expr(key), static=True)
 
         new_block = ResolvedBlock(key=key, content=content, role=Role.SYSTEM, metadata=meta)
         if key in index:
@@ -252,7 +252,7 @@ async def _phase_persistent_blocks(
 
     for key, value in context_manager._raw_items():
         is_user = key not in protected_keys
-        immutable = context_manager.is_immutable(key)
+        is_static = context_manager.is_static(key)
         if isinstance(value, DynamicContext):
             # DynamicContext path: resolve via async eval
             # resolve_fn returns pre-formatted string (already pprinted if non-string)
@@ -261,7 +261,7 @@ async def _phase_persistent_blocks(
             meta = BlockMetadata(
                 expr=value.expr,
                 user_block=is_user,
-                immutable=immutable or value.immutable,
+                static=is_static or value.static,
                 source_dynamic=True,
             )
             # Cache the resolved value for __getitem__ access
@@ -274,7 +274,7 @@ async def _phase_persistent_blocks(
                 kwargs = {} if pre_format_chars is None else {"max_chars": pre_format_chars}
                 content = truncating_pformat(value, **kwargs)
             meta = BlockMetadata(
-                expr=f'self.context["{key}"]', user_block=is_user, immutable=immutable
+                expr=f'self.context["{key}"]', user_block=is_user, static=is_static
             )
 
         blocks = [
