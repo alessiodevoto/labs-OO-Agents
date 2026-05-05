@@ -343,12 +343,16 @@ class CodeActStrategy(CompositeStrategy):
     def get_block_overrides(self) -> dict[str, "str | DynamicContext | None"]:
         return {
             "strategy_prompt": DynamicContext(
-                "strategy.strategy_instructions(runtime)", static=False
+                "strategy.strategy_instructions(runtime)"
             ),
             "execution_context": DynamicContext(
-                "strategy.execution_context(runtime)", static=True
+                "strategy.execution_context(runtime)"
             ),
         }
+
+    def get_static_block_keys(self) -> set[str]:
+        """Block keys from get_block_overrides() that should be in the static partition."""
+        return {"execution_context"}
 
     def get_block_order(self) -> list[str] | None:
         """Place doc(self) after execution_context so the LLM sees instructions first."""

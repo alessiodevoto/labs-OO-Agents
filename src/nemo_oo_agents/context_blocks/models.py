@@ -29,8 +29,8 @@ class DynamicContext(BaseModel):
     at each LLM turn. The expression is validated at creation time.
 
     Usage:
-        self.context.set_dynamic("status", "self.format_status()")
-        self.context.set_dynamic("progress", "self.todo.show_active()")
+        self.context.set_dynamic("status", expr="self.format_status()")
+        self.context.set_dynamic("progress", expr="self.todo.show_active()")
 
     The expression must be valid Python (compilable as an eval expression).
     """
@@ -38,19 +38,12 @@ class DynamicContext(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     expr: Annotated[str, Field(description="Python expression to evaluate each turn")]
-    static: bool = Field(
-        default=False,
-        description="Author's declaration that this block's content will not change "
-        "between turns. Renderers use this to place the block in a cacheable prefix.",
-    )
 
-    def __init__(self, expr: str, *, static: bool = False, **kwargs: Any):
+    def __init__(self, expr: str, **kwargs: Any):
         """Create a DynamicContext block marker.
 
         Args:
             expr: Python expression to evaluate each turn.
-            static: Declare that the expression's output is stable across turns
-                (the author's hint — enables prefix caching in supporting renderers).
 
         Raises:
             BlockSyntaxError: If expr is not valid Python syntax.
@@ -59,11 +52,10 @@ class DynamicContext(BaseModel):
             compile(expr, "<block_expr>", "eval")
         except SyntaxError as e:
             raise BlockSyntaxError(key="<dynamic>", expr=expr, original_error=e) from e
-        super().__init__(expr=expr, static=static, **kwargs)
+        super().__init__(expr=expr, **kwargs)
 
     def __repr__(self) -> str:
-        flag = ", static=True" if self.static else ""
-        return f"DynamicContext({self.expr!r}{flag})"
+        return f"DynamicContext({self.expr!r})"
 
 
 class BlockMetadata(BaseModel):

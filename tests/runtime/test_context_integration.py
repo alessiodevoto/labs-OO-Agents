@@ -23,8 +23,8 @@ class TestContextManager:
         agent = TestAgent()
         assert hasattr(agent, "context_manager")
 
-    def test_set_method_supports_static_flag(self):
-        """``.set()`` is available for declaring per-block static caching."""
+    def test_set_static_method(self):
+        """``set_static()`` places blocks in the cacheable partition."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
@@ -32,11 +32,11 @@ class TestContextManager:
 
         agent = TestAgent()
 
-        agent.context_manager.set("key", "value", static=True)
+        agent.context_manager.set_static("key", "value")
         assert agent.context_manager["key"] == "value"
         assert agent.context_manager.is_static("key") is True
 
-        agent.context_manager.set("other", "value")
+        agent.context_manager.set_dynamic("other", "value")
         assert agent.context_manager.is_static("other") is False
 
     def test_set_static_value(self):
@@ -58,7 +58,7 @@ class TestContextManager:
             pass
 
         agent = TestAgent()
-        agent.context_manager.set_dynamic("status", "self.format_status()")
+        agent.context_manager.set_dynamic("status", expr="self.format_status()")
         assert "status" in agent.context_manager
 
     def test_set_dynamic_rejects_invalid_expr(self):
@@ -72,7 +72,7 @@ class TestContextManager:
 
         agent = TestAgent()
         with pytest.raises(BlockSyntaxError):
-            agent.context_manager.set_dynamic("bad", "this is not valid python!!!")
+            agent.context_manager.set_dynamic("bad", expr="this is not valid python!!!")
 
     def test_setitem_rejects_dynamic(self):
         """self.context['key'] = DynamicContext(...) raises TypeError."""
@@ -172,7 +172,7 @@ class TestContextManager:
             pass
 
         agent = TestAgent()
-        agent.context_manager.set_dynamic("status", "self.format_status()")
+        agent.context_manager.set_dynamic("status", expr="self.format_status()")
         with pytest.raises(DynamicNotResolvedError, match="status"):
             _ = agent.context_manager["status"]
 
@@ -306,7 +306,7 @@ class TestBuildMessages:
                 return "Ready"
 
         agent = TestAgent()
-        agent.context_manager.set_dynamic("status", "self.get_status()")
+        agent.context_manager.set_dynamic("status", expr="self.get_status()")
 
         # Before build: dynamic block not yet resolved — raises error
         from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError

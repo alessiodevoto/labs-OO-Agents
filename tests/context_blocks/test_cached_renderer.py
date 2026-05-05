@@ -38,17 +38,14 @@ class TestImmutableMetadata:
     def test_block_metadata_static_defaults_false(self):
         assert BlockMetadata().static is False
 
-    def test_dynamic_context_accepts_static(self):
-        dc = DynamicContext("doc(self)", static=True)
-        assert dc.static is True
+    def test_dynamic_context_has_no_static_field(self):
+        """DynamicContext no longer carries a static flag — partition is determined by ContextManager."""
+        dc = DynamicContext("doc(self)")
         assert dc.expr == "doc(self)"
+        assert not hasattr(dc, "static")
 
-    def test_dynamic_context_static_defaults_false(self):
-        assert DynamicContext("doc(self)").static is False
-
-    def test_dynamic_context_repr_shows_static(self):
-        assert "static=True" in repr(DynamicContext("x", static=True))
-        assert "static" not in repr(DynamicContext("x"))
+    def test_dynamic_context_repr(self):
+        assert repr(DynamicContext("x")) == "DynamicContext('x')"
 
 
 class TestCachedBlockFormatterPartition:

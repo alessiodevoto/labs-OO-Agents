@@ -44,6 +44,7 @@ async def _apply_overrides(
     overrides: dict[str, str | DynamicContext | None],
     resolve_fn: ResolveFunc,
     static_expr: Callable[[str], str],
+    static_keys: set[str] | None = None,
 ) -> list[ResolvedBlock]:
     """Apply a dict of overrides (replace/append/remove) to blocks.
 
@@ -55,6 +56,7 @@ async def _apply_overrides(
         overrides: Dict of key -> value. None removes, str/DynamicContext replaces or appends.
         resolve_fn: Async function to resolve DynamicContext values.
         static_expr: Function(key) -> metadata expr string for static values.
+        static_keys: Keys that should be placed in the static partition when new.
     """
     if not overrides:
         return blocks
@@ -79,10 +81,23 @@ async def _apply_overrides(
         if content is None:
             content = "None"
 
-        if isinstance(value, DynamicContext):
-            meta = BlockMetadata(expr=value.expr, static=value.static)
+        # Determine static partition: inherit from existing block if present,
+        # otherwise check static_keys or default based on value type.
+        existing_static = None
+        if key in index:
+            existing_static = blocks[index[key]].metadata.static
+        if existing_static is not None:
+            is_block_static = existing_static
+        elif static_keys and key in static_keys:
+            is_block_static = True
         else:
-            meta = BlockMetadata(expr=static_expr(key), static=True)
+            # New block: DynamicContext is dynamic, plain values are static
+            is_block_static = not isinstance(value, DynamicContext)
+
+        if isinstance(value, DynamicContext):
+            meta = BlockMetadata(expr=value.expr, static=is_block_static)
+        else:
+            meta = BlockMetadata(expr=static_expr(key), static=is_block_static)
 
         new_block = ResolvedBlock(key=key, content=content, role=Role.SYSTEM, metadata=meta)
         if key in index:
@@ -261,7 +276,7 @@ async def _phase_persistent_blocks(
             meta = BlockMetadata(
                 expr=value.expr,
                 user_block=is_user,
-                static=is_static or value.static,
+                static=is_static,
                 source_dynamic=True,
             )
             # Cache the resolved value for __getitem__ access
@@ -294,11 +309,16 @@ async def _phase_strategy_overrides(
     if not strategy or not hasattr(strategy, "get_block_overrides"):
         return blocks
 
+    static_keys = None
+    if hasattr(strategy, "get_static_block_keys"):
+        static_keys = strategy.get_static_block_keys()
+
     return await _apply_overrides(
         blocks,
         strategy.get_block_overrides(),
         resolve_fn,
         static_expr=lambda key: f"strategy.{key}",
+        static_keys=static_keys,
     )
 
 

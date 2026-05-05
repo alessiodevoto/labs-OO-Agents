@@ -7,13 +7,13 @@ what information appears in the system prompt.
 
 Usage:
     self.context["notes"] = "Here are my notes..."              # static
-    self.context.set_dynamic("status", "self.format_status()")  # dynamic
+    self.context.set_dynamic("status", expr="self.format_status()")  # dynamic
     value = self.context["notes"]                                # read
     del self.context["notes"]                                    # remove
     "notes" in self.context                                      # check
 
 Cache lifecycle for DynamicContext blocks:
-    set_dynamic("key", "expr")  → stores DynamicContext in _blocks, invalidates cache
+    set_dynamic("key", expr="expr")  → stores DynamicContext in _blocks, invalidates cache
     _prepare_context() runs     → evaluates expr, calls _update_resolved({"key": value})
     self.context["key"]         → returns cached value from _dynamic_cache
 """
@@ -49,28 +49,36 @@ class ContextManager:
         self._static: dict[str, bool] = {}
 
     def __setitem__(self, key: str, value: Any) -> None:
-        """Set a static context block.
+        """Set a dynamic context block via dict syntax.
+
+        Blocks set this way are placed in the volatile (dynamic) partition.
+        Use ``set_static()`` for blocks that should be in the cacheable prefix.
 
         Args:
             key: Block key (unique identifier).
             value: Any value. Stored as-is; pprint formatting happens at
                    render time in _prepare_context().
-                   For dynamic blocks, use set_dynamic() instead.
 
         Raises:
             ProtectedBlockError: If key is protected.
-            TypeError: If value is a DynamicContext (use set_dynamic instead).
+            TypeError: If value is a DynamicContext (use set_dynamic(expr=...) instead).
         """
-        self.set(key, value)
+        if isinstance(value, DynamicContext):
+            raise TypeError(
+                f"Use self.context.set_dynamic({key!r}, expr={value.expr!r}) "
+                f"instead of self.context[{key!r}] = DynamicContext(...)"
+            )
+        self.set_dynamic(key, value)
 
-    def set(self, key: str, value: Any, *, static: bool = False) -> None:
-        """Set a context block, optionally marking it as stable across turns.
+    def set_static(self, key: str, value: Any) -> None:
+        """Set a static context block (placed in the cacheable prefix).
+
+        Static blocks are stable across turns. Use for data the LLM needs
+        but that doesn't change between turns.
 
         Args:
             key: Block key (unique identifier).
             value: Any value. Stored as-is; pprint formatting happens at render time.
-            static: Declare that this block's content will not change between
-                turns. Renderers use this to place it in a cacheable prefix.
 
         Raises:
             ProtectedBlockError: If key is protected.
@@ -82,21 +90,25 @@ class ContextManager:
         if isinstance(value, DynamicContext):
             raise TypeError(
                 f"Use self.context.set_dynamic({key!r}, {value.expr!r}) "
-                f"instead of self.context[{key!r}] = DynamicContext(...)"
+                f"instead of self.context.set_static({key!r}, DynamicContext(...))"
             )
 
         self._blocks[key] = value
-        self._static[key] = static
+        self._static[key] = True
         self._invalidate(key)
 
-    def set_dynamic(self, key: str, expr: str, *, static: bool = False) -> None:
-        """Set a dynamic context block that re-evaluates each turn.
+    def set_dynamic(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+        """Set a dynamic context block (placed in the volatile suffix).
+
+        Accepts either a plain value or an expression string. Plain values are
+        stored directly but placed in the dynamic partition. Expressions are
+        wrapped in DynamicContext and re-evaluated each turn.
 
         Args:
             key: Block key (unique identifier).
-            expr: Python expression to evaluate each turn.
-            static: Declare that the expression's output is stable across
-                turns. Renderers use this to place it in a cacheable prefix.
+            value: Plain value to store in the dynamic partition.
+            expr: Python expression to evaluate each turn (keyword-only).
+                  Mutually exclusive with a non-None ``value``.
 
         Raises:
             ProtectedBlockError: If key is protected.
@@ -104,12 +116,17 @@ class ContextManager:
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
-        self._blocks[key] = DynamicContext(expr, static=static)
-        self._static[key] = static
+        if expr is not None:
+            self._blocks[key] = DynamicContext(expr)
+        elif isinstance(value, DynamicContext):
+            self._blocks[key] = value
+        else:
+            self._blocks[key] = value
+        self._static[key] = False
         self._invalidate(key)
 
     def is_static(self, key: str) -> bool:
-        """Return True if the block was set with static=True."""
+        """Return True if the block is in the static (cacheable) partition."""
         return self._static.get(key, False)
 
     def __getitem__(self, key: str) -> Any:
@@ -221,8 +238,14 @@ class ContextManager:
 
         Handles both protected and unprotected keys. Used by Agent._apply_context_dict
         to apply class-level and instance-level context overrides at init time.
+
+        Overrides preserve the static/dynamic partition of the block they replace.
+        If the key doesn't exist yet, DynamicContext overrides go to dynamic,
+        plain values go to dynamic (matching __setitem__ behavior).
         """
         is_protected = key in self.protected_keys
+        is_static_block = self._static.get(key, False)
+
         if value is None:
             if is_protected:
                 self.remove_protected(key)
@@ -230,12 +253,18 @@ class ContextManager:
                 self.pop(key, None)
         elif isinstance(value, DynamicContext):
             if is_protected:
-                self.set_dynamic_protected(key, value.expr)
+                if is_static_block:
+                    self.set_static_protected(key, expr=value.expr)
+                else:
+                    self.set_dynamic_protected(key, expr=value.expr)
             else:
-                self.set_dynamic(key, value.expr)
+                self.set_dynamic(key, expr=value.expr)
         else:
             if is_protected:
-                self.set_protected(key, value)
+                if is_static_block:
+                    self.set_static_protected(key, value)
+                else:
+                    self.set_dynamic_protected(key, value)
             else:
                 self[key] = value
 
@@ -252,38 +281,45 @@ class ContextManager:
     # Internal protected-block API (used by Agent.__init__, not by LLMs)
     # ------------------------------------------------------------------
 
-    def set_protected(self, key: str, value: Any, *, static: bool = False) -> None:
-        """Register a static block as protected.
+    def set_static_protected(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+        """Register a protected block in the static (cacheable) partition.
 
-        Protected blocks are stored in ``_blocks`` like any other block but
-        are added to ``protected_keys`` so the LLM-facing API (set /
-        __setitem__ / __delitem__) rejects mutations.
+        Protected blocks cannot be modified by the LLM-facing API.
 
         Args:
             key: Block key.
-            value: Static value.
-            static: Whether renderers may cache this block across turns.
+            value: Plain value to store.
+            expr: Python expression to evaluate each turn (keyword-only).
         """
-        if isinstance(value, DynamicContext):
-            raise TypeError(f"Use set_dynamic_protected({key!r}, ...) for DynamicContext blocks")
+        if expr is not None:
+            self._blocks[key] = DynamicContext(expr)
+        elif isinstance(value, DynamicContext):
+            self._blocks[key] = value
+        else:
+            self._blocks[key] = value
         self.protected_keys.add(key)
-        self._blocks[key] = value
-        self._static[key] = static
+        self._static[key] = True
+        self._invalidate(key)
 
-    def set_dynamic_protected(self, key: str, expr: str, *, static: bool = False) -> None:
-        """Register a dynamic block as protected.
+    def set_dynamic_protected(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+        """Register a protected block in the dynamic (volatile) partition.
 
-        Like ``set_protected`` but stores a ``DynamicContext`` marker so the
-        expression is re-evaluated each LLM turn.
+        Protected blocks cannot be modified by the LLM-facing API.
+        Expressions are re-evaluated each LLM turn.
 
         Args:
             key: Block key.
-            expr: Python expression to evaluate each turn.
-            static: Whether the expression output is stable across turns.
+            value: Plain value to store.
+            expr: Python expression to evaluate each turn (keyword-only).
         """
+        if expr is not None:
+            self._blocks[key] = DynamicContext(expr)
+        elif isinstance(value, DynamicContext):
+            self._blocks[key] = value
+        else:
+            self._blocks[key] = value
         self.protected_keys.add(key)
-        self._blocks[key] = DynamicContext(expr, static=static)
-        self._static[key] = static
+        self._static[key] = False
         self._invalidate(key)
 
     def remove_protected(self, key: str) -> None:

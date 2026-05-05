@@ -44,13 +44,13 @@ def _make_context_manager(
     if protected_blocks:
         for key, value in protected_blocks.items():
             if isinstance(value, DynamicContext):
-                cm.set_dynamic_protected(key, value.expr, static=value.static)
+                cm.set_static_protected(key, expr=value.expr)
             else:
-                cm.set_protected(key, value)
+                cm.set_static_protected(key, value)
     if blocks:
         for key, value in blocks.items():
             if isinstance(value, DynamicContext):
-                cm.set_dynamic(key, value.expr)
+                cm.set_dynamic(key, expr=value.expr)
             else:
                 cm[key] = value
     return cm
@@ -154,8 +154,8 @@ def _get_framework_context_manager():
     """Get a ContextManager with default framework blocks registered as protected."""
     return _make_context_manager(
         protected_blocks={
-            "system_prompt": DynamicContext("self._system_prompt()", static=True),
-            "self": DynamicContext("doc(type(self))", static=True),
+            "system_prompt": DynamicContext("self._system_prompt()"),
+            "self": DynamicContext("doc(type(self))"),
             "state": DynamicContext("pformat(self, max_length=50, max_string=500, max_depth=4)"),
         }
     )
@@ -645,8 +645,8 @@ class TestBuildContext:
         cm = _make_context_manager(
             blocks={"notes": "My notes"},
             protected_blocks={
-                "system_prompt": DynamicContext("self._system_prompt()", static=True),
-                "self": DynamicContext("doc(type(self))", static=True),
+                "system_prompt": DynamicContext("self._system_prompt()"),
+                "self": DynamicContext("doc(type(self))"),
             },
         )
         em = _make_event_manager([])
@@ -753,7 +753,7 @@ class TestBuildContext:
 
         cm = _make_context_manager(
             protected_blocks={
-                "system_prompt": DynamicContext("self._system_prompt()", static=True),
+                "system_prompt": DynamicContext("self._system_prompt()"),
             },
         )
         em = _make_event_manager([])
@@ -841,7 +841,7 @@ class TestOverridePhaseInteractions:
         cm = _make_context_manager(
             blocks={"custom_key": "custom value"},
             protected_blocks={
-                "system_prompt": DynamicContext("self._system_prompt()", static=True),
+                "system_prompt": DynamicContext("self._system_prompt()"),
             },
         )
         em = _make_event_manager([])
