@@ -122,6 +122,7 @@ class TestTimeoutRecovery:
         await session.run("sleep 30", timeout=2)
         # Should return instantly, not wait any residual time
         import time
+
         t0 = time.monotonic()
         out, _, code = await session.run("echo fast")
         elapsed = time.monotonic() - t0

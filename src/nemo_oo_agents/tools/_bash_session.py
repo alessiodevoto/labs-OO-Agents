@@ -56,7 +56,9 @@ class BashSession:
         env["TERM"] = "dumb"
 
         self._process = await asyncio.create_subprocess_exec(
-            "/bin/bash", "--norc", "--noprofile",
+            "/bin/bash",
+            "--norc",
+            "--noprofile",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -232,7 +234,9 @@ class BashSession:
             """Send signal to child processes of bash via pgrep."""
             try:
                 pgrep = await asyncio.create_subprocess_exec(
-                    "pgrep", "-P", str(proc.pid),
+                    "pgrep",
+                    "-P",
+                    str(proc.pid),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
