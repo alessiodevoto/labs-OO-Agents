@@ -772,6 +772,14 @@ class Session:
     def _swap_session_manager(self, new_sm: "SessionManager") -> None:
         """Close the current session and switch to *new_sm*."""
         if self._session_manager is not None:
+            # Save snapshot before closing so /clear, /session new, and
+            # /session resume don't lose the current session's self.v/todo.
+            storage = getattr(self.agent, "_storage", None)
+            if storage is not None and hasattr(storage, "save_snapshot"):
+                try:
+                    storage.save_snapshot(self.agent)
+                except Exception:
+                    pass
             self._session_manager.close()
         self._session_manager = new_sm
         # Point the agent at the new storage AND repoint the agent's
