@@ -194,6 +194,50 @@ Pass this to `render_context()` whenever `max_context_tokens` or `max_event_toke
 - Timeout for pathological `__repr__` that hangs or allocates unboundedly: deferred.
 - Changing `TruncatingStringIO` itself: it already works correctly.
 
+### gl-73 implementation notes (from shell timeout MR, 2025)
+
+During the shell timeout recovery work we investigated the "redirect output to
+temp files" approach (used by OpenCode in production). Findings:
+
+**How OpenCode does it** (`3p/opencode/internal/llm/tools/shell/shell.go`):
+
+```bash
+eval $command > /tmp/stdout-file 2> /tmp/stderr-file
+echo $? > /tmp/status-file
+pwd > /tmp/cwd-file
+```
+
+Output goes to files → zero Python memory blowup. They poll the status file
+for completion. On timeout: `pgrep -P <shell_pid>` → SIGTERM each child.
+
+**Recommended approach for our BashSession** (hybrid — no polling):
+
+```bash
+{command} > /tmp/oo_out_{id} 2> /tmp/oo_err_{id}
+__ec=$?
+echo {sentinel} $__ec     # sentinel on pipe (not redirected)
+pwd 1>&2
+echo {sentinel} 1>&2      # sentinel on pipe (not redirected)
+```
+
+This preserves our sentinel-based completion detection (no polling!) while
+getting the memory safety of file output. The sentinel arrives instantly after
+the command because nothing else flows on the pipe.
+
+After the sentinel arrives, read head+tail from the output files (capped at
+`MAX_OUTPUT_CHARS`). The command's output never enters Python memory.
+
+**Quoting concern**: commands with special characters need escaping. OpenCode
+uses `shellQuote()` (`'` → `'\''`). Alternatively: write the command to a
+temp script file and `source` it.
+
+**Cleanup**: `finally` block removes temp files. Orphans in `/tmp` (tmpfs)
+are negligible and cleared on reboot.
+
+**Bonus**: enables a future "view full output" feature — expose the temp file
+path so agents can `shell.view()` large outputs selectively instead of getting
+a truncated blob in the return value.
+
 ---
 
 ## TODO: Full codebase truncation audit
