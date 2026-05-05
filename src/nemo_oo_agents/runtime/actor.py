@@ -2454,6 +2454,18 @@ class ActorRuntime:
         effective_event_limit = tc.max_event_tokens
         ctx_window = getattr(llm_client, "context_window", None)
 
+        # L4 auto-budget: when the agent author didn't set max_event_tokens
+        # but the LLM exposes a context window, derive an event budget that
+        # leaves room for the response. This means agents get sensible
+        # eviction out of the box on any LLM that knows its window.
+        if (
+            effective_event_limit is None
+            and tc.max_context_tokens is None
+            and ctx_window is not None
+            and tc.response_reserve_tokens > 0
+        ):
+            effective_event_limit = max(0, ctx_window - tc.response_reserve_tokens)
+
         need_token_counter = tc.max_context_tokens is not None or effective_event_limit is not None
         client_counter = getattr(llm_client, "count_tokens", None)
         if need_token_counter and not callable(client_counter):
@@ -2490,6 +2502,7 @@ class ActorRuntime:
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
                 event_format=tc.event_format,
+                min_preserved_events=tc.min_preserved_events,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
 

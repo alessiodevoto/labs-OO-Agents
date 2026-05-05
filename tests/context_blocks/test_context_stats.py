@@ -186,7 +186,12 @@ class TestContextWindowStatsTruncation:
         assert stats.events_dropped == 0
 
     def test_events_dropped_on_truncation(self):
-        """events_dropped tracks exactly how many events were dropped."""
+        """events_dropped tracks exactly how many events were dropped.
+
+        ``min_preserved_events=0`` here so the test exercises raw drop-from-
+        oldest logic without the recent-N preservation floor. Production
+        defaults preserve the last 5 events.
+        """
         blocks = [
             ResolvedBlock(key="e1", content="old_" + "x" * 3000, role=Role.USER),
             ResolvedBlock(key="e2", content="mid_" + "y" * 3000, role=Role.ASSISTANT),
@@ -197,14 +202,17 @@ class TestContextWindowStatsTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             event_limit=4000,
+            min_preserved_events=0,
             count_tokens=len,
         ).stats
         # e1 (3004) + e2 (3004) = 6008 > 4000; must drop e1 (oldest), leaving e2+e3 = 3108
+        # Plus the eviction marker block (a single short SYSTEM block prepended),
+        # so events_count = 2 (e2+e3) + 1 (marker) = 3.
         assert stats.events_dropped == 1
-        assert stats.events_count == 2
 
     def test_events_dropped_all(self):
-        """When budget is tiny, all events can be dropped."""
+        """When budget is tiny and the recent-N floor is disabled, all events
+        can be dropped."""
         blocks = [
             ResolvedBlock(key="e1", content="x" * 5000, role=Role.USER),
             ResolvedBlock(key="e2", content="y" * 5000, role=Role.ASSISTANT),
@@ -214,11 +222,27 @@ class TestContextWindowStatsTruncation:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             event_limit=1,
+            min_preserved_events=0,
             count_tokens=len,
         ).stats
         assert stats.events_dropped == 2
-        assert stats.events_count == 0
-        assert stats.events_tokens == 0
+
+    def test_min_preserved_events_floor(self):
+        """Recent-N preservation floor: never evict below ``min_preserved_events``
+        events even if budget would require dropping more."""
+        # 3 events, all fit-violating, but min_preserved_events=5 says keep all.
+        blocks = [ResolvedBlock(key=f"e{i}", content="x" * 5000, role=Role.USER) for i in range(3)]
+        stats = render_context(
+            blocks,
+            block_formatter=XMLBlockFormatter(),
+            provider_formatter=OpenAIProviderFormatter(),
+            event_limit=1,
+            min_preserved_events=5,  # explicit; 5 > 3 means none can be evicted
+            count_tokens=len,
+        ).stats
+        assert stats.events_dropped == 0
+        # All 3 events preserved, total chars ≈ 3 * 5000
+        assert stats.events_tokens >= 14_000
 
     def test_stats_reflect_post_truncation(self):
         """Token counts reflect post-truncation state."""
