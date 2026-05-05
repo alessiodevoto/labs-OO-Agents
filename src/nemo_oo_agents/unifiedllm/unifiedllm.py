@@ -562,6 +562,43 @@ def _maybe_sanitize_response_format(
     }
 
 
+# Bedrock/Anthropic reject messages containing tool_call blocks when no tools= param
+# is set. litellm.modify_params=True should add a dummy tool, but doesn't work in all
+# code paths (e.g. litellm router). We detect and handle this ourselves.
+_DUMMY_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "_placeholder",
+        "description": "Placeholder tool (not callable).",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+# Providers that reject messages containing tool_call blocks without tools= param.
+_STRICT_TOOL_PROVIDERS = ("bedrock/", "anthropic/", "anthropic.")
+
+
+def _needs_dummy_tool(model: str) -> bool:
+    """Return True if the model's provider requires tools= when tool_calls are present."""
+    model_lower = model.lower()
+    return any(model_lower.startswith(prefix) for prefix in _STRICT_TOOL_PROVIDERS)
+
+
+def _messages_have_tool_calls(messages: list[dict[str, Any]]) -> bool:
+    """Return True if any message contains tool_call blocks."""
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            if msg.get("tool_calls"):
+                return True
+            # Anthropic-style: content list with tool_use blocks
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        return True
+    return False
+
+
 def _instantiate_output_model(output_model: type[BaseModel], json_data: Any) -> BaseModel:
     """Instantiate a Pydantic model from parsed JSON data.
 
@@ -1132,6 +1169,14 @@ class CompletionClient(UnifiedLLM):
                 self.model, output_model
             )
 
+        # Bedrock/Anthropic reject messages with tool_call blocks when tools= is absent.
+        if (
+            "tools" not in api_params
+            and _needs_dummy_tool(self.model)
+            and _messages_have_tool_calls(prepared_messages)
+        ):
+            api_params["tools"] = [_DUMMY_TOOL_SCHEMA]
+
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
         def _make_call():
@@ -1282,6 +1327,14 @@ class CompletionClient(UnifiedLLM):
             api_params["response_format"] = _maybe_sanitize_response_format(
                 self.model, output_model
             )
+
+        # Bedrock/Anthropic reject messages with tool_call blocks when tools= is absent.
+        if (
+            "tools" not in api_params
+            and _needs_dummy_tool(self.model)
+            and _messages_have_tool_calls(prepared_messages)
+        ):
+            api_params["tools"] = [_DUMMY_TOOL_SCHEMA]
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
