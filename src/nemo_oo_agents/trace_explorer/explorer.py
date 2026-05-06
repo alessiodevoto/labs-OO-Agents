@@ -6301,8 +6301,9 @@ async def _handle_experiment_errors(
         except httpx.ConnectError as e:
             print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        except httpx.HTTPStatusError:
-            raise
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     if failed_only:
         tests = [t for t in tests if t.get("passed") == False]  # noqa: E712 — explicit False, not None/missing
@@ -6365,8 +6366,9 @@ async def _handle_experiment_search(base_url: str, experiment_id: str, pattern: 
         except httpx.ConnectError as e:
             print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        except httpx.HTTPStatusError:
-            raise
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     if not tests:
         print("No tests found.")
@@ -6444,8 +6446,9 @@ async def _handle_experiment_failures(base_url: str, experiment_id: str) -> None
         except httpx.ConnectError as e:
             print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        except httpx.HTTPStatusError:
-            raise
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     failed_tests = [t for t in tests if t.get("passed") == False]  # noqa: E712
 
@@ -6545,8 +6548,9 @@ async def _handle_experiment(
         except httpx.ConnectError as e:
             print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        except httpx.HTTPStatusError:
-            raise
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     # Fetch test results
     tests_data: dict = {"tests": []}
     async with httpx.AsyncClient(timeout=30) as _client:
