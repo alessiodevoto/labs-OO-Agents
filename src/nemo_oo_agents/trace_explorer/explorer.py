@@ -6522,7 +6522,9 @@ async def _handle_experiment_failures(base_url: str, experiment_id: str) -> None
         print(f"({load_errors} session(s) failed to load)")
 
 
-async def _handle_experiment(base_url: str, experiment_id: str, *, json_output: bool = False) -> None:
+async def _handle_experiment(
+    base_url: str, experiment_id: str, *, json_output: bool = False
+) -> None:
     """Fetch and display experiment summary from the viewer API."""
     import urllib.parse
 
@@ -6546,17 +6548,14 @@ async def _handle_experiment(base_url: str, experiment_id: str, *, json_output: 
         except httpx.HTTPStatusError:
             raise
     # Fetch test results
+    tests_data: dict = {"tests": []}
     async with httpx.AsyncClient(timeout=30) as _client:
         try:
             _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/tests")
             _resp.raise_for_status()
             tests_data = _resp.json()
-        except httpx.ConnectError as e:
-            print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
-            sys.exit(1)
-        except httpx.HTTPStatusError:
-            raise
-        tests_data = {"tests": []}
+        except httpx.HTTPError:
+            pass  # Fall back to empty tests
 
     tests = tests_data.get("tests", [])
 
@@ -6841,7 +6840,9 @@ Examples (experiment mode):
     if args.diff:
         # Load second trace for comparison
         try:
-            trace2 = await TraceExplorer.from_file(args.diff, root_generation_index=args.root_generation)
+            trace2 = await TraceExplorer.from_file(
+                args.diff, root_generation_index=args.root_generation
+            )
         except FileNotFoundError:
             print(f"Error: File not found: {args.diff}", file=sys.stderr)
             sys.exit(1)

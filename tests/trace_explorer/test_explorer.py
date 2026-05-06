@@ -1033,7 +1033,6 @@ class TestFromViewer:
     async def test_single_page(self):
         """Fetch a trace that fits in one page."""
 
-
         spans = [
             {
                 "traceId": "t1",
@@ -1155,6 +1154,7 @@ class TestFromViewer:
 
             with pytest.raises(ValueError, match="Session not found"):
                 await TraceExplorer.from_viewer("http://localhost:5001", "nonexistent")
+
 
 # Tests for turn-summary helper functions
 # =============================================================================
