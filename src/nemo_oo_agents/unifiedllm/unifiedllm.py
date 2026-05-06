@@ -282,7 +282,9 @@ def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
                     return {"type": "object"}  # break cycle for recursive models
                 if def_name in defs:
                     return _inline(dict(defs[def_name]), _resolving | {def_name})
-            return node
+            # Unresolvable $ref (not in $defs or non-local) — replace with generic object
+            # since LLM providers don't support $ref in tool schemas
+            return {"type": "object"}
         result = {}
         for k, v in node.items():
             if k == "$defs":
@@ -397,7 +399,7 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
         if not isinstance(node, dict):
             return True
         # A property node needs type or a union discriminator
-        if "type" not in node and "anyOf" not in node and "oneOf" not in node:
+        if "type" not in node and "anyOf" not in node and "oneOf" not in node and "allOf" not in node:
             return False
         # Object nodes: required must list every property key
         if (
@@ -411,7 +413,7 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
                 return False
         if isinstance(node.get("items"), dict) and not _check(node["items"]):
             return False
-        for key in ("anyOf", "oneOf"):
+        for key in ("anyOf", "oneOf", "allOf"):
             for item in node.get(key, []):
                 if isinstance(item, dict) and not _check(item):
                     return False

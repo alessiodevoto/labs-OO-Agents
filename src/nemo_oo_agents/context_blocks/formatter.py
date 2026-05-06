@@ -526,7 +526,9 @@ class ResponsesProviderFormatter(ProviderFormatter):
                 )
             elif msg.images:
                 role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
-                content_parts: list[dict] = [{"type": "input_text", "text": msg.content or ""}]
+                content_parts: list[dict] = []
+                if msg.content:
+                    content_parts.append({"type": "input_text", "text": msg.content})
                 for img in msg.images:
                     if img.get("type") == "image_url":
                         # Responses API requires input_image, not image_url
