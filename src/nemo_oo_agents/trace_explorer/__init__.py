@@ -7,7 +7,7 @@ Designed for agent-driven trace analysis.
 Usage:
     from trace_explorer import TraceExplorer
 
-    trace = TraceExplorer.from_file("path/to/trace.jsonl")
+    trace = await TraceExplorer.from_file("path/to/trace.jsonl")
     print(trace.help())
     print(trace.get_overview())
 """
