@@ -271,26 +271,28 @@ def _resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     if not defs:
         return schema
 
-    def _inline(node):
+    def _inline(node, _resolving=frozenset()):
         if not isinstance(node, dict):
             return node
         if "$ref" in node:
             ref_path = node["$ref"]
             if ref_path.startswith("#/$defs/"):
                 def_name = ref_path[len("#/$defs/") :]
+                if def_name in _resolving:
+                    return {"type": "object"}  # break cycle for recursive models
                 if def_name in defs:
-                    return _inline(dict(defs[def_name]))
+                    return _inline(dict(defs[def_name]), _resolving | {def_name})
             return node
         result = {}
         for k, v in node.items():
             if k == "$defs":
                 continue
             elif k == "properties" and isinstance(v, dict):
-                result[k] = {pk: _inline(pv) for pk, pv in v.items()}
+                result[k] = {pk: _inline(pv, _resolving) for pk, pv in v.items()}
             elif k in ("items", "additionalProperties") and isinstance(v, dict):
-                result[k] = _inline(v)
+                result[k] = _inline(v, _resolving)
             elif k in ("anyOf", "oneOf", "allOf") and isinstance(v, list):
-                result[k] = [_inline(i) if isinstance(i, dict) else i for i in v]
+                result[k] = [_inline(i, _resolving) if isinstance(i, dict) else i for i in v]
             else:
                 result[k] = v
         # Unwrap single-item allOf (Pydantic wraps $ref in allOf when Field has description)
