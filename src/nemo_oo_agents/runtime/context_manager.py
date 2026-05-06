@@ -301,7 +301,9 @@ class ContextManager:
         self._static[key] = True
         self._invalidate(key)
 
-    def set_dynamic_protected(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+    def set_dynamic_protected(
+        self, key: str, value: Any = None, *, expr: str | None = None
+    ) -> None:
         """Register a protected block in the dynamic (volatile) partition.
 
         Protected blocks cannot be modified by the LLM-facing API.

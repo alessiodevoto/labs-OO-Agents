@@ -114,7 +114,9 @@ class CachedBlockFormatter(BlockFormatter):
             suffix = f"<context>\n{suffix_inner}\n</context>"
             # Build parts for the <context>...</context> envelope.
             envelope_parts: list[MessagePart] = [TextPart(text="<context>\n")]
-            for i, (block, rendered) in enumerate(zip(dynamic_blocks, dynamic_rendered, strict=True)):
+            for i, (block, rendered) in enumerate(
+                zip(dynamic_blocks, dynamic_rendered, strict=True)
+            ):
                 if i > 0:
                     envelope_parts.append(TextPart(text="\n"))
                 envelope_parts.append(BlockPart(key=block.key, content=rendered))
