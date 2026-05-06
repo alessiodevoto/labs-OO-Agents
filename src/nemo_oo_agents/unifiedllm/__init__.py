@@ -13,7 +13,6 @@ from nemo_oo_agents.unifiedllm.retry_config import RetryConfig
 from nemo_oo_agents.unifiedllm.unifiedllm import (
     CompletionClient,
     LLMResponse,
-    OpenAIResponseClient,
     ReasoningCompletionClient,
     ResponsesClient,
     Tool,
@@ -29,7 +28,6 @@ __all__ = [
     "CompletionClient",
     "ReasoningCompletionClient",
     "ResponsesClient",
-    "OpenAIResponseClient",
     # Model registry
     "get_llm_client",
     "reload_registry",

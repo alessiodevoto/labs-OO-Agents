@@ -481,3 +481,64 @@ class AnthropicProviderFormatter(ProviderFormatter):
                 out.append({"role": role.value, "content": msg.content or ""})
 
         return {"system": "\n\n".join(system_parts), "messages": out}
+
+
+class ResponsesProviderFormatter(ProviderFormatter):
+    """Emit OpenAI Responses API native format (``list[dict]``).
+
+    The Responses API uses a different wire format from Chat Completions:
+    - Tool calls → ``{"type": "function_call", "call_id": ..., "name": ..., "arguments": ...}``
+    - Tool results → ``{"type": "function_call_output", "call_id": ..., "output": ...}``
+    - User/Assistant messages → ``{"role": "user"|"assistant", "content": ...}``
+    - System messages → kept as ``{"role": "system", ...}`` in the list so that
+      downstream budget-clamping can identify and protect them. The LLM client
+      extracts them into the ``instructions`` API parameter at call time.
+    """
+
+    def format(self, messages: list[RenderedMessage]) -> list[dict]:
+        out: list[dict] = []
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                out.append({"role": "system", "content": msg.content or ""})
+                continue
+
+            if msg.tool_call is not None:
+                # Preserve assistant text that precedes the tool call
+                if msg.content and msg.role == Role.ASSISTANT:
+                    out.append({"role": "assistant", "content": msg.content})
+                out.append(
+                    {
+                        "type": "function_call",
+                        "call_id": msg.tool_call.id,
+                        "name": msg.tool_call.name,
+                        "arguments": json.dumps(msg.tool_call.arguments)
+                        if isinstance(msg.tool_call.arguments, dict)
+                        else msg.tool_call.arguments,
+                    }
+                )
+            elif msg.tool_call_id is not None:
+                out.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": msg.tool_call_id,
+                        "output": msg.content or "",
+                    }
+                )
+            elif msg.images:
+                role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
+                content_parts: list[dict] = []
+                if msg.content:
+                    content_parts.append({"type": "input_text", "text": msg.content})
+                for img in msg.images:
+                    if img.get("type") == "image_url":
+                        # Responses API requires input_image, not image_url
+                        content_parts.append({"type": "input_image", "image_url": img["image_url"]})
+                    else:
+                        content_parts.append(img)
+                out.append({"role": role.value, "content": content_parts})
+            else:
+                if msg.role in (Role.RUNTIME_EVENT, Role.METADATA):
+                    continue
+                role = msg.role if msg.role in (Role.USER, Role.ASSISTANT) else Role.USER
+                out.append({"role": role.value, "content": msg.content or ""})
+        return out

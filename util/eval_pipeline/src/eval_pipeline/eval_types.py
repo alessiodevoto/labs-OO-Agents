@@ -66,6 +66,8 @@ class ModelSpec(BaseModel):
     retry_on_empty_content: bool = False  # Retry when reasoning models return empty content
     # Cache control (NVIDIA inference API caches by default, bad for pass@k diversity)
     no_cache: bool = False
+    # Client type: "completion" (default) or "responses" (Responses API)
+    client_type: str | None = None
 
 
 class ScoreDetail(BaseModel):

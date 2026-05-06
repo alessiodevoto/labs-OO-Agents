@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 
@@ -134,19 +134,25 @@ def reload_registry() -> dict[str, dict[str, Any]]:
     return MODELS
 
 
-def get_llm_client(name: str, **overrides) -> CompletionClient:
-    """Create a CompletionClient, optionally using registry config.
+def get_llm_client(name: str, *, client_type: str | None = None, **overrides) -> UnifiedLLM:
+    """Create an LLM client, optionally using registry config.
 
     If ``name`` is a registry key, its config (model_name, endpoint, API key,
     defaults) is applied. Otherwise ``name`` is passed directly to litellm,
     which handles routing for every common public provider.
 
+    Client class selection (first wins):
+    1. Explicit ``client_type`` parameter
+    2. ``client_type`` field in registry YAML
+    3. Default: ``"completion"``
+
     Args:
         name: Registry key or a litellm-supported model string.
+        client_type: ``"completion"`` or ``"responses"``. Overrides YAML config.
         **overrides: Override any parameter (max_tokens, temperature, etc.)
 
     Returns:
-        Configured CompletionClient.
+        Configured UnifiedLLM instance (CompletionClient or ResponsesClient).
 
     Example::
 
@@ -156,8 +162,14 @@ def get_llm_client(name: str, **overrides) -> CompletionClient:
 
         # Custom alias from llm_config.yaml
         llm = get_llm_client("my-internal-model", max_tokens=1000)
+
+        # Responses API model (client_type: responses in YAML)
+        llm = get_llm_client("gpt-5.3-codex")
+
+        # Responses API without YAML — pass client_type directly
+        llm = get_llm_client("openai/gpt-5.3-codex", client_type="responses")
     """
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
 
     config = MODELS.get(name, {})
 
@@ -182,12 +194,14 @@ def get_llm_client(name: str, **overrides) -> CompletionClient:
         params["api_key"] = api_key
 
     # Copy model-specific defaults from config (overrides win)
-    for key in ("temperature", "top_p", "max_tokens"):
+    for key in ("temperature", "top_p", "max_tokens", "reasoning"):
         if key in config and key not in overrides:
             params[key] = config[key]
 
     params.update(overrides)
 
-    client = CompletionClient(**params)
+    # Select client class: explicit param > YAML config > default
+    client_type = client_type or config.get("client_type", "completion")
+    client = ResponsesClient(**params) if client_type == "responses" else CompletionClient(**params)
     client._registry_config = config  # For context_window lookup
     return client

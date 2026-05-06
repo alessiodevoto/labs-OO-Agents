@@ -35,7 +35,7 @@ def load_agent_class(test: TestConfig) -> type:
 
 def client_from_spec(spec):
     """Create LLM client from ModelSpec."""
-    from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
+    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient, RetryConfig
 
     # Build config dict
     config = {
@@ -63,6 +63,10 @@ def client_from_spec(spec):
             retry_on_empty_content=spec.retry_on_empty_content,
         )
 
+    # Dispatch based on client_type from registry config
+    client_type = getattr(spec, "client_type", None) or "completion"
+    if client_type == "responses":
+        return ResponsesClient(retry_config=retry_config, **config)
     return CompletionClient(retry_config=retry_config, **config)
 
 
@@ -94,7 +98,7 @@ def agent_from_spec(spec) -> AgentWrapper:
     # Build client from config dict (empty config → no LLM needed)
     client = None
     if spec.client_config and spec.client_config.get("model"):
-        from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
+        from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient, RetryConfig
 
         cc = dict(spec.client_config)
         # Resolve API key from env var name at construction time
@@ -106,7 +110,12 @@ def agent_from_spec(spec) -> AgentWrapper:
         retry_kwargs = cc.pop("retry_config", None)
         retry_config = RetryConfig(**retry_kwargs) if retry_kwargs else None
 
-        client = CompletionClient(retry_config=retry_config, **cc)
+        # Dispatch based on client_type
+        client_type = cc.pop("client_type", "completion")
+        if client_type == "responses":
+            client = ResponsesClient(retry_config=retry_config, **cc)
+        else:
+            client = CompletionClient(retry_config=retry_config, **cc)
 
     agent_instance = cls(llm=client)
     return AgentWrapper(agent_instance, spec.method)

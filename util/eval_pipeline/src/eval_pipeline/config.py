@@ -176,6 +176,7 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
         "max_thinking_tokens",
         "max_retries",
         "retry_on_empty_content",
+        "client_type",
     ):
         if key in config:
             fields[key] = config[key]
@@ -538,6 +539,11 @@ def evaluator_from_config(
                 if extra_body:
                     config_dict["extra_body"] = extra_body
 
+                # Dispatch based on client_type from registry config
+                if getattr(s, "client_type", None) == "responses":
+                    from nemo_oo_agents.unifiedllm import ResponsesClient
+
+                    return ResponsesClient(retry_config=retry_config, **config_dict)
                 return CompletionClient(retry_config=retry_config, **config_dict)
 
             return factory

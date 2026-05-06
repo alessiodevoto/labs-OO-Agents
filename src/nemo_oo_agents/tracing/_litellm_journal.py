@@ -70,11 +70,25 @@ def _msg_to_dict(msg: Any) -> dict:
 
 
 def _extract_output_msgs(response_obj: Any) -> list[dict]:
-    """Pull assistant messages out of a litellm completion response."""
+    """Pull assistant messages out of a litellm completion response.
+
+    Handles both Chat Completions format (.choices) and Responses API format (.output).
+    """
     msgs = []
     try:
-        for choice in response_obj.choices:
-            msgs.append(_msg_to_dict(choice.message))
+        # Chat Completions API: response has .choices[].message
+        if hasattr(response_obj, "choices") and response_obj.choices:
+            for choice in response_obj.choices:
+                msgs.append(_msg_to_dict(choice.message))
+        # Responses API: response has .output (list of output items)
+        elif hasattr(response_obj, "output") and response_obj.output:
+            for item in response_obj.output:
+                if hasattr(item, "model_dump"):
+                    msgs.append(item.model_dump())
+                elif isinstance(item, dict):
+                    msgs.append(item)
+                else:
+                    msgs.append({"type": getattr(item, "type", "unknown"), "repr": repr(item)})
     except Exception as exc:
         log.debug("Failed to extract output messages: %s", exc)
     return msgs

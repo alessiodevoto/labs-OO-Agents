@@ -172,6 +172,27 @@ def _schemas_for_budget(tools: list[Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
+    """Auto-select provider formatter based on LLM client type.
+
+    ResponsesClient needs ResponsesProviderFormatter to emit native Responses
+    API wire format.  All other clients (including Anthropic via LiteLLM) use
+    the agent's configured formatter.
+
+    This is intentionally runtime-dispatched rather than config-driven:
+    Anthropic formatting is handled by LiteLLM (so OpenAIProviderFormatter
+    works), but the Responses API has a fundamentally different wire shape
+    that LiteLLM does not translate, requiring its own formatter.
+    """
+    from nemo_oo_agents.unifiedllm import ResponsesClient
+
+    if isinstance(llm_client, ResponsesClient):
+        from nemo_oo_agents.context_blocks.formatter import ResponsesProviderFormatter
+
+        return ResponsesProviderFormatter()
+    return default_formatter
+
+
 def _clamp_messages_to_budget(
     messages: list[dict[str, Any]],
     budget: int,
@@ -2457,10 +2478,13 @@ class ActorRuntime:
             else char_approximate_token_counter
         )
         with hm.timer("time_render_context"):
+            provider_formatter = _resolve_provider_formatter(
+                llm_client, self.agent.render_config.provider_formatter
+            )
             result = render_context(
                 blocks,
                 block_formatter=self.agent.render_config.block_formatter,
-                provider_formatter=self.agent.render_config.provider_formatter,
+                provider_formatter=provider_formatter,
                 context_limit=tc.max_context_tokens,
                 event_limit=effective_event_limit,
                 count_tokens=count_tokens,
