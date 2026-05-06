@@ -399,7 +399,12 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
         if not isinstance(node, dict):
             return True
         # A property node needs type or a union discriminator
-        if "type" not in node and "anyOf" not in node and "oneOf" not in node and "allOf" not in node:
+        if (
+            "type" not in node
+            and "anyOf" not in node
+            and "oneOf" not in node
+            and "allOf" not in node
+        ):
             return False
         # Object nodes: required must list every property key
         if (

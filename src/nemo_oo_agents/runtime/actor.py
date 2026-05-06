@@ -193,9 +193,6 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     return default_formatter
 
 
-
-
-
 def _clamp_messages_to_budget(
     messages: list[dict[str, Any]],
     budget: int,
@@ -2488,7 +2485,6 @@ class ActorRuntime:
                 blocks,
                 block_formatter=self.agent.render_config.block_formatter,
                 provider_formatter=provider_formatter,
-                block_limit=tc.max_block_chars,
                 context_limit=tc.max_context_tokens,
                 event_limit=effective_event_limit,
                 count_tokens=count_tokens,
