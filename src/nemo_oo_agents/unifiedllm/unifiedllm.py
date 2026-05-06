@@ -334,6 +334,7 @@ def _strip_schema_noise(schema: dict[str, Any], *, strict: bool = False) -> dict
             "additionalProperties",
             "anyOf",
             "oneOf",
+            "allOf",
         }
     )
 
@@ -1906,6 +1907,9 @@ class ResponsesClient(UnifiedLLM):
 
             # Legacy OpenAI format: assistant messages with tool_calls
             if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                # Preserve assistant text that precedes tool calls (matches native formatter)
+                if msg.get("content"):
+                    transformed.append({"role": "assistant", "content": msg["content"]})
                 for tc in msg["tool_calls"]:
                     fn = tc.get("function", {})
                     transformed.append(

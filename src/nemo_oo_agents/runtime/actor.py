@@ -2542,9 +2542,18 @@ class ActorRuntime:
             else:
                 cap = default_cap
             tool_schemas = _schemas_for_budget(tools) if tools else None
-            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
-                messages, cap, llm_client.model, tool_schemas=tool_schemas
+            # Skip budget clamping for Responses API format — litellm.token_counter
+            # expects Chat Completions messages with "role" keys and will miscount
+            # Responses items that use "type" (function_call, function_call_output).
+            _has_responses_items = any(
+                "type" in m and "role" not in m for m in messages
             )
+            if _has_responses_items:
+                messages, total_tok, events_tok, dropped = messages, 0, 0, 0
+            else:
+                messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
+                    messages, cap, llm_client.model, tool_schemas=tool_schemas
+                )
             if dropped:
                 # Archive the oldest events via event_manager.collapse so:
                 #  (a) next turn's render doesn't re-do the same drop work,
