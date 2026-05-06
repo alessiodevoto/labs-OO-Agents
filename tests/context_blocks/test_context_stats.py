@@ -227,6 +227,30 @@ class TestContextWindowStatsTruncation:
         ).stats
         assert stats.events_dropped == 2
 
+    def test_event_limit_can_include_context_tokens(self):
+        """When ``event_limit_includes_context=True``, the renderer subtracts
+        post-truncation context tokens before evicting events.
+        """
+        blocks = [
+            ResolvedBlock(key="sys", content="s" * 500),
+            ResolvedBlock(key="e1", content="a" * 300, role=Role.USER),
+            ResolvedBlock(key="e2", content="b" * 300, role=Role.ASSISTANT),
+            ResolvedBlock(key="e3", content="c" * 100, role=Role.USER),
+        ]
+        stats = render_context(
+            blocks,
+            block_formatter=XMLBlockFormatter(),
+            provider_formatter=OpenAIProviderFormatter(),
+            event_limit=1000,  # interpreted as total input budget in this mode
+            event_limit_includes_context=True,
+            min_preserved_events=0,
+            count_tokens=len,
+        ).stats
+        # Context consumes 500, so applied event budget is 500.
+        # Events are 300+300+100=700; oldest-first drops e1, leaving 400.
+        assert stats.max_event_tokens == 500
+        assert stats.events_dropped == 1
+
     def test_min_preserved_events_floor(self):
         """Recent-N preservation floor: never evict below ``min_preserved_events``
         events even if budget would require dropping more."""
@@ -275,8 +299,8 @@ class TestContextWindowStatsTruncation:
             count_tokens=len,
         ).stats
         assert stats.context_blocks_dropped == 2
-        # Only the truncation_notice block survives
-        assert stats.context_blocks_count == 1
+        # Blocks are retained in-place and labeled EVICTED
+        assert stats.context_blocks_count == 2
 
     def test_context_blocks_dropped_with_user_blocks(self):
         """User blocks (from self.context) are dropped first."""
@@ -424,7 +448,7 @@ class TestContextWindowStatsEdgeCases:
         """RenderResult supports tuple unpacking."""
         from nemo_oo_agents.context_blocks.models import RenderedMessage
 
-        output, stats, messages = render_context(
+        output, stats, messages, events_truncated = render_context(
             [ResolvedBlock(key="sys", content="hello")],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
@@ -432,6 +456,7 @@ class TestContextWindowStatsEdgeCases:
         assert isinstance(output, list)
         assert isinstance(stats, ContextWindowStats)
         assert all(isinstance(m, RenderedMessage) for m in messages)
+        assert events_truncated is None
 
     def test_block_limit_no_longer_squashes_content(self):
         """Block-level head/tail truncation has been removed. ``block_limit``
@@ -558,7 +583,7 @@ class TestContextWindowStatsFormat:
             context_blocks_dropped=1,
         )
         text = stats.format()
-        assert "1 dropped" in text
+        assert "1 EVICTED" in text
         assert "nearly full" in text
 
     def test_format_dropped_counts_shown(self):
@@ -573,7 +598,7 @@ class TestContextWindowStatsFormat:
             events_dropped=7,
         )
         text = stats.format()
-        assert "3 dropped" in text
+        assert "3 EVICTED" in text
         assert "7 dropped" in text
 
     def test_format_empty(self):

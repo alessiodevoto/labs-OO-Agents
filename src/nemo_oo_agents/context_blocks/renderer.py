@@ -49,11 +49,18 @@ class RenderResult(NamedTuple):
     BlockFormatter *after* truncation and *before* provider formatting.
     Block-aware formatters populate ``RenderedMessage.parts`` on this list,
     which the journal publisher walks to build a content-addressed skeleton.
+
+    ``events_truncated`` is a render-time-synthesized ``ContextTruncated``
+    event holding the eviction details (kinds histogram, char_total, tags),
+    or ``None`` if no events were evicted. The actor uses this to emit the
+    same event into the event_manager so future turns and agent introspection
+    see the eviction record.
     """
 
     output: Any
     stats: ContextWindowStats
     messages: list[RenderedMessage]
+    events_truncated: Any = None  # ContextTruncated | None — Any to avoid import cycle
 
 
 def format_message_content(block: ResolvedBlock, format_type: str) -> str:
@@ -83,20 +90,19 @@ def _apply_context_total_limit(
     total_limit: int,
     count_fn: Callable[[str], int],
 ) -> tuple[list[ResolvedBlock], int]:
-    """Drop context blocks until total content fits within budget.
+    """Mark over-budget context blocks as EVICTED in-place.
 
-    Two-pass strategy: drop user blocks (``self.context``) from the end first,
-    then drop remaining blocks from the end until the total fits. Appends a
-    marker-family ``<context_blocks_evicted ...>`` block so the LLM knows what
-    was dropped, plus actionable guidance for the agent author. Never mutates
-    input.
+    Two-pass strategy: select user blocks (``self.context``) from the end first,
+    then remaining blocks from the end until the total fits. Selected blocks
+    keep their original key/position and render an EVICTED label with per-block
+    size stats.
     """
     total = sum(count_fn(b.content) for b in blocks)
     if total <= total_limit:
         return blocks, 0
 
-    to_drop: set[int] = set()
-    dropped: list[tuple[str, str | None, int]] = []
+    to_evict: set[int] = set()
+    evicted_sizes: dict[int, int] = {}
 
     for i in range(len(blocks) - 1, -1, -1):
         if total <= total_limit:
@@ -104,42 +110,36 @@ def _apply_context_total_limit(
         if blocks[i].metadata.user_block:
             size = count_fn(blocks[i].content)
             total -= size
-            to_drop.add(i)
-            dropped.append((blocks[i].key, blocks[i].metadata.expr, size))
+            to_evict.add(i)
+            evicted_sizes[i] = size
 
     if total > total_limit:
         for i in range(len(blocks) - 1, -1, -1):
             if total <= total_limit:
                 break
-            if i not in to_drop:
+            if i not in to_evict:
                 size = count_fn(blocks[i].content)
                 total -= size
-                to_drop.add(i)
-                dropped.append((blocks[i].key, blocks[i].metadata.expr, size))
+                to_evict.add(i)
+                evicted_sizes[i] = size
 
-    surviving = [b for i, b in enumerate(blocks) if i not in to_drop]
-    char_total = sum(size for _, _, size in dropped)
-    dropped_keys = [key for key, _, _ in dropped]
+    rendered: list[ResolvedBlock] = []
+    for i, block in enumerate(blocks):
+        if i not in to_evict:
+            rendered.append(block)
+            continue
+        size = evicted_sizes.get(i, count_fn(block.content))
+        msg = f"EVICTED: over context budget (block_tokens={size:,})"
+        rendered.append(
+            block.model_copy(
+                update={
+                    "content": msg,
+                    "metadata": block.metadata.model_copy(update={"truncated": True}),
+                }
+            )
+        )
 
-    # Marker-family eviction notice + actionable guidance for the agent author.
-    marker_lines = [
-        f"<context_blocks_evicted len={len(dropped)}, "
-        f"char_total={char_total}, "
-        f"dropped_keys={dropped_keys!r}>",
-        "",
-        "To free up context space:",
-        "- Summarize large data: self.context['key'] = summary_str",
-        "- Remove blocks: self.context.pop('key')",
-    ]
-
-    summary_block = ResolvedBlock(
-        key="context_blocks_evicted",
-        content="\n".join(marker_lines),
-        role=Role.SYSTEM,
-        metadata=BlockMetadata(truncated=True),
-    )
-
-    return [*surviving, summary_block], len(to_drop)
+    return rendered, len(to_evict)
 
 
 def _apply_event_total_limit(
@@ -147,53 +147,104 @@ def _apply_event_total_limit(
     total_limit: int,
     count_fn: Callable[[str], int],
     min_preserved_events: int = 5,
-) -> tuple[list[ResolvedBlock], int]:
-    """Drop oldest events until total content fits within budget.
+) -> tuple[list[ResolvedBlock], int, Any]:
+    """Drop oldest evictable events until total content fits within budget.
 
-    Always preserves the last ``min_preserved_events`` events — the model's
-    current Task / recent reasoning is what it needs to make the next decision.
-    When eviction fires, prepends a marker-family
-    ``<events_evicted len=N, char_total=X, dropped_kinds={...}>`` block so the
-    LLM can see what was dropped instead of silently starting mid-trajectory.
+    Two preservation rules apply (events matching either are NOT evicted):
+
+    - **Recent-N anchor**: the last ``min_preserved_events`` events always
+      survive. The model needs its recent reasoning to make the next decision.
+    - **Latest-Task anchor**: the most recent ``Task`` event always survives.
+      The original instruction is what the agent is trying to execute; losing
+      it leaves the model with no goal.
+
+    When eviction fires, prepends a ``Summary`` event marker — the same shape
+    the LLM sees from ``events.collapse()`` — so the rendered marker is a
+    recognizable form rather than a one-off syntax. The marker is
+    ``role=USER`` (inline in the timeline at the gap, not bundled with the
+    system prompt).
     """
+    # Lazy import to avoid a circular dependency between context_blocks and the
+    # framework's event types (nemo_oo_agents.events imports from context_blocks).
+    from nemo_oo_agents.context_blocks.utils import truncating_pformat
+    from nemo_oo_agents.events import ContextTruncated, Task
+
     total = sum(count_fn(b.content) for b in blocks)
     if total <= total_limit:
-        return blocks, 0
+        return blocks, 0, None
 
-    # Eviction floor: don't touch the last `min_preserved_events`.
-    eviction_ceiling = max(0, len(blocks) - min_preserved_events)
+    # Build the set of indices that must NOT be evicted.
+    preserved: set[int] = set()
+    # Recent-N anchor.
+    preserved.update(range(max(0, len(blocks) - min_preserved_events), len(blocks)))
+    # Latest-Task anchor: walk back-to-front, preserve the first Task we find.
+    for i in range(len(blocks) - 1, -1, -1):
+        if isinstance(blocks[i].event, Task):
+            preserved.add(i)
+            break
 
-    start = 0
+    # Evict oldest-first across non-preserved indices until budget fits.
+    dropped_indices: list[int] = []
     dropped_kinds: dict[str, int] = {}
     char_total = 0
-    while start < eviction_ceiling and total > total_limit:
-        block = blocks[start]
+    for i in range(len(blocks)):
+        if total <= total_limit:
+            break
+        if i in preserved:
+            continue
+        block = blocks[i]
         size = count_fn(block.content)
         total -= size
         char_total += size
         if block.event is not None:
             kind = camel_to_snake(type(block.event).__name__)
             dropped_kinds[kind] = dropped_kinds.get(kind, 0) + 1
-        start += 1
+        dropped_indices.append(i)
 
-    if start == 0:
-        return blocks, 0
+    if not dropped_indices:
+        return blocks, 0, None
 
-    surviving = blocks[start:]
+    drop_set = set(dropped_indices)
+    dropped_blocks = [blocks[i] for i in dropped_indices]
+    surviving = [b for i, b in enumerate(blocks) if i not in drop_set]
 
-    # Marker shape mirrors L1 family: <events_evicted len=N, char_total=X, dropped_kinds={...}>
-    # so the LLM treats it as a recognizable elision marker, not noise.
-    kinds_str = "{" + ", ".join(f"{k}: {v}" for k, v in sorted(dropped_kinds.items())) + "}"
-    marker = ResolvedBlock(
-        key="events_evicted",
-        content=(
-            f"<events_evicted len={start}, char_total={char_total}, dropped_kinds={kinds_str}>"
-        ),
-        role=Role.SYSTEM,
-        metadata=BlockMetadata(truncated=True),
+    # Compute (min, max) of dropped tag sequence numbers for the marker's
+    # replaced_range. Falls back to (0, count) if tags aren't numeric.
+    dropped_tags = [b.metadata.tag for b in dropped_blocks if b.metadata.tag]
+    if dropped_tags:
+        try:
+            nums = []
+            for t in dropped_tags:
+                parts = t.split("..")
+                nums.append(int(parts[0]))
+                nums.append(int(parts[-1]))
+            range_start, range_end = min(nums), max(nums)
+        except ValueError:
+            range_start, range_end = 0, len(dropped_blocks)
+    else:
+        range_start, range_end = 0, len(dropped_blocks)
+
+    truncated = ContextTruncated(
+        replaced_range=(range_start, range_end),
+        dropped_count=len(dropped_blocks),
+        char_total=char_total,
+        dropped_kinds=dict(sorted(dropped_kinds.items())),
+        dropped_tags=dropped_tags,
     )
 
-    return [marker, *surviving], start
+    marker = ResolvedBlock(
+        key="context_truncated",
+        # Pre-render the event to a string (we're past render_context's
+        # pre-serialization step; surviving blocks already have content set).
+        content=truncating_pformat(truncated),
+        # role=USER so the marker appears inline in the timeline (where the
+        # gap actually is) rather than bundling with the system prompt.
+        role=Role.USER,
+        metadata=BlockMetadata(truncated=True),
+        event=truncated,
+    )
+
+    return [marker, *surviving], len(dropped_indices), truncated
 
 
 def render_context(
@@ -207,13 +258,14 @@ def render_context(
     pre_format_limit: int | None = None,
     event_format: "FormatConfig | None" = None,
     min_preserved_events: int = 5,
+    event_limit_includes_context: bool = False,
     model_context_window: int | None = None,
 ) -> RenderResult:
     """Render resolved blocks into provider-specific output with utilization stats.
 
     Never mutates input blocks. Per-block head/tail truncation has been removed
-    — content passes through verbatim. Total-context / total-event eviction
-    (``context_limit`` / ``event_limit``) drops whole blocks when over budget.
+    — content passes through verbatim. Context blocks over budget are marked
+    EVICTED in place; events over budget are evicted oldest-first.
 
     ``event_format`` carries the structural bounds (max_string / max_length /
     max_depth) for event-field rendering at trajectory build time. The
@@ -238,30 +290,38 @@ def render_context(
     serialized_messages: list[ResolvedBlock] = []
     for block in message_blocks:
         if block.event is not None and not isinstance(block.event, ToolCallEvent):
-            content = block_formatter.format_event(
-                block.event,
-                max_chars=pre_format_limit,
-                event_format=event_format,
-            )
+            content = block_formatter.format_event(block.event, event_format=event_format)
             block = block.model_copy(update={"content": content})
         serialized_messages.append(block)
     message_blocks = serialized_messages
 
-    # Total-context / total-event eviction: drop whole blocks when over budget.
+    # Total-context eviction: mark over-budget blocks EVICTED in place.
     context_blocks_dropped = 0
     if context_limit is not None:
         system_blocks, context_blocks_dropped = _apply_context_total_limit(
             system_blocks, context_limit, count_fn
         )
 
+    # Event budget can optionally be interpreted as a TOTAL input budget
+    # (context + events + response reserve). In that mode, subtract the true
+    # post-truncation context-block cost so event eviction uses the remaining
+    # budget rather than the raw global cap.
+    context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
+    applied_event_limit = event_limit
+    if applied_event_limit is not None and event_limit_includes_context:
+        applied_event_limit = max(0, applied_event_limit - context_blocks_tokens)
+
     events_dropped = 0
-    if event_limit is not None:
-        message_blocks, events_dropped = _apply_event_total_limit(
-            message_blocks, event_limit, count_fn, min_preserved_events=min_preserved_events
+    events_truncated_event: Any = None
+    if applied_event_limit is not None:
+        message_blocks, events_dropped, events_truncated_event = _apply_event_total_limit(
+            message_blocks,
+            applied_event_limit,
+            count_fn,
+            min_preserved_events=min_preserved_events,
         )
 
     # Stats — computed on truncated content, before formatter sees it.
-    context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
     events_tokens = sum(count_fn(b.content) for b in message_blocks)
     stats = ContextWindowStats(
         context_blocks_tokens=context_blocks_tokens,
@@ -270,7 +330,7 @@ def render_context(
         events_count=len(message_blocks),
         total_tokens=context_blocks_tokens + events_tokens,
         max_context_tokens=context_limit,
-        max_event_tokens=event_limit,
+        max_event_tokens=applied_event_limit,
         model_context_window=model_context_window,
         context_blocks_dropped=context_blocks_dropped,
         events_dropped=events_dropped,
@@ -279,4 +339,9 @@ def render_context(
     # Neutral message list → provider wire format.
     messages = block_formatter.format([*system_blocks, *message_blocks])
     output = provider_formatter.format(messages)
-    return RenderResult(output=output, stats=stats, messages=messages)
+    return RenderResult(
+        output=output,
+        stats=stats,
+        messages=messages,
+        events_truncated=events_truncated_event,
+    )

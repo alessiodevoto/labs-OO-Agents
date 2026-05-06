@@ -230,11 +230,80 @@ class TestStructuredPayloadSafetyNet:
         finally:
             _current_llm_var.reset(token)
 
-        # Exactly one truncation Summary should fire (summary_text=None).
+        # Clamp path must emit a Summary with context-window details.
         assert len(summary_events) >= 1, "clamp must emit a Summary event"
         ev = summary_events[0]
-        assert ev.summary_text is None, "truncation form has no summary text"
+        assert ev.summary_text is not None
+        assert "hit context window limit" in ev.summary_text
         assert ev.children_tags, "summary must reference archived child tags"
+
+    @pytest.mark.asyncio
+    async def test_clamp_summary_preserves_task_for_active_call_id(self):
+        """When a call_id is active on the runtime stack, its Task is preserved."""
+        from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+        from nemo_oo_agents.events import PythonOutput, Task
+        from nemo_oo_agents.runtime.context_vars import _pop_agent_call_id, _push_agent_call_id
+
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        parent_task = agent.event_manager.add(
+            Task(prompt="parent task", metadata={"call_id": "parent"})
+        )
+        child_task = agent.event_manager.add(
+            Task(prompt="child task", metadata={"call_id": "child"})
+        )
+
+        for i in range(220):
+            tc_id = f"call_{i}"
+            agent.event_manager.add(
+                ToolCallEvent(
+                    tool_call_id=tc_id,
+                    name="execute_python",
+                    arguments={"code": "x " * 500},
+                    result=ToolResult(
+                        tool_call_id=tc_id,
+                        content="done",
+                        result_status=ResultStatus.COMPLETE,
+                    ),
+                )
+            )
+            agent.event_manager.add(
+                PythonOutput(
+                    tool_call_id=tc_id,
+                    execution_count=i,
+                    stdout="x " * 500,
+                    stderr="",
+                    execution_status=ResultStatus.COMPLETE,
+                )
+            )
+
+        summary_events = []
+        agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        _push_agent_call_id("child")
+        token = _current_llm_var.set(agent._llm)
+        try:
+            try:
+                await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+            except Exception:
+                pass
+        finally:
+            _current_llm_var.reset(token)
+            _pop_agent_call_id()
+
+        assert summary_events, "expected at least one Summary from clamp"
+        collapsed_children = {tag for ev in summary_events for tag in ev.children_tags}
+        assert child_task not in collapsed_children, "active call_id Task must be preserved"
+        assert parent_task in collapsed_children, "non-active Task should be collapsible"
 
     @pytest.mark.asyncio
     async def test_per_call_llm_override_is_honored(self):
@@ -394,6 +463,121 @@ class TestTokenCounterRegression:
             f"context_blocks_tokens={stats.context_blocks_tokens:,} is close to "
             f"raw block chars ({len(long_block):,}) — renderer is still "
             "treating ``len`` as tokens"
+        )
+
+    @pytest.mark.asyncio
+    async def test_default_unconfigured_budget_split_caps_context_to_half_window(self):
+        """When both token limits are unset, runtime applies default split:
+
+        - context_limit = context_window // 2
+        - event budget is context-aware (subtract measured context tokens)
+        """
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        # Intentionally large context block: should be capped to <= half-window.
+        agent.context_manager["prose"] = "context block " * 120_000
+        # Add events so event budget path is exercised.
+        for _ in range(20):
+            agent.event_manager.add(Message(content="event payload " * 2000))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Requirement 1: default context budget = half window.
+        assert stats.max_context_tokens == agent._llm.context_window // 2
+        # Context blocks must not exceed the configured context cap.
+        assert stats.context_blocks_tokens <= stats.max_context_tokens
+
+    @pytest.mark.asyncio
+    async def test_default_event_budget_subtracts_true_context_size(self):
+        """Default event eviction budget must account for measured context size.
+
+        In unconfigured mode, effective_event_limit starts at
+        ``ctx_window - response_reserve_tokens`` and then render-time subtracts
+        post-truncation context tokens.
+        """
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.context_manager["prose"] = "the quick brown fox jumps over the lazy dog. " * 4000
+        for _ in range(12):
+            agent.event_manager.add(Message(content="event data " * 2500))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Default split applies in unconfigured mode.
+        assert stats.max_context_tokens == agent._llm.context_window // 2
+        # Requirement 2: event budget is context-aware.
+        assert stats.max_event_tokens + stats.context_blocks_tokens == (
+            agent._llm.context_window - agent.runtime.truncation_config.response_reserve_tokens
+        )
+
+    @pytest.mark.asyncio
+    async def test_default_reserve_accounts_for_output_tokens_plus_margin(self):
+        """Unconfigured reserve uses max(static reserve, max_output_tokens + 5% window)."""
+        llm = _mk_llm(200_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.context_manager["prose"] = "context " * 30_000
+        for _ in range(20):
+            agent.event_manager.add(Message(content="event payload " * 1800))
+
+        method = type(agent).respond
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        max_output_tokens = 64_000
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                max_output_tokens=max_output_tokens,
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        expected_reserve = max(
+            agent.runtime.truncation_config.response_reserve_tokens,
+            max_output_tokens + int(agent._llm.context_window * 0.05),
+        )
+        assert stats.max_event_tokens + stats.context_blocks_tokens == (
+            agent._llm.context_window - expected_reserve
         )
 
     def test_clamp_budget_accounts_for_tool_schemas(self):
@@ -812,10 +996,14 @@ class TestEndToEndSmallContextWindow:
         assert structured + 2048 < 4096, (
             f"input ({structured}) + max_output (2048) = {structured + 2048} >= 4096"
         )
-        # Safety net should have dropped messages
+        # L4 pre-render eviction or structured safety-net should have reduced events
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        assert stats.events_dropped > 0, "Safety net should have dropped events"
+        # Either events were dropped at render level or archived via collapse
+        active_after = len(list(agent.event_manager.keys()))
+        assert active_after < 40 or stats.events_dropped > 0, (
+            "Expected either collapse archival or render-level eviction to fire"
+        )
 
     @pytest.mark.asyncio
     async def test_recovery_fires_on_token_estimation_error(self):

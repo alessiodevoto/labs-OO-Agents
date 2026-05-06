@@ -93,6 +93,9 @@ def pformat(
     instance_mode: Annotated[
         str, "Instance format: 'repr' for repr-style, 'type' for type structure"
     ] = "repr",
+    unquote_strings: Annotated[
+        bool, "Render strings without quotes (verbatim or truncated marker)"
+    ] = False,
 ) -> str:
     """Format an object as a string with smart truncation.
 
@@ -107,6 +110,15 @@ def pformat(
     """
     # console and indent_guides are intentionally ignored for Rich compatibility
     del console, indent_guides
+
+    # unquote_strings: render top-level strings without quotes but still apply
+    # max_string truncation (produces str(len=N, ...) marker when truncated).
+    if unquote_strings and isinstance(obj, str):
+        if max_string is None or len(obj) <= max_string:
+            return obj
+        from nemo_oo_agents.agentdoc._pformat import _format_string
+
+        return _format_string(obj, max_string)
 
     stream: io.StringIO = io.StringIO()
 

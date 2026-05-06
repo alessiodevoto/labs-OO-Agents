@@ -287,6 +287,47 @@ class Summary(EventBase):  # type: ignore[misc]
     doc: str = Field(default="", description="Usage hint for accessing collapsed events")
 
 
+class ContextTruncated(EventBase):  # type: ignore[misc]
+    """Framework-emitted error event recording a forced render-time eviction.
+
+    Distinct from ``Summary`` (which represents a voluntary ``events.collapse()``
+    by the agent author): this event signals that the framework had to drop
+    events from a render to fit within the context budget. The dropped events
+    are NOT archived — they still exist in ``self.events`` under their original
+    individual tags. This event is purely an audit / signal record.
+
+    Shape mirrors ``Summary`` so the LLM pattern-matches both as elision
+    markers, but the class name and ``_role=USER`` distinguish it as an error
+    condition that the agent author may want to address.
+
+    Fields:
+    - replaced_range: (min_seq, max_seq) of the dropped events
+    - dropped_count: total number of events evicted
+    - char_total: total characters that were dropped from this render
+    - dropped_kinds: histogram of evicted event types (e.g. {python_output: 3})
+    - dropped_tags: hidden from render (repr=False) — full tag list for
+      programmatic access via ``self.events.query(...)``
+    """
+
+    _role: ClassVar[Role] = Role.USER
+
+    replaced_range: Annotated[
+        tuple[int, int],
+        Field(description="(min_seq, max_seq) of evicted events"),
+    ]
+    dropped_count: Annotated[int, Field(description="Number of events evicted")]
+    char_total: Annotated[int, Field(description="Total chars dropped from this render")]
+    dropped_kinds: Annotated[
+        dict[str, int],
+        Field(description="Histogram of evicted event kinds (snake_case class name)"),
+    ]
+    dropped_tags: list[str] = Field(
+        default_factory=list,
+        repr=False,
+        description="Tags of dropped events (events still accessible at self.events[tag])",
+    )
+
+
 # === Union of all core event types ===
 
 Event = (
@@ -295,6 +336,7 @@ Event = (
     | Reasoning
     | Error
     | Feedback
+    | ContextTruncated
     | LLMOutput
     | PythonOutput
     | Notification

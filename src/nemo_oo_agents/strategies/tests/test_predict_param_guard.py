@@ -295,7 +295,7 @@ class TestPredictPromptSizeGuardImages:
             "image_url": {"url": "data:image/png;base64," + "B" * 50_000},
         }
         task = Task(prompt=prompt, images=[big_image])
-        formatted = PlainBlockFormatter().format_event(task, max_chars=100_000)
+        formatted = PlainBlockFormatter().format_event(task)
 
         # The formatted output is exactly the prompt — no XML wrapper, no image overhead
         assert formatted == prompt
@@ -321,7 +321,7 @@ class TestPredictPromptSizeGuardImages:
         assert len(long_prompt) > max_block_chars
 
         # format_event no longer head/tail-squashes — content passes through verbatim.
-        formatted = PlainBlockFormatter().format_event(task, max_chars=max_block_chars)
+        formatted = PlainBlockFormatter().format_event(task)
         assert long_prompt in formatted  # full prompt present
         assert "<truncated-output>" not in formatted  # legacy wrapper gone
         assert "image_url" not in formatted  # images still excluded from text
@@ -347,5 +347,5 @@ class TestPredictPromptSizeGuardImages:
         assert len(prompt) <= max_block_chars
 
         # format_event does not truncate either
-        formatted = PlainBlockFormatter().format_event(task, max_chars=max_block_chars)
+        formatted = PlainBlockFormatter().format_event(task)
         assert formatted == prompt  # no truncation
