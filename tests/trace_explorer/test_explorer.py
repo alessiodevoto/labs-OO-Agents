@@ -5,10 +5,9 @@
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import asyncio
 
 from nemo_oo_agents.trace_explorer import (
     ExecutionTurn,
@@ -1033,9 +1032,7 @@ class TestFromViewer:
 
     async def test_single_page(self):
         """Fetch a trace that fits in one page."""
-        from unittest.mock import AsyncMock, patch
 
-        import httpx
 
         spans = [
             {
@@ -1075,7 +1072,6 @@ class TestFromViewer:
 
     async def test_pagination(self):
         """Fetch a trace across multiple pages."""
-        from unittest.mock import AsyncMock, patch
 
         span1 = {
             "traceId": "t1",
@@ -1131,7 +1127,6 @@ class TestFromViewer:
 
     async def test_connection_error(self):
         """Viewer unreachable raises ConnectionError."""
-        from unittest.mock import AsyncMock, patch
 
         import httpx
 
@@ -1147,7 +1142,6 @@ class TestFromViewer:
 
     async def test_session_not_found(self):
         """404 raises ValueError."""
-        from unittest.mock import AsyncMock, patch
 
         mock_resp = AsyncMock()
         mock_resp.status_code = 404
