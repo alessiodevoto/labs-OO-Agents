@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import asyncio
 
 from nemo_oo_agents.trace_explorer import (
     ExecutionTurn,
@@ -325,7 +326,7 @@ class TestShortId:
 class TestTraceExplorerBasic:
     """Basic tests for TraceExplorer."""
 
-    def test_loads_simple_trace(self):
+    async def test_loads_simple_trace(self):
         """Test loading a trace with one session and one LLM turn."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -338,7 +339,7 @@ class TestTraceExplorerBasic:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
 
             assert len(trace.sessions) == 1
             assert trace.sessions[0].agent_name == "TestAgent"
@@ -347,7 +348,7 @@ class TestTraceExplorerBasic:
         finally:
             trace_file.unlink()
 
-    def test_extracts_tool_calls_from_llm_turns(self):
+    async def test_extracts_tool_calls_from_llm_turns(self):
         """Test that tool calls are properly extracted from LLM turns."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -363,7 +364,7 @@ class TestTraceExplorerBasic:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
 
             llm_turn = trace.sessions[0].turns[0]
             assert isinstance(llm_turn, LLMTurn)
@@ -373,7 +374,7 @@ class TestTraceExplorerBasic:
         finally:
             trace_file.unlink()
 
-    def test_extracts_execution_turns(self):
+    async def test_extracts_execution_turns(self):
         """Test that execution turns are properly extracted."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -387,7 +388,7 @@ class TestTraceExplorerBasic:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
 
             exec_turn = trace.sessions[0].turns[0]
             assert isinstance(exec_turn, ExecutionTurn)
@@ -400,7 +401,7 @@ class TestTraceExplorerBasic:
 class TestTraceExplorerGetToolCalls:
     """Tests for get_tool_calls method."""
 
-    def test_finds_tool_calls_from_llm_response(self):
+    async def test_finds_tool_calls_from_llm_response(self):
         """Test that tool calls from LLM responses are found."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -413,7 +414,7 @@ class TestTraceExplorerGetToolCalls:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             # get_tool_calls was internalized, check that tool calls appear in overview
             result = trace.get_overview()
 
@@ -421,7 +422,7 @@ class TestTraceExplorerGetToolCalls:
         finally:
             trace_file.unlink()
 
-    def test_finds_multiple_tool_calls(self):
+    async def test_finds_multiple_tool_calls(self):
         """Test that multiple tool calls are found."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -437,7 +438,7 @@ class TestTraceExplorerGetToolCalls:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             # get_tool_calls was internalized, check that tool calls appear in session view
             result = trace.get_session(trace.sessions[0].session_id[:6], concise=False)
 
@@ -449,7 +450,7 @@ class TestTraceExplorerGetToolCalls:
 class TestTraceExplorerOverview:
     """Tests for get_overview method."""
 
-    def test_overview_success(self):
+    async def test_overview_success(self):
         """Test overview for successful trace."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000", status="OK"),
@@ -457,7 +458,7 @@ class TestTraceExplorerOverview:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             overview = trace.get_overview()
 
             # Format uses [OK] label in call graph line for success
@@ -466,14 +467,14 @@ class TestTraceExplorerOverview:
         finally:
             trace_file.unlink()
 
-    def test_overview_failure(self):
+    async def test_overview_failure(self):
         """Test overview for failed trace."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000", status="ERROR"),
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             overview = trace.get_overview()
 
             # Format uses [ERR] label in call graph line for failure
@@ -485,7 +486,7 @@ class TestTraceExplorerOverview:
 class TestTraceExplorerErrors:
     """Tests for error detection."""
 
-    def test_finds_execution_errors(self):
+    async def test_finds_execution_errors(self):
         """Test that execution errors are found."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -499,7 +500,7 @@ class TestTraceExplorerErrors:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             errors = trace.get_errors()
 
             assert "Found" in errors
@@ -508,14 +509,14 @@ class TestTraceExplorerErrors:
         finally:
             trace_file.unlink()
 
-    def test_finds_session_status_errors(self):
+    async def test_finds_session_status_errors(self):
         """Test that session status errors are found."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000", status="ERROR"),
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             errors = trace.get_errors()
 
             assert "status_error" in errors
@@ -526,7 +527,7 @@ class TestTraceExplorerErrors:
 class TestTraceExplorerSearch:
     """Tests for search functionality."""
 
-    def test_searches_message_content(self):
+    async def test_searches_message_content(self):
         """Test searching in message content."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -538,7 +539,7 @@ class TestTraceExplorerSearch:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             result = trace.search("needle")
 
             assert "Found" in result
@@ -546,7 +547,7 @@ class TestTraceExplorerSearch:
         finally:
             trace_file.unlink()
 
-    def test_searches_code(self):
+    async def test_searches_code(self):
         """Test searching in executed code."""
         spans = [
             make_generation_span("gen1", "aaaaaa000000"),
@@ -558,7 +559,7 @@ class TestTraceExplorerSearch:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             result = trace.search("secret")
 
             assert "Found" in result
@@ -588,14 +589,14 @@ class TestTraceExplorerRealTrace:
             return traces[0]
         pytest.skip("No real trace fixtures available")
 
-    def test_loads_real_trace(self, real_trace_path):
+    async def test_loads_real_trace(self, real_trace_path):
         """Test loading a real trace file."""
-        trace = TraceExplorer.from_file(real_trace_path)
+        trace = await TraceExplorer.from_file(real_trace_path)
         assert len(trace.sessions) >= 1
 
-    def test_overview_on_real_trace(self, real_trace_path):
+    async def test_overview_on_real_trace(self, real_trace_path):
         """Test overview output on real trace."""
-        trace = TraceExplorer.from_file(real_trace_path)
+        trace = await TraceExplorer.from_file(real_trace_path)
         overview = trace.get_overview()
 
         # Should have basic structure - current format uses:
@@ -656,7 +657,7 @@ class TestAgentSpanParsing:
     The current code extracts agent_name from the span name, causing a mismatch.
     """
 
-    def test_parses_turns_when_agent_name_differs_from_span_name(self):
+    async def test_parses_turns_when_agent_name_differs_from_span_name(self):
         """Test that turns are parsed even when AGENT span name differs from agent.name.
 
         Bug scenario:
@@ -739,7 +740,7 @@ class TestAgentSpanParsing:
         trace_file = create_trace_file(spans)
 
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
 
             # Should have 1 session
             assert len(trace.sessions) == 1, f"Expected 1 session, got {len(trace.sessions)}"
@@ -757,7 +758,7 @@ class TestAgentSpanParsing:
         finally:
             trace_file.unlink()
 
-    def test_parses_real_validation_error_trace(self):
+    async def test_parses_real_validation_error_trace(self):
         """Test parsing the actual trace with return_result validation error.
 
         This trace has:
@@ -776,7 +777,7 @@ class TestAgentSpanParsing:
         if not fixture_path.exists():
             pytest.skip("Fixture not available")
 
-        trace = TraceExplorer.from_file(fixture_path)
+        trace = await TraceExplorer.from_file(fixture_path)
 
         # Should have 1 session
         assert len(trace.sessions) == 1, f"Expected 1 session, got {len(trace.sessions)}"
@@ -1028,19 +1029,14 @@ class TestLoadSpansOtlp:
 
 
 class TestFromViewer:
-    """Tests for TraceExplorer.from_viewer with mocked HTTP."""
+    """Tests for TraceExplorer.from_viewer with mocked HTTP (httpx)."""
 
-    def _mock_response(self, data: dict):
-        """Create a mock urllib response."""
-        mock = MagicMock()
-        mock.read.return_value = json.dumps(data).encode()
-        mock.__enter__ = lambda s: s
-        mock.__exit__ = MagicMock(return_value=False)
-        return mock
-
-    def test_single_page(self):
+    async def test_single_page(self):
         """Fetch a trace that fits in one page."""
-        # Minimal valid trace with a generation span
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
+
         spans = [
             {
                 "traceId": "t1",
@@ -1061,13 +1057,26 @@ class TestFromViewer:
         ]
         response_data = {"events": spans, "total_count": 1, "has_more": False}
 
-        with patch("urllib.request.urlopen", return_value=self._mock_response(response_data)):
-            trace = TraceExplorer.from_viewer("http://localhost:5001", "test-session")
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = lambda: None
+        mock_resp.json = lambda: response_data
+
+        with patch("httpx.AsyncClient") as MockClient:
+            client = AsyncMock()
+            client.get.return_value = mock_resp
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = client
+
+            trace = await TraceExplorer.from_viewer("http://localhost:5001", "test-session")
             assert trace.trace_file == "viewer://test-session"
             assert len(trace._raw_spans) == 1
 
-    def test_pagination(self):
+    async def test_pagination(self):
         """Fetch a trace across multiple pages."""
+        from unittest.mock import AsyncMock, patch
+
         span1 = {
             "traceId": "t1",
             "spanId": "s1",
@@ -1100,42 +1109,59 @@ class TestFromViewer:
         page1 = {"events": [span1], "total_count": 2, "has_more": True}
         page2 = {"events": [span2], "total_count": 2, "has_more": False}
 
-        responses = [self._mock_response(page1), self._mock_response(page2)]
+        mock_resp1 = AsyncMock()
+        mock_resp1.status_code = 200
+        mock_resp1.raise_for_status = lambda: None
+        mock_resp1.json = lambda: page1
 
-        with patch("urllib.request.urlopen", side_effect=responses):
-            trace = TraceExplorer.from_viewer("http://localhost:5001", "sess")
+        mock_resp2 = AsyncMock()
+        mock_resp2.status_code = 200
+        mock_resp2.raise_for_status = lambda: None
+        mock_resp2.json = lambda: page2
+
+        with patch("httpx.AsyncClient") as MockClient:
+            client = AsyncMock()
+            client.get.side_effect = [mock_resp1, mock_resp2]
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = client
+
+            trace = await TraceExplorer.from_viewer("http://localhost:5001", "sess")
             assert len(trace._raw_spans) == 2
 
-    def test_connection_error(self):
+    async def test_connection_error(self):
         """Viewer unreachable raises ConnectionError."""
-        import urllib.error
+        from unittest.mock import AsyncMock, patch
 
-        with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.URLError("Connection refused"),
-        ):
+        import httpx
+
+        with patch("httpx.AsyncClient") as MockClient:
+            client = AsyncMock()
+            client.get.side_effect = httpx.ConnectError("Connection refused")
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = client
+
             with pytest.raises(ConnectionError, match="Cannot reach viewer"):
-                TraceExplorer.from_viewer("http://localhost:9999", "sess")
+                await TraceExplorer.from_viewer("http://localhost:9999", "sess")
 
-    def test_session_not_found(self):
+    async def test_session_not_found(self):
         """404 raises ValueError."""
-        import urllib.error
+        from unittest.mock import AsyncMock, patch
 
-        with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.HTTPError(
-                url="http://localhost:5001/api/trace",
-                code=404,
-                msg="Not Found",
-                hdrs=None,  # type: ignore[arg-type]
-                fp=None,
-            ),
-        ):
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 404
+
+        with patch("httpx.AsyncClient") as MockClient:
+            client = AsyncMock()
+            client.get.return_value = mock_resp
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = client
+
             with pytest.raises(ValueError, match="Session not found"):
-                TraceExplorer.from_viewer("http://localhost:5001", "nonexistent")
+                await TraceExplorer.from_viewer("http://localhost:5001", "nonexistent")
 
-
-# =============================================================================
 # Tests for turn-summary helper functions
 # =============================================================================
 
@@ -1255,7 +1281,7 @@ class TestPformatImport:
         assert isinstance(out, str)
         assert "k" in out and "v" in out
 
-    def test_get_session_verbose_formats_session_input(self):
+    async def test_get_session_verbose_formats_session_input(self):
         """End-to-end: ``get_session(concise=False)`` on a session with
         kwargs hits ``_pformat`` without a surrounding try/except (unlike the
         tool-arg path, which swallowed the TypeError silently). Previously
@@ -1276,7 +1302,7 @@ class TestPformatImport:
         spans = [agent_span]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             output = trace.get_session(trace.sessions[0].session_id[:6], concise=False)
 
             assert isinstance(output, str)
@@ -1302,7 +1328,7 @@ class TestPformatImport:
 class TestOrphanSpans:
     """Child spans whose parents are not in the trace."""
 
-    def test_only_orphan_llm_and_exec_yields_no_sessions(self):
+    async def test_only_orphan_llm_and_exec_yields_no_sessions(self):
         """If acompletion/code_execution spans dangle (parent span ID not in
         trace, no AGENT span, no root generation), the parser returns an
         empty session list without crashing.
@@ -1333,7 +1359,7 @@ class TestOrphanSpans:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             assert trace.sessions == []
             # Overview must not crash and must communicate emptiness.
             overview = trace.get_overview()
@@ -1341,7 +1367,7 @@ class TestOrphanSpans:
         finally:
             trace_file.unlink()
 
-    def test_only_non_root_generation_spans_yield_no_sessions(self):
+    async def test_only_non_root_generation_spans_yield_no_sessions(self):
         """A trace with only *child* generation spans (all have
         generation.parent_id set) falls through the generation-span fallback
         because it only considers root generations, and returns no sessions."""
@@ -1354,7 +1380,7 @@ class TestOrphanSpans:
         ]
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             assert trace.sessions == []
         finally:
             trace_file.unlink()
@@ -1363,7 +1389,7 @@ class TestOrphanSpans:
 class TestSpanCompleteness:
     """Every descendant gen/acompletion/exec span should map to a turn."""
 
-    def test_agent_span_path_captures_all_descendant_turns(self):
+    async def test_agent_span_path_captures_all_descendant_turns(self):
         """AGENT span + generation span + N acompletion + M code_execution
         should produce exactly N+M turns, correctly typed and ordered by
         start_time.
@@ -1412,7 +1438,7 @@ class TestSpanCompleteness:
 
         trace_file = create_trace_file(spans)
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             assert len(trace.sessions) == 1
             session = trace.sessions[0]
             assert len(session.turns) == 5, (
@@ -1435,7 +1461,7 @@ class TestSpanCompleteness:
 class TestMultipleRoots:
     """Traces with multiple concurrent root AGENT spans."""
 
-    def test_two_independent_root_agents_produce_two_sessions(self):
+    async def test_two_independent_root_agents_produce_two_sessions(self):
         """Two AGENT spans with no parent and no cross-links should yield
         two top-level sessions, each with its own turns."""
         agent_a = make_agent_span(
@@ -1462,7 +1488,7 @@ class TestMultipleRoots:
 
         trace_file = create_trace_file([agent_a, gen_a, llm_a, agent_b, gen_b, llm_b])
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             assert len(trace.sessions) == 2
             names = sorted(s.agent_name for s in trace.sessions)
             assert names == ["A", "B"]
@@ -1485,7 +1511,7 @@ class TestCrossSessionParent:
     and must still return the session that owns an intact AGENT tree.
     """
 
-    def test_does_not_crash_and_still_populates_intact_session(self):
+    async def test_does_not_crash_and_still_populates_intact_session(self):
         agent_a = make_agent_span(
             "aa01", agent_name="A", method_name="run", start_time=1_000, end_time=5_000
         )
@@ -1510,7 +1536,7 @@ class TestCrossSessionParent:
 
         trace_file = create_trace_file([agent_a, gen_a, llm_a, stray])
         try:
-            trace = TraceExplorer.from_file(trace_file)
+            trace = await TraceExplorer.from_file(trace_file)
             assert len(trace.sessions) == 1
             assert trace.sessions[0].agent_name == "A"
             # Overview must render without raising.
@@ -1527,7 +1553,7 @@ class TestPopulateTurnsFallbacks:
     Tier 3: time-range overlap (warns).
     """
 
-    def test_tier2_descendant_match_populates_turns(self):
+    async def test_tier2_descendant_match_populates_turns(self):
         """Generation span parented under the AGENT span, no call_id set.
         Turns should populate via descendant walk (no warnings)."""
         import warnings
@@ -1547,7 +1573,7 @@ class TestPopulateTurnsFallbacks:
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
-                trace = TraceExplorer.from_file(trace_file)
+                trace = await TraceExplorer.from_file(trace_file)
             assert len(trace.sessions) == 1
             assert len(trace.sessions[0].turns) == 1
             fallback_warnings = [w for w in caught if "time-range fallback" in str(w.message)]
@@ -1555,7 +1581,7 @@ class TestPopulateTurnsFallbacks:
         finally:
             trace_file.unlink()
 
-    def test_tier3_time_range_fallback_warns(self):
+    async def test_tier3_time_range_fallback_warns(self):
         """Generation span not parented under AGENT, no call_id. The parser
         should still find it via time-range overlap and emit a warning."""
         import warnings
@@ -1576,7 +1602,7 @@ class TestPopulateTurnsFallbacks:
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
-                trace = TraceExplorer.from_file(trace_file)
+                trace = await TraceExplorer.from_file(trace_file)
             assert len(trace.sessions) == 1
             assert len(trace.sessions[0].turns) == 1
             fallback_warnings = [w for w in caught if "time-range fallback" in str(w.message)]
