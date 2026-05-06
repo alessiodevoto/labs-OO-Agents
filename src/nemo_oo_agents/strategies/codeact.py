@@ -44,6 +44,7 @@ from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
+    DebugTrace,
     Error,
     ExecutionSignal,
     PythonOutput,
@@ -791,6 +792,20 @@ Standard Python builtins and agent instance (`self`) are available."""
                 # Empty response - error
                 get_harness_metrics().empty_response()
                 session.record_error()
+                # Capture raw LLM response for debugging before removing the event
+                _debug_parts = [
+                    f"finish_reason={response.finish_reason!r}",
+                    f"content={response.content!r}",
+                    f"tool_calls={response.tool_calls!r}",
+                ]
+                raw = getattr(response, "raw_response", None)
+                if raw is not None:
+                    output = getattr(raw, "output", None)
+                    if output is not None:
+                        _debug_parts.append(f"raw_response.output={output!r}")
+                runtime.event_manager.add(
+                    DebugTrace(content=f"Empty response: {'; '.join(_debug_parts)}")
+                )
                 # Remove the empty assistant event - APIs reject empty content
                 runtime.event_manager.remove(event_id)
                 feedback = await self._tool_use_reminder(runtime, reason="Empty response received.")

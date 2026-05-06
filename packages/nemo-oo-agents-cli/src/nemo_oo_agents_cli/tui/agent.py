@@ -586,12 +586,13 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     - Use ``print()`` / ``pprint()`` to inspect intermediate state.
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
-    - **Ending a turn.** Every turn ends with
-      ``return_result(RespondResult(kind=...))``:
-        * ``kind="GET_USER_INPUT"`` — wait for the next human message.
-          Use after answering a question or asking a follow-up.
-        * ``kind="WAIT"`` — wait for ANY declared input queue (useful
-          when a background job is running alongside the conversation).
+    - **Ending a turn.** Only call
+      ``return_result(RespondResult(kind=...))`` when you are completely
+      done with all work or you need user input:
+        * ``kind="GET_USER_INPUT"`` — use after answering a question,
+          asking a follow-up, or when blocked on human input.
+        * ``kind="WAIT"`` — use when background jobs are running and you
+          want the dispatcher to wake you on the next queue event.
 
 
     # Communication mechanics

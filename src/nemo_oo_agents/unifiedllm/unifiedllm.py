@@ -1707,6 +1707,9 @@ class ResponsesClient(UnifiedLLM):
         if output_model is not None:
             api_params["text_format"] = output_model
 
+        if reasoning := self.config.get("reasoning"):
+            api_params["reasoning"] = reasoning
+
         raw_response = cast("litellm.ResponsesAPIResponse", litellm.responses(**api_params))
 
         # Extract usage if available (Responses API may have different structure)
@@ -1806,6 +1809,9 @@ class ResponsesClient(UnifiedLLM):
 
         if output_model is not None:
             api_params["text_format"] = output_model
+
+        if reasoning := self.config.get("reasoning"):
+            api_params["reasoning"] = reasoning
 
         raw_response = cast("litellm.ResponsesAPIResponse", await litellm.aresponses(**api_params))
 

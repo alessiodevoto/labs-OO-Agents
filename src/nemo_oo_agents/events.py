@@ -91,6 +91,18 @@ class Error(EventBase):  # type: ignore[misc]
     content: Annotated[str, Field(description="Error message for LLM retry")]
 
 
+class DebugTrace(EventBase):  # type: ignore[misc]
+    """Debug info stored in traces but never shown to the LLM.
+
+    Use for capturing raw LLM responses, internal state, or diagnostics
+    that are useful for post-hoc debugging but should not influence generation.
+    """
+
+    _role: ClassVar[Role] = Role.METADATA
+
+    content: Annotated[str, Field(description="Debug information for trace inspection")]
+
+
 class Feedback(EventBase):  # type: ignore[misc]
     """Execution feedback when target method not yet defined."""
 
