@@ -193,47 +193,7 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     return default_formatter
 
 
-def _responses_to_chat_for_counting(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert Responses API format messages to Chat Completions format for token counting.
 
-    litellm.token_counter expects Chat Completions format. This converts:
-    - function_call items → assistant message with tool_calls
-    - function_call_output items → tool role message
-    - role-based messages pass through unchanged
-    """
-    converted: list[dict[str, Any]] = []
-    pending_tool_calls: list[dict[str, Any]] = []
-
-    def _flush_tool_calls():
-        if pending_tool_calls:
-            converted.append({"role": "assistant", "tool_calls": list(pending_tool_calls)})
-            pending_tool_calls.clear()
-
-    for m in messages:
-        if m.get("type") == "function_call":
-            pending_tool_calls.append({
-                "id": m.get("call_id", ""),
-                "type": "function",
-                "function": {"name": m.get("name", ""), "arguments": m.get("arguments", "")},
-            })
-        elif m.get("type") == "function_call_output":
-            _flush_tool_calls()
-            converted.append({
-                "role": "tool",
-                "tool_call_id": m.get("call_id", ""),
-                "content": m.get("output", ""),
-            })
-        elif "role" in m:
-            _flush_tool_calls()
-            converted.append(m)
-        else:
-            # Unknown item — approximate as user message with JSON content
-            _flush_tool_calls()
-            import json as _json
-            converted.append({"role": "user", "content": _json.dumps(m)})
-
-    _flush_tool_calls()
-    return converted
 
 
 def _clamp_messages_to_budget(
@@ -2585,31 +2545,9 @@ class ActorRuntime:
             else:
                 cap = default_cap
             tool_schemas = _schemas_for_budget(tools) if tools else None
-            # Responses API format uses "type" keys (function_call, function_call_output)
-            # instead of "role" keys. Convert to Chat Completions format for token counting.
-            has_responses_items = any(
-                "type" in m and "role" not in m for m in messages
+            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
+                messages, cap, llm_client.model, tool_schemas=tool_schemas
             )
-            if has_responses_items:
-                counting_messages = _responses_to_chat_for_counting(messages)
-                _, total_tok, events_tok, dropped_count = _clamp_messages_to_budget(
-                    counting_messages, cap, llm_client.model, tool_schemas=tool_schemas
-                )
-                # Apply the same drop ratio to the original Responses messages
-                if dropped_count:
-                    system = [m for m in messages if m.get("role") == "system"]
-                    rest = [m for m in messages if m.get("role") != "system"]
-                    # Drop oldest non-system items proportionally
-                    keep_count = len(rest) - dropped_count
-                    if keep_count > 0:
-                        messages = system + rest[-keep_count:]
-                    else:
-                        messages = system
-                dropped = dropped_count
-            else:
-                messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
-                    messages, cap, llm_client.model, tool_schemas=tool_schemas
-                )
             if dropped:
                 # Archive the oldest events via event_manager.collapse so:
                 #  (a) next turn's render doesn't re-do the same drop work,
