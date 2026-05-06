@@ -3,29 +3,34 @@
 """Persistent bash session for SWE tools.
 
 Maintains a long-running bash subprocess with sentinel-based output capture.
-``cd``, ``export``, ``source``, and other stateful commands persist across calls.
+Uses a dedicated control file descriptor (fd 3) for sentinels so that
+stdout/stderr are 100% user-owned.
 
-Reliability notes:
-- create_subprocess_exec (no sh wrapper) so proc.pid IS bash directly
-- start_new_session=True for process-group isolation
-- On timeout: kill child processes via pgrep -P, bash survives and emits sentinels
-- Env vars, cwd, aliases preserved across timeouts; falls back to reset if recovery fails
-- Process-group SIGTERM/SIGKILL on close()
+Architecture:
+  stdin  -> bash (commands only)
+  stdout <- pure command output (no sentinel parsing)
+  stderr <- pure command stderr (no sentinel parsing)
+  fd 3   <- exit code + cwd + sentinel (control channel)
 """
 
 import asyncio
 import logging
 import os
+import secrets
 import signal
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_CHARS = 30_000
+_DRAIN_TIMEOUT = 0.05  # Seconds to wait for remaining output after sentinel
+_ACCUMULATE_POLL = 0.1  # Seconds between stream read attempts during execution
+_SIGTERM_GRACE = 5.0  # Seconds to wait for sentinel after SIGTERM
+_SIGKILL_GRACE = 2.0  # Seconds to wait for sentinel after SIGKILL
 
 
 class BashSession:
-    """A persistent bash shell session.
+    """A persistent bash shell session with dedicated control channel.
 
     Usage::
 
@@ -39,6 +44,8 @@ class BashSession:
     def __init__(self, cwd: str | Path = ".") -> None:
         self._cwd = Path(cwd).resolve()
         self._process: asyncio.subprocess.Process | None = None
+        self._control_reader: asyncio.StreamReader | None = None
+        self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
 
     @property
@@ -47,7 +54,7 @@ class BashSession:
         return self._cwd
 
     async def start(self) -> None:
-        """Start the bash subprocess."""
+        """Start the bash subprocess with a dedicated control fd."""
         if self._started:
             return
 
@@ -55,187 +62,225 @@ class BashSession:
         env["PS1"] = ""
         env["TERM"] = "dumb"
 
-        self._process = await asyncio.create_subprocess_exec(
-            "/bin/bash",
-            "--norc",
-            "--noprofile",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(self._cwd),
-            env=env,
-            start_new_session=True,  # own process group for clean kill
+        # Create pipe for control channel (fd 3 inside bash).
+        ctrl_r, ctrl_w = os.pipe()
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                "/bin/bash",
+                "--norc",
+                "--noprofile",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(self._cwd),
+                env=env,
+                start_new_session=True,
+                pass_fds=(ctrl_w,),
+            )
+        except Exception:
+            os.close(ctrl_r)
+            os.close(ctrl_w)
+            raise
+
+        # Dup the write end to fd 3 inside bash, then close the original.
+        assert self._process.stdin is not None
+        self._process.stdin.write(f"exec 3>&{ctrl_w} {ctrl_w}>&-\n".encode())
+        await self._process.stdin.drain()
+        os.close(ctrl_w)
+
+        # Wrap the read end in an asyncio StreamReader.
+        loop = asyncio.get_running_loop()
+        reader = asyncio.StreamReader(limit=2**20)
+        transport, _ = await loop.connect_read_pipe(
+            lambda: asyncio.StreamReaderProtocol(reader),
+            os.fdopen(ctrl_r, "rb", 0),
         )
+        self._control_reader = reader
+        self._control_transport = transport
         self._started = True
 
-        # Drain any shell startup output
-        await self._run_raw("true", timeout=5.0)
+        # Drain startup — send a no-op through the control channel.
+        sentinel = f"__CTRL_{secrets.token_hex(8)}__"
+        self._process.stdin.write(f"echo {sentinel} >&3\n".encode())
+        await self._process.stdin.drain()
+        await self._read_control_until(sentinel, timeout=5.0)
 
     async def run(self, command: str, timeout: float = 30.0) -> tuple[str, str, int]:
         """Run a command and return (stdout, stderr, exit_code).
 
-        The session persists state: ``cd``, ``export``, etc. carry over.
-        After each command the session's ``.cwd`` is updated automatically.
-
-        Args:
-            command: Shell command to execute.
-            timeout: Maximum seconds to wait (default 30s).
-
-        Returns:
-            Tuple of (stdout, stderr, exit_code).
+        The session persists state: cd, export, etc. carry over.
         """
         if not self._started:
             await self.start()
 
-        # Unique sentinel for this invocation
-        tag = f"_ST_{id(command) & 0xFFFFFF}_"
+        sentinel = f"__CTRL_{secrets.token_hex(8)}__"
 
-        # Run command, capture exit code on stdout, capture pwd on stderr
-        script = (
-            f"{command}\n"
-            f"__ec=$?\n"
-            f"echo {tag} $__ec\n"  # sentinel + exit code -> stdout
-            f"pwd 1>&2\n"  # cwd -> stderr
-            f"echo {tag} 1>&2\n"  # sentinel -> stderr
-        )
+        # Command runs normally; exit code + cwd + sentinel go to fd 3.
+        script = f"{command}\n_nemo_ec=$?\necho $_nemo_ec >&3\npwd >&3\necho {sentinel} >&3\n"
 
-        raw_out, raw_err, timed_out = await self._run_raw(script, timeout=timeout)
+        ctrl_lines, stdout, stderr, timed_out = await self._send_and_wait(script, sentinel, timeout)
 
-        # Parse exit code from stdout
-        exit_code = 0
-        out_lines: list[str] = []
-        for line in raw_out.split("\n"):
-            if tag in line:
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    try:
-                        exit_code = int(parts[-1])
-                    except ValueError:
-                        pass
-            else:
-                out_lines.append(line)
-        stdout = "\n".join(out_lines).strip()
+        # Parse control channel: [exit_code, cwd]
+        # Empty ctrl_lines means bash died (EOF on control fd) → non-zero exit.
+        exit_code = -1 if not ctrl_lines else 0
+        if ctrl_lines:
+            try:
+                exit_code = int(ctrl_lines[0].strip())
+            except (ValueError, IndexError):
+                pass
+            if len(ctrl_lines) >= 2:
+                candidate = ctrl_lines[1].strip()
+                if candidate.startswith("/"):
+                    self._cwd = Path(candidate)
 
-        # Parse cwd from stderr (last non-sentinel, non-empty line)
-        err_lines: list[str] = []
-        for line in raw_err.split("\n"):
-            if tag in line:
-                continue
-            err_lines.append(line)
-
-        # Last line of stderr should be the pwd output
-        if err_lines:
-            candidate = err_lines[-1].strip()
-            if candidate and candidate.startswith("/"):
-                self._cwd = Path(candidate)
-                err_lines = err_lines[:-1]
-        stderr = "\n".join(err_lines).strip()
-
-        # Truncate if too long
         if len(stdout) > MAX_OUTPUT_CHARS:
             stdout = stdout[:MAX_OUTPUT_CHARS] + "\n... (output truncated)"
         if len(stderr) > MAX_OUTPUT_CHARS:
             stderr = stderr[:MAX_OUTPUT_CHARS] + "\n... (stderr truncated)"
 
         if timed_out:
-            exit_code = exit_code or 124
+            exit_code = 124
 
-        return stdout, stderr, exit_code
+        return stdout.strip(), stderr.strip(), exit_code
 
-    async def _run_raw(self, script: str, timeout: float = 30.0) -> tuple[str, str, bool]:
-        """Send raw script and read until sentinel. Returns (stdout, stderr, timed_out).
+    async def _send_and_wait(
+        self, script: str, sentinel: str, timeout: float
+    ) -> tuple[list[str], str, str, bool]:
+        """Write script to stdin; drain stdout/stderr while waiting for sentinel.
 
-        On timeout: kills child processes via pgrep -P and waits for bash to
-        emit sentinels.  Env vars, aliases, and cwd are preserved.  Falls back
-        to full session reset only if sentinel recovery fails.
+        Drains stdout and stderr concurrently with reading the control fd to
+        prevent pipe deadlock on commands producing large output (>64KB).
+
+        Returns (control_lines, stdout, stderr, timed_out).
+        Auto-resets on dead process or broken pipe.
         """
         proc = self._process
-        if proc is None or proc.stdin is None:
-            raise RuntimeError("Bash session not started")
+        ctrl = self._control_reader
+        if proc is None or proc.stdin is None or ctrl is None or proc.returncode is not None:
+            logger.warning("Bash process dead or missing — resetting session")
+            await self.reset()
+            proc = self._process
+            ctrl = self._control_reader
+            if proc is None or proc.stdin is None or ctrl is None:
+                raise RuntimeError("Bash session failed to restart")
 
-        sentinel = f"__DONE_{id(script) & 0xFFFFFF}__"
-        full = f"{script}\necho {sentinel}\necho {sentinel} 1>&2\n"
-        proc.stdin.write(full.encode())
-        await proc.stdin.drain()
+        try:
+            proc.stdin.write(script.encode())
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.warning("Pipe error writing to bash (%s) — resetting session", e)
+            await self.reset()
+            proc = self._process
+            ctrl = self._control_reader
+            if proc is None or proc.stdin is None or ctrl is None:
+                raise RuntimeError("Bash session failed to restart") from e
+            proc.stdin.write(script.encode())
+            await proc.stdin.drain()
 
-        timed_out = False
+        # Drain stdout/stderr concurrently with control fd to prevent deadlock.
+        assert proc.stdout is not None and proc.stderr is not None
+        stdout_buf: list[bytes] = []
+        stderr_buf: list[bytes] = []
 
-        async def read_until_sentinel(stream: asyncio.StreamReader) -> str:
-            parts: list[str] = []
+        async def accumulate(stream: asyncio.StreamReader, buf: list[bytes]) -> None:
+            """Read from stream until EOF or external cancellation."""
             while True:
                 try:
-                    raw = await asyncio.wait_for(stream.readline(), timeout=timeout)
+                    chunk = await asyncio.wait_for(stream.read(65536), timeout=_ACCUMULATE_POLL)
+                    if not chunk:
+                        return
+                    buf.append(chunk)
                 except TimeoutError:
-                    nonlocal timed_out
-                    timed_out = True
-                    return "".join(parts)
-                if not raw:
-                    return "".join(parts)  # EOF
-                line = raw.decode("utf-8", errors="replace")
-                if sentinel in line:
-                    return "".join(parts)
-                parts.append(line)
+                    continue
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    return
 
-        assert proc.stdout is not None and proc.stderr is not None
-        out, err = await asyncio.gather(
-            read_until_sentinel(proc.stdout),
-            read_until_sentinel(proc.stderr),
-        )
+        stdout_task = asyncio.create_task(accumulate(proc.stdout, stdout_buf))
+        stderr_task = asyncio.create_task(accumulate(proc.stderr, stderr_buf))
+
+        ctrl_lines, timed_out = await self._read_control_until(sentinel, timeout)
+
+        # Cancel accumulators FIRST to avoid concurrent StreamReader access.
+        # StreamReader does not support multiple concurrent readers.
+        stdout_task.cancel()
+        stderr_task.cancel()
+        for task in (stdout_task, stderr_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # Now greedy-drain remaining output (sole reader per stream, safe).
+        for stream, buf in [(proc.stdout, stdout_buf), (proc.stderr, stderr_buf)]:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(stream.read(65536), timeout=_DRAIN_TIMEOUT)
+                    if not chunk:
+                        break
+                    buf.append(chunk)
+                except (TimeoutError, Exception):
+                    break
+
+        stdout = b"".join(stdout_buf).decode("utf-8", errors="replace")
+        stderr = b"".join(stderr_buf).decode("utf-8", errors="replace")
+        return ctrl_lines, stdout, stderr, timed_out
+
+    async def _read_control_until(self, sentinel: str, timeout: float) -> tuple[list[str], bool]:
+        """Read lines from control fd until sentinel. Returns (lines, timed_out)."""
+        ctrl = self._control_reader
+        assert ctrl is not None
+        lines: list[str] = []
+        timed_out = False
+        while True:
+            try:
+                raw = await asyncio.wait_for(ctrl.readline(), timeout=timeout)
+            except TimeoutError:
+                timed_out = True
+                break
+            if not raw:
+                break  # EOF — bash died
+            line = raw.decode("utf-8", errors="replace").rstrip("\n")
+            if sentinel in line:
+                break
+            lines.append(line)
 
         if timed_out:
-            # Kill only child processes — bash itself survives and emits sentinels.
-            recovered = await self._interrupt_and_drain(proc, sentinel, timeout)
-            if not recovered:
-                logger.warning(
-                    "Command timed out after %.1fs and recovery failed — resetting session",
-                    timeout,
-                )
-                await self.reset()
+            proc = self._process
+            if proc is not None:
+                recovered = await self._interrupt_and_recover(proc, sentinel, timeout)
+                if not recovered:
+                    logger.warning("Timeout recovery failed — resetting session")
+                    await self.reset()
 
-        return out.strip(), err.strip(), timed_out
+        return lines, timed_out
 
-    async def _interrupt_and_drain(
+    async def _interrupt_and_recover(
         self,
         proc: asyncio.subprocess.Process,
         sentinel: str,
         original_timeout: float,
     ) -> bool:
-        """Kill child processes and drain sentinels. Returns True if session recovered.
+        """Kill child processes and wait for sentinel on control fd.
 
-        With create_subprocess_exec, proc.pid IS bash directly.
-        pgrep -P finds the actual command. After the command dies,
-        bash continues and emits our sentinels — session preserved.
-
-        Graduated escalation: SIGTERM children → 5s → SIGINT children → 2s.
+        Graduated: SIGTERM children -> 5s -> SIGINT bash -> 2s.
         """
-        assert proc.stdout is not None and proc.stderr is not None
+        ctrl = self._control_reader
+        assert ctrl is not None
 
         async def try_drain(grace: float) -> bool:
-            """Attempt to read both sentinels within *grace* seconds."""
-            found = [False, False]
-
-            async def drain_one(stream: asyncio.StreamReader, idx: int) -> None:
-                while True:
-                    try:
-                        raw = await asyncio.wait_for(stream.readline(), timeout=grace)
-                    except TimeoutError:
-                        return
-                    if not raw:
-                        return
-                    line = raw.decode("utf-8", errors="replace")
-                    if sentinel in line:
-                        found[idx] = True
-                        return
-
-            await asyncio.gather(drain_one(proc.stdout, 0), drain_one(proc.stderr, 1))
-            return all(found)
+            while True:
+                try:
+                    raw = await asyncio.wait_for(ctrl.readline(), timeout=grace)
+                except TimeoutError:
+                    return False
+                if not raw:
+                    return False
+                if sentinel in raw.decode("utf-8", errors="replace"):
+                    return True
 
         async def kill_children(sig: int) -> None:
-            """Send signal to child processes of bash via pgrep.
-
-            Falls back to killpg (which also kills bash) if pgrep is
-            unavailable or finds no children.
-            """
             killed_any = False
             try:
                 pgrep = await asyncio.create_subprocess_exec(
@@ -256,34 +301,19 @@ class BashSession:
                                 pass
             except (TimeoutError, OSError, FileNotFoundError):
                 pass
-
             if not killed_any:
-                # Fallback: signal the entire process group.
-                # This kills bash too, but the session will reset as last resort.
+                # SIGINT to bash (like Ctrl-C) to break pending reads.
                 try:
-                    pgid = os.getpgid(proc.pid)
-                    os.killpg(pgid, sig)
+                    os.kill(proc.pid, signal.SIGINT)
                 except (ProcessLookupError, OSError):
                     pass
 
-        # First attempt: SIGTERM children → wait for sentinels
         await kill_children(signal.SIGTERM)
-        if await try_drain(5.0):
-            logger.info(
-                "Command timed out after %.1fs — killed child, session preserved",
-                original_timeout,
-            )
+        if await try_drain(_SIGTERM_GRACE):
             return True
-
-        # Second attempt: SIGKILL children → wait for sentinels
         await kill_children(signal.SIGKILL)
-        if await try_drain(2.0):
-            logger.info(
-                "Command timed out after %.1fs — force-killed child, session preserved",
-                original_timeout,
-            )
+        if await try_drain(_SIGKILL_GRACE):
             return True
-
         return False
 
     async def reset(self) -> None:
@@ -295,13 +325,16 @@ class BashSession:
 
     async def close(self) -> None:
         """Terminate the bash session cleanly."""
+        if self._control_transport is not None:
+            self._control_transport.close()
+            self._control_transport = None
+        self._control_reader = None
+
         if self._process is not None and self._process.returncode is None:
-            # Kill the entire process group so child processes die too
             try:
                 pgid = os.getpgid(self._process.pid)
                 os.killpg(pgid, signal.SIGTERM)
             except (ProcessLookupError, OSError):
-                # Fallback: start_new_session may not have taken
                 try:
                     self._process.kill()
                 except Exception:
