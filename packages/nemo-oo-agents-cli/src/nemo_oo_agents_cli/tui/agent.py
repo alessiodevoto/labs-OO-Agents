@@ -290,7 +290,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         # to the LLM every turn — the agent reads queue depth straight
         # from the ``queues`` context block. Composed via
         # ``QueueManager.status()`` so adding new channels Just Works.
-        self.context.set_dynamic("queues", "self.queue_manager.status()")
+        self.context.set_dynamic("queues", expr="self.queue_manager.status()")
         if os.environ.get("NEMO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
@@ -299,9 +299,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
                 event_manager=self.event_manager
             )
             # The WebPublisher's doc is static across the session, so
-            # mark it immutable — it goes into the cacheable prefix
-            # with the system prompt.
-            self.context.set("web", doc(self.web), immutable=True)
+            # it goes into the cacheable prefix with the system prompt.
+            self.context_manager.set_static("web", doc(self.web))
 
     @property
     def v(self) -> AgentVars:
@@ -647,14 +646,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         spec(self, "events", hidden=False)
 
         # Show todo progress to the LLM every turn
-        self.context.set_dynamic("todo_status", "self.todo.status()")
+        self.context.set_dynamic("todo_status", expr="self.todo.status()")
 
         # Show context-window usage to the LLM every turn (lets the agent
         # decide when to call /compact). Value is from the PREVIOUS turn's
         # render, so the very first respond() call sees an empty string.
         self.context.set_dynamic(
             "context_usage",
-            "self.context_stats.format() if self.context_stats else ''",
+            expr="self.context_stats.format() if self.context_stats else ''",
         )
 
         # Install summarizer after agent is initialized
