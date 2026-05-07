@@ -650,14 +650,14 @@ _DUMMY_TOOL_SCHEMA = {
     },
 }
 
-# Providers that reject messages containing tool_call blocks without tools= param.
-_STRICT_TOOL_PROVIDERS = ("bedrock/", "anthropic/", "anthropic.")
-
-
 def _needs_dummy_tool(model: str) -> bool:
     """Return True if the model's provider requires tools= when tool_calls are present."""
     model_lower = model.lower()
-    return any(model_lower.startswith(prefix) for prefix in _STRICT_TOOL_PROVIDERS)
+    # Bedrock models come in many prefix forms: "bedrock/", "aws/anthropic/bedrock-...", etc.
+    if _is_bedrock_model(model):
+        return True
+    # Direct Anthropic API calls
+    return model_lower.startswith(("anthropic/", "anthropic."))
 
 
 def _messages_have_tool_calls(messages: list[dict[str, Any]]) -> bool:
@@ -1253,6 +1253,12 @@ class CompletionClient(UnifiedLLM):
         ):
             api_params["tools"] = [_DUMMY_TOOL_SCHEMA]
 
+        # tool_choice/parallel_tool_calls are meaningless without tools — strip to avoid
+        # provider rejections (e.g. Bedrock) when kwargs leak from CodeAct to PredictStrategy.
+        if "tools" not in api_params:
+            api_params.pop("tool_choice", None)
+            api_params.pop("parallel_tool_calls", None)
+
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
         def _make_call():
@@ -1411,6 +1417,12 @@ class CompletionClient(UnifiedLLM):
             and _messages_have_tool_calls(prepared_messages)
         ):
             api_params["tools"] = [_DUMMY_TOOL_SCHEMA]
+
+        # tool_choice/parallel_tool_calls are meaningless without tools — strip to avoid
+        # provider rejections (e.g. Bedrock) when kwargs leak from CodeAct to PredictStrategy.
+        if "tools" not in api_params:
+            api_params.pop("tool_choice", None)
+            api_params.pop("parallel_tool_calls", None)
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
