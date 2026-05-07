@@ -556,7 +556,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # → h.state shows "running"/"done"/"failed"/"cancelled"
         # → await self.queue_manager.shutdown() cancels all
 
-    Use ``self.shell.bash()`` for quick commands (<10s). Use ``spawn()``
+    Use ``self.shell.run()`` for quick commands (<10s). Use ``spawn()``
     for CI pipelines, long builds, monitoring, and anything you want
     to run concurrently while staying responsive to the user.
 

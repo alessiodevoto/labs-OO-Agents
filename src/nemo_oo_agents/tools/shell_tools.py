@@ -22,7 +22,9 @@ import logging
 import re
 import shlex
 from pathlib import Path
+from typing import Annotated, AsyncIterator
 
+from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents.tools._results import (
@@ -30,6 +32,8 @@ from nemo_oo_agents.tools._results import (
     EditResult,
     LsResult,
     SearchResult,
+    StreamDone,
+    StreamEvent,
     ViewResult,
     WriteResult,
 )
@@ -73,7 +77,8 @@ class ShellTools(Skill):
     directory listing.
 
     Tools:
-        bash(command)           — run a shell command (stateful)
+        run(command, ...)       — run a shell command (stateful)
+        run_stream(command, ...) — stream stdout/stderr and terminal event
         view(path, ...)         — read a file with line numbers
         edit(path, old, new)    — str_replace with lint check
         write(path, content)    — create or overwrite a file
@@ -99,34 +104,44 @@ class ShellTools(Skill):
         return f"ShellTools({', '.join(parts)})"
 
     # ------------------------------------------------------------------
-    # bash
+    # run
     # ------------------------------------------------------------------
-    async def bash(self, command: str, timeout: float = 30.0) -> BashResult:
+    async def run(
+        self,
+        command: Annotated[str, spec(description="Shell command to execute")],
+        timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
+    ) -> BashResult:
         """Run a shell command in the persistent bash session.
 
         State persists: ``cd``, ``export``, ``source``, aliases, and
         environment variables carry over between calls.
 
-        Args:
-            command: Shell command to execute.
-            timeout: Max seconds to wait (default: 30).
-
-        Returns:
-            BashResult with stdout, stderr, return_code, and .text for display.
-
         Examples:
-            result = await self.shell.bash("cd src && ls")
-            result = await self.shell.bash("git status")
-            result = await self.shell.bash("python -m pytest tests/ -x", timeout=300)
+            result = await self.shell.run("cd src && ls")
+            result = await self.shell.run("git status")
+            result = await self.shell.run("python -m pytest tests/ -x", timeout=300)
         """
         stdout, stderr, code = await self._session.run(command, timeout=timeout)
         timed_out = code == 124 and not stdout and not stderr
         return BashResult(
             stdout=stdout,
             stderr=stderr,
-            return_code=code,
+            returncode=code,
             timed_out=timed_out,
         )
+
+    async def run_stream(
+        self,
+        command: Annotated[str, spec(description="Shell command to execute")],
+        timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
+    ) -> AsyncIterator[StreamEvent | StreamDone]:
+        """Yield stream events for stdout/stderr and a terminal done event."""
+        result = await self.run(command, timeout=timeout)
+        if result.stdout:
+            yield StreamEvent(kind="stdout", text=result.stdout)
+        if result.stderr:
+            yield StreamEvent(kind="stderr", text=result.stderr)
+        yield StreamDone(kind="done", returncode=result.returncode, timed_out=result.timed_out)
 
     # ------------------------------------------------------------------
     # view

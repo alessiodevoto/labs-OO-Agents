@@ -56,41 +56,56 @@ def sample_tree(tmp_path):
 
 
 # ==========================================================================
-# bash
+# run
 # ==========================================================================
-class TestBash:
+class TestRun:
     async def test_simple_command(self, shell):
-        r = await shell.bash("echo hello")
+        r = await shell.run("echo hello")
         assert r.success
         assert "hello" in r.stdout
 
     async def test_cd_persists(self, shell, tmp_path):
         sub = tmp_path / "mydir"
         sub.mkdir()
-        r1 = await shell.bash(f"cd {sub}")
+        r1 = await shell.run(f"cd {sub}")
         assert r1.success
-        r2 = await shell.bash("pwd")
+        r2 = await shell.run("pwd")
         assert str(sub) in r2.stdout
 
     async def test_env_persists(self, shell):
-        await shell.bash("export FOO=bar123")
-        r = await shell.bash("echo $FOO")
+        await shell.run("export FOO=bar123")
+        r = await shell.run("echo $FOO")
         assert "bar123" in r.stdout
 
     async def test_failure(self, shell):
-        r = await shell.bash("false")
+        r = await shell.run("false")
         assert not r.success
-        assert r.return_code != 0
+        assert r.returncode != 0
 
     async def test_stderr(self, shell):
-        r = await shell.bash("echo err >&2")
+        r = await shell.run("echo err >&2")
         assert "err" in r.stderr
 
     async def test_repr_updates_after_cd(self, shell, tmp_path):
         sub = tmp_path / "proj"
         sub.mkdir()
-        await shell.bash(f"cd {sub}")
+        await shell.run(f"cd {sub}")
         assert "proj" in repr(shell)
+
+    async def test_run_stream_emits_done(self, shell):
+        events = [event async for event in shell.run_stream("echo hello")]
+        assert events[0].kind == "stdout"
+        assert "hello" in events[0].text
+        assert events[-1].kind == "done"
+        assert events[-1].returncode == 0
+        assert events[-1].timed_out is False
+
+    async def test_run_stream_stderr_and_done(self, shell):
+        events = [event async for event in shell.run_stream("echo err >&2")]
+        assert events[0].kind == "stderr"
+        assert "err" in events[0].text
+        assert events[-1].kind == "done"
+        assert events[-1].returncode == 0
 
 
 # ==========================================================================
@@ -244,7 +259,7 @@ class TestGrep:
         # Bug: if the include glob isn't quoted, bash expands *.py against the
         # session cwd before rg sees it, breaking the filter.
         # To trigger: cd into a dir that HAS .py files, then grep with include.
-        await shell.bash(f"cd {sample_tree / 'src'}")
+        await shell.run(f"cd {sample_tree / 'src'}")
         r = await shell.grep("def", str(sample_tree), include="*.py")
         assert r.total_matches > 0, f"Expected matches for 'def' in *.py, got {r.matches}"
         for m in r.matches:
@@ -273,12 +288,12 @@ class TestFind:
     async def test_find_respects_gitignore(self, shell, sample_tree):
         """Files in __pycache__ and .git should not appear when .gitignore exists."""
         # rg respects .gitignore when run from inside a git repo
-        await shell.bash(
+        await shell.run(
             f"cd {sample_tree} && git init -q "
             f"&& echo '__pycache__/' > .gitignore && git add .gitignore"
         )
         # Run find from inside the repo (cd first so rg detects the git root)
-        await shell.bash(f"cd {sample_tree}")
+        await shell.run(f"cd {sample_tree}")
         r = await shell.find("*.py", ".")
         for m in r.matches:
             assert "__pycache__" not in m
@@ -327,17 +342,17 @@ class TestReset:
     async def test_reset_preserves_cwd(self, shell, tmp_path):
         sub = tmp_path / "mydir"
         sub.mkdir()
-        await shell.bash(f"cd {sub}")
+        await shell.run(f"cd {sub}")
         await shell.reset()
-        r = await shell.bash("pwd")
+        r = await shell.run("pwd")
         assert str(sub) in r.stdout
 
     async def test_reset_recovers_from_timeout(self, shell):
         # Trigger a timeout with a long-running command
-        r = await shell.bash("sleep 999", timeout=0.5)
+        r = await shell.run("sleep 999", timeout=0.5)
         assert not r.success
         # Session should auto-reset and work for the next command
-        r2 = await shell.bash("echo recovered")
+        r2 = await shell.run("echo recovered")
         assert r2.success
         assert "recovered" in r2.stdout
 
