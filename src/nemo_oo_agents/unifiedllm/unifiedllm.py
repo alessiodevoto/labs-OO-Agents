@@ -650,6 +650,7 @@ _DUMMY_TOOL_SCHEMA = {
     },
 }
 
+
 def _needs_dummy_tool(model: str) -> bool:
     """Return True if the model's provider requires tools= when tool_calls are present."""
     model_lower = model.lower()
