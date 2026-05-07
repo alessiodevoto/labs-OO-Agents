@@ -378,3 +378,4 @@ sft_data/**/*.jsonl
 
 .local/
 .config/
+util/harbor/tasks/terminal_bench/
