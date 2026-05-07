@@ -673,6 +673,18 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.libs = LibraryWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
 
+        # Skill registry: discover + register manually-constructed skills
+        from nemo_oo_agents.skill_registry import SkillRegistry
+
+        self.skills = SkillRegistry(self)
+        self.skills.register("stdskill/shell", self.shell)
+        self.skills.register("stdskill/repo", self.repo)
+        self.skills.register("superpowers/libwriting", self.libs)
+        self.skills.register("stdskill/todo", self.todo)
+
+        # Activate all standard skills for TUIAgent (full experience)
+        self.skills.activate(["stdskill/*", "superpowers/*"])
+
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
