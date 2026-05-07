@@ -84,10 +84,21 @@ class DoerAgent(Agent):
         self.repo = repo
         self.todo = todo
 
+        # Skill registry: register passed-in skills + discover plugins
+        from nemo_oo_agents.skill_registry import SkillRegistry
+
+        self.skills = SkillRegistry(self)
+        self.skills.register("stdskill/shell", self.shell)
+        self.skills.register("stdskill/repo", self.repo)
+        self.skills.register("stdskill/todo", self.todo)
+
         # Install plugin skills (WTF, etc.) discovered via entry points
         dirs = skills_dirs if skills_dirs is not None else _discover_skills_dirs()
         if dirs:
             SkillManager.install(self, skills_dir=dirs)
+
+        # Activate all for doer (it's a full-power executor)
+        self.skills.activate(["stdskill/*", "superpowers/*"])
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def execute(self, todo: "Todo") -> str:
