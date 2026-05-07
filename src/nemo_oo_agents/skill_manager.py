@@ -178,6 +178,11 @@ class SkillManager:
         for skills_dir in self.skills_dirs:
             self._scan_dir(skills_dir)
 
+    def _attach_skill(self, attr_name: str, skill: Skill) -> None:
+        """Attach a skill to the agent, binding any generation methods."""
+        setattr(self.agent, attr_name, skill)
+        skill.attach(self.agent)
+
     def _scan_dir(self, skills_dir: Path) -> None:
         if not skills_dir.is_dir():
             logger.debug("Skills directory %s does not exist", skills_dir)
@@ -197,7 +202,8 @@ class SkillManager:
             )
             return
         try:
-            setattr(self.agent, attr_name, TextSkill(path=entry))
+            skill = TextSkill(path=entry)
+            self._attach_skill(attr_name, skill)
         except Exception:
             logger.warning(
                 f"Skill directory {entry.name} skipped: failed to load SKILL.md",
@@ -216,7 +222,7 @@ class SkillManager:
             return
         skill = _load_python_skill(entry)
         if skill is not None:
-            setattr(self.agent, attr_name, skill)
+            self._attach_skill(attr_name, skill)
 
     @staticmethod
     def discover(paths: Path | list[Path]) -> dict[str, Skill]:

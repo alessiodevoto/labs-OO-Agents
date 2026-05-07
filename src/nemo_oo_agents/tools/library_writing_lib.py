@@ -121,7 +121,10 @@ class LibraryWriting(Skill):
 
     ## Rules
     - Always provide a meaningful description when calling create()
-    - Library code is plain Python only — no `self`, no `...` bodies, no async
+    - Default library modules should be plain Python. If you need LLM generation,
+      define ``@strategy`` methods on your exported ``Skill`` subclass.
+    - Skill generation methods (e.g. ``@strategy(PredictStrategy())`` with ``...``)
+      run on the parent agent runtime when called via ``self.<lib_name>.<method>(...)``.
     - Always run run_tests() after creating or editing before claiming done
     - Use a library for logic worth naming and reusing; use inline code for one-offs
     - Always write a ``Skill`` subclass in ``__init__.py`` — this is how

@@ -1156,3 +1156,13 @@ async def test_session_list_shows_no_sessions_when_all_empty(handler):
     assert result.success is True
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
     assert any("No sessions found" in o.content for o in text_outputs)
+
+
+@pytest.mark.asyncio
+async def test_user_skill_slash_command_case_insensitive(handler_with_skills):
+    """User-invocable skill slash commands should match case-insensitively."""
+    result = await handler_with_skills.handle("/WTF status")
+    assert result.success is True
+    assert result.agent_message is not None
+    assert "Arguments: status" in result.agent_message
+

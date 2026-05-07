@@ -218,6 +218,20 @@ class Skill:
             cls_name = name or "Skill"
             self.__class__ = type(cls_name, (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
 
+    def attach(self, agent: Any) -> None:
+        """Called when this skill is activated on an agent.
+
+        Binds generation methods (if any) to route through the agent's runtime.
+        Subclasses can override to perform additional setup.
+        """
+        from nemo_oo_agents.skill_generation import bind_generation_methods
+
+        bind_generation_methods(self, agent)
+
+    def detach(self) -> None:
+        """Called when this skill is deactivated. Clears agent reference."""
+        self._agent = None
+
     def __dir__(self) -> list[str]:
         # Forward dir() to wrapped object so the LLM can discover its attributes.
         base = list(super().__dir__())

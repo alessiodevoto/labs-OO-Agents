@@ -2389,8 +2389,9 @@ class CommandRegistry:
                     # install-as: command is honored for backward compat.
                     if meta.get("user-invocable") is False:
                         continue
-                    name = str(meta.get("name", "")).strip()
-                    if not name or name in self._commands or name in skills:
+                    raw_name = str(meta.get("name", "")).strip()
+                    cmd_name = raw_name.lower()
+                    if not cmd_name or cmd_name in self._commands or cmd_name in skills:
                         continue
                     description = str(meta.get("description", "")).strip()
                     body = parts[2].strip()
@@ -2400,8 +2401,8 @@ class CommandRegistry:
                         hint = "[" + ", ".join(str(x) for x in hint) + "]"
                     elif hint is not None:
                         hint = str(hint)
-                    skills[name] = _UserSkill(
-                        name=name,
+                    skills[cmd_name] = _UserSkill(
+                        name=cmd_name,
                         body=body,
                         description=description,
                         argument_hint=hint,

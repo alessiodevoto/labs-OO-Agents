@@ -103,6 +103,7 @@ class LibraryManager:
             logger.info("Library %s: no Skill export, using Skill(module) fallback", lib_name)
 
         setattr(self._agent, lib_name, attached)
+        attached.attach(self._agent)
         return attached
 
     def reload(self) -> None:
