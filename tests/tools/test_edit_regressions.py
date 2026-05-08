@@ -6,13 +6,10 @@ Each test simulates a file + old_str that would have failed before the improveme
 import pytest
 
 from nemo_oo_agents.tools.shell_tools import (
-    _find_closest_match,
-    _normalize_for_fuzzy,
-    _strip_line_number_prefixes,
-    _fuzzy_find_unique,
     ShellTools,
+    _find_closest_match,
+    _strip_line_number_prefixes,
 )
-
 
 # ============================================================
 # Pattern 1: Trailing whitespace mismatch (most common failure)
@@ -104,11 +101,6 @@ class TestLineNumberPrefixStripping:
         result = _strip_line_number_prefixes(text)
         assert result == text  # should not strip — not a prefix pattern
 
-    @pytest.fixture
-    async def shell(self, tmp_path):
-        s = ShellTools(cwd=str(tmp_path))
-        yield s
-        await s.close()
 
     @pytest.mark.asyncio
     async def test_edit_with_line_prefixes_succeeds(self, shell, tmp_path):
