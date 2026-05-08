@@ -108,18 +108,16 @@ class TestContextWindowStatsUtilization:
         assert stats.max_context_tokens is None
         assert stats.context_utilization is None
 
-    def test_event_utilization_when_limit_set(self):
-        """event_utilization computed as tokens/limit."""
+    def test_event_utilization_none_when_no_event_limit(self):
+        """event_utilization is None when no event limit configured."""
         blocks = [ResolvedBlock(key="msg", content="x" * 300, role=Role.USER)]
         stats = render_context(
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1000,
-            count_tokens=len,
         ).stats
-        assert stats.max_event_tokens == 1000
-        assert stats.event_utilization == 300 / 1000
+        assert stats.max_event_tokens is None
+        assert stats.event_utilization is None
 
     def test_event_utilization_none_when_no_limit(self):
         """event_utilization is None when no limit configured."""
@@ -185,88 +183,7 @@ class TestContextWindowStatsTruncation:
         assert stats.context_blocks_dropped == 0
         assert stats.events_dropped == 0
 
-    def test_events_dropped_on_truncation(self):
-        """events_dropped tracks exactly how many events were dropped.
 
-        ``min_preserved_events=0`` here so the test exercises raw drop-from-
-        oldest logic without the recent-N preservation floor. Production
-        defaults preserve the last 5 events.
-        """
-        blocks = [
-            ResolvedBlock(key="e1", content="old_" + "x" * 3000, role=Role.USER),
-            ResolvedBlock(key="e2", content="mid_" + "y" * 3000, role=Role.ASSISTANT),
-            ResolvedBlock(key="e3", content="new_" + "z" * 100, role=Role.USER),
-        ]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=4000,
-            min_preserved_events=0,
-            count_tokens=len,
-        ).stats
-        # e1 (3004) + e2 (3004) = 6008 > 4000; must drop e1 (oldest), leaving e2+e3 = 3108
-        # Plus the eviction marker block (a single short SYSTEM block prepended),
-        # so events_count = 2 (e2+e3) + 1 (marker) = 3.
-        assert stats.events_dropped == 1
-
-    def test_events_dropped_all(self):
-        """When budget is tiny and the recent-N floor is disabled, all events
-        can be dropped."""
-        blocks = [
-            ResolvedBlock(key="e1", content="x" * 5000, role=Role.USER),
-            ResolvedBlock(key="e2", content="y" * 5000, role=Role.ASSISTANT),
-        ]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1,
-            min_preserved_events=0,
-            count_tokens=len,
-        ).stats
-        assert stats.events_dropped == 2
-
-    def test_event_limit_can_include_context_tokens(self):
-        """When ``event_limit_includes_context=True``, the renderer subtracts
-        post-truncation context tokens before evicting events.
-        """
-        blocks = [
-            ResolvedBlock(key="sys", content="s" * 500),
-            ResolvedBlock(key="e1", content="a" * 300, role=Role.USER),
-            ResolvedBlock(key="e2", content="b" * 300, role=Role.ASSISTANT),
-            ResolvedBlock(key="e3", content="c" * 100, role=Role.USER),
-        ]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1000,  # interpreted as total input budget in this mode
-            event_limit_includes_context=True,
-            min_preserved_events=0,
-            count_tokens=len,
-        ).stats
-        # Context consumes 500, so applied event budget is 500.
-        # Events are 300+300+100=700; oldest-first drops e1, leaving 400.
-        assert stats.max_event_tokens == 500
-        assert stats.events_dropped == 1
-
-    def test_min_preserved_events_floor(self):
-        """Recent-N preservation floor: never evict below ``min_preserved_events``
-        events even if budget would require dropping more."""
-        # 3 events, all fit-violating, but min_preserved_events=5 says keep all.
-        blocks = [ResolvedBlock(key=f"e{i}", content="x" * 5000, role=Role.USER) for i in range(3)]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1,
-            min_preserved_events=5,  # explicit; 5 > 3 means none can be evicted
-            count_tokens=len,
-        ).stats
-        assert stats.events_dropped == 0
-        # All 3 events preserved, total chars ≈ 3 * 5000
-        assert stats.events_tokens >= 14_000
 
     def test_stats_reflect_post_truncation(self):
         """Token counts reflect post-truncation state."""
@@ -340,7 +257,6 @@ class TestContextWindowStatsWithTokenCounter:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             context_limit=10000,
-            event_limit=10000,
             count_tokens=word_counter,
         ).stats
         assert stats.context_blocks_tokens == 3  # "hello world foo" = 3 words
@@ -384,11 +300,9 @@ class TestContextWindowStatsEdgeCases:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             context_limit=1000,
-            event_limit=1000,
             count_tokens=len,
         ).stats
         assert stats.context_utilization == 0.0
-        assert stats.event_utilization == 0.0
 
     def test_full_utilization(self):
         """100% utilization when content exactly at limit."""
@@ -448,7 +362,7 @@ class TestContextWindowStatsEdgeCases:
         """RenderResult supports tuple unpacking."""
         from nemo_oo_agents.context_blocks.models import RenderedMessage
 
-        output, stats, messages, events_truncated = render_context(
+        output, stats, messages = render_context(
             [ResolvedBlock(key="sys", content="hello")],
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
@@ -456,7 +370,6 @@ class TestContextWindowStatsEdgeCases:
         assert isinstance(output, list)
         assert isinstance(stats, ContextWindowStats)
         assert all(isinstance(m, RenderedMessage) for m in messages)
-        assert events_truncated is None
 
     def test_block_limit_no_longer_squashes_content(self):
         """Block-level head/tail truncation has been removed. ``block_limit``

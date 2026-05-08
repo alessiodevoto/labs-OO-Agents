@@ -277,8 +277,6 @@ def _clamp_messages_to_budget(
 
 # Archive 25% more than the drop count to avoid re-hitting the boundary next turn.
 _ARCHIVE_HYSTERESIS = 1.25
-# After archival, target 80% utilization of the event budget.
-_TARGET_UTILIZATION_AFTER_ARCHIVE = 0.80
 
 
 def _protected_task_tags_for_stack(
@@ -2542,43 +2540,22 @@ class ActorRuntime:
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
 
-        # Pre-render clamp limits. ``effective_event_limit`` is content-level and
-        # loose — we still run the authoritative structured-level clamp AFTER
-        # render_context produces the full messages list (see below).
         effective_context_limit = tc.max_context_tokens
-        effective_event_limit = tc.max_event_tokens
-        # When True, render_context treats ``event_limit`` as a total-input cap
-        # (context + events), subtracting measured context-block tokens first.
-        event_limit_includes_context = False
         ctx_window = getattr(llm_client, "context_window", None)
 
-        # Default (unconfigured) budget split:
-        # - context blocks may use up to half the model window
-        # - events get the remaining input budget after reserving response tokens
-        #   and subtracting the *true* rendered context-block cost
-        # This only applies when both limits are unset.
+        # Default (unconfigured) context budget: up to half the model window.
         if (
             effective_context_limit is None
-            and effective_event_limit is None
             and ctx_window is not None
             and tc.response_reserve_tokens > 0
         ):
             effective_context_limit = max(0, ctx_window // 2)
-            dynamic_reserve = tc.response_reserve_tokens
-            if max_output_tokens:
-                # Match the structured safety-net's tokenizer-divergence margin.
-                margin = int(ctx_window * 0.05)
-                dynamic_reserve = max(dynamic_reserve, max_output_tokens + margin)
-            effective_event_limit = max(0, ctx_window - dynamic_reserve)
-            event_limit_includes_context = True
 
-        need_token_counter = (
-            effective_context_limit is not None or effective_event_limit is not None
-        )
+        need_token_counter = effective_context_limit is not None
         client_counter = getattr(llm_client, "count_tokens", None)
         if need_token_counter and not callable(client_counter):
             raise RuntimeError(
-                "max_context_tokens / max_event_tokens requires a token counter, but the LLM "
+                "max_context_tokens requires a token counter, but the LLM "
                 f"({type(llm_client).__name__!r}) has no count_tokens method. "
                 "Register an explicit counter: pass count_tokens=char_approximate_token_counter "
                 "to your LLM, or use 'from nemo_oo_agents import char_approximate_token_counter' "
@@ -2606,61 +2583,11 @@ class ActorRuntime:
                 block_formatter=self.agent.render_config.block_formatter,
                 provider_formatter=provider_formatter,
                 context_limit=effective_context_limit,
-                event_limit=effective_event_limit,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
                 event_format=tc.event_format,
-                min_preserved_events=tc.min_preserved_events,
-                event_limit_includes_context=event_limit_includes_context,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
-
-        # L4 boundary path: no new ContextTruncated events.
-        # Instead archive oldest events via Summary so no history is lost,
-        # include a concise "hit context window limit" summary text, and re-render
-        # once so this turn ships with the Summary marker family.
-        if result.events_truncated is not None:
-            trunc = result.events_truncated
-            dropped_count = max(1, int(getattr(trunc, "dropped_count", 1)))
-            target_to_archive = int(math.ceil(dropped_count * _ARCHIVE_HYSTERESIS))
-            budget = result.stats.max_event_tokens or 0
-            before_tokens = result.stats.events_tokens + int(getattr(trunc, "char_total", 0))
-            target_after = int(budget * _TARGET_UTILIZATION_AFTER_ARCHIVE) if budget else 0
-            summary_text = (
-                f"hit context window limit: before={before_tokens:,}/{budget:,} events_tokens, "
-                f"target_after<={target_after:,}, archived~{target_to_archive}"
-            )
-
-            active_tags = list(self.event_manager.keys())
-            protected = _protected_task_tags_for_stack(
-                self.event_manager, active_tags, self._agent_call_stack
-            )
-            archived = _collapse_oldest(
-                self.event_manager,
-                active_tags,
-                protected,
-                target_to_archive,
-                summary_text,
-                log_prefix="L4",
-            )
-
-            if archived > 0:
-                with hm.timer("time_prepare_context"):
-                    blocks = await self._prepare_context(method, call_args, call_kwargs)
-                with hm.timer("time_render_context"):
-                    result = render_context(
-                        blocks,
-                        block_formatter=self.agent.render_config.block_formatter,
-                        provider_formatter=self.agent.render_config.provider_formatter,
-                        context_limit=effective_context_limit,
-                        event_limit=effective_event_limit,
-                        count_tokens=count_tokens,
-                        pre_format_limit=tc.max_block_chars,
-                        event_format=tc.event_format,
-                        min_preserved_events=tc.min_preserved_events,
-                        event_limit_includes_context=event_limit_includes_context,
-                        model_context_window=getattr(llm_client, "context_window", None),
-                    )
 
         # Publish the rendered message list to the tracing sideband so
         # the litellm journal callback can compress block bodies into a

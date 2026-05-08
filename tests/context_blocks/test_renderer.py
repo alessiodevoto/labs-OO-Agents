@@ -628,7 +628,7 @@ class TestCountTokens:
 
     def test_raises_if_context_limit_set_without_counter(self):
         """ValueError when context_limit set but no count_tokens."""
-        with pytest.raises(ValueError, match="max_context_tokens / max_event_tokens require"):
+        with pytest.raises(ValueError, match="max_context_tokens requires a token counter"):
             render_context(
                 [],
                 block_formatter=XMLBlockFormatter(),
@@ -637,19 +637,8 @@ class TestCountTokens:
                 count_tokens=None,
             )
 
-    def test_raises_if_event_limit_set_without_counter(self):
-        """ValueError when event_limit set but no count_tokens."""
-        with pytest.raises(ValueError, match="max_context_tokens / max_event_tokens require"):
-            render_context(
-                [],
-                block_formatter=XMLBlockFormatter(),
-                provider_formatter=OpenAIProviderFormatter(),
-                event_limit=10_000,
-                count_tokens=None,
-            )
-
     def test_accepts_none_counter_when_no_token_limits(self):
-        """No error when neither context_limit nor event_limit is set."""
+        """No error when context_limit is not set."""
         result = render_context(
             [],
             block_formatter=XMLBlockFormatter(),
@@ -676,22 +665,4 @@ class TestCountTokens:
         )
         assert len(call_count) > 0
 
-    def test_uses_count_tokens_for_event_limit(self):
-        """count_tokens is called when event_limit is set."""
-        call_count = []
 
-        def counter(s: str) -> int:
-            call_count.append(1)
-            return len(s) // 4
-
-        blocks = [
-            ResolvedBlock(key="msg", content="Hello", role=Role.USER),
-        ]
-        render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=10_000,
-            count_tokens=counter,
-        )
-        assert len(call_count) > 0

@@ -111,15 +111,6 @@ def pformat(
     # console and indent_guides are intentionally ignored for Rich compatibility
     del console, indent_guides
 
-    # unquote_strings: render top-level strings without quotes but still apply
-    # max_string truncation (produces str(len=N, ...) marker when truncated).
-    if unquote_strings and isinstance(obj, str):
-        if max_string is None or len(obj) <= max_string:
-            return obj
-        from nemo_oo_agents.agentdoc._pformat import _format_string
-
-        return _format_string(obj, max_string)
-
     stream: io.StringIO = io.StringIO()
 
     _pformat(
@@ -133,7 +124,21 @@ def pformat(
         instance_mode=instance_mode,
     )
 
-    return stream.getvalue()
+    result = stream.getvalue()
+
+    # unquote_strings: for top-level strings, _pformat renders repr ('hello').
+    # Strip surrounding quotes so the string renders verbatim in context blocks.
+    # Truncated strings (str(len=N,...) marker) pass through unchanged.
+    if unquote_strings and isinstance(obj, str):
+        if max_string is None or len(obj) <= max_string:
+            # Untruncated: strip outer quotes from repr output.
+            if len(result) >= 2 and result[0] == result[-1] and result[0] in ("'", '"'):
+                return result[1:-1]
+            for q in ("'''", '"""'):
+                if result.startswith(q) and result.endswith(q):
+                    return result[len(q):-len(q)]
+
+    return result
 
 
 def pprint(
