@@ -93,6 +93,9 @@ class Agent(metaclass=AgentMeta):
         agent.event_manager.on("Reasoning", my_handler)
     """
 
+    # Agent instances should never be serialized as nested values inside other objects.
+    __nosnapshot__ = True
+
     # Framework attributes — hidden from LLM, excluded from snapshots
     runtime: Annotated["ActorRuntime", hidden, nosnapshot]
     _storage: Annotated["StorageManager", hidden, nosnapshot]

@@ -117,14 +117,12 @@ class TestCodeActBlockedModuleFiltering:
 
 
 class TestCodeActHasContextSkillInstructions:
-    """Cover lines 435-437: has_context check for pin/unpin skill instructions."""
+    """Skills table was removed from execution_context — pin/unpin no longer rendered."""
 
     @pytest.mark.asyncio
-    async def test_context_visible_adds_pin_unpin(self):
-        """When context is visible and agent has skills, pin/unpin
-        instructions should be included (lines 435-437)."""
+    async def test_context_visible_no_longer_adds_pin_unpin(self):
+        """After removing Skills table, pin/unpin instructions are not in execution_context."""
         from nemo_oo_agents.agentdoc import spec
-        from nemo_oo_agents.agentdoc.visibility import is_hidden_field
         from nemo_oo_agents.skill import Skill
 
         class AgentWithContext(Agent, llm=_TEST_LLM):
@@ -134,26 +132,20 @@ class TestCodeActHasContextSkillInstructions:
                 super().__init__(**kwargs)
                 spec(self, "context", hidden=False)
 
-        # Make context visible at the class level (as checked by execution_context)
         spec(AgentWithContext, "context", hidden=False)
 
         agent = AgentWithContext(llm=_TEST_LLM)
-        # Install a Skill on the agent
         agent.my_skill = Skill(content="A test skill")
-
-        # Verify context is visible at type level (as the source code checks)
-        assert not is_hidden_field(type(agent), "context")
 
         strat = CodeActStrategy(config=CodeActConfig())
         mock_runtime = MagicMock()
         mock_runtime.agent = agent
 
-        # Patch _extract_module_context to avoid full module introspection
         with patch.object(strat, "_extract_module_context", return_value={}):
             result = await strat.execution_context(mock_runtime)
 
-        assert "Pin to context" in result
-        assert "Unpin" in result
+        assert "Pin to context" not in result
+        assert "## Skills" not in result
 
 
 # ===========================================================================

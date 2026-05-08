@@ -237,6 +237,16 @@ class Skill:
         """Called when this skill is deactivated. Clears agent reference."""
         self._agent = None
 
+    def __getstate__(self) -> dict:
+        """Exclude _agent from serialization to avoid circular refs."""
+        state = self.__dict__.copy()
+        state.pop("_agent", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._agent = None
+
     def __dir__(self) -> list[str]:
         # Forward dir() to wrapped object so the LLM can discover its attributes.
         base = list(super().__dir__())
