@@ -154,6 +154,7 @@ class CodeActSession:
     event_manager: Any  # EventManager reference for Out[n] access
     iteration: int = 0
     error_count: int = 0
+    consecutive_text_only: int = 0
     session_locals: dict[str, Any] = field(default_factory=dict)
     out_accessor: Any = field(default=None)  # OutAccessor instance, created lazily
 
@@ -175,6 +176,12 @@ class CodeActSession:
 
     def record_error(self) -> None:
         self.error_count += 1
+
+    def record_text_only(self) -> None:
+        self.consecutive_text_only += 1
+
+    def reset_text_only(self) -> None:
+        self.consecutive_text_only = 0
 
     def record_output(self, execution_count: int, value: Any) -> None:
         """Record an execution output for Out[n] access."""
@@ -493,7 +500,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         ## Strategy
 
-        Jupyter-like Python session. Parameters pre-loaded as locals; state persists across cells. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn.
+        Jupyter-like Python session. Parameters pre-loaded as locals; state persists across cells. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn — **plain-text responses do NOT end the session**. To finish, call `return_result(value)`. Repeated text-only responses will abort the run with an error.
 
         **Your two tools:**
         - `execute_python(code)` — run a code cell
@@ -729,6 +736,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                         )
                         if text.strip():
                             tool_calls = _prepend_reasoning(tool_calls, text)
+                    # A real tool call counts as progress: reset the consecutive
+                    # text-only guard (issue 185) before executing, so a single
+                    # exec mid-stream rescues the run from accidental drift.
+                    session.reset_text_only()
                     result = await self._process_tool_calls(
                         tool_calls,
                         runtime,
@@ -761,41 +772,91 @@ Standard Python builtins and agent instance (`self`) are available."""
                         # Remove the bare LLMOutput — some APIs (e.g., NVIDIA) reject
                         # assistant messages without a tool call.
                         runtime.event_manager.remove(event_id)
-                        # Construct a synthetic return_result() tool call with the content
                         synthetic_id = f"synthetic_{uuid4().hex[:8]}"
-                        synthetic_args = json.dumps({"result": text})
-                        synthetic_tool_call = ToolCall(
-                            id=synthetic_id,
-                            name="return_result",
-                            arguments=synthetic_args,
-                        )
-                        get_harness_metrics().stop_to_return_result(text)
-                        logger.info(
-                            f"[CODEACT] finish_reason='stop' with content ({len(text)} chars) "
-                            f"→ synthetic return_result(). Routing through validation."
-                        )
-                        result = await self._process_tool_calls(
-                            [synthetic_tool_call],
-                            runtime,
-                            builtins,
-                            session,
-                            call,
-                            return_type,
-                            event_id or "",
-                        )
-                        if result.completed:
-                            turn_state.success = True
+
+                        if self.config.text_only_stop_behavior == "return_result":
+                            # Route through return_result() validation — terminates
+                            # cleanly if the type matches, else gives actionable feedback.
+                            synthetic_tool_call = ToolCall(
+                                id=synthetic_id,
+                                name="return_result",
+                                arguments=json.dumps({"result": text}),
+                            )
+                            get_harness_metrics().stop_to_return_result(text)
+                            logger.info(
+                                f"[CODEACT] finish_reason='stop' with content ({len(text)} chars) "
+                                f"→ synthetic return_result(). Routing through validation."
+                            )
+                            result = await self._process_tool_calls(
+                                [synthetic_tool_call],
+                                runtime,
+                                builtins,
+                                session,
+                                call,
+                                return_type,
+                                event_id or "",
+                            )
+                            if result.completed:
+                                turn_state.success = True
+                                turn_state.is_final = True
+                                return result.final_value
+                            # Validation failed — fall through to abort check below
+                        else:
+                            # "synthetic_reasoning" mode — preserve text as a no-op
+                            # synthetic reasoning() call (original behavior).
+                            runtime.event_manager.add(
+                                ToolCallEvent(
+                                    tool_call_id=synthetic_id,
+                                    name="execute_python",
+                                    arguments={"code": f"reasoning({_truncate_reasoning(text)!r})"},
+                                    result=ToolResult(
+                                        tool_call_id=synthetic_id,
+                                        content="status: complete",
+                                        result_status=ResultStatus.COMPLETE,
+                                    ),
+                                    metadata={"synthetic": True, "synthetic_type": "text_response"},
+                                )
+                            )
+                            runtime.event_manager.add(
+                                PythonOutput(
+                                    tool_call_id=synthetic_id,
+                                    execution_count=session.iteration or 1,
+                                    execution_status=ResultStatus.COMPLETE,
+                                    metadata={"synthetic": True, "synthetic_type": "text_response"},
+                                )
+                            )
+                            get_harness_metrics().text_to_synthetic()
+                            logger.debug(
+                                f"[CODEACT] Text-only response ({len(text)} chars) "
+                                f"converted to synthetic reasoning() call."
+                            )
+
+                        # Track consecutive text-only stops and abort if threshold reached.
+                        session.record_text_only()
+                        max_text_only = self.config.max_consecutive_text_only
+                        if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
+                            get_harness_metrics().text_only_loop_abort()
+                            preview = _truncate_reasoning(text)
                             turn_state.is_final = True
-                            return result.final_value
-                        # Validation failed — LLM will see the error and self-correct
+                            raise GenerationError(
+                                f"CodeAct aborted: LLM returned plain text without a tool call "
+                                f"{session.consecutive_text_only} times in a row "
+                                f"(max_consecutive_text_only={max_text_only}) for "
+                                f"`{call.method_name}`. The agent likely thinks it is done — "
+                                f"it must call `return_result(...)` to finish. "
+                                f"Last text: {preview!r}"
+                            )
                         continue
                     # Whitespace-only content falls through to the empty-response error handler.
 
                 # finish_reason="stop" with no/empty content — LLM signaled done with nothing.
-                # Route through return_result(None) for the same validation treatment.
-                # Note: whitespace-only content (truthy but strip-empty) intentionally falls
-                # through to the empty-response error handler below — it's not a valid signal.
-                elif response.finish_reason == "stop" and not response.content:
+                # In "return_result" mode: route through return_result(None) validation.
+                # In "synthetic_reasoning" mode: treat as empty response (error handler below).
+                elif (
+                    response.finish_reason == "stop"
+                    and not response.content
+                    and self.config.text_only_stop_behavior == "return_result"
+                ):
                     session.record_iteration()
                     runtime.event_manager.remove(event_id)
                     synthetic_id = f"synthetic_{uuid4().hex[:8]}"
@@ -822,7 +883,19 @@ Standard Python builtins and agent instance (`self`) are available."""
                         turn_state.success = True
                         turn_state.is_final = True
                         return result.final_value
-                    # Validation failed — LLM will see the error and self-correct
+                    # Validation failed — track and abort if threshold reached.
+                    session.record_text_only()
+                    max_text_only = self.config.max_consecutive_text_only
+                    if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
+                        get_harness_metrics().text_only_loop_abort()
+                        turn_state.is_final = True
+                        raise GenerationError(
+                            f"CodeAct aborted: LLM returned stop without a tool call "
+                            f"{session.consecutive_text_only} times in a row "
+                            f"(max_consecutive_text_only={max_text_only}) for "
+                            f"`{call.method_name}`. The agent likely thinks it is done — "
+                            f"it must call `return_result(...)` to finish."
+                        )
                     continue
 
                 # Empty response - error
