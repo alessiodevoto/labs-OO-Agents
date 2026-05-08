@@ -6,6 +6,11 @@ This module provides the AgentMeta metaclass that automatically wraps async meth
 with ellipsis bodies for LLM code generation. Tracing can be enabled per-class by
 setting _enable_tracing = True as a class attribute.
 
+When a class enables tracing, sync `def` methods are wrapped for tracing too —
+they get before/after_agent_call hooks, source-code capture, and proper parent
+linkage in the call stack. Sync methods can't generate (no async LLM) and don't
+run agent_call middleware (which is async-only).
+
 The metaclass works on any class, not just Agent or GenerationStrategy.
 """
 
@@ -18,14 +23,20 @@ from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
 
 
 class AgentMeta(ABCMeta):
-    """Generic metaclass for auto-wrapping async ellipsis methods.
+    """Generic metaclass for auto-wrapping ellipsis methods and tracing helpers.
 
     Inherits from ABCMeta to support abstract base classes.
-    Automatically wraps qualifying async methods at class creation time.
+    Automatically wraps qualifying methods at class creation time.
 
     Auto-wrapping criteria:
     - Generatable: async + ellipsis body (all: public, private, dunder)
-    - Traceable: public async methods (if class sets _enable_tracing = True)
+    - Traceable (async): all async methods (if class sets _enable_tracing = True)
+    - Traceable (sync): all sync `def` methods except dunder names
+      (if class sets _enable_tracing = True)
+
+    Sync methods can't generate or run async middleware; they get tracing only.
+    Properties, classmethods, and staticmethods are skipped (they aren't plain
+    functions, so `inspect.isfunction` returns False for them).
 
     The wrapped methods use duck-typing to route calls:
     - If self has 'runtime' attribute → calls self.runtime._call_plan()
@@ -60,28 +71,42 @@ class AgentMeta(ABCMeta):
         for attr_name in list(namespace.keys()):
             attr_value = namespace.get(attr_name)
 
-            # Only process async functions
-            if not inspect.iscoroutinefunction(attr_value):
-                continue
-
-            # Skip if already wrapped by @strategy decorator
-            # (has _agent_decorator attribute set by decorators.py)
+            # Skip if already wrapped (e.g. by @strategy decorator)
             if hasattr(attr_value, "_agent_decorator"):
                 continue
 
-            should_generate = mcs._should_generate(attr_name, attr_value)
-            if should_generate:
-                # Generation methods are traced by default; @no_trace suppresses the AGENT span.
-                should_trace = not getattr(attr_value, "_no_trace", False)
-            else:
-                should_trace = mcs._should_trace(attr_name, attr_value, should_trace_class)
+            if inspect.iscoroutinefunction(attr_value):
+                # === Async method path (generation + tracing) ===
+                should_generate = mcs._should_generate(attr_name, attr_value)
+                if should_generate:
+                    # Generation methods are traced by default; @no_trace suppresses the span.
+                    should_trace = not getattr(attr_value, "_no_trace", False)
+                else:
+                    should_trace = mcs._should_trace(attr_name, attr_value, should_trace_class)
 
-            # Use type.__setattr__ to bypass our own __setattr__ guard during
-            # class construction.
-            if should_generate or should_trace:
-                strategy = mcs._resolve_strategy(attr_value)
-                wrapped = mcs._create_wrapper(attr_value, should_generate, should_trace, strategy)
-                type.__setattr__(cls, attr_name, wrapped)
+                if should_generate or should_trace:
+                    strategy = mcs._resolve_strategy(attr_value)
+                    wrapped = mcs._create_wrapper(
+                        attr_value, should_generate, should_trace, strategy
+                    )
+                    # Use type.__setattr__ to bypass our own __setattr__ guard
+                    # during class construction.
+                    type.__setattr__(cls, attr_name, wrapped)
+
+            elif inspect.isfunction(attr_value):
+                # === Sync method path (tracing only) ===
+                # `inspect.isfunction` is False for property/classmethod/staticmethod
+                # descriptors, so those are naturally skipped.
+                # Skip dunders to avoid wrapping __init__/__init_subclass__/__setattr__/
+                # __getattribute__ etc. — risk of infinite recursion or running before
+                # the runtime exists. Custom dunders have to be async to be traced.
+                if attr_name.startswith("__") and attr_name.endswith("__"):
+                    continue
+
+                should_trace = mcs._should_trace(attr_name, attr_value, should_trace_class)
+                if should_trace:
+                    wrapped = mcs._create_sync_wrapper(attr_value)
+                    type.__setattr__(cls, attr_name, wrapped)
 
         return cls
 
@@ -165,6 +190,23 @@ class AgentMeta(ABCMeta):
             return inspect.getsource(func)
         except (OSError, TypeError):
             return None
+
+    @staticmethod
+    def _create_sync_wrapper(original_func: Callable[..., Any]) -> Callable[..., Any]:
+        """Create a tracing wrapper for a sync method.
+
+        Sync methods can't generate (no async LLM call) and can't run async
+        agent_call middleware, so this is tracing-only. Source code is captured
+        at class creation time for the span.
+        """
+        from nemo_oo_agents.runtime.method_wrapper import create_sync_agent_method_wrapper
+
+        cached_source_code = AgentMeta._extract_source_code(original_func)
+        return create_sync_agent_method_wrapper(
+            original_func,
+            needs_tracing=True,
+            cached_source_code=cached_source_code,
+        )
 
     @staticmethod
     def _create_wrapper(

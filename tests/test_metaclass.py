@@ -140,15 +140,19 @@ def test_method_inheritance():
     assert hasattr(ChildAgent.task, "_agent_decorator")
 
 
-def test_sync_methods_not_wrapped():
-    """Sync methods are not wrapped by metaclass."""
+def test_sync_methods_wrapped_for_tracing_when_enable_tracing():
+    """Sync methods on Agent subclasses are wrapped for tracing (issue 181)."""
 
     class TestAgent(Agent, llm=_TEST_LLM):
         def sync_method(self):
             return "sync"
 
-    # Should not have metaclass wrapper
-    assert not hasattr(TestAgent.sync_method, "_agent_decorator")
+    # Agent has _enable_tracing = True, so sync methods are wrapped for tracing
+    assert hasattr(TestAgent.sync_method, "_agent_decorator")
+    assert TestAgent.sync_method._agent_decorator == "auto"
+    assert TestAgent.sync_method._needs_generation is False
+    # Wrapper preserves the original for introspection
+    assert TestAgent.sync_method._original.__name__ == "sync_method"
 
 
 def test_no_wrap_inherited_methods():
@@ -1052,5 +1056,374 @@ async def test_no_trace_plain_ellipsis_without_strategy_decorator_suppresses_hoo
         # Hooks must not be called regardless of whether generation succeeds
         mock_hooks.before_agent_call.assert_not_called()
         mock_hooks.after_agent_call.assert_not_called()
+    finally:
+        set_hooks(None)
+
+
+# ============================================================================
+# Sync method tracing (issue 181)
+# ============================================================================
+
+
+def test_sync_method_traced_when_enable_tracing():
+    """Sync methods on Agent subclasses are wrapped and call hooks (issue 181)."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.return_value = {"test": "context"}
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def double(self, x: int) -> int:
+            return x * 2
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        result = agent.double(21)
+        assert result == 42
+
+        mock_hooks.before_agent_call.assert_called_once()
+        before_kwargs = mock_hooks.before_agent_call.call_args.kwargs
+        assert before_kwargs["agent"] is agent
+        assert before_kwargs["method_name"] == "double"
+        assert before_kwargs["args"] == (21,)
+        assert "call_id" in before_kwargs
+        assert "parent_call_id" in before_kwargs
+
+        mock_hooks.after_agent_call.assert_called_once()
+        after_kwargs = mock_hooks.after_agent_call.call_args.kwargs
+        assert after_kwargs["result"] == 42
+        assert after_kwargs["context"] == {"test": "context"}
+    finally:
+        set_hooks(None)
+
+
+def test_sync_method_returns_value_directly_not_coroutine():
+    """Sync wrapping must NOT change the calling convention to async."""
+    import inspect as _inspect
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def get_value(self) -> int:
+            return 7
+
+    agent = TestAgent()
+    result = agent.get_value()
+    assert result == 7
+    assert not _inspect.iscoroutine(result)
+    # The wrapper itself must be a sync function, not async
+    assert not _inspect.iscoroutinefunction(TestAgent.get_value)
+
+
+def test_sync_private_method_traced_by_default():
+    """Private sync methods (e.g. _search) are wrapped and traced (issue 181)."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.return_value = {}
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def _scrape(self, url: str) -> str:
+            return f"scraped:{url}"
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        out = agent._scrape("http://x")
+        assert out == "scraped:http://x"
+        mock_hooks.before_agent_call.assert_called_once()
+        assert mock_hooks.before_agent_call.call_args.kwargs["method_name"] == "_scrape"
+    finally:
+        set_hooks(None)
+
+
+def test_sync_method_source_code_captured():
+    """source_code attribute is set on before_agent_call for sync methods."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.return_value = {}
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def compute(self, x: int) -> int:
+            doubled = x * 2
+            return doubled + 1
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        assert agent.compute(20) == 41
+        before_kwargs = mock_hooks.before_agent_call.call_args.kwargs
+        assert "source_code" in before_kwargs
+        assert "doubled = x * 2" in before_kwargs["source_code"]
+        assert "return doubled + 1" in before_kwargs["source_code"]
+    finally:
+        set_hooks(None)
+
+
+def test_sync_method_no_trace_decorator_suppresses_hooks():
+    """@no_trace on a sync method skips wrapping entirely (no hooks fire)."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        @no_trace
+        def helper(self, x: int) -> int:
+            return x + 1
+
+    # Sync wrapping is tracing-only; @no_trace skips it entirely.
+    assert not hasattr(TestAgent.helper, "_agent_decorator")
+    assert getattr(TestAgent.helper, "_no_trace", False) is True
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        assert agent.helper(41) == 42
+        mock_hooks.before_agent_call.assert_not_called()
+        mock_hooks.after_agent_call.assert_not_called()
+    finally:
+        set_hooks(None)
+
+
+def test_sync_method_not_traced_when_class_does_not_enable_tracing():
+    """Sync methods on a non-tracing class (no _enable_tracing) are not wrapped."""
+
+    class NonAgent(metaclass=type(Agent)):
+        def helper(self, x: int) -> int:
+            return x
+
+    assert not hasattr(NonAgent.helper, "_agent_decorator")
+
+
+def test_sync_dunder_methods_not_wrapped():
+    """Custom sync dunder methods are NOT wrapped (avoids recursion / __init__ issues)."""
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def __custom__(self) -> str:
+            return "custom"
+
+    assert not hasattr(TestAgent.__custom__, "_agent_decorator")
+
+
+def test_sync_classmethod_and_staticmethod_not_wrapped():
+    """@classmethod and @staticmethod are descriptors, not functions — not wrapped."""
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        @classmethod
+        def factory(cls) -> str:
+            return "factory"
+
+        @staticmethod
+        def util() -> str:
+            return "util"
+
+    assert not hasattr(TestAgent.factory, "_agent_decorator")
+    assert not hasattr(TestAgent.util, "_agent_decorator")
+
+
+def test_sync_property_not_wrapped():
+    """@property descriptors are not wrapped."""
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        @property
+        def label(self) -> str:
+            return "x"
+
+    # Access via the class returns the property object itself
+    descriptor = TestAgent.__dict__["label"]
+    assert not hasattr(descriptor, "_agent_decorator")
+    # Calling the property still works on instances
+    agent = TestAgent()
+    assert agent.label == "x"
+
+
+def test_sync_method_inheritance():
+    """A subclass overriding a parent's sync method gets its own wrapper."""
+
+    class BaseAgent(Agent, llm=_TEST_LLM):
+        def helper(self) -> str:
+            return "base"
+
+    class ChildAgent(BaseAgent):
+        def helper(self) -> str:
+            return "child"
+
+    assert hasattr(BaseAgent.helper, "_agent_decorator")
+    assert hasattr(ChildAgent.helper, "_agent_decorator")
+    assert BaseAgent.helper is not ChildAgent.helper
+
+
+def test_sync_method_already_decorated_skipped():
+    """A sync method that already has _agent_decorator is not re-wrapped."""
+
+    def make_pre_wrapped():
+        def already_wrapped(self):
+            return "preexisting"
+
+        already_wrapped._agent_decorator = "manual"  # type: ignore[attr-defined]
+        return already_wrapped
+
+    pre_wrapped = make_pre_wrapped()
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        helper = pre_wrapped
+
+    # Same object — metaclass left it alone
+    assert TestAgent.helper is pre_wrapped
+    assert TestAgent.helper._agent_decorator == "manual"
+
+
+@pytest.mark.asyncio
+async def test_sync_child_of_async_parent_has_correct_parent_call_id():
+    """Sync helper called inside async method: sync's parent_call_id == async's call_id."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    hook_calls: list[tuple[str, dict]] = []
+
+    def before(**kwargs):
+        hook_calls.append(("before", kwargs))
+        return {"call_id": kwargs["call_id"]}
+
+    def after(**kwargs):
+        hook_calls.append(("after", kwargs))
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.side_effect = before
+    mock_hooks.after_agent_call.side_effect = after
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        async def orchestrator(self) -> str:
+            return self.sync_helper("ok")
+
+        def sync_helper(self, value: str) -> str:
+            return f"helper:{value}"
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        result = await agent.orchestrator()
+        assert result == "helper:ok"
+    finally:
+        set_hooks(None)
+
+    befores = [kw for tag, kw in hook_calls if tag == "before"]
+    method_names = [b["method_name"] for b in befores]
+    assert "orchestrator" in method_names
+    assert "sync_helper" in method_names
+    orchestrator_before = next(b for b in befores if b["method_name"] == "orchestrator")
+    sync_before = next(b for b in befores if b["method_name"] == "sync_helper")
+    assert sync_before["parent_call_id"] == orchestrator_before["call_id"]
+
+
+def test_sync_method_exception_pops_stack_and_fires_after_hook():
+    """If a sync method raises: exception propagates, after_agent_call sees it, stack pops."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.return_value = {}
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def boom(self) -> None:
+            raise RuntimeError("nope")
+
+        def follow_up(self) -> int:
+            return 1
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+
+        with pytest.raises(RuntimeError, match="nope"):
+            agent.boom()
+
+        boom_after = mock_hooks.after_agent_call.call_args.kwargs
+        assert boom_after["method_name"] == "boom"
+        assert isinstance(boom_after["exception"], RuntimeError)
+
+        # Stack must have popped — follow_up has no traced ancestor.
+        mock_hooks.reset_mock()
+        mock_hooks.before_agent_call.return_value = {}
+        assert agent.follow_up() == 1
+        assert mock_hooks.before_agent_call.call_args.kwargs["parent_call_id"] is None
+    finally:
+        set_hooks(None)
+
+
+def test_sync_method_calling_sync_method_chains_parent_call_id():
+    """Sync `outer` calling sync `inner`: inner's parent_call_id == outer's call_id."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    hook_calls: list[dict] = []
+
+    def before(**kwargs):
+        hook_calls.append(kwargs)
+        return {}
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.side_effect = before
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def outer(self) -> int:
+            return self.inner() + 1
+
+        def inner(self) -> int:
+            return 1
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()
+        assert agent.outer() == 2
+    finally:
+        set_hooks(None)
+
+    outer_call = next(c for c in hook_calls if c["method_name"] == "outer")
+    inner_call = next(c for c in hook_calls if c["method_name"] == "inner")
+    assert inner_call["parent_call_id"] == outer_call["call_id"]
+
+
+def test_agent_init_succeeds_with_sync_tracing_active():
+    """Agent.__init__ calls sync helpers BEFORE self.runtime exists; must not crash."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents.runtime.hooks import InstrumentationHooks, set_hooks
+
+    mock_hooks = MagicMock(spec=InstrumentationHooks)
+    mock_hooks.before_agent_call.return_value = {}
+
+    class TestAgent(Agent, llm=_TEST_LLM):
+        def custom_helper(self, x: int) -> int:
+            return x
+
+    try:
+        set_hooks(mock_hooks)
+        agent = TestAgent()  # Must not raise
+        # Helpers like _resolve_llm fired during init have no runtime yet —
+        # the fast-path skips hook firing for them.
+        for call in mock_hooks.before_agent_call.call_args_list:
+            assert call.kwargs.get("method_name") not in {
+                "_resolve_llm",
+                "_resolve_truncation",
+                "_resolve_event_query",
+                "_apply_context_dict",
+                "_system_prompt",
+            }
+        # Sanity: post-init sync calls DO fire hooks
+        mock_hooks.reset_mock()
+        assert agent.custom_helper(7) == 7
+        mock_hooks.before_agent_call.assert_called_once()
     finally:
         set_hooks(None)
