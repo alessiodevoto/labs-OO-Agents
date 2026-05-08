@@ -33,7 +33,6 @@ from nemo_oo_agents.context_blocks.formatter import (
     _xml_message_content,
 )
 from nemo_oo_agents.context_blocks.models import (
-    BlockMetadata,
     ContextWindowStats,
     RenderedMessage,
     ResolvedBlock,
