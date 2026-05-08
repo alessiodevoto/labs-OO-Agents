@@ -101,18 +101,19 @@ class SkillRegistry(Skill):
     def register(self, name: str, skill: Skill) -> None:
         """Register a manually-constructed skill as loaded.
 
+        Calls attach(agent) automatically if not already attached.
+
         Use for skills that require constructor args::
 
             self.shell = ShellTools(cwd=config.working_dir)
-            self.shell.attach(self)
             self.skills.register('stdskill/shell', self.shell)
         """
+        if not getattr(skill, "_agent", None):
+            skill.attach(self._agent)
         self._loaded.add(name)
         if name not in self._discovered:
             category = name.split("/")[0] if "/" in name else ""
-            self._discovered[name] = _SkillEntry(
-                name=name, entry_point=None, category=category
-            )
+            self._discovered[name] = _SkillEntry(name=name, entry_point=None, category=category)
 
     # ------------------------------------------------------------------
     # Activation

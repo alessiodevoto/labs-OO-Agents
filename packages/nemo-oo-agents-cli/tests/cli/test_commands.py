@@ -1165,4 +1165,3 @@ async def test_user_skill_slash_command_case_insensitive(handler_with_skills):
     assert result.success is True
     assert result.agent_message is not None
     assert "Arguments: status" in result.agent_message
-

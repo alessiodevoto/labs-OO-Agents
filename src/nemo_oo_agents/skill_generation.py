@@ -76,7 +76,9 @@ def _make_skill_adapter(func: Callable, strategy: Any = None) -> Callable:
     import sys as _sys
 
     func_module = getattr(original, "__module__", None)
-    func_globals = vars(_sys.modules[func_module]) if func_module and func_module in _sys.modules else {}
+    func_globals = (
+        vars(_sys.modules[func_module]) if func_module and func_module in _sys.modules else {}
+    )
 
     adapted = types.FunctionType(_tmpl.__code__, func_globals, original.__name__)
 
@@ -89,7 +91,11 @@ def _make_skill_adapter(func: Callable, strategy: Any = None) -> Callable:
 
     # Metadata that _execute_with_generation reads off the method object
     adapted._plan_llm = getattr(func, "_plan_llm", None)  # type: ignore[attr-defined]
-    adapted._plan_strategy = strategy or getattr(func, "_plan_strategy", None) or getattr(func, "_strategy_override", None)  # type: ignore[attr-defined]
+    adapted._plan_strategy = (
+        strategy
+        or getattr(func, "_plan_strategy", None)
+        or getattr(func, "_strategy_override", None)
+    )  # type: ignore[attr-defined]
     adapted._strategy_context = getattr(func, "_strategy_context", None)  # type: ignore[attr-defined]
     adapted._strategy_events = getattr(func, "_strategy_events", None)  # type: ignore[attr-defined]
     adapted._strategy_truncation = getattr(func, "_strategy_truncation", None)  # type: ignore[attr-defined]
@@ -136,9 +142,7 @@ def _wrap_skill_generation_method(
             )
 
         # Use the agent's runtime to execute the generation
-        return await agent.runtime._execute_with_generation(
-            adapted, args, kwargs, method_name
-        )
+        return await agent.runtime._execute_with_generation(adapted, args, kwargs, method_name)
 
     wrapper._needs_generation = True  # type: ignore[attr-defined]
     wrapper._plan_strategy = adapted._plan_strategy  # type: ignore[attr-defined]

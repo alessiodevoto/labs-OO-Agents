@@ -2389,7 +2389,7 @@ class CommandRegistry:
                     # install-as: command is honored for backward compat.
                     if meta.get("user-invocable") is False:
                         continue
-                    raw_name = str(meta.get("name", "")).strip()
+                    raw_name = str(meta.get("name") or "").strip()
                     cmd_name = raw_name.lower()
                     if not cmd_name or cmd_name in self._commands or cmd_name in skills:
                         continue

@@ -71,8 +71,7 @@ class TestIsGenerationMethod:
         assert not is_generation_method(CategorizationSkill.helper)
 
     def test_rejects_non_async(self):
-        def sync_fn():
-            ...
+        def sync_fn(): ...
 
         assert not is_generation_method(sync_fn)
 
@@ -127,7 +126,9 @@ class TestMakeSkillAdapter:
 
     def test_adapter_preserves_strategy(self):
         # Get the strategy from the original method
-        original_strategy = getattr(CategorizationSkill.classify, "_plan_strategy", None) or                            getattr(CategorizationSkill.classify, "_strategy_override", None)
+        original_strategy = getattr(
+            CategorizationSkill.classify, "_plan_strategy", None
+        ) or getattr(CategorizationSkill.classify, "_strategy_override", None)
         adapter = _make_skill_adapter(CategorizationSkill.classify, strategy=original_strategy)
         assert adapter._plan_strategy is original_strategy
 

@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import hidden, strategy
-from nemo_oo_agents.agentdoc import doc, spec
+from nemo_oo_agents.agentdoc import doc
 from nemo_oo_agents.storage.markers import nosnapshot
 
 with hidden:

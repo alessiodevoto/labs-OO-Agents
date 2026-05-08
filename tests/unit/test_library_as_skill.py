@@ -203,13 +203,13 @@ async def test_library_skill_generation_method_binds_to_agent_runtime(libs_root)
     """Library-exported Skill generation methods route through the parent agent runtime."""
     init_body = (
         '"""Library with generation skill."""\n'
-        'from nemo_oo_agents.decorators import strategy\n'
-        'from nemo_oo_agents.skill import Skill\n\n\n'
-        'class GenSkill(Skill):\n'
-        '    @strategy()\n'
-        '    async def classify(self, text: str) -> str:\n'
+        "from nemo_oo_agents.decorators import strategy\n"
+        "from nemo_oo_agents.skill import Skill\n\n\n"
+        "class GenSkill(Skill):\n"
+        "    @strategy()\n"
+        "    async def classify(self, text: str) -> str:\n"
         '        """Classify {text}."""\n'
-        '        ...\n'
+        "        ...\n"
     )
 
     _make_library(libs_root, "test_lib_gen_skill", init_body)
@@ -231,4 +231,3 @@ async def test_library_skill_generation_method_binds_to_agent_runtime(libs_root)
     result = await attached.classify("hello")
     assert result == "ok"
     assert agent.runtime._execute_with_generation.await_count == 1
-
