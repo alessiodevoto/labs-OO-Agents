@@ -436,3 +436,106 @@ class TestRepr:
         r = repr(shell)
         assert "file=" in r
         assert "sample.py" in r
+
+
+# ==========================================================================
+# edit — fuzzy matching
+# ==========================================================================
+class TestEditFuzzy:
+    async def test_edit_fuzzy_trailing_whitespace(self, shell, tmp_path):
+        """Fuzzy match strips trailing whitespace differences."""
+        f = tmp_path / "ws.py"
+        f.write_text("def hello():  \n    pass\n")
+        # old_str without trailing whitespace should still match
+        r = await shell.edit(
+            str(f), old_str="def hello():\n    pass", new_str="def hi():\n    pass"
+        )
+        assert r.success
+
+    async def test_edit_fuzzy_smart_quotes(self, shell, tmp_path):
+        """Fuzzy match normalizes smart quotes to ASCII."""
+        f = tmp_path / "quotes.py"
+        f.write_text("msg = 'hello world'\n")
+        # Using smart quotes in old_str
+        r = await shell.edit(str(f), old_str="msg = \u2018hello world\u2019", new_str="msg = 'hi'")
+        assert r.success
+        assert "hi" in f.read_text()
+
+    async def test_edit_closest_match_hint(self, shell, tmp_path):
+        """When no match found, returns closest match as hint."""
+        f = tmp_path / "hint.py"
+        f.write_text("def hello_world():\n    print('hi')\n\ndef goodbye():\n    pass\n")
+        r = await shell.edit(
+            str(f), old_str="def hello_wrld():\n    print('hi')", new_str="replaced"
+        )
+        assert not r.success
+        assert "Closest match" in r.error
+
+    async def test_edit_strips_line_number_prefixes(self, shell, tmp_path):
+        """Line-number prefixes from view() output are stripped."""
+        f = tmp_path / "lines.py"
+        f.write_text("import os\nimport sys\n\ndef main():\n    pass\n")
+        # Simulate copy-pasting from view() output with line numbers
+        r = await shell.edit(
+            str(f),
+            old_str="  1|import os\n  2|import sys",
+            new_str="import os\nimport sys\nimport re",
+        )
+        assert r.success
+        content = f.read_text()
+        assert "import re" in content
+
+
+# ==========================================================================
+class TestInsert:
+    async def test_insert_at_line(self, shell, tmp_path):
+        """Insert content before a specific line."""
+        f = tmp_path / "ins.py"
+        f.write_text("line1\nline2\nline3\n")
+        r = await shell.insert(str(f), line=2, content="inserted")
+        assert r.success
+        content = f.read_text()
+        lines = content.split("\n")
+        assert lines[1] == "inserted"
+
+    async def test_insert_prepend(self, shell, tmp_path):
+        """Insert at line 0 prepends to file."""
+        f = tmp_path / "prepend.py"
+        f.write_text("original\n")
+        r = await shell.insert(str(f), line=0, content="header\n")
+        assert r.success
+        assert f.read_text().startswith("header\n")
+
+    async def test_insert_append(self, shell, tmp_path):
+        """Insert at line -1 appends to file."""
+        f = tmp_path / "append.py"
+        f.write_text("original\n")
+        r = await shell.insert(str(f), line=-1, content="\nfooter")
+        assert r.success
+        assert f.read_text().endswith("\nfooter")
+
+    async def test_insert_nonexistent_file(self, shell, tmp_path):
+        """Insert into nonexistent file returns error."""
+        r = await shell.insert(str(tmp_path / "nope.py"), line=1, content="x")
+        assert not r.success
+        assert "not found" in r.error.lower()
+
+
+# ==========================================================================
+# write — truncation warning
+# ==========================================================================
+class TestWriteTruncation:
+    async def test_write_truncation_warning(self, shell, tmp_path):
+        """Write warns when file shrinks significantly."""
+        f = tmp_path / "big.py"
+        f.write_text("x" * 200)
+        r = await shell.write(str(f), "x" * 50)
+        assert "WARNING" in r.diff
+        assert "shrunk" in r.diff
+
+    async def test_write_no_warning_for_small_shrink(self, shell, tmp_path):
+        """No warning for small size reductions."""
+        f = tmp_path / "small.py"
+        f.write_text("x" * 200)
+        r = await shell.write(str(f), "x" * 180)
+        assert "WARNING" not in (r.diff or "")
