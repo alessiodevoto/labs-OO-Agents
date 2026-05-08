@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.agentdoc import hidden
+from nemo_oo_agents.config.strategy_config import PredictConfig
+from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import PredictStrategy
 
@@ -247,7 +249,16 @@ class SummarizationAgent(Agent):
     # LLM-generated summarization
     # -------------------------------------------------------------------------
 
-    @strategy(PredictStrategy())
+    # ``None`` everywhere = no input-size bounds; the LLM's context window is
+    # the only real limit on what summarize() can ingest.
+    @strategy(
+        PredictStrategy(PredictConfig(max_param_chars=None)),
+        truncation=TruncationConfig(
+            max_block_chars=None,
+            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
+            event_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
+        ),
+    )
     async def summarize(self, history_markdown: str, target_chars: int) -> str:
         """Summarize the `history_markdown` parameter into approximately {target_chars} characters.
 

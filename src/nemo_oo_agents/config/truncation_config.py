@@ -129,7 +129,9 @@ class TruncationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_block_chars: Annotated[int, Field(description="Max chars rendered per block")] = 20_000
+    max_block_chars: Annotated[
+        int | None, Field(description="Max chars rendered per block; None = unlimited")
+    ] = 20_000
     max_context_tokens: Annotated[int | None, Field(description="Total context token budget")] = (
         None
     )
@@ -151,8 +153,8 @@ class TruncationConfig(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> "TruncationConfig":
         errors = []
-        if self.max_block_chars <= 0:
-            errors.append(f"max_block_chars must be > 0, got {self.max_block_chars}")
+        if self.max_block_chars is not None and self.max_block_chars <= 0:
+            errors.append(f"max_block_chars must be > 0 or None, got {self.max_block_chars}")
         for name in ("max_context_tokens", "max_event_tokens"):
             v = getattr(self, name)
             if v is not None and v <= 0:
