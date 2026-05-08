@@ -852,7 +852,9 @@ class Session:
                     BashOutput(
                         stdout=result.stdout or "",
                         stderr=result.stderr or "",
-                        return_code=getattr(result, "returncode", getattr(result, "return_code", 0)),
+                        return_code=getattr(
+                            result, "returncode", getattr(result, "return_code", 0)
+                        ),
                         command=cmd,
                     )
                 )

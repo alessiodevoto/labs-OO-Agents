@@ -72,9 +72,7 @@ class _FakeShell:
             text=True,
             timeout=timeout,
         )
-        return BashResult(
-            stdout=r.stdout.strip(), stderr=r.stderr.strip(), returncode=r.returncode
-        )
+        return BashResult(stdout=r.stdout.strip(), stderr=r.stderr.strip(), returncode=r.returncode)
 
 
 class _FakeAgent:
