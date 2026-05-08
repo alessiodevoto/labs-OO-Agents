@@ -126,6 +126,8 @@ class SkillRegistry(Skill):
         """Make loaded skills matching patterns visible to the LLM.
 
         Also loads matching skills if not already loaded.
+        Resolves dependencies transitively: if skill A requires B, activating A
+        will auto-load B (but not activate it — deps stay hidden unless explicitly activated).
         Patterns support fnmatch globs.
         """
         # Auto-load if not already loaded
@@ -134,9 +136,28 @@ class SkillRegistry(Skill):
             self.load(list(not_loaded))
 
         matched = self._match(patterns, self._loaded)
+        # Resolve transitive dependencies
+        for name in list(matched):
+            self._resolve_deps(name)
+
         for name in matched:
             self._activated.add(name)
             self._unhide_skill(name)
+
+    def _resolve_deps(self, name: str) -> None:
+        """Load any dependencies declared by the skill (transitive)."""
+        attr = self._attr_name(name)
+        skill = getattr(self._agent, attr, None)
+        if skill is None:
+            return
+        requires = getattr(skill, "requires", [])
+        for dep in requires:
+            if dep not in self._loaded:
+                # Try to load from discovered set
+                if dep in self._discovered:
+                    self.load([dep])
+                else:
+                    logger.warning("Skill %s requires %s but it is not discovered", name, dep)
 
     def deactivate(self, patterns: list[str]) -> None:
         """Hide activated skills from the LLM (still loaded)."""

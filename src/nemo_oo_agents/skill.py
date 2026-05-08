@@ -203,6 +203,11 @@ class Skill:
     # They shouldn't be serialized in snapshots — mark them as nosnapshot.
     __nosnapshot__ = True
 
+    # Skill dependencies — list of skill names (category/name) that must be
+    # loaded before this skill can function. SkillRegistry resolves these
+    # transitively when activate() is called.
+    requires: list[str] = []
+
     def __init__(self, obj: Any = None, *, content: str | None = None, name: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
         if n_given > 1:

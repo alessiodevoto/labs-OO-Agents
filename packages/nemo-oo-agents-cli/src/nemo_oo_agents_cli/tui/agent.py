@@ -683,11 +683,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("stdskill/todo", self.todo)
 
         # Activate all standard skills for TUIAgent (full experience)
+        # Also activates context + events (stdskill/* includes them)
         self.skills.activate(["stdskill/*", "superpowers/*"])
-
-        # Expose context and events to the LLM
-        spec(self, "context", hidden=False)
-        spec(self, "events", hidden=False)
 
         # Show todo progress to the LLM every turn
         self.context.set_dynamic("todo_status", "self.todo.status()")
