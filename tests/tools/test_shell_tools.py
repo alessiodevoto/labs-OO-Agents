@@ -107,6 +107,32 @@ class TestRun:
         assert events[-1].kind == "done"
         assert events[-1].returncode == 0
 
+    async def test_run_stream_combined_stdout_stderr(self, shell, tmp_path):
+        """run_stream with both stdout and stderr yields events for each."""
+        script = tmp_path / "both.sh"
+        script.write_text("#!/bin/bash\necho out\necho err >&2\n")
+        script.chmod(0o755)
+        events = [event async for event in shell.run_stream(str(script))]
+        kinds = [e.kind for e in events]
+        assert "stdout" in kinds
+        assert "stderr" in kinds
+        assert kinds[-1] == "done"
+        assert events[-1].returncode == 0
+
+    async def test_run_stream_nonzero_exit(self, shell):
+        """run_stream yields done event with non-zero returncode."""
+        events = [event async for event in shell.run_stream("false")]
+        assert events[-1].kind == "done"
+        assert events[-1].returncode == 1
+        assert events[-1].timed_out is False
+
+    async def test_run_stream_timeout(self, shell):
+        """run_stream yields done event with timed_out=True on timeout."""
+        events = [event async for event in shell.run_stream("sleep 60", timeout=0.5)]
+        assert events[-1].kind == "done"
+        assert events[-1].timed_out is True
+        assert events[-1].returncode == 124
+
 
 # ==========================================================================
 # view

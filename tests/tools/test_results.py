@@ -3,37 +3,37 @@
 """Tests for result types."""
 
 from nemo_oo_agents.tools._results import (
-    BashResult,
     EditResult,
     LsResult,
+    RunResult,
     SearchResult,
     ViewResult,
     WriteResult,
 )
 
 
-class TestBashResult:
+class TestRunResult:
     def test_success(self):
-        r = BashResult(stdout="hello", stderr="", returncode=0)
+        r = RunResult(stdout="hello", stderr="", returncode=0)
         assert r.success is True
         assert r.text == "hello"
 
     def test_failure(self):
-        r = BashResult(stdout="", stderr="error", returncode=1)
+        r = RunResult(stdout="", stderr="error", returncode=1)
         assert r.success is False
         assert "[stderr]" in r.text
         assert "[exit code: 1]" in r.text
 
     def test_timeout(self):
-        r = BashResult(stdout="partial", stderr="", returncode=1, timed_out=True)
+        r = RunResult(stdout="partial", stderr="", returncode=1, timed_out=True)
         assert "[timed out]" in r.text
 
     def test_empty_output(self):
-        r = BashResult(stdout="", stderr="", returncode=0)
+        r = RunResult(stdout="", stderr="", returncode=0)
         assert r.text == "(no output)"
 
     def test_str(self):
-        r = BashResult(stdout="hello", stderr="", returncode=0)
+        r = RunResult(stdout="hello", stderr="", returncode=0)
         assert str(r) == "hello"
 
 

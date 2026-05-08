@@ -3,22 +3,17 @@
 """SWE tool result types."""
 
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Literal
 
 from nemo_oo_agents.agentdoc import spec
 
 
 @dataclass
-class BashResult:
+class RunResult:
     stdout: Annotated[str, spec(description="Command output")]
     stderr: Annotated[str, spec(description="Error output")]
     returncode: Annotated[int, spec(description="Exit code (0 = success)")]
     timed_out: Annotated[bool, spec(description="True if command exceeded timeout")] = False
-
-    @property
-    def return_code(self) -> int:
-        """Backward-compatible alias for ``returncode``."""
-        return self.returncode
 
     @property
     def success(self) -> bool:
@@ -135,13 +130,13 @@ class SearchResult:
 
 @dataclass
 class StreamEvent:
-    kind: Annotated[str, spec(description='Stream chunk event kind: "stdout" or "stderr"')]
+    kind: Annotated[Literal["stdout", "stderr"], spec(description="Stream chunk event kind")]
     text: Annotated[str, spec(description="Chunk text for the stream event")]
 
 
 @dataclass
 class StreamDone:
-    kind: Annotated[str, spec(description='Terminal stream event kind: "done"')]
+    kind: Annotated[Literal["done"], spec(description="Terminal stream event kind")]
     returncode: Annotated[int, spec(description="Final process exit code")]
     timed_out: Annotated[bool, spec(description="True if command exceeded timeout")]
 

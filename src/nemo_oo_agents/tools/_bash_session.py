@@ -18,6 +18,7 @@ import logging
 import os
 import secrets
 import signal
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,113 @@ class BashSession:
             exit_code = 124
 
         return stdout.strip(), stderr.strip(), exit_code
+
+    async def run_stream(
+        self, command: str, timeout: float = 30.0
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Run a command and yield (stream_name, chunk) pairs as output arrives.
+
+        stream_name is 'stdout' or 'stderr'. After the command finishes,
+        yields ('__done__', exit_code_str). Caller must interpret that sentinel.
+        """
+        if not self._started:
+            await self.start()
+
+        sentinel = f"__CTRL_{secrets.token_hex(8)}__"
+        script = f"{command}\n_nemo_ec=$?\necho $_nemo_ec >&3\npwd >&3\necho {sentinel} >&3\n"
+
+        proc = self._process
+        ctrl = self._control_reader
+        if proc is None or proc.stdin is None or ctrl is None or proc.returncode is not None:
+            await self.reset()
+            proc = self._process
+            ctrl = self._control_reader
+            if proc is None or proc.stdin is None or ctrl is None:
+                raise RuntimeError("Bash session failed to restart")
+
+        try:
+            proc.stdin.write(script.encode())
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            await self.reset()
+            proc = self._process
+            ctrl = self._control_reader
+            if proc is None or proc.stdin is None or ctrl is None:
+                raise RuntimeError("Bash session failed to restart") from None
+            proc.stdin.write(script.encode())
+            await proc.stdin.drain()
+
+        assert proc.stdout is not None and proc.stderr is not None
+
+        # Read stdout/stderr concurrently, yielding chunks as they arrive,
+        # while watching the control fd for the sentinel.
+        import asyncio as _asyncio
+
+        stdout_queue: _asyncio.Queue[tuple[str, str] | None] = _asyncio.Queue()
+        stderr_queue: _asyncio.Queue[tuple[str, str] | None] = _asyncio.Queue()
+
+        async def _read_stream(stream, name, queue):
+            try:
+                while True:
+                    chunk = await _asyncio.wait_for(stream.read(4096), timeout=_ACCUMULATE_POLL)
+                    if not chunk:
+                        break
+                    queue.put_nowait((name, chunk.decode("utf-8", errors="replace")))
+            except (TimeoutError, _asyncio.CancelledError):
+                pass
+            except Exception:
+                pass
+            finally:
+                queue.put_nowait(None)
+
+        stdout_task = _asyncio.create_task(_read_stream(proc.stdout, "stdout", stdout_queue))
+        stderr_task = _asyncio.create_task(_read_stream(proc.stderr, "stderr", stderr_queue))
+
+        ctrl_lines, timed_out = await self._read_control_until(sentinel, timeout)
+
+        # Sentinel received — cancel readers and drain remaining.
+        stdout_task.cancel()
+        stderr_task.cancel()
+        for task in (stdout_task, stderr_task):
+            try:
+                await task
+            except _asyncio.CancelledError:
+                pass
+
+        # Drain queues
+        for q in (stdout_queue, stderr_queue):
+            while not q.empty():
+                item = q.get_nowait()
+                if item is not None:
+                    yield item
+
+        # Greedy-drain remaining pipe data
+        for stream, name in [(proc.stdout, "stdout"), (proc.stderr, "stderr")]:
+            while True:
+                try:
+                    chunk = await _asyncio.wait_for(stream.read(4096), timeout=_DRAIN_TIMEOUT)
+                    if not chunk:
+                        break
+                    yield (name, chunk.decode("utf-8", errors="replace"))
+                except (TimeoutError, Exception):
+                    break
+
+        # Parse exit code
+        exit_code = -1 if not ctrl_lines else 0
+        if ctrl_lines:
+            try:
+                exit_code = int(ctrl_lines[0].strip())
+            except (ValueError, IndexError):
+                pass
+            if len(ctrl_lines) >= 2:
+                candidate = ctrl_lines[1].strip()
+                if candidate.startswith("/"):
+                    self._cwd = Path(candidate)
+
+        if timed_out:
+            exit_code = 124
+
+        yield ("__done__", str(exit_code))
 
     async def _send_and_wait(
         self, script: str, sentinel: str, timeout: float
