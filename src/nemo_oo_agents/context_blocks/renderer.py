@@ -158,15 +158,14 @@ def _apply_event_total_limit(
       The original instruction is what the agent is trying to execute; losing
       it leaves the model with no goal.
 
-    When eviction fires, prepends a ``Summary`` event marker — the same shape
-    the LLM sees from ``events.collapse()`` — so the rendered marker is a
-    recognizable form rather than a one-off syntax. The marker is
-    ``role=USER`` (inline in the timeline at the gap, not bundled with the
-    system prompt).
+    When eviction fires, prepends a ``ContextTruncated`` marker event
+    (``role=USER``, inline in the timeline at the gap) so the LLM sees where
+    events were dropped. The actor layer then uses this signal to collapse
+    history via ``event_manager.collapse()``.
     """
     # Lazy import to avoid a circular dependency between context_blocks and the
     # framework's event types (nemo_oo_agents.events imports from context_blocks).
-    from nemo_oo_agents.context_blocks.utils import truncating_pformat
+    from nemo_oo_agents.agentdoc import pformat
     from nemo_oo_agents.events import ContextTruncated, Task
 
     total = sum(count_fn(b.content) for b in blocks)
@@ -236,7 +235,7 @@ def _apply_event_total_limit(
         key="context_truncated",
         # Pre-render the event to a string (we're past render_context's
         # pre-serialization step; surviving blocks already have content set).
-        content=truncating_pformat(truncated),
+        content=pformat(truncated),
         # role=USER so the marker appears inline in the timeline (where the
         # gap actually is) rather than bundling with the system prompt.
         role=Role.USER,
