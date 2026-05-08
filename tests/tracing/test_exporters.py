@@ -57,9 +57,10 @@ class TestLangfuseFactory:
 
 
 class TestLocalOtlpFactory:
-    def test_creates_otlp_json_http_exporter(self):
+    def test_creates_otlp_json_http_exporter(self, monkeypatch):
         from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
 
+        monkeypatch.delenv("OTLP_ENDPOINT", raising=False)
         exp = exporters.local_otlp()
         assert isinstance(exp, OtlpJsonHttpExporter)
         assert exp._endpoint == "http://localhost:5001/v1/traces"
