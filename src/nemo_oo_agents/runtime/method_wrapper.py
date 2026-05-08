@@ -313,6 +313,101 @@ def create_agent_method_wrapper(
     return wrapper
 
 
+def create_sync_agent_method_wrapper(
+    original_func: Callable[..., Any],
+    *,
+    needs_tracing: bool,
+    cached_source_code: str | None = None,
+) -> Callable[..., Any]:
+    """Create a sync wrapper for a sync agent method (tracing only).
+
+    Sync methods on Agent subclasses cannot use the async wrapper directly —
+    making them awaitable would change the calling convention. This wrapper:
+
+    - Fires before/after_agent_call hooks so sync helpers produce AGENT spans.
+    - Pushes/pops the agent call stack so nested calls have correct parent linkage.
+    - Skips agent_call middleware (middleware is async and would need an event loop).
+    - Skips the generation path entirely (sync methods can't await an LLM).
+
+    When `self.runtime` is not yet set (i.e. inside `Agent.__init__` while
+    `_resolve_llm`/`_resolve_truncation`/etc. are running) the wrapper short-circuits
+    to the original function with no hook firing. This mirrors the async wrapper's
+    fall-through at the bottom of `create_agent_method_wrapper`.
+
+    Args:
+        original_func: The original sync function to wrap
+        needs_tracing: Whether method should be traced
+        cached_source_code: Pre-extracted source code for tracing (optional)
+
+    Returns:
+        Wrapped sync function with tracing instrumentation
+    """
+    # Mirrors the async wrapper: a mutable list lets `@no_trace` applied AFTER
+    # this wrapper (outer decorator) flip the flag retroactively.
+    _tracing_enabled = [needs_tracing]
+
+    @wraps(original_func)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        # Fast path: no runtime yet (e.g. `Agent.__init__` calling helpers
+        # before `self.runtime` is assigned). Skip all instrumentation.
+        if not hasattr(self, "runtime"):
+            return original_func(self, *args, **kwargs)
+
+        runtime = self.runtime
+        call_id = str(uuid4())
+        parent_call_id = runtime._agent_call_id
+
+        trace_attrs = _build_trace_attributes(
+            needs_generation=False,
+            strategy=None,
+            cached_source_code=cached_source_code,
+        )
+
+        # @no_trace methods propagate the parent's id so children find the
+        # nearest traced ancestor — same semantics as the async wrapper.
+        _push_agent_call_id(call_id if _tracing_enabled[0] else parent_call_id)
+
+        hook_context = None
+        result = None
+        exception_caught: Exception | None = None
+        try:
+            if _tracing_enabled[0]:
+                hook_context = call_before_hook(
+                    "before_agent_call",
+                    agent=self,
+                    method_name=original_func.__name__,
+                    args=args,
+                    kwargs=kwargs,
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    **trace_attrs,
+                )
+            result = original_func(self, *args, **kwargs)
+            return result
+        except Exception as e:
+            exception_caught = e
+            raise
+        finally:
+            _pop_agent_call_id()
+            if hook_context is not None:
+                call_after_hook(
+                    "after_agent_call",
+                    hook_context,
+                    agent=self,
+                    method_name=original_func.__name__,
+                    result=result,
+                    exception=exception_caught,
+                )
+
+    setattr(wrapper, "_agent_decorator", "auto")  # noqa: B010
+    setattr(wrapper, "_needs_generation", False)  # noqa: B010
+    setattr(wrapper, "_plan_strategy", None)  # noqa: B010
+    setattr(wrapper, "_tracing_enabled", _tracing_enabled)  # noqa: B010
+    setattr(wrapper, "_original", original_func)  # noqa: B010
+
+    return wrapper
+
+
 def _build_trace_attributes(
     needs_generation: bool,
     strategy: Any | None,

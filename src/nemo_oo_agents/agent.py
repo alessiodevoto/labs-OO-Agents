@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from nemo_oo_agents.agentdoc import hidden
 from nemo_oo_agents.context_blocks import DynamicContext
-from nemo_oo_agents.metaclass import AgentMeta
+from nemo_oo_agents.metaclass import AgentMeta, no_trace
 from nemo_oo_agents.runtime.context_vars import _parent_agent_var
 from nemo_oo_agents.storage.markers import nosnapshot
 
@@ -263,6 +263,7 @@ class Agent(metaclass=AgentMeta):
         # Create runtime (manages execution, caching, signals)
         self.runtime = ActorRuntime(self)
 
+    @no_trace
     @hidden
     def _apply_context_dict(self, blocks: "dict[str, str | DynamicContext | None]") -> None:
         """Apply a dict of context block overrides.
@@ -280,6 +281,7 @@ class Agent(metaclass=AgentMeta):
         for key, value in blocks.items():
             self.context_manager.apply_override(key, value)
 
+    @no_trace
     @hidden
     def _resolve_llm(self, instance_llm: "UnifiedLLM | None") -> "UnifiedLLM":
         """Resolve which LLM to use via cascading resolution.
@@ -328,6 +330,7 @@ class Agent(metaclass=AgentMeta):
             f"  - Instantiate within a parent agent's generated code"
         )
 
+    @no_trace
     @hidden
     def _resolve_truncation(
         self, instance_truncation: "TruncationConfig | None"
@@ -362,6 +365,7 @@ class Agent(metaclass=AgentMeta):
 
         return config
 
+    @no_trace
     @hidden
     def _resolve_event_query(
         self, instance_event_query: "EventQuery | None"
@@ -402,6 +406,7 @@ class Agent(metaclass=AgentMeta):
         """Most recent context window utilization stats, or None before first generation."""
         return self.runtime._last_context_stats
 
+    @no_trace
     @hidden
     def _system_prompt(self) -> str:
         """Generate the system prompt establishing agent identity.
