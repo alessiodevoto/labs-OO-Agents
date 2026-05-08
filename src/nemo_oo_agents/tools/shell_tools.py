@@ -22,6 +22,7 @@ import logging
 import re
 import shlex
 from collections.abc import AsyncIterator
+import unicodedata
 from pathlib import Path
 from typing import Annotated
 
@@ -81,7 +82,8 @@ class ShellTools(Skill):
         run(command, ...)       — run a shell command (stateful)
         run_stream(command, ...) — stream stdout/stderr and terminal event
         view(path, ...)         — read a file with line numbers
-        edit(path, old, new)    — str_replace with lint check
+        edit(path, old, new)    — str_replace with fuzzy fallback
+        insert(path, line, content) — insert text at a line number
         write(path, content)    — create or overwrite a file
         grep(pattern, path)     — regex search via ripgrep
         find(pattern, path)     — find files by glob
@@ -216,29 +218,96 @@ class ShellTools(Skill):
         self,
         path: Annotated[str, spec(description="File to edit (relative to cwd)")],
         old_str: Annotated[
-            str, spec(description="Exact text to find (must be unique in the file)")
+            str,
+            spec(
+                description="Exact text to find (must be unique). Fuzzy matching handles minor whitespace/unicode differences."
+            ),
         ],
         new_str: Annotated[str, spec(description="Replacement text")],
     ) -> EditResult:
-        """Replace exactly one occurrence of old_str with new_str in a file, then lint-check."""
+        """Replace text in a file using str_replace with fuzzy fallback.
+
+        Matching strategy:
+        1. Exact match (preferred)
+        2. Fuzzy match (whitespace + unicode normalization)
+        3. Line-number prefixes from view() output are stripped automatically
+
+        Args:
+            path: File to edit (relative to cwd).
+            old_str: Exact text to find (must be unique). Fuzzy matching handles
+                minor whitespace/unicode differences.
+            new_str: Replacement text.
+
+        Returns:
+            EditResult with diff, lint errors, and success status.
+            On failure, returns the closest match as a hint.
+
+        Examples:
+            r = await self.shell.edit("src/main.py",
+                old_str='print("hello")',
+                new_str='print("hello world")')
+        """
         resolved = self._resolve(path)
         if not resolved.is_file():
             return EditResult(path=path, diff="", success=False, error=f"File not found: {path}")
 
         content = resolved.read_text(errors="replace")
 
+        # Strip line-number prefixes that agents copy from view() output
+        old_str = _strip_line_number_prefixes(old_str)
+
+        # Try exact match first
         count = content.count(old_str)
+
         if count == 0:
-            return EditResult(
-                path=path,
-                diff="",
-                success=False,
-                error=(
-                    f"old_str not found in {path}. "
-                    "Make sure it matches exactly, including whitespace and indentation."
-                ),
-            )
-        if count > 1:
+            # Fallback: fuzzy match (whitespace + unicode normalization)
+            fuzzy_result = _fuzzy_find_unique(content, old_str)
+            if fuzzy_result is None:
+                hint = _find_closest_match(content, old_str)
+                error_msg = f"old_str not found in {path}."
+                if hint:
+                    error_msg += f" Closest match:\n{hint}"
+                else:
+                    error_msg += " Make sure it matches the file content, including whitespace and indentation."
+                return EditResult(path=path, diff="", success=False, error=error_msg)
+            # Apply fuzzy-matched edit in normalized space
+            norm_content = _normalize_for_fuzzy(content)
+            norm_old = _normalize_for_fuzzy(old_str)
+            idx, _ = fuzzy_result
+            # Reject fuzzy match that starts mid-line (line-based mapping would be inaccurate)
+            if idx != 0 and norm_content[idx - 1] != "\n":
+                hint = _find_closest_match(content, old_str)
+                error_msg = f"old_str not found in {path}."
+                if hint:
+                    error_msg += f" Closest match:\n{hint}"
+                else:
+                    error_msg += " Make sure it matches the file content, including whitespace and indentation."
+                return EditResult(path=path, diff="", success=False, error=error_msg)
+            # Map back to original content using line-based alignment
+            norm_lines_before = norm_content[:idx].count("\n")
+            orig_lines = content.split("\n")
+            # Find the matching chunk in original by line count
+            norm_match_lines = norm_old.count("\n") + 1
+            orig_end_line = norm_lines_before + norm_match_lines
+            orig_chunk = "\n".join(orig_lines[norm_lines_before:orig_end_line])
+            if orig_end_line <= len(orig_lines) and norm_lines_before < len(orig_lines):
+                # Use slice-based replacement to avoid hitting wrong occurrence
+                chunk_start = len("\n".join(orig_lines[:norm_lines_before]))
+                if norm_lines_before > 0:
+                    chunk_start += 1  # account for the newline separator
+                chunk_end = chunk_start + len(orig_chunk)
+                new_content = content[:chunk_start] + new_str + content[chunk_end:]
+            else:
+                return EditResult(
+                    path=path,
+                    diff="",
+                    success=False,
+                    error=(
+                        f"old_str not found in {path} (fuzzy match alignment failed). "
+                        "Make sure it matches the file content."
+                    ),
+                )
+        elif count > 1:
             return EditResult(
                 path=path,
                 diff="",
@@ -248,12 +317,14 @@ class ShellTools(Skill):
                     "It must match exactly once — add surrounding context to make it unique."
                 ),
             )
+        else:
+            # Exact match - apply directly
+            new_content = content.replace(old_str, new_str, 1)
 
         # Pre-edit lint
         pre_errors = await self._lint(resolved)
 
-        # Apply
-        new_content = content.replace(old_str, new_str, 1)
+        # Write the edited content
         resolved.write_text(new_content)
 
         diff = _unified_diff(path, content, new_content)
@@ -264,7 +335,11 @@ class ShellTools(Skill):
 
         # Update current location
         self._current_file = path
-        self._current_line = content[: content.index(old_str)].count("\n") + 1
+        if old_str in content:
+            self._current_line = content[: content.index(old_str)].count("\n") + 1
+        else:
+            # Fuzzy match was used; estimate from diff
+            self._current_line = 1
 
         return EditResult(
             path=path,
@@ -272,6 +347,56 @@ class ShellTools(Skill):
             lint_errors=new_errors,
             success=True,
         )
+
+    # insert
+    # ------------------------------------------------------------------
+    async def insert(self, path: str, line: int, content: str) -> EditResult:
+        """Insert content at a specific line number.
+
+        Args:
+            path: File to edit (relative to cwd).
+            line: Line number to insert before (1-indexed).
+                  0 = prepend to file, -1 = append to end.
+            content: Text to insert.
+
+        Returns:
+            EditResult with diff, lint errors, and success status.
+
+        Examples:
+            r = await self.shell.insert("src/main.py", 1, "import os\n")
+            r = await self.shell.insert("src/main.py", -1, "\n# end\n")
+        """
+        resolved = self._resolve(path)
+        if not resolved.is_file():
+            return EditResult(path=path, diff="", success=False, error=f"File not found: {path}")
+
+        old_content = resolved.read_text(errors="replace")
+        lines = old_content.split("\n")
+
+        if line == 0:
+            new_content = content + old_content
+        elif line == -1:
+            new_content = old_content + content
+        else:
+            # 1-indexed: insert before that line
+            idx = max(0, min(line - 1, len(lines)))
+            lines.insert(idx, content.rstrip("\n"))
+            new_content = "\n".join(lines)
+
+        # Pre-edit lint
+        pre_errors = await self._lint(resolved)
+
+        resolved.write_text(new_content)
+        diff = _unified_diff(path, old_content, new_content)
+
+        # Post-edit lint
+        post_errors = await self._lint(resolved)
+        new_errors = sorted(set(post_errors) - set(pre_errors))
+
+        self._current_file = path
+        self._current_line = len(lines) if line == -1 else max(1, line)
+
+        return EditResult(path=path, diff=diff, lint_errors=new_errors, success=True)
 
     # ------------------------------------------------------------------
     # write
@@ -286,9 +411,18 @@ class ShellTools(Skill):
         created = not resolved.exists()
 
         diff = ""
+        truncation_warning = ""
         if not created:
             old = resolved.read_text(errors="replace")
             diff = _unified_diff(path, old, content)
+            # Guard against accidental truncation
+            if len(old) > 100 and len(content) < len(old) * 0.7:
+                pct = round((1 - len(content) / len(old)) * 100)
+                truncation_warning = (
+                    f"WARNING: file shrunk by {pct}% "
+                    f"({len(old)} -> {len(content)} chars). "
+                    "If unintentional, the file may be truncated."
+                )
 
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content)
@@ -296,12 +430,15 @@ class ShellTools(Skill):
         self._current_file = path
         self._current_line = 1
 
-        return WriteResult(
+        result = WriteResult(
             path=path,
             created=created,
             lines=len(content.splitlines()),
             diff=diff,
         )
+        if truncation_warning:
+            result.diff = truncation_warning + "\n" + result.diff
+        return result
 
     # ------------------------------------------------------------------
     # grep
@@ -478,3 +615,92 @@ def _unified_diff(path: str, old: str, new: str) -> str:
 def _sq(s: str) -> str:
     """Shell-quote a string."""
     return shlex.quote(s)
+
+
+def _normalize_for_fuzzy(text: str) -> str:
+    """Normalize text for fuzzy matching.
+
+    Strips trailing whitespace per line and normalizes unicode characters
+    that models commonly substitute (smart quotes, dashes, special spaces).
+    """
+    text = unicodedata.normalize("NFKC", text)
+    lines = text.split("\n")
+    lines = [line.rstrip() for line in lines]
+    text = "\n".join(lines)
+    # Smart single quotes to ASCII
+    text = re.sub(r"[\u2018\u2019\u201A\u201B]", "'", text)
+    # Smart double quotes to ASCII
+    text = re.sub(r"[\u201C\u201D\u201E\u201F]", '"', text)
+    # Various dashes/hyphens to ASCII hyphen
+    text = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]", "-", text)
+    # Special spaces to regular space
+    text = re.sub(r"[\u00A0\u2002-\u200A\u202F\u205F\u3000]", " ", text)
+    return text
+
+
+def _fuzzy_find_unique(content: str, old_str: str) -> tuple[int, int] | None:
+    """Find old_str in content using fuzzy normalization.
+
+    Returns (start_index, length_in_normalized_content) if exactly one match
+    is found in the normalized content, else None.
+    """
+    norm_content = _normalize_for_fuzzy(content)
+    norm_old = _normalize_for_fuzzy(old_str)
+    if not norm_old:
+        return None
+    count = norm_content.count(norm_old)
+    if count != 1:
+        return None
+    idx = norm_content.index(norm_old)
+    return (idx, len(norm_old))
+
+
+def _strip_line_number_prefixes(text: str) -> str:
+    """Strip line-number prefixes that agents copy from view() output.
+
+    Detects patterns like '  42|', ' 7|', '100|' at the start of each line
+    and removes them if the majority of lines match.
+    """
+    lines = text.split("\n")
+    if len(lines) < 2:
+        return text
+    pattern = re.compile(r"^\s*\d+\|")
+    matching = sum(1 for line in lines if pattern.match(line) or not line.strip())
+    if matching < len(lines) * 0.8:
+        return text
+    stripped = []
+    for line in lines:
+        m = re.match(r"^\s*\d+\|(.*)$", line)
+        stripped.append(m.group(1) if m else line)
+    return "\n".join(stripped)
+
+
+def _find_closest_match(content: str, target: str, threshold: float = 0.6) -> str | None:
+    """Find the most similar chunk in content to target.
+
+    Returns a short snippet of the closest match, or None if nothing is close enough.
+    Caps search at 500 candidate positions to avoid O(n^2) on large files.
+    """
+    target_lines = target.split("\n")
+    content_lines = content.split("\n")
+    n = len(target_lines)
+    if n == 0 or len(content_lines) < n:
+        return None
+
+    best_ratio = 0.0
+    best_chunk = None
+    max_candidates = min(len(content_lines) - n + 1, 500)
+    for i in range(max_candidates):
+        chunk = "\n".join(content_lines[i : i + n])
+        ratio = difflib.SequenceMatcher(None, target, chunk).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_chunk = chunk
+
+    if best_ratio < threshold or best_chunk is None:
+        return None
+    # Return a truncated preview
+    preview = best_chunk[:200]
+    if len(best_chunk) > 200:
+        preview += "..."
+    return preview
