@@ -3,6 +3,7 @@
 Tests replay real failure patterns observed across 72 sessions (171 edit failures).
 Each test simulates a file + old_str that would have failed before the improvements.
 """
+
 import pytest
 
 from nemo_oo_agents.tools.shell_tools import (
@@ -15,6 +16,7 @@ from nemo_oo_agents.tools.shell_tools import (
 # Pattern 1: Trailing whitespace mismatch (most common failure)
 # Agent copies code from view() output but trailing spaces differ
 # ============================================================
+
 
 class TestFuzzyWhitespaceMismatch:
     """Trailing whitespace in old_str that doesn't match the file."""
@@ -46,7 +48,9 @@ class TestFuzzyWhitespaceMismatch:
     async def test_trailing_whitespace_fuzzy_match(self, shell, sample_file):
         """Agent's old_str has trailing spaces on lines — should fuzzy match."""
         # Simulate: agent copied code but added trailing whitespace
-        old_with_trailing = "    def average(self):  \n        return sum(self.scores) / len(self.scores)  "
+        old_with_trailing = (
+            "    def average(self):  \n        return sum(self.scores) / len(self.scores)  "
+        )
         result = await shell.edit(
             sample_file.name,
             old_str=old_with_trailing,
@@ -63,7 +67,7 @@ class TestFuzzyWhitespaceMismatch:
         # Simulate: model outputs smart quotes
         result = await shell.edit(
             "quotes.py",
-            old_str='print(\u201chello world\u201d)',
+            old_str="print(\u201chello world\u201d)",
             new_str='print("goodbye world")',
         )
         assert result.success, f"Expected fuzzy match for smart quotes, got: {result.error}"
@@ -73,6 +77,7 @@ class TestFuzzyWhitespaceMismatch:
 # Pattern 2: Line-number prefixes from view() output
 # Agent copies `  42|` prefixes directly into old_str
 # ============================================================
+
 
 class TestLineNumberPrefixStripping:
     """Agent copies line-number prefixes from view() output into old_str."""
@@ -101,20 +106,19 @@ class TestLineNumberPrefixStripping:
         result = _strip_line_number_prefixes(text)
         assert result == text  # should not strip — not a prefix pattern
 
-
     @pytest.mark.asyncio
     async def test_edit_with_line_prefixes_succeeds(self, shell, tmp_path):
         """Agent pastes view() output with line numbers as old_str."""
-        content = "def hello():\n    print(\"hi\")\n    return True\n"
+        content = 'def hello():\n    print("hi")\n    return True\n'
         f = tmp_path / "hello.py"
         f.write_text(content)
 
         # Agent copied from view() output
-        old_with_prefixes = "1|def hello():\n2|    print(\"hi\")\n3|    return True"
+        old_with_prefixes = '1|def hello():\n2|    print("hi")\n3|    return True'
         result = await shell.edit(
             "hello.py",
             old_str=old_with_prefixes,
-            new_str="def hello():\n    print(\"hello\")\n    return True",
+            new_str='def hello():\n    print("hello")\n    return True',
         )
         assert result.success, f"Expected line-prefix stripping to work, got: {result.error}"
 
@@ -122,6 +126,7 @@ class TestLineNumberPrefixStripping:
 # ============================================================
 # Pattern 3: Multiple matches — generic old_str not unique
 # ============================================================
+
 
 class TestMultipleMatchesError:
     """Agent targets a short generic snippet that matches multiple times."""
@@ -146,12 +151,13 @@ class TestMultipleMatchesError:
 # Pattern 4: Closest match hint on failure
 # ============================================================
 
+
 class TestClosestMatchHint:
     """When old_str not found, error should include closest match."""
 
     def test_find_closest_match_basic(self):
-        content = "def hello():\n    print(\"hi\")\n"
-        target = "def hello():\n    print(\"hello\")\n"
+        content = 'def hello():\n    print("hi")\n'
+        target = 'def hello():\n    print("hello")\n'
         match = _find_closest_match(content, target)
         assert match is not None
         assert "hello" in match
@@ -166,6 +172,7 @@ class TestClosestMatchHint:
 # ============================================================
 # Pattern 5: Write truncation guard
 # ============================================================
+
 
 class TestWriteTruncationGuard:
     """shell.write should warn when file shrinks significantly."""
