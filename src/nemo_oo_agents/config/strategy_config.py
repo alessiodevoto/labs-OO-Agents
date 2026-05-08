@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Strategy configuration for CodeAct, Predict, and Reflexion strategies."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +32,20 @@ class CodeActConfig(BaseModel):
 
     max_iterations: int | None = None
     max_retries: int = 3
+    # Maximum consecutive turns where the LLM returns plain text instead of a
+    # tool call before the run is aborted. A real tool call resets the counter.
+    # Set to 0 to disable the guard (legacy behavior). See also
+    # text_only_stop_behavior for how each text-only response is handled.
+    max_consecutive_text_only: int = 3
+    # How to handle finish_reason="stop" (text-only, no tool call) responses:
+    # - "return_result": Route through return_result(content) validation. If the
+    #   return type matches, the session terminates cleanly. If not, the LLM gets
+    #   an actionable validation error to self-correct. (Recommended — breaks
+    #   loops faster and often terminates successfully.)
+    # - "synthetic_reasoning": Convert to execute_python(reasoning(content)) — a
+    #   no-op synthetic call that preserves the text in traces. The LLM sees
+    #   "status: complete" and must still call return_result() explicitly.
+    text_only_stop_behavior: Literal["return_result", "synthetic_reasoning"] = "return_result"
     cell_timeout: float | None = None
     max_tokens: int | None = None
     temperature: float | None = None

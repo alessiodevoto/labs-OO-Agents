@@ -119,6 +119,9 @@ class HarnessMetrics(BaseModel):
 
     # ── Response Format Fixups ──
     text_to_synthetic_count: int = 0
+    stop_to_return_result_count: int = 0
+    stop_to_return_result_previews: list[str] = Field(default_factory=list)
+    text_only_loop_aborts_count: int = 0
     content_prepended_as_reasoning_count: int = 0
     empty_response_count: int = 0
     gpt4o_double_quote_fix_count: int = 0
@@ -217,6 +220,14 @@ class HarnessMetrics(BaseModel):
     # Response Format Fixups
     def text_to_synthetic(self) -> None:
         self.text_to_synthetic_count += 1
+
+    def stop_to_return_result(self, content: str | None) -> None:
+        self.stop_to_return_result_count += 1
+        if content:
+            self._append(self.stop_to_return_result_previews, content, _MAX_CODE_PREVIEW_CHARS)
+
+    def text_only_loop_abort(self) -> None:
+        self.text_only_loop_aborts_count += 1
 
     def content_prepended_as_reasoning(self) -> None:
         self.content_prepended_as_reasoning_count += 1
@@ -513,6 +524,18 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "Text-to-synthetic reasoning",
         "Response Format Fixups",
         lambda m: m.text_to_synthetic_count,
+    ),
+    SchemaEntry(
+        "harness.stop_to_return_result.count",
+        "Stop signal routed through return_result",
+        "Response Format Fixups",
+        lambda m: m.stop_to_return_result_count,
+    ),
+    SchemaEntry(
+        "harness.text_only_loop_aborts.count",
+        "Text-only loop aborts",
+        "Response Format Fixups",
+        lambda m: m.text_only_loop_aborts_count,
     ),
     SchemaEntry(
         "harness.content_prepended_as_reasoning.count",
