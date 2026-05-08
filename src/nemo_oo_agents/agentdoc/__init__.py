@@ -94,7 +94,7 @@ def pformat(
         str, "Instance format: 'repr' for repr-style, 'type' for type structure"
     ] = "repr",
     unquote_strings: Annotated[
-        bool, "Render strings without quotes (verbatim or truncated marker)"
+        bool, "Untruncated strings rendered verbatim"
     ] = False,
 ) -> str:
     """Format an object as a string with smart truncation.
