@@ -174,6 +174,11 @@ class HarnessMetrics(BaseModel):
     # ── Prefill ──
     prefill_type: str = ""
 
+    # ── Context Limits (triggered when context/event budgets are hit) ──
+    context_limits_blocks_evicted: int = 0
+    context_limits_events_collapsed: int = 0
+    context_limits_tokens_archived: int = 0
+
     # ── Timing (TimingStat tracks count / total / min / max / samples) ──
     # Per-session (typically one sample)
     time_session_init: TimingStat = Field(default_factory=TimingStat)
@@ -892,6 +897,25 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "harness.time.code_execution", "Code execution", "Timing", lambda m: m.time_code_execution
     ),
     SchemaEntry("harness.turn_count", "Turns", "Timing", lambda m: m.turn_count),
+    # Context Limits (triggered when budgets are hit)
+    SchemaEntry(
+        "harness.context_limits.blocks_evicted",
+        "Context blocks evicted",
+        "L4 Eviction",
+        lambda m: m.context_limits_blocks_evicted,
+    ),
+    SchemaEntry(
+        "harness.context_limits.events_collapsed",
+        "Events collapsed",
+        "L4 Eviction",
+        lambda m: m.context_limits_events_collapsed,
+    ),
+    SchemaEntry(
+        "harness.context_limits.tokens_archived",
+        "Tokens archived",
+        "L4 Eviction",
+        lambda m: m.context_limits_tokens_archived,
+    ),
 )
 
 

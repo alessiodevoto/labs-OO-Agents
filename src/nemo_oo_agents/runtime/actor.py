@@ -2665,6 +2665,13 @@ class ActorRuntime:
                         summary_text,
                         log_prefix="post-clamp",
                     )
+                    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
+                    hm = get_harness_metrics()
+                    if isinstance(hm, HarnessMetrics):
+                        hm.context_limits_events_collapsed += n_to_archive
+                        hm.context_limits_tokens_archived += dropped * (
+                            stats.events_tokens // max(1, stats.events_count)
+                        )
             if dropped or total_tok != stats.total_tokens:
                 # Reflect the actual shipped payload in stats so the TUI's
                 # ``ctx N%`` display matches reality.

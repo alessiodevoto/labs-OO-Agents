@@ -186,6 +186,12 @@ def render_context(
         system_blocks, context_blocks_dropped = _apply_context_total_limit(
             system_blocks, context_limit, count_fn
         )
+        if context_blocks_dropped:
+            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics, get_harness_metrics
+
+            hm = get_harness_metrics()
+            if isinstance(hm, HarnessMetrics):
+                hm.context_limits_blocks_evicted += context_blocks_dropped
 
     # Stats — computed on truncated content, before formatter sees it.
     context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
