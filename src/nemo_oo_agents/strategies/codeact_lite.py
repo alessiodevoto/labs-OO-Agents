@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 def plain_event_content(
     event: Any,
-    max_chars: int = _DEFAULT_MAX_CHARS,
+    max_chars: int | None = _DEFAULT_MAX_CHARS,
     event_format: "FormatConfig | None" = None,
 ) -> str:
     """Render an event as plain text — no type wrappers, no metadata.
@@ -142,7 +142,7 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
 
     def __init__(
         self,
-        max_chars: int = _DEFAULT_MAX_CHARS,
+        max_chars: int | None = _DEFAULT_MAX_CHARS,
         event_format: "FormatConfig | None" = None,
     ):
         self._max_chars = max_chars  # set from tc.max_block_chars by CodeActLiteStrategy

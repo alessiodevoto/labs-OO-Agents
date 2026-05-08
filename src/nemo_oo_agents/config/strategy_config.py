@@ -89,7 +89,8 @@ class PredictConfig(BaseModel):
     temperature: float | None = None
     top_p: float | None = None
     max_error_chars: int = 1000
-    max_param_chars: int = 200_000
+    # ``None`` = unconstrained (parameter-size guard disabled).
+    max_param_chars: int | None = 200_000
 
     def merge_with(self, other: "PredictConfig") -> "PredictConfig":
         if not other.model_fields_set:

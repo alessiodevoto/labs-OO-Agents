@@ -181,8 +181,9 @@ class PredictStrategy(GenerationStrategy):
         # max_block_chars caps how much of the Task event the LLM sees — if the
         # task prompt exceeds this limit, the input is silently cropped, producing
         # wrong output with no indication.  Fail loudly instead.
+        # ``None`` disables the guard (used by the summarizer).
         tc = runtime.truncation_config
-        if len(task_prompt) > tc.max_block_chars:
+        if tc.max_block_chars is not None and len(task_prompt) > tc.max_block_chars:
             raise ValueError(
                 f"PredictStrategy: task prompt for '{call.method_name}' is "
                 f"{len(task_prompt):,} chars but max_block_chars is "
@@ -345,6 +346,9 @@ class PredictStrategy(GenerationStrategy):
         from nemo_oo_agents.strategies.current_call import _parse_param_names
 
         limit = self.config.max_param_chars
+        # ``None`` disables the guard entirely — used by the summarizer.
+        if limit is None:
+            return
 
         # Build a name → value mapping the same way format_parameters_as_code does.
         named: list[tuple[str, Any]] = []
