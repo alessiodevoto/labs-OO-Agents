@@ -224,9 +224,7 @@ class HarnessMetrics(BaseModel):
     def stop_to_return_result(self, content: str | None) -> None:
         self.stop_to_return_result_count += 1
         if content:
-            self._append(
-                self.stop_to_return_result_previews, content, _MAX_CODE_PREVIEW_CHARS
-            )
+            self._append(self.stop_to_return_result_previews, content, _MAX_CODE_PREVIEW_CHARS)
 
     def text_only_loop_abort(self) -> None:
         self.text_only_loop_aborts_count += 1

@@ -1498,7 +1498,9 @@ class TestCodeActStrategyEventSequence:
         from nemo_oo_agents.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3, max_retries=10)))
+            @strategy(
+                CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3, max_retries=10))
+            )
             async def stuck_task(self) -> dict:
                 """Task where the LLM repeatedly outputs text instead of return_result."""
                 ...
@@ -1530,9 +1532,7 @@ class TestCodeActStrategyEventSequence:
         # then abort fires before the 4th
         events = agent_instance.event_manager.values()
         return_result_calls = [
-            e
-            for e in events
-            if e.event_type == "ToolCallEvent" and e.name == "return_result"
+            e for e in events if e.event_type == "ToolCallEvent" and e.name == "return_result"
         ]
         assert len(return_result_calls) == 3, (
             f"Expected exactly 3 return_result attempts before abort, got {len(return_result_calls)}"
@@ -1543,7 +1543,9 @@ class TestCodeActStrategyEventSequence:
         """A real execute_python tool call resets the text-only counter."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3, max_retries=10)))
+            @strategy(
+                CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3, max_retries=10))
+            )
             async def mixed(self) -> int:
                 """Task that alternates text-only and real tool calls."""
                 ...
@@ -1574,7 +1576,11 @@ class TestCodeActStrategyEventSequence:
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(
-                CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=0, max_iterations=4, max_retries=10))
+                CodeActStrategy(
+                    config=CodeActConfig(
+                        max_consecutive_text_only=0, max_iterations=4, max_retries=10
+                    )
+                )
             )
             async def stuck_task(self) -> dict:
                 """Task where the LLM repeatedly outputs text-only."""
@@ -1606,10 +1612,14 @@ class TestCodeActStrategyEventSequence:
         from nemo_oo_agents.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(
-                max_consecutive_text_only=2,
-                text_only_stop_behavior="synthetic_reasoning",
-            )))
+            @strategy(
+                CodeActStrategy(
+                    config=CodeActConfig(
+                        max_consecutive_text_only=2,
+                        text_only_stop_behavior="synthetic_reasoning",
+                    )
+                )
+            )
             async def stuck(self) -> str:
                 """Task."""
                 ...
