@@ -224,27 +224,14 @@ class Skill:
             self.__class__ = type(cls_name, (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
 
     def attach(self, agent: Any) -> None:
-        """Called when this skill is activated on an agent.
+        """Called when this skill is installed on an agent.
 
-        Binds generation methods (if any) to route through the agent's runtime.
-        Subclasses can override to perform additional setup.
+        Subclasses can override to perform setup that requires the agent reference.
         """
-        from nemo_oo_agents.skill_generation import bind_generation_methods
-
-        bind_generation_methods(self, agent)
+        self._agent = agent
 
     def detach(self) -> None:
-        """Called when this skill is deactivated. Clears agent reference."""
-        self._agent = None
-
-    def __getstate__(self) -> dict:
-        """Exclude _agent from serialization to avoid circular refs."""
-        state = self.__dict__.copy()
-        state.pop("_agent", None)
-        return state
-
-    def __setstate__(self, state: dict) -> None:
-        self.__dict__.update(state)
+        """Called when this skill is removed from an agent."""
         self._agent = None
 
     def __dir__(self) -> list[str]:

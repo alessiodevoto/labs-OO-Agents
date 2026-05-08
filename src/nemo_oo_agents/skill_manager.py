@@ -179,7 +179,7 @@ class SkillManager:
             self._scan_dir(skills_dir)
 
     def _attach_skill(self, attr_name: str, skill: Skill) -> None:
-        """Attach a skill to the agent, binding any generation methods."""
+        """Install a skill on the agent."""
         setattr(self.agent, attr_name, skill)
         skill.attach(self.agent)
 

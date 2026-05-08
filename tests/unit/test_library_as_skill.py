@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -196,38 +195,3 @@ def helper(): return "helper"
     mod = importlib.import_module("test_lib_bare")
     assert mod.helper() == "helper"
     assert mod.MySk().op() == "op"
-
-
-@pytest.mark.asyncio
-async def test_library_skill_generation_method_binds_to_agent_runtime(libs_root):
-    """Library-exported Skill generation methods route through the parent agent runtime."""
-    init_body = (
-        '"""Library with generation skill."""\n'
-        "from nemo_oo_agents.decorators import strategy\n"
-        "from nemo_oo_agents.skill import Skill\n\n\n"
-        "class GenSkill(Skill):\n"
-        "    @strategy()\n"
-        "    async def classify(self, text: str) -> str:\n"
-        '        """Classify {text}."""\n'
-        "        ...\n"
-    )
-
-    _make_library(libs_root, "test_lib_gen_skill", init_body)
-
-    agent = _make_agent()
-
-    class _Runtime:
-        def __init__(self):
-            self._execute_with_generation = AsyncMock(return_value="ok")
-
-    agent.runtime = _Runtime()  # type: ignore[attr-defined]
-
-    LibraryManager.install(agent, libs_dir=libs_root)
-
-    attached = agent.test_lib_gen_skill
-    assert getattr(attached, "_agent", None) is agent
-    assert getattr(attached.classify, "_skill_generation", False)
-
-    result = await attached.classify("hello")
-    assert result == "ok"
-    assert agent.runtime._execute_with_generation.await_count == 1

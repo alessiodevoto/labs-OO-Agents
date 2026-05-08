@@ -112,9 +112,9 @@ class SkillRegistry:
 | `superpowers` | libwriting, skills, generation | Advanced capabilities |
 | `tui` | brainstorm, tdd, review, ship, root-cause | TUI workflow skills |
 
-## Generation Methods
+## Generation Methods (planned — not in this MR)
 
-Skills can define `@strategy` methods that run on the parent agent's runtime:
+Skills will be able to define `@strategy` methods that run on the parent agent's runtime:
 
 ```python
 class MySkill(Skill):
@@ -124,8 +124,13 @@ class MySkill(Skill):
         ...
 ```
 
-When `skill.attach(agent)` is called, generation methods are bound so that
+When `skill.attach(agent)` is called, generation methods will be bound so that
 `skill.classify("hello")` routes through `agent.runtime`.
+
+> **Reference implementation**: commit `1c0212c1213b6f6c9f50796a6e6d0e0951bf27b4` on branch
+> `feat/skill-generation-methods` has a full working implementation of generation
+> method binding via `skill_generation.py`. It was removed from this MR to keep
+> scope focused on the registry/lifecycle infrastructure.
 
 ## Visibility Mechanism
 
