@@ -3,7 +3,7 @@
 """SWE tool result types."""
 
 from dataclasses import dataclass, field
-from typing import Annotated, Literal
+from typing import Annotated
 
 from nemo_oo_agents.agentdoc import spec
 
@@ -131,19 +131,6 @@ class SearchResult:
 
     def __str__(self) -> str:
         return self.text
-
-
-@dataclass
-class StreamEvent:
-    kind: Annotated[str, spec(description='Stream chunk event kind: "stdout" or "stderr"')]
-    text: Annotated[str, spec(description="Chunk text for the stream event")]
-
-
-@dataclass
-class StreamDone:
-    kind: Annotated[str, spec(description='Terminal stream event kind: "done"')]
-    returncode: Annotated[int, spec(description="Final process exit code")]
-    timed_out: Annotated[bool, spec(description="True if command exceeded timeout")]
 
 
 @dataclass
