@@ -16,6 +16,7 @@ behaviour test needed it.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import re
 import shutil
@@ -641,11 +642,26 @@ class TUIApplication:
 
             logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
 
+            # Show running background jobs while waiting for the next event.
+            running = [h for h in qm._handles if h.state == "running"]
+            if running:
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                lines = "".join(f"  ⠿ {h.label}\n" for h in running)
+                self.emit_block(f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m")
+
             # Race all queue-mode channels for the next item(s).
             try:
                 items = await qm.race()
             except ValueError:
                 return
+            # Show which job(s) fired.
+            if running:
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                fired_names = {name for name, _ in items}
+                fired = [h for h in running if h.name in fired_names]
+                for h in fired:
+                    self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
+
             # Drain all pending items across all channels, grouped by name.
             pending: dict[str, list] = {}
             for name, value in items:

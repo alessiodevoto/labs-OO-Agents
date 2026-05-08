@@ -91,8 +91,9 @@ class JobHandle:
     - ``buffer=N`` (int): ring buffer keeping the last N values.
     """
 
-    def __init__(self, name: str, task: asyncio.Task[Any], buffer: bool | int = False) -> None:
+    def __init__(self, name: str, task: asyncio.Task[Any], buffer: bool | int = False, label: str = "") -> None:
         self.name = name
+        self.label = label or name
         self.state: JobState = "running"
         self._task = task
         if buffer is True:
@@ -122,7 +123,7 @@ class JobHandle:
             self.state = "cancelled"
 
     def __repr__(self) -> str:
-        return f"JobHandle(name={self.name!r}, state={self.state!r})"
+        return f"JobHandle(name={self.name!r}, label={self.label!r}, state={self.state!r})"
 
 
 # ---------------------------------------------------------------------------
@@ -737,6 +738,7 @@ class QueueManager:
         *,
         channel: str,
         buffer: bool | int = False,
+        label: str = "",
     ) -> JobHandle:
         """Run *job* in the background, routing output to *channel*.
 
@@ -808,7 +810,7 @@ class QueueManager:
         # guarantee, but clearer ordering).
         _handles_by_task: dict[asyncio.Task[Any], JobHandle] = {}
         task = asyncio.create_task(_run(), name=f"spawn[{channel}]")
-        handle = JobHandle(name=channel, task=task, buffer=buffer)
+        handle = JobHandle(name=channel, task=task, buffer=buffer, label=label)
         _handles_by_task[task] = handle
         self._handles.append(handle)
         return handle
