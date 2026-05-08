@@ -502,8 +502,6 @@ class TestTokenCounterRegression:
         # Context blocks must not exceed the configured context cap.
         assert stats.context_blocks_tokens <= stats.max_context_tokens
 
-
-
     def test_clamp_budget_accounts_for_tool_schemas(self):
         """Bug #2: ``_clamp_messages_to_budget`` used to call
         ``litellm.token_counter(messages=…)`` without ``tools=…``, under-

@@ -183,8 +183,6 @@ class TestContextWindowStatsTruncation:
         assert stats.context_blocks_dropped == 0
         assert stats.events_dropped == 0
 
-
-
     def test_stats_reflect_post_truncation(self):
         """Token counts reflect post-truncation state."""
         blocks = [

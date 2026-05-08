@@ -664,5 +664,3 @@ class TestCountTokens:
             count_tokens=counter,
         )
         assert len(call_count) > 0
-
-

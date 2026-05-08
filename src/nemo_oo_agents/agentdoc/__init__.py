@@ -93,9 +93,7 @@ def pformat(
     instance_mode: Annotated[
         str, "Instance format: 'repr' for repr-style, 'type' for type structure"
     ] = "repr",
-    unquote_strings: Annotated[
-        bool, "Untruncated strings rendered verbatim"
-    ] = False,
+    unquote_strings: Annotated[bool, "Untruncated strings rendered verbatim"] = False,
 ) -> str:
     """Format an object as a string with smart truncation.
 
@@ -136,7 +134,7 @@ def pformat(
                 return result[1:-1]
             for q in ("'''", '"""'):
                 if result.startswith(q) and result.endswith(q):
-                    return result[len(q):-len(q)]
+                    return result[len(q) : -len(q)]
 
     return result
 
