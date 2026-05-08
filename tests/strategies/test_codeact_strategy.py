@@ -1428,6 +1428,145 @@ class TestCodeActStrategyEventSequence:
         )
 
     @pytest.mark.asyncio
+    async def test_text_only_loop_aborts_after_threshold(self):
+        """Repeated text-only responses abort with GenerationError (issue 185).
+
+        When the LLM keeps emitting plain-text "I'm done!" summaries instead of
+        calling return_result(...), the strategy converts each into a synthetic
+        execute_python(reasoning(...)) call. Without a guard this loops forever.
+        The guard aborts after `max_consecutive_text_only` consecutive
+        conversions and surfaces the last text in the error message.
+        """
+        from nemo_oo_agents.errors import GenerationError
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3)))
+            async def stuck_task(self) -> str:
+                """Task where the LLM repeatedly outputs text instead of return_result."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("I have successfully completed the task!"),
+                _resp("I have successfully completed the task!"),
+                _resp("I have successfully completed the task!"),
+                _resp("I have successfully completed the task!"),
+                _resp("I have successfully completed the task!"),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+
+        with pytest.raises(GenerationError) as exc_info:
+            await agent_instance.stuck_task()
+
+        msg = str(exc_info.value)
+        assert "max_consecutive_text_only" in msg, f"Expected guard message, got: {msg!r}"
+        assert "plain text" in msg, f"Expected 'plain text' in message, got: {msg!r}"
+        # Last text should be embedded for debuggability
+        assert "successfully completed" in msg, (
+            f"Expected last text preview in message, got: {msg!r}"
+        )
+
+        # Should have exactly 3 synthetic events — abort fires before the 4th
+        events = agent_instance.event_manager.values()
+        synthetic_calls = [
+            e
+            for e in events
+            if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
+        ]
+        assert len(synthetic_calls) == 3, (
+            f"Expected exactly 3 synthetic conversions before abort, got {len(synthetic_calls)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_text_only_counter_resets_on_real_tool_call(self):
+        """A real execute_python tool call resets the text-only counter."""
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=3)))
+            async def mixed(self) -> int:
+                """Task that alternates text-only and real tool calls."""
+                ...
+
+        # 2 text → 1 real exec → 2 text → return_result. Counter resets at the exec,
+        # so neither text run reaches the 3-strike abort threshold.
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("Thinking..."),
+                _resp("Still thinking..."),
+                _resp("", tool_calls=[_tool_call("x = 1", call_id="c1")]),
+                _resp("Almost there..."),
+                _resp("Just one more step..."),
+                _resp("", tool_calls=[_return_result(result=42)]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.mixed()
+        assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_text_only_loop_disabled_when_threshold_zero(self):
+        """max_consecutive_text_only=0 disables the abort guard."""
+        from nemo_oo_agents.errors import GenerationError
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(
+                CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=0, max_iterations=4))
+            )
+            async def stuck_task(self) -> str:
+                """Task where the LLM repeatedly outputs text-only."""
+                ...
+
+        # 5 text-only responses; with abort disabled, max_iterations=4 cuts off
+        # via the iteration-exhaustion path with a *different* error message.
+        fake_llm = FakeLLMClient(
+            scripted_responses=[_resp("text") for _ in range(5)],
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        with pytest.raises(GenerationError) as exc_info:
+            await agent_instance.stuck_task()
+        # When disabled, the abort message should not appear
+        msg = str(exc_info.value)
+        assert "max_consecutive_text_only" not in msg, (
+            f"Disabled guard should not produce its message, got: {msg!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_text_only_loop_abort_records_after_turn_event(self):
+        """The aborting turn emits AfterTurn with is_final=True and exception_type set.
+
+        AfterTurn uses record=False (runtime event, not persisted in backend),
+        so we capture it via the event-manager subscription channel.
+        """
+        from nemo_oo_agents.errors import GenerationError
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig(max_consecutive_text_only=2)))
+            async def stuck(self) -> str:
+                """Task."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[_resp("text") for _ in range(4)],
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        captured: list[Any] = []
+        agent_instance.event_manager.on("AfterTurn", lambda e: captured.append(e))
+
+        with pytest.raises(GenerationError):
+            await agent_instance.stuck()
+
+        assert captured, "Expected at least one AfterTurn event"
+        last = captured[-1]
+        assert last.is_final is True, f"Final AfterTurn should be is_final=True, got {last}"
+        assert last.success is False
+        assert last.exception_type == "GenerationError"
+
+    @pytest.mark.asyncio
     async def test_content_plus_tool_calls_prepends_first_execute_python_only(self):
         """reasoning() is prepended to the first execute_python; later ones are untouched."""
 

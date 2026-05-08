@@ -154,6 +154,7 @@ class CodeActSession:
     event_manager: Any  # EventManager reference for Out[n] access
     iteration: int = 0
     error_count: int = 0
+    consecutive_text_only: int = 0
     session_locals: dict[str, Any] = field(default_factory=dict)
     out_accessor: Any = field(default=None)  # OutAccessor instance, created lazily
 
@@ -175,6 +176,12 @@ class CodeActSession:
 
     def record_error(self) -> None:
         self.error_count += 1
+
+    def record_text_only(self) -> None:
+        self.consecutive_text_only += 1
+
+    def reset_text_only(self) -> None:
+        self.consecutive_text_only = 0
 
     def record_output(self, execution_count: int, value: Any) -> None:
         """Record an execution output for Out[n] access."""
@@ -493,7 +500,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         ## Strategy
 
-        Jupyter-like Python session. Parameters pre-loaded as locals; state persists across cells. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn.
+        Jupyter-like Python session. Parameters pre-loaded as locals; state persists across cells. Use `await` directly, `print`/`pprint` to debug, `doc(obj)` to inspect types. You MUST call a tool each turn — **plain-text responses do NOT end the session**. To finish, call `return_result(value)`. Repeated text-only responses will abort the run with an error.
 
         **Your two tools:**
         - `execute_python(code)` — run a code cell
@@ -729,6 +736,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                         )
                         if text.strip():
                             tool_calls = _prepend_reasoning(tool_calls, text)
+                    # A real tool call counts as progress: reset the consecutive
+                    # text-only guard (issue 185) before executing, so a single
+                    # exec mid-stream rescues the run from accidental drift.
+                    session.reset_text_only()
                     result = await self._process_tool_calls(
                         tool_calls,
                         runtime,
@@ -786,6 +797,27 @@ Standard Python builtins and agent instance (`self`) are available."""
                         logger.debug(
                             f"[CODEACT] Text-only response ({len(text)} chars) converted to synthetic reasoning() call."
                         )
+                        # Track consecutive text-only conversions and abort if
+                        # the LLM keeps emitting prose instead of a tool call
+                        # (issue 185 — the synthetic call always reports
+                        # status: complete, which the LLM reads as "done" and
+                        # repeats forever). The async-with session.turn(...)
+                        # context records AfterTurn with exception_type set
+                        # automatically when the GenerationError propagates.
+                        session.record_text_only()
+                        max_text_only = self.config.max_consecutive_text_only
+                        if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
+                            get_harness_metrics().text_only_loop_abort()
+                            preview = _truncate_reasoning(text)
+                            turn_state.is_final = True
+                            raise GenerationError(
+                                f"CodeAct aborted: LLM returned plain text without a tool call "
+                                f"{session.consecutive_text_only} times in a row "
+                                f"(max_consecutive_text_only={max_text_only}) for "
+                                f"`{call.method_name}`. The agent likely thinks it is done — "
+                                f"it must call `return_result(...)` to finish. "
+                                f"Last text: {preview!r}"
+                            )
                         continue
                     # Whitespace-only content falls through to the empty-response error handler.
 

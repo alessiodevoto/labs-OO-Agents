@@ -67,9 +67,17 @@ return sentiments
             ["This is great!", "This is terrible!", "This is okay."]
         )
 
-    # The error should mention max_retries (all attempts failed validation)
-    error_msg = str(exc_info.value)
-    assert "max_retries" in error_msg.lower() or "generation failed" in error_msg.lower()
+    # The error should signal that the LLM never produced a valid tool call.
+    # CodeAct routes repeated text-only responses through the consecutive-
+    # text-only abort guard (issue 185); older paths still surface as
+    # max_retries / generation failed.
+    error_msg = str(exc_info.value).lower()
+    assert (
+        "max_retries" in error_msg
+        or "generation failed" in error_msg
+        or "max_consecutive_text_only" in error_msg
+        or "codeact aborted" in error_msg
+    )
 
 
 @pytest.mark.asyncio

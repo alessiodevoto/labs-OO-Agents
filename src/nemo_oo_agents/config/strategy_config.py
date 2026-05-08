@@ -32,6 +32,13 @@ class CodeActConfig(BaseModel):
 
     max_iterations: int | None = None
     max_retries: int = 3
+    # Maximum consecutive turns where the LLM returns plain text instead of a
+    # tool call before the run is aborted. The CodeAct strategy converts each
+    # such response into a synthetic execute_python(reasoning(...)) tool call;
+    # without this guard a model that "thinks it is done" by emitting prose can
+    # loop indefinitely (issue 185). A real tool call resets the counter. Set
+    # to 0 to disable the guard (legacy behavior).
+    max_consecutive_text_only: int = 3
     cell_timeout: float | None = None
     max_tokens: int | None = None
     temperature: float | None = None
