@@ -60,10 +60,10 @@ class _FakeShell:
         lines = sorted(line for line in r.stdout.strip().split("\n") if line)
         return SearchResult(matches=lines, total_matches=len(lines))
 
-    async def bash(self, command, timeout=120.0):
+    async def run(self, command, timeout=120.0):
         import subprocess
 
-        from nemo_oo_agents.tools._results import BashResult
+        from nemo_oo_agents.tools._results import RunResult
 
         r = subprocess.run(
             command,
@@ -72,9 +72,7 @@ class _FakeShell:
             text=True,
             timeout=timeout,
         )
-        return BashResult(
-            stdout=r.stdout.strip(), stderr=r.stderr.strip(), return_code=r.returncode
-        )
+        return RunResult(stdout=r.stdout.strip(), stderr=r.stderr.strip(), returncode=r.returncode)
 
 
 class _FakeAgent:

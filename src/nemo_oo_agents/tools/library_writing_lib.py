@@ -323,7 +323,7 @@ class LibraryWriting(Skill):
         import sys as _sys
 
         tests_dir = self._path / lib_name / "tests"
-        result = await self._shell.bash(
+        result = await self._shell.run(
             f"PYTHONPATH={shlex.quote(str(self._path))}:$PYTHONPATH "
             f"{shlex.quote(_sys.executable)} -m pytest {shlex.quote(str(tests_dir))} -v",
             timeout=60,

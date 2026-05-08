@@ -3,22 +3,22 @@
 """SWE tool result types."""
 
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Literal
 
 from nemo_oo_agents.agentdoc import spec
 
 
 @dataclass
-class BashResult:
+class RunResult:
     stdout: Annotated[str, spec(description="Command output")]
     stderr: Annotated[str, spec(description="Error output")]
-    return_code: Annotated[int, spec(description="Exit code (0 = success)")]
+    returncode: Annotated[int, spec(description="Exit code (0 = success)")]
     timed_out: Annotated[bool, spec(description="True if command exceeded timeout")] = False
 
     @property
     def success(self) -> bool:
         """True when exit code is 0."""
-        return self.return_code == 0
+        return self.returncode == 0
 
     @property
     def text(self) -> str:
@@ -30,8 +30,8 @@ class BashResult:
             parts.append(f"[stderr]\n{self.stderr}")
         if self.timed_out:
             parts.append("[timed out]")
-        elif self.return_code != 0:
-            parts.append(f"[exit code: {self.return_code}]")
+        elif self.returncode != 0:
+            parts.append(f"[exit code: {self.returncode}]")
         return "\n".join(parts) if parts else "(no output)"
 
     def __str__(self) -> str:
@@ -126,6 +126,19 @@ class SearchResult:
 
     def __str__(self) -> str:
         return self.text
+
+
+@dataclass
+class StreamEvent:
+    kind: Annotated[Literal["stdout", "stderr"], spec(description="Stream chunk event kind")]
+    text: Annotated[str, spec(description="Chunk text for the stream event")]
+
+
+@dataclass
+class StreamDone:
+    kind: Annotated[Literal["done"], spec(description="Terminal stream event kind")]
+    returncode: Annotated[int, spec(description="Final process exit code")]
+    timed_out: Annotated[bool, spec(description="True if command exceeded timeout")]
 
 
 @dataclass

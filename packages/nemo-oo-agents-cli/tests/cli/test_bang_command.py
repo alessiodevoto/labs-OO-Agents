@@ -8,7 +8,7 @@ from nemo_oo_agents_cli.tui.session import Session
 
 
 class TestBangCommand:
-    """Verify that ! commands route through shell.bash, not self.bash."""
+    """Verify that ! commands route through shell.run, not self.bash."""
 
     async def test_bang_command_works_with_shell_agent(self):
         """An agent with self.shell (not self.bash) must handle ! commands."""
@@ -16,7 +16,7 @@ class TestBangCommand:
         agent = MagicMock()
         del agent.bash  # ensure no bash attribute
         agent.shell = MagicMock()
-        agent.shell.bash = AsyncMock(
+        agent.shell.run = AsyncMock(
             return_value=MagicMock(
                 stdout="hello",
                 stderr="",
@@ -38,5 +38,5 @@ class TestBangCommand:
 
         await session._handle_bang("!echo hello")
 
-        # Should have called shell.bash, not shown a warning
-        agent.shell.bash.assert_called_once_with("echo hello")
+        # Should have called shell.run, not shown a warning
+        agent.shell.run.assert_called_once_with("echo hello")

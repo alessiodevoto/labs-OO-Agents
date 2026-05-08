@@ -21,15 +21,20 @@ import difflib
 import logging
 import re
 import shlex
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Annotated
 
+from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents.tools._results import (
-    BashResult,
     EditResult,
     LsResult,
+    RunResult,
     SearchResult,
+    StreamDone,
+    StreamEvent,
     ViewResult,
     WriteResult,
 )
@@ -73,7 +78,8 @@ class ShellTools(Skill):
     directory listing.
 
     Tools:
-        bash(command)           — run a shell command (stateful)
+        run(command, ...)       — run a shell command (stateful)
+        run_stream(command, ...) — stream stdout/stderr and terminal event
         view(path, ...)         — read a file with line numbers
         edit(path, old, new)    — str_replace with lint check
         write(path, content)    — create or overwrite a file
@@ -99,60 +105,63 @@ class ShellTools(Skill):
         return f"ShellTools({', '.join(parts)})"
 
     # ------------------------------------------------------------------
-    # bash
+    # run
     # ------------------------------------------------------------------
-    async def bash(self, command: str, timeout: float = 30.0) -> BashResult:
+    async def run(
+        self,
+        command: Annotated[str, spec(description="Shell command to execute")],
+        timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
+    ) -> RunResult:
         """Run a shell command in the persistent bash session.
 
         State persists: ``cd``, ``export``, ``source``, aliases, and
         environment variables carry over between calls.
 
-        Args:
-            command: Shell command to execute.
-            timeout: Max seconds to wait (default: 30).
-
-        Returns:
-            BashResult with stdout, stderr, return_code, and .text for display.
-
         Examples:
-            result = await self.shell.bash("cd src && ls")
-            result = await self.shell.bash("git status")
-            result = await self.shell.bash("python -m pytest tests/ -x", timeout=300)
+            result = await self.shell.run("cd src && ls")
+            result = await self.shell.run("git status")
+            result = await self.shell.run("python -m pytest tests/ -x", timeout=300)
         """
         stdout, stderr, code = await self._session.run(command, timeout=timeout)
         timed_out = code == 124 and not stdout and not stderr
-        return BashResult(
+        return RunResult(
             stdout=stdout,
             stderr=stderr,
-            return_code=code,
+            returncode=code,
             timed_out=timed_out,
         )
+
+    async def run_stream(
+        self,
+        command: Annotated[str, spec(description="Shell command to execute")],
+        timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
+    ) -> AsyncIterator[StreamEvent | StreamDone]:
+        """Stream command output as it arrives, ending with a done event.
+
+        Yields StreamEvent chunks for stdout/stderr incrementally, then a
+        final StreamDone with the exit code once the command completes.
+        """
+        timed_out = False
+        exit_code = 0
+        async for stream_name, chunk in self._session.run_stream(command, timeout=timeout):
+            if stream_name == "__done__":
+                parts = chunk.split(",")
+                exit_code = int(parts[0])
+                timed_out = bool(int(parts[1])) if len(parts) > 1 else False
+                break
+            yield StreamEvent(kind=stream_name, text=chunk)
+        yield StreamDone(kind="done", returncode=exit_code, timed_out=timed_out)
 
     # ------------------------------------------------------------------
     # view
     # ------------------------------------------------------------------
     async def view(
         self,
-        path: str,
-        offset: int = 1,
-        limit: int = _MAX_VIEW_LINES,
+        path: Annotated[str, spec(description="File or directory path (relative to cwd)")],
+        offset: Annotated[int, spec(description="Start line (1-indexed)")] = 1,
+        limit: Annotated[int, spec(description="Max lines to show")] = _MAX_VIEW_LINES,
     ) -> ViewResult:
-        """Read a file with numbered lines.
-
-        If ``path`` is a directory, returns a tree listing instead.
-
-        Args:
-            path: File or directory path (relative to cwd).
-            offset: Start line (1-indexed, default: 1).
-            limit: Max lines to show (default: 2000).
-
-        Returns:
-            ViewResult with numbered content and metadata.
-
-        Examples:
-            r = await self.shell.view("src/main.py")
-            r = await self.shell.view("src/main.py", offset=50, limit=100)
-        """
+        """Read a file with numbered lines. If path is a directory, returns a tree listing."""
         resolved = self._resolve(path)
 
         if resolved.is_dir():
@@ -203,25 +212,15 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     # edit
     # ------------------------------------------------------------------
-    async def edit(self, path: str, old_str: str, new_str: str) -> EditResult:
-        """Replace text in a file (str_replace pattern).
-
-        The ``old_str`` must match **exactly one** location in the file.
-        After editing, runs a syntax check and reports only NEW errors.
-
-        Args:
-            path: File to edit (relative to cwd).
-            old_str: Exact text to find (must be unique in the file).
-            new_str: Replacement text.
-
-        Returns:
-            EditResult with diff, lint errors, and success status.
-
-        Examples:
-            r = await self.shell.edit("src/main.py",
-                old_str='print("hello")',
-                new_str='print("hello world")')
-        """
+    async def edit(
+        self,
+        path: Annotated[str, spec(description="File to edit (relative to cwd)")],
+        old_str: Annotated[
+            str, spec(description="Exact text to find (must be unique in the file)")
+        ],
+        new_str: Annotated[str, spec(description="Replacement text")],
+    ) -> EditResult:
+        """Replace exactly one occurrence of old_str with new_str in a file, then lint-check."""
         resolved = self._resolve(path)
         if not resolved.is_file():
             return EditResult(path=path, diff="", success=False, error=f"File not found: {path}")
@@ -277,22 +276,12 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     # write
     # ------------------------------------------------------------------
-    async def write(self, path: str, content: str) -> WriteResult:
-        """Create or overwrite a file.
-
-        Creates parent directories if needed.
-
-        Args:
-            path: File path (relative to cwd).
-            content: Full file content.
-
-        Returns:
-            WriteResult with path, created flag, and line count.
-
-        Examples:
-            r = await self.shell.write("src/new_module.py",
-                                       "def hello():\\n    pass\\n")
-        """
+    async def write(
+        self,
+        path: Annotated[str, spec(description="File path (relative to cwd)")],
+        content: Annotated[str, spec(description="Full file content")],
+    ) -> WriteResult:
+        """Create or overwrite a file. Creates parent directories if needed."""
         resolved = self._resolve(path)
         created = not resolved.exists()
 
@@ -319,33 +308,15 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     async def grep(
         self,
-        pattern: str,
-        path: str = ".",
+        pattern: Annotated[str, spec(description="Regex pattern (or literal if literal=True)")],
+        path: Annotated[str, spec(description="File or directory to search")] = ".",
         *,
-        include: str | None = None,
-        context: int = 0,
-        literal: bool = False,
-        max_matches: int = 100,
+        include: Annotated[str | None, spec(description="Glob filter (e.g. '*.py')")] = None,
+        context: Annotated[int, spec(description="Lines of context around each match")] = 0,
+        literal: Annotated[bool, spec(description="Treat pattern as literal string")] = False,
+        max_matches: Annotated[int, spec(description="Maximum matches to return")] = 100,
     ) -> SearchResult:
-        """Search for a regex pattern in files via ripgrep.
-
-        Works on both files and directories, respects ``.gitignore``.
-
-        Args:
-            pattern: Regex pattern (or literal if ``literal=True``).
-            path: File or directory to search (default: cwd).
-            include: Glob filter (e.g. ``"*.py"``).
-            context: Lines of context around each match.
-            literal: If True, treat pattern as literal string.
-            max_matches: Maximum matches to return (default: 100).
-
-        Returns:
-            SearchResult with formatted match lines.
-
-        Examples:
-            r = await self.shell.grep("def main", "src/")
-            r = await self.shell.grep("TODO", ".", include="*.py")
-        """
+        """Search for a regex pattern in files via ripgrep. Respects .gitignore."""
         parts = ["rg", "-n", "--color=never", "--no-heading"]
         if literal:
             parts.append("-F")
@@ -380,27 +351,13 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     async def find(
         self,
-        pattern: str,
-        path: str = ".",
+        pattern: Annotated[str, spec(description="Glob pattern (e.g. '*.py', 'test_*.py')")],
+        path: Annotated[str, spec(description="Directory to search")] = ".",
         *,
-        type: str = "f",
-        max_results: int = 200,
+        type: Annotated[str, spec(description="'f' for files, 'd' for directories")] = "f",
+        max_results: Annotated[int, spec(description="Maximum results to return")] = 200,
     ) -> SearchResult:
-        """Find files matching a glob pattern (gitignore-aware).
-
-        Args:
-            pattern: Glob pattern (e.g. ``"*.py"``, ``"test_*.py"``).
-            path: Directory to search (default: cwd).
-            type: ``"f"`` for files (default), ``"d"`` for directories.
-            max_results: Maximum results (default: 200).
-
-        Returns:
-            SearchResult with matching file paths.
-
-        Examples:
-            r = await self.shell.find("*.py", "src/")
-            r = await self.shell.find("*.test.ts")
-        """
+        """Find files or directories by glob pattern using ripgrep/find."""
         if type == "d":
             prune = " ".join(f"-not -path '*/{d}/*'" for d in sorted(_IGNORE_DIRS))
             cmd = f"find {_sq(path)} -maxdepth 10 -type d -name {_sq(pattern)} {prune}"
@@ -421,24 +378,11 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     async def ls(
         self,
-        path: str = ".",
-        depth: int = 3,
-        max_entries: int = 500,
+        path: Annotated[str, spec(description="Directory to list")] = ".",
+        depth: Annotated[int, spec(description="Maximum depth to recurse")] = 3,
+        max_entries: Annotated[int, spec(description="Maximum entries to show")] = 500,
     ) -> LsResult:
-        """List directory contents as a tree.
-
-        Args:
-            path: Directory to list (default: cwd).
-            depth: Maximum depth to recurse (default: 3).
-            max_entries: Maximum entries to show (default: 500).
-
-        Returns:
-            LsResult with formatted tree output and entry count.
-
-        Examples:
-            r = await self.shell.ls()
-            r = await self.shell.ls("src/", depth=2)
-        """
+        """List directory contents as a tree."""
         resolved = self._resolve(path)
         if not resolved.is_dir():
             return LsResult(path=path, tree=f"Error: {path} is not a directory", num_files=0)

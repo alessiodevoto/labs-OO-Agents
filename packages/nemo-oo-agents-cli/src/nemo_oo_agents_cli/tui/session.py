@@ -846,13 +846,13 @@ class Session:
             return
 
         try:
-            result = await self.agent.shell.bash(cmd)
+            result = await self.agent.shell.run(cmd)
             if result:
                 await self.frontend.render(
                     BashOutput(
                         stdout=result.stdout or "",
                         stderr=result.stderr or "",
-                        return_code=getattr(result, "return_code", 0),
+                        return_code=result.returncode,
                         command=cmd,
                     )
                 )
