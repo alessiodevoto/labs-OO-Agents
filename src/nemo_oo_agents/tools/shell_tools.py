@@ -21,8 +21,8 @@ import difflib
 import logging
 import re
 import shlex
-from collections.abc import AsyncIterator
 import unicodedata
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
 
