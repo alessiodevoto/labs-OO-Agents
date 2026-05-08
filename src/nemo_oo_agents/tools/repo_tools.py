@@ -254,6 +254,11 @@ class RepoTools(Skill):
         """
         resolved = self._resolve(path)
         if not resolved.is_file():
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().repo_failure(
+                "filemap:file_not_found", f"File not found: {path}", path
+            )
             return FileMapResult(
                 path=path, language="unknown", symbols=[f"Error: {path} not found"]
             )
@@ -350,6 +355,11 @@ class RepoTools(Skill):
 
         summary = "\n".join(sections).strip()
         if not summary:
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().repo_failure(
+                "repo_map:no_files", "No source files found", str(search_paths)[:200]
+            )
             summary = "(no source files found)"
 
         return RepoMapResult(
@@ -422,6 +432,12 @@ class RepoTools(Skill):
                     break
 
         total = len(matches)
+        if total == 0:
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().repo_failure(
+                "search_symbol:no_results", f"No matches for '{name}'", f"path={path}"
+            )
         truncated = total >= max_results
         return SymbolSearchResult(
             query=name,

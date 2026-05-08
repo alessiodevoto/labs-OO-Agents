@@ -942,3 +942,80 @@ class TestTiming:
     def test_null_metrics_record_turn_is_noop(self):
         null = _NullMetrics()
         null.record_turn()
+
+
+# ── Tool Usage (shell/repo) metrics tests ────────────────────────────
+
+
+class TestToolUsageMetrics:
+    """Test tool failure and avoidance recording methods."""
+
+    def test_shell_failure(self):
+        m = HarnessMetrics()
+        m.shell_failure("bash:exit_1", "command not found", "xyz --foo")
+        assert len(m.shell_failures) == 1
+        assert m.shell_failures[0].error_type == "bash:exit_1"
+        assert m.shell_failures[0].message == "command not found"
+        assert m.shell_failures[0].code_preview == "xyz --foo"
+
+    def test_shell_failure_truncates(self):
+        m = HarnessMetrics()
+        long_msg = "x" * 1000
+        m.shell_failure("bash:timeout", long_msg, "cmd")
+        assert len(m.shell_failures[0].message) <= _MAX_STRING_CHARS + 3  # +3 for "..."
+
+    def test_shell_failure_respects_max_items(self):
+        m = HarnessMetrics()
+        for i in range(_MAX_LIST_ITEMS + 5):
+            m.shell_failure(f"bash:exit_{i}", f"msg_{i}")
+        assert len(m.shell_failures) == _MAX_LIST_ITEMS
+
+    def test_repo_failure(self):
+        m = HarnessMetrics()
+        m.repo_failure("filemap:file_not_found", "File not found: foo.py", "foo.py")
+        assert len(m.repo_failures) == 1
+        assert m.repo_failures[0].error_type == "filemap:file_not_found"
+        assert m.repo_failures[0].message == "File not found: foo.py"
+
+    def test_repo_failure_respects_max_items(self):
+        m = HarnessMetrics()
+        for i in range(_MAX_LIST_ITEMS + 5):
+            m.repo_failure(f"method_{i}", f"msg_{i}")
+        assert len(m.repo_failures) == _MAX_LIST_ITEMS
+
+    def test_tool_avoided(self):
+        m = HarnessMetrics()
+        m.tool_avoided("bash(sed -i 's/foo/bar/g' file.py) -> should use shell.edit")
+        assert len(m.tool_avoidance) == 1
+        assert "sed -i" in m.tool_avoidance[0]
+
+    def test_tool_avoided_respects_max_items(self):
+        m = HarnessMetrics()
+        for i in range(_MAX_LIST_ITEMS + 5):
+            m.tool_avoided(f"avoidance_{i}")
+        assert len(m.tool_avoidance) == _MAX_LIST_ITEMS
+
+    def test_tool_usage_span_attributes(self):
+        m = HarnessMetrics()
+        m.shell_failure("bash:exit_2", "No such file")
+        m.repo_failure("search_symbol:no_results", "No matches for 'foo'")
+        m.tool_avoided("bash(cat foo.py) -> should use shell.view")
+        attrs = m.to_span_attributes()
+        assert attrs["harness.shell_failure.count"] == 1
+        assert attrs["harness.repo_failure.count"] == 1
+        assert attrs["harness.tool_avoidance.count"] == 1
+        assert attrs["harness.shell_failure.methods"] == ["bash:exit_2"]
+        assert attrs["harness.repo_failure.methods"] == ["search_symbol:no_results"]
+
+    def test_tool_usage_empty_not_in_span_attributes(self):
+        m = HarnessMetrics()
+        attrs = m.to_span_attributes()
+        assert "harness.shell_failure.count" not in attrs
+        assert "harness.repo_failure.count" not in attrs
+        assert "harness.tool_avoidance.count" not in attrs
+
+    def test_null_metrics_tool_methods_are_noop(self):
+        null = _NullMetrics()
+        null.shell_failure("bash:exit_1", "msg")
+        null.repo_failure("filemap:file_not_found", "msg")
+        null.tool_avoided("detail")

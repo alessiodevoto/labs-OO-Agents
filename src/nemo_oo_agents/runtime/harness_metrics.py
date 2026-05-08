@@ -161,6 +161,11 @@ class HarnessMetrics(BaseModel):
     exec_python_success: int = 0
     exec_errors: list[ErrorRecord] = Field(default_factory=list)
 
+    # ── Tool Usage (shell/repo) ──
+    shell_failures: list[ErrorRecord] = Field(default_factory=list)
+    repo_failures: list[ErrorRecord] = Field(default_factory=list)
+    tool_avoidance: list[str] = Field(default_factory=list)
+
     # ── Code Validation ──
     missing_awaits_detected: list[str] = Field(default_factory=list)
     infinite_loops_detected: int = 0
@@ -326,6 +331,37 @@ class HarnessMetrics(BaseModel):
                 code_preview=_truncate(code_preview, _MAX_CODE_PREVIEW_CHARS),
             ),
         )
+
+    # Tool Usage (shell/repo)
+    def shell_failure(self, tool_method: str, message: str, code_preview: str = "") -> None:
+        """Record a shell tool failure (non-zero exit, timeout, file not found, etc.)."""
+        self._append_error(
+            self.shell_failures,
+            ErrorRecord(
+                error_type=_truncate(tool_method),
+                message=_truncate(message),
+                code_preview=_truncate(code_preview, _MAX_CODE_PREVIEW_CHARS),
+            ),
+        )
+
+    def repo_failure(self, tool_method: str, message: str, code_preview: str = "") -> None:
+        """Record a repo tool failure (file not found, no results, timeout, etc.)."""
+        self._append_error(
+            self.repo_failures,
+            ErrorRecord(
+                error_type=_truncate(tool_method),
+                message=_truncate(message),
+                code_preview=_truncate(code_preview, _MAX_CODE_PREVIEW_CHARS),
+            ),
+        )
+
+    def tool_avoided(self, detail: str) -> None:
+        """Record when the LLM bypasses a higher-level tool with a raw command.
+
+        E.g. using shell.bash("sed ...") instead of shell.edit, or
+        shell.bash("cat ...") instead of shell.view.
+        """
+        self._append(self.tool_avoidance, detail)
 
     # Code Validation
     def missing_await(self, method_name: str) -> None:
@@ -751,6 +787,60 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "Error types",
         "Execute Python",
         lambda m: [e.error_type for e in m.exec_errors],
+        True,
+    ),
+    # Tool Usage (shell/repo)
+    SchemaEntry(
+        "harness.shell_failure.count",
+        "Shell failures",
+        "Tool Usage",
+        lambda m: len(m.shell_failures),
+    ),
+    SchemaEntry(
+        "harness.shell_failure.methods",
+        "Shell failure methods",
+        "Tool Usage",
+        lambda m: [e.error_type for e in m.shell_failures],
+        True,
+    ),
+    SchemaEntry(
+        "harness.shell_failure.messages",
+        "Shell failure messages",
+        "Tool Usage",
+        lambda m: [e.message for e in m.shell_failures],
+        True,
+    ),
+    SchemaEntry(
+        "harness.repo_failure.count",
+        "Repo failures",
+        "Tool Usage",
+        lambda m: len(m.repo_failures),
+    ),
+    SchemaEntry(
+        "harness.repo_failure.methods",
+        "Repo failure methods",
+        "Tool Usage",
+        lambda m: [e.error_type for e in m.repo_failures],
+        True,
+    ),
+    SchemaEntry(
+        "harness.repo_failure.messages",
+        "Repo failure messages",
+        "Tool Usage",
+        lambda m: [e.message for e in m.repo_failures],
+        True,
+    ),
+    SchemaEntry(
+        "harness.tool_avoidance.count",
+        "Tool avoidance",
+        "Tool Usage",
+        lambda m: len(m.tool_avoidance),
+    ),
+    SchemaEntry(
+        "harness.tool_avoidance.details",
+        "Tool avoidance details",
+        "Tool Usage",
+        lambda m: m.tool_avoidance,
         True,
     ),
     # Code Validation

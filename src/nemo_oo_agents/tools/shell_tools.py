@@ -126,12 +126,14 @@ class ShellTools(Skill):
         """
         stdout, stderr, code = await self._session.run(command, timeout=timeout)
         timed_out = code == 124 and not stdout and not stderr
-        return RunResult(
+        result = RunResult(
             stdout=stdout,
             stderr=stderr,
             returncode=code,
             timed_out=timed_out,
         )
+        self._record_bash_metrics(command, result)
+        return result
 
     async def run_stream(
         self,
@@ -177,6 +179,11 @@ class ShellTools(Skill):
             )
 
         if not resolved.is_file():
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().shell_failure(
+                "view:file_not_found", f"File not found: {path}", path
+            )
             return ViewResult(
                 path=path,
                 content=f"Error: {path} not found",
@@ -249,6 +256,11 @@ class ShellTools(Skill):
         """
         resolved = self._resolve(path)
         if not resolved.is_file():
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().shell_failure(
+                "edit:file_not_found", f"File not found: {path}", path
+            )
             return EditResult(path=path, diff="", success=False, error=f"File not found: {path}")
 
         content = resolved.read_text(errors="replace")
@@ -263,6 +275,13 @@ class ShellTools(Skill):
             # Fallback: fuzzy match (whitespace + unicode normalization)
             fuzzy_result = _fuzzy_find_unique(content, old_str)
             if fuzzy_result is None:
+                from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+                get_harness_metrics().shell_failure(
+                    "edit:no_match",
+                    f"old_str not found in {path}",
+                    old_str[:200],
+                )
                 hint = _find_closest_match(content, old_str)
                 error_msg = f"old_str not found in {path}."
                 if hint:
@@ -308,6 +327,13 @@ class ShellTools(Skill):
                     ),
                 )
         elif count > 1:
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().shell_failure(
+                "edit:multiple_matches",
+                f"old_str found {count} times in {path}",
+                old_str[:200],
+            )
             return EditResult(
                 path=path,
                 diff="",
@@ -567,6 +593,64 @@ class ShellTools(Skill):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    # Patterns that suggest the LLM is bypassing higher-level tools
+    _AVOIDANCE_PATTERNS = (
+        (re.compile(r"^sed\s+-i"), "edit"),
+        (re.compile(r"^(sed|awk)\s"), "edit"),
+        (re.compile(r"^cat\s+\S+"), "view"),
+        (re.compile(r"^head\s+"), "view"),
+        (re.compile(r"^tail\s+"), "view"),
+        (re.compile(r"^(rg|grep)\s+"), "grep"),
+        (re.compile(r"^find\s+"), "find"),
+    )
+    # Shell operators that justify using bash instead of a higher-level tool
+    _PIPE_REDIRECT_RE = re.compile(r"[|><]")
+
+    def _record_bash_metrics(self, command: str, result: RunResult) -> None:
+        """Record harness metrics for bash invocations."""
+        from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+        hm = get_harness_metrics()
+
+        # Record failures (non-zero exit, timeout)
+        if result.timed_out:
+            hm.shell_failure("bash:timeout", f"Command timed out: {command[:200]}", command[:200])
+        elif result.returncode != 0:
+            # Skip exit code 1 for grep/rg (means "no matches", not failure)
+            # Skip leading env var assignments (e.g. FOO=bar grep ...) to find actual command
+            tokens = command.lstrip().split() if command.strip() else []
+            cmd_base = ""
+            for tok in tokens:
+                if "=" not in tok or tok.startswith("-"):
+                    cmd_base = tok
+                    break
+            if not (result.returncode == 1 and cmd_base in ("grep", "rg")):
+                msg = (result.stderr or result.stdout or "")[:200]
+                hm.shell_failure(
+                    f"bash:exit_{result.returncode}",
+                    f"{cmd_base}: {msg}",
+                    command[:200],
+                )
+
+        # Detect tool avoidance patterns
+        # Strip leading env vars, cd prefixes, && chains — check each segment
+        for segment in command.split("&&"):
+            stripped = segment.strip()
+            # Skip cd-only segments
+            if stripped.startswith("cd "):
+                continue
+            for pattern, tool_name in self._AVOIDANCE_PATTERNS:
+                if pattern.search(stripped):
+                    # Distinguish: pipe/redirect justifies using bash
+                    if self._PIPE_REDIRECT_RE.search(stripped):
+                        hm.tool_avoided(
+                            f"bash({stripped[:100]}) → using {tool_name} via bash (pipe/redirect)"
+                        )
+                    else:
+                        hm.tool_avoided(f"bash({stripped[:100]}) → should use shell.{tool_name}")
+                    break
+
     def _resolve(self, path: str) -> Path:
         """Resolve a path relative to the session cwd."""
         p = Path(path)
