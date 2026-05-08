@@ -1489,11 +1489,11 @@ class TestCodeActStrategyEventSequence:
     async def test_text_only_loop_aborts_after_threshold(self):
         """Repeated text-only responses abort with GenerationError (issue 185).
 
-        When the LLM keeps emitting plain-text "I'm done!" summaries instead of
-        calling return_result(...), the strategy converts each into a synthetic
-        execute_python(reasoning(...)) call. Without a guard this loops forever.
-        The guard aborts after `max_consecutive_text_only` consecutive
-        conversions and surfaces the last text in the error message.
+        When the LLM keeps emitting plain-text summaries instead of calling
+        return_result(...), the strategy routes each through return_result()
+        validation. For non-matching return types, validation fails and the
+        consecutive_text_only counter increments. After max_consecutive_text_only
+        consecutive failures, the guard aborts with a clear error message.
         """
         from nemo_oo_agents.errors import GenerationError
 

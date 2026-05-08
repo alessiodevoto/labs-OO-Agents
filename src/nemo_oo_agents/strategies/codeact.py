@@ -811,7 +811,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                                     arguments={"code": f"reasoning({_truncate_reasoning(text)!r})"},
                                     result=ToolResult(
                                         tool_call_id=synthetic_id,
-                                        content="status: complete",
+                                        content="status: reasoning only — task is NOT finished. You must call return_result() to complete.",
                                         result_status=ResultStatus.COMPLETE,
                                     ),
                                     metadata={"synthetic": True, "synthetic_type": "text_response"},
