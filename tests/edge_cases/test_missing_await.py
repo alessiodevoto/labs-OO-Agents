@@ -67,9 +67,13 @@ return sentiments
             ["This is great!", "This is terrible!", "This is okay."]
         )
 
-    # The error should mention max_retries (all attempts failed validation)
+    # The error should indicate exhaustion (all attempts failed validation)
     error_msg = str(exc_info.value)
-    assert "max_retries" in error_msg.lower() or "generation failed" in error_msg.lower()
+    assert (
+        "max_retries" in error_msg.lower()
+        or "generation failed" in error_msg.lower()
+        or "validation failed" in error_msg.lower()
+    )
 
 
 @pytest.mark.asyncio

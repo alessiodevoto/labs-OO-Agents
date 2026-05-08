@@ -1079,13 +1079,13 @@ class TestCodeActStrategyEventSequence:
                     )
 
     @pytest.mark.asyncio
-    async def test_text_only_response_becomes_synthetic_reasoning_call(self):
-        """Text-only LLM response is converted to a synthetic execute_python(reasoning(...)) call.
+    async def test_text_only_stop_response_routes_through_return_result(self):
+        """Text-only LLM response (finish_reason=stop) routes through return_result validation.
 
-        When the LLM returns plain text instead of a tool call, the strategy converts
-        it to a synthetic execute_python(reasoning(...)) pair instead of removing the
-        event and adding an error. This preserves the content in traces and teaches the
-        LLM correct interface usage by example (same approach as prefill).
+        When the LLM returns finish_reason="stop" with text content, the strategy
+        constructs a synthetic return_result(content) tool call and routes it through
+        validation. If the return type matches (e.g. str), the session terminates
+        successfully with the content as the return value.
         """
 
         class TestAgent(Agent, llm=_TEST_LLM):
@@ -1096,57 +1096,38 @@ class TestCodeActStrategyEventSequence:
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp("I need to think about this carefully before answering."),
-                _resp("", tool_calls=[_return_result(result="answer")]),
+                # LLM says "stop" with text — for str return type, this becomes the result
+                _resp("The answer is 42."),
             ]
         )
 
         agent_instance = TestAgent(llm=fake_llm)
         result = await agent_instance.think_and_answer()
 
-        assert result == "answer"
+        # With str return type, the text content passes validation and becomes the result
+        assert result == "The answer is 42."
 
         events = agent_instance.event_manager.values()
         event_types = [e.event_type for e in events]
 
-        # Exact sequence: Task → synthetic(ToolCallEvent + PythonOutput) → return_result ToolCallEvent
-        assert event_types == ["Task", "ToolCallEvent", "PythonOutput", "ToolCallEvent"], (
-            f"Expected ['Task', 'ToolCallEvent', 'PythonOutput', 'ToolCallEvent'], got: {event_types}"
-        )
-
-        # No error event should be added for a text-only response
-        assert "Error" not in event_types
-
-        # Find the synthetic tool call (first ToolCallEvent, not the final return_result)
-        synthetic = events[1]
-        assert synthetic.event_type == "ToolCallEvent"
-        assert synthetic.metadata.get("synthetic") is True
-        assert synthetic.name == "execute_python"
-
-        # The original text should be preserved inside a reasoning() call
-        code = synthetic.arguments["code"]
-        assert "reasoning(" in code, f"Code should call reasoning(), got: {code!r}"
-        assert "I need to think about this carefully before answering." in code, (
-            f"Original text should be in code, got: {code!r}"
-        )
-
-        # The synthetic call should have a successful result with matching tool_call_id
+        # The synthetic return_result ToolCallEvent should be present
+        tool_call_events = [e for e in events if e.event_type == "ToolCallEvent"]
+        assert len(tool_call_events) == 1
+        synthetic = tool_call_events[0]
+        assert synthetic.name == "return_result"
         assert synthetic.result is not None
         assert synthetic.result.result_status == ResultStatus.COMPLETE
-        assert synthetic.result.tool_call_id == synthetic.tool_call_id
 
-        # The PythonOutput should be linked to the same synthetic tool call
-        python_output = events[2]
-        assert python_output.event_type == "PythonOutput"
-        assert python_output.tool_call_id == synthetic.tool_call_id
+        # No error event should be added
+        assert "Error" not in event_types
 
     @pytest.mark.asyncio
-    async def test_text_only_basemodel_response_normalized_to_json(self):
-        """BaseModel text-only response is normalized via model_dump_json() in the reasoning() call.
+    async def test_text_only_basemodel_response_routes_through_return_result(self):
+        """BaseModel text-only response is serialized to JSON and routed through return_result.
 
         LLMResponse.content can be a BaseModel (e.g. from structured output). The same
-        text-only path applies; content is serialized to JSON before being embedded in
-        the synthetic reasoning() call, consistent with how actor.py records LLMOutput.
+        stop→return_result path applies; content is serialized via model_dump_json()
+        before being passed as the result argument.
         """
         from pydantic import BaseModel as PydanticBaseModel
 
@@ -1169,27 +1150,100 @@ class TestCodeActStrategyEventSequence:
         fake_llm = FakeLLMClient(
             scripted_responses=[
                 model_response,
-                _resp("", tool_calls=[_return_result(result="answer")]),
             ]
         )
 
         agent_instance = TestAgent(llm=fake_llm)
         result = await agent_instance.think_and_answer()
 
-        assert result == "answer"
+        # BaseModel serialized as JSON string passes str return type validation
+        assert "I need to reason carefully here." in result
 
         events = agent_instance.event_manager.values()
-        synthetic_calls = [
-            e
-            for e in events
-            if e.event_type == "ToolCallEvent" and e.metadata.get("synthetic") is True
-        ]
-        assert len(synthetic_calls) == 1
+        tool_call_events = [e for e in events if e.event_type == "ToolCallEvent"]
+        assert len(tool_call_events) == 1
+        assert tool_call_events[0].name == "return_result"
+        assert tool_call_events[0].result.result_status == ResultStatus.COMPLETE
 
-        code = synthetic_calls[0].arguments["code"]
-        assert "reasoning(" in code
-        # BaseModel is serialized as JSON — key and value should appear in the code
-        assert "I need to reason carefully here." in code
+    @pytest.mark.asyncio
+    async def test_text_only_stop_with_typed_return_gives_validation_error(self):
+        """Text-only stop with non-str return type fails validation → LLM self-corrects.
+
+        This is the fix for issue #185: when the LLM emits text without a tool call
+        (infinite loop scenario), routing through return_result() gives the LLM an
+        actionable validation error instead of a no-op synthetic reasoning() call.
+        The LLM then self-corrects by calling return_result() with proper typed data.
+        """
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def compute_stats(self) -> dict:
+                """Compute statistics and return a dict."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                # First response: text-only "I'm done!" (the bug trigger)
+                _resp("I have successfully completed the computation!"),
+                # Second response: LLM self-corrects after seeing validation error
+                _resp("", tool_calls=[_return_result(result={"mean": 42, "count": 10})]),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.compute_stats()
+
+        # The LLM self-corrected and returned the proper typed result
+        assert result == {"mean": 42, "count": 10}
+
+        events = agent_instance.event_manager.values()
+        # Should see: Task → synthetic return_result (with error) → real return_result (success)
+        tool_call_events = [e for e in events if e.event_type == "ToolCallEvent"]
+        assert len(tool_call_events) == 2
+
+        # First tool call is the synthetic return_result that failed validation
+        first = tool_call_events[0]
+        assert first.name == "return_result"
+        assert first.result is not None
+        assert first.result.result_status == ResultStatus.ERROR
+        assert "Invalid result" in first.result.content
+
+        # Second tool call is the real return_result that succeeded
+        second = tool_call_events[1]
+        assert second.name == "return_result"
+        assert second.result.result_status == ResultStatus.COMPLETE
+
+    @pytest.mark.asyncio
+    async def test_stop_no_content_with_none_return_type_terminates(self):
+        """finish_reason=stop with no content and -> None return type terminates cleanly.
+
+        Common in optimizer scenarios where the agent's work is done via side effects
+        and it just needs to signal completion.
+        """
+
+        class TestAgent(Agent, llm=_TEST_LLM):
+            @strategy(CodeActStrategy(config=CodeActConfig()))
+            async def do_side_effects(self) -> None:
+                """Perform work via side effects."""
+                ...
+
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                # LLM says stop with no content — it's done
+                _resp(""),
+            ]
+        )
+
+        agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.do_side_effects()
+
+        assert result is None
+
+        events = agent_instance.event_manager.values()
+        tool_call_events = [e for e in events if e.event_type == "ToolCallEvent"]
+        assert len(tool_call_events) == 1
+        assert tool_call_events[0].name == "return_result"
+        assert tool_call_events[0].result.result_status == ResultStatus.COMPLETE
 
     @pytest.mark.asyncio
     async def test_text_only_whitespace_response_treated_as_empty(self):
@@ -1274,38 +1328,42 @@ class TestCodeActStrategyEventSequence:
         assert "x = 6 * 7" in code, f"Original code should follow: {code!r}"
 
     @pytest.mark.asyncio
-    async def test_empty_response_adds_error_feedback(self):
-        """Truly empty LLM response (no content, no tool calls) still produces an error event.
+    async def test_empty_stop_response_routes_through_return_result(self):
+        """Empty LLM response with finish_reason='stop' routes through return_result(None).
 
-        This is distinct from a text-only response. An empty response gets the
-        remove-and-error treatment to push the LLM to produce a valid response.
+        When the LLM emits finish_reason='stop' with no content, it signals completion.
+        This is routed through return_result(None) validation. For non-None return types,
+        validation fails and the LLM gets feedback to self-correct.
         """
-        from nemo_oo_agents.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=1)))
+            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=2)))
             async def empty_task(self) -> str:
-                """A task where LLM keeps returning nothing."""
+                """A task where LLM returns stop with no content then self-corrects."""
                 ...
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp(""),  # empty - no content, no tool calls; exhausts max_retries=1
+                _resp(""),  # empty stop - routes through return_result(None), fails for -> str
+                _resp("", tool_calls=[_return_result(result="corrected answer")]),
             ]
         )
 
         agent_instance = TestAgent(llm=fake_llm)
+        result = await agent_instance.empty_task()
 
-        with pytest.raises(GenerationError):
-            await agent_instance.empty_task()
+        assert result == "corrected answer"
 
-        # Error events should have been added for the empty responses
+        # The synthetic return_result(None) should have failed validation
         all_events = agent_instance.event_manager.values()
-        error_events = [e for e in all_events if e.event_type == "Error"]
-        assert len(error_events) >= 1, (
-            f"Expected at least 1 error event for empty response, got: "
-            f"{[e.event_type for e in all_events]}"
-        )
+        tool_call_events = [e for e in all_events if e.event_type == "ToolCallEvent"]
+        assert len(tool_call_events) == 2
+        # First is the failed synthetic return_result(None)
+        assert tool_call_events[0].name == "return_result"
+        assert tool_call_events[0].result.result_status == ResultStatus.ERROR
+        # Second is the successful self-correction
+        assert tool_call_events[1].name == "return_result"
+        assert tool_call_events[1].result.result_status == ResultStatus.COMPLETE
 
     @pytest.mark.asyncio
     async def test_multiple_tool_calls_event_sequence(self):
