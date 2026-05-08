@@ -91,7 +91,9 @@ class JobHandle:
     - ``buffer=N`` (int): ring buffer keeping the last N values.
     """
 
-    def __init__(self, name: str, task: asyncio.Task[Any], buffer: bool | int = False, label: str = "") -> None:
+    def __init__(
+        self, name: str, task: asyncio.Task[Any], buffer: bool | int = False, label: str = ""
+    ) -> None:
         self.name = name
         self.label = label or name
         self.state: JobState = "running"

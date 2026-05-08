@@ -647,7 +647,9 @@ class TUIApplication:
             if running:
                 now = datetime.datetime.now().strftime("%H:%M:%S")
                 lines = "".join(f"  ⠿ {h.label}\n" for h in running)
-                self.emit_block(f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m")
+                self.emit_block(
+                    f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
+                )
 
             # Race all queue-mode channels for the next item(s).
             try:
