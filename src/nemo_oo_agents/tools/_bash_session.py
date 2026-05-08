@@ -183,27 +183,28 @@ class BashSession:
 
         # Read stdout/stderr concurrently, yielding chunks as they arrive,
         # while watching the control fd for the sentinel.
-        import asyncio as _asyncio
-
-        stdout_queue: _asyncio.Queue[tuple[str, str] | None] = _asyncio.Queue()
-        stderr_queue: _asyncio.Queue[tuple[str, str] | None] = _asyncio.Queue()
+        stdout_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+        stderr_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
 
         async def _read_stream(stream, name, queue):
             try:
                 while True:
-                    chunk = await _asyncio.wait_for(stream.read(4096), timeout=_ACCUMULATE_POLL)
+                    try:
+                        chunk = await asyncio.wait_for(stream.read(4096), timeout=_ACCUMULATE_POLL)
+                    except TimeoutError:
+                        continue
                     if not chunk:
                         break
                     queue.put_nowait((name, chunk.decode("utf-8", errors="replace")))
-            except (TimeoutError, _asyncio.CancelledError):
+            except asyncio.CancelledError:
                 pass
             except Exception:
                 pass
             finally:
                 queue.put_nowait(None)
 
-        stdout_task = _asyncio.create_task(_read_stream(proc.stdout, "stdout", stdout_queue))
-        stderr_task = _asyncio.create_task(_read_stream(proc.stderr, "stderr", stderr_queue))
+        stdout_task = asyncio.create_task(_read_stream(proc.stdout, "stdout", stdout_queue))
+        stderr_task = asyncio.create_task(_read_stream(proc.stderr, "stderr", stderr_queue))
 
         ctrl_lines, timed_out = await self._read_control_until(sentinel, timeout)
 
@@ -213,7 +214,7 @@ class BashSession:
         for task in (stdout_task, stderr_task):
             try:
                 await task
-            except _asyncio.CancelledError:
+            except asyncio.CancelledError:
                 pass
 
         # Drain queues
@@ -227,7 +228,7 @@ class BashSession:
         for stream, name in [(proc.stdout, "stdout"), (proc.stderr, "stderr")]:
             while True:
                 try:
-                    chunk = await _asyncio.wait_for(stream.read(4096), timeout=_DRAIN_TIMEOUT)
+                    chunk = await asyncio.wait_for(stream.read(4096), timeout=_DRAIN_TIMEOUT)
                     if not chunk:
                         break
                     yield (name, chunk.decode("utf-8", errors="replace"))
@@ -249,7 +250,7 @@ class BashSession:
         if timed_out:
             exit_code = 124
 
-        yield ("__done__", str(exit_code))
+        yield ("__done__", f"{exit_code},{1 if timed_out else 0}")
 
     async def _send_and_wait(
         self, script: str, sentinel: str, timeout: float

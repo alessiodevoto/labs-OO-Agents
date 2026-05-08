@@ -145,8 +145,9 @@ class ShellTools(Skill):
         exit_code = 0
         async for stream_name, chunk in self._session.run_stream(command, timeout=timeout):
             if stream_name == "__done__":
-                exit_code = int(chunk)
-                timed_out = exit_code == 124
+                parts = chunk.split(",")
+                exit_code = int(parts[0])
+                timed_out = bool(int(parts[1])) if len(parts) > 1 else False
                 break
             yield StreamEvent(kind=stream_name, text=chunk)
         yield StreamDone(kind="done", returncode=exit_code, timed_out=timed_out)

@@ -63,7 +63,7 @@ class _FakeShell:
     async def run(self, command, timeout=120.0):
         import subprocess
 
-        from nemo_oo_agents.tools._results import BashResult
+        from nemo_oo_agents.tools._results import RunResult
 
         r = subprocess.run(
             command,
@@ -72,7 +72,7 @@ class _FakeShell:
             text=True,
             timeout=timeout,
         )
-        return BashResult(stdout=r.stdout.strip(), stderr=r.stderr.strip(), returncode=r.returncode)
+        return RunResult(stdout=r.stdout.strip(), stderr=r.stderr.strip(), returncode=r.returncode)
 
 
 class _FakeAgent:
