@@ -130,11 +130,11 @@ def pformat(
     if unquote_strings and isinstance(obj, str):
         if max_string is None or len(obj) <= max_string:
             # Untruncated: strip outer quotes from repr output.
-            if len(result) >= 2 and result[0] == result[-1] and result[0] in ("'", '"'):
-                return result[1:-1]
             for q in ("'''", '"""'):
                 if result.startswith(q) and result.endswith(q):
                     return result[len(q) : -len(q)]
+            if len(result) >= 2 and result[0] == result[-1] and result[0] in ("'", '"'):
+                return result[1:-1]
 
     return result
 

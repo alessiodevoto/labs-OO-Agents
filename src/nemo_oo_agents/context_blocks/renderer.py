@@ -99,7 +99,7 @@ def _apply_context_total_limit(
     for i in range(len(blocks) - 1, -1, -1):
         if total <= total_limit:
             break
-        if blocks[i].metadata.user_block:
+        if blocks[i].metadata.user_block and not blocks[i].metadata.immutable:
             size = count_fn(blocks[i].content)
             total -= size
             to_evict.add(i)
@@ -109,7 +109,7 @@ def _apply_context_total_limit(
         for i in range(len(blocks) - 1, -1, -1):
             if total <= total_limit:
                 break
-            if i not in to_evict:
+            if i not in to_evict and not blocks[i].metadata.immutable:
                 size = count_fn(blocks[i].content)
                 total -= size
                 to_evict.add(i)
