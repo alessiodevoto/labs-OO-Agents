@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Patch task.toml with docker_image from Dockerfiles.
+"""Patch task.toml with docker_image from Dockerfiles and fix TOML issues.
 
 Harbor apptainer backend requires docker_image in task.toml.
 This script extracts FROM from each task Dockerfile and adds it.
+Also fixes common TOML issues (malformed tags, unquoted values).
 
-Usage: python util/eval_pipeline/patch_docker_images.py [--tasks-dir DIR]
+Usage:
+    python util/eval_pipeline/patch_docker_images.py [--tasks-dir DIR] [--sanitize]
 """
 
 import argparse
@@ -15,6 +17,7 @@ DEFAULT_IMAGE = "ghcr.io/laude-institute/t-bench/ubuntu-24-04:20250624"
 
 
 def patch_tasks(tasks_dir: str) -> None:
+    """Add docker_image to task.toml from each task's Dockerfile FROM line."""
     fixed = 0
     failed = []
 
@@ -32,17 +35,14 @@ def patch_tasks(tasks_dir: str) -> None:
             fixed += 1
             continue
 
-        # Try to extract FROM from Dockerfile
         dockerfile = os.path.join(td, "environment", "Dockerfile")
-        docker_image = DEFAULT_IMAGE  # fallback
+        docker_image = DEFAULT_IMAGE
 
         if os.path.exists(dockerfile):
             content = open(dockerfile).read()
-            # Skip --platform and other flags after FROM
             from_match = re.search(r"^FROM\s+(?:--\S+\s+)*([^\s]+)", content, re.MULTILINE)
             if from_match:
                 candidate = from_match.group(1)
-                # Handle ARG-based FROM (e.g. FROM ${BASE_IMAGE})
                 if "$" in candidate or "{" in candidate:
                     arg_name = re.search(r"\$\{?(\w+)", candidate)
                     if arg_name:
@@ -55,10 +55,8 @@ def patch_tasks(tasks_dir: str) -> None:
                             docker_image = arg_val.group(1).strip('"').strip("'")
                         else:
                             failed.append((task, f"unresolvable ARG: {candidate}"))
-                            docker_image = DEFAULT_IMAGE
                     else:
                         failed.append((task, f"complex FROM: {candidate}"))
-                        docker_image = DEFAULT_IMAGE
                 else:
                     docker_image = candidate
             else:
@@ -66,10 +64,7 @@ def patch_tasks(tasks_dir: str) -> None:
         else:
             failed.append((task, "no Dockerfile, using default image"))
 
-        # Remove any existing (possibly malformed) docker_image line
         toml = re.sub(r"^docker_image\s*=.*\n?", "", toml, flags=re.MULTILINE)
-
-        # Insert docker_image into [environment] section (always quoted)
         if "[environment]" in toml:
             toml = toml.replace(
                 "[environment]\n",
@@ -90,8 +85,56 @@ def patch_tasks(tasks_dir: str) -> None:
             print(f"  {t}: {r}")
 
 
+def sanitize_toml(tasks_dir: str) -> None:
+    """Fix common TOML issues: malformed tags, unquoted docker_image values."""
+    import tomllib
+
+    fixed = 0
+    for task in sorted(os.listdir(tasks_dir)):
+        td = os.path.join(tasks_dir, task)
+        if not os.path.isdir(td):
+            continue
+        tp = os.path.join(td, "task.toml")
+        if not os.path.exists(tp):
+            continue
+        content = open(tp).read()
+        try:
+            tomllib.loads(content)
+            continue
+        except Exception:
+            pass
+
+        # Fix unquoted docker_image values
+        content = re.sub(
+            r'^(docker_image\s*=\s*)([^"\'\n][^\n]*)',
+            lambda m: m.group(1) + '"' + m.group(2).strip() + '"',
+            content,
+            flags=re.MULTILINE,
+        )
+        # Fix empty/malformed tags: tags = [ ,] -> tags = []
+        content = re.sub(r"tags\s*=\s*\[\s*,?\s*\]", "tags = []", content)
+        # Fix trailing comma before ]
+        content = re.sub(r",(\s*\])", r"\1", content)
+
+        try:
+            tomllib.loads(content)
+            open(tp, "w").write(content)
+            fixed += 1
+        except Exception as e:
+            print(f"  Cannot fix {task}: {e}")
+
+    print(f"Sanitized: {fixed} files")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tasks-dir", default="util/harbor/tasks/terminal_bench")
+    parser.add_argument(
+        "--sanitize",
+        action="store_true",
+        help="Also fix malformed TOML (tags, unquoted values)",
+    )
     args = parser.parse_args()
     patch_tasks(args.tasks_dir)
+    if args.sanitize:
+        sanitize_toml(args.tasks_dir)
