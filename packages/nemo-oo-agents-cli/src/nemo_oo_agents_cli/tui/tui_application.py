@@ -107,6 +107,7 @@ class TUIApplication:
         on_bang: Callable[[str], Awaitable[None] | None] | None = None,
         completer: Completer | None = None,
         session_label: Callable[[], str] | None = None,
+        config: Any = None,
     ) -> None:
         """
         Args:
@@ -134,6 +135,7 @@ class TUIApplication:
         self._on_command = on_command
         self._on_bang = on_bang
         self._session_label_fn: Callable[[], str] | None = session_label
+        self._config = config
         self.state = QueueState()
 
         # Output scrollback. Two parallel stores:
@@ -641,6 +643,34 @@ class TUIApplication:
                 self._in_respond = False
 
             logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
+
+            # Goal mode: if enabled and there are open todos, inject a
+            # synthetic notification with the next open todo instead of
+            # waiting for user input.
+            goal_injected = False
+            if self._config is not None and getattr(self._config, "tui", None) is not None:
+                if self._config.tui.goal_mode:
+                    todo_mgr = getattr(agent, "todo", None)
+                    if todo_mgr is not None:
+                        open_todos = [
+                            t
+                            for t in todo_mgr.list_todos(status="open")
+                            if not t.is_blocked(todo_mgr._todos)
+                        ]
+                        if open_todos:
+                            next_todo = open_todos[0]
+                            goal_msg = (
+                                f"[goal-mode] Next open todo: [{next_todo.id}] {next_todo.title}"
+                            )
+                            if next_todo.notes:
+                                goal_msg += f"\nNotes: {next_todo.notes}"
+                            notification = {"user_messages": [goal_msg]}
+                            goal_injected = True
+                            logger.info("[DISPATCHER] goal-mode injected todo %s", next_todo.id)
+
+            if goal_injected:
+                self._on_dispatcher_dequeued()
+                continue
 
             # Show running background jobs while waiting for the next event.
             running = [h for h in qm._handles if h.state == "running"]

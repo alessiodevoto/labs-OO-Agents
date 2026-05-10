@@ -448,6 +448,7 @@ class Session:
             on_bang=self._on_bang,
             completer=SlashCommandCompleter(self.registry),
             session_label=self._session_label,
+            config=self.config,
         )
         # Wire the user-bar render + TUIUserInput log on the channel's
         # on_get hook so the echo fires when the dispatcher (or agent

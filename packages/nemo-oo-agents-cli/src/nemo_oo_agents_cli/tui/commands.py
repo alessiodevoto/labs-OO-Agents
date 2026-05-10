@@ -1043,6 +1043,53 @@ class PythonCommand(Command):
 
 
 # ---------------------------------------------------------------------------
+# Goal Mode command
+# ---------------------------------------------------------------------------
+
+
+class GoalModeCommand(Command):
+    """Toggle goal mode: auto-feed unresolved todos to the agent between turns."""
+
+    @property
+    def name(self) -> str:
+        return "goal-mode"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/goal-mode on": "Enable goal mode (auto-continue with open todos)",
+            "/goal-mode off": "Disable goal mode",
+            "/goal-mode status": "Show current goal mode state",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if not args:
+            return False, "Usage: /goal-mode <on|off|status>"
+        if args[0].lower() not in ("on", "off", "status"):
+            return False, f"Unknown subcommand `{args[0]}`"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        subcmd = args[0].lower()
+
+        if subcmd == "status":
+            state = "on" if self.config.goal_mode else "off"
+            return CommandResult.ok(TextOutput(f"Goal mode: {state}", "info"))
+
+        if subcmd == "on":
+            self.config.goal_mode = True
+            return CommandResult.ok(
+                TextOutput(
+                    "Goal mode enabled. Agent will auto-continue with open todos.", "success"
+                )
+            )
+
+        # off
+        self.config.goal_mode = False
+        return CommandResult.ok(TextOutput("Goal mode disabled.", "success"))
+
+
+# ---------------------------------------------------------------------------
 # Edit command
 # ---------------------------------------------------------------------------
 
@@ -1802,6 +1849,7 @@ class CommandRegistry:
         "skills": SkillsCommand,
         "todo": TodoCommand,
         "python": PythonCommand,
+        "goal-mode": GoalModeCommand,
         "session": SessionCommand,
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,
