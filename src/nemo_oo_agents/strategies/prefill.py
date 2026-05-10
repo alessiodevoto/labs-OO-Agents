@@ -168,8 +168,7 @@ class InspectInputsPrefill:
                 p_ms = p_spec.get("max_string", max_string)
                 p_md = p_spec.get("max_depth", max_depth)
                 code_lines.append(
-                    f"pprint({param}, max_length={p_ml}, "
-                    f"max_string={p_ms}, max_depth={p_md})"
+                    f"pprint({param}, max_length={p_ml}, max_string={p_ms}, max_depth={p_md})"
                 )
 
         # Always show return type for complex types (show_return_type hardcoded to True)
