@@ -29,7 +29,6 @@ orchestrator:
 
 environment:
   type: apptainer
-  override_memory_mb: 4096
   kwargs:
     apptainer_binary: /home/lab/miniforge3/bin/apptainer
     apptainer_fakeroot: true
