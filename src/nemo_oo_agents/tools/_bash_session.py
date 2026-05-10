@@ -18,6 +18,7 @@ import logging
 import os
 import secrets
 import signal
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -48,17 +49,65 @@ class BashSession:
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
+        self._last_successful_command: float = 0.0
+        self._last_command: str = ""
+        self._start_count: int = 0
 
     @property
     def cwd(self) -> Path:
         """Current working directory of the session."""
         return self._cwd
 
+    def _diagnose_death(self, context: str) -> str:
+        """Capture diagnostic info about why bash died. Logs at ERROR level."""
+        proc = self._process
+        parts = [f"[BASH_DEATH] context={context}"]
+        parts.append(f"  last_successful_cmd_ago={time.time() - self._last_successful_command:.1f}s")
+        parts.append(f"  last_command={self._last_command[:200]!r}")
+        parts.append(f"  start_count={self._start_count}")
+        parts.append(f"  cwd={self._cwd}")
+        if proc is None:
+            parts.append("  proc=None")
+        else:
+            parts.append(f"  proc.pid={proc.pid}")
+            parts.append(f"  proc.returncode={proc.returncode}")
+            if proc.returncode is not None and proc.returncode < 0:
+                sig_num = -proc.returncode
+                try:
+                    sig_name = signal.Signals(sig_num).name
+                except (ValueError, AttributeError):
+                    sig_name = f"signal {sig_num}"
+                parts.append(f"  killed_by={sig_name}")
+            # Try to read /proc/<pid>/status before it disappears
+            try:
+                with open(f"/proc/{proc.pid}/status") as f:
+                    for line in f:
+                        if any(k in line for k in ("State:", "SigPnd:", "SigCgt:")):
+                            parts.append(f"  /proc/status: {line.strip()}")
+            except (FileNotFoundError, PermissionError, OSError):
+                parts.append("  /proc/status: unavailable (process reaped)")
+        # Check cwd accessibility (detects virtiofs / mount failures)
+        try:
+            os.stat(str(self._cwd))
+            parts.append("  cwd_stat=OK")
+        except OSError as e:
+            parts.append(f"  cwd_stat=FAILED: {e}")
+        # FD count of parent process
+        try:
+            fd_count = len(os.listdir("/proc/self/fd"))
+            parts.append(f"  parent_fd_count={fd_count}")
+        except OSError:
+            pass
+        diag = "\n".join(parts)
+        logger.error(diag)
+        return diag
+
     async def start(self) -> None:
         """Start the bash subprocess with a dedicated control fd."""
         if self._started:
             return
 
+        self._start_count += 1
         env = os.environ.copy()
         env["PS1"] = ""
         env["TERM"] = "dumb"
@@ -114,6 +163,7 @@ class BashSession:
         if not self._started:
             await self.start()
 
+        self._last_command = command
         sentinel = f"__CTRL_{secrets.token_hex(8)}__"
 
         # Command runs normally; exit code + cwd + sentinel go to fd 3.
@@ -141,6 +191,8 @@ class BashSession:
 
         if timed_out:
             exit_code = 124
+        else:
+            self._last_successful_command = time.time()
 
         return stdout.strip(), stderr.strip(), exit_code
 
@@ -266,6 +318,7 @@ class BashSession:
         proc = self._process
         ctrl = self._control_reader
         if proc is None or proc.stdin is None or ctrl is None or proc.returncode is not None:
+            self._diagnose_death("send_and_wait_pre_check")
             logger.warning("Bash process dead or missing — resetting session")
             await self.reset()
             proc = self._process
@@ -277,14 +330,21 @@ class BashSession:
             proc.stdin.write(script.encode())
             await proc.stdin.drain()
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            self._diagnose_death(f"send_and_wait_write: {e}")
             logger.warning("Pipe error writing to bash (%s) — resetting session", e)
             await self.reset()
             proc = self._process
             ctrl = self._control_reader
             if proc is None or proc.stdin is None or ctrl is None:
                 raise RuntimeError("Bash session failed to restart") from e
-            proc.stdin.write(script.encode())
-            await proc.stdin.drain()
+            try:
+                proc.stdin.write(script.encode())
+                await proc.stdin.drain()
+            except (BrokenPipeError, ConnectionResetError, OSError) as e2:
+                diag = self._diagnose_death(f"send_and_wait_retry: {e2}")
+                raise RuntimeError(
+                    f"Bash session recovery failed — process died twice.\n{diag}"
+                ) from e2
 
         # Drain stdout/stderr concurrently with control fd to prevent deadlock.
         assert proc.stdout is not None and proc.stderr is not None
@@ -349,6 +409,7 @@ class BashSession:
                 timed_out = True
                 break
             if not raw:
+                self._diagnose_death("control_fd_eof")
                 break  # EOF — bash died
             line = raw.decode("utf-8", errors="replace").rstrip("\n")
             if sentinel in line:
@@ -360,6 +421,7 @@ class BashSession:
             if proc is not None:
                 recovered = await self._interrupt_and_recover(proc, sentinel, timeout)
                 if not recovered:
+                    self._diagnose_death("timeout_recovery_failed")
                     logger.warning("Timeout recovery failed — resetting session")
                     await self.reset()
 
