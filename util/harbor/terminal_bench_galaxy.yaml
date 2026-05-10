@@ -1,24 +1,21 @@
-# Harbor config for Terminal Bench 1 baseline on galaxy-ts4-100 (aarch64).
+# Harbor config for Terminal Bench 1.0 baseline on galaxy (lab@10.87.108.113, aarch64).
 #
 # The machine runs amd64 task containers via QEMU binfmt emulation — timeouts
-# are multiplied 4–10x to account for the emulation overhead.
+# are multiplied 4–10x to account for emulation overhead.
 #
 # Prerequisites:
-#   1. apptainer installed via conda-forge (no root needed):
-#      conda install -c conda-forge apptainer squashfuse
-#   2. Enable user namespaces:
-#      sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-#   3. Register QEMU binfmt handlers:
-#      sudo apt-get install qemu-user-static binfmt-support
-#   4. Build the base SIFs (amd64 pulls via QEMU):
-#      python util/harbor/build_terminal_bench_sifs_nosudo.py
-#   5. Build the bootstrap overlay (provides uvicorn/fastapi to task containers):
-#      bash util/harbor/build_bootstrap_overlay.sh ~/3p/harbor_bootstrap_overlay
+#   1. apptainer + AppArmor userns allowed (see util/harbor/README.md)
+#   2. Harbor installed: source /home/lab/miniforge3/bin/activate
+#   3. harbor_bootstrap_overlay_v2 at /home/lab/3p/harbor_bootstrap_overlay_v2
+#   4. SIF cache at /home/lab/3p/sif_cache
+#   5. Tasks at /home/lab/rcabral/harbor_tasks_tb_filtered (236 tasks)
 #   6. Set env vars: ANTHROPIC_API_KEY, NEMO_OO_AGENTS_GIT_URL, etc.
 #
-# Run:
+# Run from /home/lab/rcabral/nemo_oo_agents:
+#   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/terminal_bench_galaxy.yaml
-jobs_dir: /home/lab/rcabral/harbor_jobs/terminal_bench_baseline
+
+jobs_dir: /home/lab/rcabral/harbor_jobs/terminal_bench_galaxy
 n_attempts: 1
 timeout_multiplier: 4.0
 environment_build_timeout_multiplier: 10.0
@@ -27,7 +24,7 @@ verifier_timeout_multiplier: 10.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 1
+  n_concurrent_trials: 4
   quiet: false
 
 environment:
@@ -35,16 +32,16 @@ environment:
   override_memory_mb: 4096
   kwargs:
     apptainer_binary: /home/lab/miniforge3/bin/apptainer
-    apptainer_fakeroot: false
+    apptainer_fakeroot: true
     apptainer_image_cache_dir: /home/lab/3p/sif_cache
-    apptainer_bootstrap_overlay: /home/lab/3p/harbor_bootstrap_overlay
+    apptainer_bootstrap_overlay: /home/lab/3p/harbor_bootstrap_overlay_v2
     env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
 
 agents:
   - name: nemo-oo-agents
-    model_name: claude-sonnet-4-5-20251001
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: baseline
 
 datasets:
-  - path: /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/terminal_bench
+  - path: /home/lab/rcabral/harbor_tasks_tb_filtered
