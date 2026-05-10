@@ -145,13 +145,13 @@ class Spec:
         max_length: Annotated[
             int | None,
             "Override max items per container in pformat — useful as Annotated parameter override (e.g. Annotated[list, spec(max_length=20)])",
-        ] = None,
+        ] = _SENTINEL,
         max_string: Annotated[
             int | None, "Override max characters per string in pformat for this annotation"
-        ] = None,
+        ] = _SENTINEL,
         max_depth: Annotated[
             int | None, "Override max nesting depth in pformat for this annotation"
-        ] = None,
+        ] = _SENTINEL,
     ) -> SpecAnnotation | None:
         """Specify documentation metadata — step 1.
 
@@ -203,11 +203,11 @@ class Spec:
             kwargs["expand"] = expand
         if concise is not None:
             kwargs["concise"] = concise
-        if max_length is not None:
+        if max_length is not _SENTINEL:
             kwargs["max_length"] = max_length
-        if max_string is not None:
+        if max_string is not _SENTINEL:
             kwargs["max_string"] = max_string
-        if max_depth is not None:
+        if max_depth is not _SENTINEL:
             kwargs["max_depth"] = max_depth
 
         if target is _SENTINEL:
