@@ -538,10 +538,23 @@ capability-test:
       when: always
     - when: never
 
-# Build packages on tags. Tag vX.Y.Z cuts core, cli, and benchmarks at the
-# SAME version (lockstep) -- the version-bump step rewrites all three
-# pyproject.toml files. Each builder produces its own wheel + sdist into a
-# disjoint artifact dir so the publish jobs can fan out cleanly.
+# Build & publish on (a) `vX.Y.Z` tags and (b) every push to main.
+# Version is derived from `git describe` at build time by uv-dynamic-versioning
+# (see [tool.uv-dynamic-versioning] in each workspace pyproject.toml):
+#   - On a tag: `X.Y.Z`.
+#   - Past a tag: `X.Y.(Z+1).dev<distance>` — PEP 440 dev pre-release that
+#     sorts ABOVE the latest stable so `--pre` consumers get the freshest dev.
+#   - Before the first tag: falls back to `0.2.0` (`fallback-version`).
+# CI has no manual version logic, no sed rewrites, no lockstep enforcement —
+# each package declares its own deps in pyproject.toml and the maintainer
+# bumps floors when actual incompatibilities are introduced (standard Python).
+#
+# IMPORTANT: do NOT add `retry:` to the publish jobs — `uv publish` is not
+# idempotent against the GitLab Package Registry. A second attempt with the
+# same version returns HTTP 400, which is the correct safe-fail behavior.
+# To republish a main commit (e.g. transient infra failure), push an empty
+# commit so the derived dev version advances rather than retrying the same
+# pipeline.
 .build-package-base:
   stage: build
   image:
@@ -549,42 +562,27 @@ capability-test:
     pull_policy: if-not-present
   tags:
     - os/linux
+  variables:
+    # uv-dynamic-versioning runs `git describe` at build time; needs the full
+    # tag history, not the shallow clone GitLab does by default. GIT_DEPTH=0
+    # disables the shallow clone; GIT_FETCH_EXTRA_FLAGS=--tags pulls in
+    # `vX.Y.Z` tag refs (default fetch only pulls the branch ref).
+    GIT_DEPTH: "0"
+    GIT_FETCH_EXTRA_FLAGS: "--tags"
+  before_script:
+    # The uv docker image is `bookworm-slim` and doesn't ship git. dunamai
+    # silently falls back to fallback-version if `git` is not on PATH, so
+    # install it before `uv build` runs.
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
   cache:
     key:
       files:
         - uv.lock
     paths:
       - $UV_CACHE_DIR
-  before_script:
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        VERSION="${CI_COMMIT_TAG#v}"
-        # Validate version format (semver)
-        if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9]+)*$'; then
-          for pyproject in \
-              pyproject.toml \
-              packages/nemo-oo-agents-benchmarks/pyproject.toml \
-              packages/nemo-oo-agents-cli/pyproject.toml; do
-            cp "$pyproject" "$pyproject.bak"
-            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$pyproject"
-            if ! grep -q "^version = \"$VERSION\"" "$pyproject"; then
-              echo "Error: Failed to update version in $pyproject"
-              cp "$pyproject.bak" "$pyproject"
-              exit 1
-            fi
-          done
-          # Pin benchmarks/cli -> core to the exact released version (lockstep).
-          # The dep is written with underscore form to match this regex.
-          sed -i "s/\"nemo_oo_agents>=[0-9.]*\"/\"nemo_oo_agents==$VERSION\"/" \
-            packages/nemo-oo-agents-benchmarks/pyproject.toml \
-            packages/nemo-oo-agents-cli/pyproject.toml
-        else
-          echo "Error: Invalid version format: $VERSION (expected semver format: X.Y.Z)"
-          exit 1
-        fi
-      fi
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+([.-][a-zA-Z0-9]+)?$/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
 
 build-package-core:
   extends: .build-package-base
@@ -619,7 +617,9 @@ build-package-cli:
       - dist-cli/*.tar.gz
     expire_in: 1 hour
 
-# Publish to GitLab package registry on tags
+# Publish to GitLab package registry on tags and main pushes (matches
+# .build-package-base rules:). The same `rules:` block must mirror the
+# build base so build/publish jobs are always co-included or co-excluded.
 .publish-package-base:
   stage: publish
   image:
@@ -630,8 +630,9 @@ build-package-cli:
   variables:
     UV_PUBLISH_USERNAME: gitlab-ci-token
     UV_PUBLISH_PASSWORD: $CI_JOB_TOKEN
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+([.-][a-zA-Z0-9]+)?$/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
 
 publish-package-core:
   extends: .publish-package-base
