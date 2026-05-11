@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for mcp_nemo_oo_agents module."""
 
-from datetime import timedelta
-from typing import Literal
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
 
-from nemo_oo_agents.mcp.client import (
+pytest.importorskip("mcp")
+
+from datetime import timedelta  # noqa: E402
+from typing import Literal  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+
+from nemo_oo_agents.mcp.client import (  # noqa: E402
     MCPBaseClient,
     MCPSSEClient,
     MCPStdioClient,
