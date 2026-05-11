@@ -177,8 +177,9 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
     on ``__aenter__``, tears it down (with a timeout) on ``__aexit__``.
     """
 
-    def __init__(self, agent: FakeAgent | None = None) -> None:
+    def __init__(self, agent: FakeAgent | None = None, config: Any = None) -> None:
         self.agent = agent or FakeAgent()
+        self._config = config
         self._pipe_ctx: Any = None
         self._session_ctx: Any = None
         self._run_task: asyncio.Task | None = None
@@ -201,7 +202,7 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
             ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"],
             sentence=True,
         )
-        self.app = TUIApplication(agent=self.agent, completer=completer)
+        self.app = TUIApplication(agent=self.agent, completer=completer, config=self._config)
         self._pipe = pipe
 
         self._run_task = asyncio.create_task(self.app.run_async())

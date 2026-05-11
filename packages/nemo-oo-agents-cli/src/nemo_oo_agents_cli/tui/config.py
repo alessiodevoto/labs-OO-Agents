@@ -101,6 +101,9 @@ class TUIConfig:
     # Show agent Python code execution panels (off by default)
     show_python: bool = False
 
+    # Goal mode: when on, unresolved todos auto-feed the agent after each turn
+    goal_mode: bool = False
+
 
 @dataclass
 class Config:
