@@ -62,7 +62,9 @@ class BashSession:
         """Capture diagnostic info about why bash died. Logs at ERROR level."""
         proc = self._process
         parts = [f"[BASH_DEATH] context={context}"]
-        parts.append(f"  last_successful_cmd_ago={time.time() - self._last_successful_command:.1f}s")
+        parts.append(
+            f"  last_successful_cmd_ago={time.time() - self._last_successful_command:.1f}s"
+        )
         parts.append(f"  last_command={self._last_command[:200]!r}")
         parts.append(f"  start_count={self._start_count}")
         parts.append(f"  cwd={self._cwd}")
