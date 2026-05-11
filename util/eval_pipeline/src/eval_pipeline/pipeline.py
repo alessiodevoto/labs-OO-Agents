@@ -233,7 +233,7 @@ async def process_sample(
             try:
                 from nemo_oo_agents.trace_explorer import TraceExplorer
 
-                _trace = TraceExplorer.from_viewer(config.otlp_base_url, session_id)
+                _trace = await TraceExplorer.from_viewer(config.otlp_base_url, session_id)
             except Exception as e:
                 import logging
 
@@ -245,7 +245,7 @@ async def process_sample(
             try:
                 from nemo_oo_agents.trace_explorer import TraceExplorer
 
-                _trace = TraceExplorer.from_file(str(result.trace_file))
+                _trace = await TraceExplorer.from_file(str(result.trace_file))
             except Exception:
                 pass
     finally:

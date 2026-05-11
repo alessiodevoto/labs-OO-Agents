@@ -10,14 +10,14 @@ Usage:
     from trace_explorer import TraceExplorer
 
     # From file (OTLP format)
-    trace = TraceExplorer.from_file("path/to/trace.jsonl")
+    trace = await TraceExplorer.from_file("path/to/trace.jsonl")
 
     # From viewer API
-    trace = TraceExplorer.from_viewer("http://localhost:5001", "session-id")
+    trace = await TraceExplorer.from_viewer("http://localhost:5001", "session-id")
 
-    print(trace.get_overview())
+    print(await trace.get_overview())
 
-    for session in trace.get_session_list():
+    for session in await trace.get_session_list():
         print(session)
 """
 
@@ -1890,13 +1890,13 @@ class TraceExplorer:
         In API mode: emits a Python method call.
         """
         if not _cli_mode.get():
-            return f"self.get_session('{session_id}')"
+            return f"await self.get_session('{session_id}')"
         return f"{self._source_prefix()} -s '{session_id}'"
 
     def _nav_hint_turn(self, session_id: str, turn_idx: int) -> str:
         """Drill-into-turn hint, context-aware (CLI vs API)."""
         if not _cli_mode.get():
-            return f"self.get_turn('{session_id}', {turn_idx})"
+            return f"await self.get_turn('{session_id}', {turn_idx})"
         return f"{self._source_prefix()} -s '{session_id}' -t {turn_idx}"
 
     def _nav_hint_cmd(self, method: str, flag: str) -> str:
@@ -1906,7 +1906,7 @@ class TraceExplorer:
         flag: the CLI flag, e.g. '--errors'
         """
         if not _cli_mode.get():
-            return f"self.{method}"
+            return f"await self.{method}"
         return f"{self._source_prefix()} {flag}"
 
     # =========================================================================
@@ -1938,17 +1938,17 @@ class TraceExplorer:
         """Additional benchmark context."""
         return self._benchmark_context
 
-    def help(self) -> str:
+    async def help(self) -> str:
         """Return the usage guide from the class docstring."""
         import inspect
 
         return inspect.cleandoc(self.__doc__ or "No documentation available.")
 
-    def get_session_list(self) -> list[SessionSummary]:
+    async def get_session_list(self) -> list[SessionSummary]:
         """Return a list of session summaries (root-first, including children)."""
         return [self._build_session_summary(s) for s in self._all_sessions]
 
-    def get_span_id(self, session_id: str, turn_index: int) -> str | None:
+    async def get_span_id(self, session_id: str, turn_index: int) -> str | None:
         """Get the span ID for a specific turn.
 
         Args:
@@ -1968,7 +1968,7 @@ class TraceExplorer:
         return session.turns[turn_index].span_id or None
 
     @classmethod
-    def from_file(
+    async def from_file(
         cls,
         trace_path: str | Path,
         eval_result: EvalContextData | None = None,
@@ -1996,34 +1996,40 @@ class TraceExplorer:
                 "not agent execution traces."
             )
 
-        # Load spans once
-        raw_spans = _load_spans(trace_path)
+        import asyncio
 
-        # Validate that this looks like a trace file (spans should have 'name' field)
-        if raw_spans and "name" not in raw_spans[0]:
-            raise ValueError(
-                f"File does not appear to be a valid trace file: {trace_path.name}\n"
-                "Expected JSONL with span objects containing 'name' field. "
-                "This may be an eval results file (.noo-eval.jsonl) or other format."
-            )
+        def _load():
+            # Load spans once
+            raw_spans = _load_spans(trace_path)
 
-        # Build unified session tree from spans
-        prev_root_index = get_root_generation_index()
-        try:
-            if root_generation_index is not None:
-                set_root_generation_index(root_generation_index)
-            sessions = _parse_trace_from_spans(raw_spans)
-        finally:
-            set_root_generation_index(prev_root_index)
+            # Validate that this looks like a trace file (spans should have 'name' field)
+            if raw_spans and "name" not in raw_spans[0]:
+                raise ValueError(
+                    f"File does not appear to be a valid trace file: {trace_path.name}\n"
+                    "Expected JSONL with span objects containing 'name' field. "
+                    "This may be an eval results file (.noo-eval.jsonl) or other format."
+                )
 
-        # Extract eval result from trace file if not provided
-        if eval_result is None:
-            eval_result = cls._extract_eval_from_spans(raw_spans)
+            # Build unified session tree from spans
+            prev_root_index = get_root_generation_index()
+            try:
+                if root_generation_index is not None:
+                    set_root_generation_index(root_generation_index)
+                sessions = _parse_trace_from_spans(raw_spans)
+            finally:
+                set_root_generation_index(prev_root_index)
 
-        return cls(sessions, str(trace_path), eval_result, benchmark_context, raw_spans)
+            # Extract eval result from trace file if not provided
+            er = eval_result
+            if er is None:
+                er = cls._extract_eval_from_spans(raw_spans)
+
+            return cls(sessions, str(trace_path), er, benchmark_context, raw_spans)
+
+        return await asyncio.to_thread(_load)
 
     @classmethod
-    def from_viewer(
+    async def from_viewer(
         cls,
         base_url: str,
         session_id: str,
@@ -2045,9 +2051,10 @@ class TraceExplorer:
             ConnectionError: If the viewer is unreachable
             ValueError: If the session is not found or response is invalid
         """
-        import urllib.error
+        import asyncio
         import urllib.parse
-        import urllib.request
+
+        import httpx
 
         base_url = base_url.rstrip("/")
         encoded_sid = urllib.parse.quote(session_id, safe="")
@@ -2055,50 +2062,58 @@ class TraceExplorer:
         offset = 0
         page_size = 500
 
-        while True:
-            url = f"{base_url}/api/trace?session_id={encoded_sid}&limit={page_size}&offset={offset}"
-            try:
-                with urllib.request.urlopen(url, timeout=30) as resp:
-                    data = json.loads(resp.read())
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    raise ValueError(f"Session not found: {session_id}") from e
-                raise ValueError(f"Viewer returned HTTP {e.code}: {e.reason}") from e
-            except urllib.error.URLError as e:
-                raise ConnectionError(f"Cannot reach viewer at {base_url}: {e}") from e
+        async with httpx.AsyncClient(timeout=30) as client:
+            while True:
+                url = f"{base_url}/api/trace?session_id={encoded_sid}&limit={page_size}&offset={offset}"
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code == 404:
+                        raise ValueError(f"Session not found: {session_id}")
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.ConnectError as e:
+                    raise ConnectionError(f"Cannot reach viewer at {base_url}: {e}") from e
+                except httpx.HTTPStatusError as e:
+                    raise ValueError(
+                        f"Viewer returned HTTP {e.response.status_code}: {e.response.reason_phrase}"
+                    ) from e
 
-            raw_spans = data.get("events", [])
-            all_spans.extend(_normalize_otlp_span(s) for s in raw_spans)
+                raw_spans = data.get("events", [])
+                all_spans.extend(_normalize_otlp_span(s) for s in raw_spans)
 
-            if not data.get("has_more", False):
-                break
-            offset += page_size
+                if not data.get("has_more", False):
+                    break
+                offset += page_size
 
         if not all_spans:
             raise ValueError(f"No spans found for session: {session_id}")
 
-        # Same pipeline as from_file
-        prev_root_index = get_root_generation_index()
-        try:
-            if root_generation_index is not None:
-                set_root_generation_index(root_generation_index)
-            sessions = _parse_trace_from_spans(all_spans)
-        finally:
-            set_root_generation_index(prev_root_index)
+        # Offload CPU-bound parsing to a thread
+        def _build():
+            prev_root_index = get_root_generation_index()
+            try:
+                if root_generation_index is not None:
+                    set_root_generation_index(root_generation_index)
+                sessions = _parse_trace_from_spans(all_spans)
+            finally:
+                set_root_generation_index(prev_root_index)
 
-        if eval_result is None:
-            eval_result = cls._extract_eval_from_spans(all_spans)
+            er = eval_result
+            if er is None:
+                er = cls._extract_eval_from_spans(all_spans)
 
-        return cls(
-            sessions=sessions,
-            trace_file=f"viewer://{session_id}",
-            eval_result=eval_result,
-            raw_spans=all_spans,
-            viewer_url=base_url,
-        )
+            return cls(
+                sessions=sessions,
+                trace_file=f"viewer://{session_id}",
+                eval_result=er,
+                raw_spans=all_spans,
+                viewer_url=base_url,
+            )
+
+        return await asyncio.to_thread(_build)
 
     @classmethod
-    def load_experiment_sessions(
+    async def load_experiment_sessions(
         cls,
         base_url: str,
         experiment_id: str,
@@ -2130,83 +2145,89 @@ class TraceExplorer:
             ValueError: If the experiment is not found, has no sessions, or the
                 response cannot be parsed
         """
-        import urllib.error
+        import asyncio
         import urllib.parse
-        import urllib.request
+
+        import httpx
 
         base_url = base_url.rstrip("/")
         encoded_exp = urllib.parse.quote(experiment_id, safe="")
         url = f"{base_url}/api/experiment/{encoded_exp}/traces"
 
-        try:
-            with urllib.request.urlopen(url, timeout=60) as resp:
-                data = json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                raise ValueError(f"Experiment not found: {experiment_id}") from e
-            raise ValueError(f"Viewer returned HTTP {e.code}: {e.reason}") from e
-        except urllib.error.URLError as e:
-            raise ConnectionError(f"Cannot reach viewer at {base_url}: {e}") from e
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Viewer returned invalid JSON for experiment {experiment_id}: {e}"
-            ) from e
+        async with httpx.AsyncClient(timeout=60) as client:
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 404:
+                    raise ValueError(f"Experiment not found: {experiment_id}")
+                resp.raise_for_status()
+                data = resp.json()
+            except httpx.ConnectError as e:
+                raise ConnectionError(f"Cannot reach viewer at {base_url}: {e}") from e
+            except httpx.HTTPStatusError as e:
+                raise ValueError(
+                    f"Viewer returned HTTP {e.response.status_code}: {e.response.reason_phrase}"
+                ) from e
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Viewer returned invalid JSON for experiment {experiment_id}: {e}"
+                ) from e
 
         raw_sessions = data.get("sessions", [])
         if not raw_sessions:
             raise ValueError(f"No sessions found for experiment: {experiment_id}")
 
-        # Group all spans by trace_id so sub-agent spans (different viewer session.id
-        # but same OTel trace) are merged into one TraceExplorer per test case.
-        trace_id_to_spans: dict[str, list[dict[str, Any]]] = {}
-        trace_id_to_primary_session: dict[str, str] = {}
+        def _build():
+            # Group all spans by trace_id so sub-agent spans (different viewer session.id
+            # but same OTel trace) are merged into one TraceExplorer per test case.
+            trace_id_to_spans: dict[str, list[dict[str, Any]]] = {}
+            trace_id_to_primary_session: dict[str, str] = {}
 
-        for viewer_session in raw_sessions:
-            session_id = viewer_session.get("session_id", "")
-            raw_spans = viewer_session.get("spans", [])
-            normalized = [_normalize_otlp_span(s) for s in raw_spans]
+            for viewer_session in raw_sessions:
+                session_id = viewer_session.get("session_id", "")
+                raw_spans = viewer_session.get("spans", [])
+                normalized = [_normalize_otlp_span(s) for s in raw_spans]
 
-            # Determine the trace_id for this batch (use first span's trace_id)
-            trace_id = ""
-            for span in normalized:
-                tid = span.get("trace_id", "")
-                if tid:
-                    trace_id = tid
-                    break
+                trace_id = ""
+                for span in normalized:
+                    tid = span.get("trace_id", "")
+                    if tid:
+                        trace_id = tid
+                        break
 
-            if not trace_id:
-                # No trace_id — treat the viewer session_id as the key
-                trace_id = session_id
+                if not trace_id:
+                    trace_id = session_id
 
-            if trace_id not in trace_id_to_spans:
-                trace_id_to_spans[trace_id] = []
-                trace_id_to_primary_session[trace_id] = session_id
+                if trace_id not in trace_id_to_spans:
+                    trace_id_to_spans[trace_id] = []
+                    trace_id_to_primary_session[trace_id] = session_id
 
-            trace_id_to_spans[trace_id].extend(normalized)
+                trace_id_to_spans[trace_id].extend(normalized)
 
-        # Build one TraceExplorer per trace_id group
-        result: dict[str, TraceExplorer] = {}
-        prev_root_index = get_root_generation_index()
-        try:
-            if root_generation_index is not None:
-                set_root_generation_index(root_generation_index)
+            # Build one TraceExplorer per trace_id group
+            result: dict[str, TraceExplorer] = {}
+            prev_root_index = get_root_generation_index()
+            try:
+                if root_generation_index is not None:
+                    set_root_generation_index(root_generation_index)
 
-            for trace_id, spans in trace_id_to_spans.items():
-                primary_session_id = trace_id_to_primary_session[trace_id]
-                sessions = _parse_trace_from_spans(spans)
-                eval_result = cls._extract_eval_from_spans(spans)
-                explorer = cls(
-                    sessions=sessions,
-                    trace_file=f"viewer://{primary_session_id}",
-                    eval_result=eval_result,
-                    raw_spans=spans,
-                    viewer_url=base_url,
-                )
-                result[primary_session_id] = explorer
-        finally:
-            set_root_generation_index(prev_root_index)
+                for trace_id, spans in trace_id_to_spans.items():
+                    primary_session_id = trace_id_to_primary_session[trace_id]
+                    sessions = _parse_trace_from_spans(spans)
+                    eval_result = cls._extract_eval_from_spans(spans)
+                    explorer = cls(
+                        sessions=sessions,
+                        trace_file=f"viewer://{primary_session_id}",
+                        eval_result=eval_result,
+                        raw_spans=spans,
+                        viewer_url=base_url,
+                    )
+                    result[primary_session_id] = explorer
+            finally:
+                set_root_generation_index(prev_root_index)
 
-        return result
+            return result
+
+        return await asyncio.to_thread(_build)
 
     @staticmethod
     def _extract_eval_from_spans(raw_spans: list[dict]) -> EvalContextData | None:
@@ -2318,7 +2339,7 @@ class TraceExplorer:
     # Overview Methods
     # =========================================================================
 
-    def get_overview(self, *, concise: bool = True) -> str:
+    async def get_overview(self, *, concise: bool = True) -> str:
         """Get a high-level summary of the trace.
 
         Args:
@@ -2412,7 +2433,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_overview_data(self) -> OverviewData | None:
+    async def get_overview_data(self) -> OverviewData | None:
         """Structured overview data for programmatic use.
 
         Returns:
@@ -3164,7 +3185,7 @@ class TraceExplorer:
             result_preview=result_preview,
         )
 
-    def get_session(self, session_id: str, *, concise: bool = False) -> str:
+    async def get_session(self, session_id: str, *, concise: bool = False) -> str:
         """Get detailed execution info about a specific session.
 
         Shows how a method executed: turns, tool calls, reasoning, errors.
@@ -3274,7 +3295,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_session_data(self, session_id: str) -> SessionData:
+    async def get_session_data(self, session_id: str) -> SessionData:
         """Structured session data for programmatic use.
 
         Returns:
@@ -3901,7 +3922,7 @@ class TraceExplorer:
     # Turn Navigation
     # =========================================================================
 
-    def get_turn(self, session_id: str, turn_index: int) -> str:
+    async def get_turn(self, session_id: str, turn_index: int) -> str:
         """Get full context window, LLM response, and execution output for a specific turn.
 
         Shows exactly what the LLM saw and produced. Answer: "What was the exact
@@ -3932,7 +3953,7 @@ class TraceExplorer:
         else:
             return self._format_exec_turn_full(session, turn_index, turn)
 
-    def get_turn_data(self, session_id: str, turn_index: int) -> TurnInfo | None:
+    async def get_turn_data(self, session_id: str, turn_index: int) -> TurnInfo | None:
         """Structured turn data for programmatic use.
 
         Returns:
@@ -4306,7 +4327,7 @@ class TraceExplorer:
     # Error Navigation
     # =========================================================================
 
-    def get_errors(self) -> str:
+    async def get_errors(self) -> str:
         """Get all errors found in the trace.
 
         Returns:
@@ -4348,7 +4369,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_errors_data(self) -> dict[str, Any]:
+    async def get_errors_data(self) -> dict[str, Any]:
         """Structured error list for programmatic use."""
         errors = self._find_errors()
         return {"count": len(errors), "errors": [e.to_dict() for e in errors]}
@@ -4474,7 +4495,7 @@ class TraceExplorer:
         except (json.JSONDecodeError, TypeError):
             return str(root.result)
 
-    def get_eval_context(self, concise: bool = True) -> str:
+    async def get_eval_context(self, concise: bool = True) -> str:
         """Get evaluation context if available.
 
         Returns input, expected output, actual output, and scores from the
@@ -4576,7 +4597,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_eval_context_data(self) -> dict[str, Any]:
+    async def get_eval_context_data(self) -> dict[str, Any]:
         """Structured eval context data."""
         if not self.eval_result:
             return {"error": "No evaluation result provided."}
@@ -4589,7 +4610,7 @@ class TraceExplorer:
     # Harness Telemetry
     # =========================================================================
 
-    def get_harness_telemetry(self, session_id: str | None = None) -> str:
+    async def get_harness_telemetry(self, session_id: str | None = None) -> str:
         """Show harness telemetry for a session or all sessions.
 
         Extracts harness.* span attributes from generation spans and
@@ -4597,7 +4618,7 @@ class TraceExplorer:
         ``HarnessMetrics.span_attribute_schema()`` so it stays in sync
         with the metrics model automatically.
         """
-        data = self.get_harness_telemetry_data(session_id)
+        data = await self.get_harness_telemetry_data(session_id)
         if not data or "error" in data:
             return (
                 data.get("error", "No harness telemetry found.")
@@ -4670,7 +4691,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_harness_telemetry_data(self, session_id: str | None = None) -> dict[str, Any]:
+    async def get_harness_telemetry_data(self, session_id: str | None = None) -> dict[str, Any]:
         """Structured harness telemetry data.
 
         Extracts all harness.* attributes from generation spans.
@@ -4722,7 +4743,7 @@ class TraceExplorer:
     # Search
     # =========================================================================
 
-    def search(self, pattern: str, *, concise: bool = True) -> str:
+    async def search(self, pattern: str, *, concise: bool = True) -> str:
         """Search for a pattern across all trace content.
 
         Args:
@@ -4786,7 +4807,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def search_data(self, pattern: str) -> SearchMatches:
+    async def search_data(self, pattern: str) -> SearchMatches:
         """Structured search results for programmatic use.
 
         Returns:
@@ -4898,7 +4919,7 @@ class TraceExplorer:
 
         return results
 
-    def get_turn_context(
+    async def get_turn_context(
         self,
         session_id: str,
         turn_index: int,
@@ -4921,10 +4942,10 @@ class TraceExplorer:
 
         Example:
             # Get just user/assistant messages
-            context = trace.get_turn_context("abc123", 5)
+            context = await trace.get_turn_context("abc123", 5)
 
             # Include system prompt too
-            full_context = trace.get_turn_context("abc123", 5, include_system=True)
+            full_context = await trace.get_turn_context("abc123", 5, include_system=True)
         """
         session = self._find_session(session_id)
         if not session:
@@ -4958,7 +4979,7 @@ class TraceExplorer:
 
         return context_text
 
-    def search_in_turn_context(
+    async def search_in_turn_context(
         self,
         session_id: str,
         turn_index: int,
@@ -4981,11 +5002,13 @@ class TraceExplorer:
             List of SearchResult objects
 
         Example:
-            matches = trace.search_in_turn_context("abc123", 5, "TypeError")
+            matches = await trace.search_in_turn_context("abc123", 5, "TypeError")
             for match in matches:
                 print(f"Found: {match['match']} at position {match['start']}")
         """
-        context_text = self.get_turn_context(session_id, turn_index, include_system=include_system)
+        context_text = await self.get_turn_context(
+            session_id, turn_index, include_system=include_system
+        )
         if not context_text:
             return []
 
@@ -5175,7 +5198,7 @@ class TraceExplorer:
             return 0
         return max(s.depth for s in self._all_sessions)
 
-    def get_method_counts(self) -> dict[str, int]:
+    async def get_method_counts(self) -> dict[str, int]:
         """Get invocation count for each agent method.
 
         Returns:
@@ -5196,13 +5219,13 @@ class TraceExplorer:
 
         return dict(Counter(s.depth for s in self._all_sessions))
 
-    def get_recursion_pattern(self) -> str:
+    async def get_recursion_pattern(self) -> str:
         """Identify the recursion pattern (self-recursion, mutual, etc.).
 
         Returns:
             Description string like "self-recursion (Agent.method)" or "mutual recursion (A <-> B)"
         """
-        method_counts = self.get_method_counts()
+        method_counts = await self.get_method_counts()
         unique_methods = len(method_counts)
 
         if unique_methods == 0:
@@ -5289,7 +5312,7 @@ class TraceExplorer:
     # Full Context (for LLM Analysis)
     # =========================================================================
 
-    def _get_full_context(self) -> str:
+    async def _get_full_context(self) -> str:
         """Internal: Get all available context for the analyzer.
 
         Prefer get_overview() + get_eval_context() for targeted analysis.
@@ -5304,7 +5327,7 @@ class TraceExplorer:
         # 2. Eval result context (optional - not present for manual debugging traces)
         if self.eval_result:
             parts.append("## Task Details")
-            parts.append(self.get_eval_context())
+            parts.append(await self.get_eval_context())
 
         # 3. Mechanical findings (always available)
         findings_text = self._get_mechanical_findings()
@@ -5527,7 +5550,7 @@ class TraceExplorer:
     # Public Timeline & Error Navigation
     # =========================================================================
 
-    def get_timeline(self, max_events: int = 50) -> str:
+    async def get_timeline(self, max_events: int = 50) -> str:
         """Get a chronological timeline of events across all sessions.
 
         Shows spans in order with timestamps and durations.
@@ -5541,7 +5564,7 @@ class TraceExplorer:
         """
         return self._get_timeline(max_events)
 
-    def get_timeline_data(self, max_events: int = 50) -> TimelineData:
+    async def get_timeline_data(self, max_events: int = 50) -> TimelineData:
         """Structured timeline events for programmatic use.
 
         Returns:
@@ -5606,7 +5629,7 @@ class TraceExplorer:
             events=events,
         )
 
-    def find_first_error(self) -> str:
+    async def find_first_error(self) -> str:
         """Navigate to the first error in the trace.
 
         Returns formatted output for the turn where the first error occurred,
@@ -5644,7 +5667,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def find_first_error_data(self) -> dict[str, Any]:
+    async def find_first_error_data(self) -> dict[str, Any]:
         """Structured first error info for programmatic use."""
         result = self._find_first_error()
         if not result:
@@ -5663,7 +5686,7 @@ class TraceExplorer:
     # Raw Span Access
     # =========================================================================
 
-    def find_span(self, span_id: str, *, json_output: bool = False) -> str:
+    async def find_span(self, span_id: str, *, json_output: bool = False) -> str:
         """Find a span by ID and show it with navigation breadcrumbs.
 
         Searches all sessions for a turn matching the span ID. Shows the turn
@@ -5697,7 +5720,7 @@ class TraceExplorer:
                         nav += f"→ trace-explorer ... --session {sid} --turn {i + 1}  # next turn\n"
 
                     if json_output:
-                        data = self.get_turn_data(session.session_id, i)
+                        data = await self.get_turn_data(session.session_id, i)
                         result = {
                             "span_id": span_id,
                             "session_id": session.session_id,
@@ -5709,15 +5732,15 @@ class TraceExplorer:
                         }
                         return json.dumps(result, indent=2, default=str)
 
-                    return header + self.get_turn(session.session_id, i) + nav
+                    return header + await self.get_turn(session.session_id, i) + nav
 
         # Fallback: check raw spans
-        raw = self.get_raw_span(span_id)
+        raw = await self.get_raw_span(span_id)
         if "not found" in raw.lower():
             return f"Span {span_id} not found in any session or raw spans."
         return f"# Span {span_id[:8]} (raw, not associated with a turn)\n{raw}"
 
-    def get_raw_span(self, span_id: str) -> str:
+    async def get_raw_span(self, span_id: str) -> str:
         """Get raw span data as formatted JSON.
 
         Useful for debugging trace structure or accessing attributes
@@ -5770,7 +5793,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_raw_span_data(self, span_id: str) -> dict[str, Any]:
+    async def get_raw_span_data(self, span_id: str) -> dict[str, Any]:
         """Structured raw span data (dict) or error."""
         if not self._raw_spans:
             return {"error": "No raw spans available (trace was loaded without span data)."}
@@ -5790,7 +5813,7 @@ class TraceExplorer:
             "available": [s[:6] for s in available],
         }
 
-    def get_raw_spans(self, session_id: str) -> str:
+    async def get_raw_spans(self, session_id: str) -> str:
         """Get all raw spans for a session.
 
         Returns spans in chronological order with their relationships.
@@ -5856,7 +5879,7 @@ class TraceExplorer:
     # Trace Comparison / Diff
     # =========================================================================
 
-    def compare(self, other: TraceExplorer) -> str:
+    async def compare(self, other: TraceExplorer) -> str:
         """Compare this trace with another trace.
 
         Useful for regression analysis - comparing a failing MR trace
@@ -5874,14 +5897,14 @@ class TraceExplorer:
         Returns:
             Formatted diff report.
         """
-        return TraceExplorer.diff(self, other)
+        return await TraceExplorer.diff(self, other)
 
-    def compare_data(self, other: TraceExplorer) -> dict[str, Any]:
+    async def compare_data(self, other: TraceExplorer) -> dict[str, Any]:
         """Structured comparison data for programmatic diffing."""
-        return TraceExplorer.diff_data(self, other)
+        return await TraceExplorer.diff_data(self, other)
 
     @classmethod
-    def diff(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> str:
+    async def diff(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> str:
         """Compare two traces and show differences.
 
         Args:
@@ -6099,7 +6122,7 @@ class TraceExplorer:
         return "\n".join(lines)
 
     @classmethod
-    def diff_data(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> dict[str, Any]:
+    async def diff_data(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> dict[str, Any]:
         """Structured diff data for programmatic consumption."""
         sessions1 = trace1._all_sessions
         sessions2 = trace2._all_sessions
@@ -6258,31 +6281,31 @@ class TraceExplorer:
 # =============================================================================
 
 
-def _handle_experiment_errors(
+async def _handle_experiment_errors(
     base_url: str, experiment_id: str, *, failed_only: bool = True
 ) -> None:
     """Load each session in an experiment and print errors across all traces."""
-    import urllib.error
     import urllib.parse
-    import urllib.request
+
+    import httpx
 
     base_url = base_url.rstrip("/")
     encoded_eid = urllib.parse.quote(experiment_id, safe="")
 
-    try:
-        with urllib.request.urlopen(
-            f"{base_url}/api/eval/experiment/{encoded_eid}/tests", timeout=30
-        ) as resp:
-            tests_data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+    async with httpx.AsyncClient(timeout=30) as _client:
+        try:
+            _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/tests")
+            if _resp.status_code == 404:
+                print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+                sys.exit(1)
+            _resp.raise_for_status()
+            tests_data = _resp.json()
+        except httpx.ConnectError as e:
+            print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        raise
-    except urllib.error.URLError as e:
-        print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
-        sys.exit(1)
-
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     if failed_only:
         tests = [t for t in tests if t.get("passed") == False]  # noqa: E712 — explicit False, not None/missing
@@ -6302,20 +6325,20 @@ def _handle_experiment_errors(
         if not sid:
             continue
         try:
-            trace = TraceExplorer.from_viewer(base_url, sid)
+            trace = await TraceExplorer.from_viewer(base_url, sid)
         except (ValueError, ConnectionError) as e:
             load_errors += 1
             print(f"## {name}\n  Error loading trace: {e}\n")
             continue
 
-        errors_data = trace.get_errors_data()
+        errors_data = await trace.get_errors_data()
         if errors_data["count"] > 0:
             any_errors = True
             print(f"## {name}")
             print(
                 f"   trace-explorer --viewer {shlex.quote(base_url)} --session-id {shlex.quote(sid)}"
             )
-            print(trace.get_errors())
+            print(await trace.get_errors())
             print()
 
     if not any_errors:
@@ -6325,29 +6348,29 @@ def _handle_experiment_errors(
             print("No errors found in any session.")
 
 
-def _handle_experiment_search(base_url: str, experiment_id: str, pattern: str) -> None:
+async def _handle_experiment_search(base_url: str, experiment_id: str, pattern: str) -> None:
     """Search for a pattern across all sessions in an experiment."""
-    import urllib.error
     import urllib.parse
-    import urllib.request
+
+    import httpx
 
     base_url = base_url.rstrip("/")
     encoded_eid = urllib.parse.quote(experiment_id, safe="")
 
-    try:
-        with urllib.request.urlopen(
-            f"{base_url}/api/eval/experiment/{encoded_eid}/tests", timeout=30
-        ) as resp:
-            tests_data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+    async with httpx.AsyncClient(timeout=30) as _client:
+        try:
+            _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/tests")
+            if _resp.status_code == 404:
+                print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+                sys.exit(1)
+            _resp.raise_for_status()
+            tests_data = _resp.json()
+        except httpx.ConnectError as e:
+            print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        raise
-    except urllib.error.URLError as e:
-        print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
-        sys.exit(1)
-
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     if not tests:
         print("No tests found.")
@@ -6365,13 +6388,13 @@ def _handle_experiment_search(base_url: str, experiment_id: str, pattern: str) -
         if not sid:
             continue
         try:
-            trace = TraceExplorer.from_viewer(base_url, sid)
+            trace = await TraceExplorer.from_viewer(base_url, sid)
         except (ValueError, ConnectionError) as e:
             load_errors += 1
             print(f"## {name}\n  Error loading trace: {e}\n")
             continue
 
-        data = trace.search_data(pattern)
+        data = await trace.search_data(pattern)
         if data.match_count > 0:
             total_matches += data.match_count
             sessions_with_matches += 1
@@ -6400,34 +6423,34 @@ def _handle_experiment_search(base_url: str, experiment_id: str, pattern: str) -
         print(f"Total: {total_matches} match(es) across {sessions_with_matches} session(s).")
 
 
-def _handle_experiment_failures(base_url: str, experiment_id: str) -> None:
+async def _handle_experiment_failures(base_url: str, experiment_id: str) -> None:
     """Show eval failure reasons (wrong answer, wrong schema) across all failed sessions.
 
     Complements --errors (which shows Python exceptions) by surfacing the scorer's
     failure reason and the agent's actual output — useful for wrong-answer failures
     that don't produce any exception.
     """
-    import urllib.error
     import urllib.parse
-    import urllib.request
+
+    import httpx
 
     base_url = base_url.rstrip("/")
     encoded_eid = urllib.parse.quote(experiment_id, safe="")
 
-    try:
-        with urllib.request.urlopen(
-            f"{base_url}/api/eval/experiment/{encoded_eid}/tests", timeout=30
-        ) as resp:
-            tests_data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+    async with httpx.AsyncClient(timeout=30) as _client:
+        try:
+            _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/tests")
+            if _resp.status_code == 404:
+                print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+                sys.exit(1)
+            _resp.raise_for_status()
+            tests_data = _resp.json()
+        except httpx.ConnectError as e:
+            print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        raise
-    except urllib.error.URLError as e:
-        print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
-        sys.exit(1)
-
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     tests = tests_data.get("tests", [])
     failed_tests = [t for t in tests if t.get("passed") == False]  # noqa: E712
 
@@ -6445,7 +6468,7 @@ def _handle_experiment_failures(base_url: str, experiment_id: str) -> None:
         if not sid:
             continue
         try:
-            trace = TraceExplorer.from_viewer(base_url, sid)
+            trace = await TraceExplorer.from_viewer(base_url, sid)
         except (ValueError, ConnectionError) as e:
             load_errors += 1
             print(f"## {name}\n  Error loading trace: {e}\n")
@@ -6504,38 +6527,41 @@ def _handle_experiment_failures(base_url: str, experiment_id: str) -> None:
         print(f"({load_errors} session(s) failed to load)")
 
 
-def _handle_experiment(base_url: str, experiment_id: str, *, json_output: bool = False) -> None:
+async def _handle_experiment(
+    base_url: str, experiment_id: str, *, json_output: bool = False
+) -> None:
     """Fetch and display experiment summary from the viewer API."""
-    import urllib.error
     import urllib.parse
-    import urllib.request
+
+    import httpx
 
     base_url = base_url.rstrip("/")
     encoded_eid = urllib.parse.quote(experiment_id, safe="")
 
     # Fetch summary
-    try:
-        with urllib.request.urlopen(
-            f"{base_url}/api/eval/experiment/{encoded_eid}/summary", timeout=30
-        ) as resp:
-            summary = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+    async with httpx.AsyncClient(timeout=30) as _client:
+        try:
+            _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/summary")
+            if _resp.status_code == 404:
+                print(f"Error: Experiment not found: {experiment_id}", file=sys.stderr)
+                sys.exit(1)
+            _resp.raise_for_status()
+            summary = _resp.json()
+        except httpx.ConnectError as e:
+            print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
             sys.exit(1)
-        raise
-    except urllib.error.URLError as e:
-        print(f"Error: Cannot reach viewer at {base_url}: {e}", file=sys.stderr)
-        sys.exit(1)
-
+        except httpx.HTTPStatusError as e:
+            print(f"Error: HTTP {e.response.status_code} from viewer", file=sys.stderr)
+            sys.exit(1)
     # Fetch test results
-    try:
-        with urllib.request.urlopen(
-            f"{base_url}/api/eval/experiment/{encoded_eid}/tests", timeout=30
-        ) as resp:
-            tests_data = json.loads(resp.read())
-    except urllib.error.URLError:
-        tests_data = {"tests": []}
+    tests_data: dict = {"tests": []}
+    async with httpx.AsyncClient(timeout=30) as _client:
+        try:
+            _resp = await _client.get(f"{base_url}/api/eval/experiment/{encoded_eid}/tests")
+            _resp.raise_for_status()
+            tests_data = _resp.json()
+        except httpx.HTTPError:
+            pass  # Fall back to empty tests
 
     tests = tests_data.get("tests", [])
 
@@ -6634,6 +6660,13 @@ def _handle_install_skill() -> None:
 
 def main() -> None:
     """Command-line interface for trace_explorer."""
+    import asyncio
+
+    asyncio.run(_async_main())
+
+
+async def _async_main() -> None:
+    """Async implementation of the CLI."""
     import argparse
 
     _cli_mode.set(True)
@@ -6772,25 +6805,25 @@ Examples (experiment mode):
             )
             sys.exit(1)
         if args.errors:
-            _handle_experiment_errors(args.viewer, args.experiment)
+            await _handle_experiment_errors(args.viewer, args.experiment)
         elif args.failures:
-            _handle_experiment_failures(args.viewer, args.experiment)
+            await _handle_experiment_failures(args.viewer, args.experiment)
         elif args.search:
-            _handle_experiment_search(args.viewer, args.experiment, args.search)
+            await _handle_experiment_search(args.viewer, args.experiment, args.search)
         else:
-            _handle_experiment(args.viewer, args.experiment, json_output=args.json)
+            await _handle_experiment(args.viewer, args.experiment, json_output=args.json)
         return
 
     # Load trace from file or viewer
     try:
         if args.viewer:
-            trace = TraceExplorer.from_viewer(
+            trace = await TraceExplorer.from_viewer(
                 args.viewer,
                 args.session_id,
                 root_generation_index=args.root_generation,
             )
         else:
-            trace = TraceExplorer.from_file(
+            trace = await TraceExplorer.from_file(
                 args.trace_file,
                 root_generation_index=args.root_generation,
             )
@@ -6807,13 +6840,15 @@ Examples (experiment mode):
 
     # --span-id takes priority: jump directly to that span
     if args.span_id:
-        print(trace.find_span(args.span_id, json_output=args.json))
+        print(await trace.find_span(args.span_id, json_output=args.json))
         return
 
     if args.diff:
         # Load second trace for comparison
         try:
-            trace2 = TraceExplorer.from_file(args.diff, root_generation_index=args.root_generation)
+            trace2 = await TraceExplorer.from_file(
+                args.diff, root_generation_index=args.root_generation
+            )
         except FileNotFoundError:
             print(f"Error: File not found: {args.diff}", file=sys.stderr)
             sys.exit(1)
@@ -6821,66 +6856,66 @@ Examples (experiment mode):
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
         if args.json:
-            _print_json(trace.compare_data(trace2))
+            _print_json(await trace.compare_data(trace2))
         else:
-            print(trace.compare(trace2))
+            print(await trace.compare(trace2))
     elif args.raw:
         if args.json:
-            _print_json(trace.get_raw_span_data(args.raw))
+            _print_json(await trace.get_raw_span_data(args.raw))
         else:
-            print(trace.get_raw_span(args.raw))
+            print(await trace.get_raw_span(args.raw))
     elif args.timeline:
         if args.json:
-            _print_json(trace.get_timeline_data())
+            _print_json(await trace.get_timeline_data())
         else:
-            print(trace.get_timeline())
+            print(await trace.get_timeline())
     elif args.first_error:
         if args.json:
-            _print_json(trace.find_first_error_data())
+            _print_json(await trace.find_first_error_data())
         else:
-            print(trace.find_first_error())
+            print(await trace.find_first_error())
     elif args.turn is not None:
         if not args.session:
             print("Error: --turn requires --session", file=sys.stderr)
             sys.exit(1)
         if args.json:
-            turn = trace.get_turn_data(args.session, args.turn)
+            turn = await trace.get_turn_data(args.session, args.turn)
             _print_json(turn.to_dict() if turn else None)
         else:
-            print(trace.get_turn(args.session, args.turn))
+            print(await trace.get_turn(args.session, args.turn))
     elif args.session:
         if args.json:
-            _print_json(trace.get_session_data(args.session).to_dict())
+            _print_json((await trace.get_session_data(args.session)).to_dict())
         else:
-            print(trace.get_session(args.session, concise=not args.verbose))
+            print(await trace.get_session(args.session, concise=not args.verbose))
     elif args.errors:
         if args.json:
-            _print_json(trace.get_errors_data())
+            _print_json(await trace.get_errors_data())
         else:
-            print(trace.get_errors())
+            print(await trace.get_errors())
     elif args.eval:
         if args.json:
-            _print_json(trace.get_eval_context_data())
+            _print_json(await trace.get_eval_context_data())
         else:
-            print(trace.get_eval_context())
+            print(await trace.get_eval_context())
     elif args.harness:
         session_id = args.session if args.session else None
         if args.json:
-            _print_json(trace.get_harness_telemetry_data(session_id))
+            _print_json(await trace.get_harness_telemetry_data(session_id))
         else:
-            print(trace.get_harness_telemetry(session_id))
+            print(await trace.get_harness_telemetry(session_id))
     elif args.search:
         if args.json:
-            _print_json(trace.search_data(args.search))
+            _print_json(await trace.search_data(args.search))
         else:
-            print(trace.search(args.search, concise=not args.verbose))
+            print(await trace.search(args.search, concise=not args.verbose))
     else:
         # Default: show overview
         if args.json:
-            overview = trace.get_overview_data()
+            overview = await trace.get_overview_data()
             _print_json(overview.to_dict() if overview else None)
         else:
-            print(trace.get_overview(concise=not args.verbose))
+            print(await trace.get_overview(concise=not args.verbose))
 
 
 if __name__ == "__main__":

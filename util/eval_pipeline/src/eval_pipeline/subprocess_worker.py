@@ -178,14 +178,14 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
         try:
             from nemo_oo_agents.trace_explorer import TraceExplorer
 
-            _trace = TraceExplorer.from_viewer(_viewer_base, session_id)
+            _trace = await TraceExplorer.from_viewer(_viewer_base, session_id)
         except Exception as e:
             log.warning(f"Failed to load trace for session {session_id}: {e}")
     elif result.trace_file is not None:
         try:
             from nemo_oo_agents.trace_explorer import TraceExplorer
 
-            _trace = TraceExplorer.from_file(str(result.trace_file))
+            _trace = await TraceExplorer.from_file(str(result.trace_file))
         except Exception:
             pass
 
