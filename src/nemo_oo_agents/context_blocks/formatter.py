@@ -25,7 +25,6 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
@@ -38,6 +37,8 @@ from nemo_oo_agents.context_blocks.models import (
     ToolCallInfo,
 )
 from nemo_oo_agents.context_blocks.utils import truncating_pformat
+
+logger = logging.getLogger(__name__)
 
 
 class FormatType(StrEnum):
