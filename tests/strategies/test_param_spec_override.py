@@ -127,3 +127,46 @@ class TestSpecAcceptsTruncationKnobs:
         ann = spec(hidden=True, max_length=20, description="foo")
         assert ann is not None
         assert ann.kwargs == {"hidden": True, "max_length": 20, "description": "foo"}
+
+
+class _NullStringDemo:
+    async def process(
+        self,
+        content: Annotated[str, spec(max_string=None)],
+        summary: str,
+    ) -> None: ...
+
+
+class TestInspectInputsPrefillHonorsParamSpecs:
+    """InspectInputsPrefill.get_code() should emit per-parameter truncation
+    overrides from Annotated[T, spec(...)] metadata rather than using the
+    same config-level defaults for all parameters."""
+
+    def test_max_string_none_override_emits_none_literal(self):
+        """spec(max_string=None) should produce ``pprint(content, ..., max_string=None, ...)``
+        so the parameter is NOT truncated — this is the reported bug."""
+        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
+
+        call = _call(_NullStringDemo.process, {"content": "x" * 1000, "summary": "short"})
+        prefill = InspectInputsPrefill()
+        code = prefill.get_code(call, config=_tc(max_string=500))
+
+        # content should use max_string=None (from spec override)
+        assert "max_string=None" in code
+        # summary should use the config default (500)
+        assert "max_string=500" in code
+
+    def test_max_length_override_in_prefill(self):
+        """spec(max_length=3) should override the config default in the prefill code."""
+        from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
+
+        call = _call(_Demo.analyze, {"short": [1, 2, 3], "full": [4, 5, 6], "plain": [7, 8, 9]})
+        prefill = InspectInputsPrefill()
+        code = prefill.get_code(call, config=_tc(max_length=10))
+
+        # short has spec(max_length=3) override
+        assert "pprint(short, max_length=3," in code
+        # full has spec(max_length=20) override
+        assert "pprint(full, max_length=20," in code
+        # plain has no override → config default (10)
+        assert "pprint(plain, max_length=10," in code

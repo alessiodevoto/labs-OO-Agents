@@ -162,9 +162,13 @@ class InspectInputsPrefill:
             if _is_media(call.kwargs.get(param)):
                 code_lines.append(f"show({param})")
             else:
+                # Honor per-parameter spec() overrides from Annotated metadata.
+                p_spec = call.param_specs.get(param, {})
+                p_ml = p_spec.get("max_length", max_length)
+                p_ms = p_spec.get("max_string", max_string)
+                p_md = p_spec.get("max_depth", max_depth)
                 code_lines.append(
-                    f"pprint({param}, max_length={max_length}, "
-                    f"max_string={max_string}, max_depth={max_depth})"
+                    f"pprint({param}, max_length={p_ml}, max_string={p_ms}, max_depth={p_md})"
                 )
 
         # Always show return type for complex types (show_return_type hardcoded to True)
