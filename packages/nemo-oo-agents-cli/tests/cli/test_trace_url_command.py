@@ -6,8 +6,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from nemo_oo_agents_cli.tui.commands import TraceUrlCommand, CommandResult
+from nemo_oo_agents_cli.tui.commands import TraceUrlCommand
 
 
 @pytest.fixture
@@ -48,7 +47,10 @@ async def test_trace_url_default_endpoint(cmd):
             with patch.dict(os.environ, env, clear=True):
                 result = await cmd.execute([])
     assert result.success
-    assert "http://localhost:5001/traces/view?session_id=tui-20250508-120000-abcdef12" in result.outputs[0].content
+    assert (
+        "http://localhost:5001/traces/view?session_id=tui-20250508-120000-abcdef12"
+        in result.outputs[0].content
+    )
 
 
 @pytest.mark.asyncio
@@ -58,7 +60,10 @@ async def test_trace_url_custom_endpoint(cmd):
         with patch.dict(os.environ, {"OTLP_ENDPOINT": "http://myviewer:8080/v1/traces"}):
             result = await cmd.execute([])
     assert result.success
-    assert "http://myviewer:8080/traces/view?session_id=tui-20250508-120000-abcdef12" in result.outputs[0].content
+    assert (
+        "http://myviewer:8080/traces/view?session_id=tui-20250508-120000-abcdef12"
+        in result.outputs[0].content
+    )
 
 
 @pytest.mark.asyncio
