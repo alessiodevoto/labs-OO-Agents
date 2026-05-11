@@ -105,6 +105,12 @@ class BashSession:
             pass
         diag = "\n".join(parts)
         logger.error(diag)
+        try:
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().shell_death(context, diag)
+        except Exception:
+            pass  # telemetry must not break recovery
         return diag
 
     async def start(self) -> None:
