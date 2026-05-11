@@ -49,7 +49,7 @@ class BashSession:
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
-        self._last_successful_command: float = 0.0
+        self._last_successful_command: float | None = None
         self._last_command: str = ""
         self._start_count: int = 0
 
@@ -62,9 +62,12 @@ class BashSession:
         """Capture diagnostic info about why bash died. Logs at ERROR level."""
         proc = self._process
         parts = [f"[BASH_DEATH] context={context}"]
-        parts.append(
-            f"  last_successful_cmd_ago={time.time() - self._last_successful_command:.1f}s"
-        )
+        if self._last_successful_command is not None:
+            parts.append(
+                f"  last_successful_cmd_ago={time.time() - self._last_successful_command:.1f}s"
+            )
+        else:
+            parts.append("  last_successful_cmd_ago=never")
         parts.append(f"  last_command={self._last_command[:200]!r}")
         parts.append(f"  start_count={self._start_count}")
         parts.append(f"  cwd={self._cwd}")
@@ -94,7 +97,7 @@ class BashSession:
             parts.append("  cwd_stat=OK")
         except OSError as e:
             parts.append(f"  cwd_stat=FAILED: {e}")
-        # FD count of parent process
+        # FD count of parent — detects FD leaks that can trigger OOM-killer
         try:
             fd_count = len(os.listdir("/proc/self/fd"))
             parts.append(f"  parent_fd_count={fd_count}")
