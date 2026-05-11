@@ -216,6 +216,7 @@ class HistoryReplay:
     session_id: str  # short (8-char) id for the header label
     show_header: bool = True
     show_footer: bool = True
+    omitted_count: int = 0  # number of older turns that were truncated
 
     def to_json(self) -> dict:
         return {
