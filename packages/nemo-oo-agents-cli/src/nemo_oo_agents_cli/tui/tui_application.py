@@ -654,11 +654,13 @@ class TUIApplication:
                 if self._config.tui.goal_mode:
                     # Set goal-mode context block so the agent sees the behavioral instruction
                     if hasattr(agent, "context"):
-                        agent.context["goal_mode"] = "You are in goal mode:
-- Keep going until every item on your todo list is complete.
-- Add comments to todo items as you work to track progress and findings.
-- Verify each item before closing — then add a final comment explaining what you verified.
-- Replan as you learn: add, close, or edit todos to keep the plan current."
+                        agent.context["goal_mode"] = (
+                            "You are in goal mode:\n"
+                            "- Keep going until every item on your todo list is complete.\n"
+                            "- Add comments to todo items as you work to track progress and findings.\n"
+                            "- Verify each item before closing — then add a final comment explaining what you verified.\n"
+                            "- Replan as you learn: add, close, or edit todos to keep the plan current."
+                        )
                     todo_mgr = getattr(agent, "todo", None)
                     if todo_mgr is not None:
                         open_todos = [
@@ -668,9 +670,7 @@ class TUIApplication:
                         ]
                         if open_todos:
                             next_todo = open_todos[0]
-                            goal_msg = (
-                                f"You are in goal mode. Next open todo: [{next_todo.id}] {next_todo.title}"
-                            )
+                            goal_msg = f"You are in goal mode. Next open todo: [{next_todo.id}] {next_todo.title}"
                             if next_todo.notes:
                                 goal_msg += f"\nNotes: {next_todo.notes}"
                             notification = {"user_messages": [goal_msg]}
