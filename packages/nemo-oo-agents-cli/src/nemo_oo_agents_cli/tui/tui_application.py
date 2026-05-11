@@ -677,9 +677,9 @@ class TUIApplication:
                             goal_injected = True
                             logger.info("[DISPATCHER] goal-mode injected todo %s", next_todo.id)
                         else:
-                            # All todos are blocked — ask agent to unblock
-                            all_open = todo_mgr.list_todos(status="open")
-                            if all_open:
+                            # No unblocked todos — check if there are blocked ones
+                            all_blocked = todo_mgr.list_todos(status="blocked")
+                            if all_blocked:
                                 goal_msg = (
                                     "You are in goal mode. All remaining todos are blocked. "
                                     "Please add new todos or resolve blockers to continue."
