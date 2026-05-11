@@ -23,9 +23,17 @@ buffer is set, i.e. exactly the stray-write case we care about.
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable
 from typing import IO, Any
+
+# Strip ANSI escape sequences for pattern matching.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub("", s)
 
 
 class _StrayStreamForwarder:
@@ -92,12 +100,23 @@ class _StrayStreamForwarder:
 
     # ── internals ──────────────────────────────────────────────────────
 
+    # Patterns litellm prints to stdout on every retry — pure noise for TUI users.
+    _LITELLM_NOISE = (
+        "Give Feedback / Get Help:",
+        "LiteLLM.Info:",
+        "Provider List: https://docs.litellm.ai/docs/providers",
+    )
+
     def _emit_line(self, line: str) -> None:
         """Wrap a single line in the configured ANSI style and emit it."""
         # Always terminate with a newline so the TUI's block consumer
         # places the next block on a fresh line. Skip purely empty lines
         # to avoid runs of blank chunks from adjacent "\n\n" sequences.
         if not line and not self._prefix:
+            return
+        # Suppress known litellm noise (ANSI-stripped check).
+        stripped = _strip_ansi(line)
+        if any(pat in stripped for pat in self._LITELLM_NOISE):
             return
         styled = f"\x1b[{self._ansi_color}m{self._prefix}{line}\x1b[0m\n"
         try:
