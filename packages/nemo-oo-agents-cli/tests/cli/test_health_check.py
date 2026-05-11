@@ -7,9 +7,7 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from nemo_oo_agents_cli.tui.health_check import (
-    HealthCheckResult,
     _classify_error,
     _detect_provider,
     _get_expected_env_var,
@@ -98,18 +96,14 @@ class TestClassifyError:
     def test_model_not_found_suggests_config_creation(self):
         llm = _make_llm(model="fake-model")
         exc = Exception("The model `fake-model` does not exist")
-        with patch(
-            "nemo_oo_agents_cli.tui.health_check._has_project_config", return_value=False
-        ):
+        with patch("nemo_oo_agents_cli.tui.health_check._has_project_config", return_value=False):
             result = _classify_error(exc, llm)
         assert "create .nemo_oo_agents/config.toml" in result.fix_hint
 
     def test_model_not_found_suggests_edit_config(self):
         llm = _make_llm(model="fake-model")
         exc = Exception("The model `fake-model` does not exist")
-        with patch(
-            "nemo_oo_agents_cli.tui.health_check._has_project_config", return_value=True
-        ):
+        with patch("nemo_oo_agents_cli.tui.health_check._has_project_config", return_value=True):
             result = _classify_error(exc, llm)
         assert "edit" in result.fix_hint.lower() or "Or edit" in result.fix_hint
 
@@ -130,18 +124,14 @@ class TestClassifyError:
     def test_connection_with_yaml_mentions_api_base(self):
         llm = _make_llm(model="my-model")
         exc = ConnectionError("Connection refused")
-        with patch(
-            "nemo_oo_agents_cli.tui.health_check._has_llm_config_yaml", return_value=True
-        ):
+        with patch("nemo_oo_agents_cli.tui.health_check._has_llm_config_yaml", return_value=True):
             result = _classify_error(exc, llm)
         assert "api_base" in result.fix_hint
 
     def test_connection_without_yaml_mentions_provider_down(self):
         llm = _make_llm(model="my-model")
         exc = ConnectionError("Connection refused")
-        with patch(
-            "nemo_oo_agents_cli.tui.health_check._has_llm_config_yaml", return_value=False
-        ):
+        with patch("nemo_oo_agents_cli.tui.health_check._has_llm_config_yaml", return_value=False):
             result = _classify_error(exc, llm)
         assert "temporarily down" in result.fix_hint
 
