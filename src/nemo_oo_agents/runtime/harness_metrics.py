@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ── Limits ──────────────────────────────────────────────────────────
 _MAX_LIST_ITEMS = 20
 _MAX_STRING_CHARS = 500
+_MAX_DIAG_CHARS = 1000  # _diagnose_death output is 400-700+ chars
 _MAX_CODE_PREVIEW_CHARS = 200
 
 
@@ -351,7 +352,7 @@ class HarnessMetrics(BaseModel):
             self.shell_deaths,
             ErrorRecord(
                 error_type=_truncate(context),
-                message=_truncate(diagnostics, _MAX_STRING_CHARS),
+                message=_truncate(diagnostics, _MAX_DIAG_CHARS),
             ),
         )
 
