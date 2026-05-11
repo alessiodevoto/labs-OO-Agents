@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ── Limits ──────────────────────────────────────────────────────────
 _MAX_LIST_ITEMS = 20
 _MAX_STRING_CHARS = 500
+_MAX_DIAG_CHARS = 1000  # _diagnose_death output is 400-700+ chars
 _MAX_CODE_PREVIEW_CHARS = 200
 
 
@@ -163,6 +164,7 @@ class HarnessMetrics(BaseModel):
 
     # ── Tool Usage (shell/repo) ──
     shell_failures: list[ErrorRecord] = Field(default_factory=list)
+    shell_deaths: list[ErrorRecord] = Field(default_factory=list)
     repo_failures: list[ErrorRecord] = Field(default_factory=list)
     tool_avoidance: list[str] = Field(default_factory=list)
 
@@ -341,6 +343,16 @@ class HarnessMetrics(BaseModel):
                 error_type=_truncate(tool_method),
                 message=_truncate(message),
                 code_preview=_truncate(code_preview, _MAX_CODE_PREVIEW_CHARS),
+            ),
+        )
+
+    def shell_death(self, context: str, diagnostics: str) -> None:
+        """Record a bash process death event with diagnostics."""
+        self._append_error(
+            self.shell_deaths,
+            ErrorRecord(
+                error_type=_truncate(context),
+                message=_truncate(diagnostics, _MAX_DIAG_CHARS),
             ),
         )
 
@@ -808,6 +820,26 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "Shell failure messages",
         "Tool Usage",
         lambda m: [e.message for e in m.shell_failures],
+        True,
+    ),
+    SchemaEntry(
+        "harness.shell_death.count",
+        "Shell process deaths",
+        "Tool Usage",
+        lambda m: len(m.shell_deaths),
+    ),
+    SchemaEntry(
+        "harness.shell_death.contexts",
+        "Shell death contexts",
+        "Tool Usage",
+        lambda m: [e.error_type for e in m.shell_deaths],
+        True,
+    ),
+    SchemaEntry(
+        "harness.shell_death.diagnostics",
+        "Shell death diagnostics",
+        "Tool Usage",
+        lambda m: [e.message for e in m.shell_deaths],
         True,
     ),
     SchemaEntry(
