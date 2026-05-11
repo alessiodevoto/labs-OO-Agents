@@ -11,8 +11,10 @@ interactive I/O that must happen *during* execution (spinners, prompts).
 import abc
 import datetime
 import logging
+import os
 import re
 import shlex
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -1485,9 +1487,6 @@ class TraceUrlCommand(Command):
         }
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        import os
-        import urllib.parse
-
         try:
             from nemo_oo_agents.tracing import get_session
         except ImportError:
