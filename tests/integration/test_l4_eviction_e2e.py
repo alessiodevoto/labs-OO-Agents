@@ -210,6 +210,22 @@ class TestUnquoteStrings:
         assert result == text
 
 
+    def test_triple_quote_string_preserved(self):
+        """String consisting of triple quotes (''') is not deleted by unquote logic."""
+        from nemo_oo_agents.agentdoc import pformat
+
+        # Edge case: input is literally 3 single-quote chars
+        result = pformat("'''", unquote_strings=True)
+        assert result == "'''", f"Expected '''' but got {repr(result)}"
+
+    def test_string_with_embedded_triple_quotes(self):
+        """String containing triple quotes inside is preserved."""
+        from nemo_oo_agents.agentdoc import pformat
+
+        text = "before''' after"
+        result = pformat(text, unquote_strings=True)
+        assert result == text
+
 # ── Post-render event collapse ───────────────────────────────────────────
 
 
