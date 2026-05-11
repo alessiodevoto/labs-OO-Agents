@@ -1825,9 +1825,7 @@ class TimeTravelCommand(Command):
             # Try matching by session name
             all_sessions = SessionManager.list_sessions(limit=100)
             matches = [
-                s.id
-                for s in all_sessions
-                if s.name and session_prefix.lower() in s.name.lower()
+                s.id for s in all_sessions if s.name and session_prefix.lower() in s.name.lower()
             ]
         if not matches:
             return CommandResult.err(
@@ -1851,23 +1849,21 @@ class TimeTravelCommand(Command):
 
         # --- 3. Verify the target tag exists in the source DB ---
         try:
-            src_conn = sqlite3.connect(str(source_db_path))
-            src_conn.row_factory = sqlite3.Row
-            row = src_conn.execute(
-                "SELECT insertion_order FROM events WHERE tag = ?", (target_tag,)
-            ).fetchone()
-            src_conn.close()
+            with sqlite3.connect(str(source_db_path)) as src_conn:
+                src_conn.row_factory = sqlite3.Row
+                row = src_conn.execute(
+                    "SELECT insertion_order FROM events WHERE tag = ?", (target_tag,)
+                ).fetchone()
         except Exception as e:
             return CommandResult.err(f"Failed to read source session: {e}")
 
         if row is None:
             # Show available tags to help the user
             try:
-                src_conn = sqlite3.connect(str(source_db_path))
-                last_tags = src_conn.execute(
-                    "SELECT tag, event_type FROM events ORDER BY insertion_order DESC LIMIT 10"
-                ).fetchall()
-                src_conn.close()
+                with sqlite3.connect(str(source_db_path)) as src_conn:
+                    last_tags = src_conn.execute(
+                        "SELECT tag, event_type FROM events ORDER BY insertion_order DESC LIMIT 10"
+                    ).fetchall()
                 hint_lines = [f"  tag={r[0]} ({r[1]})" for r in reversed(last_tags)]
                 hint = "\nRecent tags:\n" + "\n".join(hint_lines)
             except Exception:
@@ -1890,18 +1886,15 @@ class TimeTravelCommand(Command):
 
         # --- 5. Truncate the new DB ---
         try:
-            conn = sqlite3.connect(str(new_db_path))
-
-            # Delete events after the target tag
-            conn.execute(
-                "DELETE FROM events WHERE insertion_order > ?",
-                (target_insertion_order,),
-            )
+            with sqlite3.connect(str(new_db_path)) as conn:
+                # Delete events after the target tag
+                conn.execute(
+                    "DELETE FROM events WHERE insertion_order > ?",
+                    (target_insertion_order,),
+                )
 
             # Clean active_tags: keep only tags that still exist in events
-            conn.execute(
-                "DELETE FROM active_tags WHERE tag NOT IN (SELECT tag FROM events)"
-            )
+            conn.execute("DELETE FROM active_tags WHERE tag NOT IN (SELECT tag FROM events)")
 
             # Remove snapshots created after the target event's timestamp
             # Get the timestamp of the target event to compare against snapshot created_at
@@ -1931,15 +1924,11 @@ class TimeTravelCommand(Command):
             new_name = f"TimeTravel ({original_name}, tag {target_tag})"
 
             # Get max insertion_order in the truncated DB
-            max_order_row = conn.execute(
-                "SELECT MAX(insertion_order) FROM events"
-            ).fetchone()
+            max_order_row = conn.execute("SELECT MAX(insertion_order) FROM events").fetchone()
             next_order = (max_order_row[0] or 0) + 1
 
             # Get max position in active_tags
-            max_pos_row = conn.execute(
-                "SELECT MAX(position) FROM active_tags"
-            ).fetchone()
+            max_pos_row = conn.execute("SELECT MAX(position) FROM active_tags").fetchone()
             next_pos = (max_pos_row[0] or 0) + 1
 
             # Compute next tag number
@@ -1975,7 +1964,14 @@ class TimeTravelCommand(Command):
             conn.execute(
                 "INSERT INTO events (tag, event_id, event_type, status, data, insertion_order) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (rename_tag, rename_event_id, "TUISessionRename", "active", rename_data, next_order),
+                (
+                    rename_tag,
+                    rename_event_id,
+                    "TUISessionRename",
+                    "active",
+                    rename_data,
+                    next_order,
+                ),
             )
             conn.execute(
                 "INSERT INTO active_tags (position, tag) VALUES (?, ?)",
@@ -2029,6 +2025,7 @@ class TimeTravelCommand(Command):
         result = CommandResult(success=True, outputs=outputs)
         result.new_session_manager = new_sm
         return result
+
 
 class CommandRegistry:
     """Registry of command instances."""
