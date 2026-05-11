@@ -26,13 +26,17 @@ logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_CHARS = 30_000
 _DRAIN_TIMEOUT = 0.05  # Seconds to wait for remaining output after sentinel
-_ACCUMULATE_POLL = 0.1  # Seconds between stream read attempts during execution
 _SIGTERM_GRACE = 5.0  # Seconds to wait for sentinel after SIGTERM
 _SIGKILL_GRACE = 2.0  # Seconds to wait for sentinel after SIGKILL
 
 
 class BashSession:
     """A persistent bash shell session with dedicated control channel.
+
+    Commands are serialized via an internal asyncio.Lock — concurrent
+    ``run()`` / ``run_stream()`` calls from the same event loop will queue
+    and execute one at a time.  This is safe but sequential; for true
+    parallelism, create multiple BashSession instances.
 
     Usage::
 
@@ -49,6 +53,7 @@ class BashSession:
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
+        self._lock = asyncio.Lock()
         self._last_successful_command: float | None = None
         self._last_command: str = ""
         self._start_count: int = 0
@@ -57,6 +62,29 @@ class BashSession:
     def cwd(self) -> Path:
         """Current working directory of the session."""
         return self._cwd
+
+    def __del__(self) -> None:
+        """Best-effort cleanup: kill the bash subprocess if still running."""
+        proc = self._process
+        if proc is not None and proc.returncode is None:
+            try:
+                # During interpreter shutdown, module globals (os, signal) may
+                # be None, causing TypeError. Broad except handles all cases.
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    async def __aenter__(self) -> "BashSession":
+        """Support ``async with BashSession() as session:`` usage."""
+        await self.start()
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.close()
 
     def _diagnose_death(self, context: str) -> str:
         """Capture diagnostic info about why bash died. Logs at ERROR level."""
@@ -170,6 +198,27 @@ class BashSession:
         """Run a command and return (stdout, stderr, exit_code).
 
         The session persists state: cd, export, etc. carry over.
+        Concurrent calls are serialized via an internal lock.
+
+        On timeout, exit_code is 124 — same as the ``timeout(1)`` command.
+        Use ``run_with_timeout_flag()`` if you need to distinguish a real
+        timeout from a command that exits 124 naturally.
+        """
+        async with self._lock:
+            stdout, stderr, code, _ = await self._run_unlocked(command, timeout)
+            return stdout, stderr, code
+
+    async def run_with_timeout_flag(
+        self, command: str, timeout: float = 30.0
+    ) -> tuple[str, str, int, bool]:
+        """Like run(), but returns a 4th element: whether the command timed out."""
+        async with self._lock:
+            return await self._run_unlocked(command, timeout)
+
+    async def _run_unlocked(self, command: str, timeout: float) -> tuple[str, str, int, bool]:
+        """Actual run implementation (caller must hold self._lock).
+
+        Returns (stdout, stderr, exit_code, timed_out).
         """
         if not self._started:
             await self.start()
@@ -205,7 +254,7 @@ class BashSession:
         elif ctrl_lines:
             self._last_successful_command = time.time()
 
-        return stdout.strip(), stderr.strip(), exit_code
+        return stdout.strip(), stderr.strip(), exit_code, timed_out
 
     async def run_stream(
         self, command: str, timeout: float = 30.0
@@ -213,8 +262,19 @@ class BashSession:
         """Run a command and yield (stream_name, chunk) pairs as output arrives.
 
         stream_name is 'stdout' or 'stderr'. After the command finishes,
-        yields ('__done__', exit_code_str). Caller must interpret that sentinel.
+        yields ('__done__', 'exit_code,timed_out_flag') where timed_out_flag
+        is '1' if the command timed out, '0' otherwise.
+
+        Concurrent calls are serialized via an internal lock.
         """
+        async with self._lock:
+            async for item in self._run_stream_unlocked(command, timeout):
+                yield item
+
+    async def _run_stream_unlocked(
+        self, command: str, timeout: float
+    ) -> AsyncIterator[tuple[str, str]]:
+        """Actual run_stream implementation (caller must hold self._lock)."""
         if not self._started:
             await self.start()
 
@@ -259,10 +319,7 @@ class BashSession:
         async def _read_stream(stream, name, queue):
             try:
                 while True:
-                    try:
-                        chunk = await asyncio.wait_for(stream.read(4096), timeout=_ACCUMULATE_POLL)
-                    except TimeoutError:
-                        continue
+                    chunk = await stream.read(4096)
                     if not chunk:
                         break
                     queue.put_nowait((name, chunk.decode("utf-8", errors="replace")))
@@ -371,18 +428,16 @@ class BashSession:
 
         async def accumulate(stream: asyncio.StreamReader, buf: list[bytes]) -> None:
             """Read from stream until EOF or external cancellation."""
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(stream.read(65536), timeout=_ACCUMULATE_POLL)
+            try:
+                while True:
+                    chunk = await stream.read(65536)
                     if not chunk:
                         return
                     buf.append(chunk)
-                except TimeoutError:
-                    continue
-                except asyncio.CancelledError:
-                    return
-                except Exception:
-                    return
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                return
 
         stdout_task = asyncio.create_task(accumulate(proc.stdout, stdout_buf))
         stderr_task = asyncio.create_task(accumulate(proc.stderr, stderr_buf))

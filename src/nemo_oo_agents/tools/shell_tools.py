@@ -17,6 +17,7 @@ The LLM discovers tools via ``doc(self.shell)`` and sees the current
 working directory in ``pprint(self)`` thanks to ``__repr__``.
 """
 
+import contextlib
 import difflib
 import logging
 import re
@@ -106,6 +107,30 @@ class ShellTools(Skill):
             parts.append(f"file={loc!r}")
         return f"ShellTools({', '.join(parts)})"
 
+    @contextlib.asynccontextmanager
+    async def cwd_guard(self):
+        """Save and restore the session cwd around a block.
+
+        Use when lending this ShellTools to a subagent that may change
+        directories::
+
+            async with shell.cwd_guard():
+                await doer.execute(todo)
+            # cwd is restored here regardless of what the doer did
+        """
+        saved_cwd = self._session.cwd
+        saved_file = self._current_file
+        saved_line = self._current_line
+        try:
+            yield
+        finally:
+            if self._session.cwd != saved_cwd:
+                # Use run() which acquires the lock normally — this ensures
+                # we don't interleave with an in-flight command.
+                await self._session.run(f"cd {_sq(str(saved_cwd))}")
+            self._current_file = saved_file
+            self._current_line = saved_line
+
     # ------------------------------------------------------------------
     # run
     # ------------------------------------------------------------------
@@ -124,8 +149,9 @@ class ShellTools(Skill):
             result = await self.shell.run("git status")
             result = await self.shell.run("python -m pytest tests/ -x", timeout=300)
         """
-        stdout, stderr, code = await self._session.run(command, timeout=timeout)
-        timed_out = code == 124 and not stdout and not stderr
+        stdout, stderr, code, timed_out = await self._session.run_with_timeout_flag(
+            command, timeout=timeout
+        )
         result = RunResult(
             stdout=stdout,
             stderr=stderr,
@@ -652,7 +678,13 @@ class ShellTools(Skill):
                     break
 
     def _resolve(self, path: str) -> Path:
-        """Resolve a path relative to the session cwd."""
+        """Resolve a path relative to the session cwd.
+
+        Safe to call without holding the session lock: captures cwd at call
+        time, and callers perform file I/O synchronously (no await between
+        resolve and read/write), so no concurrent command can change cwd
+        in between.
+        """
         p = Path(path)
         return p if p.is_absolute() else self._session.cwd / p
 
