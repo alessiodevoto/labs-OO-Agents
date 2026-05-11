@@ -649,7 +649,18 @@ class TUIApplication:
             # waiting for user input.
             goal_injected = False
             if self._config is not None and getattr(self._config, "tui", None) is not None:
+                if not self._config.tui.goal_mode and hasattr(agent, "context"):
+                    agent.context.pop("goal_mode", None)
                 if self._config.tui.goal_mode:
+                    # Set goal-mode context block so the agent sees the behavioral instruction
+                    if hasattr(agent, "context"):
+                        agent.context["goal_mode"] = (
+                            "You are in goal mode:\n"
+                            "- Keep going until every item on your todo list is complete.\n"
+                            "- Add comments to todo items as you work to track progress and findings.\n"
+                            "- Verify each item before closing — then add a final comment explaining what you verified.\n"
+                            "- Replan as you learn: add, close, or edit todos to keep the plan current."
+                        )
                     todo_mgr = getattr(agent, "todo", None)
                     if todo_mgr is not None:
                         open_todos = [
@@ -659,14 +670,23 @@ class TUIApplication:
                         ]
                         if open_todos:
                             next_todo = open_todos[0]
-                            goal_msg = (
-                                f"[goal-mode] Next open todo: [{next_todo.id}] {next_todo.title}"
-                            )
+                            goal_msg = f"You are in goal mode. Next open todo: [{next_todo.id}] {next_todo.title}"
                             if next_todo.notes:
                                 goal_msg += f"\nNotes: {next_todo.notes}"
                             notification = {"user_messages": [goal_msg]}
                             goal_injected = True
                             logger.info("[DISPATCHER] goal-mode injected todo %s", next_todo.id)
+                        else:
+                            # No unblocked todos — check if there are blocked ones
+                            all_blocked = todo_mgr.list_todos(status="blocked")
+                            if all_blocked:
+                                goal_msg = (
+                                    "You are in goal mode. All remaining todos are blocked. "
+                                    "Please add new todos or resolve blockers to continue."
+                                )
+                                notification = {"user_messages": [goal_msg]}
+                                goal_injected = True
+                                logger.info("[DISPATCHER] goal-mode: all todos blocked")
 
             if goal_injected:
                 self._on_dispatcher_dequeued()

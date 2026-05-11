@@ -268,15 +268,23 @@ class TodoManager(Skill):
     # ── QUERIES ───────────────────────────────────
 
     def list_todos(self, status: str | None = None) -> list[Todo]:
-        """List todos, optionally filtered by status ('open', 'done', 'blocked')."""
+        """List todos, optionally filtered by status ('open', 'done', 'blocked').
+
+        Blocked status is computed dynamically from dependencies — a todo with
+        unfinished deps is treated as 'blocked' even if its stored status is 'open'.
+        """
         todos = [self._todos[i] for i in self._order if i in self._todos]
-        # Auto-compute blocked status based on deps
-        for t in todos:
+        if status is None:
+            return todos
+
+        def _effective(t: Todo) -> str:
             if t.status == "open" and t.is_blocked(self._todos):
-                t.status = "blocked"
-        if status is not None:
-            todos = [t for t in todos if t.status == status]
-        return todos
+                return "blocked"
+            if t.status == "blocked" and not t.is_blocked(self._todos):
+                return "open"
+            return t.status
+
+        return [t for t in todos if _effective(t) == status]
 
     # ── STATUS ────────────────────────────────────
 

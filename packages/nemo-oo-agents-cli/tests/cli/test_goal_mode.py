@@ -52,13 +52,13 @@ class TestGoalModeCommand:
 
     async def test_status_off(self, goal_cmd, mock_config):
         mock_config.goal_mode = False
-        result = await goal_cmd.execute(["status"])
+        result = await goal_cmd.execute([])
         assert result.success
         assert any("off" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_status_on(self, goal_cmd, mock_config):
         mock_config.goal_mode = True
-        result = await goal_cmd.execute(["status"])
+        result = await goal_cmd.execute([])
         assert result.success
         assert any("on" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
@@ -76,8 +76,7 @@ class TestGoalModeCommand:
 
     def test_validate_no_args(self, goal_cmd):
         ok, msg = goal_cmd.validate_args([])
-        assert not ok
-        assert "Usage" in msg
+        assert ok
 
     def test_validate_bad_subcmd(self, goal_cmd):
         ok, msg = goal_cmd.validate_args(["maybe"])
@@ -85,7 +84,7 @@ class TestGoalModeCommand:
         assert "Unknown" in msg
 
     def test_validate_good(self, goal_cmd):
-        for sub in ("on", "off", "status"):
+        for sub in ("on", "off"):
             ok, msg = goal_cmd.validate_args([sub])
             assert ok
             assert msg is None
@@ -118,7 +117,7 @@ class TestGoalModeDispatcher:
 
         def record_and_stop(ag, msg):
             turns_seen.append(msg)
-            if "[goal-mode]" in msg:
+            if "You are in goal mode" in msg:
                 # Turn off goal mode after injection to stop the loop
                 config.tui.goal_mode = False
 
@@ -130,7 +129,7 @@ class TestGoalModeDispatcher:
             await h.wait_for(lambda: len(turns_seen) >= 2, timeout=3.0)
 
         assert turns_seen[0] == "start"
-        assert "[goal-mode]" in turns_seen[1]
+        assert "You are in goal mode" in turns_seen[1]
         assert "Fix the bug" in turns_seen[1]
 
     async def test_goal_mode_off_does_not_inject(self):
@@ -196,7 +195,7 @@ class TestGoalModeDispatcher:
 
         def record(ag, msg):
             turns_seen.append(msg)
-            if "[goal-mode]" in msg:
+            if "You are in goal mode" in msg:
                 config.tui.goal_mode = False
 
         agent.script = [record, record]
@@ -206,6 +205,6 @@ class TestGoalModeDispatcher:
             await h.wait_for(lambda: len(turns_seen) >= 2, timeout=3.0)
 
         # Should inject the non-blocked "Prerequisite" todo, not the blocked one
-        assert "[goal-mode]" in turns_seen[1]
+        assert "You are in goal mode" in turns_seen[1]
         assert "Prerequisite" in turns_seen[1]
         assert "Blocked task" not in turns_seen[1]

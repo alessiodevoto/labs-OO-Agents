@@ -1054,35 +1054,41 @@ class GoalModeCommand(Command):
     def name(self) -> str:
         return "goal-mode"
 
-    @classmethod
-    def help_text(cls) -> dict[str, str]:
-        return {
-            "/goal-mode on": "Enable goal mode (auto-continue with open todos)",
-            "/goal-mode off": "Disable goal mode",
-            "/goal-mode status": "Show current goal mode state",
-        }
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        state = "on" if self.config.goal_mode else "off"
+        return {"/goal-mode [on|off]": f"Toggle goal mode (currently {state})"}
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if not args:
-            return False, "Usage: /goal-mode <on|off|status>"
-        if args[0].lower() not in ("on", "off", "status"):
-            return False, f"Unknown subcommand `{args[0]}`"
+        if args and args[0].lower() not in ("on", "off"):
+            return False, f"Unknown argument `{args[0]}`. Use on or off."
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        subcmd = args[0].lower()
-
-        if subcmd == "status":
+        if not args:
             state = "on" if self.config.goal_mode else "off"
             return CommandResult.ok(TextOutput(f"Goal mode: {state}", "info"))
 
+        subcmd = args[0].lower()
+
         if subcmd == "on":
             self.config.goal_mode = True
-            return CommandResult.ok(
-                TextOutput(
-                    "Goal mode enabled. Agent will auto-continue with open todos.", "success"
-                )
-            )
+            # Build goal-mode trigger message if there are open todos
+            agent_msg = None
+            todo_mgr = getattr(self.agent, "todo", None)
+            if todo_mgr is not None:
+                open_todos = [
+                    t
+                    for t in todo_mgr.list_todos(status="open")
+                    if not t.is_blocked(todo_mgr._todos)
+                ]
+                if open_todos:
+                    t = open_todos[0]
+                    agent_msg = f"You are in goal mode. Next open todo: [{t.id}] {t.title}"
+                    if t.notes:
+                        agent_msg += f"\nNotes: {t.notes}"
+            result = CommandResult.ok(TextOutput("Goal mode enabled.", "success"))
+            result.agent_message = agent_msg
+            return result
 
         # off
         self.config.goal_mode = False
