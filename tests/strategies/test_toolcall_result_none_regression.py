@@ -41,6 +41,7 @@ from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _resp(content: str, tool_calls: list | None = None) -> LLMResponse:
     """Create a test LLM response."""
     finish_reason = "tool_calls" if tool_calls else "stop"
@@ -127,8 +128,7 @@ class TestReturnResultToolCallPath:
         # Find the ToolCallEvent for "call_bad"
         events = agent_instance.event_manager.values()
         tool_call_events = [
-            e for e in events
-            if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_bad"
+            e for e in events if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_bad"
         ]
         assert len(tool_call_events) == 1, f"Expected 1 ToolCallEvent, got {len(tool_call_events)}"
 
@@ -138,7 +138,10 @@ class TestReturnResultToolCallPath:
             "GenerationError is raised — this would corrupt the next session's context."
         )
         assert tc_event.result.result_status == ResultStatus.ERROR
-        assert "session exhausted" in tc_event.result.content.lower() or "validation failed" in tc_event.result.content.lower()
+        assert (
+            "session exhausted" in tc_event.result.content.lower()
+            or "validation failed" in tc_event.result.content.lower()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +186,7 @@ class TestInlineReturnResultPath:
 
         events = agent_instance.event_manager.values()
         tool_call_events = [
-            e for e in events
-            if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_inline"
+            e for e in events if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_inline"
         ]
         assert len(tool_call_events) == 1
 
@@ -432,8 +434,7 @@ class TestNonGenerationErrorSafety:
 
         events = agent_instance.event_manager.values()
         bad_events = [
-            e for e in events
-            if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_bad1"
+            e for e in events if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_bad1"
         ]
         assert len(bad_events) == 1
         assert bad_events[0].result is not None
@@ -457,7 +458,9 @@ class TestTranslatedToolCallPath:
             def add(self, a: int, b: int) -> int:
                 return a + b
 
-            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=1, translate_tool_calls=True)))
+            @strategy(
+                CodeActStrategy(config=CodeActConfig(max_retries=1, translate_tool_calls=True))
+            )
             async def compute(self) -> int:
                 """Compute something."""
                 ...
@@ -489,7 +492,8 @@ class TestTranslatedToolCallPath:
 
         events = agent_instance.event_manager.values()
         translated_events = [
-            e for e in events
+            e
+            for e in events
             if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_translated"
         ]
         assert len(translated_events) == 1
@@ -502,7 +506,9 @@ class TestTranslatedToolCallPath:
         """Truly unknown, untranslatable tool → ToolCallEvent has error result."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
-            @strategy(CodeActStrategy(config=CodeActConfig(max_retries=2, translate_tool_calls=True)))
+            @strategy(
+                CodeActStrategy(config=CodeActConfig(max_retries=2, translate_tool_calls=True))
+            )
             async def compute(self) -> int:
                 """Compute something."""
                 ...
@@ -533,7 +539,8 @@ class TestTranslatedToolCallPath:
 
         events = agent_instance.event_manager.values()
         unknown_events = [
-            e for e in events
+            e
+            for e in events
             if e.event_type == "ToolCallEvent" and e.tool_call_id == "call_unknown"
         ]
         assert len(unknown_events) == 1
@@ -674,7 +681,9 @@ class TestFormatterFullPipeline:
         messages = formatter.format([normal_block, none_block])
 
         tool_use_ids = {m.tool_call.id for m in messages if m.tool_call is not None}
-        tool_result_ids = {m.tool_call_id for m in messages if m.role == Role.TOOL and m.tool_call_id}
+        tool_result_ids = {
+            m.tool_call_id for m in messages if m.role == Role.TOOL and m.tool_call_id
+        }
 
         assert tool_use_ids == tool_result_ids, (
             f"Mismatched pairs: tool_use={tool_use_ids}, tool_result={tool_result_ids}"
