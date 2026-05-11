@@ -218,6 +218,7 @@ class BashSession:
         proc = self._process
         ctrl = self._control_reader
         if proc is None or proc.stdin is None or ctrl is None or proc.returncode is not None:
+            self._diagnose_death("run_stream_pre_check")
             await self.reset()
             proc = self._process
             ctrl = self._control_reader
@@ -227,7 +228,8 @@ class BashSession:
         try:
             proc.stdin.write(script.encode())
             await proc.stdin.drain()
-        except (BrokenPipeError, ConnectionResetError, OSError):
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            self._diagnose_death(f"run_stream_write: {e}")
             await self.reset()
             proc = self._process
             ctrl = self._control_reader
@@ -306,6 +308,9 @@ class BashSession:
 
         if timed_out:
             exit_code = 124
+        else:
+            self._last_successful_command = time.time()
+            self._last_command = command[:200]
 
         yield ("__done__", f"{exit_code},{1 if timed_out else 0}")
 
