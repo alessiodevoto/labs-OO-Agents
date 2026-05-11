@@ -681,9 +681,10 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("stdskill/repo", self.repo)
         self.skills.register("superpowers/libwriting", self.libs)
         self.skills.register("stdskill/todo", self.todo)
+        self.skills.register("stdskill/context", self.context)
+        self.skills.register("stdskill/events", self.events)
 
         # Activate all standard skills for TUIAgent (full experience)
-        # Also activates context + events (stdskill/* includes them)
         self.skills.activate(["stdskill/*", "superpowers/*"])
 
         # Show todo progress to the LLM every turn

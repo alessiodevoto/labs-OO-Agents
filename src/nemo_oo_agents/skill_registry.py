@@ -13,6 +13,19 @@ logger = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "nemo_oo_agents.skills"
 
+_RESERVED_ATTRS = frozenset(
+    {
+        "runtime",
+        "event_manager",
+        "context_manager",
+        "_storage",
+        "_llm",
+        "_agent_id",
+        "render_config",
+        "event_query",
+    }
+)
+
 
 class SkillRegistry(Skill):
     """Manages skill discovery, loading, and activation.
@@ -36,6 +49,7 @@ class SkillRegistry(Skill):
         self._discovered: dict[str, _SkillEntry] = {}
         self._loaded: set[str] = set()
         self._activated: set[str] = set()
+        self._attr_map: dict[str, str] = {}  # registry name → actual attr name on agent
         self._discover()
         super().__init__()
 
@@ -91,26 +105,37 @@ class SkillRegistry(Skill):
                     continue
                 attr_name = name.split("/")[-1] if "/" in name else name
                 attr_name = attr_name.replace("-", "_")
+                if attr_name.startswith("_") or attr_name in _RESERVED_ATTRS:
+                    logger.warning("Refusing to load skill with reserved name %s", attr_name)
+                    continue
                 setattr(self._agent, attr_name, skill)
                 skill.attach(self._agent)
                 self._loaded.add(name)
+                self._attr_map[name] = attr_name
                 logger.info("Loaded skill %s as self.%s", name, attr_name)
             except Exception:
                 logger.warning("Failed to load skill %s", name, exc_info=True)
 
-    def register(self, name: str, skill: Skill) -> None:
+    def register(self, name: str, skill: Skill, *, attr: str | None = None) -> None:
         """Register a manually-constructed skill as loaded.
 
         Calls attach(agent) automatically if not already attached.
+        Auto-detects the attribute name on the agent by identity scan.
 
         Use for skills that require constructor args::
 
             self.shell = ShellTools(cwd=config.working_dir)
             self.skills.register('stdskill/shell', self.shell)
         """
-        if not getattr(skill, "_agent", None):
+        if getattr(skill, "_agent", None) is None:
             skill.attach(self._agent)
+        # Auto-detect actual attribute name on the agent
+        if attr is None:
+            attr = next((k for k, v in self._agent.__dict__.items() if v is skill), None)
+        if attr is None:
+            attr = self._attr_name(name)
         self._loaded.add(name)
+        self._attr_map[name] = attr
         if name not in self._discovered:
             category = name.split("/")[0] if "/" in name else ""
             self._discovered[name] = _SkillEntry(name=name, entry_point=None, category=category)
@@ -145,20 +170,28 @@ class SkillRegistry(Skill):
             self._activated.add(name)
             self._unhide_skill(name)
 
-    def _resolve_deps(self, name: str) -> None:
-        """Load any dependencies declared by the skill (transitive)."""
-        attr = self._attr_name(name)
+    def _resolve_deps(self, name: str, _visited: set[str] | None = None) -> None:
+        """Load dependencies declared by the skill (transitive, with cycle detection)."""
+        if _visited is None:
+            _visited = set()
+        if name in _visited:
+            return
+        _visited.add(name)
+
+        attr = self._attr_map.get(name) or self._attr_name(name)
         skill = getattr(self._agent, attr, None)
         if skill is None:
             return
-        requires = getattr(skill, "requires", [])
+        requires = getattr(skill, "requires", ())
         for dep in requires:
             if dep not in self._loaded:
-                # Try to load from discovered set
                 if dep in self._discovered:
                     self.load([dep])
                 else:
                     logger.warning("Skill %s requires %s but it is not discovered", name, dep)
+            # Recurse into loaded dep's own requirements
+            if dep in self._loaded:
+                self._resolve_deps(dep, _visited)
 
     def deactivate(self, patterns: list[str]) -> None:
         """Hide activated skills from the LLM (still loaded)."""
@@ -178,23 +211,23 @@ class SkillRegistry(Skill):
 
     def _unhide_skill(self, name: str) -> None:
         """Mark a skill attribute as visible (not hidden)."""
-        attr = self._attr_name(name)
+        attr = self._attr_map.get(name) or self._attr_name(name)
         try:
             from nemo_oo_agents.agentdoc import spec
 
             spec(self._agent, attr, hidden=False)
         except Exception:
-            pass
+            logger.debug("Failed to unhide skill %s (attr=%s)", name, attr, exc_info=True)
 
     def _hide_skill(self, name: str) -> None:
         """Mark a skill attribute as hidden."""
-        attr = self._attr_name(name)
+        attr = self._attr_map.get(name) or self._attr_name(name)
         try:
             from nemo_oo_agents.agentdoc import spec
 
             spec(self._agent, attr, hidden=True)
         except Exception:
-            pass
+            logger.debug("Failed to hide skill %s (attr=%s)", name, attr, exc_info=True)
 
     # ------------------------------------------------------------------
     # Helpers
