@@ -8,8 +8,8 @@ Usage:
     from trace_explorer import TraceExplorer
 
     trace = await TraceExplorer.from_file("path/to/trace.jsonl")
-    print(trace.help())
-    print(trace.get_overview())
+    print(await trace.help())
+    print(await trace.get_overview())
 """
 
 from nemo_oo_agents.trace_explorer.explorer import (

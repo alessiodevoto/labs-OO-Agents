@@ -415,7 +415,7 @@ class TestTraceExplorerGetToolCalls:
         try:
             trace = await TraceExplorer.from_file(trace_file)
             # get_tool_calls was internalized, check that tool calls appear in overview
-            result = trace.get_overview()
+            result = await trace.get_overview()
 
             assert "TestAgent.test_method" in result
         finally:
@@ -439,7 +439,7 @@ class TestTraceExplorerGetToolCalls:
         try:
             trace = await TraceExplorer.from_file(trace_file)
             # get_tool_calls was internalized, check that tool calls appear in session view
-            result = trace.get_session(trace.sessions[0].session_id[:6], concise=False)
+            result = await trace.get_session(trace.sessions[0].session_id[:6], concise=False)
 
             assert "execute_python" in result or "tool_call" in result
         finally:
@@ -458,7 +458,7 @@ class TestTraceExplorerOverview:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            overview = trace.get_overview()
+            overview = await trace.get_overview()
 
             # Format uses [OK] label in call graph line for success
             assert "TestAgent.test_method" in overview
@@ -474,7 +474,7 @@ class TestTraceExplorerOverview:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            overview = trace.get_overview()
+            overview = await trace.get_overview()
 
             # Format uses [ERR] label in call graph line for failure
             assert "[ERR]" in overview
@@ -500,7 +500,7 @@ class TestTraceExplorerErrors:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            errors = trace.get_errors()
+            errors = await trace.get_errors()
 
             assert "Found" in errors
             assert "execution_error" in errors
@@ -516,7 +516,7 @@ class TestTraceExplorerErrors:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            errors = trace.get_errors()
+            errors = await trace.get_errors()
 
             assert "status_error" in errors
         finally:
@@ -539,7 +539,7 @@ class TestTraceExplorerSearch:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            result = trace.search("needle")
+            result = await trace.search("needle")
 
             assert "Found" in result
             assert "needle" in result.lower()
@@ -559,7 +559,7 @@ class TestTraceExplorerSearch:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            result = trace.search("secret")
+            result = await trace.search("secret")
 
             assert "Found" in result
             assert "code" in result
@@ -596,7 +596,7 @@ class TestTraceExplorerRealTrace:
     async def test_overview_on_real_trace(self, real_trace_path):
         """Test overview output on real trace."""
         trace = await TraceExplorer.from_file(real_trace_path)
-        overview = trace.get_overview()
+        overview = await trace.get_overview()
 
         # Should have basic structure - current format uses:
         # - Title with method name (# Agent.method())
@@ -1297,7 +1297,7 @@ class TestPformatImport:
         trace_file = create_trace_file(spans)
         try:
             trace = await TraceExplorer.from_file(trace_file)
-            output = trace.get_session(trace.sessions[0].session_id[:6], concise=False)
+            output = await trace.get_session(trace.sessions[0].session_id[:6], concise=False)
 
             assert isinstance(output, str)
             # Session input line is rendered via _pformat.
@@ -1356,7 +1356,7 @@ class TestOrphanSpans:
             trace = await TraceExplorer.from_file(trace_file)
             assert trace.sessions == []
             # Overview must not crash and must communicate emptiness.
-            overview = trace.get_overview()
+            overview = await trace.get_overview()
             assert "No sessions found" in overview
         finally:
             trace_file.unlink()
@@ -1534,7 +1534,7 @@ class TestCrossSessionParent:
             assert len(trace.sessions) == 1
             assert trace.sessions[0].agent_name == "A"
             # Overview must render without raising.
-            assert isinstance(trace.get_overview(), str)
+            assert isinstance(await trace.get_overview(), str)
         finally:
             trace_file.unlink()
 

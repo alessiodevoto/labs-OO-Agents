@@ -10,14 +10,14 @@ Usage:
     from trace_explorer import TraceExplorer
 
     # From file (OTLP format)
-    trace = TraceExplorer.from_file("path/to/trace.jsonl")
+    trace = await TraceExplorer.from_file("path/to/trace.jsonl")
 
     # From viewer API
-    trace = TraceExplorer.from_viewer("http://localhost:5001", "session-id")
+    trace = await TraceExplorer.from_viewer("http://localhost:5001", "session-id")
 
-    print(trace.get_overview())
+    print(await trace.get_overview())
 
-    for session in trace.get_session_list():
+    for session in await trace.get_session_list():
         print(session)
 """
 
@@ -1890,13 +1890,13 @@ class TraceExplorer:
         In API mode: emits a Python method call.
         """
         if not _cli_mode.get():
-            return f"self.get_session('{session_id}')"
+            return f"await self.get_session('{session_id}')"
         return f"{self._source_prefix()} -s '{session_id}'"
 
     def _nav_hint_turn(self, session_id: str, turn_idx: int) -> str:
         """Drill-into-turn hint, context-aware (CLI vs API)."""
         if not _cli_mode.get():
-            return f"self.get_turn('{session_id}', {turn_idx})"
+            return f"await self.get_turn('{session_id}', {turn_idx})"
         return f"{self._source_prefix()} -s '{session_id}' -t {turn_idx}"
 
     def _nav_hint_cmd(self, method: str, flag: str) -> str:
@@ -1906,7 +1906,7 @@ class TraceExplorer:
         flag: the CLI flag, e.g. '--errors'
         """
         if not _cli_mode.get():
-            return f"self.{method}"
+            return f"await self.{method}"
         return f"{self._source_prefix()} {flag}"
 
     # =========================================================================
@@ -1938,17 +1938,17 @@ class TraceExplorer:
         """Additional benchmark context."""
         return self._benchmark_context
 
-    def help(self) -> str:
+    async def help(self) -> str:
         """Return the usage guide from the class docstring."""
         import inspect
 
         return inspect.cleandoc(self.__doc__ or "No documentation available.")
 
-    def get_session_list(self) -> list[SessionSummary]:
+    async def get_session_list(self) -> list[SessionSummary]:
         """Return a list of session summaries (root-first, including children)."""
         return [self._build_session_summary(s) for s in self._all_sessions]
 
-    def get_span_id(self, session_id: str, turn_index: int) -> str | None:
+    async def get_span_id(self, session_id: str, turn_index: int) -> str | None:
         """Get the span ID for a specific turn.
 
         Args:
@@ -2339,7 +2339,7 @@ class TraceExplorer:
     # Overview Methods
     # =========================================================================
 
-    def get_overview(self, *, concise: bool = True) -> str:
+    async def get_overview(self, *, concise: bool = True) -> str:
         """Get a high-level summary of the trace.
 
         Args:
@@ -2433,7 +2433,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_overview_data(self) -> OverviewData | None:
+    async def get_overview_data(self) -> OverviewData | None:
         """Structured overview data for programmatic use.
 
         Returns:
@@ -3185,7 +3185,7 @@ class TraceExplorer:
             result_preview=result_preview,
         )
 
-    def get_session(self, session_id: str, *, concise: bool = False) -> str:
+    async def get_session(self, session_id: str, *, concise: bool = False) -> str:
         """Get detailed execution info about a specific session.
 
         Shows how a method executed: turns, tool calls, reasoning, errors.
@@ -3295,7 +3295,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_session_data(self, session_id: str) -> SessionData:
+    async def get_session_data(self, session_id: str) -> SessionData:
         """Structured session data for programmatic use.
 
         Returns:
@@ -3922,7 +3922,7 @@ class TraceExplorer:
     # Turn Navigation
     # =========================================================================
 
-    def get_turn(self, session_id: str, turn_index: int) -> str:
+    async def get_turn(self, session_id: str, turn_index: int) -> str:
         """Get full context window, LLM response, and execution output for a specific turn.
 
         Shows exactly what the LLM saw and produced. Answer: "What was the exact
@@ -3953,7 +3953,7 @@ class TraceExplorer:
         else:
             return self._format_exec_turn_full(session, turn_index, turn)
 
-    def get_turn_data(self, session_id: str, turn_index: int) -> TurnInfo | None:
+    async def get_turn_data(self, session_id: str, turn_index: int) -> TurnInfo | None:
         """Structured turn data for programmatic use.
 
         Returns:
@@ -4327,7 +4327,7 @@ class TraceExplorer:
     # Error Navigation
     # =========================================================================
 
-    def get_errors(self) -> str:
+    async def get_errors(self) -> str:
         """Get all errors found in the trace.
 
         Returns:
@@ -4369,7 +4369,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_errors_data(self) -> dict[str, Any]:
+    async def get_errors_data(self) -> dict[str, Any]:
         """Structured error list for programmatic use."""
         errors = self._find_errors()
         return {"count": len(errors), "errors": [e.to_dict() for e in errors]}
@@ -4495,7 +4495,7 @@ class TraceExplorer:
         except (json.JSONDecodeError, TypeError):
             return str(root.result)
 
-    def get_eval_context(self, concise: bool = True) -> str:
+    async def get_eval_context(self, concise: bool = True) -> str:
         """Get evaluation context if available.
 
         Returns input, expected output, actual output, and scores from the
@@ -4597,7 +4597,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_eval_context_data(self) -> dict[str, Any]:
+    async def get_eval_context_data(self) -> dict[str, Any]:
         """Structured eval context data."""
         if not self.eval_result:
             return {"error": "No evaluation result provided."}
@@ -4610,7 +4610,7 @@ class TraceExplorer:
     # Harness Telemetry
     # =========================================================================
 
-    def get_harness_telemetry(self, session_id: str | None = None) -> str:
+    async def get_harness_telemetry(self, session_id: str | None = None) -> str:
         """Show harness telemetry for a session or all sessions.
 
         Extracts harness.* span attributes from generation spans and
@@ -4618,7 +4618,7 @@ class TraceExplorer:
         ``HarnessMetrics.span_attribute_schema()`` so it stays in sync
         with the metrics model automatically.
         """
-        data = self.get_harness_telemetry_data(session_id)
+        data = await self.get_harness_telemetry_data(session_id)
         if not data or "error" in data:
             return (
                 data.get("error", "No harness telemetry found.")
@@ -4691,7 +4691,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_harness_telemetry_data(self, session_id: str | None = None) -> dict[str, Any]:
+    async def get_harness_telemetry_data(self, session_id: str | None = None) -> dict[str, Any]:
         """Structured harness telemetry data.
 
         Extracts all harness.* attributes from generation spans.
@@ -4743,7 +4743,7 @@ class TraceExplorer:
     # Search
     # =========================================================================
 
-    def search(self, pattern: str, *, concise: bool = True) -> str:
+    async def search(self, pattern: str, *, concise: bool = True) -> str:
         """Search for a pattern across all trace content.
 
         Args:
@@ -4807,7 +4807,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def search_data(self, pattern: str) -> SearchMatches:
+    async def search_data(self, pattern: str) -> SearchMatches:
         """Structured search results for programmatic use.
 
         Returns:
@@ -4919,7 +4919,7 @@ class TraceExplorer:
 
         return results
 
-    def get_turn_context(
+    async def get_turn_context(
         self,
         session_id: str,
         turn_index: int,
@@ -4942,10 +4942,10 @@ class TraceExplorer:
 
         Example:
             # Get just user/assistant messages
-            context = trace.get_turn_context("abc123", 5)
+            context = await trace.get_turn_context("abc123", 5)
 
             # Include system prompt too
-            full_context = trace.get_turn_context("abc123", 5, include_system=True)
+            full_context = await trace.get_turn_context("abc123", 5, include_system=True)
         """
         session = self._find_session(session_id)
         if not session:
@@ -4979,7 +4979,7 @@ class TraceExplorer:
 
         return context_text
 
-    def search_in_turn_context(
+    async def search_in_turn_context(
         self,
         session_id: str,
         turn_index: int,
@@ -5002,11 +5002,11 @@ class TraceExplorer:
             List of SearchResult objects
 
         Example:
-            matches = trace.search_in_turn_context("abc123", 5, "TypeError")
+            matches = await trace.search_in_turn_context("abc123", 5, "TypeError")
             for match in matches:
                 print(f"Found: {match['match']} at position {match['start']}")
         """
-        context_text = self.get_turn_context(session_id, turn_index, include_system=include_system)
+        context_text = await self.get_turn_context(session_id, turn_index, include_system=include_system)
         if not context_text:
             return []
 
@@ -5185,18 +5185,18 @@ class TraceExplorer:
     # =========================================================================
 
     @property
-    def agent_count(self) -> int:
+    async def agent_count(self) -> int:
         """Total number of agent sessions (including nested)."""
         return len(self._all_sessions)
 
     @property
-    def max_agent_depth(self) -> int:
+    async def max_agent_depth(self) -> int:
         """Maximum depth of agent nesting."""
         if not self._all_sessions:
             return 0
         return max(s.depth for s in self._all_sessions)
 
-    def get_method_counts(self) -> dict[str, int]:
+    async def get_method_counts(self) -> dict[str, int]:
         """Get invocation count for each agent method.
 
         Returns:
@@ -5217,13 +5217,13 @@ class TraceExplorer:
 
         return dict(Counter(s.depth for s in self._all_sessions))
 
-    def get_recursion_pattern(self) -> str:
+    async def get_recursion_pattern(self) -> str:
         """Identify the recursion pattern (self-recursion, mutual, etc.).
 
         Returns:
             Description string like "self-recursion (Agent.method)" or "mutual recursion (A <-> B)"
         """
-        method_counts = self.get_method_counts()
+        method_counts = await self.get_method_counts()
         unique_methods = len(method_counts)
 
         if unique_methods == 0:
@@ -5310,7 +5310,7 @@ class TraceExplorer:
     # Full Context (for LLM Analysis)
     # =========================================================================
 
-    def _get_full_context(self) -> str:
+    async def _get_full_context(self) -> str:
         """Internal: Get all available context for the analyzer.
 
         Prefer get_overview() + get_eval_context() for targeted analysis.
@@ -5325,7 +5325,7 @@ class TraceExplorer:
         # 2. Eval result context (optional - not present for manual debugging traces)
         if self.eval_result:
             parts.append("## Task Details")
-            parts.append(self.get_eval_context())
+            parts.append(await self.get_eval_context())
 
         # 3. Mechanical findings (always available)
         findings_text = self._get_mechanical_findings()
@@ -5548,7 +5548,7 @@ class TraceExplorer:
     # Public Timeline & Error Navigation
     # =========================================================================
 
-    def get_timeline(self, max_events: int = 50) -> str:
+    async def get_timeline(self, max_events: int = 50) -> str:
         """Get a chronological timeline of events across all sessions.
 
         Shows spans in order with timestamps and durations.
@@ -5562,7 +5562,7 @@ class TraceExplorer:
         """
         return self._get_timeline(max_events)
 
-    def get_timeline_data(self, max_events: int = 50) -> TimelineData:
+    async def get_timeline_data(self, max_events: int = 50) -> TimelineData:
         """Structured timeline events for programmatic use.
 
         Returns:
@@ -5627,7 +5627,7 @@ class TraceExplorer:
             events=events,
         )
 
-    def find_first_error(self) -> str:
+    async def find_first_error(self) -> str:
         """Navigate to the first error in the trace.
 
         Returns formatted output for the turn where the first error occurred,
@@ -5665,7 +5665,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def find_first_error_data(self) -> dict[str, Any]:
+    async def find_first_error_data(self) -> dict[str, Any]:
         """Structured first error info for programmatic use."""
         result = self._find_first_error()
         if not result:
@@ -5684,7 +5684,7 @@ class TraceExplorer:
     # Raw Span Access
     # =========================================================================
 
-    def find_span(self, span_id: str, *, json_output: bool = False) -> str:
+    async def find_span(self, span_id: str, *, json_output: bool = False) -> str:
         """Find a span by ID and show it with navigation breadcrumbs.
 
         Searches all sessions for a turn matching the span ID. Shows the turn
@@ -5718,7 +5718,7 @@ class TraceExplorer:
                         nav += f"→ trace-explorer ... --session {sid} --turn {i + 1}  # next turn\n"
 
                     if json_output:
-                        data = self.get_turn_data(session.session_id, i)
+                        data = await self.get_turn_data(session.session_id, i)
                         result = {
                             "span_id": span_id,
                             "session_id": session.session_id,
@@ -5730,15 +5730,15 @@ class TraceExplorer:
                         }
                         return json.dumps(result, indent=2, default=str)
 
-                    return header + self.get_turn(session.session_id, i) + nav
+                    return header + await self.get_turn(session.session_id, i) + nav
 
         # Fallback: check raw spans
-        raw = self.get_raw_span(span_id)
+        raw = await self.get_raw_span(span_id)
         if "not found" in raw.lower():
             return f"Span {span_id} not found in any session or raw spans."
         return f"# Span {span_id[:8]} (raw, not associated with a turn)\n{raw}"
 
-    def get_raw_span(self, span_id: str) -> str:
+    async def get_raw_span(self, span_id: str) -> str:
         """Get raw span data as formatted JSON.
 
         Useful for debugging trace structure or accessing attributes
@@ -5791,7 +5791,7 @@ class TraceExplorer:
 
         return "\n".join(lines)
 
-    def get_raw_span_data(self, span_id: str) -> dict[str, Any]:
+    async def get_raw_span_data(self, span_id: str) -> dict[str, Any]:
         """Structured raw span data (dict) or error."""
         if not self._raw_spans:
             return {"error": "No raw spans available (trace was loaded without span data)."}
@@ -5811,7 +5811,7 @@ class TraceExplorer:
             "available": [s[:6] for s in available],
         }
 
-    def get_raw_spans(self, session_id: str) -> str:
+    async def get_raw_spans(self, session_id: str) -> str:
         """Get all raw spans for a session.
 
         Returns spans in chronological order with their relationships.
@@ -5877,7 +5877,7 @@ class TraceExplorer:
     # Trace Comparison / Diff
     # =========================================================================
 
-    def compare(self, other: TraceExplorer) -> str:
+    async def compare(self, other: TraceExplorer) -> str:
         """Compare this trace with another trace.
 
         Useful for regression analysis - comparing a failing MR trace
@@ -5895,14 +5895,14 @@ class TraceExplorer:
         Returns:
             Formatted diff report.
         """
-        return TraceExplorer.diff(self, other)
+        return await TraceExplorer.diff(self, other)
 
-    def compare_data(self, other: TraceExplorer) -> dict[str, Any]:
+    async def compare_data(self, other: TraceExplorer) -> dict[str, Any]:
         """Structured comparison data for programmatic diffing."""
-        return TraceExplorer.diff_data(self, other)
+        return await TraceExplorer.diff_data(self, other)
 
     @classmethod
-    def diff(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> str:
+    async def diff(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> str:
         """Compare two traces and show differences.
 
         Args:
@@ -6120,7 +6120,7 @@ class TraceExplorer:
         return "\n".join(lines)
 
     @classmethod
-    def diff_data(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> dict[str, Any]:
+    async def diff_data(cls, trace1: TraceExplorer, trace2: TraceExplorer) -> dict[str, Any]:
         """Structured diff data for programmatic consumption."""
         sessions1 = trace1._all_sessions
         sessions2 = trace2._all_sessions
@@ -6329,14 +6329,14 @@ async def _handle_experiment_errors(
             print(f"## {name}\n  Error loading trace: {e}\n")
             continue
 
-        errors_data = trace.get_errors_data()
+        errors_data = await trace.get_errors_data()
         if errors_data["count"] > 0:
             any_errors = True
             print(f"## {name}")
             print(
                 f"   trace-explorer --viewer {shlex.quote(base_url)} --session-id {shlex.quote(sid)}"
             )
-            print(trace.get_errors())
+            print(await trace.get_errors())
             print()
 
     if not any_errors:
@@ -6392,7 +6392,7 @@ async def _handle_experiment_search(base_url: str, experiment_id: str, pattern: 
             print(f"## {name}\n  Error loading trace: {e}\n")
             continue
 
-        data = trace.search_data(pattern)
+        data = await trace.search_data(pattern)
         if data.match_count > 0:
             total_matches += data.match_count
             sessions_with_matches += 1
@@ -6838,7 +6838,7 @@ Examples (experiment mode):
 
     # --span-id takes priority: jump directly to that span
     if args.span_id:
-        print(trace.find_span(args.span_id, json_output=args.json))
+        print(await trace.find_span(args.span_id, json_output=args.json))
         return
 
     if args.diff:
@@ -6854,66 +6854,66 @@ Examples (experiment mode):
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
         if args.json:
-            _print_json(trace.compare_data(trace2))
+            _print_json(await trace.compare_data(trace2))
         else:
-            print(trace.compare(trace2))
+            print(await trace.compare(trace2))
     elif args.raw:
         if args.json:
-            _print_json(trace.get_raw_span_data(args.raw))
+            _print_json(await trace.get_raw_span_data(args.raw))
         else:
-            print(trace.get_raw_span(args.raw))
+            print(await trace.get_raw_span(args.raw))
     elif args.timeline:
         if args.json:
-            _print_json(trace.get_timeline_data())
+            _print_json(await trace.get_timeline_data())
         else:
-            print(trace.get_timeline())
+            print(await trace.get_timeline())
     elif args.first_error:
         if args.json:
-            _print_json(trace.find_first_error_data())
+            _print_json(await trace.find_first_error_data())
         else:
-            print(trace.find_first_error())
+            print(await trace.find_first_error())
     elif args.turn is not None:
         if not args.session:
             print("Error: --turn requires --session", file=sys.stderr)
             sys.exit(1)
         if args.json:
-            turn = trace.get_turn_data(args.session, args.turn)
+            turn = await trace.get_turn_data(args.session, args.turn)
             _print_json(turn.to_dict() if turn else None)
         else:
-            print(trace.get_turn(args.session, args.turn))
+            print(await trace.get_turn(args.session, args.turn))
     elif args.session:
         if args.json:
-            _print_json(trace.get_session_data(args.session).to_dict())
+            _print_json((await trace.get_session_data(args.session)).to_dict())
         else:
-            print(trace.get_session(args.session, concise=not args.verbose))
+            print(await trace.get_session(args.session, concise=not args.verbose))
     elif args.errors:
         if args.json:
-            _print_json(trace.get_errors_data())
+            _print_json(await trace.get_errors_data())
         else:
-            print(trace.get_errors())
+            print(await trace.get_errors())
     elif args.eval:
         if args.json:
-            _print_json(trace.get_eval_context_data())
+            _print_json(await trace.get_eval_context_data())
         else:
-            print(trace.get_eval_context())
+            print(await trace.get_eval_context())
     elif args.harness:
         session_id = args.session if args.session else None
         if args.json:
-            _print_json(trace.get_harness_telemetry_data(session_id))
+            _print_json(await trace.get_harness_telemetry_data(session_id))
         else:
-            print(trace.get_harness_telemetry(session_id))
+            print(await trace.get_harness_telemetry(session_id))
     elif args.search:
         if args.json:
-            _print_json(trace.search_data(args.search))
+            _print_json(await trace.search_data(args.search))
         else:
-            print(trace.search(args.search, concise=not args.verbose))
+            print(await trace.search(args.search, concise=not args.verbose))
     else:
         # Default: show overview
         if args.json:
-            overview = trace.get_overview_data()
+            overview = await trace.get_overview_data()
             _print_json(overview.to_dict() if overview else None)
         else:
-            print(trace.get_overview(concise=not args.verbose))
+            print(await trace.get_overview(concise=not args.verbose))
 
 
 if __name__ == "__main__":
