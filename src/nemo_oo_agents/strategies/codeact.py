@@ -1041,9 +1041,25 @@ Standard Python builtins and agent instance (`self`) are available."""
 
             elif tool_call.name == "return_result":
                 # Return the final result
-                validated, error_msg = self._handle_return_result(
-                    runtime, tool_call, args, return_type, session, call.method_name
-                )
+                try:
+                    validated, error_msg = self._handle_return_result(
+                        runtime, tool_call, args, return_type, session, call.method_name
+                    )
+                except GenerationError:
+                    # _handle_return_result raises GenerationError when validation
+                    # fails AND session is exhausted. Ensure the ToolCallEvent has
+                    # an error result before re-raising so the event is never left
+                    # with result=None in the DB (which corrupts the next session's
+                    # context render).
+                    runtime.event_manager.update(
+                        tool_call_event_id,
+                        result=ToolResult(
+                            tool_call_id=tool_call.id,
+                            content="return_result validation failed (session exhausted).",
+                            result_status=ResultStatus.ERROR,
+                        ),
+                    )
+                    raise
                 if error_msg is None:
                     # Success! Update ToolCallEvent with nested result
                     runtime.event_manager.update(
@@ -1276,14 +1292,29 @@ Standard Python builtins and agent instance (`self`) are available."""
             logger.debug("[CODEACT] Detected inline return_result() call")
 
             # Validate the return_result (called inline within execute_python, not as separate tool)
-            validated, validation_error = self._handle_return_result(
-                runtime,
-                tool_call,
-                result.signal.result,  # Extract the result dict from the signal
-                return_type,
-                session,
-                method_name,
-            )
+            try:
+                validated, validation_error = self._handle_return_result(
+                    runtime,
+                    tool_call,
+                    result.signal.result,  # Extract the result dict from the signal
+                    return_type,
+                    session,
+                    method_name,
+                )
+            except GenerationError:
+                # _handle_return_result raises GenerationError when validation
+                # fails AND session is exhausted. Ensure the ToolCallEvent has
+                # an error result before re-raising so the event is never left
+                # with result=None in the DB.
+                runtime.event_manager.update(
+                    tool_call_event_id,
+                    result=ToolResult(
+                        tool_call_id=tool_call.id,
+                        content="return_result validation failed (session exhausted).",
+                        result_status=ResultStatus.ERROR,
+                    ),
+                )
+                raise
 
             if validation_error:
                 # Update result to reflect validation failure
