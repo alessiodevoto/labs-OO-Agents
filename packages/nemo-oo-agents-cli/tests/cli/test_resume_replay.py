@@ -6,9 +6,7 @@ import json
 import sqlite3
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from nemo_oo_agents_cli.tui.output import HistoryReplay, HistoryTurn
 from nemo_oo_agents_cli.tui.session_manager import (
