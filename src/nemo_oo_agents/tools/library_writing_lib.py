@@ -134,9 +134,8 @@ class LibraryWriting(Skill):
 
     ## Discovery
 
-        await self.libs.list()       # all library names
-        await self.libs.repo_tree()  # directory tree
-        await self.libs.grep(pat)    # search across all library files
+        await self.libs.list()            # all library names
+        # Use self.shell/self.repo for file viewing, grep, tree
 
     ## Rules
     - Always provide a meaningful description when calling create()
@@ -217,45 +216,6 @@ class LibraryWriting(Skill):
             return f"Reloaded library '{lib_name}' — self.{lib_name} is updated."
         except Exception as e:
             return f"Reload failed for '{lib_name}': {e}"
-
-    async def view_file(self, lib_name: str, path: str) -> str:
-        """Read and return the contents of a file in the library.
-
-        Args:
-            lib_name: Library name.
-            path: Relative path within the library.
-
-        Returns:
-            File contents as a string.
-        """
-        return (self._path / lib_name / path).read_text()
-
-    async def grep(self, pattern: str, directory: str = ".") -> str:
-        """Search for a pattern across library files.
-
-        Args:
-            pattern: Regex pattern to search for.
-            directory: Subdirectory to search in (relative to libs root, default ".").
-
-        Returns:
-            Grep output as a string.
-        """
-        path = str(self._path / directory) if directory != "." else str(self._path)
-        result = await self._shell.grep(pattern, path)
-        return "\n".join(result.matches)
-
-    async def repo_tree(self, directory: str = ".") -> str:
-        """Show the directory tree of the libraries root (or a subdirectory).
-
-        Args:
-            directory: Subdirectory to show (relative to libs root, default ".").
-
-        Returns:
-            Tree output as a string.
-        """
-        path = str(self._path / directory) if directory != "." else str(self._path)
-        result = await self._shell.find("*", path)
-        return "\n".join(result.matches)
 
     async def run_tests(self, lib_name: str) -> str:
         """Run pytest on the library's tests/ directory.

@@ -323,45 +323,6 @@ async def test_list_empty_when_no_libs(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_view_file_returns_contents(tmp_path: Path):
-    """view_file() returns the contents of a file in the library."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("vf_lib", DESCRIPTION)
-    (tmp_path / "vf_lib" / "vf_lib.py").write_text(SIMPLE_SOURCE)
-    contents = await libs.view_file("vf_lib", "vf_lib.py")
-    assert "def add" in contents
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.grep
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_grep_searches_library_files(tmp_path: Path):
-    """grep() searches across library files and returns matching lines."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("grep_lib", DESCRIPTION)
-    (tmp_path / "grep_lib" / "grep_lib.py").write_text(SIMPLE_SOURCE)
-    result = await libs.grep("def add", "grep_lib")
-    assert "add" in result
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.repo_tree
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_repo_tree_returns_directory_structure(tmp_path: Path):
-    """repo_tree() returns the directory tree of the libs root."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("tree_lib", DESCRIPTION)
-    result = await libs.repo_tree()
-    assert "tree_lib" in result
-
-
 # ---------------------------------------------------------------------------
 # LibraryWriting.reload
 # ---------------------------------------------------------------------------
