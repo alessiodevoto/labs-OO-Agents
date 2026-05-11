@@ -333,11 +333,17 @@ class SessionManager:
         return False
 
 
+# Default number of turns to show on session resume.  Keeps the terminal
+# responsive even for very long sessions.
+RESUME_MAX_TURNS: int = 20
+
+
 def build_resume_outputs(
     session_db_path: Path,
     session_id: str,
     *,
     in_nemo_term: bool = False,
+    max_turns: int | None = None,
 ) -> list:
     """Build an interleaved output list for session resume / startup replay.
 
@@ -350,6 +356,11 @@ def build_resume_outputs(
     list contains a single ``HistoryReplay`` with all turns — matching the
     original behaviour.
 
+    Args:
+        max_turns: Maximum number of conversation turns to replay.  Older
+            turns are omitted with a summary line.  Defaults to
+            ``RESUME_MAX_TURNS``.  Pass ``0`` to disable truncation.
+
     Callers are responsible for rendering each item:
     - ``HistoryReplay`` → ``await frontend.render(item)``
     - ``_RichReplayPayload`` → ``httpx.post(NEMO_RICH_URL, json=item.payload)``
@@ -357,6 +368,9 @@ def build_resume_outputs(
     import sqlite3 as _sqlite3
 
     from .output import HistoryReplay, HistoryTurn, _RichReplayPayload
+
+    if max_turns is None:
+        max_turns = RESUME_MAX_TURNS
 
     try:
         conn = _sqlite3.connect(str(session_db_path))
@@ -394,6 +408,32 @@ def build_resume_outputs(
     if not items:
         return []
 
+    # ── Truncation ─────────────────────────────────────────────────────
+    # Count total conversation turns across all chunks and trim to the
+    # most recent max_turns.  Rich items interspersed among kept turns
+    # are preserved; those among dropped turns are discarded.
+    total_turns = sum(len(d) for k, d in items if k == "turns")
+    omitted = 0
+    if max_turns and total_turns > max_turns:
+        omitted = total_turns - max_turns
+        # Walk items front-to-back, dropping turns until we've removed enough
+        keep_items: list[tuple[str, object]] = []
+        remaining_to_drop = omitted
+        for kind, data in items:
+            if kind == "turns":
+                if remaining_to_drop >= len(data):
+                    remaining_to_drop -= len(data)
+                    continue  # drop entire chunk (and any preceding rich)
+                elif remaining_to_drop > 0:
+                    data = data[remaining_to_drop:]  # type: ignore[index]
+                    remaining_to_drop = 0
+                keep_items.append((kind, data))
+            else:
+                # Keep rich items only if they follow kept turns
+                if remaining_to_drop <= 0:
+                    keep_items.append((kind, data))
+        items = keep_items
+
     # Second pass: assign header/footer flags so rule bars appear exactly once
     turn_indices = [i for i, (k, _) in enumerate(items) if k == "turns"]
     if not turn_indices:
@@ -410,6 +450,7 @@ def build_resume_outputs(
                     session_id=short_id if i == first_tc else "",
                     show_header=(i == first_tc),
                     show_footer=(i == last_tc),
+                    omitted_count=omitted if i == first_tc else 0,
                 )
             )
         else:

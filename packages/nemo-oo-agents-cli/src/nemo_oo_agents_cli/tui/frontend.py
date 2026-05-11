@@ -329,34 +329,54 @@ class TerminalFrontend:
         c.print(text)
 
     def _render_history_replay(self, output: HistoryReplay) -> None:
-        """Render past conversation turns in a dimmed style."""
+        """Render past conversation turns in a dimmed style.
+
+        Uses a buffered console to pre-render all output, then writes
+        the result to the terminal in a single flush — eliminates the
+        flicker that occurs when each turn triggers a separate write.
+        """
+        import io
+
+        from rich.console import Console as RichConsole
         from rich.markdown import Markdown
         from rich.rule import Rule
         from rich.text import Text
 
         dim = COLORS["overlay1"]
         user_color = COLORS["subtext1"]
-        c = self._console.console
+
+        # Pre-render into a string buffer so the terminal gets one
+        # contiguous write instead of per-turn flushes.
+        buf = io.StringIO()
+        width = self._console.console.width or 80
+        bc = RichConsole(file=buf, width=width, highlight=False, force_terminal=True)
 
         if output.show_header:
-            c.print(
+            omit_note = ""
+            if output.omitted_count:
+                omit_note = f" ({output.omitted_count} earlier turns omitted)"
+            bc.print(
                 Rule(
-                    title=f"[{dim}]session {output.session_id} — history[/]",
+                    title=f"[{dim}]session {output.session_id} — history{omit_note}[/]",
                     style=COLORS["surface1"],
                 )
             )
         for turn in output.turns:
             if turn.role == "user":
-                c.print(
+                bc.print(
                     Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}")
                 )
             else:
                 # Render agent turns as dimmed markdown
-                c.print(Text("OO:", style=f"bold {dim}"))
-                c.print(Markdown(turn.content), style=dim)
-            c.print()
+                bc.print(Text("OO:", style=f"bold {dim}"))
+                bc.print(Markdown(turn.content), style=dim)
+            bc.print()
         if output.show_footer:
-            c.print(Rule(style=COLORS["surface1"]))
+            bc.print(Rule(style=COLORS["surface1"]))
+
+        # Single write to the real terminal
+        self._console.console.file.write(buf.getvalue())
+        self._console.console.file.flush()
 
     def _render_startup(self, info: StartupInfo) -> None:
         from rich.rule import Rule
