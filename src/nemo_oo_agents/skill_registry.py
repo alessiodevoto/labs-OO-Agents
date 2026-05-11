@@ -67,7 +67,7 @@ class SkillRegistry(Skill):
             self._discovered[ep.name] = _SkillEntry(
                 name=ep.name,
                 entry_point=ep,
-                category=ep.name.split("/")[0] if "/" in ep.name else "",
+                category=ep.name.split(".")[0] if "/" in ep.name else "",
             )
 
     def discovered(self) -> list[str]:
@@ -103,7 +103,7 @@ class SkillRegistry(Skill):
                 else:
                     logger.warning("Entry point %s did not resolve to a Skill", name)
                     continue
-                attr_name = name.split("/")[-1] if "/" in name else name
+                attr_name = name.split(".")[-1] if "." in name else name
                 attr_name = attr_name.replace("-", "_")
                 if attr_name.startswith("_") or attr_name in _RESERVED_ATTRS:
                     logger.warning("Refusing to load skill with reserved name %s", attr_name)
@@ -137,7 +137,7 @@ class SkillRegistry(Skill):
         self._loaded.add(name)
         self._attr_map[name] = attr
         if name not in self._discovered:
-            category = name.split("/")[0] if "/" in name else ""
+            category = name.split(".")[0] if "." in name else ""
             self._discovered[name] = _SkillEntry(name=name, entry_point=None, category=category)
 
     # ------------------------------------------------------------------
@@ -206,7 +206,7 @@ class SkillRegistry(Skill):
 
     def _attr_name(self, name: str) -> str:
         """Convert category/skill_name to Python attribute name."""
-        attr = name.split("/")[-1] if "/" in name else name
+        attr = name.split(".")[-1] if "." in name else name
         return attr.replace("-", "_")
 
     def _unhide_skill(self, name: str) -> None:
@@ -254,12 +254,12 @@ class SkillRegistry(Skill):
         attr_map = object.__getattribute__(self, "_attr_map")
         agent = object.__getattribute__(self, "_agent")
 
-        categories = {n.split("/")[0] for n in loaded if "/" in n}
+        categories = {n.split("/")[0] for n in loaded if "." in n}
         if name in categories:
             return _NamespaceProxy(self, name)
         # Check if it's a leaf name
         for reg_name in loaded:
-            leaf = reg_name.split("/")[-1] if "/" in reg_name else reg_name
+            leaf = reg_name.split(".")[-1] if "/" in reg_name else reg_name
             if leaf == name:
                 attr = attr_map.get(reg_name, name)
                 return getattr(agent, attr)
@@ -290,7 +290,7 @@ class _NamespaceProxy:
         object.__setattr__(self, "_prefix", prefix)
 
     def __getattr__(self, name: str) -> Any:
-        key = f"{object.__getattribute__(self, '_prefix')}/{name}"
+        key = f"{object.__getattribute__(self, '_prefix')}.{name}"
         return object.__getattribute__(self, "_registry")[key]
 
     def __repr__(self) -> str:

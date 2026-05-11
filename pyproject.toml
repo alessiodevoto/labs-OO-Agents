@@ -31,15 +31,15 @@ dependencies = [
 trace-explorer = "nemo_oo_agents.trace_explorer:main"
 
 [project.entry-points."nemo_oo_agents.skills"]
-"stdskill/shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
-"stdskill/repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
-"stdskill/todo" = "nemo_oo_agents.tools.todo:TodoManager"
-"stdskill/context" = "nemo_oo_agents.runtime.context:ContextApi"
-"stdskill/events" = "nemo_oo_agents.runtime.events:EventsApi"
-"stdskill/producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
-"stdskill/web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
-"superpowers/libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
-"superpowers/methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
+"stdskill.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
+"stdskill.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
+"stdskill.todo" = "nemo_oo_agents.tools.todo:TodoManager"
+"stdskill.context" = "nemo_oo_agents.runtime.context:ContextApi"
+"stdskill.events" = "nemo_oo_agents.runtime.events:EventsApi"
+"stdskill.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
+"stdskill.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
+"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
+"superpowers.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
 
 [tool.uv.sources]
 eval_pipeline = { workspace = true }

@@ -31,13 +31,13 @@ Skills are discovered from three sources:
 - **Skills directories** — `SkillManager.discover(skills_dirs)` (text + Python skills)
 - **Libraries** — `LibraryManager` scans `libs/` for packages with `pyproject.toml`
 
-Entry-point names use `category/skill_name` notation:
+Entry-point names use `category.skill_name` notation:
 
 ```toml
 [project.entry-points."nemo_oo_agents.skills"]
-"stdskill/shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
-"stdskill/repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
-"superpowers/libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
+"stdskill.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
+"stdskill.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
+"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
 ```
 
 ### 2. Loading (filtered by agent)
@@ -45,14 +45,14 @@ Entry-point names use `category/skill_name` notation:
 The agent controls which discovered skills are instantiated and attached:
 
 ```python
-class MyAgent(Agent, skills=['stdskill/*']):
+class MyAgent(Agent, skills=['stdskill.*']):
     ...  # loads all stdskill category
 ```
 
 Or explicitly in `__init__`:
 
 ```python
-self.skills.load(['stdskill/shell', 'superpowers/libwriting'])
+self.skills.load(['stdskill.shell', 'superpowers.libwriting'])
 ```
 
 Special values:
@@ -72,11 +72,11 @@ Loaded skills are hidden from the LLM by default. Activation makes them
 visible in `doc(self)`:
 
 ```python
-self.skills.activate(['stdskill/shell', 'stdskill/repo'])
+self.skills.activate(['stdskill.shell', 'stdskill.repo'])
 ```
 
 Glob patterns supported:
-- `stdskill/*` — activate all in category
+- `stdskill.*` — activate all in category
 - `*` — activate everything loaded
 
 ## API
@@ -86,7 +86,7 @@ class SkillRegistry:
     """Manages skill discovery, loading, and activation."""
 
     def discovered(self) -> list[str]:
-        """All discovered skill names (category/name)."""
+        """All discovered skill names (category.name)."""
 
     def loaded(self) -> list[str]:
         """Currently loaded (attached) skill names."""
@@ -148,7 +148,7 @@ normalized to lowercase for case-insensitive matching.
 ## Migration
 
 1. Existing `spec(self, "context", hidden=False)` calls become
-   `self.skills.activate(["stdskill/context"])`.
+   `self.skills.activate(["stdskill.context"])`.
 2. Agents that previously relied on the Skills table in execution_context
    should use `doc(self)` for discovery.
 3. `@hidden` annotations on Skill fields are superseded by the
