@@ -5006,7 +5006,9 @@ class TraceExplorer:
             for match in matches:
                 print(f"Found: {match['match']} at position {match['start']}")
         """
-        context_text = await self.get_turn_context(session_id, turn_index, include_system=include_system)
+        context_text = await self.get_turn_context(
+            session_id, turn_index, include_system=include_system
+        )
         if not context_text:
             return []
 
