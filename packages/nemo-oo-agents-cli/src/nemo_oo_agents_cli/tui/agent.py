@@ -22,7 +22,7 @@ with hidden:
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from nemo_oo_agents.tools import LibraryWriting, TodoManager
+    from nemo_oo_agents.tools import SkillWriting, TodoManager
     from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
@@ -635,7 +635,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     _workflow_state: Annotated[dict, hidden]
     shell: Annotated[ShellTools, nosnapshot]
     repo: Annotated[RepoTools, nosnapshot]
-    libs: Annotated[LibraryWriting, nosnapshot]
+    libs: Annotated[SkillWriting, nosnapshot]
     todo: TodoManager
     _skills_dirs: Annotated[list, hidden, nosnapshot]
     _summarizers: Annotated[list, hidden, nosnapshot]
@@ -677,7 +677,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             "nemo.repo", RepoTools(root=config.working_dir, session=self.shell._session)
         )
         self.skills.register(
-            "superpowers.libwriting", LibraryWriting(self, path=_project_dir / "libs")
+            "superpowers.libwriting", SkillWriting(self, path=_project_dir / "libs")
         )
         self.skills.register("nemo.todo", TodoManager)
         self.skills.register("nemo.context", self.context)

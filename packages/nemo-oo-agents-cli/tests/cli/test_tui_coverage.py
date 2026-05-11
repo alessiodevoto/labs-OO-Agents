@@ -1503,7 +1503,7 @@ class TestTUIAgentInit:
     def test_init_with_defaults(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         assert agent._phase == "idle"
@@ -1514,7 +1514,7 @@ class TestTUIAgentInit:
         config.summarization = SummarizationConfig(policy="none")
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
                         TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_not_called()
@@ -1524,7 +1524,7 @@ class TestTUIAgentInit:
         config.summarization = SummarizationConfig(policy="token_budget")
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
                         TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_called_once()
@@ -1532,7 +1532,7 @@ class TestTUIAgentInit:
     def test_get_summarization_status_no_summarizers(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         agent._summarizers = []
@@ -1547,7 +1547,7 @@ class TestTUIAgentInit:
     def test_get_summarization_status_with_summarizer(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         mock_summarizer = MagicMock()

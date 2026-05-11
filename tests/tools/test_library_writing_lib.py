@@ -1,4 +1,4 @@
-"""Tests for LibraryWriting, LibraryManager, and Skill(module) fallback."""
+"""Tests for SkillWriting, LibraryManager, and Skill(module) fallback."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from nemo_oo_agents.library_manager import LibraryManager
 from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
+from nemo_oo_agents.tools.library_writing_lib import LintReport, SkillWriting
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -18,7 +18,7 @@ from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
 
 
 class _FakeShell:
-    """Minimal ShellTools mock for LibraryWriting tests."""
+    """Minimal ShellTools mock for SkillWriting tests."""
 
     async def edit(self, path, old_str, new_str):
         from pathlib import Path
@@ -267,14 +267,14 @@ def test_library_manager_reload_all(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# LibraryWriting.create
+# SkillWriting.create
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_create_writes_pyproject_and_init(tmp_path: Path):
     """create() writes pyproject.toml (with name/version) and __init__.py (with docstring)."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("mylib", DESCRIPTION)
 
     pyproject = (tmp_path / "mylib" / "pyproject.toml").read_text()
@@ -290,21 +290,21 @@ async def test_create_writes_pyproject_and_init(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_create_does_not_write_source_file(tmp_path: Path):
     """create() only scaffolds the package — no code files are written."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("mylib", DESCRIPTION)
     py_files = [p for p in (tmp_path / "mylib").iterdir() if p.suffix == ".py"]
     assert py_files == [tmp_path / "mylib" / "__init__.py"]
 
 
 # ---------------------------------------------------------------------------
-# LibraryWriting.list
+# SkillWriting.list
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_list_returns_lib_names(tmp_path: Path):
     """list() returns sorted names of libraries detected by pyproject.toml."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("alpha", "Alpha lib")
     await libs.create("beta", "Beta lib")
     (tmp_path / "empty_dir").mkdir()  # no pyproject.toml — must not appear
@@ -313,54 +313,24 @@ async def test_list_returns_lib_names(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_list_empty_when_no_libs(tmp_path: Path):
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     assert (
         await libs.list() == []
     )  # ---------------------------------------------------------------------------
 
 
-# LibraryWriting.view_file
+# SkillWriting.view_file
 # ---------------------------------------------------------------------------
 
-
 # ---------------------------------------------------------------------------
-# LibraryWriting.reload
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_reload_reloads_library(tmp_path: Path):
-    """reload() hot-reloads a library after file changes."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("rl_lib", DESCRIPTION)
-    (tmp_path / "rl_lib" / "__init__.py").write_text(
-        "from nemo_oo_agents.skill import Skill\n\n"
-        "class RlSkill(Skill):\n"
-        '    """Reload test."""\n'
-        "    def version(self) -> str:\n"
-        '        return "v1"\n'
-    )
-    result = await libs.reload("rl_lib")
-    assert "Reloaded" in result
-
-
-@pytest.mark.asyncio
-async def test_reload_nonexistent_library(tmp_path: Path):
-    """reload() returns an error message for a nonexistent library."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    result = await libs.reload("no_such_lib")
-    assert "not found" in result
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.run_tests
+# SkillWriting.run_tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_run_tests_passes(tmp_path: Path):
     """run_tests() on a library with a passing test returns output containing 'passed'."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("rt_math", DESCRIPTION)
     (tmp_path / "rt_math" / "rt_math.py").write_text(SIMPLE_SOURCE)
     tests_dir = tmp_path / "rt_math" / "tests"

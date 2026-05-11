@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""LibraryWriting — create and edit persistent code libraries for agents."""
+"""SkillWriting — create and edit persistent code libraries for agents."""
 
 import ast
 import inspect
@@ -51,11 +51,11 @@ class LintReport:
 
 
 # ---------------------------------------------------------------------------
-# LibraryWriting
+# SkillWriting
 # ---------------------------------------------------------------------------
 
 
-class LibraryWriting(Skill):
+class SkillWriting(Skill):
     """Write persistent Python libraries that survive across sessions.
 
     Libraries are standard Python packages stored at a caller-specified path.
@@ -158,6 +158,11 @@ class LibraryWriting(Skill):
         self._libmgr = LibraryManager.install(self._agent, libs_dir=self._path)
         super().__init__()
 
+    @property
+    def path(self) -> "Path":
+        """Root path where libraries are stored."""
+        return self._path
+
     async def list(self) -> list[str]:
         """Return sorted names of all libraries (directories with a pyproject.toml)."""
         return self._libmgr.discover(self._path)
@@ -198,24 +203,6 @@ class LibraryWriting(Skill):
         (lib_dir / "__init__.py").write_text(init_content)
 
         return f"Created library '{lib_name}' at {lib_dir}"
-
-    async def reload(self, lib_name: str) -> str:
-        """Hot-reload a library after editing its files via self.shell.
-
-        Call this after using self.shell.write() or self.shell.edit() on library files.
-        Re-imports the package module and re-attaches the updated Skill to the agent.
-
-        Returns:
-            Confirmation message or error description.
-        """
-        lib_dir = self._path / lib_name
-        if not lib_dir.is_dir():
-            return f"Library '{lib_name}' not found at {self._path}"
-        try:
-            self._libmgr._reload(lib_name)
-            return f"Reloaded library '{lib_name}' — self.{lib_name} is updated."
-        except Exception as e:
-            return f"Reload failed for '{lib_name}': {e}"
 
     async def run_tests(self, lib_name: str) -> str:
         """Run pytest on the library's tests/ directory.

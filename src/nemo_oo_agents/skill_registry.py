@@ -245,6 +245,58 @@ class SkillRegistry(Skill):
             logger.debug("Failed to hide skill %s (attr=%s)", name, attr, exc_info=True)
 
     # ------------------------------------------------------------------
+    # Reload
+    # ------------------------------------------------------------------
+
+    def reload(self, name: str | None = None) -> str:
+        """Hot-reload one or all loaded skills.
+
+        Re-imports the skill's module and re-attaches the updated instance.
+
+        Args:
+            name: Fully-qualified skill name (e.g. 'nemo.shell'). If None, reload all.
+
+        Returns:
+            Status message.
+        """
+        if name is not None:
+            return self._reload_one(name)
+        results = []
+        for n in list(self._loaded):
+            results.append(self._reload_one(n))
+        return "\n".join(results)
+
+    def _reload_one(self, name: str) -> str:
+        """Reload a single skill by re-importing its module."""
+        attr = self._attr_map.get(name)
+        if attr is None:
+            return f"Skill {name!r} is not loaded"
+        skill = getattr(self._agent, attr, None)
+        if skill is None:
+            return f"Skill {name!r} has no instance on agent"
+        # Try to reimport the module the skill class came from
+        import importlib
+        import sys as _sys
+
+        mod_name = type(skill).__module__
+        if mod_name in _sys.modules:
+            try:
+                mod = importlib.reload(_sys.modules[mod_name])
+                # Find the Skill subclass in the reloaded module
+                from nemo_oo_agents.skill import Skill as _Skill
+
+                for obj in vars(mod).values():
+                    if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
+                        new_skill = obj()
+                        setattr(self._agent, attr, new_skill)
+                        new_skill.attach(self._agent)
+                        return f"Reloaded {name} (self.{attr})"
+                return f"Reloaded module {mod_name} but no Skill subclass found"
+            except Exception as e:
+                return f"Reload failed for {name}: {e}"
+        return f"Module {mod_name} not in sys.modules — cannot reload"
+
+    # ------------------------------------------------------------------
     # Access
     # ------------------------------------------------------------------
 
