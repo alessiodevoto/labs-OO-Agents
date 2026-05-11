@@ -3,153 +3,166 @@
 ## Summary
 
 Skills are the unit of capability composition for agents. This document
-describes the redesigned skill lifecycle: discovery → load → activate.
+describes the redesigned skill lifecycle: discovery → register → activate.
 
 ## Goals
 
 1. **Default agent is minimal** — no optional capabilities visible to the LLM.
 2. **Explicit opt-in** — developer controls what's loaded and what the LLM sees.
-3. **Auto-discovery** — skills from PyPI packages, filesystem dirs, and libraries
-   are found automatically; the agent filters what to use.
-4. **Generation methods** — `@strategy` methods on Skills route through the
-   parent agent's runtime (CodeAct or Predict), as if defined on the agent.
+3. **Auto-discovery** — skills from PyPI packages are found via entry points.
+4. **Namespace access** — `self.skills.nemo.shell` for qualified disambiguation.
 
 ## Skill Lifecycle
 
 ```
-┌───────────┐      ┌────────┐      ┌───────────┐
-│ Discovered │ ──→  │ Loaded  │ ──→  │ Activated  │
-└───────────┘      └────────┘      └───────────┘
-     broad            filtered         LLM-visible
+┌───────────┐      ┌────────────┐      ┌───────────┐
+│ Discovered │ ──→  │ Registered  │ ──→  │ Activated  │
+└───────────┘      └────────────┘      └───────────┘
+  entry points       self.<leaf>          LLM-visible
 ```
 
-### 1. Discovery (automatic, broad)
+### 1. Discovery (automatic)
 
-Skills are discovered from three sources:
-
-- **Entry points** — `importlib.metadata.entry_points(group='nemo_oo_agents.skills')`
-- **Skills directories** — `SkillManager.discover(skills_dirs)` (text + Python skills)
-- **Libraries** — `LibraryManager` scans `libs/` for packages with `pyproject.toml`
-
-Entry-point names use `category.skill_name` notation:
+Skills are discovered from entry points:
 
 ```toml
+# In a PyPI package's pyproject.toml:
 [project.entry-points."nemo_oo_agents.skills"]
 "nemo.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
 "nemo.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
-"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
+"nemo.todo" = "nemo_oo_agents.tools.todo:TodoManager"
+"superpowers.skillwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
 ```
 
-### 2. Loading (filtered by agent)
+Names use `category.skill_name` notation (dot-separated).
 
-The agent controls which discovered skills are instantiated and attached:
+### 2. Registration (explicit)
+
+The agent registers skills it wants to use:
 
 ```python
-class MyAgent(Agent, skills=['nemo.*']):
-    ...  # loads all nemo category
+self.skills = SkillRegistry(self)
+
+# From entry points (class known, pass kwargs):
+self.skills.register('nemo.shell', cwd=config.working_dir)
+self.skills.register('nemo.todo')  # no args needed
+
+# Pre-constructed instance (for complex deps):
+self.skills.register('nemo.repo', RepoTools(root='.', session=self.shell._session))
+
+# Custom skill (not in entry points):
+self.skills.register('custom.deploy', DeploySkill, env='prod')
 ```
 
-Or explicitly in `__init__`:
-
-```python
-self.skills.load(['nemo.shell', 'superpowers.libwriting'])
-```
-
-Special values:
-- `skills='*'` — load everything discovered (TUIAgent default)
-- `skills=[]` — nothing auto-loaded; fully manual
-
-Skills with constructor args must be constructed manually:
-
-```python
-self.shell = ShellTools(cwd=config.working_dir)
-self.shell.attach(self)
-```
+`register()` does:
+1. Instantiate the skill (if class + kwargs)
+2. `setattr(agent, leaf_name, skill)` — e.g. `self.shell`
+3. `skill.attach(agent)` — lifecycle hook
 
 ### 3. Activation (LLM visibility)
 
-Loaded skills are hidden from the LLM by default. Activation makes them
-visible in `doc(self)`:
-
 ```python
-self.skills.activate(['nemo.shell', 'nemo.repo'])
+self.skills.activate(['nemo.*', 'superpowers.*'])
 ```
 
-Glob patterns supported:
-- `nemo.*` — activate all in category
-- `*` — activate everything loaded
+- Activates matching skills (makes visible via `doc(self)`)
+- Auto-loads from entry points if not already registered
+- Resolves dependencies transitively (with cycle detection)
 
 ## API
 
 ```python
-class SkillRegistry:
-    """Manages skill discovery, loading, and activation."""
+class SkillRegistry(Skill):
+    def register(name, skill_or_cls=None, /, **kwargs): ...
+    def activate(patterns: list[str]): ...
+    def deactivate(patterns: list[str]): ...
+    def reload(name: str | None = None): ...  # hot-reload one or all
 
-    def discovered(self) -> list[str]:
-        """All discovered skill names (category.name)."""
-
-    def loaded(self) -> list[str]:
-        """Currently loaded (attached) skill names."""
-
-    def activated(self) -> list[str]:
-        """Currently activated (LLM-visible) skill names."""
-
-    def load(self, patterns: list[str]) -> None:
-        """Load skills matching patterns from discovered set."""
-
-    def activate(self, patterns: list[str]) -> None:
-        """Make loaded skills matching patterns visible to the LLM."""
-
-    def deactivate(self, patterns: list[str]) -> None:
-        """Hide activated skills from the LLM (still loaded)."""
+    def discovered() -> list[str]: ...
+    def loaded() -> list[str]: ...
+    def activated() -> list[str]: ...
 ```
+
+### Namespace Access
+
+```python
+self.shell                    # shortcut (set by register)
+self.skills.nemo.shell        # fully-qualified (no collisions)
+```
+
+The first segment of a dotted access is always a category, returning
+a namespace proxy. No bracket access, no leaf shortcuts on `self.skills`.
 
 ## Categories
 
-| Category | Skills | Description |
-|----------|--------|-------------|
-| `nemo` | shell, repo, context, events, todo | Standard agent tools |
-| `superpowers` | libwriting, skills, generation | Advanced capabilities |
-| `tui` | brainstorm, tdd, review, ship, root-cause | TUI workflow skills |
+| Category | Skills |
+|----------|--------|
+| `nemo` | shell, repo, todo, context, events, producers, web |
+| `superpowers` | skillwriting, methodwriting |
 
-## Generation Methods (planned — not in this MR)
+## Skill Authoring
 
-Skills will be able to define `@strategy` methods that run on the parent agent's runtime:
+### SkillWriting (`self.libs`)
+
+Scaffold and manage persistent skill packages:
 
 ```python
+await self.libs.create('stats', 'Statistical utilities')
+await self.shell.write(f'{self.libs.path}/stats/stats.py', source)
+self.skills.reload('local.stats')
+await self.libs.run_tests('stats')
+```
+
+API: `create()`, `run_tests()`, `list()`, `path` property.
+File I/O: use `self.shell.write()` / `self.shell.edit()`.
+Hot-reload: use `self.skills.reload(name)`.
+
+### Skill Class
+
+```python
+from nemo_oo_agents.skill import Skill
+
 class MySkill(Skill):
-    @strategy(PredictStrategy())
-    async def classify(self, text: str) -> str:
-        """Classify {text} as positive/negative/neutral."""
+    \"\"\"My custom tool.\"\"\"
+    requires = ('nemo.shell',)  # dependency declarations
+
+    def do_thing(self, arg: str) -> str:
+        \"\"\"Do the thing.\"\"\"
         ...
 ```
 
-When `skill.attach(agent)` is called, generation methods will be bound so that
-`skill.classify("hello")` routes through `agent.runtime`.
+### Slash Commands
 
-> **Reference implementation**: commit `1c0212c1213b6f6c9f50796a6e6d0e0951bf27b4` on branch
-> `feat/skill-generation-methods` has a full working implementation of generation
-> method binding via `skill_generation.py`. It was removed from this MR to keep
-> scope focused on the registry/lifecycle infrastructure.
+Text skills with frontmatter become TUI slash commands:
+
+```markdown
+---
+name: mycommand
+description: Do something useful
+argument-hint: <action>
+---
+Body text shown to the agent when /mycommand is invoked.
+```
+
+### Sharing Skills
+
+1. **Local**: `self.libs.create()` → edit → reload
+2. **Team**: shared git repo → `SkillWriting(self, path='/team/skills')`
+3. **Community**: publish as PyPI package with entry points
+
+## Generation Methods (planned — not in this MR)
+
+Skills will be able to define `@strategy` methods that run on the parent
+agent's runtime. See commit `1c0212c1` for a reference implementation.
 
 ## Visibility Mechanism
 
-- `is_hidden_field(agent, name)` checks activation state.
-- Activated skills pass the visibility check → appear in `doc(self)`.
-- `execution_context` no longer renders a Skills table (removed).
-- Discovery happens via `doc(self)` and TUI `/help`.
+- `activate()` calls `spec(agent, attr, hidden=False)` to unhide
+- `deactivate()` calls `spec(agent, attr, hidden=True)` to hide
+- Activated skills appear in `doc(self)`
+- The old Skills table in `execution_context` has been removed
 
-## Slash Commands
+## Agent.__nosnapshot__
 
-Text skills with `user-invocable: true` (default) in their SKILL.md
-frontmatter are registered as TUI slash commands. Command names are
-normalized to lowercase for case-insensitive matching.
-
-## Migration
-
-1. Existing `spec(self, "context", hidden=False)` calls become
-   `self.skills.activate(["nemo.context"])`.
-2. Agents that previously relied on the Skills table in execution_context
-   should use `doc(self)` for discovery.
-3. `@hidden` annotations on Skill fields are superseded by the
-   activate/deactivate mechanism.
+The `Agent` base class has `__nosnapshot__ = True` to prevent circular
+serialization when skills hold `_agent` references (via `attach()`).
