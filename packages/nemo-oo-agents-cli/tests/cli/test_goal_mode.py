@@ -117,7 +117,7 @@ class TestGoalModeDispatcher:
 
         def record_and_stop(ag, msg):
             turns_seen.append(msg)
-            if "[goal-mode]" in msg:
+            if "You are in goal mode" in msg:
                 # Turn off goal mode after injection to stop the loop
                 config.tui.goal_mode = False
 
@@ -129,7 +129,7 @@ class TestGoalModeDispatcher:
             await h.wait_for(lambda: len(turns_seen) >= 2, timeout=3.0)
 
         assert turns_seen[0] == "start"
-        assert "[goal-mode]" in turns_seen[1]
+        assert "You are in goal mode" in turns_seen[1]
         assert "Fix the bug" in turns_seen[1]
 
     async def test_goal_mode_off_does_not_inject(self):
@@ -195,7 +195,7 @@ class TestGoalModeDispatcher:
 
         def record(ag, msg):
             turns_seen.append(msg)
-            if "[goal-mode]" in msg:
+            if "You are in goal mode" in msg:
                 config.tui.goal_mode = False
 
         agent.script = [record, record]
@@ -205,6 +205,6 @@ class TestGoalModeDispatcher:
             await h.wait_for(lambda: len(turns_seen) >= 2, timeout=3.0)
 
         # Should inject the non-blocked "Prerequisite" todo, not the blocked one
-        assert "[goal-mode]" in turns_seen[1]
+        assert "You are in goal mode" in turns_seen[1]
         assert "Prerequisite" in turns_seen[1]
         assert "Blocked task" not in turns_seen[1]
