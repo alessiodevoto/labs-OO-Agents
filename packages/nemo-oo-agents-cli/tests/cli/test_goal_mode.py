@@ -52,13 +52,13 @@ class TestGoalModeCommand:
 
     async def test_status_off(self, goal_cmd, mock_config):
         mock_config.goal_mode = False
-        result = await goal_cmd.execute(["status"])
+        result = await goal_cmd.execute([])
         assert result.success
         assert any("off" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_status_on(self, goal_cmd, mock_config):
         mock_config.goal_mode = True
-        result = await goal_cmd.execute(["status"])
+        result = await goal_cmd.execute([])
         assert result.success
         assert any("on" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
@@ -76,8 +76,7 @@ class TestGoalModeCommand:
 
     def test_validate_no_args(self, goal_cmd):
         ok, msg = goal_cmd.validate_args([])
-        assert not ok
-        assert "Usage" in msg
+        assert ok
 
     def test_validate_bad_subcmd(self, goal_cmd):
         ok, msg = goal_cmd.validate_args(["maybe"])
@@ -85,7 +84,7 @@ class TestGoalModeCommand:
         assert "Unknown" in msg
 
     def test_validate_good(self, goal_cmd):
-        for sub in ("on", "off", "status"):
+        for sub in ("on", "off"):
             ok, msg = goal_cmd.validate_args([sub])
             assert ok
             assert msg is None

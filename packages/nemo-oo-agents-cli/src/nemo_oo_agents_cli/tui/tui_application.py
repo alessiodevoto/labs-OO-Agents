@@ -649,7 +649,12 @@ class TUIApplication:
             # waiting for user input.
             goal_injected = False
             if self._config is not None and getattr(self._config, "tui", None) is not None:
+                if not self._config.tui.goal_mode and hasattr(agent, "context"):
+                    agent.context.pop("goal_mode", None)
                 if self._config.tui.goal_mode:
+                    # Set goal-mode context block so the agent sees the behavioral instruction
+                    if hasattr(agent, "context"):
+                        agent.context["goal_mode"] = "You are in goal mode: Please keep going until every item on your todo list is complete. While working, add comments to your todo items to track progress. Always verify before closing a todo, then add a final comment explaining how you verified before closing."
                     todo_mgr = getattr(agent, "todo", None)
                     if todo_mgr is not None:
                         open_todos = [
@@ -660,7 +665,7 @@ class TUIApplication:
                         if open_todos:
                             next_todo = open_todos[0]
                             goal_msg = (
-                                f"[goal-mode] Next open todo: [{next_todo.id}] {next_todo.title}"
+                                f"You are in goal mode. Next open todo: [{next_todo.id}] {next_todo.title}"
                             )
                             if next_todo.notes:
                                 goal_msg += f"\nNotes: {next_todo.notes}"
