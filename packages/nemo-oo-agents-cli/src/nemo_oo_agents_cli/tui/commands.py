@@ -1849,21 +1849,23 @@ class TimeTravelCommand(Command):
 
         # --- 3. Verify the target tag exists in the source DB ---
         try:
-            with sqlite3.connect(str(source_db_path)) as src_conn:
-                src_conn.row_factory = sqlite3.Row
-                row = src_conn.execute(
-                    "SELECT insertion_order FROM events WHERE tag = ?", (target_tag,)
-                ).fetchone()
+            src_conn = sqlite3.connect(str(source_db_path))
+            src_conn.row_factory = sqlite3.Row
+            row = src_conn.execute(
+                "SELECT insertion_order FROM events WHERE tag = ?", (target_tag,)
+            ).fetchone()
+            src_conn.close()
         except Exception as e:
             return CommandResult.err(f"Failed to read source session: {e}")
 
         if row is None:
             # Show available tags to help the user
             try:
-                with sqlite3.connect(str(source_db_path)) as src_conn:
-                    last_tags = src_conn.execute(
-                        "SELECT tag, event_type FROM events ORDER BY insertion_order DESC LIMIT 10"
-                    ).fetchall()
+                src_conn = sqlite3.connect(str(source_db_path))
+                last_tags = src_conn.execute(
+                    "SELECT tag, event_type FROM events ORDER BY insertion_order DESC LIMIT 10"
+                ).fetchall()
+                src_conn.close()
                 hint_lines = [f"  tag={r[0]} ({r[1]})" for r in reversed(last_tags)]
                 hint = "\nRecent tags:\n" + "\n".join(hint_lines)
             except Exception:
@@ -1885,13 +1887,15 @@ class TimeTravelCommand(Command):
             return CommandResult.err(f"Failed to copy session DB: {e}")
 
         # --- 5. Truncate the new DB ---
+        conn = None
         try:
-            with sqlite3.connect(str(new_db_path)) as conn:
-                # Delete events after the target tag
-                conn.execute(
-                    "DELETE FROM events WHERE insertion_order > ?",
-                    (target_insertion_order,),
-                )
+            conn = sqlite3.connect(str(new_db_path))
+
+            # Delete events after the target tag
+            conn.execute(
+                "DELETE FROM events WHERE insertion_order > ?",
+                (target_insertion_order,),
+            )
 
             # Clean active_tags: keep only tags that still exist in events
             conn.execute("DELETE FROM active_tags WHERE tag NOT IN (SELECT tag FROM events)")
@@ -1985,6 +1989,8 @@ class TimeTravelCommand(Command):
             conn.close()
         except Exception as e:
             # Clean up the copied file on error
+            if conn:
+                conn.close()
             try:
                 new_db_path.unlink()
             except Exception:
