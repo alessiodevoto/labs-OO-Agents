@@ -1,0 +1,42 @@
+#!/bin/sh
+# pip3 wrapper for aarch64/QEMU environments.
+#
+# Problem: x86_64 task containers often have old Python (e.g. 3.6) whose pip
+# correctly rejects pytest 8.x (which requires Python >= 3.8). The verifier
+# test.sh then calls "python3 -m pytest" which resolves to our aarch64 Python
+# 3.12 (via the python3 wrapper), but pytest was never installed for it.
+#
+# Fix: when the aarch64 ELF interpreter is present, route pip3 through our
+# aarch64 Python 3.12. Install to /tmp/aarch64-pip-user (via --user) which is
+# isolated per container by Apptainer --containall. The python3 wrapper exports
+# the same PYTHONUSERBASE so Python finds the installed packages.
+# --break-system-packages is required because the aarch64 CPython was built by
+# uv and carries an EXTERNALLY-MANAGED marker.
+AARCH64_PY=/opt/harbor/cpython312-aarch64/bin/python3.12
+AARCH64_USERBASE=/tmp/aarch64-pip-user
+
+if [ -f /lib/ld-linux-aarch64.so.1 ] || [ -f /lib/aarch64-linux-gnu/ld-linux-aarch64.so.1 ]; then
+    # Detect if caller already specified an install location or --user.
+    _has_loc=0
+    for _a in "$@"; do
+        case "$_a" in
+            --target|--target=*|-t|--prefix|--prefix=*|--root|--root=*|--user) \
+                _has_loc=1; break;;
+        esac
+    done
+    if [ -n "$VIRTUAL_ENV" ] || [ "$_has_loc" = "1" ]; then
+        # Venv active or explicit location: let pip decide, add break flag.
+        exec "$AARCH64_PY" -m pip "$@" --break-system-packages
+    else
+        # No explicit location: install to per-trial user-base in /tmp.
+        mkdir -p "$AARCH64_USERBASE"
+        exec env PYTHONUSERBASE="$AARCH64_USERBASE" \
+            "$AARCH64_PY" -m pip "$@" --user --break-system-packages
+    fi
+fi
+# aarch64 ld.so not found — fall through to container pip
+for _pip in /usr/local/bin/pip3 /usr/bin/pip3 /usr/local/bin/pip /usr/bin/pip; do
+    [ -x "$_pip" ] && exec "$_pip" "$@"
+done
+echo 'pip3: no pip found in container or overlay' >&2
+exit 127
