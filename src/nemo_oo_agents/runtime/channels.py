@@ -612,11 +612,14 @@ class QueueManager:
     # ---- composite status block -----------------------------------------
 
     def status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
-        """Composite ``status`` across queue-mode channels.
+        """Composite ``status`` across queue-mode channels and active spawns.
 
         Wired into a dynamic context block (``queues``) so the LLM
         sees pending counts every turn. Event-mode channels skip —
         they don't accumulate.
+
+        Also shows active spawned jobs so the LLM knows background
+        producers are still running even when queues are empty.
         """
         parts = [
             ch.status(max_items=max_items, max_chars=max_chars)
@@ -624,6 +627,16 @@ class QueueManager:
             if ch.mode == "queue"
         ]
         body = "\n".join(p for p in parts if p)
+
+        # Show active spawns — tells the LLM "monitors are running"
+        # even when no items are pending (items were already delivered).
+        active_spawns = [h for h in self._handles if h.state == "running"]
+        if active_spawns:
+            spawn_lines = [f"⚡ {len(active_spawns)} active background job(s):"]
+            for h in active_spawns:
+                spawn_lines.append(f"  • {h.label} → {h.name} (running)")
+            spawn_status = "\n".join(spawn_lines)
+            body = f"{body}\n{spawn_status}" if body else spawn_status
 
         # Cheat sheet: show cleanup commands when extra channels have items
         extra = [

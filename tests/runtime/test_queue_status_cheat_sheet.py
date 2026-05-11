@@ -4,6 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
 from nemo_oo_agents.runtime.channels import QueueManager
 
 
@@ -57,3 +61,37 @@ def test_no_cheat_sheet_when_no_channels():
     status = qm.status()
     assert status == ""
     assert "remove_channel" not in status
+
+
+async def _dummy_gen():
+    """Async generator that never finishes."""
+    yield "started"
+    await asyncio.sleep(9999)
+
+
+@pytest.mark.asyncio
+async def test_active_spawns_shown_when_queues_empty():
+    """Active spawn jobs appear in status even when no items pending."""
+    qm = QueueManager()
+    qm.queue("user_messages")
+    qm.queue("ci_monitor")
+    qm.spawn(_dummy_gen(), channel="ci_monitor", buffer=5)
+
+    # Let the task start
+    await asyncio.sleep(0.05)
+
+    status = qm.status()
+    assert "active background job" in status
+    assert "ci_monitor" in status
+    assert "running" in status
+
+    # Cleanup
+    await qm.shutdown()
+
+
+def test_no_active_spawns_shown_when_none_running():
+    """No spawn section when all handles are done."""
+    qm = QueueManager()
+    qm.queue("user_messages")
+    status = qm.status()
+    assert "active background job" not in status
