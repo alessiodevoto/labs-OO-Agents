@@ -116,24 +116,39 @@ class SkillRegistry(Skill):
             except Exception:
                 logger.warning("Failed to load skill %s", name, exc_info=True)
 
-    def register(self, name: str, skill: Skill, *, attr: str | None = None) -> None:
-        """Register a manually-constructed skill as loaded.
+    def register(
+        self, name: str, skill_or_cls: "Skill | type[Skill] | None" = None, /, **kwargs
+    ) -> None:
+        """Register a skill by name, assigning it as self.<leaf_name>.
 
-        Calls attach(agent) automatically if not already attached.
-        Auto-detects the attribute name on the agent by identity scan.
+        Three modes:
+          register('nemo.shell', cwd='...')             — load class from entry points, construct with kwargs
+          register('nemo.shell', ShellTools, cwd='..') — explicit class + kwargs
+          register('nemo.shell', existing_instance)    — pre-constructed instance
 
-        Use for skills that require constructor args::
-
-            self.shell = ShellTools(cwd=config.working_dir)
-            self.skills.register('nemo/shell', self.shell)
+        The leaf of `name` (after last '.') becomes the attr on the agent.
         """
+        if skill_or_cls is None:
+            entry = self._discovered.get(name)
+            if entry is None or entry.entry_point is None:
+                raise KeyError(f"Skill {name!r} not found in entry points")
+            skill_or_cls = entry.entry_point.load()
+
+        if isinstance(skill_or_cls, type) and issubclass(skill_or_cls, Skill):
+            skill = skill_or_cls(**kwargs)
+        elif isinstance(skill_or_cls, Skill):
+            if kwargs:
+                raise TypeError("Cannot pass kwargs with a pre-constructed Skill instance")
+            skill = skill_or_cls
+        else:
+            raise TypeError(f"Expected Skill class or instance, got {type(skill_or_cls)}")
+
+        attr = self._attr_name(name)
+        if attr.startswith("_") or attr in _RESERVED_ATTRS:
+            raise ValueError(f"Cannot register skill with reserved attr name {attr!r}")
+        setattr(self._agent, attr, skill)
         if getattr(skill, "_agent", None) is None:
             skill.attach(self._agent)
-        # Auto-detect actual attribute name on the agent
-        if attr is None:
-            attr = next((k for k, v in self._agent.__dict__.items() if v is skill), None)
-        if attr is None:
-            attr = self._attr_name(name)
         self._loaded.add(name)
         self._attr_map[name] = attr
         if name not in self._discovered:

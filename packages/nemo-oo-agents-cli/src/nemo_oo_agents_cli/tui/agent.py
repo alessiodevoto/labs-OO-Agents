@@ -668,19 +668,18 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         from nemo_oo_agents.paths import get_project_dir
 
         _project_dir = get_project_dir()
-        self.shell = ShellTools(cwd=config.working_dir)
-        self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
-        self.libs = LibraryWriting(self, path=_project_dir / "libs")
-        self.todo = TodoManager()
-
-        # Skill registry: discover + register manually-constructed skills
+        # Skill registry: discover + register all skills
         from nemo_oo_agents.skill_registry import SkillRegistry
 
         self.skills = SkillRegistry(self)
-        self.skills.register("nemo.shell", self.shell)
-        self.skills.register("nemo.repo", self.repo)
-        self.skills.register("superpowers.libwriting", self.libs)
-        self.skills.register("nemo.todo", self.todo)
+        self.skills.register("nemo.shell", ShellTools, cwd=config.working_dir)
+        self.skills.register(
+            "nemo.repo", RepoTools(root=config.working_dir, session=self.shell._session)
+        )
+        self.skills.register(
+            "superpowers.libwriting", LibraryWriting(self, path=_project_dir / "libs")
+        )
+        self.skills.register("nemo.todo", TodoManager)
         self.skills.register("nemo.context", self.context)
         self.skills.register("nemo.events", self.events)
 
