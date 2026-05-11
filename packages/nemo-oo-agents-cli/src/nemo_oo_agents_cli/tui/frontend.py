@@ -10,6 +10,7 @@ All behavior lives in ``Session``.
 """
 
 import asyncio
+import io
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -335,8 +336,6 @@ class TerminalFrontend:
         the result to the terminal in a single flush — eliminates the
         flicker that occurs when each turn triggers a separate write.
         """
-        import io
-
         from rich.console import Console as RichConsole
         from rich.markdown import Markdown
         from rich.rule import Rule

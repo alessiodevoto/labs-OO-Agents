@@ -416,21 +416,24 @@ def build_resume_outputs(
     omitted = 0
     if max_turns and total_turns > max_turns:
         omitted = total_turns - max_turns
-        # Walk items front-to-back, dropping turns until we've removed enough
+        # Walk items front-to-back, dropping turns until we've removed enough.
+        # Rich items are only kept once we've started keeping turns.
         keep_items: list[tuple[str, object]] = []
         remaining_to_drop = omitted
+        started_keeping = False
         for kind, data in items:
             if kind == "turns":
                 if remaining_to_drop >= len(data):
                     remaining_to_drop -= len(data)
-                    continue  # drop entire chunk (and any preceding rich)
+                    continue  # drop entire chunk
                 elif remaining_to_drop > 0:
                     data = data[remaining_to_drop:]  # type: ignore[index]
                     remaining_to_drop = 0
+                started_keeping = True
                 keep_items.append((kind, data))
             else:
-                # Keep rich items only if they follow kept turns
-                if remaining_to_drop <= 0:
+                # Keep rich items only after we've started keeping turns
+                if started_keeping:
                     keep_items.append((kind, data))
         items = keep_items
 
