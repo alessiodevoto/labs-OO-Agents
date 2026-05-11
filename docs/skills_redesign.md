@@ -166,3 +166,50 @@ agent's runtime. See commit `1c0212c1` for a reference implementation.
 
 The `Agent` base class has `__nosnapshot__ = True` to prevent circular
 serialization when skills hold `_agent` references (via `attach()`).
+## Future Directions
+
+### Template Variable Resolution in Prompts
+
+Skill prompts (SKILL.md) could reference dependencies via template syntax:
+
+```markdown
+Use `{self.skills.nemo.shell}` to run commands.
+```
+
+At prompt-render time, `{self.skills.nemo.shell}` resolves to the actual
+attr shortcut (e.g. `self.shell`). This decouples prompt text from attr
+naming — the author writes the fully-qualified reference, the system
+resolves the shortcut for the LLM.
+
+### Constructor Pattern
+
+`register()` eliminates the double-assignment anti-pattern:
+
+```python
+# OLD (anti-pattern — assigns twice):
+self.shell = ShellTools(cwd=config.working_dir)
+self.skills.register('nemo.shell', self.shell)
+
+# NEW (register does setattr):
+self.skills.register('nemo.shell', cwd=config.working_dir)
+# → self.shell now exists, constructed from entry point + kwargs
+
+# For complex deps (pre-constructed instance):
+self.skills.register('nemo.repo', RepoTools(root='.', session=self.shell._session))
+```
+
+Three modes:
+- `register('nemo.shell', cwd='...')` — entry-point class + kwargs
+- `register('nemo.shell', existing_instance)` — pre-constructed
+- `register('custom.foo', MyFoo, bar='...')` — explicit class (not in entry points)
+
+### SkillManager / LibraryManager Unification
+
+Currently two managers scan different sources. Future: one `SkillManager`
+handles all sources (entry points, skills_dirs, libs/), with `reload()`
+as a first-class operation that works for any skill type.
+
+### Multi-Directory Hot-Reload
+
+Allow `SkillWriting` to point at multiple paths (team-shared dirs, local
+dev dirs). File watchers or explicit `self.skills.reload()` pick up changes.
