@@ -1467,6 +1467,50 @@ class JobsCommand(Command):
 
 
 # ---------------------------------------------------------------------------
+# Trace URL command
+# ---------------------------------------------------------------------------
+
+
+class TraceUrlCommand(Command):
+    """Print the full viewer URL for the current session's trace."""
+
+    @property
+    def name(self) -> str:
+        return "trace-url"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/trace-url": "Print the full URL to the trace of the current session",
+        }
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        import os
+        import urllib.parse
+
+        try:
+            from nemo_oo_agents.tracing import get_session
+        except ImportError:
+            return CommandResult.err("Tracing package not installed.")
+
+        session_name = get_session()
+        if not session_name:
+            return CommandResult.err("No active trace session.")
+
+        # Determine the viewer base URL from the OTLP endpoint
+        endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")
+        # Strip /v1/traces or /v1 suffix to get the viewer base
+        base = endpoint.rstrip("/")
+        for suffix in ("/v1/traces", "/v1"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+
+        url = f"{base}/traces/view?session_id={urllib.parse.quote(session_name)}"
+        return CommandResult.ok(TextOutput(url, "info"))
+
+
+# ---------------------------------------------------------------------------
 # Show last Python command
 # ---------------------------------------------------------------------------
 
@@ -2113,6 +2157,7 @@ class CommandRegistry:
         "show-last-python": ShowLastPythonCommand,
         "events": EventsCommand,
         "time-travel": TimeTravelCommand,
+        "trace-url": TraceUrlCommand,
     }
 
     def __init__(
