@@ -1955,9 +1955,9 @@ class TimeTravelCommand(Command):
             ).fetchone()
             rename_tag = str((tag_num_row[0] or 0) + 1)
 
-            from datetime import UTC, datetime as _datetime
-
             import json as _json
+            from datetime import UTC
+            from datetime import datetime as _datetime
 
             rename_event_id = str(_uuid.uuid4())
             rename_ts = _datetime.now(UTC).isoformat()
