@@ -5185,12 +5185,12 @@ class TraceExplorer:
     # =========================================================================
 
     @property
-    async def agent_count(self) -> int:
+    def agent_count(self) -> int:
         """Total number of agent sessions (including nested)."""
         return len(self._all_sessions)
 
     @property
-    async def max_agent_depth(self) -> int:
+    def max_agent_depth(self) -> int:
         """Maximum depth of agent nesting."""
         if not self._all_sessions:
             return 0
