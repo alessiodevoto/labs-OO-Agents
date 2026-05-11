@@ -161,6 +161,20 @@ async def bootstrap(
         llm = FakeLLMClient()
 
     # ------------------------------------------------------------------
+    # Health check — verify endpoint is reachable and API key is valid
+    # ------------------------------------------------------------------
+    from nemo_oo_agents.unifiedllm import FakeLLMClient as _FakeLLMCheck
+
+    if not isinstance(llm, _FakeLLMCheck):
+        from .health_check import probe_llm
+
+        _health = await probe_llm(llm)
+        if not _health.ok:
+            messages.append(TextOutput(f"⚠️  {_health.error_message}", "error"))
+            if _health.fix_hint:
+                messages.append(TextOutput(_health.fix_hint, "info"))
+
+    # ------------------------------------------------------------------
     # Storage — per-session SQLite DB
     # ------------------------------------------------------------------
     import uuid as _uuid
