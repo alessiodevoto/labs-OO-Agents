@@ -196,7 +196,7 @@ class BashSession:
 
         if timed_out:
             exit_code = 124
-        else:
+        elif ctrl_lines:
             self._last_successful_command = time.time()
 
         return stdout.strip(), stderr.strip(), exit_code
@@ -212,6 +212,7 @@ class BashSession:
         if not self._started:
             await self.start()
 
+        self._last_command = command
         sentinel = f"__CTRL_{secrets.token_hex(8)}__"
         script = f"{command}\n_nemo_ec=$?\necho $_nemo_ec >&3\npwd >&3\necho {sentinel} >&3\n"
 
@@ -235,8 +236,12 @@ class BashSession:
             ctrl = self._control_reader
             if proc is None or proc.stdin is None or ctrl is None:
                 raise RuntimeError("Bash session failed to restart") from None
-            proc.stdin.write(script.encode())
-            await proc.stdin.drain()
+            try:
+                proc.stdin.write(script.encode())
+                await proc.stdin.drain()
+            except (BrokenPipeError, ConnectionResetError, OSError) as e2:
+                self._diagnose_death(f"run_stream_retry: {e2}")
+                raise RuntimeError("Bash session recovery failed") from e2
 
         assert proc.stdout is not None and proc.stderr is not None
 
@@ -308,9 +313,8 @@ class BashSession:
 
         if timed_out:
             exit_code = 124
-        else:
+        elif ctrl_lines:
             self._last_successful_command = time.time()
-            self._last_command = command[:200]
 
         yield ("__done__", f"{exit_code},{1 if timed_out else 0}")
 
@@ -351,10 +355,8 @@ class BashSession:
                 proc.stdin.write(script.encode())
                 await proc.stdin.drain()
             except (BrokenPipeError, ConnectionResetError, OSError) as e2:
-                diag = self._diagnose_death(f"send_and_wait_retry: {e2}")
-                raise RuntimeError(
-                    f"Bash session recovery failed — process died twice.\n{diag}"
-                ) from e2
+                self._diagnose_death(f"send_and_wait_retry: {e2}")
+                raise RuntimeError("Bash session recovery failed") from e2
 
         # Drain stdout/stderr concurrently with control fd to prevent deadlock.
         assert proc.stdout is not None and proc.stderr is not None
