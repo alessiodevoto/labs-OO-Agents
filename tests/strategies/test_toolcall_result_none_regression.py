@@ -29,8 +29,6 @@ from nemo_oo_agents.context_blocks.formatter import (
     _event_block_to_messages,
 )
 from nemo_oo_agents.context_blocks.models import (
-    BlockMetadata,
-    RenderedMessage,
     ResolvedBlock,
     Role,
 )
@@ -38,7 +36,6 @@ from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import ResultStatus
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
-
 
 # ---------------------------------------------------------------------------
 # Helpers
