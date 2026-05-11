@@ -62,6 +62,7 @@ def test_no_cheat_sheet_when_no_channels():
     assert status == ""
     assert "remove_channel" not in status
 
+
 async def _dummy_gen():
     """Async generator that never finishes."""
     yield "started"
@@ -94,4 +95,3 @@ def test_no_active_spawns_shown_when_none_running():
     qm.queue("user_messages")
     status = qm.status()
     assert "active background job" not in status
-
