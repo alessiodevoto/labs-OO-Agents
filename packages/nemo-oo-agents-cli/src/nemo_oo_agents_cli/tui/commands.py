@@ -1928,7 +1928,7 @@ class TimeTravelCommand(Command):
                 conn.execute("DELETE FROM snapshots")
 
             # --- 6. Rename the session by injecting a TUISessionRename event ---
-            new_name = f"TimeTravel ({original_name}), tag {target_tag})"
+            new_name = f"TimeTravel ({original_name}, tag {target_tag})"
 
             # Get max insertion_order in the truncated DB
             max_order_row = conn.execute(
