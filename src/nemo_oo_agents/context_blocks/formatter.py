@@ -19,6 +19,7 @@ This split keeps the "format" axis (XML / Markdown / Plain) orthogonal to the
 """
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import StrEnum
@@ -35,6 +36,8 @@ from nemo_oo_agents.context_blocks.models import (
     Role,
     ToolCallInfo,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class FormatType(StrEnum):
@@ -221,6 +224,25 @@ def _event_block_to_messages(
                 RenderedMessage(
                     role=Role.TOOL,
                     content=event.result.content,
+                    tool_call_id=event.tool_call_id,
+                )
+            )
+        else:
+            # Defensive: ToolCallEvent with result=None should not happen in
+            # normal flow, but if it does (e.g. a GenerationError was raised
+            # before the caller could update the event), emit a minimal
+            # tool_result to avoid producing tool_use without a matching
+            # tool_result — which corrupts the conversation for the next
+            # session.
+            logger.warning(
+                "ToolCallEvent %s has result=None — emitting placeholder tool_result "
+                "to prevent context corruption.",
+                event.tool_call_id,
+            )
+            messages.append(
+                RenderedMessage(
+                    role=Role.TOOL,
+                    content="(no result recorded)",
                     tool_call_id=event.tool_call_id,
                 )
             )

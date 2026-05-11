@@ -1834,6 +1834,258 @@ class EventsCommand(Command):
         return str(event)[:60]
 
 
+class TimeTravelCommand(Command):
+    """Fork a session at a specific event tag, creating a new session truncated to that point."""
+
+    @property
+    def name(self) -> str:
+        return "time-travel"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/time-travel <session-id> --at <tag>": (
+                "Fork a session at a specific tag, creating a new session truncated to that point"
+            ),
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) < 3:
+            return False, "Usage: /time-travel <session-id> --at <tag>"
+        if "--at" not in args:
+            return False, "Usage: /time-travel <session-id> --at <tag>"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        import shutil
+        import sqlite3
+        import uuid as _uuid
+
+        from nemo_oo_agents.storage import SQLiteStorageManager
+
+        from .session_manager import SESSIONS_DIR
+
+        # Parse arguments: /time-travel <session-id> --at <tag>
+        at_index = args.index("--at")
+        session_prefix = " ".join(args[:at_index])
+        if at_index + 1 >= len(args):
+            return CommandResult.err("Missing tag value after --at")
+        target_tag = args[at_index + 1]
+
+        # --- 1. Find the source session DB ---
+        matches = SessionManager.find_by_prefix(session_prefix)
+        if not matches:
+            # Try matching by session name
+            all_sessions = SessionManager.list_sessions(limit=100)
+            matches = [
+                s.id for s in all_sessions if s.name and session_prefix.lower() in s.name.lower()
+            ]
+        if not matches:
+            return CommandResult.err(
+                f"Session '{session_prefix}' not found. Use /session list to find session IDs."
+            )
+        if len(matches) > 1:
+            ids = ", ".join(m[:8] for m in matches)
+            return CommandResult.err(
+                f"Ambiguous session identifier '{session_prefix}' matches: {ids}"
+            )
+        source_session_id = matches[0]
+        source_db_path = SESSIONS_DIR / f"{source_session_id}.db"
+        if not source_db_path.exists():
+            return CommandResult.err(f"Session DB not found: {source_db_path}")
+
+        # --- 2. Read original session name ---
+        original_meta = SessionManager._read_meta(source_db_path)
+        original_name = (
+            original_meta.name if original_meta and original_meta.name else source_session_id[:8]
+        )
+
+        # --- 3. Verify the target tag exists in the source DB ---
+        try:
+            src_conn = sqlite3.connect(str(source_db_path))
+            src_conn.row_factory = sqlite3.Row
+            row = src_conn.execute(
+                "SELECT insertion_order FROM events WHERE tag = ?", (target_tag,)
+            ).fetchone()
+            src_conn.close()
+        except Exception as e:
+            return CommandResult.err(f"Failed to read source session: {e}")
+
+        if row is None:
+            # Show available tags to help the user
+            try:
+                src_conn = sqlite3.connect(str(source_db_path))
+                last_tags = src_conn.execute(
+                    "SELECT tag, event_type FROM events ORDER BY insertion_order DESC LIMIT 10"
+                ).fetchall()
+                src_conn.close()
+                hint_lines = [f"  tag={r[0]} ({r[1]})" for r in reversed(last_tags)]
+                hint = "\nRecent tags:\n" + "\n".join(hint_lines)
+            except Exception:
+                hint = ""
+            return CommandResult.err(
+                f"Tag '{target_tag}' not found in session {source_session_id[:8]}.{hint}"
+            )
+
+        target_insertion_order = row["insertion_order"]
+
+        # --- 4. Copy DB to new file with new UUID ---
+        new_session_id = str(_uuid.uuid4())
+        new_db_path = SESSIONS_DIR / f"{new_session_id}.db"
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+        try:
+            shutil.copy2(str(source_db_path), str(new_db_path))
+        except Exception as e:
+            return CommandResult.err(f"Failed to copy session DB: {e}")
+
+        # --- 5. Truncate the new DB ---
+        conn = None
+        try:
+            conn = sqlite3.connect(str(new_db_path))
+
+            # Delete events after the target tag
+            conn.execute(
+                "DELETE FROM events WHERE insertion_order > ?",
+                (target_insertion_order,),
+            )
+
+            # Clean active_tags: keep only tags that still exist in events
+            conn.execute("DELETE FROM active_tags WHERE tag NOT IN (SELECT tag FROM events)")
+
+            # Remove snapshots created after the target event's timestamp
+            # Get the timestamp of the target event to compare against snapshot created_at
+            target_row = conn.execute(
+                "SELECT data FROM events WHERE tag = ?", (target_tag,)
+            ).fetchone()
+            if target_row:
+                import json as _json
+
+                try:
+                    target_data = _json.loads(target_row[0])
+                    target_ts = target_data.get("timestamp")
+                    if target_ts:
+                        conn.execute(
+                            "DELETE FROM snapshots WHERE created_at > ?",
+                            (target_ts,),
+                        )
+                    else:
+                        # No timestamp — remove all snapshots to be safe
+                        conn.execute("DELETE FROM snapshots")
+                except Exception:
+                    conn.execute("DELETE FROM snapshots")
+            else:
+                conn.execute("DELETE FROM snapshots")
+
+            # --- 6. Rename the session by injecting a TUISessionRename event ---
+            new_name = f"TimeTravel ({original_name}, tag {target_tag})"
+
+            # Get max insertion_order in the truncated DB
+            max_order_row = conn.execute("SELECT MAX(insertion_order) FROM events").fetchone()
+            next_order = (max_order_row[0] or 0) + 1
+
+            # Get max position in active_tags
+            max_pos_row = conn.execute("SELECT MAX(position) FROM active_tags").fetchone()
+            next_pos = (max_pos_row[0] or 0) + 1
+
+            # Compute next tag number
+            tag_num_row = conn.execute(
+                """SELECT COALESCE(MAX(
+                    CAST(
+                        CASE WHEN instr(tag, '..') > 0
+                             THEN substr(tag, instr(tag, '..') + 2)
+                             ELSE tag
+                        END AS INTEGER
+                    )
+                ), 0) FROM events"""
+            ).fetchone()
+            rename_tag = str((tag_num_row[0] or 0) + 1)
+
+            import json as _json
+            from datetime import UTC
+            from datetime import datetime as _datetime
+
+            rename_event_id = str(_uuid.uuid4())
+            rename_ts = _datetime.now(UTC).isoformat()
+            rename_data = _json.dumps(
+                {
+                    "event_type": "TUISessionRename",
+                    "id": rename_event_id,
+                    "status": "active",
+                    "timestamp": rename_ts,
+                    "metadata": {},
+                    "name": new_name,
+                    "user_named": False,
+                }
+            )
+            conn.execute(
+                "INSERT INTO events (tag, event_id, event_type, status, data, insertion_order) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    rename_tag,
+                    rename_event_id,
+                    "TUISessionRename",
+                    "active",
+                    rename_data,
+                    next_order,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO active_tags (position, tag) VALUES (?, ?)",
+                (next_pos, rename_tag),
+            )
+
+            conn.commit()
+
+            # Get final event count for the status message
+            event_count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            conn.close()
+        except Exception as e:
+            # Clean up the copied file on error
+            if conn:
+                conn.close()
+            try:
+                new_db_path.unlink()
+            except Exception:
+                pass
+            return CommandResult.err(f"Failed to truncate session: {e}")
+
+        # --- 7. Open the new session and switch into it ---
+        try:
+            new_storage = SQLiteStorageManager(new_db_path)
+            new_sm = SessionManager(
+                storage=new_storage,
+                session_id=new_session_id,
+                model=self.session_manager.model if self.session_manager else "",
+                agent_cls=type(self.agent).__name__,
+                working_dir=self.session_manager.working_dir if self.session_manager else "",
+                resumed=True,
+            )
+        except Exception as e:
+            return CommandResult.err(f"Failed to open time-travel session: {e}")
+
+        # Build resume outputs to replay history
+        import os as _os
+
+        _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+        outputs = build_resume_outputs(new_db_path, new_session_id, in_nemo_term=_in_nemo_term)
+
+        outputs.append(
+            TextOutput(
+                f"\n⏳ Time-travel session created!\n"
+                f"  Source: {source_session_id[:8]} ({original_name})\n"
+                f"  Forked at tag: {target_tag}\n"
+                f"  Events: {event_count}\n"
+                f"  New session: {new_session_id[:8]}",
+                "success",
+            )
+        )
+
+        result = CommandResult(success=True, outputs=outputs)
+        result.new_session_manager = new_sm
+        return result
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -1860,6 +2112,7 @@ class CommandRegistry:
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,
         "events": EventsCommand,
+        "time-travel": TimeTravelCommand,
     }
 
     def __init__(
