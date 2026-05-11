@@ -9,6 +9,7 @@ import inspect
 import io
 import linecache
 import logging
+import math
 import re as _re
 import tokenize
 import types
@@ -268,6 +269,97 @@ def _clamp_messages_to_budget(
         system_cost + running,
     )
     return system + rest[keep_from:], system_cost + running, running, dropped
+
+
+# ---------------------------------------------------------------------------
+# Shared collapse/archival helpers (L4 boundary + structured safety net)
+# ---------------------------------------------------------------------------
+
+# Archive 25% more than the drop count to avoid re-hitting the boundary next turn.
+_ARCHIVE_HYSTERESIS = 1.25
+
+
+def _protected_task_tags_for_stack(
+    event_manager: Any,
+    active_tags: list[str],
+    call_stack: tuple[Any, ...],
+) -> set[str]:
+    """Return Task event tags that must not be collapsed.
+
+    Preserves Tasks whose metadata.call_id is on the active call stack.
+    Falls back to the single most recent Task when no stack match exists.
+    """
+    from nemo_oo_agents.events import Task
+
+    active_call_ids = {cid for cid in call_stack if cid is not None}
+    protected: set[str] = set()
+    if active_call_ids:
+        for tag in active_tags:
+            ev = event_manager[tag]
+            if isinstance(ev, Task) and ev.metadata.get("call_id") in active_call_ids:
+                protected.add(tag)
+    if not protected:
+        for tag in reversed(active_tags):
+            if isinstance(event_manager[tag], Task):
+                protected.add(tag)
+                break
+    return protected
+
+
+def _contiguous_tag_runs(tags: list[str]) -> list[list[str]]:
+    """Group tags into contiguous runs by numeric start value."""
+    runs: list[list[str]] = []
+    run: list[str] = []
+    for tag in tags:
+        if run:
+            try:
+                prev = int(run[-1].split("..")[0])
+                cur = int(tag.split("..")[0])
+            except (ValueError, IndexError):
+                runs.append(run)
+                run = [tag]
+                continue
+            if cur != prev + 1:
+                runs.append(run)
+                run = []
+        run.append(tag)
+    if run:
+        runs.append(run)
+    return runs
+
+
+def _collapse_oldest(
+    event_manager: Any,
+    active_tags: list[str],
+    protected_tags: set[str],
+    target: int,
+    summary_text: str,
+    *,
+    log_prefix: str = "collapse",
+) -> int:
+    """Collapse up to *target* oldest active events, skipping protected tags.
+
+    Returns the number of events actually archived.
+    """
+    if target <= 0:
+        return 0
+    collapsible = [t for t in active_tags if t not in protected_tags]
+    runs = _contiguous_tag_runs(collapsible)
+    remaining = target
+    archived = 0
+    for run_tags in runs:
+        if remaining <= 0:
+            break
+        n = min(len(run_tags), remaining)
+        if n <= 0:
+            continue
+        try:
+            event_manager.collapse(run_tags[0], run_tags[n - 1], summary_text=summary_text)
+            archived += n
+            remaining -= n
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("%s failed for %s..%s: %s", log_prefix, run_tags[0], run_tags[n - 1], exc)
+    return archived
 
 
 # ---------------------------------------------------------------------------
@@ -2398,9 +2490,9 @@ class ActorRuntime:
                     return "None"
                 if isinstance(result, str):
                     return result
-                from nemo_oo_agents.context_blocks.utils import truncating_pformat
+                from nemo_oo_agents.agentdoc import pformat as _pformat_value
 
-                return str(truncating_pformat(result, **ctx_block_kwargs))
+                return _pformat_value(result, unquote_strings=True, **ctx_block_kwargs)
             return value
 
         build_result = await build_context(
@@ -2448,17 +2540,22 @@ class ActorRuntime:
         tc = self.truncation_config
         llm_client = _current_llm_var.get()
 
-        # Pre-render clamp: content-level ``max_event_tokens``. Loose upper
-        # bound — we do the authoritative structured-level check AFTER
-        # render_context produces the full messages list (see below).
-        effective_event_limit = tc.max_event_tokens
+        effective_context_limit = tc.max_context_tokens
         ctx_window = getattr(llm_client, "context_window", None)
 
-        need_token_counter = tc.max_context_tokens is not None or effective_event_limit is not None
+        # Default (unconfigured) context budget: up to half the model window.
+        if (
+            effective_context_limit is None
+            and ctx_window is not None
+            and tc.response_reserve_tokens > 0
+        ):
+            effective_context_limit = max(0, ctx_window // 2)
+
+        need_token_counter = effective_context_limit is not None
         client_counter = getattr(llm_client, "count_tokens", None)
         if need_token_counter and not callable(client_counter):
             raise RuntimeError(
-                "max_context_tokens / max_event_tokens requires a token counter, but the LLM "
+                "max_context_tokens requires a token counter, but the LLM "
                 f"({type(llm_client).__name__!r}) has no count_tokens method. "
                 "Register an explicit counter: pass count_tokens=char_approximate_token_counter "
                 "to your LLM, or use 'from nemo_oo_agents import char_approximate_token_counter' "
@@ -2485,8 +2582,7 @@ class ActorRuntime:
                 blocks,
                 block_formatter=self.agent.render_config.block_formatter,
                 provider_formatter=provider_formatter,
-                context_limit=tc.max_context_tokens,
-                event_limit=effective_event_limit,
+                context_limit=effective_context_limit,
                 count_tokens=count_tokens,
                 pre_format_limit=tc.max_block_chars,
                 event_format=tc.event_format,
@@ -2545,25 +2641,38 @@ class ActorRuntime:
                 messages, cap, llm_client.model, tool_schemas=tool_schemas
             )
             if dropped:
-                # Archive the oldest events via event_manager.collapse so:
-                #  (a) next turn's render doesn't re-do the same drop work,
-                #  (b) a Summary event fires → the TUI renderer surfaces
-                #      ``∴ truncated 1..N · M events (no summary)`` to the
-                #      user instead of silently dropping history.
-                #
-                # Fraction of non-system messages dropped is a reasonable
-                # proxy for the fraction of active events to archive;
-                # per-message/per-event isn't strictly 1:1 but close enough
-                # for the archival boundary.
-                active_tags = self.event_manager.keys()
+                # Fraction of non-system messages dropped is a reasonable proxy
+                # for how much active history to archive. Add hysteresis so we
+                # don't immediately re-hit the boundary next turn.
+                active_tags = list(self.event_manager.keys())
                 rest_total = len(messages) + dropped  # non-system messages rendered
                 fraction = dropped / rest_total if rest_total else 0
-                n_to_archive = int(len(active_tags) * fraction)
-                if n_to_archive > 0 and len(active_tags) > n_to_archive:
-                    try:
-                        self.event_manager.collapse(active_tags[0], active_tags[n_to_archive - 1])
-                    except Exception as exc:  # noqa: BLE001
-                        logger.debug("post-clamp collapse failed: %s", exc)
+                n_to_archive = int(math.ceil(len(active_tags) * fraction * _ARCHIVE_HYSTERESIS))
+                if n_to_archive > 0:
+                    summary_text = (
+                        f"hit context window limit: before={stats.total_tokens:,}/{cap:,} total_tokens, "
+                        f"after={total_tok:,}/{cap:,}, dropped_messages={dropped}"
+                    )
+
+                    protected = _protected_task_tags_for_stack(
+                        self.event_manager, active_tags, self._agent_call_stack
+                    )
+                    _collapse_oldest(
+                        self.event_manager,
+                        active_tags,
+                        protected,
+                        n_to_archive,
+                        summary_text,
+                        log_prefix="post-clamp",
+                    )
+                    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
+
+                    hm = get_harness_metrics()
+                    if isinstance(hm, HarnessMetrics):
+                        hm.context_limits_events_collapsed += n_to_archive
+                        hm.context_limits_tokens_archived += dropped * (
+                            stats.events_tokens // max(1, stats.events_count)
+                        )
             if dropped or total_tok != stats.total_tokens:
                 # Reflect the actual shipped payload in stats so the TUI's
                 # ``ctx N%`` display matches reality.

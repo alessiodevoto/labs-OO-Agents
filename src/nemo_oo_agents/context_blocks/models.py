@@ -258,8 +258,14 @@ class ContextWindowStats(BaseModel):
         int | None, Field(description="Model's total context window size")
     ] = None
     context_blocks_dropped: Annotated[
-        int, Field(description="System blocks dropped during truncation")
+        int, Field(description="System blocks marked EVICTED during truncation")
     ] = 0
+
+    @property
+    def context_blocks_evicted(self) -> int:
+        """Alias for context_blocks_dropped (preferred terminology)."""
+        return self.context_blocks_dropped
+
     events_dropped: Annotated[int, Field(description="Events dropped during truncation")] = 0
 
     @property
@@ -323,7 +329,7 @@ class ContextWindowStats(BaseModel):
             cb_parts.append(f"{self.context_blocks_tokens:,} tokens")
         cb_parts.append(f"{self.context_blocks_count} blocks")
         if self.context_blocks_dropped:
-            cb_parts.append(f"{self.context_blocks_dropped} dropped")
+            cb_parts.append(f"{self.context_blocks_dropped} EVICTED")
         lines.append(f"  Context blocks: {' — '.join(cb_parts)}")
 
         # --- Events line ---
@@ -345,9 +351,10 @@ class ContextWindowStats(BaseModel):
         evt_hot = self.event_utilization is not None and self.event_utilization > 0.8
         if self.context_blocks_dropped or self.events_dropped or ctx_hot or evt_hot:
             lines.append(
-                "Context is nearly full. Use self.context (ContextApi) to summarize "
-                "or remove blocks, and self.events (EventsApi) to summarize or "
-                "manage event history."
+                "Context is nearly full. Context blocks over budget are labeled "
+                "EVICTED. Use self.context (ContextApi) to summarize or remove "
+                "blocks, and self.events (EventsApi) to summarize or manage "
+                "event history."
             )
 
         return "\n".join(lines)

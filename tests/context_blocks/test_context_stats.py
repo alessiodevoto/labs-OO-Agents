@@ -108,18 +108,16 @@ class TestContextWindowStatsUtilization:
         assert stats.max_context_tokens is None
         assert stats.context_utilization is None
 
-    def test_event_utilization_when_limit_set(self):
-        """event_utilization computed as tokens/limit."""
+    def test_event_utilization_none_when_no_event_limit(self):
+        """event_utilization is None when no event limit configured."""
         blocks = [ResolvedBlock(key="msg", content="x" * 300, role=Role.USER)]
         stats = render_context(
             blocks,
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1000,
-            count_tokens=len,
         ).stats
-        assert stats.max_event_tokens == 1000
-        assert stats.event_utilization == 300 / 1000
+        assert stats.max_event_tokens is None
+        assert stats.event_utilization is None
 
     def test_event_utilization_none_when_no_limit(self):
         """event_utilization is None when no limit configured."""
@@ -185,41 +183,6 @@ class TestContextWindowStatsTruncation:
         assert stats.context_blocks_dropped == 0
         assert stats.events_dropped == 0
 
-    def test_events_dropped_on_truncation(self):
-        """events_dropped tracks exactly how many events were dropped."""
-        blocks = [
-            ResolvedBlock(key="e1", content="old_" + "x" * 3000, role=Role.USER),
-            ResolvedBlock(key="e2", content="mid_" + "y" * 3000, role=Role.ASSISTANT),
-            ResolvedBlock(key="e3", content="new_" + "z" * 100, role=Role.USER),
-        ]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=4000,
-            count_tokens=len,
-        ).stats
-        # e1 (3004) + e2 (3004) = 6008 > 4000; must drop e1 (oldest), leaving e2+e3 = 3108
-        assert stats.events_dropped == 1
-        assert stats.events_count == 2
-
-    def test_events_dropped_all(self):
-        """When budget is tiny, all events can be dropped."""
-        blocks = [
-            ResolvedBlock(key="e1", content="x" * 5000, role=Role.USER),
-            ResolvedBlock(key="e2", content="y" * 5000, role=Role.ASSISTANT),
-        ]
-        stats = render_context(
-            blocks,
-            block_formatter=XMLBlockFormatter(),
-            provider_formatter=OpenAIProviderFormatter(),
-            event_limit=1,
-            count_tokens=len,
-        ).stats
-        assert stats.events_dropped == 2
-        assert stats.events_count == 0
-        assert stats.events_tokens == 0
-
     def test_stats_reflect_post_truncation(self):
         """Token counts reflect post-truncation state."""
         blocks = [
@@ -251,8 +214,8 @@ class TestContextWindowStatsTruncation:
             count_tokens=len,
         ).stats
         assert stats.context_blocks_dropped == 2
-        # Only the truncation_notice block survives
-        assert stats.context_blocks_count == 1
+        # Blocks are retained in-place and labeled EVICTED
+        assert stats.context_blocks_count == 2
 
     def test_context_blocks_dropped_with_user_blocks(self):
         """User blocks (from self.context) are dropped first."""
@@ -292,7 +255,6 @@ class TestContextWindowStatsWithTokenCounter:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             context_limit=10000,
-            event_limit=10000,
             count_tokens=word_counter,
         ).stats
         assert stats.context_blocks_tokens == 3  # "hello world foo" = 3 words
@@ -336,11 +298,9 @@ class TestContextWindowStatsEdgeCases:
             block_formatter=XMLBlockFormatter(),
             provider_formatter=OpenAIProviderFormatter(),
             context_limit=1000,
-            event_limit=1000,
             count_tokens=len,
         ).stats
         assert stats.context_utilization == 0.0
-        assert stats.event_utilization == 0.0
 
     def test_full_utilization(self):
         """100% utilization when content exactly at limit."""
@@ -534,7 +494,7 @@ class TestContextWindowStatsFormat:
             context_blocks_dropped=1,
         )
         text = stats.format()
-        assert "1 dropped" in text
+        assert "1 EVICTED" in text
         assert "nearly full" in text
 
     def test_format_dropped_counts_shown(self):
@@ -549,7 +509,7 @@ class TestContextWindowStatsFormat:
             events_dropped=7,
         )
         text = stats.format()
-        assert "3 dropped" in text
+        assert "3 EVICTED" in text
         assert "7 dropped" in text
 
     def test_format_empty(self):

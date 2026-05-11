@@ -22,8 +22,8 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from nemo_oo_agents.agentdoc import pformat as _pformat_value
 from nemo_oo_agents.context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
-from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
@@ -275,7 +275,7 @@ async def _phase_persistent_blocks(
                 content = "None"
             else:
                 kwargs = context_block_format.model_dump() if context_block_format else {}
-                content = truncating_pformat(value, **kwargs)
+                content = _pformat_value(value, unquote_strings=True, **kwargs)
             meta = BlockMetadata(
                 expr=f'self.context["{key}"]', user_block=is_user, immutable=immutable
             )

@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests verifying format_event renders events safely.
 
-Block-level head/tail string truncation has been removed. Strings pass through
-verbatim; non-strings get pformat with optional ``max_chars`` as an
-OOM-safety net (TruncatingStringIO). These tests ensure ``format_event`` stays
-well-bounded for non-string values when ``max_chars`` is set.
+Block-level head/tail string truncation has been removed. ``format_event``
+uses structural bounds from ``event_format`` only; it must not rely on
+``max_chars`` / ``TruncatingStringIO`` for event internals.
 """
 
 from nemo_oo_agents.context_blocks.events import EventBase
@@ -31,12 +30,17 @@ class TestFormatEventBounded:
         assert "1" in result
         assert "truncation" not in result.lower()
 
-    def test_large_list_value_bounded_with_max_chars(self):
-        """A non-string value with an explicit ``max_chars`` cap is OOM-bounded."""
+    def test_large_list_value_bounded_with_event_format(self):
+        """Large structured values are bounded by event_format structural knobs."""
+        from nemo_oo_agents.config.truncation_config import FormatConfig
+
         event = BigValueEvent(value=list(range(1_000_000)))
-        result = self.fmt.format_event(event, max_chars=10_000)
-        # TruncatingStringIO keeps output well under the full ~7MB repr
-        assert len(result) < 20_000
+        result = self.fmt.format_event(
+            event,
+            event_format=FormatConfig(max_string=500, max_length=50, max_depth=4),
+        )
+        assert "list(len=1000000" in result
+        assert len(result) < 5_000
 
     def test_large_string_value_uses_marker_family(self):
         """A string field NESTED inside a structured event gets the marker
@@ -48,7 +52,6 @@ class TestFormatEventBounded:
         event = BigValueEvent(value="x" * 2_000_000)
         result = self.fmt.format_event(
             event,
-            max_chars=10_000,
             event_format=FormatConfig(max_string=500, max_length=50, max_depth=4),
         )
         # Marker family kicks in for the nested string field

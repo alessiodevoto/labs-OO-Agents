@@ -93,6 +93,7 @@ def pformat(
     instance_mode: Annotated[
         str, "Instance format: 'repr' for repr-style, 'type' for type structure"
     ] = "repr",
+    unquote_strings: Annotated[bool, "Untruncated strings rendered verbatim"] = False,
 ) -> str:
     """Format an object as a string with smart truncation.
 
@@ -121,7 +122,21 @@ def pformat(
         instance_mode=instance_mode,
     )
 
-    return stream.getvalue()
+    result = stream.getvalue()
+
+    # unquote_strings: for top-level strings, _pformat renders repr ('hello').
+    # Strip surrounding quotes so the string renders verbatim in context blocks.
+    # Truncated strings (str(len=N,...) marker) pass through unchanged.
+    if unquote_strings and isinstance(obj, str):
+        if max_string is None or len(obj) <= max_string:
+            # Untruncated: strip outer quotes from repr output.
+            for q in ("'''", '"""'):
+                if result.startswith(q) and result.endswith(q):
+                    return result[len(q) : -len(q)]
+            if len(result) >= 2 and result[0] == result[-1] and result[0] in ("'", '"'):
+                return result[1:-1]
+
+    return result
 
 
 def pprint(

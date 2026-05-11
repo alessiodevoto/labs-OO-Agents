@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
 
+from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.context_blocks.events import EventBase, ToolCallEvent
 from nemo_oo_agents.context_blocks.models import (
     RenderedMessage,
@@ -34,7 +35,6 @@ from nemo_oo_agents.context_blocks.models import (
     Role,
     ToolCallInfo,
 )
-from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
 
 class FormatType(StrEnum):
@@ -91,7 +91,6 @@ class BlockFormatter(ABC):
     def format_event(
         self,
         event: EventBase,
-        max_chars: int | None = None,
         event_format: "FormatConfig | None" = None,
     ) -> str:
         """Serialize a non-tool-call event into string content.
@@ -100,15 +99,14 @@ class BlockFormatter(ABC):
         string. ToolCallEvents are handled structurally by :meth:`format` —
         they are not routed through ``format_event``.
 
-        Default: ``truncating_pformat`` with the event-level ``FormatConfig``
-        knobs. Strings pass through verbatim; non-strings render via pformat
-        with structural bounds (``max_string``, ``max_length``, ``max_depth``)
-        from ``event_format``. ``max_chars`` is an optional OOM-safety net.
+        Uses :func:`pformat` with structural bounds (``max_string``,
+        ``max_length``, ``max_depth``) from ``event_format``. No OOM-safety
+        cap is applied here — that belongs to L2 (stdout/stderr capture).
         """
-        kwargs: dict[str, object] = {}
+        kwargs: dict[str, Any] = {}
         if event_format is not None:
             kwargs.update(event_format.model_dump())
-        return truncating_pformat(event, max_chars=max_chars, **kwargs)
+        return pformat(event, **kwargs)
 
     def format_description(self) -> str:
         """Return a human-readable description of the block format.

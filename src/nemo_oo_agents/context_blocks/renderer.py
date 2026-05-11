@@ -33,7 +33,6 @@ from nemo_oo_agents.context_blocks.formatter import (
     _xml_message_content,
 )
 from nemo_oo_agents.context_blocks.models import (
-    BlockMetadata,
     ContextWindowStats,
     RenderedMessage,
     ResolvedBlock,
@@ -83,75 +82,56 @@ def _apply_context_total_limit(
     total_limit: int,
     count_fn: Callable[[str], int],
 ) -> tuple[list[ResolvedBlock], int]:
-    """Drop context blocks until total content fits within budget.
+    """Mark over-budget context blocks as EVICTED in-place.
 
-    Two-pass strategy: drop user blocks (``self.context``) from the end first,
-    then drop remaining blocks from the end until the total fits. Appends a
-    summary block so the LLM knows what was dropped. Never mutates input.
+    Two-pass strategy: select user blocks (``self.context``) from the end first,
+    then remaining blocks from the end until the total fits. Selected blocks
+    keep their original key/position and render an EVICTED label with per-block
+    size stats.
     """
     total = sum(count_fn(b.content) for b in blocks)
     if total <= total_limit:
         return blocks, 0
 
-    to_drop: set[int] = set()
-    dropped: list[tuple[str, str | None, int]] = []
+    to_evict: set[int] = set()
+    evicted_sizes: dict[int, int] = {}
 
     for i in range(len(blocks) - 1, -1, -1):
         if total <= total_limit:
             break
-        if blocks[i].metadata.user_block:
+        if blocks[i].metadata.user_block and not blocks[i].metadata.immutable:
             size = count_fn(blocks[i].content)
             total -= size
-            to_drop.add(i)
-            dropped.append((blocks[i].key, blocks[i].metadata.expr, size))
+            to_evict.add(i)
+            evicted_sizes[i] = size
 
     if total > total_limit:
         for i in range(len(blocks) - 1, -1, -1):
             if total <= total_limit:
                 break
-            if i not in to_drop:
+            if i not in to_evict and not blocks[i].metadata.immutable:
                 size = count_fn(blocks[i].content)
                 total -= size
-                to_drop.add(i)
-                dropped.append((blocks[i].key, blocks[i].metadata.expr, size))
+                to_evict.add(i)
+                evicted_sizes[i] = size
 
-    surviving = [b for i, b in enumerate(blocks) if i not in to_drop]
+    rendered: list[ResolvedBlock] = []
+    for i, block in enumerate(blocks):
+        if i not in to_evict:
+            rendered.append(block)
+            continue
+        size = evicted_sizes.get(i, count_fn(block.content))
+        msg = f"EVICTED: over context budget (block_tokens={size:,})"
+        rendered.append(
+            block.model_copy(
+                update={
+                    "content": msg,
+                    "metadata": block.metadata.model_copy(update={"truncated": True}),
+                }
+            )
+        )
 
-    lines = ["WARNING: The following context blocks were dropped to fit within the context budget:"]
-    for key, expr, size in dropped:
-        expr_str = f" (expr: {expr})" if expr else ""
-        lines.append(f"- {key}{expr_str}: {size:,} chars")
-    lines.append("")
-    lines.append("To free up context space:")
-    lines.append("- Summarize large data: self.context['key'] = summary_str")
-    lines.append("- Remove blocks: self.context.pop('key')")
-
-    summary_block = ResolvedBlock(
-        key="truncation_notice",
-        content="\n".join(lines),
-        role=Role.SYSTEM,
-        metadata=BlockMetadata(truncated=True),
-    )
-
-    return [*surviving, summary_block], len(to_drop)
-
-
-def _apply_event_total_limit(
-    blocks: list[ResolvedBlock],
-    total_limit: int,
-    count_fn: Callable[[str], int],
-) -> tuple[list[ResolvedBlock], int]:
-    """Drop oldest events until total content fits within budget."""
-    total = sum(count_fn(b.content) for b in blocks)
-    if total <= total_limit:
-        return blocks, 0
-
-    start = 0
-    while start < len(blocks) and total > total_limit:
-        total -= count_fn(blocks[start].content)
-        start += 1
-
-    return blocks[start:], start
+    return rendered, len(to_evict)
 
 
 def render_context(
@@ -160,7 +140,6 @@ def render_context(
     block_formatter: BlockFormatter,
     provider_formatter: ProviderFormatter,
     context_limit: int | None = None,
-    event_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
     pre_format_limit: int | None = None,
     event_format: "FormatConfig | None" = None,
@@ -169,8 +148,8 @@ def render_context(
     """Render resolved blocks into provider-specific output with utilization stats.
 
     Never mutates input blocks. Per-block head/tail truncation has been removed
-    — content passes through verbatim. Total-context / total-event eviction
-    (``context_limit`` / ``event_limit``) drops whole blocks when over budget.
+    — content passes through verbatim. Context blocks over budget are marked
+    EVICTED in place.
 
     ``event_format`` carries the structural bounds (max_string / max_length /
     max_depth) for event-field rendering at trajectory build time. The
@@ -178,9 +157,9 @@ def render_context(
     nested string fields within events are bounded (otherwise pformat's
     structured-instance fallback caps strings at 150 chars).
     """
-    if count_tokens is None and (context_limit is not None or event_limit is not None):
+    if count_tokens is None and context_limit is not None:
         raise ValueError(
-            "max_context_tokens / max_event_tokens require a token counter. "
+            "max_context_tokens requires a token counter. "
             "Pass count_tokens=llm.count_tokens to render_context()."
         )
 
@@ -195,27 +174,23 @@ def render_context(
     serialized_messages: list[ResolvedBlock] = []
     for block in message_blocks:
         if block.event is not None and not isinstance(block.event, ToolCallEvent):
-            content = block_formatter.format_event(
-                block.event,
-                max_chars=pre_format_limit,
-                event_format=event_format,
-            )
+            content = block_formatter.format_event(block.event, event_format=event_format)
             block = block.model_copy(update={"content": content})
         serialized_messages.append(block)
     message_blocks = serialized_messages
 
-    # Total-context / total-event eviction: drop whole blocks when over budget.
+    # Total-context eviction: mark over-budget blocks EVICTED in place.
     context_blocks_dropped = 0
     if context_limit is not None:
         system_blocks, context_blocks_dropped = _apply_context_total_limit(
             system_blocks, context_limit, count_fn
         )
+        if context_blocks_dropped:
+            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics, get_harness_metrics
 
-    events_dropped = 0
-    if event_limit is not None:
-        message_blocks, events_dropped = _apply_event_total_limit(
-            message_blocks, event_limit, count_fn
-        )
+            hm = get_harness_metrics()
+            if isinstance(hm, HarnessMetrics):
+                hm.context_limits_blocks_evicted += context_blocks_dropped
 
     # Stats — computed on truncated content, before formatter sees it.
     context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
@@ -227,13 +202,17 @@ def render_context(
         events_count=len(message_blocks),
         total_tokens=context_blocks_tokens + events_tokens,
         max_context_tokens=context_limit,
-        max_event_tokens=event_limit,
+        max_event_tokens=None,
         model_context_window=model_context_window,
         context_blocks_dropped=context_blocks_dropped,
-        events_dropped=events_dropped,
+        events_dropped=0,
     )
 
     # Neutral message list → provider wire format.
     messages = block_formatter.format([*system_blocks, *message_blocks])
     output = provider_formatter.format(messages)
-    return RenderResult(output=output, stats=stats, messages=messages)
+    return RenderResult(
+        output=output,
+        stats=stats,
+        messages=messages,
+    )

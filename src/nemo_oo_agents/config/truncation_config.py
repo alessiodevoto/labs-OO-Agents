@@ -136,6 +136,21 @@ class TruncationConfig(BaseModel):
         None
     )
     max_event_tokens: Annotated[int | None, Field(description="Total event token budget")] = None
+    # L4 eviction: never evict fewer than this many recent events. Guarantees
+    # the model always sees its current Task + recent reasoning even when older
+    # events get evicted to fit the budget.
+    min_preserved_events: Annotated[
+        int,
+        Field(description="Minimum number of recent events preserved during eviction"),
+    ] = 5
+    # L4 eviction: when max_event_tokens is unset but the LLM exposes a
+    # context_window, derive an event budget as
+    # `model_context_window - response_reserve_tokens - context_blocks_tokens`.
+    # Set to 0 to disable auto-derivation.
+    response_reserve_tokens: Annotated[
+        int,
+        Field(description="Tokens reserved for the LLM response when auto-deriving event budget"),
+    ] = 4_096
     capture: CaptureConfig = CaptureConfig()
     # Generous: rendered every turn, especially PythonOutput.value (the LLM
     # needs to see what its code returned). Per-field budgets sized so a
