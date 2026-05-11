@@ -1077,7 +1077,8 @@ class GoalModeCommand(Command):
             todo_mgr = getattr(self.agent, "todo", None)
             if todo_mgr is not None:
                 open_todos = [
-                    t for t in todo_mgr.list_todos(status="open")
+                    t
+                    for t in todo_mgr.list_todos(status="open")
                     if not t.is_blocked(todo_mgr._todos)
                 ]
                 if open_todos:
