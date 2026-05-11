@@ -1,10 +1,10 @@
 [project]
 name = "nemo-oo-agents"
-# 0.2.0 = first release with the two-package split (gl-131): context_blocks
-# and unifiedllm folded into nemo_oo_agents.* subpackages. Old standalone
-# imports (`import unifiedllm`, `import context_blocks`) are removed; the
-# minor bump signals the namespace move so existing installs upgrade loudly.
-version = "0.2.0"
+# Version is derived from git tags at build time by uv-dynamic-versioning
+# (see [build-system] and [tool.uv-dynamic-versioning] below). On a tag
+# `vX.Y.Z` the published wheel is `X.Y.Z`; between tags, dunamai produces
+# a PEP 440 dev pre-release like `X.Y.(Z+1).dev<distance-from-tag>`.
+dynamic = ["version"]
 description = "Code-generating agent orchestration system with event sourcing and serialized execution"
 license = {text = "Apache-2.0"}
 readme = "README.md"
@@ -89,11 +89,29 @@ mcp = [
 #   uv pip install nemo-flow --index-url https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/simple
 
 [build-system]
-requires = ["uv_build>=0.9.11,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = ["nemo_oo_agents"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+# bump = true: between tags, produce `X.Y.(Z+1).dev<distance>` rather than
+# `X.Y.Z.post<distance>` — these sort ABOVE the latest stable, so `--pre`
+# consumers get the freshest dev rather than something that sorts below a
+# release that has already shipped.
+bump = true
+# metadata = false: drop the `+g<sha>` local segment. PyPI rejects local
+# segments; GitLab accepts them. Dropping keeps the wheels portable.
+metadata = false
+# Used when no tag is reachable yet (initial bootstrap before the first
+# `vX.Y.Z` tag is cut). Once a tag exists, this is ignored.
+fallback-version = "0.2.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_oo_agents"]
 
 [dependency-groups]
 trace-viewer = [

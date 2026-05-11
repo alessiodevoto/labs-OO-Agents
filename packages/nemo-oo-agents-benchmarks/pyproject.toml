@@ -1,18 +1,18 @@
 [project]
 name = "nemo-oo-agents-benchmarks"
-# Lockstep with nemo-oo-agents core; 0.2.0 first ships against the new
-# nemo_oo_agents.{context_blocks,unifiedllm} subpackages.
-version = "0.2.0"
+# Version is derived from git tags at build time by uv-dynamic-versioning.
+# All workspace packages share the same git history, so they all derive the
+# same version per build — co-release is implicit.
+dynamic = ["version"]
 description = "Benchmark agents for nemo-oo-agents (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) with Harbor runner wiring"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.12"
 dependencies = [
-    # Lockstep with nemo-oo-agents core. >=0.2.0 is mandatory: 0.1.0 was the
-    # pre-split core where context_blocks and unifiedllm shipped as separate
-    # top-level packages, so the benchmarks code (which imports
-    # nemo_oo_agents.{context_blocks,unifiedllm}) cannot run against it.
-    # CI rewrites this to ==X.Y.Z at tag time for an exact-version pin.
-    "nemo_oo_agents>=0.2.0",
+    # >=0.2.0 floor: 0.1.0 was the pre-split core where context_blocks and
+    # unifiedllm shipped as separate top-level packages; benchmarks imports
+    # nemo_oo_agents.{context_blocks,unifiedllm} which cannot run against it.
+    # Bump this floor only when benchmarks actually requires a newer core API.
+    "nemo-oo-agents>=0.2.0",
     "click>=8.1.0",
     "pandas>=2.0.0",
 ]
@@ -133,11 +133,24 @@ bigcodebench = [
 nemo-harbor = "nemo_oo_agents_benchmarks.runner:main"
 
 [tool.uv.sources]
-nemo_oo_agents = { workspace = true }
+nemo-oo-agents = { workspace = true }
 
 [build-system]
-requires = ["uv_build>=0.9.11,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = ["nemo_oo_agents_benchmarks"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+# See root pyproject.toml for rationale on these knobs (bump, metadata,
+# fallback). Each workspace package needs its own block — they all derive
+# the same version because they share git history.
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+metadata = false
+fallback-version = "0.2.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_oo_agents_benchmarks"]

@@ -1,15 +1,16 @@
 [project]
 name = "nemo-oo-agents-cli"
-# Lockstep with nemo-oo-agents core (CI rewrites both at tag time).
-version = "0.2.0"
+# Version is derived from git tags at build time by uv-dynamic-versioning.
+dynamic = ["version"]
 description = "CLI and TUI for nemo-oo-agents (`nemo` command, web terminal, agent REPL)"
 license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Underscore form so the CI version-bump sed regex (in .gitlab-ci.yml)
-    # matches and rewrites this constraint to ==X.Y.Z at tag time.
-    "nemo_oo_agents>=0.2.0",
+    # Floor reflects the actual minimum-compatible core (bump when the cli
+    # starts to require a newer core API). No auto-lockstep — published
+    # wheels declare what they actually need, not what was co-released.
+    "nemo-oo-agents>=0.2.0",
     "click>=8.1.0",
     "ipython>=9.12.0",
     # prompt-toolkit and rich were only transitive (via ipython and litellm
@@ -53,11 +54,21 @@ web = [
 ]
 
 [tool.uv.sources]
-nemo_oo_agents = { workspace = true }
+nemo-oo-agents = { workspace = true }
 
 [build-system]
-requires = ["uv_build>=0.9.11,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = ["nemo_oo_agents_cli"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+metadata = false
+fallback-version = "0.2.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_oo_agents_cli"]
