@@ -80,7 +80,7 @@ class LibraryWriting(Skill):
 
         class MultiGrep(Skill):
             '''Grep across a configured list of repos.'''
-            requires = ("stdskill/shell",)  # declare dependencies
+            requires = ("nemo/shell",)  # declare dependencies
 
             def __init__(self):
                 self._roots = [...]
@@ -116,12 +116,12 @@ class LibraryWriting(Skill):
     Skills can declare dependencies via the ``requires`` class attribute::
 
         class MySkill(Skill):
-            requires = ("stdskill/shell", "stdskill/repo")
+            requires = ("nemo/shell", "nemo/repo")
 
     Skills are registered in ``pyproject.toml`` entry points for auto-discovery::
 
         [project.entry-points."nemo_oo_agents.skills"]
-        "stdskill/myskill" = "my_package:MySkill"
+        "nemo/myskill" = "my_package:MySkill"
 
     To make a skill a TUI slash command, add a ``SKILL.md`` with frontmatter::
 

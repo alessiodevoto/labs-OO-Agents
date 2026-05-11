@@ -677,15 +677,15 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         from nemo_oo_agents.skill_registry import SkillRegistry
 
         self.skills = SkillRegistry(self)
-        self.skills.register("stdskill.shell", self.shell)
-        self.skills.register("stdskill.repo", self.repo)
+        self.skills.register("nemo.shell", self.shell)
+        self.skills.register("nemo.repo", self.repo)
         self.skills.register("superpowers.libwriting", self.libs)
-        self.skills.register("stdskill.todo", self.todo)
-        self.skills.register("stdskill.context", self.context)
-        self.skills.register("stdskill.events", self.events)
+        self.skills.register("nemo.todo", self.todo)
+        self.skills.register("nemo.context", self.context)
+        self.skills.register("nemo.events", self.events)
 
         # Activate all standard skills for TUIAgent (full experience)
-        self.skills.activate(["stdskill.*", "superpowers.*"])
+        self.skills.activate(["nemo.*", "superpowers.*"])
 
         # Show todo progress to the LLM every turn
         self.context.set_dynamic("todo_status", "self.todo.status()")

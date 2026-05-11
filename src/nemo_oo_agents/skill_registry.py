@@ -37,8 +37,8 @@ class SkillRegistry(Skill):
 
     Usage in agent constructor::
 
-        self.skills.load(['stdskill/*'])
-        self.skills.activate(['stdskill/shell', 'stdskill/repo'])
+        self.skills.load(['nemo/*'])
+        self.skills.activate(['nemo/shell', 'nemo/repo'])
     """
 
     __agentdoc_skip__ = True
@@ -85,7 +85,7 @@ class SkillRegistry(Skill):
     def load(self, patterns: list[str]) -> None:
         """Load skills matching patterns from the discovered set.
 
-        Patterns support fnmatch globs: 'stdskill/*', '*', 'stdskill/shell'.
+        Patterns support fnmatch globs: 'nemo/*', '*', 'nemo/shell'.
         Skills with empty constructors are auto-instantiated. Skills requiring
         args must be constructed manually and registered via register().
         """
@@ -125,7 +125,7 @@ class SkillRegistry(Skill):
         Use for skills that require constructor args::
 
             self.shell = ShellTools(cwd=config.working_dir)
-            self.skills.register('stdskill/shell', self.shell)
+            self.skills.register('nemo/shell', self.shell)
         """
         if getattr(skill, "_agent", None) is None:
             skill.attach(self._agent)
