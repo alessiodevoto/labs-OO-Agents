@@ -68,7 +68,14 @@ class TestClassifyError:
         llm = _make_llm(model="claude-sonnet-4-5")
         llm._registry_config = None
         exc = Exception("Error code: 401 - Unauthorized")
-        with patch.dict(os.environ, {}, clear=True):
+        with (
+            patch(
+                "nemo_oo_agents_cli.tui.health_check._get_expected_env_var",
+                return_value="ANTHROPIC_API_KEY",
+            ),
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            os.environ.pop("ANTHROPIC_API_KEY", None)
             result = _classify_error(exc, llm)
         assert not result.ok
         assert "Authentication failed" in result.error_message

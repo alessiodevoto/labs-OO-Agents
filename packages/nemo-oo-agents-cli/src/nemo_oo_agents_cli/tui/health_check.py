@@ -164,7 +164,6 @@ def _classify_error(exc: Exception, llm: UnifiedLLM) -> HealthCheckResult:
             "no such model",
             "model_not_found",
             "invalid model",
-            "the model",
             "decommissioned",
         )
     ):
@@ -303,8 +302,6 @@ async def probe_llm(llm: UnifiedLLM) -> HealthCheckResult:
     Returns HealthCheckResult with ok=True on success, or a user-friendly
     error_message + fix_hint on failure.
     """
-    model = getattr(llm, "model", "unknown")
-
     try:
         await asyncio.wait_for(
             llm.acall(
@@ -316,18 +313,6 @@ async def probe_llm(llm: UnifiedLLM) -> HealthCheckResult:
         return HealthCheckResult(ok=True)
 
     except TimeoutError:
-        fix_lines = [
-            f"The endpoint did not respond within {_PROBE_TIMEOUT_SECONDS}s.",
-            "  • The service may be overloaded or cold-starting — try again",
-            "  • A firewall may be silently dropping packets",
-        ]
-        if _has_llm_config_yaml():
-            fix_lines.append("  • Check 'api_base' in llm_config.yaml is correct")
-
-        return HealthCheckResult(
-            ok=False,
-            error_message=f"LLM endpoint timed out for model '{model}'.",
-            fix_hint="\n".join(fix_lines),
-        )
+        return _classify_error(Exception("Request timed out"), llm)
     except Exception as exc:
         return _classify_error(exc, llm)
