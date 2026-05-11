@@ -22,9 +22,7 @@ def _make_session_db(turns: list[tuple[str, str]], rich_events: list[dict] | Non
     tmp.close()
 
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        "CREATE TABLE events (event_type TEXT, data TEXT, insertion_order INTEGER)"
-    )
+    conn.execute("CREATE TABLE events (event_type TEXT, data TEXT, insertion_order INTEGER)")
     order = 0
     for role, content in turns:
         if role == "user":
@@ -116,6 +114,7 @@ class TestTruncation:
         assert total == 5
         # No rich events should survive since they precede kept turns
         from nemo_oo_agents_cli.tui.output import _RichReplayPayload
+
         rich_items = [o for o in outputs if isinstance(o, _RichReplayPayload)]
         assert len(rich_items) == 0
 
@@ -132,6 +131,7 @@ class TestTruncation:
         # Keep 5 turns — last 5 turns include "late 3", "late 4" area + rich + final
         outputs = build_resume_outputs(db, "abc12345", max_turns=5, in_nemo_term=True)
         from nemo_oo_agents_cli.tui.output import _RichReplayPayload
+
         rich_items = [o for o in outputs if isinstance(o, _RichReplayPayload)]
         assert len(rich_items) == 1
 
