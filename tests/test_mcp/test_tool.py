@@ -6,13 +6,15 @@ Contract-focused: assert public interface (construction, factory method,
 generated methods delegate) without depending on implementation details.
 """
 
-from contextlib import asynccontextmanager
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
-from nemo_oo_agents.mcp.tool import MCPTool, MCPToolSpec, _make_dynamic_class
+pytest.importorskip("mcp")
+
+from contextlib import asynccontextmanager  # noqa: E402
+from typing import Any  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock  # noqa: E402
+
+from nemo_oo_agents.mcp.tool import MCPTool, MCPToolSpec, _make_dynamic_class  # noqa: E402
 
 # ============================================================================
 # Helper Functions

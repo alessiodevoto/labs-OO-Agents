@@ -677,7 +677,7 @@ uv run python examples/quickstart/10_skills.py
 
 ### MCP Tools
 
-MCP (Model Context Protocol) tools let your agent call external services through a standard interface. MCP support is included in the core package — no extra install needed.
+MCP (Model Context Protocol) tools let your agent call external services through a standard interface. MCP support ships as an optional extra — install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
 
 Declare your MCP servers in a `.mcp.json` file at your project root:
 
@@ -696,7 +696,7 @@ Declare your MCP servers in a `.mcp.json` file at your project root:
 Then reference the server by name in your agent:
 
 ```python
-from mcp_nemo_oo_agents import MCPManager
+from nemo_oo_agents.mcp import MCPManager
 
 from nemo_oo_agents.util.quickstart import *
 
