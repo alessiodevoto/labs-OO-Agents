@@ -78,6 +78,10 @@ class ShellTools(Skill):
     persist across calls, plus file viewing, editing, searching, and
     directory listing.
 
+    Commands are serialized via an internal asyncio.Lock — concurrent
+    ``run()`` calls queue and execute one at a time.  For true parallelism,
+    create multiple ShellTools instances.
+
     Tools:
         run(command, ...)       — run a shell command (stateful)
         run_stream(command, ...) — stream stdout/stderr and terminal event
@@ -96,6 +100,11 @@ class ShellTools(Skill):
         self._session = BashSession(cwd=cwd)
         self._current_file: str | None = None
         self._current_line: int | None = None
+
+    @property
+    def cwd(self) -> Path:
+        """Current working directory of the shell session."""
+        return self._session.cwd
 
     def __repr__(self) -> str:
         parts = [f"cwd={str(self._session.cwd)!r}"]
@@ -124,8 +133,9 @@ class ShellTools(Skill):
             result = await self.shell.run("git status")
             result = await self.shell.run("python -m pytest tests/ -x", timeout=300)
         """
-        stdout, stderr, code = await self._session.run(command, timeout=timeout)
-        timed_out = code == 124 and not stdout and not stderr
+        stdout, stderr, code, timed_out = await self._session.run_with_timeout_flag(
+            command, timeout=timeout
+        )
         result = RunResult(
             stdout=stdout,
             stderr=stderr,
@@ -652,7 +662,13 @@ class ShellTools(Skill):
                     break
 
     def _resolve(self, path: str) -> Path:
-        """Resolve a path relative to the session cwd."""
+        """Resolve a path relative to the session cwd.
+
+        Safe to call without holding the session lock: captures cwd at call
+        time, and callers perform file I/O synchronously (no await between
+        resolve and read/write), so no concurrent command can change cwd
+        in between.
+        """
         p = Path(path)
         return p if p.is_absolute() else self._session.cwd / p
 
