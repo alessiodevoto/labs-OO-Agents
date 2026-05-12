@@ -15,8 +15,8 @@ async def shell(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_grep_default_timeout_is_30(shell, tmp_path):
-    """Default timeout should be 30s (existing behavior preserved)."""
+async def test_grep_works_without_explicit_timeout(shell, tmp_path):
+    """grep() works without passing timeout (uses default 30s)."""
     result = await shell.grep("foo", "hello.py")
     assert result.total_matches == 1
 
