@@ -205,6 +205,7 @@ class Channel[T]:
         agent: Any = None,
         event_manager: Any = None,
         on_get: Callable[[T], None] | None = None,
+        on_put: Callable[[], None] | None = None,
         preview: Callable[[T], str] | None = None,
     ) -> None:
         if mode not in ("queue", "event"):
@@ -224,6 +225,9 @@ class Channel[T]:
         # through the same firing path so callers can rely on symmetric
         # observation.
         self._on_get: Callable[[T], None] | None = on_get
+        # Fired on every put() — used by QueueManager to set its
+        # _notify event so race() can wake on event-mode puts.
+        self._on_put: Callable[[], None] | None = on_put
         self._preview: Callable[[T], str] = preview or _default_event_preview
 
     # ---- producer side ---------------------------------------------------
@@ -240,6 +244,10 @@ class Channel[T]:
             Build a ``QueueOutput`` and add it to ``event_manager``.
             No buffer; the value lands in the prompt for the next
             agent turn.
+
+        Both modes fire the ``_on_put`` callback (when set) so the
+        owning ``QueueManager`` can wake ``race()`` on event-mode puts
+        and on queue-mode buffered puts alike.
         """
         if self.mode == "event":
             if self._event_manager is None:
@@ -252,6 +260,8 @@ class Channel[T]:
                     value=item,
                 )
             )
+            if self._on_put is not None:
+                self._on_put()
             return
         # queue mode: hand to a pending waiter or buffer
         while self._waiters:
@@ -260,6 +270,8 @@ class Channel[T]:
                 waiter.set_result(item)
                 return
         self._items.append(item)
+        if self._on_put is not None:
+            self._on_put()
 
     # ---- consumer side ---------------------------------------------------
 
@@ -517,6 +529,17 @@ class QueueManager:
         # documents.
         self._channels: dict[str, Channel[Any]] = {}
         self._handles: list[JobHandle] = []
+        # Wakeup signal: set by any Channel.put() (event-mode or
+        # queue-mode buffer) so race() can wake on puts that don't
+        # have a direct _drain_one waiter.  Created lazily on first
+        # race() call to avoid requiring a running event loop at
+        # construction time.
+        self._notify: asyncio.Event | None = None
+
+    def _set_notify(self) -> None:
+        """Callback passed to channels; sets the _notify event."""
+        if self._notify is not None:
+            self._notify.set()
 
     # ---- factories -------------------------------------------------------
 
@@ -541,7 +564,9 @@ class QueueManager:
             if not replace:
                 raise ValueError(f"channel {name!r} already registered")
             self.remove_channel(name)
-        ch: Channel[T] = Channel(name, "queue", agent=self._agent, on_get=on_get)
+        ch: Channel[T] = Channel(
+            name, "queue", agent=self._agent, on_get=on_get, on_put=self._set_notify
+        )
         self._channels[name] = ch
         return ch
 
@@ -573,6 +598,7 @@ class QueueManager:
             "event",
             agent=self._agent,
             event_manager=self._event_manager,
+            on_put=self._set_notify,
             preview=preview,
         )
         self._channels[name] = ch
@@ -654,10 +680,12 @@ class QueueManager:
     # ---- race ------------------------------------------------------------
 
     async def race(self) -> list[tuple[str, Any]]:
-        """Wait for the first queue-mode channel to produce an item.
+        """Wait for the first channel to produce an item.
 
-        Returns ``[(name, item)]`` — a length-1 list — for the
-        winner. The list shape is the contract; future ``deliver=``
+        Returns ``[(name, item)]`` — a length-1 list — for a queue-mode
+        winner. Returns ``[]`` for an event-triggered wake (the events
+        are already rendered into the prompt by the time ``handle()``
+        runs). The list shape is the contract; future ``deliver=``
         modes return more items per call without changing it.
 
         Race-completion semantics: ``asyncio.wait(FIRST_COMPLETED)``
@@ -669,9 +697,15 @@ class QueueManager:
         internal ``_drain_one`` (which does not fire ``on_get``)
         rather than on ``get()``.
 
+        Wakeup contract: both queue-mode and event-mode puts wake
+        ``race()``. Event-mode channels fire ``_on_put`` which sets
+        the manager's ``_notify`` event; ``race()`` includes that
+        event in its wait and returns ``[]`` so the caller knows no
+        queue items were consumed but new events appeared.
+
         Exception contract:
-        - Raises ``ValueError`` if no queue-mode channels are
-          registered. Callers (the dispatcher) handle this as
+        - Raises ``ValueError`` if no channels at all (queue or event)
+          are registered. Callers (the dispatcher) handle this as
           "exit cleanly".
         - Propagates outer cancellation (``CancelledError``) after
           cancelling and awaiting all in-flight drain tasks.
@@ -682,24 +716,41 @@ class QueueManager:
           restored. See ``test_race_propagates_drain_one_failure_*``.
         """
         queue_channels = [ch for ch in self._channels.values() if ch.mode == "queue"]
-        if not queue_channels:
-            raise ValueError("QueueManager.race() requires at least one queue channel")
+        if not queue_channels and not self._channels:
+            raise ValueError("QueueManager.race() requires at least one channel")
 
-        # Fast path: any channel already has an item — return without
-        # creating tasks. Preserves FIFO ordering by registration order.
+        # Lazy-init: avoid requiring a running loop at construction time.
+        if self._notify is None:
+            self._notify = asyncio.Event()
+
+        # Clear before checking fast path — any put() that arrives
+        # between here and the await will re-set it.
+        self._notify.clear()
+
+        # Fast path: any queue channel already has an item — return
+        # without creating tasks. Preserves FIFO by registration order.
         for ch in queue_channels:
             if not ch.is_empty():
                 item = await ch.get()
                 return [(ch.name, item)]
 
-        # Slow path: race the internal drain. Must NOT use ch.get() here
-        # because get() fires on_get on every successful return; if
-        # multiple racing tasks complete in the same tick, every loser
-        # would have already fired its hook — observably wrong.
-        tasks: dict[asyncio.Task[Any], Channel[Any]] = {
-            asyncio.create_task(ch._drain_one(), name=f"qm.race[{ch.name}]"): ch
-            for ch in queue_channels
+        # Slow path: race the internal drain tasks (one per queue
+        # channel) plus the _notify event (fires on any event-mode
+        # put or on a queue-mode buffered put without a waiter).
+
+        async def _wait_notify() -> None:
+            """Await the _notify event; used as a sentinel task."""
+            await self._notify.wait()  # type: ignore[union-attr]
+
+        notify_task = asyncio.create_task(_wait_notify(), name="qm.race[_notify]")
+
+        tasks: dict[asyncio.Task[Any], Channel[Any] | None] = {
+            notify_task: None,  # sentinel — no channel
         }
+        for ch in queue_channels:
+            t = asyncio.create_task(ch._drain_one(), name=f"qm.race[{ch.name}]")
+            tasks[t] = ch
+
         try:
             done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
@@ -709,20 +760,32 @@ class QueueManager:
                     await t
                 except BaseException:
                     pass
+
+            # Check if a queue-channel drain won (not the notify sentinel).
+            drain_done = [t for t in done if tasks[t] is not None]
+
+            if not drain_done:
+                # Only _notify fired — event-mode wakeup.
+                self._notify.clear()
+                return []
+
             # Pick winner by registration order (= dict insertion order).
-            winner_task = next(t for t in tasks if t in done)
+            winner_task = next(t for t in tasks if t in drain_done)
             winner_ch = tasks[winner_task]
+            assert winner_ch is not None  # mypy: drain_done excludes None
             winner_item = winner_task.result()
-            for t in done:
+            for t in drain_done:
                 if t is winner_task:
                     continue
                 ch = tasks[t]
+                assert ch is not None
                 try:
                     lost_item = t.result()
                 except BaseException:
                     continue
                 ch._items.appendleft(lost_item)
             winner_ch._fire_on_get(winner_item)
+            self._notify.clear()
             return [(winner_ch.name, winner_item)]
         except BaseException:
             # Outer cancellation: cancel any tasks still in flight,
@@ -734,6 +797,8 @@ class QueueManager:
                 if not t.done():
                     t.cancel()
             for t, ch in tasks.items():
+                if ch is None:
+                    continue  # skip notify sentinel
                 try:
                     await t
                 except BaseException:

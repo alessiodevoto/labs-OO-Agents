@@ -701,13 +701,15 @@ class TUIApplication:
                     f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
                 )
 
-            # Race all queue-mode channels for the next item(s).
+            # Race all channels for the next item(s). Returns
+            # [(name, item)] for queue-mode winners or [] for
+            # event-triggered wakes (events already in the prompt).
             try:
                 items = await qm.race()
             except ValueError:
                 return
             # Show which job(s) fired.
-            if running:
+            if running and items:
                 now = datetime.datetime.now().strftime("%H:%M:%S")
                 fired_names = {name for name, _ in items}
                 fired = [h for h in running if h.name in fired_names]

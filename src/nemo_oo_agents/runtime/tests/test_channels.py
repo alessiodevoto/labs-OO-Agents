@@ -430,9 +430,9 @@ async def test_on_get_hook_swallows_base_exception():
 
 
 @pytest.mark.asyncio
-async def test_race_no_queue_channels_raises():
-    """race() requires at least one queue-mode channel; event-only
-    managers raise ValueError."""
+async def test_race_no_channels_raises():
+    """race() requires at least one channel (queue or event);
+    empty managers raise ValueError."""
     qm = QueueManager()
     with pytest.raises(ValueError):
         await qm.race()
@@ -502,7 +502,7 @@ async def test_race_propagates_drain_one_failure_and_restores_other_channels():
 @pytest.mark.asyncio
 async def test_race_documented_exceptions_only():
     """``race()`` should raise only the exceptions documented in its
-    contract: ``ValueError`` (no queue-mode channels) and propagation
+    contract: ``ValueError`` (no channels at all) and propagation
     of any exception raised inside racing tasks. No catch-alls that
     would hide bugs from the dispatcher.
 
