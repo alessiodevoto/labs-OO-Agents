@@ -106,9 +106,9 @@ def test_user_messages_queue_is_hidden_from_doc():
 
 
 def test_tui_agent_uses_cached_block_formatter_by_default():
-    """``BaseTUIAgent`` wires ``CachedBlockFormatter`` so immutable
-    blocks (system prompt, doc(self), anything set with
-    ``immutable=True``) land in a stable SYSTEM prefix the provider
+    """``RenderConfig`` defaults to ``CachedBlockFormatter`` so static
+    blocks (system prompt, doc(self), anything registered via
+    ``set_static()``) land in a stable SYSTEM prefix the provider
     can cache across turns.
     """
     from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
@@ -209,24 +209,24 @@ def test_tui_agent_framework_blocks_split_class_vs_instance_state():
     assert "state" in cm.protected_keys
     assert "system_prompt" in cm.protected_keys
 
-    # Class-level doc — immutable, cacheable.
+    # Class-level doc — static, cacheable.
     self_block = cm._blocks["self"]
     assert isinstance(self_block, DynamicContext)
-    assert self_block.immutable is True, (
+    assert cm.is_static("self") is True, (
         "doc(type(self)) is class-level and must go in the cached prefix"
     )
     assert self_block.expr == "doc(type(self))"
 
-    # Instance state — volatile, picks up runtime-attached skills.
+    # Instance state — dynamic, picks up runtime-attached skills.
     state_block = cm._blocks["state"]
     assert isinstance(state_block, DynamicContext)
-    assert state_block.immutable is False
+    assert cm.is_static("state") is False
     assert "pformat(self" in state_block.expr
 
-    # system_prompt is still immutable — stable by construction.
+    # system_prompt is static — stable by construction.
     sp_block = cm._blocks["system_prompt"]
     assert isinstance(sp_block, DynamicContext)
-    assert sp_block.immutable is True
+    assert cm.is_static("system_prompt") is True
 
     # Strategy override ``strategy_prompt`` — stock CodeActStrategy
     # provides a strategy_prompt block.

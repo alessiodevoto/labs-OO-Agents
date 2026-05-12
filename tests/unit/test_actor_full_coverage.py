@@ -589,7 +589,7 @@ class TestDynamicContextEvalFailure:
         runtime = agent.runtime
 
         # Use set_dynamic to add a DynamicContext with a broken expression
-        agent.context.set_dynamic("bad_block", "1 / 0")
+        agent.context.set_dynamic("bad_block", expr="1 / 0")
 
         # Now call _prepare_context which resolves DynamicContext blocks
         method = type(agent).task
@@ -634,7 +634,7 @@ class TestDynamicContextResultNone:
         agent = _Agent()
         runtime = agent.runtime
 
-        agent.context.set_dynamic("none_block", "None")
+        agent.context.set_dynamic("none_block", expr="None")
 
         method = type(agent).task
         blocks = await runtime._prepare_context(method)
@@ -676,7 +676,7 @@ class TestDynamicContextNonStringResult:
         agent.my_list = [1, 2, 3]
         runtime = agent.runtime
 
-        agent.context.set_dynamic("list_block", "self.my_list")
+        agent.context.set_dynamic("list_block", expr="self.my_list")
 
         method = type(agent).task
         blocks = await runtime._prepare_context(method)

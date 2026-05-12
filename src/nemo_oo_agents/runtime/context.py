@@ -32,7 +32,7 @@ class ContextApi(Skill):
         self.context["status"] = f"Processed {n} items"
 
     Dynamic blocks (re-evaluated each turn):
-        self.context.set_dynamic("status", "f'Items: {len(self.results)}'")
+        self.context.set_dynamic("status", expr="f'Items: {len(self.results)}'")
 
     Read / check / remove:
         value = self.context["notes"]          # raises KeyError if missing
@@ -46,7 +46,7 @@ class ContextApi(Skill):
         self.context["plan"] = "Step 1: collect, Step 2: summarise"
 
         # Dynamic status updated every turn
-        self.context.set_dynamic("progress", "f'{self.done}/{self.total} done'")
+        self.context.set_dynamic("progress", expr="f'{self.done}/{self.total} done'")
 
         # Clean up when done
         del self.context["plan"]
@@ -59,24 +59,24 @@ class ContextApi(Skill):
         self._context: ContextManager = agent.context_manager
 
     def __setitem__(self, key: str, value: Any) -> None:
+        """Set a dynamic context block (placed in volatile suffix).
+
+        Equivalent to ``self.context.set_dynamic(key, value)``.
+        """
         self._context[key] = value
 
-    def set(self, key: str, value: Any, *, immutable: bool = False) -> None:
-        """Set a static context block, with optional immutability declaration.
+    def set_dynamic(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+        """Set a dynamic context block (placed in the volatile suffix).
 
-        Pass ``immutable=True`` to declare that the block's content will not change
-        between turns. Renderers that support prefix caching use this to place the
-        block in the cacheable portion of the prompt.
+        Accepts either a plain value or an expression. Expressions are
+        re-evaluated each turn.
+
+        Args:
+            key: Block key.
+            value: Plain value to store in the dynamic partition.
+            expr: Python expression to evaluate each turn (keyword-only).
         """
-        self._context.set(key, value, immutable=immutable)
-
-    def set_dynamic(self, key: str, expr: str, *, immutable: bool = False) -> None:
-        """Set a dynamic context block that re-evaluates each turn.
-
-        Pass ``immutable=True`` to declare that the expression's output is stable
-        across turns (re-evaluated, but the result is the same).
-        """
-        self._context.set_dynamic(key, expr, immutable=immutable)
+        self._context.set_dynamic(key, value, expr=expr)
 
     def __getitem__(self, key: str) -> Any:
         # Protected keys are hidden from iteration (__contains__/keys()/len)

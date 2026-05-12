@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Cached renderer: partitions blocks by ``metadata.immutable`` for prefix caching.
+"""Cached renderer: partitions blocks by ``metadata.static`` for prefix caching.
 
 Structure produced:
 
-    (SYSTEM)    immutable blocks, stable across turns — cacheable prefix
+    (SYSTEM)    static blocks, stable across turns — cacheable prefix
     (events)    the full event history, append-only
-    (USER)      trailing message wrapping volatile blocks in a ``<context>``
+    (USER)      trailing message wrapping dynamic blocks in a ``<context>``
                 envelope (merged into the last user event when one is
                 trailing, so user/assistant alternation is preserved)
 
@@ -38,12 +38,12 @@ from nemo_oo_agents.context_blocks.models import (
 def _partition(
     system_blocks: list[ResolvedBlock],
 ) -> tuple[list[ResolvedBlock], list[ResolvedBlock]]:
-    """Split SYSTEM-role blocks into (immutable, volatile) by metadata flag."""
-    immutable: list[ResolvedBlock] = []
-    volatile: list[ResolvedBlock] = []
+    """Split SYSTEM-role blocks into (static, dynamic) by metadata flag."""
+    static: list[ResolvedBlock] = []
+    dynamic: list[ResolvedBlock] = []
     for b in system_blocks:
-        (immutable if b.metadata.immutable else volatile).append(b)
-    return immutable, volatile
+        (static if b.metadata.static else dynamic).append(b)
+    return static, dynamic
 
 
 def _xml_concat(blocks: list[ResolvedBlock], separator: str = "\n\n") -> str:
@@ -64,10 +64,10 @@ def _concat_parts(
 
 
 class CachedBlockFormatter(BlockFormatter):
-    """Partitions system blocks into an immutable prefix and a volatile suffix.
+    """Partitions system blocks into a static prefix and a dynamic suffix.
 
-    The immutable half becomes a SYSTEM message at the head of the output. The
-    volatile half, if any, is wrapped in a ``<context>`` envelope and emitted
+    The static half becomes a SYSTEM message at the head of the output. The
+    dynamic half, if any, is wrapped in a ``<context>`` envelope and emitted
     as a trailing USER message — or merged into the last event message if
     that is already user-role (preserving strict user/assistant alternation).
 
@@ -84,11 +84,18 @@ class CachedBlockFormatter(BlockFormatter):
         system_blocks = [b for b in blocks if b.role == Role.SYSTEM]
         message_blocks = [b for b in blocks if b.role != Role.SYSTEM]
 
-        immutable, volatile = _partition(system_blocks)
+        static_blocks, dynamic_blocks = _partition(system_blocks)
+
+        # When no blocks are marked static, fall back to XMLBlockFormatter-style:
+        # put everything in SYSTEM. The caching partition only activates when at
+        # least one block is explicitly marked static.
+        if not static_blocks:
+            static_blocks = dynamic_blocks
+            dynamic_blocks = []
 
         messages: list[RenderedMessage] = []
-        if immutable:
-            content, parts = _concat_parts(immutable)
+        if static_blocks:
+            content, parts = _concat_parts(static_blocks)
             messages.append(RenderedMessage(role=Role.SYSTEM, content=content, parts=parts))
 
         # Event messages (wrap like XMLBlockFormatter does, except ToolCallEvents
@@ -101,13 +108,15 @@ class CachedBlockFormatter(BlockFormatter):
                 )
             )
 
-        if volatile:
-            volatile_rendered = [_xml_system_block(b) for b in volatile]
-            suffix_inner = "\n".join(volatile_rendered)
+        if dynamic_blocks:
+            dynamic_rendered = [_xml_system_block(b) for b in dynamic_blocks]
+            suffix_inner = "\n".join(dynamic_rendered)
             suffix = f"<context>\n{suffix_inner}\n</context>"
             # Build parts for the <context>...</context> envelope.
             envelope_parts: list[MessagePart] = [TextPart(text="<context>\n")]
-            for i, (block, rendered) in enumerate(zip(volatile, volatile_rendered, strict=True)):
+            for i, (block, rendered) in enumerate(
+                zip(dynamic_blocks, dynamic_rendered, strict=True)
+            ):
                 if i > 0:
                     envelope_parts.append(TextPart(text="\n"))
                 envelope_parts.append(BlockPart(key=block.key, content=rendered))
