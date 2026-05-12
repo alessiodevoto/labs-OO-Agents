@@ -64,6 +64,10 @@ def _make_mock_session(tmp_path):
     agent.event_manager.on = MagicMock(return_value=lambda: None)
     agent.event_manager.keys = MagicMock(return_value=[])
     agent.handle = AsyncMock()
+    # queue_manager mock with async shutdown and empty channels
+    agent.queue_manager = MagicMock()
+    agent.queue_manager.shutdown = AsyncMock()
+    agent.queue_manager._channels = {}
 
     frontend = AsyncMock()
     frontend.render = AsyncMock()
@@ -91,7 +95,7 @@ def _make_mock_session(tmp_path):
 
 
 class TestSwapSessionManagerCallsSetSession:
-    def test_calls_set_session_with_correct_format(self, tmp_path):
+    async def test_calls_set_session_with_correct_format(self, tmp_path):
         """_swap_session_manager must call set_session with tui-YYYYMMDD-HHMMSS-<sid8>."""
         import sys
 
@@ -108,7 +112,7 @@ class TestSwapSessionManagerCallsSetSession:
         fake_tracing.set_session = mock_set_session
 
         with patch.dict(sys.modules, {"nemo_oo_agents.tracing": fake_tracing}):
-            session._swap_session_manager(new_sm)
+            await session._swap_session_manager(new_sm)
 
         assert len(captured) == 1, f"set_session not called; got {captured}"
         assert TRACE_NAME_RE.match(captured[0]), f"Bad format: {captured[0]!r}"
@@ -116,7 +120,7 @@ class TestSwapSessionManagerCallsSetSession:
 
         old_sm.close()
 
-    def test_silent_when_import_fails(self, tmp_path):
+    async def test_silent_when_import_fails(self, tmp_path):
         """_swap_session_manager must not raise when tracing is not installed."""
         session, old_sm, _ = _make_mock_session(tmp_path)
 
@@ -135,11 +139,11 @@ class TestSwapSessionManagerCallsSetSession:
 
         with patch("builtins.__import__", side_effect=_raise_on_tracing):
             # Should not raise
-            session._swap_session_manager(new_sm)
+            await session._swap_session_manager(new_sm)
 
         old_sm.close()
 
-    def test_silent_when_set_session_raises(self, tmp_path):
+    async def test_silent_when_set_session_raises(self, tmp_path):
         """_swap_session_manager must not crash if set_session raises a runtime error."""
         import sys
 
@@ -154,6 +158,58 @@ class TestSwapSessionManagerCallsSetSession:
 
         with patch.dict(sys.modules, {"nemo_oo_agents.tracing": fake_tracing}):
             # Should not raise
-            session._swap_session_manager(new_sm)
+            await session._swap_session_manager(new_sm)
+
+        old_sm.close()
+
+
+# ---------------------------------------------------------------------------
+# _swap_session_manager flushes queues
+# ---------------------------------------------------------------------------
+
+
+class TestSwapSessionManagerClearsQueues:
+    async def test_flushes_queue_channels(self, tmp_path):
+        """_swap_session_manager must flush all queue-mode channels."""
+        session, old_sm, _ = _make_mock_session(tmp_path)
+
+        # Put a stale item in a queue channel
+        from nemo_oo_agents.runtime.channels import Channel
+
+        ch = Channel("user_messages", "queue")
+        ch.put("stale message from old session")
+        session.agent.queue_manager._channels = {"user_messages": ch}
+
+        new_sm = MagicMock()
+        new_sm.session_id = str(uuid.uuid4())
+        new_sm._storage = MagicMock()
+
+        await session._swap_session_manager(new_sm)
+
+        assert ch.is_empty(), "queue channel should be flushed after session swap"
+
+    async def test_calls_shutdown_on_queue_manager(self, tmp_path):
+        """_swap_session_manager must call shutdown() to cancel spawned jobs."""
+        session, old_sm, _ = _make_mock_session(tmp_path)
+
+        new_sm = MagicMock()
+        new_sm.session_id = str(uuid.uuid4())
+        new_sm._storage = MagicMock()
+
+        await session._swap_session_manager(new_sm)
+
+        session.agent.queue_manager.shutdown.assert_awaited_once()
+
+    async def test_no_crash_without_queue_manager(self, tmp_path):
+        """_swap_session_manager must not crash if agent has no queue_manager."""
+        session, old_sm, _ = _make_mock_session(tmp_path)
+        del session.agent.queue_manager
+
+        new_sm = MagicMock()
+        new_sm.session_id = str(uuid.uuid4())
+        new_sm._storage = MagicMock()
+
+        # Should not raise
+        await session._swap_session_manager(new_sm)
 
         old_sm.close()

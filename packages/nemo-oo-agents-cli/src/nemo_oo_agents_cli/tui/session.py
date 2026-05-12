@@ -598,7 +598,7 @@ class Session:
         self._emit_text(Text(f"❯ {text}", style="bold cyan"))
         result = await self._handler.handle(text)
         if result.new_session_manager is not None:
-            self._swap_session_manager(result.new_session_manager)
+            await self._swap_session_manager(result.new_session_manager)
         if (
             result.compact_done
             and self._first_message
@@ -770,8 +770,16 @@ class Session:
     # Session manager swap (triggered by /session new)
     # ------------------------------------------------------------------
 
-    def _swap_session_manager(self, new_sm: "SessionManager") -> None:
+    async def _swap_session_manager(self, new_sm: "SessionManager") -> None:
         """Close the current session and switch to *new_sm*."""
+        # Shut down spawned jobs and flush all queue channels so stale
+        # items from the old session don't leak into the new one.
+        qm = getattr(self.agent, "queue_manager", None)
+        if qm is not None:
+            await qm.shutdown()
+            for ch in qm._channels.values():
+                if ch.mode == "queue":
+                    ch.flush()
         if self._session_manager is not None:
             # Save snapshot before closing so /clear, /session new, and
             # /session resume don't lose the current session's self.v/todo.
