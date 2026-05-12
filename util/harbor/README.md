@@ -375,43 +375,21 @@ Apptainer refuses to bind-mount over a symlink destination.
 container image's symlink with a regular file; Apptainer then has a valid
 mount target. Committed to harbor MR in `apptainer.py`.
 
-**Side effect to watch for:** Creating `overlay_upper/lib/` for the linker
-shadow also materialized `/lib/` in the overlay upper dir. This broke the
-companion bind mount for `/lib/aarch64-linux-gnu` (see issue 4 below).
+**Current status — known limitation, no fix:** Any approach that pre-creates
+files under `overlay_upper/lib/` triggers fuse-overlayfs to treat `/lib/` as
+opaque, hiding the container image's `/lib/x86_64-linux-gnu/`. The t-bench
+`ubuntu-24-04` image uses an unmerged-usr layout where `/lib64` symlinks to
+`/lib/x86_64-linux-gnu`, so hiding that directory breaks the x86_64 ELF
+interpreter for every container. The two tasks affected by this symlink issue
+(`qemu-startup`, `qemu-alpine-ssh`) are accepted as non-runnable on aarch64
+hosts until a non-overlay solution is found.
 
 **Affected platforms:** aarch64 hosts only. The code path is guarded by
 `os.uname().machine == "aarch64"`.
 
 ---
 
-### 4. `/lib/aarch64-linux-gnu` bind mount fails after overlay pre-population
-
-**Symptom:** Every container fails at startup with:
-```
-FATAL: container creation failed: mount hook function failure:
-  mount /lib/aarch64-linux-gnu->/lib/aarch64-linux-gnu error:
-  destination /lib/aarch64-linux-gnu doesn't exist in container
-```
-This is a **regression** introduced by the fix for issue 3.
-
-**Root cause (aarch64-specific):** Creating `overlay_upper/lib/` as part of
-the linker shadow caused Apptainer to stop auto-creating bind-mount
-destinations under `/lib/`. Apptainer can auto-create a missing directory only
-when the parent doesn't exist in the overlay upper dir. Once `overlay_upper/lib/`
-exists, Apptainer requires `/lib/aarch64-linux-gnu` to already be present in
-the merged filesystem — but it isn't, because x86_64 containers have no
-aarch64 lib tree.
-
-**Fix:** When pre-creating the linker shadow, also create
-`overlay_upper/lib/aarch64-linux-gnu/` as an empty directory. This gives
-Apptainer a valid bind-mount destination and restores the behavior that worked
-before the linker shadow was added. Committed to harbor MR in `apptainer.py`.
-
-**Affected platforms:** Same as issue 3 — aarch64 hosts only.
-
----
-
-### 5. Harbor sidecar server crashes on Python < 3.10 containers
+### 4. Harbor sidecar server crashes on Python < 3.10 containers
 
 **Symptom:** Containers built on Python 3.9 (e.g. `swe-bench-astropy`,
 `swe-bench-fsspec`, `swe-bench-langcodes`) time out immediately. The trial.log
@@ -436,7 +414,7 @@ x86_64 runs too whenever a task image ships Python 3.9.
 
 ---
 
-### 6. Safety filter false-positives block legitimate agent commands
+### 5. Safety filter false-positives block legitimate agent commands
 
 **Symptom:** Agent execution completes but the task was never actually attempted.
 `trial.log` shows a line like:
@@ -463,7 +441,7 @@ of what appears in task instruction text.
 
 ---
 
-### 7. OOM kills before the agent has a chance to run
+### 6. OOM kills before the agent has a chance to run
 
 **Symptom:** Trial fails with `MemoryLimitExceededError`:
 ```
@@ -502,7 +480,7 @@ tight on QEMU hosts where emulation adds overhead.
 
 ---
 
-### 8. QEMU SIGSEGV in dpkg-deb during apt-get (known unfixable)
+### 7. QEMU SIGSEGV in dpkg-deb during apt-get (known unfixable)
 
 **Symptom:** `trial.log` shows repeated:
 ```
