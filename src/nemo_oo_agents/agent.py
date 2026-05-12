@@ -239,7 +239,7 @@ class Agent(metaclass=AgentMeta):
         cm.set_static_protected("self", expr="doc(type(self))")
         cm.set_dynamic_protected(
             "state",
-            expr="pformat(self, max_length=50, max_string=500, max_depth=4)",
+            "pformat(self, max_length=50, max_string=500, max_depth=4)",
         )
 
         # Apply class-level context blocks (from __init_subclass__)

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from nemo_oo_agents.runtime.context_manager import ContextManager
 from nemo_oo_agents.skill import Skill
 
+_MISSING = object()
+
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
@@ -32,7 +34,7 @@ class ContextApi(Skill):
         self.context["status"] = f"Processed {n} items"
 
     Dynamic blocks (re-evaluated each turn):
-        self.context.set_dynamic("status", expr="f'Items: {len(self.results)}'")
+        self.context.set_dynamic("status", "f'Items: {len(self.results)}'")
 
     Read / check / remove:
         value = self.context["notes"]          # raises KeyError if missing
@@ -46,7 +48,7 @@ class ContextApi(Skill):
         self.context["plan"] = "Step 1: collect, Step 2: summarise"
 
         # Dynamic status updated every turn
-        self.context.set_dynamic("progress", expr="f'{self.done}/{self.total} done'")
+        self.context.set_dynamic("progress", "f'{self.done}/{self.total} done'")
 
         # Clean up when done
         del self.context["plan"]
@@ -65,18 +67,21 @@ class ContextApi(Skill):
         """
         self._context[key] = value
 
-    def set_dynamic(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+    def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _MISSING) -> None:
         """Set a dynamic context block (placed in the volatile suffix).
 
-        Accepts either a plain value or an expression. Expressions are
-        re-evaluated each turn.
+        Accepts either an expression (positional, re-evaluated each turn)
+        or a plain value (keyword-only ``value=``).
 
         Args:
             key: Block key.
-            value: Plain value to store in the dynamic partition.
-            expr: Python expression to evaluate each turn (keyword-only).
+            expr: Python expression to evaluate each turn.
+            value: Plain value to store in the dynamic partition (keyword-only).
         """
-        self._context.set_dynamic(key, value, expr=expr)
+        if value is not _MISSING:
+            self._context.set_dynamic(key, value=value)
+        else:
+            self._context.set_dynamic(key, expr)
 
     def __getitem__(self, key: str) -> Any:
         # Protected keys are hidden from iteration (__contains__/keys()/len)

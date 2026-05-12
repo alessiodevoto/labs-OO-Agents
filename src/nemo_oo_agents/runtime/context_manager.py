@@ -7,13 +7,13 @@ what information appears in the system prompt.
 
 Usage:
     self.context["notes"] = "Here are my notes..."              # static
-    self.context.set_dynamic("status", expr="self.format_status()")  # dynamic
+    self.context.set_dynamic("status", "self.format_status()")  # dynamic
     value = self.context["notes"]                                # read
     del self.context["notes"]                                    # remove
     "notes" in self.context                                      # check
 
 Cache lifecycle for DynamicContext blocks:
-    set_dynamic("key", expr="expr")  → stores DynamicContext in _blocks, invalidates cache
+    set_dynamic("key", "expr")  → stores DynamicContext in _blocks, invalidates cache
     _prepare_context() runs     → evaluates expr, calls _update_resolved({"key": value})
     self.context["key"]         → returns cached value from _dynamic_cache
 """
@@ -61,14 +61,14 @@ class ContextManager:
 
         Raises:
             ProtectedBlockError: If key is protected.
-            TypeError: If value is a DynamicContext (use set_dynamic(expr=...) instead).
+            TypeError: If value is a DynamicContext (use set_dynamic() instead).
         """
         if isinstance(value, DynamicContext):
             raise TypeError(
-                f"Use self.context.set_dynamic({key!r}, expr={value.expr!r}) "
+                f"Use self.context.set_dynamic({key!r}, {value.expr!r}) "
                 f"instead of self.context[{key!r}] = DynamicContext(...)"
             )
-        self.set_dynamic(key, value)
+        self.set_dynamic(key, value=value)
 
     def set_static(self, key: str, value: Any) -> None:
         """Set a static context block (placed in the cacheable prefix).
@@ -97,31 +97,35 @@ class ContextManager:
         self._static[key] = True
         self._invalidate(key)
 
-    def set_dynamic(self, key: str, value: Any = None, *, expr: str | None = None) -> None:
+    _SENTINEL = object()
+
+    def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _SENTINEL) -> None:
         """Set a dynamic context block (placed in the volatile suffix).
 
-        Accepts either a plain value or an expression string. Plain values are
-        stored directly but placed in the dynamic partition. Expressions are
-        wrapped in DynamicContext and re-evaluated each turn.
+        Accepts either an expression string (positional, re-evaluated each turn)
+        or a plain value (keyword-only ``value=``).
 
         Args:
             key: Block key (unique identifier).
-            value: Plain value to store in the dynamic partition.
-            expr: Python expression to evaluate each turn (keyword-only).
-                  Mutually exclusive with a non-None ``value``.
+            expr: Python expression to evaluate each turn.
+            value: Plain value to store in the dynamic partition (keyword-only).
 
         Raises:
             ProtectedBlockError: If key is protected.
+            TypeError: If both expr and value= are provided.
         """
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
+        if expr is not None and self._SENTINEL is not value:
+            raise TypeError("Cannot specify both expr and value=")
+
         if expr is not None:
             self._blocks[key] = DynamicContext(expr)
-        elif isinstance(value, DynamicContext):
+        elif self._SENTINEL is not value:
             self._blocks[key] = value
         else:
-            self._blocks[key] = value
+            raise TypeError("set_dynamic() requires either expr or value=")
         self._static[key] = False
         self._invalidate(key)
 
@@ -256,15 +260,15 @@ class ContextManager:
                 if is_static_block:
                     self.set_static_protected(key, expr=value.expr)
                 else:
-                    self.set_dynamic_protected(key, expr=value.expr)
+                    self.set_dynamic_protected(key, value.expr)
             else:
-                self.set_dynamic(key, expr=value.expr)
+                self.set_dynamic(key, value.expr)
         else:
             if is_protected:
                 if is_static_block:
                     self.set_static_protected(key, value)
                 else:
-                    self.set_dynamic_protected(key, value)
+                    self.set_dynamic_protected(key, value=value)
             else:
                 self[key] = value
 
@@ -302,7 +306,7 @@ class ContextManager:
         self._invalidate(key)
 
     def set_dynamic_protected(
-        self, key: str, value: Any = None, *, expr: str | None = None
+        self, key: str, expr: str | None = None, *, value: Any = _SENTINEL
     ) -> None:
         """Register a protected block in the dynamic (volatile) partition.
 
@@ -311,15 +315,15 @@ class ContextManager:
 
         Args:
             key: Block key.
-            value: Plain value to store.
-            expr: Python expression to evaluate each turn (keyword-only).
+            expr: Python expression to evaluate each turn.
+            value: Plain value to store (keyword-only).
         """
         if expr is not None:
             self._blocks[key] = DynamicContext(expr)
-        elif isinstance(value, DynamicContext):
+        elif self._SENTINEL is not value:
             self._blocks[key] = value
         else:
-            self._blocks[key] = value
+            raise TypeError("set_dynamic_protected() requires either expr or value=")
         self.protected_keys.add(key)
         self._static[key] = False
         self._invalidate(key)

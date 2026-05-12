@@ -55,7 +55,7 @@ class TestSnapshotRoundtrip:
 
     def test_dynamic_context_roundtrip(self, agent):
         """Dynamic context blocks are stored as DynamicContext markers, not resolved values."""
-        agent.context_manager.set_dynamic("status", expr="self.__class__.__name__")
+        agent.context_manager.set_dynamic("status", "self.__class__.__name__")
 
         snap = snapshot_to_json(agent)
         agent2 = SimpleAgent()
@@ -156,7 +156,7 @@ class TestAgentSnapshot:
     def test_model_dump_roundtrip(self, agent):
         """AgentSnapshot survives a model_dump/model_validate roundtrip."""
         agent.context_manager["notes"] = "hello"
-        agent.context_manager.set_dynamic("status", expr="self.__class__.__name__")
+        agent.context_manager.set_dynamic("status", "self.__class__.__name__")
         agent.score = 42
 
         original = AgentSnapshot.from_agent(agent)

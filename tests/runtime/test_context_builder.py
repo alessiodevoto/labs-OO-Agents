@@ -50,7 +50,7 @@ def _make_context_manager(
     if blocks:
         for key, value in blocks.items():
             if isinstance(value, DynamicContext):
-                cm.set_dynamic(key, expr=value.expr)
+                cm.set_dynamic(key, value.expr)
             else:
                 cm[key] = value
     return cm

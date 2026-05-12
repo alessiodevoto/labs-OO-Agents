@@ -143,9 +143,9 @@ class AgentSnapshot(BaseModel):
             is_protected = block.key in agent.context_manager.protected_keys
             if isinstance(block, DynamicContextBlock):
                 if is_protected:
-                    agent.context_manager.set_dynamic_protected(block.key, expr=block.expr)
+                    agent.context_manager.set_dynamic_protected(block.key, block.expr)
                 else:
-                    agent.context_manager.set_dynamic(block.key, expr=block.expr)
+                    agent.context_manager.set_dynamic(block.key, block.expr)
             else:
                 value = deserialize(block.value, self.type_allowlist)
                 if is_protected:

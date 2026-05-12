@@ -51,14 +51,14 @@ def test_getitem_raises_for_missing_key():
 
 def test_getitem_dynamic_raises_before_resolve():
     ctx = _ctx()
-    ctx.set_dynamic("dyn", expr="'hello'")
+    ctx.set_dynamic("dyn", "'hello'")
     with pytest.raises(DynamicNotResolvedError):
         _ = ctx["dyn"]
 
 
 def test_getitem_dynamic_returns_after_resolve():
     ctx = _ctx()
-    ctx.set_dynamic("dyn", expr="'hello'")
+    ctx.set_dynamic("dyn", "'hello'")
     ctx._context._update_resolved({"dyn": "hello"})
     assert ctx["dyn"] == "hello"
 
@@ -69,7 +69,7 @@ def test_getitem_dynamic_returns_after_resolve():
 def test_set_dynamic_raises_on_protected_key():
     ctx = _ctx()
     with pytest.raises(ProtectedBlockError):
-        ctx.set_dynamic("system_prompt", expr="'expr'")
+        ctx.set_dynamic("system_prompt", "'expr'")
 
 
 # ── delitem ────────────────────────────────────────────────────────────────────

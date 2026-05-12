@@ -29,8 +29,8 @@ class DynamicContext(BaseModel):
     at each LLM turn. The expression is validated at creation time.
 
     Usage:
-        self.context.set_dynamic("status", expr="self.format_status()")
-        self.context.set_dynamic("progress", expr="self.todo.show_active()")
+        self.context.set_dynamic("status", "self.format_status()")
+        self.context.set_dynamic("progress", "self.todo.show_active()")
 
     The expression must be valid Python (compilable as an eval expression).
     """
