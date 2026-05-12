@@ -777,7 +777,8 @@ class Session:
         qm = getattr(self.agent, "queue_manager", None)
         if qm is not None:
             await qm.shutdown()
-            for ch in qm._channels.values():
+            for name in qm.names():
+                ch = qm.get_channel(name)
                 if ch.mode == "queue":
                     ch.flush()
         if self._session_manager is not None:
