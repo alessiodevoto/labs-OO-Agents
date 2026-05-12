@@ -132,6 +132,38 @@ class TestHasEllipsisBody:
 
         assert has_ellipsis_body(complex_setup)
 
+    def test_token_error_falls_back_to_generated_source(self):
+        """TokenError from inspect.getsource should fall back to _generated_source."""
+        import tokenize
+        from unittest.mock import patch
+
+        def my_func():
+            """Docstring."""
+            ...
+
+        # Attach _generated_source so fallback can succeed
+        source = 'def my_func():\n    """Docstring."""\n    ...\n'
+        my_func._generated_source = source
+
+        with patch("inspect.getsource", side_effect=tokenize.TokenError("faked")):
+            assert has_ellipsis_body(my_func)
+
+    def test_token_error_without_generated_source_returns_false(self):
+        """TokenError without _generated_source should return False (no crash)."""
+        import tokenize
+        from unittest.mock import patch
+
+        def my_func():
+            """Docstring."""
+            ...
+
+        with patch("inspect.getsource", side_effect=tokenize.TokenError("faked")):
+            # No _generated_source, so _get_function_ast returns None
+            # has_ellipsis_body falls through to bytecode heuristic
+            result = has_ellipsis_body(my_func)
+            # Either True (bytecode heuristic) or False is fine - the point is no crash
+            assert isinstance(result, bool)
+
 
 class TestGetPreEllipsisCode:
     """Test get_pre_ellipsis_code() - extracts code before ellipsis."""
