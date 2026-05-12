@@ -57,6 +57,39 @@ class SlashCommandCompleter(PtCompleter):
             )
 
 
+def _set_completions_sync(buffer) -> None:
+    """Generate completions synchronously and set them on the buffer.
+
+    Avoids the prompt_toolkit race in ``Buffer.start_completion()`` which
+    creates an empty ``CompletionState`` before completions are loaded,
+    causing ``_get_menu_width`` to call ``max()`` on an empty sequence.
+
+    Uses ``Buffer._set_completions`` (private API) with a fallback to the
+    public ``start_completion`` for forward-compatibility.
+    """
+    from prompt_toolkit.completion import CompleteEvent
+
+    if not buffer.completer:
+        return
+
+    completions = list(
+        buffer.completer.get_completions(buffer.document, CompleteEvent(completion_requested=True))
+    )
+    if completions:
+        try:
+            buffer._set_completions(completions=completions)
+            # Ensure no completion is pre-selected (matches start_completion(select_first=False)).
+            if buffer.complete_state:
+                buffer.complete_state.go_to_index(None)
+        except (AttributeError, TypeError):
+            # Fallback if private API changes in a future prompt_toolkit release.
+            buffer.start_completion(select_first=False)
+    else:
+        # No matches — dismiss any visible menu.
+        if buffer.complete_state:
+            buffer.cancel_completion()
+
+
 def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
     """Create key bindings for multi-line input and slash command completion.
 
@@ -103,7 +136,11 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
             or text.startswith("!")
             or (("\n/" in text) and text.rsplit("\n", 1)[-1].startswith("/"))
         ):
-            buffer.start_completion(select_first=False)
+            # Generate completions synchronously and set them directly.
+            # buffer.start_completion() creates an empty CompletionState before
+            # completions load, which races with the renderer: prompt_toolkit's
+            # _get_menu_width calls max() on the empty list → ValueError.
+            _set_completions_sync(buffer)
 
     if not vi_mode:
         # Bind alphanumeric + path-relevant punctuation to maintain completion.
@@ -133,7 +170,7 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
 
             text = buffer.text[: buffer.cursor_position]
             if text.startswith("/") or text.startswith("!"):
-                buffer.start_completion(select_first=False)
+                _set_completions_sync(buffer)
 
     # Always bind "/" — in vi mode only trigger completion when the buffer
     # already starts with "/" (i.e. we're already in a slash command), so that
@@ -155,7 +192,7 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
         buffer.insert_text("!")
         text = buffer.text[: buffer.cursor_position]
         if text == "!" or text.startswith("!"):
-            buffer.start_completion(select_first=False)
+            _set_completions_sync(buffer)
 
     return bindings
 
