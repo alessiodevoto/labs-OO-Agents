@@ -609,6 +609,11 @@ class ActorRuntime:
         # asyncio.gather on the same agent, the last write wins. For per-task
         # isolation, read stats from the on_messages_built hook's context_stats kwarg.
         self._last_context_stats: ContextWindowStats | None = None
+        # Token calibration: ratio of actual API tokens to litellm estimate.
+        # Learned from response.usage.input_tokens after each successful LLM call.
+        # Used to tighten the safety net cap on subsequent turns.
+        self._token_calibration_ratio: float | None = None
+        self._last_litellm_estimate: int | None = None
 
     @property
     def _agent_call_stack(self) -> tuple[str | None, ...]:
@@ -848,6 +853,15 @@ class ActorRuntime:
                         output_model=output_model,
                         **_recovery_kw,
                     )
+
+        # Calibrate token ratio from API response usage.
+        # response.usage.prompt_tokens is the ground truth from the API.
+        usage = getattr(response, "usage", None)
+        if usage and self._last_context_stats:
+            actual_input = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
+            if actual_input and self._last_context_stats.total_tokens > 0:
+                self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
+                self._last_litellm_estimate = self._last_context_stats.total_tokens
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -2565,7 +2579,13 @@ class ActorRuntime:
         messages = result.output
         stats = result.stats
         if ctx_window and isinstance(messages, list) and messages:
-            default_cap = int(ctx_window * 0.70)
+            # When calibrated from prior API response, tighten the margin.
+            # Uncalibrated: 30% margin (conservative). Calibrated: 5% margin.
+            if self._token_calibration_ratio and self._token_calibration_ratio > 0:
+                # We know the real overhead ratio — only need 5% safety margin
+                default_cap = int(ctx_window * 0.92)
+            else:
+                default_cap = int(ctx_window * 0.70)
             if max_output_tokens:
                 # 5 % margin covers litellm ↔ API tokenizer gap
                 margin = int(ctx_window * 0.05)
