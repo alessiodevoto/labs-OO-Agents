@@ -40,7 +40,7 @@ verifier_timeout_multiplier: 10.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 16
   quiet: false
 
 environment:
