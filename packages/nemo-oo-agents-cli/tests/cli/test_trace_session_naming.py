@@ -179,6 +179,8 @@ class TestSwapSessionManagerClearsQueues:
         ch = Channel("user_messages", "queue")
         ch.put("stale message from old session")
         session.agent.queue_manager._channels = {"user_messages": ch}
+        session.agent.queue_manager.names = MagicMock(return_value=["user_messages"])
+        session.agent.queue_manager.get_channel = MagicMock(side_effect=lambda name: ch)
 
         new_sm = MagicMock()
         new_sm.session_id = str(uuid.uuid4())
