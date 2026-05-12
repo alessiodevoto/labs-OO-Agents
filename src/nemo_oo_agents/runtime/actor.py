@@ -855,10 +855,14 @@ class ActorRuntime:
                     )
 
         # Calibrate token ratio from API response usage.
-        # response.usage.prompt_tokens is the ground truth from the API.
+        # The ground truth comes back as either an object (.prompt_tokens)
+        # or a dict ({"input_tokens": N}) depending on the provider.
         usage = getattr(response, "usage", None)
         if usage and self._last_context_stats:
-            actual_input = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
+            if isinstance(usage, dict):
+                actual_input = usage.get("prompt_tokens") or usage.get("input_tokens")
+            else:
+                actual_input = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
             if actual_input and self._last_context_stats.total_tokens > 0:
                 self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
                 self._last_litellm_estimate = self._last_context_stats.total_tokens

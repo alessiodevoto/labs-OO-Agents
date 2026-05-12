@@ -1,0 +1,80 @@
+[
+  {
+    "model": "claude-sonnet",
+    "label": "Sonnet (5t)",
+    "n_turns": 5,
+    "litellm_estimate": 1888,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 1302,
+    "events_count": 13,
+    "status": "ok"
+  },
+  {
+    "model": "claude-sonnet",
+    "label": "Sonnet (20t)",
+    "n_turns": 20,
+    "litellm_estimate": 3275,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 2689,
+    "events_count": 43,
+    "status": "ok"
+  },
+  {
+    "model": "claude-opus",
+    "label": "Opus (5t)",
+    "n_turns": 5,
+    "litellm_estimate": 1892,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 1306,
+    "events_count": 13,
+    "status": "ok"
+  },
+  {
+    "model": "claude-opus",
+    "label": "Opus (20t)",
+    "n_turns": 20,
+    "litellm_estimate": 3271,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 2685,
+    "events_count": 43,
+    "status": "ok"
+  },
+  {
+    "model": "gpt-5.1-codex",
+    "label": "GPT 5.1 Codex (5t)",
+    "n_turns": 5,
+    "status": "error: GenerationError: LLM API error after 3 retries. Original error: BadRequestError: litellm.BadRequestError: OpenAIException - litellm.BadRequestError: AzureException - The requested operation is unsupported.. Received Model Group=azure/openai/gpt-5.1-codex\nAvailable Model Group Fallbacks=None"
+  },
+  {
+    "model": "gpt-5.1-codex",
+    "label": "GPT 5.1 Codex (20t)",
+    "n_turns": 20,
+    "status": "error: GenerationError: LLM API error after 3 retries. Original error: BadRequestError: litellm.BadRequestError: OpenAIException - litellm.BadRequestError: AzureException - The requested operation is unsupported.. Received Model Group=azure/openai/gpt-5.1-codex\nAvailable Model Group Fallbacks=None"
+  },
+  {
+    "model": "nemotron-3-super-v3",
+    "label": "Nemotron Super v3 (5t)",
+    "n_turns": 5,
+    "litellm_estimate": 1890,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 1304,
+    "events_count": 13,
+    "status": "ok"
+  },
+  {
+    "model": "nemotron-3-super-v3",
+    "label": "Nemotron Super v3 (20t)",
+    "n_turns": 20,
+    "litellm_estimate": 3277,
+    "calibration_ratio": null,
+    "last_estimate_used": null,
+    "events_tokens": 2691,
+    "events_count": 43,
+    "status": "ok"
+  }
+]
