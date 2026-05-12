@@ -258,3 +258,276 @@ This is the fastest way to get started if you already have the SIF cache populat
 | LoCoMo single-hop | Harbor Apptainer | bedrock claude-sonnet-4-5 | 3/5 completed | mean F1=0.87, all pass |
 | DABStep | Harbor Apptainer | bedrock claude-sonnet-4-5 | 5 | 1/5 (baseline, no pipeline) |
 | MemBench | — | — | — | pending data download |
+
+---
+
+## Infra failure playbook
+
+This section documents every infra-level failure pattern we have hit running
+Terminal Bench on an aarch64 host (galaxy, `lab@10.87.108.113`) with x86_64
+task containers emulated via kernel binfmt_misc QEMU. Where a fix is general
+(applies to any host/architecture) that is noted explicitly.
+
+The fixes described here live in two places:
+- **`util/harbor/overlay/`** — files rsync'd to `harbor_bootstrap_overlay_v2`
+  on the target machine. Apply with:
+  ```bash
+  rsync -av util/harbor/overlay/opt/harbor/ \
+    lab@10.87.108.113:/home/lab/3p/harbor_bootstrap_overlay_v2/opt/harbor/
+  ```
+- **harbor MR `rcabral/terminal-bench-adapter`** — changes to
+  `src/harbor/environments/apptainer.py` and
+  `src/harbor/environments/server.py`. Deploy to galaxy with:
+  ```bash
+  rsync -av 3p/harbor/src/harbor/environments/apptainer.py \
+            3p/harbor/src/harbor/environments/server.py \
+    lab@10.87.108.113:/home/lab/rcabral/harbor/src/harbor/environments/
+  ```
+
+---
+
+### 1. pip/pip3 installs fail inside containers
+
+**Symptom:** Verifier or task setup calls `pip3 install pytest` (or similar)
+and gets:
+```
+ERROR: Package 'pytest' requires a different Python: 3.6.x not in '>=3.8'
+```
+or silently installs to the wrong Python's site-packages and the import fails
+at runtime.
+
+**Root cause (aarch64-specific):** The task container ships its own x86_64
+`pip3` binary linked to the container's Python 3.6 (or whatever old version
+the image includes). The harbor bootstrap overlay provides a newer aarch64
+Python 3.12 at `/opt/harbor/cpython312-aarch64/`, and the `python3` wrapper
+in the overlay shadows the container's Python — but `pip3` still resolved to
+the container's old binary, so installs went into the wrong site-packages and
+with the wrong version checks.
+
+**Fix:** `util/harbor/overlay/opt/harbor/bin/pip3` (and `pip`) — shell
+wrappers that detect whether the aarch64 overlay interpreter is active and, if
+so, invoke pip via that interpreter with two adjustments:
+
+1. **`--user` + `PYTHONUSERBASE=/tmp/aarch64-pip-user`** — the overlay Python
+   at `/opt/harbor/cpython312-aarch64/` has an `EXTERNALLY-MANAGED` marker
+   (it was built by uv and has no system site-packages). Installing to `--user`
+   with a per-trial temp dir (`/tmp`, which lives in the container's writable
+   overlay) sidesteps the marker without needing root or a venv.
+2. **`--break-system-packages`** — required alongside `--user` to suppress the
+   EXTERNALLY-MANAGED refusal.
+
+The `python3` wrapper already exports `PYTHONUSERBASE=/tmp/aarch64-pip-user`,
+so packages installed by pip are importable without any extra path setup.
+
+Tasks that call bare `pip` (not `pip3`) hit the same problem; the `pip`
+wrapper is an identical copy of `pip3`.
+
+**Affected platforms:** aarch64 hosts running x86_64 containers with the
+harbor bootstrap overlay. On native x86_64 hosts the container's own pip is
+correct and this wrapper is a no-op (it falls through to the container pip).
+
+---
+
+### 2. `uv pip install --system` fails inside containers
+
+**Symptom:** Tasks that use `uv pip install --system <pkg>` (e.g.
+`build-cython-ext`, `largest-eigenval`) get:
+```
+error: unrecognized argument: --system
+```
+
+**Root cause (aarch64-specific):** The harbor bootstrap overlay ships a `uv`
+shell wrapper at `/opt/harbor/bin/uv` that translates `uv pip install` into
+`pip3 install --target <dir>`. The wrapper's argument parser did not recognise
+the `--system` flag (which tells the real uv to install into the system Python
+rather than a venv) and passed it through to pip, which also rejected it.
+
+**Fix:** Strip `--system` in the uv wrapper's argument loop before forwarding
+to pip. Committed to harbor MR in `apptainer.py`. `--system` is implicit when
+using `--target`, so dropping it is correct.
+
+**Affected platforms:** Any host using the harbor bootstrap overlay's uv
+wrapper. Not relevant on hosts where the real uv binary is available.
+
+---
+
+### 3. Apptainer can't bind-mount over a symlink destination
+
+**Symptom:** Container startup fails with:
+```
+FATAL: container creation failed: mount hook function failure:
+  mount .../ld-linux-aarch64.so.1->/lib/ld-linux-aarch64.so.1 error:
+  destination /lib/ld-linux-aarch64.so.1 doesn't exist in container
+```
+even though `/lib/ld-linux-aarch64.so.1` visibly exists in the container image
+(e.g. `qemu-startup`, `qemu-alpine-ssh`).
+
+**Root cause (aarch64-specific):** The harbor aarch64 code bind-mounts the
+host's aarch64 dynamic linker into the container so the overlay Python can
+find it. Most x86_64 task containers don't have `/lib/ld-linux-aarch64.so.1`
+at all, so Apptainer creates the destination automatically. A handful of task
+containers (those that bundle their own QEMU or aarch64 runtime) already have
+this path — but as a **symlink** (`-> aarch64-linux-gnu/ld-2.31.so`).
+Apptainer refuses to bind-mount over a symlink destination.
+
+**Fix:** Before launching Apptainer, pre-create an empty regular file at
+`overlay_upper/lib/ld-linux-aarch64.so.1`. The overlay's upper dir shadows the
+container image's symlink with a regular file; Apptainer then has a valid
+mount target. Committed to harbor MR in `apptainer.py`.
+
+**Side effect to watch for:** Creating `overlay_upper/lib/` for the linker
+shadow also materialized `/lib/` in the overlay upper dir. This broke the
+companion bind mount for `/lib/aarch64-linux-gnu` (see issue 4 below).
+
+**Affected platforms:** aarch64 hosts only. The code path is guarded by
+`os.uname().machine == "aarch64"`.
+
+---
+
+### 4. `/lib/aarch64-linux-gnu` bind mount fails after overlay pre-population
+
+**Symptom:** Every container fails at startup with:
+```
+FATAL: container creation failed: mount hook function failure:
+  mount /lib/aarch64-linux-gnu->/lib/aarch64-linux-gnu error:
+  destination /lib/aarch64-linux-gnu doesn't exist in container
+```
+This is a **regression** introduced by the fix for issue 3.
+
+**Root cause (aarch64-specific):** Creating `overlay_upper/lib/` as part of
+the linker shadow caused Apptainer to stop auto-creating bind-mount
+destinations under `/lib/`. Apptainer can auto-create a missing directory only
+when the parent doesn't exist in the overlay upper dir. Once `overlay_upper/lib/`
+exists, Apptainer requires `/lib/aarch64-linux-gnu` to already be present in
+the merged filesystem — but it isn't, because x86_64 containers have no
+aarch64 lib tree.
+
+**Fix:** When pre-creating the linker shadow, also create
+`overlay_upper/lib/aarch64-linux-gnu/` as an empty directory. This gives
+Apptainer a valid bind-mount destination and restores the behavior that worked
+before the linker shadow was added. Committed to harbor MR in `apptainer.py`.
+
+**Affected platforms:** Same as issue 3 — aarch64 hosts only.
+
+---
+
+### 5. Harbor sidecar server crashes on Python < 3.10 containers
+
+**Symptom:** Containers built on Python 3.9 (e.g. `swe-bench-astropy`,
+`swe-bench-fsspec`, `swe-bench-langcodes`) time out immediately. The trial.log
+shows no agent activity — the server never became ready.
+
+**Root cause (general):** `server.py` used `str | None` as a return type
+annotation for `_is_blacklisted()`. The union-type shorthand (`X | Y`) was
+introduced in Python 3.10 ([PEP 604](https://peps.python.org/pep-0604/)). On
+containers whose Python is 3.9 or older, importing `server.py` raises:
+```
+TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+```
+The server crashes before binding its socket, so harbor reports a timeout.
+
+**Fix:** Changed to `Optional[str]` (from `typing`, already imported).
+Committed to harbor MR in `server.py`.
+
+**Affected platforms:** Any container whose Python interpreter is < 3.10,
+regardless of host architecture. On aarch64/QEMU hosts the server runs via
+the overlay's Python 3.12 so this would not have manifested — but it affects
+x86_64 runs too whenever a task image ships Python 3.9.
+
+---
+
+### 6. Safety filter false-positives block legitimate agent commands
+
+**Symptom:** Agent execution completes but the task was never actually attempted.
+`trial.log` shows a line like:
+```
+Blocked command: nemo-harbor --instruction '...reboot...' — Command blocked
+by safety filter (matched: \b(shutdown|reboot|...)\b)
+```
+The word triggering the filter appeared in the task's instruction text, not as
+an actual command.
+
+**Root cause (general):** The `_is_blacklisted()` safety filter in `server.py`
+ran its regex patterns against the raw command string, including any quoted
+shell arguments. If the task instruction (passed as a quoted argument to
+`nemo-harbor --instruction '...'`) contained words like `reboot`, `shutdown`,
+`halt`, or `kill`, the filter matched them as if they were commands.
+
+**Fix:** Added `_strip_quoted_strings()` to `server.py` — strips single- and
+double-quoted string contents before applying the filter. The regex patterns
+are then only matched against actual command tokens, not instruction text.
+Committed to harbor MR in `server.py`.
+
+**Affected platforms:** Any platform. The false-positive is purely a function
+of what appears in task instruction text.
+
+---
+
+### 7. OOM kills before the agent has a chance to run
+
+**Symptom:** Trial fails with `MemoryLimitExceededError`:
+```
+Container exceeded memory limit (1946MB > 1945MB)
+```
+Often the margin is tiny (1–100 MB over) or very large (task genuinely needs
+4–8 GB).
+
+**Root cause (general + aarch64-amplified):** Harbor's memory watchdog kills
+the container at **95% of `memory_mb`** (the value from `task.toml`). Most
+Terminal Bench tasks specify `memory_mb = 2048`, giving an effective kill
+threshold of ~1945 MB. On aarch64/QEMU hosts, QEMU's emulation overhead adds
+~50–200 MB on top of the task's native footprint, pushing borderline tasks
+over the threshold.
+
+**Fix:** Add `override_memory_mb: 8192` to the harbor run config's
+`environment:` block. This raises the kill threshold to ~7782 MB (95% of
+8192), covering all but the most extreme tasks. Galaxy has 743 GB RAM; with 16
+concurrent trials the peak is 16 × 8 GB = 128 GB, well within budget.
+
+```yaml
+environment:
+  type: apptainer
+  override_memory_mb: 8192
+  kwargs:
+    ...
+```
+
+Note the harbor warning: "Overriding memory … alters the task from its
+intended configuration. This could disqualify you from leaderboard
+submissions." This is intentional for our internal runs; do not use
+`override_memory_mb` for official leaderboard submissions.
+
+**Affected platforms:** General, but the 95%-of-2048 threshold is especially
+tight on QEMU hosts where emulation adds overhead.
+
+---
+
+### 8. QEMU SIGSEGV in dpkg-deb during apt-get (known unfixable)
+
+**Symptom:** `trial.log` shows repeated:
+```
+qemu: uncaught target signal 11 (Segmentation fault) - core dumped
+dpkg-deb: error: <decompress> subprocess was killed by signal (Segmentation fault)
+```
+The container either fails during agent setup (server disconnect) or during
+the verifier's own package installation (reward file not found).
+
+**Root cause (aarch64-specific):** `dpkg-deb` is an x86_64 binary running
+under QEMU emulation. For some `.deb` packages — particularly those that use
+complex decompression paths — QEMU hits an unimplemented or mishandled x86_64
+instruction and segfaults. This is a QEMU stability issue.
+
+Harbor's bootstrap already detects the apt-get failure and falls back to
+Python urllib for cloning and uv for package installation, so the **agent
+setup** phase usually recovers. However, some task verifiers run their own
+`apt-get` to install test dependencies, and those fail without recovery.
+
+**Known affected tasks:** `build-linux-kernel-qemu`, `fix-ocaml-gc`,
+`new-encrypt-command`, `sql-injection-attack`, `spring-messaging-vul`.
+
+**No fix available** without upgrading QEMU. These tasks are expected to
+produce no reward on aarch64/QEMU hosts until either:
+- The host is upgraded to a newer QEMU version with better x86_64 fidelity, or
+- The tasks are run on a native x86_64 machine.
+
+**Affected platforms:** aarch64 hosts running x86_64 containers via QEMU only.
