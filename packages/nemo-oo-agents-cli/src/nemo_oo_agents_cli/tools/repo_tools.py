@@ -88,6 +88,28 @@ class SymbolSearchResult:
         return self.text
 
 
+@dataclass
+class ReferenceSearchResult:
+    query: Annotated[str, spec(description="Symbol name searched")]
+    matches: Annotated[list[str], spec(description="Reference lines (file:line: context)")]
+    total_matches: Annotated[int, spec(description="Total references found")]
+    truncated: Annotated[bool, spec(description="True if results were capped")] = False
+
+    @property
+    def text(self) -> str:
+        if not self.matches:
+            return f'No references to "{self.query}" found.'
+        parts = list(self.matches)
+        if self.truncated:
+            parts.append(f"\n... ({self.total_matches} total, showing first {len(self.matches)})")
+        else:
+            parts.append(f"\n({self.total_matches} references)")
+        return "\n".join(parts)
+
+    def __str__(self) -> str:
+        return self.text
+
+
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
@@ -180,7 +202,22 @@ def _detect_lang(path: Path) -> str:
 
 
 def _extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[str]:
-    """Extract symbol definitions from a file using regex patterns."""
+    """Extract symbol definitions from a file using tree-sitter AST (with regex fallback)."""
+    # Try tree-sitter first (AST-aware, more accurate)
+    try:
+        from nemo_oo_agents_cli.tools._tree_sitter_backend import (
+            TREE_SITTER_AVAILABLE,
+            ts_extract_symbols,
+        )
+
+        if TREE_SITTER_AVAILABLE:
+            ts_result = ts_extract_symbols(path, lang, max_symbols)
+            if ts_result is not None:
+                return ts_result
+    except ImportError:
+        pass
+
+    # Fallback: regex-based extraction
     patterns = _SYMBOL_PATTERNS.get(lang, [])
     if not patterns:
         return []
@@ -447,8 +484,147 @@ class RepoTools(Skill):
         )
 
     # ------------------------------------------------------------------
+    # search_references — find call sites / usages
+    # ------------------------------------------------------------------
+    async def search_references(
+        self,
+        name: Annotated[
+            str,
+            spec(
+                description="Symbol name to find references for (e.g. 'from_file' or 'TraceExplorer.from_file')"
+            ),
+        ],
+        path: Annotated[str, spec(description="Directory to search")] = ".",
+        max_results: Annotated[int, spec(description="Maximum results")] = 50,
+    ) -> ReferenceSearchResult:
+        """Find all references (call sites, usages) of a symbol — excludes definitions.
+
+        Uses tree-sitter AST analysis when available for accurate results,
+        falling back to ripgrep with heuristic filtering.
+
+        Args:
+            name: Symbol name or qualified name (e.g. 'TraceExplorer.from_file').
+            path: Directory to search (default: repo root).
+            max_results: Maximum results (default: 50).
+
+        Returns:
+            ReferenceSearchResult with matching reference lines.
+
+        Examples:
+            r = await self.repo.search_references("from_file")
+            r = await self.repo.search_references("TraceExplorer.from_file")
+        """
+        resolved = self._resolve(path)
+
+        # Try tree-sitter first for accurate AST-aware reference finding
+        try:
+            from nemo_oo_agents_cli.tools._tree_sitter_backend import (
+                TREE_SITTER_AVAILABLE,
+                ts_find_references,
+            )
+
+            if TREE_SITTER_AVAILABLE:
+                all_matches: list[str] = []
+                for fpath in self._iter_source_files(resolved, max_files=500):
+                    lang = _detect_lang(fpath)
+                    if lang == "unknown":
+                        continue
+                    refs = ts_find_references(
+                        fpath, lang, name, max_results=max_results - len(all_matches)
+                    )
+                    if refs:
+                        rel = fpath.relative_to(self._root)
+                        for line_no, context in refs:
+                            all_matches.append(f"{rel}:{line_no}: {context}")
+                    if len(all_matches) >= max_results:
+                        break
+                if all_matches:
+                    truncated = len(all_matches) >= max_results
+                    return ReferenceSearchResult(
+                        query=name,
+                        matches=all_matches[:max_results],
+                        total_matches=len(all_matches),
+                        truncated=truncated,
+                    )
+        except ImportError:
+            pass
+
+        # Fallback: ripgrep-based reference search with heuristic filtering
+        search_name = name.replace(".", "\\.")  # escape dots for regex
+        pattern = f"\\b{search_name}\\b"
+
+        if self._session:
+            cmd = f"rg -n --color=never {shlex.quote(pattern)} {shlex.quote(str(resolved))} 2>/dev/null | head -{max_results * 3}"
+            stdout, _, code = await self._session.run(cmd, timeout=30)
+            if code != 0 or not stdout:
+                return ReferenceSearchResult(query=name, matches=[], total_matches=0)
+            raw_lines = stdout.strip().splitlines()
+        else:
+            raw_lines = []
+            for fpath in self._iter_source_files(resolved, max_files=200):
+                try:
+                    text = fpath.read_text(errors="replace")
+                    for i, line in enumerate(text.splitlines(), 1):
+                        if re.search(rf"\b{re.escape(name)}\b", line):
+                            rel = fpath.relative_to(self._root)
+                            raw_lines.append(f"{rel}:{i}:{line}")
+                except OSError:
+                    continue
+
+        # Filter out definitions, comments, and string-only lines
+        def_patterns = [
+            r"^\s*(def|class|async\s+def|func|fn|type|interface|struct|trait|impl|enum)\s+",
+        ]
+        matches: list[str] = []
+        for raw in raw_lines:
+            if len(matches) >= max_results:
+                break
+            # Parse file:line:content
+            parts = raw.split(":", 2)
+            if len(parts) < 3:
+                continue
+            content = parts[2].strip()
+            # Skip definitions
+            if any(re.match(p, content) for p in def_patterns):
+                continue
+            # Skip comment-only lines
+            stripped = content.lstrip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                continue
+            matches.append(f"{parts[0]}:{parts[1]}: {content}")
+
+        truncated = len(matches) >= max_results
+        return ReferenceSearchResult(
+            query=name,
+            matches=matches[:max_results],
+            total_matches=len(matches),
+            truncated=truncated,
+        )
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _iter_source_files(self, root: Path, max_files: int = 500):
+        """Yield source files under root, respecting .gitignore patterns."""
+        count = 0
+        for fpath in sorted(root.rglob("*")):
+            if count >= max_files:
+                break
+            if not fpath.is_file():
+                continue
+            if _detect_lang(fpath) == "unknown":
+                continue
+            # Skip common non-source dirs
+            parts = fpath.parts
+            if any(
+                p.startswith(".")
+                or p in ("node_modules", "__pycache__", "venv", ".venv", "build", "dist")
+                for p in parts
+            ):
+                continue
+            yield fpath
+            count += 1
+
     def _resolve(self, path: str) -> Path:
         """Resolve a path relative to the repo root."""
         p = Path(path)
