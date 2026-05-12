@@ -20,8 +20,11 @@ def _clean_registry():
 class TestEmptyDefaultRegistry:
     """The registry ships empty; public models rely on litellm's built-in routing."""
 
-    def test_registry_empty_by_default(self):
+    def test_registry_empty_by_default(self, monkeypatch, tmp_path):
         """Without UNIFIEDLLM_CONFIG or CWD config, the registry is empty."""
+        monkeypatch.delenv("UNIFIEDLLM_CONFIG", raising=False)
+        monkeypatch.chdir(tmp_path)
+        reload_registry()
         assert MODELS == {}
 
 
