@@ -13,6 +13,7 @@ Functions:
 import ast
 import inspect
 import textwrap
+import tokenize
 from collections.abc import Callable
 from typing import Any
 
@@ -32,7 +33,7 @@ def _get_function_ast(func: Callable[..., Any]) -> ast.FunctionDef | ast.AsyncFu
     try:
         source = inspect.getsource(func)
         source = textwrap.dedent(source)
-    except (OSError, IndentationError, SyntaxError):
+    except (OSError, IndentationError, SyntaxError, tokenize.TokenError):
         # Fall back to _generated_source for dynamically generated functions
         if hasattr(func, "_generated_source"):
             source = getattr(func, "_generated_source")  # noqa: B009
