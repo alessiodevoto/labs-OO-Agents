@@ -1551,10 +1551,12 @@ class TestTUIAgentInit:
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         mock_summarizer = MagicMock()
-        mock_summarizer._estimate_tokens.return_value = 5000
         mock_summarizer.max_tokens = 100_000
         mock_summarizer.preserve_recent = 10
         agent._summarizers = [mock_summarizer]
+        mock_stats = MagicMock()
+        mock_stats.total_tokens = 5000
+        agent.runtime._last_context_stats = mock_stats
         mock_em = MagicMock()
         mock_em.keys.return_value = ["t1", "t1..t2"]
         agent.event_manager = mock_em

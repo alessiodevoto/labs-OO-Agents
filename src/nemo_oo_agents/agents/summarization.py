@@ -65,7 +65,7 @@ class SummarizationAgent(Agent):
     target_event_manager: Annotated["EventManager | None", hidden] = None
 
     # Parent agent. Used to read runtime-computed context stats for accurate
-    # token counting — see _estimate_tokens(). Hidden from the LLM.
+    # token counting. Hidden from the LLM.
     _target_agent: Annotated["Agent | None", hidden] = None
 
     # Config must be set by subclasses (TokenBudgetSummarizer, MethodSummarizer set self.config
@@ -435,21 +435,6 @@ class SummarizationAgent(Agent):
 
         return "\n\n".join(parts)
 
-    @hidden
-    def _estimate_tokens(self) -> int:
-        """Prompt tokens from the most recent ``_build_messages()`` call.
-
-        Reflects what the LLM actually saw — events plus context blocks,
-        with the real provider formatter applied. Zero before any
-        generation has run; ``_should_summarize`` only fires from
-        ``AfterTurn``, which is always after ``_build_messages()``.
-        """
-        agent = self._target_agent
-        if agent is None:
-            return 0
-        stats = agent.context_stats
-        return stats.total_tokens if stats else 0
-
 
 # =============================================================================
 # Helper Functions
@@ -527,8 +512,19 @@ class TokenBudgetSummarizer(SummarizationAgent):
 
     @hidden
     def _should_summarize(self, event: "AfterTurn") -> bool:
-        """Trigger when over token budget."""
-        return bool(self._estimate_tokens() > self.config.max_tokens)
+        """Trigger when over token budget.
+
+        Reads total_tokens from the target agent's context_stats, which
+        reflects the structured payload size (litellm token_counter) after
+        the most recent _build_messages() call.
+        """
+        agent = self._target_agent
+        if agent is None:
+            return False
+        stats = agent.context_stats
+        if stats is None:
+            return False
+        return stats.total_tokens > self.config.max_tokens
 
     @hidden
     def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:

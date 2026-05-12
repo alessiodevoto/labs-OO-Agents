@@ -953,12 +953,10 @@ class CompactCommand(Command):
             )
 
         tokens_before = 0
+        stats = self.agent.context_stats
+        if stats:
+            tokens_before = stats.total_tokens
         summarizers = getattr(self.agent, "_summarizers", [])
-        if summarizers:
-            try:
-                tokens_before = summarizers[0]._estimate_tokens()
-            except Exception:
-                pass
 
         if summarizers:
             summarizer = summarizers[0]
