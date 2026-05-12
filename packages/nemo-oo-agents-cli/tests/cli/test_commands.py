@@ -125,6 +125,37 @@ async def test_clear_command_output(handler, mock_agent):
 
 
 @pytest.mark.asyncio
+async def test_clear_command_shuts_down_queue_manager(handler, mock_agent):
+    """Test that /clear cancels background jobs via queue_manager.shutdown().
+
+    Regression test for GitLab #172 — /clear did not cancel background jobs,
+    leaving orphaned tasks running after the session was reset.
+    """
+    mock_agent.queue_manager = MagicMock()
+    mock_agent.queue_manager.shutdown = AsyncMock()
+
+    result = await handler.handle("/clear")
+
+    assert result.success is True
+    mock_agent.queue_manager.shutdown.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_command_works_without_queue_manager(handler, mock_agent):
+    """Test that /clear works gracefully when no queue_manager is present.
+
+    Agents without a queue_manager (e.g. non-TUI agents) should not break.
+    """
+    # Remove queue_manager attribute entirely
+    del mock_agent.queue_manager
+
+    result = await handler.handle("/clear")
+
+    assert result.success is True
+    assert any(isinstance(o, ClearScreen) for o in result.outputs)
+
+
+@pytest.mark.asyncio
 async def test_model_command_output(handler, mock_config):
     """Test /model command - shows current model."""
     result = await handler.handle("/model")

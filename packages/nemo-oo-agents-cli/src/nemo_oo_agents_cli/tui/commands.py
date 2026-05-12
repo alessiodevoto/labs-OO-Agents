@@ -256,6 +256,16 @@ class ClearCommand(Command):
             except Exception:
                 pass
 
+        # Cancel any background jobs spawned via queue_manager so they
+        # don't keep running in the old session after /clear.
+        # Fixes GitLab #172.
+        qm = getattr(self.agent, "queue_manager", None)
+        if qm is not None and hasattr(qm, "shutdown"):
+            try:
+                await qm.shutdown()
+            except Exception:
+                pass
+
         # Reset the agent's in-memory working state so /clear is truly a
         # fresh start — not just a storage swap. The old session's
         # snapshotable state (todos, context) is preserved on disk (via
