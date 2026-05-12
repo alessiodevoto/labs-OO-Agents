@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for new BashSession and ShellTools APIs added in the concurrency fix."""
+"""Tests for new BashSession APIs added in the concurrency fix."""
 
 import asyncio
 
 import pytest
 
 from nemo_oo_agents.tools._bash_session import BashSession
-from nemo_oo_agents.tools.shell_tools import ShellTools
 
 
 class TestRunWithTimeoutFlag:
@@ -80,51 +79,3 @@ class TestLockSerialization:
             assert all(r[2] == 0 for r in results)
         finally:
             await session.close()
-
-
-class TestCwdGuard:
-    """Tests for ShellTools.cwd_guard()."""
-
-    async def test_cwd_restored_after_cd(self, tmp_path):
-        shell = ShellTools(cwd=tmp_path)
-        try:
-            original_cwd = shell._session.cwd
-
-            async with shell.cwd_guard():
-                await shell.run("cd /tmp")
-                assert shell._session.cwd != original_cwd
-
-            # After the guard, cwd should be restored
-            assert shell._session.cwd == original_cwd
-        finally:
-            await shell.close()
-
-    async def test_cwd_restored_on_exception(self, tmp_path):
-        shell = ShellTools(cwd=tmp_path)
-        try:
-            original_cwd = shell._session.cwd
-
-            with pytest.raises(RuntimeError):
-                async with shell.cwd_guard():
-                    await shell.run("cd /tmp")
-                    raise RuntimeError("oops")
-
-            assert shell._session.cwd == original_cwd
-        finally:
-            await shell.close()
-
-    async def test_file_cursor_restored(self, tmp_path):
-        shell = ShellTools(cwd=tmp_path)
-        try:
-            # Create a test file
-            (tmp_path / "test.py").write_text("line1\nline2\n")
-            await shell.view("test.py")
-            assert shell._current_file == "test.py"
-
-            async with shell.cwd_guard():
-                shell._current_file = "other.py"
-                shell._current_line = 99
-
-            assert shell._current_file == "test.py"
-        finally:
-            await shell.close()

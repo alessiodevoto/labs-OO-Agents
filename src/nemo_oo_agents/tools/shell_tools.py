@@ -17,7 +17,6 @@ The LLM discovers tools via ``doc(self.shell)`` and sees the current
 working directory in ``pprint(self)`` thanks to ``__repr__``.
 """
 
-import contextlib
 import difflib
 import logging
 import re
@@ -79,6 +78,10 @@ class ShellTools(Skill):
     persist across calls, plus file viewing, editing, searching, and
     directory listing.
 
+    Commands are serialized via an internal asyncio.Lock — concurrent
+    ``run()`` calls queue and execute one at a time.  For true parallelism,
+    create multiple ShellTools instances.
+
     Tools:
         run(command, ...)       — run a shell command (stateful)
         run_stream(command, ...) — stream stdout/stderr and terminal event
@@ -98,6 +101,11 @@ class ShellTools(Skill):
         self._current_file: str | None = None
         self._current_line: int | None = None
 
+    @property
+    def cwd(self) -> Path:
+        """Current working directory of the shell session."""
+        return self._session.cwd
+
     def __repr__(self) -> str:
         parts = [f"cwd={str(self._session.cwd)!r}"]
         if self._current_file:
@@ -106,30 +114,6 @@ class ShellTools(Skill):
                 loc += f":{self._current_line}"
             parts.append(f"file={loc!r}")
         return f"ShellTools({', '.join(parts)})"
-
-    @contextlib.asynccontextmanager
-    async def cwd_guard(self):
-        """Save and restore the session cwd around a block.
-
-        Use when lending this ShellTools to a subagent that may change
-        directories::
-
-            async with shell.cwd_guard():
-                await doer.execute(todo)
-            # cwd is restored here regardless of what the doer did
-        """
-        saved_cwd = self._session.cwd
-        saved_file = self._current_file
-        saved_line = self._current_line
-        try:
-            yield
-        finally:
-            if self._session.cwd != saved_cwd:
-                # Use run() which acquires the lock normally — this ensures
-                # we don't interleave with an in-flight command.
-                await self._session.run(f"cd {_sq(str(saved_cwd))}")
-            self._current_file = saved_file
-            self._current_line = saved_line
 
     # ------------------------------------------------------------------
     # run

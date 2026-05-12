@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Disposable Doer agent — executes a single todo item.
 
-Created fresh per ``do_it()`` call so no history accumulates between tasks.
-Shares the parent TUI agent's shell, repo, and todo instances.
+Created fresh per ``make_doer()`` call so no history accumulates between tasks.
+Each doer gets its own ShellTools session (isolated cwd/state).
 """
 
 # Module-level imports visible to the Doer's CodeAct REPL
@@ -73,14 +73,14 @@ class DoerAgent(Agent):
     def __init__(
         self,
         *,
-        shell: ShellTools,
+        cwd: Path,
         repo: RepoTools,
         todo: TodoManager,
         skills_dirs: list[Path] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.shell = shell
+        self.shell = ShellTools(cwd=cwd)
         self.repo = repo
         self.todo = todo
 

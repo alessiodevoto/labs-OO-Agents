@@ -718,7 +718,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         """
         return DoerAgent(
             llm=self._llm,
-            shell=self.shell,
+            cwd=self.shell.cwd,
             repo=self.repo,
             todo=self.todo,
             skills_dirs=self._skills_dirs,
