@@ -29,8 +29,8 @@ async def test_grep_accepts_timeout_parameter(shell, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_grep_timeout_zero_raises(shell, tmp_path):
-    """A very short timeout on a valid grep should still work (ripgrep is fast)."""
+async def test_grep_custom_timeout_succeeds(shell, tmp_path):
+    """A custom timeout value is accepted and works for a tiny file."""
     # timeout=5 should be plenty for a tiny file
     result = await shell.grep("bar", "hello.py", timeout=5.0)
     assert result.total_matches == 1
