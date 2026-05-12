@@ -38,7 +38,7 @@ nemo-oo-agents-cli = { workspace = true }
 [tool.uv]
 # Extra index URLs to search for packages (in addition to PyPI)
 # Ignore packages uploaded less than 7 days ago to mitigate supply-chain attacks
-exclude-newer = "2026-05-01T00:00:00Z"
+exclude-newer = "2026-05-05T00:00:00Z"
 # litellm requires python <3.14; skip impossible 3.14+ resolution splits
 environments = [
     "python_full_version >= '3.12' and python_full_version < '3.14'",
@@ -77,16 +77,16 @@ sandbox = [
 mcp = [
     "mcp>=1.0.0",
 ]
+# nemo-flow integration (guardrails, intercepts, ATIF export). Install with
+# `uv sync --extra nemo-flow`. See examples/quickstart/13_nemo_flow.py and
+# src/nemo_oo_agents/nemo_flow_middleware.py.
+nemo-flow = [
+    "nemo-flow>=0.1.0",
+]
 
 # CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.
 # Data-science stack for the LLM REPL: `uv add nemo-oo-agents-cli[datascience]`.
 # Web-served TUI (`nemo oo term`):     `uv add nemo-oo-agents-cli[web]`.
-# nemo-flow is NOT listed as an optional dep because uv locks all extras
-# unconditionally, and nemo-flow lives on a private registry that requires auth.
-# This would block `uv sync` / `uv lock` for everyone without credentials.
-# Install manually:
-#   uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
-#   uv pip install nemo-flow --index-url https://gitlab-master.nvidia.com/api/v4/projects/230591/packages/pypi/simple
 
 [build-system]
 requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]

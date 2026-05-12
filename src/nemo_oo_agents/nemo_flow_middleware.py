@@ -68,7 +68,7 @@ except ImportError:
 
 _INSTALL_MSG = (
     "nemo_flow is required for NeMo Flow integration. "
-    "See pyproject.toml for install instructions (private registry, requires auth)."
+    "Install with `uv sync --extra nemo-flow` (public PyPI wheels)."
 )
 
 # Keys stripped from params before exposing to NeMo Flow guardrails/events.

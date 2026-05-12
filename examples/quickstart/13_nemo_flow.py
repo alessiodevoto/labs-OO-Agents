@@ -17,10 +17,7 @@ This version uses the event-middleware integration — NeMo Flow is wired throug
 ``event_manager.intercept()`` rather than global hooks.
 
 Prerequisites:
-  Install NeMo OO Agents with the nemo-flow extra (prebuilt wheels from GitLab registry):
-
-    # One-time: store GitLab registry credentials
-    uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
+  Install NeMo OO Agents with the nemo-flow extra (public PyPI wheels):
 
     uv sync --extra nemo-flow
 
@@ -190,15 +187,18 @@ nemo_flow.guardrails.register_tool_conditional_execution(  # type: ignore[attr-d
 def _log_event(event: nemo_flow.Event) -> None:
     """Print a one-line summary of every NeMo Flow lifecycle event."""
     parts = [f"[{event.kind}]", f"name={event.name!r}"]
-    model_name = getattr(event, "model_name", None)
-    if model_name:
-        parts.append(f"model={model_name!r}")
-    input_data = getattr(event, "input", None)
-    if input_data is not None:
-        preview = json.dumps(input_data, default=str)
+    category = getattr(event, "category", None)
+    scope_category = getattr(event, "scope_category", None)
+    if category:
+        parts.append(f"category={category}")
+    if scope_category:
+        parts.append(f"scope_category={scope_category}")
+    data = getattr(event, "data", None)
+    if data is not None:
+        preview = json.dumps(data, default=str)
         if len(preview) > 120:
             preview = preview[:117] + "..."
-        parts.append(f"input={preview}")
+        parts.append(f"data={preview}")
     print("  NEMO_FLOW " + " | ".join(parts))
 
 
@@ -213,8 +213,13 @@ _captured_tool_outputs: list[dict] = []
 
 def _capture_tool_output(event: nemo_flow.Event) -> None:
     """Capture tool-call End events and their serialized output for display."""
-    if isinstance(event, nemo_flow.ToolEndEvent) and event.output is not None:
-        _captured_tool_outputs.append({"tool": event.name, "output": event.output})
+    if (
+        isinstance(event, nemo_flow.ScopeEvent)
+        and event.category == "tool"
+        and event.scope_category == "end"
+        and event.data is not None
+    ):
+        _captured_tool_outputs.append({"tool": event.name, "output": event.data})
 
 
 nemo_flow.subscribers.register("tool-output-capture", _capture_tool_output)  # type: ignore[attr-defined]

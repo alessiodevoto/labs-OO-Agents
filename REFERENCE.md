@@ -115,15 +115,12 @@ root logger, so no output appears unless you configure handlers.
 
 ## NeMo Flow Integration
 
-Optional integration with [NeMo Flow](https://gitlab-master.nvidia.com/nemo-agent-toolkit/dev/NeMo-Flow) (`nemo_flow`) — a multi-language agent runtime providing guardrails, intercepts, event subscribers, and ATIF trajectory export.
+Optional integration with [NeMo Flow](https://github.com/NVIDIA/NeMo-Flow) (`nemo_flow`) — a multi-language agent runtime providing guardrails, intercepts, event subscribers, and ATIF trajectory export.
 
 ### Quick start
 
 ```bash
-# One-time: store GitLab registry credentials
-uv auth login gitlab-master.nvidia.com --username __token__ --password $GITLAB_TOKEN
-
-# Install with NeMo Flow support (prebuilt wheels from GitLab registry)
+# Install with NeMo Flow support (public PyPI wheels)
 uv sync --extra nemo-flow
 ```
 

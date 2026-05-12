@@ -143,9 +143,16 @@ class TestLLMRequestIntercepts:
         try:
             # Subscriber captures the headers that were on the request
             def _capture(event: nemo_flow.Event):
-                if isinstance(event, nemo_flow.LLMStartEvent) and event.input is not None:
-                    # The request headers flow through the pipeline
-                    captured_headers.update(getattr(event, "headers", {}))
+                if (
+                    isinstance(event, nemo_flow.ScopeEvent)
+                    and event.category == "llm"
+                    and event.scope_category == "start"
+                    and event.data is not None
+                ):
+                    # The request headers flow through the pipeline via event.data
+                    headers = event.data.get("headers") if isinstance(event.data, dict) else None
+                    if isinstance(headers, dict):
+                        captured_headers.update(headers)
 
             nemo_flow.subscribers.register("header-spy", _capture)
 
@@ -265,8 +272,13 @@ class TestLLMSanitizeResponse:
             return response
 
         def _spy(event: nemo_flow.Event):
-            if isinstance(event, nemo_flow.LLMEndEvent) and event.output is not None:
-                subscriber_saw.append(event.output)
+            if (
+                isinstance(event, nemo_flow.ScopeEvent)
+                and event.category == "llm"
+                and event.scope_category == "end"
+                and event.data is not None
+            ):
+                subscriber_saw.append(event.data)
 
         nemo_flow.guardrails.register_llm_sanitize_response("test-san-resp", 1, _sanitize)
         nemo_flow.subscribers.register("resp-spy", _spy)
@@ -449,8 +461,13 @@ class TestToolSanitizeResponse:
             return result
 
         def _spy(event: nemo_flow.Event):
-            if isinstance(event, nemo_flow.ToolEndEvent) and event.output is not None:
-                subscriber_saw.append(event.output)
+            if (
+                isinstance(event, nemo_flow.ScopeEvent)
+                and event.category == "tool"
+                and event.scope_category == "end"
+                and event.data is not None
+            ):
+                subscriber_saw.append(event.data)
 
         nemo_flow.guardrails.register_tool_sanitize_response("test-tool-san", 1, _sanitize)
         nemo_flow.subscribers.register("tool-resp-spy", _spy)
@@ -542,8 +559,9 @@ class TestModelNameExtraction:
         captured_model: list[str] = []
 
         def _capture(event: nemo_flow.Event):
-            if event.model_name:
-                captured_model.append(event.model_name)
+            # In nemo_flow v0.1.0 the LLM scope name *is* the model name.
+            if isinstance(event, nemo_flow.ScopeEvent) and event.category == "llm" and event.name:
+                captured_model.append(event.name)
 
         nemo_flow.subscribers.register("model-spy", _capture)
         try:
@@ -699,8 +717,9 @@ class TestAgentCallMiddleware:
 
         def _spy(event: nemo_flow.Event):
             if (
-                isinstance(event, nemo_flow.ScopeStartEvent)
-                and event.scope_type == nemo_flow.ScopeType.Function
+                isinstance(event, nemo_flow.ScopeEvent)
+                and event.scope_category == "start"
+                and event.category == "function"
             ):
                 captured_names.append(event.name)
 
@@ -730,8 +749,8 @@ class TestAgentCallMiddleware:
         events: list[tuple[str, str]] = []
 
         def _spy(event: nemo_flow.Event):
-            if getattr(event, "scope_type", None) == nemo_flow.ScopeType.Function:
-                events.append((event.kind, event.name))
+            if isinstance(event, nemo_flow.ScopeEvent) and event.category == "function":
+                events.append((event.scope_category, event.name))
 
         nemo_flow.subscribers.register("scope-lifecycle-spy", _spy)
         try:
@@ -744,10 +763,10 @@ class TestAgentCallMiddleware:
 
             await nemo_flow_agent_call_middleware(ctx, nxt)
 
-            # Should see Start then End
+            # Should see start then end
             assert len(events) == 2
-            assert events[0][0] == "ScopeStart"
-            assert events[1][0] == "ScopeEnd"
+            assert events[0][0] == "start"
+            assert events[1][0] == "end"
         finally:
             nemo_flow.subscribers.deregister("scope-lifecycle-spy")
 
@@ -757,8 +776,8 @@ class TestAgentCallMiddleware:
         events: list[str] = []
 
         def _spy(event: nemo_flow.Event):
-            if getattr(event, "scope_type", None) == nemo_flow.ScopeType.Function:
-                events.append(event.kind)
+            if isinstance(event, nemo_flow.ScopeEvent) and event.category == "function":
+                events.append(event.scope_category)
 
         nemo_flow.subscribers.register("scope-exc-spy", _spy)
         try:
@@ -771,9 +790,9 @@ class TestAgentCallMiddleware:
             with pytest.raises(ValueError, match="boom"):
                 await nemo_flow_agent_call_middleware(ctx, nxt)
 
-            # Scope should still be popped (End event emitted)
-            assert "ScopeStart" in events
-            assert "ScopeEnd" in events
+            # Scope should still be popped (end event emitted)
+            assert "start" in events
+            assert "end" in events
         finally:
             nemo_flow.subscribers.deregister("scope-exc-spy")
 
@@ -805,8 +824,12 @@ class TestToolMiddlewareEdgeCases:
         subscriber_saw: list[Any] = []
 
         def _spy(event: nemo_flow.Event):
-            if isinstance(event, nemo_flow.ToolEndEvent):
-                subscriber_saw.append(event.output)
+            if (
+                isinstance(event, nemo_flow.ScopeEvent)
+                and event.category == "tool"
+                and event.scope_category == "end"
+            ):
+                subscriber_saw.append(event.data)
 
         nemo_flow.subscribers.register("signal-spy", _spy)
         try:
@@ -845,8 +868,12 @@ class TestToolMiddlewareEdgeCases:
         subscriber_saw: list[Any] = []
 
         def _spy(event: nemo_flow.Event):
-            if isinstance(event, nemo_flow.ToolEndEvent):
-                subscriber_saw.append(event.output)
+            if (
+                isinstance(event, nemo_flow.ScopeEvent)
+                and event.category == "tool"
+                and event.scope_category == "end"
+            ):
+                subscriber_saw.append(event.data)
 
         nemo_flow.subscribers.register("stdout-spy", _spy)
         try:
@@ -901,8 +928,10 @@ class TestLLMMiddlewareEdgeCases:
         captured_model: list[str] = []
 
         def _spy(event: nemo_flow.Event):
-            # Capture model_name from all events (even if empty)
-            captured_model.append(event.model_name or "")
+            # When agent is None the LLM middleware passes model_name="" to
+            # nemo_flow.llm.execute(), which becomes the scope name.
+            if isinstance(event, nemo_flow.ScopeEvent) and event.category == "llm":
+                captured_model.append(event.name or "")
 
         nemo_flow.subscribers.register("model-none-spy", _spy)
         try:
