@@ -31,6 +31,7 @@ from nemo_oo_agents.agentdoc import hidden
 from nemo_oo_agents.config.strategy_config import PredictConfig
 from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 from nemo_oo_agents.decorators import strategy
+from nemo_oo_agents.metaclass import no_trace
 from nemo_oo_agents.strategies import PredictStrategy
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,7 @@ class SummarizationAgent(Agent):
         self._install()
 
     @hidden
+    @no_trace
     def _install(self) -> None:
         """Subscribe to target event manager.
 
@@ -159,6 +161,7 @@ class SummarizationAgent(Agent):
         self._unsub_after = self.target_event_manager.on("AfterTurn", self._handle_after_turn)
 
     @hidden
+    @no_trace
     def _uninstall(self) -> None:
         """Unsubscribe from target event manager and cancel pending tasks."""
         if self._unsub_before:
@@ -176,11 +179,13 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
+    @no_trace
     def _handle_before_turn(self, event: "EventBase") -> None:
         """Apply any pending summary before the next turn."""
         self._apply_pending_summary()
 
     @hidden
+    @no_trace
     def _handle_after_turn(self, event: "EventBase") -> None:
         """Check whether to schedule a summarization.
 
@@ -218,6 +223,7 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
+    @no_trace
     def _should_summarize(self, event: "AfterTurn") -> bool:
         """Decide if summarization is needed.
 
@@ -232,6 +238,7 @@ class SummarizationAgent(Agent):
         return False
 
     @hidden
+    @no_trace
     def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Compute the range of events to summarize.
 
@@ -288,6 +295,7 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
+    @no_trace
     def _schedule_summarization(self, start_tag: str, end_tag: str) -> None:
         """Schedule async summarization as a background task."""
         if self.target_event_manager is None:
@@ -308,6 +316,7 @@ class SummarizationAgent(Agent):
         )
 
     @hidden
+    @no_trace
     async def _run_summarization(self, history_markdown: str, start_tag: str, end_tag: str) -> None:
         """Run summarization and store result for later application."""
         try:
@@ -325,6 +334,7 @@ class SummarizationAgent(Agent):
             self.event_manager.clear()
 
     @hidden
+    @no_trace
     def _apply_pending_summary(self) -> None:
         """Apply a completed summary to the target event manager.
 
@@ -360,6 +370,7 @@ class SummarizationAgent(Agent):
     # -------------------------------------------------------------------------
 
     @hidden
+    @no_trace
     def _get_events_in_range(self, start_tag: str, end_tag: str) -> list[tuple[str, "EventBase"]]:
         """Get events between start_tag and end_tag (inclusive).
 
@@ -392,6 +403,7 @@ class SummarizationAgent(Agent):
         return result
 
     @hidden
+    @no_trace
     def _render_range_to_markdown(self, start_tag: str, end_tag: str) -> str:
         """Render events in range to markdown for LLM consumption.
 
@@ -511,6 +523,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
         super().__init__(agent, **kwargs)
 
     @hidden
+    @no_trace
     def _should_summarize(self, event: "AfterTurn") -> bool:
         """Trigger when over token budget.
 
@@ -527,6 +540,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
         return stats.total_tokens > self.config.max_tokens
 
     @hidden
+    @no_trace
     def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Summarize oldest events, preserving recent ones."""
         if self.target_event_manager is None:
@@ -581,6 +595,7 @@ class MethodSummarizer(SummarizationAgent):
         super().__init__(agent, **kwargs)
 
     @hidden
+    @no_trace
     def _should_summarize(self, event: "AfterTurn") -> bool:
         """Trigger on method completion."""
         if not event.is_final:
@@ -593,6 +608,7 @@ class MethodSummarizer(SummarizationAgent):
         return True
 
     @hidden
+    @no_trace
     def _compute_range(self, event: "AfterTurn") -> tuple[str, str] | None:
         """Summarize all events from this method invocation (including children).
 
@@ -627,6 +643,7 @@ class MethodSummarizer(SummarizationAgent):
         return (first_tag, last_tag)  # type: ignore[return-value]
 
     @hidden
+    @no_trace
     def _is_root_call(self, event: "AfterTurn") -> bool:
         """Check if this is a root (top-level) method call."""
         # Root calls typically don't have a parent generation context

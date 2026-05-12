@@ -1054,3 +1054,52 @@ class TestSummarizationAsyncIntegration:
         # Give a moment for cancellation to propagate
         await asyncio.sleep(0.01)
         assert task.cancelled() or task.done()
+
+
+# =============================================================================
+# Tracing opt-out — issue #192
+# =============================================================================
+class TestSummarizerNoTrace:
+    """Regression test: @hidden summarizer helpers must opt out of tracing.
+
+    See https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/192.
+    Private helpers fire on every turn and used to drown out useful spans.
+    The fix decorates them with @no_trace so only ``summarize()`` produces a span.
+    """
+
+    @pytest.mark.parametrize("cls", [SummarizationAgent, TokenBudgetSummarizer, MethodSummarizer])
+    def test_hidden_helpers_have_no_trace(self, cls):
+        """Every @hidden method on a summarizer class must also be @no_trace."""
+        import inspect
+
+        from nemo_oo_agents.agentdoc._visibility import is_hidden_method
+
+        hidden_methods = [
+            (name, attr)
+            for name, attr in cls.__dict__.items()
+            if inspect.isfunction(attr) and is_hidden_method(attr)
+        ]
+        assert hidden_methods, f"No @hidden methods found on {cls.__name__} — test stale?"
+
+        for name, attr in hidden_methods:
+            # @no_trace causes the metaclass to skip wrapping entirely, so
+            # cls.__dict__[name] IS the original function (no _original
+            # indirection).
+            assert getattr(attr, "_no_trace", False) is True, (
+                f"{cls.__name__}.{name} is @hidden but missing @no_trace — "
+                "private helpers should not produce trace spans (issue #192)"
+            )
+
+    def test_summarize_remains_traced(self):
+        """The generation method ``summarize()`` must still produce a span."""
+        summarize = SummarizationAgent.summarize
+        # summarize() goes through @strategy, which wraps; the original is on _original.
+        original = getattr(summarize, "_original", summarize)
+        assert getattr(original, "_no_trace", False) is False, (
+            "summarize() must not be marked @no_trace — it is the only summarizer "
+            "method that carries real LLM-call signal"
+        )
+        # Runtime flag on the wrapper itself (mutable list, set by @strategy/no_trace machinery).
+        tracing_enabled = getattr(summarize, "_tracing_enabled", None)
+        if tracing_enabled is not None:
+            assert tracing_enabled[0] is True, "summarize() wrapper has tracing disabled"
