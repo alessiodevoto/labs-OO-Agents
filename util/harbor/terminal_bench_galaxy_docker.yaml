@@ -1,0 +1,51 @@
+# Harbor config for Terminal Bench 1.0 on galaxy (lab@10.87.108.113, aarch64) — Docker mode.
+#
+# Uses harbor's native Docker environment instead of Apptainer/SIF.
+# Docker on aarch64 pulls arm64 image variants natively — no QEMU emulation,
+# no SIF cache, no bootstrap overlay, no pre-build step required.
+#
+# Timeout multipliers are reduced from the QEMU run (4x) to 1.5x — compilation
+# tasks still benefit from a small buffer, but there's no emulation overhead.
+#
+# Known x86-specific tasks (will fail at task level, not infra):
+#   broken-networking, build-linux-kernel-qemu, get-bitcoin-nodes,
+#   reverse-engineering, run-pdp11-code, triton-interpret,
+#   unprivileged-headless-pyrender, wasm-pipeline
+#
+# Prerequisites:
+#   1. lab user in docker group: sudo usermod -aG docker lab (done 2026-05-12)
+#   2. Harbor installed: source /home/lab/miniforge3/bin/activate
+#   3. Tasks at /home/lab/rcabral/harbor_tasks_tb_filtered (236 tasks)
+#   4. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
+#        export NVIDIA_INTERNAL_API_KEY=<key>
+#        export NEMO_OO_AGENTS_GIT_URL=<gitlab-url>
+#        export NEMO_OO_AGENTS_GIT_REF=<branch>
+#
+# Run from /home/lab/rcabral/nemo_oo_agents:
+#   source /home/lab/rcabral/nemo_oo_agents/.env
+#   source /home/lab/miniforge3/bin/activate
+#   harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml
+
+jobs_dir: /home/lab/rcabral/harbor_jobs/terminal_bench_galaxy_docker
+n_attempts: 1
+timeout_multiplier: 1.5
+environment_build_timeout_multiplier: 3.0
+agent_setup_timeout_multiplier: 5.0
+verifier_timeout_multiplier: 3.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+
+environment:
+  type: docker
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: baseline
+
+datasets:
+  - path: /home/lab/rcabral/harbor_tasks_tb_filtered
