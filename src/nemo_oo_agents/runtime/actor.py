@@ -275,8 +275,9 @@ def _clamp_messages_to_budget(
 # Shared collapse/archival helpers (L4 boundary + structured safety net)
 # ---------------------------------------------------------------------------
 
-# Archive 25% more than the drop count to avoid re-hitting the boundary next turn.
-_ARCHIVE_HYSTERESIS = 1.25
+# When the safety net fires, archive events until utilization drops to this fraction
+# of the token budget cap. Lower = more headroom before re-triggering.
+_ARCHIVE_TARGET_UTILIZATION = 0.60
 
 
 def _collapse_oldest(
@@ -2588,13 +2589,18 @@ class ActorRuntime:
                 messages, cap, llm_client.model, tool_schemas=tool_schemas
             )
             if dropped:
-                # Fraction of non-system messages dropped is a reasonable proxy
-                # for how much active history to archive. Add hysteresis so we
-                # don't immediately re-hit the boundary next turn.
+                # Archive events until estimated utilization reaches 60% of cap.
+                # Uses the structured token measurement (events_tok) which is what
+                # the API actually sees.
                 active_tags = list(self.event_manager.keys())
-                rest_total = len(messages) + dropped  # non-system messages rendered
-                fraction = dropped / rest_total if rest_total else 0
-                n_to_archive = int(math.ceil(len(active_tags) * fraction * _ARCHIVE_HYSTERESIS))
+                n_active = len(active_tags)
+                target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
+                tokens_to_shed = max(0, total_tok - target_tok)
+                avg_event_tok = events_tok / max(1, n_active)
+                n_to_archive = min(
+                    int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
+                    n_active,
+                )
                 if n_to_archive > 0:
                     summary_text = (
                         f"hit context window limit: before={stats.total_tokens:,}/{cap:,} total_tokens, "
