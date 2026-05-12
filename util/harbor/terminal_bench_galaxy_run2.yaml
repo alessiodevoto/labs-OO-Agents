@@ -1,0 +1,63 @@
+# Harbor config for Terminal Bench 1.0 run 2 on galaxy (lab@10.87.108.113, aarch64).
+#
+# Improvements over run1 (2026-05-11):
+#   - pip3/pip overlay wrappers: routes pip through aarch64 Python 3.12, installs
+#     to PYTHONUSERBASE=/tmp/aarch64-pip-user (fixes ~159 reward=0 tasks)
+#   - server.py: Optional[str] instead of str|None (Python 3.9 compat for swe-bench)
+#   - apptainer.py: pre-shadow /lib/ld-linux-aarch64.so.1 in overlay upper dir
+#     before bind-mount so qemu-startup/qemu-alpine-ssh containers start cleanly
+#   - uv pip --system: stripped from uv wrapper (build-cython-ext, largest-eigenval)
+#   - override_memory_mb: 8192 — raises effective watchdog kill threshold to 7782MB
+#     (95% of 8192) to fix 7 OOM tasks that exceeded the 1945MB limit (95% of 2048)
+#
+# Still broken (QEMU SIGSEGV in dpkg-deb, not fixable without QEMU upgrade):
+#   build-linux-kernel-qemu, fix-ocaml-gc, new-encrypt-command, sql-injection-attack,
+#   spring-messaging-vul, stable-parallel-kmeans
+#
+# Prerequisites:
+#   1. apptainer + AppArmor userns allowed (see util/harbor/README.md)
+#   2. Harbor installed: source /home/lab/miniforge3/bin/activate
+#   3. harbor_bootstrap_overlay_v2 at /home/lab/3p/harbor_bootstrap_overlay_v2
+#      (must have the updated pip3/pip wrappers from util/harbor/overlay/)
+#   4. SIF cache at /home/lab/3p/sif_cache
+#   5. Tasks at /home/lab/rcabral/harbor_tasks_tb_filtered (236 tasks)
+#   6. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
+#        export NVIDIA_INTERNAL_API_KEY=<key>
+#        export NEMO_OO_AGENTS_GIT_URL=<gitlab-url>
+#        export NEMO_OO_AGENTS_GIT_REF=<branch>
+#
+# Run from /home/lab/rcabral/nemo_oo_agents:
+#   source /home/lab/rcabral/nemo_oo_agents/.env
+#   source /home/lab/miniforge3/bin/activate
+#   harbor run --config util/harbor/terminal_bench_galaxy_run2.yaml
+
+jobs_dir: /home/lab/rcabral/harbor_jobs/terminal_bench_galaxy
+n_attempts: 1
+timeout_multiplier: 4.0
+environment_build_timeout_multiplier: 10.0
+agent_setup_timeout_multiplier: 10.0
+verifier_timeout_multiplier: 10.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 8192
+  kwargs:
+    apptainer_binary: /home/lab/miniforge3/bin/apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: /home/lab/3p/sif_cache
+    apptainer_bootstrap_overlay: /home/lab/3p/harbor_bootstrap_overlay_v2
+    env_passthrough: ANTHROPIC_API_KEY,NVIDIA_API_KEY,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: baseline
+
+datasets:
+  - path: /home/lab/rcabral/harbor_tasks_tb_filtered
