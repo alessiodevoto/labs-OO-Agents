@@ -564,7 +564,9 @@ class QueueManager:
             if not replace:
                 raise ValueError(f"channel {name!r} already registered")
             self.remove_channel(name)
-        ch: Channel[T] = Channel(name, "queue", agent=self._agent, on_get=on_get, on_put=self._set_notify)
+        ch: Channel[T] = Channel(
+            name, "queue", agent=self._agent, on_get=on_get, on_put=self._set_notify
+        )
         self._channels[name] = ch
         return ch
 
