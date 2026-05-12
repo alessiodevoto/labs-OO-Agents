@@ -1,8 +1,14 @@
 # Harbor config for Terminal Bench 1.0 on galaxy (lab@10.87.108.113, aarch64) — Docker mode.
 #
 # Uses harbor's native Docker environment instead of Apptainer/SIF.
-# Docker on aarch64 pulls arm64 image variants natively — no QEMU emulation,
-# no SIF cache, no bootstrap overlay, no pre-build step required.
+# Docker on aarch64 pulls arm64 image variants natively — no QEMU emulation.
+#
+# The bootstrap overlay is bind-mounted read-only at /opt/harbor inside each
+# container so the nemo-oo-agents setup script finds its fast path:
+#   - nemo-venv-base-cp312-aarch64.tar.gz  (pre-built venv, ~30s extraction)
+#   - nemo-wheels/                          (offline wheel cache, no PyPI hit)
+#   - cpython312-aarch64/                   (standalone Python 3.12)
+# This avoids the slow (~10–18 min) pip-from-PyPI install path.
 #
 # Timeout multipliers are reduced from the QEMU run (4x) to 1.5x — compilation
 # tasks still benefit from a small buffer, but there's no emulation overhead.
@@ -15,8 +21,9 @@
 # Prerequisites:
 #   1. lab user in docker group: sudo usermod -aG docker lab (done 2026-05-12)
 #   2. Harbor installed: source /home/lab/miniforge3/bin/activate
-#   3. Tasks at /home/lab/rcabral/harbor_tasks_tb_filtered (236 tasks)
-#   4. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
+#   3. Bootstrap overlay at /home/lab/3p/harbor_bootstrap_overlay_v2
+#   4. Tasks at /home/lab/rcabral/harbor_tasks_tb_docker (docker_image lines stripped)
+#   5. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
 #        export NVIDIA_INTERNAL_API_KEY=<key>
 #        export NEMO_OO_AGENTS_GIT_URL=<gitlab-url>
 #        export NEMO_OO_AGENTS_GIT_REF=<branch>
@@ -40,6 +47,11 @@ orchestrator:
 
 environment:
   type: docker
+  mounts_json:
+    - type: bind
+      source: /home/lab/3p/harbor_bootstrap_overlay_v2/opt/harbor
+      target: /opt/harbor
+      read_only: true
 
 agents:
   - name: nemo-oo-agents
@@ -48,4 +60,4 @@ agents:
       agent_type: baseline
 
 datasets:
-  - path: /home/lab/rcabral/harbor_tasks_tb_filtered
+  - path: /home/lab/rcabral/harbor_tasks_tb_docker
