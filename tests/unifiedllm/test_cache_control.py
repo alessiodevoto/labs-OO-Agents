@@ -103,10 +103,13 @@ class TestInjectCacheControl:
 class TestDefaultCacheControlInjectionPoints:
     """Tests for default cache control configuration."""
 
-    def test_default_targets_system(self):
-        """Default injection points target the system role."""
+    def test_default_targets_system_and_last_tool(self):
+        """Default injection points target system role + last tool."""
         client = CompletionClient(model="test-model")
-        assert client.cache_control_injection_points == [{"location": "message", "role": "system"}]
+        assert client.cache_control_injection_points == [
+            {"role": "system"},
+            {"role": "tool", "position": "last"},
+        ]
 
     def test_custom_injection_points(self):
         """Custom injection points override the default."""
@@ -241,3 +244,170 @@ class TestCacheControlEndToEnd:
 
             assert sent_messages[0].get("cache_control") == {"type": "ephemeral"}
             assert "cache_control" not in sent_messages[1]
+
+
+# ---------------------------------------------------------------------------
+# Position-based cache_control injection
+# ---------------------------------------------------------------------------
+
+
+class TestPositionBasedInjection:
+    """Tests for position-based cache_control injection (position='last')."""
+
+    @pytest.fixture
+    def client(self):
+        return CompletionClient(model="test-model", cache_control_injection_points=[])
+
+    def test_last_assistant_marked(self, client):
+        """position='last' marks only the last message of the specified role (content-block level)."""
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Turn 1"},
+            {"role": "assistant", "content": "Response 1"},
+            {"role": "user", "content": "Turn 2"},
+            {"role": "assistant", "content": "Response 2"},
+            {"role": "user", "content": "Turn 3"},
+        ]
+        injection_points = [{"role": "assistant", "position": "last"}]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        # Only the last assistant message should have cache_control on content block
+        assert "cache_control" not in result[0]  # system
+        assert "cache_control" not in result[1]  # user
+        assert "cache_control" not in result[2]  # assistant (not last) - unchanged
+        assert "cache_control" not in result[3]  # user
+        # Last assistant: content converted to array with cache_control on the block
+        assert result[4]["content"] == [{"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}]
+        assert "cache_control" not in result[5]  # user (current turn)
+
+    def test_combined_role_and_position(self, client):
+        """Role-based and position-based injection work together."""
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Turn 1"},
+            {"role": "assistant", "content": "Response 1"},
+            {"role": "user", "content": "Turn 2"},
+            {"role": "assistant", "content": "Response 2"},
+            {"role": "user", "content": "Turn 3"},
+        ]
+        injection_points = [
+            {"role": "system"},
+            {"role": "assistant", "position": "last"},
+        ]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        assert result[0]["cache_control"] == {"type": "ephemeral"}  # system (role-based, message-level)
+        assert "cache_control" not in result[1]  # user
+        assert "cache_control" not in result[2]  # assistant (not last)
+        assert "cache_control" not in result[3]  # user
+        # Last assistant: content-block-level injection
+        assert result[4]["content"] == [{"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}]
+        assert "cache_control" not in result[5]  # user
+
+    def test_no_message_of_role_is_noop(self, client):
+        """position='last' is a no-op if no messages of that role exist."""
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "First message"},
+        ]
+        injection_points = [{"role": "assistant", "position": "last"}]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        assert "cache_control" not in result[0]
+        assert "cache_control" not in result[1]
+
+    def test_single_assistant_message(self, client):
+        """Works with only one assistant message."""
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"},
+            {"role": "user", "content": "Bye"},
+        ]
+        injection_points = [{"role": "assistant", "position": "last"}]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        # Content-block-level injection on the assistant message
+        assert result[2]["content"] == [{"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}]
+        assert "cache_control" not in result[0]
+        assert "cache_control" not in result[1]
+        assert "cache_control" not in result[3]
+
+    def test_does_not_mutate_original(self, client):
+        """Position-based injection does not mutate the original messages."""
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"},
+        ]
+        injection_points = [{"role": "assistant", "position": "last"}]
+
+        client._inject_cache_control(messages, injection_points)
+
+        # Original message should be unchanged (content still a string, no cache_control)
+        assert messages[2]["content"] == "Hello"
+        assert "cache_control" not in messages[2]
+
+    def test_last_user_position(self, client):
+        """position='last' works for user role too."""
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Turn 1"},
+            {"role": "assistant", "content": "Response 1"},
+            {"role": "user", "content": "Turn 2"},
+        ]
+        injection_points = [{"role": "user", "position": "last"}]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        assert "cache_control" not in result[1]  # first user - unchanged
+        # Last user: content-block-level injection
+        assert result[3]["content"] == [{"type": "text", "text": "Turn 2", "cache_control": {"type": "ephemeral"}}]
+
+
+class TestDefaultIncludesPositionBased:
+    """Verify the updated default includes position-based assistant caching."""
+
+    def test_default_has_system_and_last_tool(self):
+        """Default injection points mark system AND last tool."""
+        client = CompletionClient(model="test-model")
+        assert {"role": "system"} in client.cache_control_injection_points
+        assert {"role": "tool", "position": "last"} in client.cache_control_injection_points
+
+    @pytest.mark.asyncio
+    async def test_default_caches_system_and_last_tool(self):
+        """End-to-end: default config marks system + last tool (CodeAct-style)."""
+        client = CompletionClient(model="openai/aws/anthropic/bedrock-claude-sonnet-4-5-v1")
+        mock_response = make_mock_response()
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_response
+
+            await client.acall([
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": "Do something"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "run", "arguments": "{}"}}]},
+                {"role": "tool", "content": "first result", "tool_call_id": "tc1"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "tc2", "type": "function", "function": {"name": "run", "arguments": "{}"}}]},
+                {"role": "tool", "content": "final result", "tool_call_id": "tc2"},
+                {"role": "user", "content": "Current turn"},
+            ], tools=[])
+
+            sent_messages = mock_acompletion.call_args[1]["messages"]
+
+            # System should be marked at message level
+            assert sent_messages[0].get("cache_control") == {"type": "ephemeral"}
+            # Last tool (index 5) should have content-block-level cache_control
+            assert sent_messages[5]["content"] == [
+                {"type": "text", "text": "final result", "cache_control": {"type": "ephemeral"}}
+            ]
+            # Earlier tool (index 3) should NOT be marked
+            assert sent_messages[3]["content"] == "first result"
+            assert "cache_control" not in sent_messages[3]
+            # Assistant messages should NOT be marked
+            assert "cache_control" not in sent_messages[2]
+            assert "cache_control" not in sent_messages[4]
