@@ -141,7 +141,11 @@ def probe_otlp_endpoint(endpoint: str, timeout: float | None = None) -> bool:
     whether to send traces live vs. fall back to file export.
     """
     if timeout is None:
-        timeout = float(os.getenv("OTLP_PROBE_TIMEOUT", "2.0"))
+        raw = os.getenv("OTLP_PROBE_TIMEOUT", "2.0")
+        try:
+            timeout = float(raw)
+        except (ValueError, TypeError):
+            timeout = 2.0
     base = endpoint.rstrip("/").removesuffix("/v1/traces").removesuffix("/v1")
     health_url = f"{base}/api/eval/health"
     try:
