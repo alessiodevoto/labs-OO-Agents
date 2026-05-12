@@ -326,19 +326,29 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         """
         return AgentVars(self)
 
-    def message(self, text: str) -> None:
+    def message(self, text: str, *, echo: bool = False) -> None:
         """Send a Markdown message to the user.
 
         Each call renders as an independent block — so every call must be a
         complete, self-contained Markdown document.  In particular, never split
         a table across calls: the header row and all data rows must be in the
         same ``message()`` call, otherwise the table will not render correctly.
+
+        Args:
+            text: Markdown content to send.
+            echo: If True, also ``print()`` the text so the LLM can see it
+                in the execution output. By default the LLM does NOT see the
+                content of ``message()`` calls — only the user does. Use
+                ``echo=True`` when you need to reference the sent content in
+                subsequent cells.
         """
         from .tui_events import TUIAgentMessage
 
         self.event_manager.add(TUIAgentMessage(content=str(text)))
         if self._render_message is not None:
             self._render_message(text)
+        if echo:
+            print(text)
 
     @hidden
     @strategy(PredictStrategy())
@@ -371,6 +381,17 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
             msgs = notification.get("user_messages", [])
             lines = notification.get("ci", [])
+
+        ## Work ethic
+
+        Do ALL the work before returning. Use as many ``execute_python``
+        calls as needed — explore, implement, test, iterate. A turn that
+        returns after one or two cells when the task clearly needs more
+        is a bug. The only reasons to call ``return_result`` are:
+
+        1. You have genuinely completed everything the user asked for.
+        2. You need user input to proceed (ambiguity, confirmation).
+        3. You are waiting on a background job.
 
         ## Returning
 
@@ -588,6 +609,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     ``self.message(text)`` — Markdown to the user, rendered when the
     current code cell finishes. Use for final answers and for status
     the user should see. Call it multiple times per turn as needed.
+    **The LLM does NOT see the content** of ``message()`` calls unless
+    you pass ``echo=True``, which also ``print()``s the text so it
+    appears in your execution output.
 
     ``print()`` / ``pprint()`` — debugging output visible only to you
     (the agent). The user does **not** see print output. Use it to
