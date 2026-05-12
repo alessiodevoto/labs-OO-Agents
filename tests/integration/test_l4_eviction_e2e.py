@@ -79,13 +79,13 @@ class TestContextBlockEviction:
     """Context blocks over budget are marked EVICTED in-place."""
 
     def test_over_budget_block_gets_evicted_marker(self):
-        """Non-immutable blocks exceeding context_limit get EVICTED content."""
+        """Non-static blocks exceeding context_limit get EVICTED content."""
         blocks = [
             ResolvedBlock(
                 key="system_prompt",
                 content="You are helpful.",
                 role=Role.SYSTEM,
-                metadata=BlockMetadata(immutable=True),
+                metadata=BlockMetadata(static=True),
             ),
             ResolvedBlock(
                 key="big_block",
@@ -108,14 +108,14 @@ class TestContextBlockEviction:
         output_str = str(result.output)
         assert "EVICTED" in output_str
 
-    def test_immutable_blocks_never_evicted(self):
-        """Blocks with immutable=True survive regardless of budget."""
+    def test_static_blocks_never_evicted(self):
+        """Blocks with static=True survive regardless of budget."""
         blocks = [
             ResolvedBlock(
                 key="immutable",
                 content="x " * 200,
                 role=Role.SYSTEM,
-                metadata=BlockMetadata(immutable=True),
+                metadata=BlockMetadata(static=True),
             ),
         ]
 
