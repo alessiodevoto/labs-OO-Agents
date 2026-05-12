@@ -1415,7 +1415,7 @@ class TestContextBuilderResolveNoneContent:
 
         # Create a context manager with a static protected block
         cm = ContextManager()
-        cm.set_protected("my_key", "static value")
+        cm.set_static_protected("my_key", "static value")
 
         result, _ = await _phase_persistent_blocks(
             blocks=[],

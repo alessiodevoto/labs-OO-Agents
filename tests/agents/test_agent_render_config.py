@@ -1,7 +1,8 @@
 """Tests for Agent.__init__ render_config= parameter (Task 17)."""
 
-from nemo_oo_agents.context_blocks.formatter import MarkdownBlockFormatter, XMLBlockFormatter
+from nemo_oo_agents.context_blocks.formatter import MarkdownBlockFormatter
 from nemo_oo_agents.context_blocks.render_config import RenderConfig
+from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
@@ -30,4 +31,4 @@ def test_agent_default_render_config():
 
     agent = MyAgent()
     assert isinstance(agent.render_config, RenderConfig)
-    assert isinstance(agent.render_config.block_formatter, XMLBlockFormatter)
+    assert isinstance(agent.render_config.block_formatter, CachedBlockFormatter)

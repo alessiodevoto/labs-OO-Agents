@@ -19,8 +19,6 @@ with hidden:
     from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
     from nemo_oo_agents.config import CodeActConfig
-    from nemo_oo_agents.context_blocks.render_config import RenderConfig
-    from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
@@ -281,15 +279,6 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     vars: dict[str, Any]
 
     def __init__(self, llm=None, **kwargs):
-        # Use the cached block formatter so immutable blocks (system
-        # prompt, doc(self), and anything the subclass marks
-        # ``immutable=True``) land in a stable SYSTEM prefix that the
-        # provider can cache across turns. Callers can override by
-        # passing their own ``render_config``.
-        kwargs.setdefault(
-            "render_config",
-            RenderConfig(block_formatter=CachedBlockFormatter()),
-        )
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
         self.vars = {}
@@ -310,9 +299,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
                 event_manager=self.event_manager
             )
             # The WebPublisher's doc is static across the session, so
-            # mark it immutable — it goes into the cacheable prefix
-            # with the system prompt.
-            self.context.set("web", doc(self.web), immutable=True)
+            # it goes into the cacheable prefix with the system prompt.
+            self.context_manager.set_static("web", doc(self.web))
 
     @property
     def v(self) -> AgentVars:
@@ -669,7 +657,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # render, so the very first respond() call sees an empty string.
         self.context.set_dynamic(
             "context_usage",
-            "self.context_stats.format() if self.context_stats else ''",
+            expr="self.context_stats.format() if self.context_stats else ''",
         )
 
         # Install summarizer after agent is initialized

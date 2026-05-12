@@ -149,7 +149,7 @@ class AgentSnapshot(BaseModel):
             else:
                 value = deserialize(block.value, self.type_allowlist)
                 if is_protected:
-                    agent.context_manager.set_protected(block.key, value)
+                    agent.context_manager.set_static_protected(block.key, value)
                 else:
                     agent.context_manager[block.key] = value
 

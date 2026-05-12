@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from nemo_oo_agents.runtime.context_manager import ContextManager
 from nemo_oo_agents.skill import Skill
 
+_MISSING = object()
+
 if TYPE_CHECKING:
     from nemo_oo_agents.agent import Agent
 
@@ -59,24 +61,27 @@ class ContextApi(Skill):
         self._context: ContextManager = agent.context_manager
 
     def __setitem__(self, key: str, value: Any) -> None:
+        """Set a dynamic context block (placed in volatile suffix).
+
+        Equivalent to ``self.context.set_dynamic(key, value)``.
+        """
         self._context[key] = value
 
-    def set(self, key: str, value: Any, *, immutable: bool = False) -> None:
-        """Set a static context block, with optional immutability declaration.
+    def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _MISSING) -> None:
+        """Set a dynamic context block (placed in the volatile suffix).
 
-        Pass ``immutable=True`` to declare that the block's content will not change
-        between turns. Renderers that support prefix caching use this to place the
-        block in the cacheable portion of the prompt.
+        Accepts either an expression (positional, re-evaluated each turn)
+        or a plain value (keyword-only ``value=``).
+
+        Args:
+            key: Block key.
+            expr: Python expression to evaluate each turn.
+            value: Plain value to store in the dynamic partition (keyword-only).
         """
-        self._context.set(key, value, immutable=immutable)
-
-    def set_dynamic(self, key: str, expr: str, *, immutable: bool = False) -> None:
-        """Set a dynamic context block that re-evaluates each turn.
-
-        Pass ``immutable=True`` to declare that the expression's output is stable
-        across turns (re-evaluated, but the result is the same).
-        """
-        self._context.set_dynamic(key, expr, immutable=immutable)
+        if value is not _MISSING:
+            self._context.set_dynamic(key, value=value)
+        else:
+            self._context.set_dynamic(key, expr)
 
     def __getitem__(self, key: str) -> Any:
         # Protected keys are hidden from iteration (__contains__/keys()/len)

@@ -23,8 +23,8 @@ class TestContextManager:
         agent = TestAgent()
         assert hasattr(agent, "context_manager")
 
-    def test_set_method_supports_immutable_flag(self):
-        """``.set()`` is available for declaring per-block immutability."""
+    def test_set_static_method(self):
+        """``set_static()`` places blocks in the cacheable partition."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
@@ -32,12 +32,12 @@ class TestContextManager:
 
         agent = TestAgent()
 
-        agent.context_manager.set("key", "value", immutable=True)
+        agent.context_manager.set_static("key", "value")
         assert agent.context_manager["key"] == "value"
-        assert agent.context_manager.is_immutable("key") is True
+        assert agent.context_manager.is_static("key") is True
 
-        agent.context_manager.set("other", "value")
-        assert agent.context_manager.is_immutable("other") is False
+        agent.context_manager.set_dynamic("other", "value")
+        assert agent.context_manager.is_static("other") is False
 
     def test_set_static_value(self):
         """self.context['key'] = 'value' stores a static string."""

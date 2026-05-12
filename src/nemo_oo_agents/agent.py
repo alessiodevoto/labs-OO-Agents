@@ -231,13 +231,12 @@ class Agent(metaclass=AgentMeta):
         self.context_manager = ContextManager()
 
         # Register framework blocks as protected (re-evaluated each LLM turn).
-        # ``self`` documents the class (methods, docstrings, field types) —
-        # genuinely stable across turns, so it lives in the cacheable prefix.
+        # ``system_prompt`` and ``self`` are stable across turns — cacheable prefix.
         # ``state`` is the instance's current field values — re-evaluated each
         # turn since skills can attach at runtime and field values change.
         cm = self.context_manager
-        cm.set_dynamic_protected("system_prompt", "self._system_prompt()", immutable=True)
-        cm.set_dynamic_protected("self", "doc(type(self))", immutable=True)
+        cm.set_static_protected("system_prompt", expr="self._system_prompt()")
+        cm.set_static_protected("self", expr="doc(type(self))")
         cm.set_dynamic_protected(
             "state",
             "pformat(self, max_length=50, max_string=500, max_depth=4)",

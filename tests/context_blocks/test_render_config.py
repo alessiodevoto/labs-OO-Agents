@@ -6,9 +6,9 @@ from pydantic import BaseModel, ValidationError
 from nemo_oo_agents.context_blocks.formatter import (
     MarkdownBlockFormatter,
     OpenAIProviderFormatter,
-    XMLBlockFormatter,
 )
 from nemo_oo_agents.context_blocks.render_config import RenderConfig
+from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
 
 
 def test_render_config_is_pydantic_model():
@@ -17,7 +17,7 @@ def test_render_config_is_pydantic_model():
 
 def test_render_config_defaults():
     c = RenderConfig()
-    assert isinstance(c.block_formatter, XMLBlockFormatter)
+    assert isinstance(c.block_formatter, CachedBlockFormatter)
     assert isinstance(c.provider_formatter, OpenAIProviderFormatter)
 
 
