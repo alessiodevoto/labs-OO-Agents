@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import hidden, strategy
-from nemo_oo_agents.agentdoc import doc
+from nemo_oo_agents.agentdoc import doc, spec
 from nemo_oo_agents.storage.markers import nosnapshot
 
 with hidden:
@@ -39,6 +39,9 @@ import re  # noqa: F401
 
 from nemo_oo_agents.runtime import producers  # noqa: F401
 from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
+
+# Backward-compatible symbol used by tests/patching.
+LibraryWriting = SkillWriting
 
 # os is used by this module (NEMO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
@@ -668,23 +671,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         from nemo_oo_agents.paths import get_project_dir
 
         _project_dir = get_project_dir()
-        # Skill registry: discover + register all skills
-        from nemo_oo_agents.skill_registry import SkillRegistry
+        self.shell = ShellTools(cwd=config.working_dir)
+        self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
+        self.libs = SkillWriting(self, path=_project_dir / "libs")
+        self.todo = TodoManager()
 
-        self.skills = SkillRegistry(self)
-        self.skills.register("nemo.shell", ShellTools, cwd=config.working_dir)
-        self.skills.register(
-            "nemo.repo", RepoTools(root=config.working_dir, session=self.shell._session)
-        )
-        self.skills.register(
-            "superpowers.libwriting", SkillWriting(self, path=_project_dir / "libs")
-        )
-        self.skills.register("nemo.todo", TodoManager)
-        self.skills.register("nemo.context", self.context)
-        self.skills.register("nemo.events", self.events)
-
-        # Activate all standard skills for TUIAgent (full experience)
-        self.skills.activate(["nemo.*", "superpowers.*"])
+        # Expose context and events to the LLM
+        spec(self, "context", hidden=False)
+        spec(self, "events", hidden=False)
 
         # Show todo progress to the LLM every turn
         self.context.set_dynamic("todo_status", "self.todo.status()")

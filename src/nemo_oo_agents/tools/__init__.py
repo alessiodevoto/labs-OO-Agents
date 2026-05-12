@@ -11,7 +11,11 @@ __all__ = [
     "FileTool",
     "FileResult",
     "SkillWriting",
+    "LibraryWriting",
     "MethodWriting",
     "Todo",
     "TodoManager",
 ]
+
+# Backward-compatible alias; preferred name is SkillWriting.
+LibraryWriting = SkillWriting

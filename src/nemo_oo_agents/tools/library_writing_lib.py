@@ -304,3 +304,7 @@ class SkillWriting(Skill):
                 if dep_name:
                     deps.append(dep_name)
         return deps
+
+
+# Backward-compatible alias; preferred name is SkillWriting.
+LibraryWriting = SkillWriting
