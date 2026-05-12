@@ -63,6 +63,9 @@ def _set_completions_sync(buffer) -> None:
     Avoids the prompt_toolkit race in ``Buffer.start_completion()`` which
     creates an empty ``CompletionState`` before completions are loaded,
     causing ``_get_menu_width`` to call ``max()`` on an empty sequence.
+
+    Uses ``Buffer._set_completions`` (private API) with a fallback to the
+    public ``start_completion`` for forward-compatibility.
     """
     from prompt_toolkit.completion import CompleteEvent
 
@@ -73,7 +76,14 @@ def _set_completions_sync(buffer) -> None:
         buffer.completer.get_completions(buffer.document, CompleteEvent(completion_requested=True))
     )
     if completions:
-        buffer._set_completions(completions=completions)
+        try:
+            buffer._set_completions(completions=completions)
+            # Ensure no completion is pre-selected (matches start_completion(select_first=False)).
+            if buffer.complete_state:
+                buffer.complete_state.go_to_index(None)
+        except (AttributeError, TypeError):
+            # Fallback if private API changes in a future prompt_toolkit release.
+            buffer.start_completion(select_first=False)
     else:
         # No matches — dismiss any visible menu.
         if buffer.complete_state:
