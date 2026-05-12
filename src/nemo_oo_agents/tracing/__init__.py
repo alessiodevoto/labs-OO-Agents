@@ -125,12 +125,14 @@ _LOCAL_EXPORTER_TYPES: tuple[type, ...] = (
 )
 
 
-def probe_otlp_endpoint(endpoint: str, timeout: float = 0.5) -> bool:
+def probe_otlp_endpoint(endpoint: str, timeout: float | None = None) -> bool:
     """Check whether the OTLP endpoint is reachable.
 
     Returns ``True`` if the server responds (any HTTP status), ``False`` on
-    connection refused or timeout.  Designed to be fast — the *timeout* default
-    is 0.5 s so it never blocks startup noticeably.
+    connection refused or timeout.
+
+    *timeout* defaults to the ``OTLP_PROBE_TIMEOUT`` env var (seconds) if set,
+    otherwise **2.0 s**.
 
     Uses GET /api/eval/health instead of POSTing to the traces endpoint so we
     don't accidentally create ``unknown_*`` sessions in the viewer's store.
@@ -138,6 +140,12 @@ def probe_otlp_endpoint(endpoint: str, timeout: float = 0.5) -> bool:
     Useful for external callers (e.g. the Harbor runner) that need to decide
     whether to send traces live vs. fall back to file export.
     """
+    if timeout is None:
+        raw = os.getenv("OTLP_PROBE_TIMEOUT", "2.0")
+        try:
+            timeout = float(raw)
+        except (ValueError, TypeError):
+            timeout = 2.0
     base = endpoint.rstrip("/").removesuffix("/v1/traces").removesuffix("/v1")
     health_url = f"{base}/api/eval/health"
     try:
