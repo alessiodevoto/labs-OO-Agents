@@ -488,6 +488,7 @@ class ShellTools(Skill):
         context: Annotated[int, spec(description="Lines of context around each match")] = 0,
         literal: Annotated[bool, spec(description="Treat pattern as literal string")] = False,
         max_matches: Annotated[int, spec(description="Maximum matches to return")] = 100,
+        timeout: Annotated[float, spec(description="Timeout in seconds for the search")] = 30.0,
     ) -> SearchResult:
         """Search for a regex pattern in files via ripgrep. Respects .gitignore."""
         parts = ["rg", "-n", "--color=never", "--no-heading"]
@@ -499,7 +500,7 @@ class ShellTools(Skill):
             parts.extend(["-g", _sq(include)])
         parts.extend(["-m", str(max_matches), "--", _sq(pattern), _sq(path)])
 
-        stdout, _, code = await self._session.run(" ".join(parts), timeout=30)
+        stdout, _, code = await self._session.run(" ".join(parts), timeout=timeout)
 
         if code == 1:  # rg: no matches
             return SearchResult(matches=[], total_matches=0)
