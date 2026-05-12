@@ -981,10 +981,10 @@ class CompactCommand(Command):
                 result.compact_done = True
                 return result
             except Exception as e:
-                self.agent.event_manager.clear()
                 return CommandResult.ok(
                     TextOutput(
-                        f"Summarization failed ({e}); cleared {events_before} events.", "warning"
+                        f"Summarization failed ({e}); kept {events_before} events intact.",
+                        "warning",
                     )
                 )
             finally:
