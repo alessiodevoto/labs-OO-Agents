@@ -23,7 +23,7 @@ with hidden:
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import LibraryWriting, TodoManager
-    from nemo_oo_agents.tools.repo_tools import RepoTools
+    from nemo_oo_agents_cli.tools.repo_tools import RepoTools
     from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher

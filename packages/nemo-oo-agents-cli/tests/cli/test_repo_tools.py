@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from nemo_oo_agents.tools._bash_session import BashSession
-from nemo_oo_agents.tools.repo_tools import (
+from nemo_oo_agents_cli.tools.repo_tools import (
     RepoTools,
     _detect_lang,
     _extract_symbols,
