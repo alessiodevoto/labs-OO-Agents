@@ -1,4 +1,5 @@
 """Test that ShellTools.grep accepts and forwards a timeout parameter."""
+
 import pytest
 
 from nemo_oo_agents.tools.shell_tools import ShellTools
