@@ -1,0 +1,36 @@
+"""Test that ShellTools.grep accepts and forwards a timeout parameter."""
+import pytest
+
+from nemo_oo_agents.tools.shell_tools import ShellTools
+
+
+@pytest.fixture
+async def shell(tmp_path):
+    """Create a ShellTools instance with a temp directory as cwd."""
+    s = ShellTools(cwd=tmp_path)
+    # Create a test file to grep
+    (tmp_path / "hello.py").write_text("# hello world\nfoo = 1\nbar = 2\n")
+    yield s
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_grep_default_timeout_is_30(shell, tmp_path):
+    """Default timeout should be 30s (existing behavior preserved)."""
+    result = await shell.grep("foo", "hello.py")
+    assert result.total_matches == 1
+
+
+@pytest.mark.asyncio
+async def test_grep_accepts_timeout_parameter(shell, tmp_path):
+    """grep() should accept a timeout parameter without raising TypeError."""
+    result = await shell.grep("foo", "hello.py", timeout=60.0)
+    assert result.total_matches == 1
+
+
+@pytest.mark.asyncio
+async def test_grep_timeout_zero_raises(shell, tmp_path):
+    """A very short timeout on a valid grep should still work (ripgrep is fast)."""
+    # timeout=5 should be plenty for a tiny file
+    result = await shell.grep("bar", "hello.py", timeout=5.0)
+    assert result.total_matches == 1
