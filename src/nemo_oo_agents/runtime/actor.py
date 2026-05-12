@@ -279,87 +279,34 @@ def _clamp_messages_to_budget(
 _ARCHIVE_HYSTERESIS = 1.25
 
 
-def _protected_task_tags_for_stack(
-    event_manager: Any,
-    active_tags: list[str],
-    call_stack: tuple[Any, ...],
-) -> set[str]:
-    """Return Task event tags that must not be collapsed.
-
-    Preserves Tasks whose metadata.call_id is on the active call stack.
-    Falls back to the single most recent Task when no stack match exists.
-    """
-    from nemo_oo_agents.events import Task
-
-    active_call_ids = {cid for cid in call_stack if cid is not None}
-    protected: set[str] = set()
-    if active_call_ids:
-        for tag in active_tags:
-            ev = event_manager[tag]
-            if isinstance(ev, Task) and ev.metadata.get("call_id") in active_call_ids:
-                protected.add(tag)
-    if not protected:
-        for tag in reversed(active_tags):
-            if isinstance(event_manager[tag], Task):
-                protected.add(tag)
-                break
-    return protected
-
-
-def _contiguous_tag_runs(tags: list[str]) -> list[list[str]]:
-    """Group tags into contiguous runs by numeric start value."""
-    runs: list[list[str]] = []
-    run: list[str] = []
-    for tag in tags:
-        if run:
-            try:
-                prev = int(run[-1].split("..")[0])
-                cur = int(tag.split("..")[0])
-            except (ValueError, IndexError):
-                runs.append(run)
-                run = [tag]
-                continue
-            if cur != prev + 1:
-                runs.append(run)
-                run = []
-        run.append(tag)
-    if run:
-        runs.append(run)
-    return runs
-
-
 def _collapse_oldest(
     event_manager: Any,
     active_tags: list[str],
-    protected_tags: set[str],
     target: int,
     summary_text: str,
     *,
     log_prefix: str = "collapse",
 ) -> int:
-    """Collapse up to *target* oldest active events, skipping protected tags.
+    """Collapse the *target* oldest active events in one shot.
+
+    Collapses a single contiguous range from the start of active_tags,
+    producing one summary event instead of many tiny fragments.
 
     Returns the number of events actually archived.
     """
     if target <= 0:
         return 0
-    collapsible = [t for t in active_tags if t not in protected_tags]
-    runs = _contiguous_tag_runs(collapsible)
-    remaining = target
-    archived = 0
-    for run_tags in runs:
-        if remaining <= 0:
-            break
-        n = min(len(run_tags), remaining)
-        if n <= 0:
-            continue
-        try:
-            event_manager.collapse(run_tags[0], run_tags[n - 1], summary_text=summary_text)
-            archived += n
-            remaining -= n
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("%s failed for %s..%s: %s", log_prefix, run_tags[0], run_tags[n - 1], exc)
-    return archived
+    n = min(target, len(active_tags))
+    if n <= 0:
+        return 0
+    try:
+        event_manager.collapse(active_tags[0], active_tags[n - 1], summary_text=summary_text)
+        return n
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "%s failed for %s..%s: %s", log_prefix, active_tags[0], active_tags[n - 1], exc
+        )
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -2654,13 +2601,9 @@ class ActorRuntime:
                         f"after={total_tok:,}/{cap:,}, dropped_messages={dropped}"
                     )
 
-                    protected = _protected_task_tags_for_stack(
-                        self.event_manager, active_tags, self._agent_call_stack
-                    )
                     _collapse_oldest(
                         self.event_manager,
                         active_tags,
-                        protected,
                         n_to_archive,
                         summary_text,
                         log_prefix="post-clamp",
@@ -2673,15 +2616,16 @@ class ActorRuntime:
                         hm.context_limits_tokens_archived += dropped * (
                             stats.events_tokens // max(1, stats.events_count)
                         )
-            if dropped or total_tok != stats.total_tokens:
-                # Reflect the actual shipped payload in stats so the TUI's
-                # ``ctx N%`` display matches reality.
-                stats = stats.model_copy(
-                    update={
-                        "total_tokens": total_tok,
-                        "events_tokens": events_tok,
-                        "events_dropped": stats.events_dropped + dropped,
-                    }
-                )
+            # Always reflect the structured payload size in stats so both
+            # the TUI's ``ctx N%`` display and the TokenBudgetSummarizer
+            # see the real token count (litellm token_counter), not the
+            # content-level estimate which underreports by ~60%.
+            stats = stats.model_copy(
+                update={
+                    "total_tokens": total_tok,
+                    "events_tokens": events_tok,
+                    "events_dropped": stats.events_dropped + dropped,
+                }
+            )
         self._last_context_stats = stats
         return messages

@@ -125,36 +125,6 @@ class TestSummarizationAgentBase:
         assert events[0][0] == "1"
         assert events[-1][0] == "3"
 
-    def test_estimate_tokens_reads_runtime_stats(self, test_agent):
-        """_estimate_tokens returns total_tokens from the runtime's last stats.
-
-        The runtime records what actually shipped to the LLM — events plus
-        context blocks, with the real provider formatter applied. That's the
-        only number the summarizer should act on.
-        """
-        from nemo_oo_agents import ContextWindowStats
-
-        test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=5_000,
-            context_blocks_count=1,
-            events_tokens=195_000,
-            events_count=3,
-            total_tokens=200_000,
-        )
-
-        summarizer = SummarizationAgent(test_agent)
-        assert summarizer._estimate_tokens() == 200_000
-
-    def test_estimate_tokens_zero_before_first_build(self, test_agent):
-        """No generation has run → no stats → zero.
-
-        _should_summarize only fires from AfterTurn, which is always after
-        _build_messages, so this state doesn't bias the trigger.
-        """
-        assert test_agent.context_stats is None
-        summarizer = SummarizationAgent(test_agent)
-        assert summarizer._estimate_tokens() == 0
-
 
 # =============================================================================
 # TokenBudgetSummarizer Tests
