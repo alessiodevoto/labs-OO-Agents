@@ -131,48 +131,6 @@ warnings.filterwarnings(
 )
 
 
-def _schemas_for_budget(tools: list[Any]) -> list[dict[str, Any]]:
-    """Convert a mixed list of ``Tool`` objects / raw schema dicts to the
-    OpenAI function-schema dicts ``litellm.token_counter`` understands.
-
-    Used by ``_build_messages`` to give the safety net a view of the
-    tool-schema cost. Non-raising: anything we can't convert falls back
-    to an empty stub so the count keeps working.
-    """
-    out: list[dict[str, Any]] = []
-    for tool in tools:
-        if isinstance(tool, dict):
-            out.append(tool)
-            continue
-        name = getattr(tool, "name", None)
-        desc = getattr(tool, "description", None)
-        get_params = getattr(tool, "get_parameter_schema", None)
-        if name and callable(get_params):
-            try:
-                out.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": name,
-                            "description": desc or "",
-                            "parameters": get_params(),
-                        },
-                    }
-                )
-                continue
-            except Exception:  # noqa: BLE001
-                pass
-        # Unknown shape — fall back to an empty stub so the counter doesn't
-        # raise. Under-counting here is preferable to breaking the pipeline.
-        out.append(
-            {
-                "type": "function",
-                "function": {"name": str(name or "unknown"), "description": "", "parameters": {}},
-            }
-        )
-    return out
-
-
 def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     """Auto-select provider formatter based on LLM client type.
 
@@ -192,83 +150,6 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
 
         return ResponsesProviderFormatter()
     return default_formatter
-
-
-def _clamp_messages_to_budget(
-    messages: list[dict[str, Any]],
-    budget: int,
-    model: str,
-    *,
-    tool_schemas: list[dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, Any]], int, int, int]:
-    """Drop oldest non-system messages until structured tokens fit ``budget``.
-
-    Uses ``litellm.token_counter`` to measure the structured payload (the
-    same counter the API will use). Single O(n) walk from newest backward.
-    System messages are always kept.
-
-    When ``tool_schemas`` is provided, it is forwarded as ``tools=…`` to
-    ``litellm.token_counter`` so the tool-schema cost is accounted for in
-    the budget (issue #133 — the safety net previously ignored tools and
-    was short by exactly the schema size on every call).
-
-    Returns ``(clamped_messages, total_tokens, events_tokens, dropped)``
-    where ``total_tokens`` is the post-clamp structured count, ``events_tokens``
-    is that minus the system-message share, and ``dropped`` is how many
-    non-system messages were removed.
-    """
-    try:
-        import litellm
-    except ImportError:
-        return messages, 0, 0, 0
-
-    # ``tools=…`` is the kwarg litellm exposes; collapsing to None avoids
-    # passing an empty list when we know we have nothing to forward.
-    tools_kw: dict[str, Any] = {"tools": tool_schemas} if tool_schemas else {}
-
-    system = [m for m in messages if m.get("role") == "system"]
-    rest = [m for m in messages if m.get("role") != "system"]
-    # Tools live at the request level, not inside any one message, so we
-    # attribute their cost to the system-message budget (they aren't part
-    # of ``rest`` and we never drop them).
-    system_cost = (
-        int(litellm.token_counter(model=model, messages=system, **tools_kw))
-        if system or tool_schemas
-        else 0
-    )
-
-    # Fast path: already fits.
-    total = int(litellm.token_counter(model=model, messages=messages, **tools_kw))
-    if total <= budget:
-        return messages, total, max(0, total - system_cost), 0
-
-    available = budget - system_cost
-    if available <= 0:
-        # System alone exceeds budget — nothing we can do here; let the
-        # API surface the error.
-        return messages, total, max(0, total - system_cost), 0
-
-    # Walk newest → oldest, keep as long as we fit.
-    running = 0
-    keep_from = len(rest)
-    for i in range(len(rest) - 1, -1, -1):
-        cost = int(litellm.token_counter(model=model, messages=[rest[i]]))
-        if running + cost > available:
-            break
-        running += cost
-        keep_from = i
-
-    dropped = keep_from
-    logger.warning(
-        "context-window safety net: dropped %d oldest message(s) "
-        "(structured total %d > budget %d → keeping %d, sum=%d)",
-        dropped,
-        total,
-        budget,
-        len(rest) - dropped,
-        system_cost + running,
-    )
-    return system + rest[keep_from:], system_cost + running, running, dropped
 
 
 # ---------------------------------------------------------------------------
@@ -2658,11 +2539,6 @@ class ActorRuntime:
             total_tok = litellm.token_counter(
                 model=llm_client.model, messages=messages
             )
-            tool_schemas = _schemas_for_budget(tools) if tools else None
-            if tool_schemas:
-                total_tok += litellm.token_counter(
-                    model=llm_client.model, text=str(tool_schemas)
-                )
             stats = stats.model_copy(
                 update={
                     "total_tokens": total_tok,
