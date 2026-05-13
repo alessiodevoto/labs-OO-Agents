@@ -2644,60 +2644,29 @@ class ActorRuntime:
 
         set_journal_payload_from_messages(result.messages)
 
-        # Authoritative structured-payload safety net. The content-level
-        # counter used inside render_context misses ~60% of the tokens
-        # the API actually sees — JSON message wrappers (role/content-
-        # array/tool_use/tool_result) plus the ``<event_xxx>`` XML that
-        # ``format_message_content`` emits. Observed on a real session:
-        # 101K content → 163K structured (litellm) → 207K at Bedrock.
+        # Count the full structured message list with litellm.token_counter
+        # so the TUI ctx% and TokenBudgetSummarizer see the real payload size.
         #
-        # Count the final messages list with ``litellm.token_counter``
-        # and drop oldest non-system messages until total fits under
-        # the available input budget.  When ``max_output_tokens`` is
-        # known we subtract it (plus a 5 % margin for tokenizer
-        # divergence) from the context window; otherwise fall back to
-        # the old 70 % heuristic.
+        # No proactive clamping — if the context exceeds the model's limit,
+        # the API returns ContextWindowExceededError and the recovery path
+        # in generate() archives events, rebuilds messages, and retries.
         messages = result.output
         stats = result.stats
         if ctx_window and isinstance(messages, list) and messages:
-            default_cap = int(ctx_window * 0.70)
-            if max_output_tokens:
-                # 5 % margin covers litellm ↔ API tokenizer gap
-                margin = int(ctx_window * 0.05)
-                output_aware_cap = ctx_window - max_output_tokens - margin
-                if output_aware_cap <= 0:
-                    logger.warning(
-                        "max_output_tokens (%d) + margin (%d) >= ctx_window (%d); "
-                        "falling back to default cap — the LLM call will likely "
-                        "fail and the recovery path will reduce max_tokens",
-                        max_output_tokens,
-                        margin,
-                        ctx_window,
-                    )
-                    cap = default_cap
-                else:
-                    cap = min(default_cap, output_aware_cap)
-            else:
-                cap = default_cap
-            tool_schemas = _schemas_for_budget(tools) if tools else None
-            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
-                messages, cap, llm_client.model, tool_schemas=tool_schemas
+            import litellm
+
+            total_tok = litellm.token_counter(
+                model=llm_client.model, messages=messages
             )
-            if dropped:
-                logger.info(
-                    "safety net dropped %d messages (total_tok=%d, cap=%d); "
-                    "archival deferred until an actual context-window API error",
-                    dropped, total_tok, cap,
+            tool_schemas = _schemas_for_budget(tools) if tools else None
+            if tool_schemas:
+                total_tok += litellm.token_counter(
+                    model=llm_client.model, text=str(tool_schemas)
                 )
-            # Always reflect the structured payload size in stats so both
-            # the TUI's ``ctx N%`` display and the TokenBudgetSummarizer
-            # see the real token count (litellm token_counter), not the
-            # content-level estimate which underreports by ~60%.
             stats = stats.model_copy(
                 update={
                     "total_tokens": total_tok,
-                    "events_tokens": events_tok,
-                    "events_dropped": stats.events_dropped + dropped,
+                    "events_tokens": stats.events_tokens,
                 }
             )
         self._last_context_stats = stats
