@@ -101,7 +101,6 @@ class ShellTools(Skill):
         self._current_file: str | None = None
         self._current_line: int | None = None
         self._rg_available: bool | None = None
-        self._in_git_repo_override: bool | None = None
 
     async def _has_rg(self) -> bool:
         """Check whether ripgrep (rg) is available, caching the result."""
@@ -114,15 +113,6 @@ class ShellTools(Skill):
                     "Install ripgrep for better performance: https://github.com/BurntSushi/ripgrep"
                 )
         return self._rg_available
-
-    async def _in_git_repo(self) -> bool:
-        """Check whether the session cwd is inside a git repository."""
-        if self._in_git_repo_override is not None:
-            return self._in_git_repo_override
-        _, _, code = await self._session.run(
-            "git rev-parse --is-inside-work-tree 2>/dev/null", timeout=5
-        )
-        return code == 0
 
     @property
     def cwd(self) -> Path:
@@ -524,7 +514,6 @@ class ShellTools(Skill):
                 max_matches=max_matches,
             )
         else:
-            in_git = await self._in_git_repo()
             cmd = self._build_fallback_grep_cmd(
                 pattern,
                 path,
@@ -532,7 +521,6 @@ class ShellTools(Skill):
                 context=context,
                 literal=literal,
                 max_matches=max_matches,
-                in_git=in_git,
             )
 
         stdout, _, code = await self._session.run(cmd, timeout=timeout)
@@ -583,34 +571,8 @@ class ShellTools(Skill):
         context: int,
         literal: bool,
         max_matches: int,
-        in_git: bool = False,
     ) -> str:
-        """Build a fallback grep command string.
-
-        When *in_git* is True, uses ``git grep`` which natively respects
-        ``.gitignore``. Otherwise falls back to ``grep -rn`` with
-        ``--exclude-dir`` for common noise dirs.
-        """
-        if in_git:
-            # Pipe git ls-files into grep to respect .gitignore reliably
-            # across git versions (git grep --untracked has inconsistent
-            # .gitignore handling in older versions).
-            ls_parts = ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
-            if include:
-                ls_parts.extend(["--", _sq(f"{path}/**/{include}")])
-            else:
-                ls_parts.extend(["--", _sq(path)])
-            grep_parts = ["grep", "-n", "-I", "--color=never"]
-            if literal:
-                grep_parts.append("-F")
-            if context > 0:
-                grep_parts.extend(["-C", str(context)])
-            if max_matches:
-                grep_parts.extend(["-m", str(max_matches)])
-            grep_parts.extend(["--", _sq(pattern)])
-            return " ".join(ls_parts) + " | xargs -0 " + " ".join(grep_parts)
-
-        # Outside a git repo: recursive grep with directory exclusions
+        """Build a GNU/BSD grep command string as ripgrep fallback."""
         parts = ["grep", "-rn", "-I", "--color=never"]
         for d in sorted(_IGNORE_DIRS):
             parts.extend(["--exclude-dir", _sq(d)])
@@ -640,8 +602,6 @@ class ShellTools(Skill):
             cmd = f"find {_sq(path)} -maxdepth 10 -type d -name {_sq(pattern)} {prune}"
         elif await self._has_rg():
             cmd = f"rg --files -g {_sq(pattern)} {_sq(path)}"
-        elif await self._in_git_repo():
-            cmd = f"git ls-files --cached --others --exclude-standard -- {_sq(f'{path}/**/{pattern}')}"
         else:
             cmd = f"find {_sq(path)} -maxdepth 10 -type f -name {_sq(pattern)} {prune}"
 
