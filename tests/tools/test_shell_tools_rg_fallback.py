@@ -187,19 +187,11 @@ class TestFindBackCompat:
         assert any("test_main.py" in f for f in rg_files)
 
     async def test_find_ignores_pycache(self, shell, sample_tree):
-        """Both rg and fallback should skip __pycache__ directories."""
-        await shell.run(f"cd {sample_tree} && git init -q")
-        await shell.run(
-            f"echo '__pycache__/' > {sample_tree}/.gitignore && cd {sample_tree} && git add .gitignore"
-        )
-        await shell.run(f"cd {sample_tree}")
+        """Fallback find should skip __pycache__ directories via _IGNORE_DIRS pruning."""
+        # rg --files respects .gitignore (covered by test_find_respects_gitignore in
+        # test_shell_tools.py). Here we verify the fallback path also skips __pycache__.
+        fallback_result = await _find_without_rg(shell, "*.pyc", str(sample_tree))
 
-        rg_result = await _find_with_rg(shell, "*.pyc", ".")
-        fallback_result = await _find_without_rg(shell, "*.pyc", ".")
-
-        # rg respects .gitignore, fallback prunes _IGNORE_DIRS — both should skip __pycache__
-        for m in rg_result.matches:
-            assert "__pycache__" not in m
         for m in fallback_result.matches:
             assert "__pycache__" not in m
 
