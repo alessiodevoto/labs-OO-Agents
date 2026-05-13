@@ -9,7 +9,7 @@ Covers:
 - QueueManager.event(name, replace=True)
 - QueueManager.jobs()
 - QueueManager.job(name)
-- QueueManager.cancel_job(name)
+- QueueManager.cancel(channel)
 - Integration: spawn -> flush -> replace -> re-spawn cycle
 
 No LLM / runtime required — just asyncio behaviour.
@@ -319,24 +319,24 @@ class TestQueueManagerJob:
 
 
 # ---------------------------------------------------------------------------
-# 7. QueueManager.cancel_job(name)
+# 7. QueueManager.cancel(channel)
 # ---------------------------------------------------------------------------
 
 
-class TestQueueManagerCancelJob:
-    """Tests for QueueManager.cancel_job() method."""
+class TestQueueManagerCancel:
+    """Tests for QueueManager.cancel() method."""
 
     @pytest.mark.asyncio
-    async def test_cancel_job_returns_false_when_no_handle(self):
-        """cancel_job() returns False when no matching handle exists."""
+    async def test_cancel_returns_false_when_no_handle(self):
+        """cancel() returns False when no matching handle exists."""
         qm = QueueManager()
         qm.queue("ch")
-        result = await qm.cancel_job("ch")
+        result = await qm.cancel("ch")
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_cancel_job_returns_true_and_cancels(self):
-        """cancel_job() returns True and cancels the most recent handle."""
+    async def test_cancel_returns_true_and_cancels(self):
+        """cancel() returns True and cancels the most recent handle."""
         qm = QueueManager()
         qm.queue("data")
 
@@ -347,7 +347,7 @@ class TestQueueManagerCancelJob:
         handle = qm.spawn(slow(), channel="data")
         assert handle.state == "running"
 
-        result = await qm.cancel_job("data")
+        result = await qm.cancel("data")
         assert result is True
         assert handle.state == "cancelled"
 
@@ -383,7 +383,7 @@ class TestIntegrationSpawnFlushReplaceRespawn:
         assert flushed >= 0  # some items were buffered
 
         # Phase 3: Cancel the old job
-        result = await qm.cancel_job("stream")
+        result = await qm.cancel("stream")
         assert result is True
         assert h1.state == "cancelled"
 
