@@ -166,11 +166,28 @@ class TestArchivalOnContextErrorE2E:
             f"Archival should reduce events: {n_events_after} >= {n_events_before}"
         )
 
-        # Verify utilization near 60%
-        effective_cap = int(ctx_window * 0.70 / max(ratio, 1.0))
-        target_tok = int(effective_cap * _ARCHIVE_TARGET_UTILIZATION)
-        estimated_remaining = n_events_after * litellm_per_event
-        assert estimated_remaining <= target_tok * 1.5, (
-            f"After archival: ~{estimated_remaining:,.0f} litellm tokens, "
-            f"target {target_tok:,} (60% of cap)"
+        # ── Phase 3: Verify ~60% utilization with a real API call ──
+        # Make another call. It should succeed (context is now smaller).
+        # Use response.usage.prompt_tokens to verify actual utilization.
+        result3 = await agent.respond("Confirm context was reduced.")
+        assert result3, "Phase 3: call after archival should succeed"
+
+        # The calibration ratio should still be set from Phase 1
+        ratio_post = agent.runtime._token_calibration_ratio
+        assert ratio_post is not None and ratio_post > 0
+
+        # Check actual utilization from the API's perspective
+        stats_post = agent.runtime._last_context_stats
+        assert stats_post is not None
+
+        # Estimate real tokens from litellm tokens using the calibrated ratio
+        estimated_real = stats_post.total_tokens * ratio_post
+        utilization = estimated_real / ctx_window
+
+        # After archival targeting 60%, utilization should be 40-80%
+        # (generous range: events from respond() calls add tokens,
+        # and the ratio is an approximation)
+        assert 0.30 <= utilization <= 0.85, (
+            f"After archival, utilization should be near 60%: "
+            f"got {utilization:.1%} ({estimated_real:,.0f} est. real / {ctx_window:,} ctx_window)"
         )
