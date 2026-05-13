@@ -153,7 +153,7 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Shared collapse/archival helpers (L4 boundary + structured safety net)
+# Shared collapse/archival helpers (L4 boundary + error-driven archival)
 # ---------------------------------------------------------------------------
 
 # When the LLM API returns a context-window error, archive events until utilization
@@ -492,9 +492,8 @@ class ActorRuntime:
         self._last_context_stats: ContextWindowStats | None = None
         # Token calibration: ratio of actual API tokens to litellm estimate.
         # Learned from response.usage.input_tokens after each successful LLM call.
-        # Used to tighten the safety net cap on subsequent turns.
+        # Used by _archive_on_context_error to compute accurate archival targets.
         self._token_calibration_ratio: float | None = None
-        self._last_litellm_estimate: int | None = None
 
     def _archive_on_context_error(
         self, ctx_window: int | None, exc: BaseException | None = None,
@@ -534,11 +533,14 @@ class ActorRuntime:
         cap = int(ctx_window * 0.70 / max(ratio, 1.0))
         target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
         total_tok = stats.total_tokens
-        events_tok = stats.events_tokens
         tokens_to_shed = max(0, total_tok - target_tok)
         if tokens_to_shed == 0:
             return
-        avg_event_tok = events_tok / max(1, n_active)
+        # Use litellm-scale for both: estimate per-event tokens as
+        # (total - context_blocks) / n_active so numerator and denominator
+        # are in the same scale.
+        events_litellm_tok = max(0, total_tok - stats.context_blocks_tokens)
+        avg_event_tok = events_litellm_tok / max(1, n_active)
         n_to_archive = min(
             int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
             n_active,
@@ -678,10 +680,9 @@ class ActorRuntime:
             raise RuntimeError("generate() called with no current method context")
 
         # Build messages from context + events (timers inside _build_messages).
-        # The structured-payload safety net inside _build_messages clamps
-        # against ``llm.context_window`` × 0.70 and now accounts for tool
-        # schemas too (issue #133 — previously they were ignored, leaving
-        # the safety net short by the full tool-schema cost).
+        # No proactive clamping — recovery is error-driven. If the API rejects
+        # with ContextWindowExceededError, the except handler archives events,
+        # rebuilds messages, and retries.
         messages = await self._build_messages(
             self._current_method,
             call_args=self._current_call.args if self._current_call else (),
@@ -846,7 +847,7 @@ class ActorRuntime:
                 actual_input = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
             if actual_input and self._last_context_stats.total_tokens > 0:
                 self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
-                self._last_litellm_estimate = self._last_context_stats.total_tokens
+
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -2477,9 +2478,9 @@ class ActorRuntime:
         then render_context() to format them using the agent's configured
         block and provider formatters.
 
-        ``tools`` (optional) is used by the structured-payload safety net
-        so the tool-schema cost is included in the budget calculation
-        (otherwise the safety net systematically under-counts; see #133).
+        ``tools`` is currently unused after the proactive clamp removal
+        but kept in the signature for future use (e.g., tool-schema-aware
+        token counting).
         """
         hm = get_harness_metrics()
         with hm.timer("time_prepare_context"):
