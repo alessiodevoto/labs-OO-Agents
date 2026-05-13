@@ -19,25 +19,87 @@ from nemo_oo_agents_cli.tools.pyp.stream import Stream as Stream
 
 
 class Pyp(Skill):
-    """Async-native shell piping in Python: method-chaining streams + rg + structured errors.
+    """Async-native shell piping in Python — method-chaining streams.
 
-    Usage:
+    Build pipelines: source → transforms → sink. All async, non-blocking,
+    streaming line-by-line via BashSession.
+
+    ## Quick examples
+
+        # Search and collect
         errors = await self.pyp.cat("app.log").grep("ERROR").head(10).collect()
-        files  = await self.pyp.find("src", name="*.py").sort().collect()
-        todos  = await self.pyp.rg("TODO", type_filter="py").wc().first()
-        table  = await self.pyp.run("ps aux").head(5).table()
-        text   = await self.pyp.cat("f.txt").grep("key").text()
 
-    Sources:      .cat()  .run()  .arun()  .find()  .glob()  .rg()  .seq()
-                  .lines()  .items()  .empty()  .stdin()
-    Transforms:   .grep()  .head()  .tail()  .sort()  .uniq()  .cut()  .sed()  .wc()
-                  .skip()  .tee()  .flatten()  .strip()  .map()  .filter()
-                  .xargs(fn)  .take_while()  .drop_while()  .pipe(*fns)
-    Sinks:        .collect()  .first()  .last()  .count()  .text()  .table()
-                  .result()  .write(path)  .json()  .to_set()  .to_dict()
+        # Find Python files
+        files = await self.pyp.find("src", name="*.py").sort().collect()
 
-    Errors:       PipeError (step, cmd, returncode, stderr, pipeline_repr)
-                  Result    (.ok, .lines, .returncode, .stderr, .text)
+        # Ripgrep with post-processing
+        todos = await self.pyp.rg("TODO", type_filter="py").wc().first()
+
+        # Shell command → table
+        table = await self.pyp.run("ps aux").head(5).table()
+
+        # Apply a function to each line
+        result = await self.pyp.run("ls").xargs(process_file).collect()
+
+        # Pipeline to text
+        text = await self.pyp.cat("f.txt").grep("key").sort().uniq().text()
+
+        # Stream a long command via ShellTools (uses self.shell)
+        out = await self.pyp.arun(self.shell, "make test").grep("FAIL").collect()
+
+        # Write filtered output to file
+        n = await self.pyp.cat("data.csv").grep("error").write("errors.csv")
+
+    ## Sources (create a Stream)
+
+        .cat(*paths)                  Read file(s) line-by-line
+        .run(cmd, check=True)         Shell command via BashSession (streaming)
+        .arun(shell, cmd)             Shell command via ShellTools.run_stream()
+        .find(root, name=, type=)     Walk directory (rg --files, fast)
+        .glob(pattern, root=".")      Python glob
+        .rg(pattern, path=".")        Ripgrep search (streaming)
+        .seq(start, end, step=1)      Numeric sequence
+        .lines(text)                  From a multiline string
+        .items(iterable)              From any iterable
+        .empty()                      Empty stream
+
+    ## Transforms (return a new Stream)
+
+        .grep(pat, invert=, ignore_case=, fixed=)   Filter by pattern
+        .head(n) / .tail(n)                          First/last N items
+        .sort(key=, reverse=, numeric=)              Sort (buffering)
+        .uniq(all_unique=, count=)                   Deduplicate
+        .cut(fields=, sep=)                          Extract fields
+        .sed(pattern, repl)                          Regex substitution
+        .map(fn) / .filter(fn)                       Apply/filter function
+        .xargs(fn)                                   Apply fn to each item (sync or async)
+        .skip(n)                                     Skip first N
+        .strip(chars=)                               Strip whitespace
+        .flatten(sep=) / .wc(lines_only=)            Flatten / word count
+        .tee(path)                                   Copy to file, pass through
+        .take_while(fn) / .drop_while(fn)            Predicate-based slicing
+        .pipe(*fns)                                  Chain custom transforms
+
+    ## Sinks (consume the Stream, return a value)
+
+        await stream.collect() -> list[str]     All items as list
+        await stream.text() -> str              Joined with newlines
+        await stream.first() -> str | None      First item
+        await stream.last() -> str | None       Last item
+        await stream.count() -> int             Number of items
+        await stream.table() -> str             Formatted table
+        await stream.json() -> list | dict      Parse as JSON
+        await stream.result() -> Result         Result with .ok, .returncode, .stderr
+        await stream.write(path) -> int         Write to file, return line count
+        await stream.to_set() -> set[str]       Unique items
+        await stream.to_dict(sep=) -> dict      Key-value pairs
+
+    ## Error handling
+
+        PipeError  — raised on command failure (check=True)
+                     .cmd, .returncode, .stderr, .format_error()
+        Result     — from .result() sink
+                     .ok, .lines, .returncode, .stderr, .text
     """
 
     # Expose all source functions as instance methods
