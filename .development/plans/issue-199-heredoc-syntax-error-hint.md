@@ -35,13 +35,13 @@ Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the 
    - `"unexpected character after line continuation character"`
    - `"invalid syntax. Perhaps you forgot a comma?"`
 
-2. If `error.msg` matches one of those, check `error.text` (the offending line that Python attaches) for a heredoc marker. The regex used is `r"<<-?\s*['\"]?\w+['\"]?"`, which covers `<<EOF`, `<< EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`, etc. We require `\w+` so simple shifts like `x << 2` don't match.
+2. If `error.msg` matches one of those, check `error.text` (the offending line that Python attaches) for a heredoc marker. The regex used is `r"<<-?\s*['\"]?\w+['\"]?"`, which covers `<<EOF`, `<< EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`, etc. Note that `\w+` also matches numeric shifts like `<< 2` — the false-positive guard is the quote check in step 3, not the regex.
 
-   We also require a `"` or `'` to appear *before* the `<<` on the same line — this is the tighter check that suppresses real bit-shift false positives like `func(a << foo b)` (no quote before `<<`). For the LLM-embedded-heredoc pattern we're targeting, both tokens are necessarily on the same source line as `error.text` (the LLM wrote them inside one broken string literal), so a broader source-window scan is unnecessary.
+3. Require a `"` or `'` to appear *before* the `<<` on the same line — this is the tighter check that suppresses real bit-shift false positives like `func(a << foo b)` (no quote before `<<`). For the LLM-embedded-heredoc pattern we're targeting, both tokens are necessarily on the same source line as `error.text` (the LLM wrote them inside one broken string literal), so a broader source-window scan is unnecessary.
 
-3. If matched, append (separated by a blank line) a single hint block:
+4. If matched, append (separated by a blank line) a single hint block:
 
-   ```
+   ```text
    Hint: this looks like a bash heredoc (`<<…`) embedded in a single- or double-quoted
    Python string. Python rejects multi-line single/double-quoted strings, which is
    why the parser errored before reaching the heredoc body.
@@ -58,7 +58,7 @@ Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the 
 
    Hint text lives as a module-level constant so it is testable.
 
-4. Do nothing otherwise — every other SyntaxError flows through unchanged.
+5. Do nothing otherwise — every other SyntaxError flows through unchanged.
 
 ## Files to touch
 
@@ -96,7 +96,7 @@ Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the 
 
 ## Test plan
 
-```
+```bash
 uv run pytest tests/test_error_formatting.py -x -q
 uv run pytest tests/test_execute_code_error_recovery.py tests/test_error_line_numbers.py -x -q
 uv run pytest -x -q

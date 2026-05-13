@@ -454,6 +454,7 @@ class TestHeredocHint:
 
     @staticmethod
     def _compile_and_format(code: str) -> str:
+        """Compile `code`, expect a SyntaxError, and return the LLM-formatted message."""
         try:
             compile(code, "Cell In[1]", "exec")
         except SyntaxError as e:
@@ -462,12 +463,14 @@ class TestHeredocHint:
 
     @staticmethod
     def _assert_hint_present(result: str) -> None:
+        """Assert the heredoc hint and both fix patterns appear in `result`."""
         assert "heredoc" in result, f"expected 'heredoc' in output, got:\n{result}"
         assert '"""' in result, f"expected triple-quote (Fix 1) in output, got:\n{result}"
         assert "shell.write" in result, f"expected shell.write (Fix 2) in output, got:\n{result}"
 
     @staticmethod
     def _assert_hint_absent(result: str) -> None:
+        """Assert no heredoc hint was appended to `result`."""
         assert "heredoc" not in result, f"unexpected 'heredoc' in output:\n{result}"
         assert "shell.write" not in result, f"unexpected shell.write in output:\n{result}"
 
@@ -535,9 +538,9 @@ class TestHeredocHint:
         """Real bit-shift `a << foo` inside a call that forgot a comma → no hint (best-effort).
 
         Reviewer flagged this as the regex's worst-case false positive: `<< foo` matches
-        the heredoc regex. The mitigation in this version is to require either a quote
-        before `<<` on the source line, OR a heredoc-shaped terminator on a later line.
-        A bare `func(a << foo b)` has neither, so no hint should be appended.
+        the heredoc regex. The mitigation is to require a quote character before `<<`
+        on the same source line (`error.text`). A bare `func(a << foo b)` has no such
+        quote, so no hint is appended.
         """
         code = "func(a << foo b)"
         result = self._compile_and_format(code)

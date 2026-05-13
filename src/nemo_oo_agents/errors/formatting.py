@@ -39,7 +39,9 @@ _HEREDOC_TRIGGER_MSGS = (
 )
 
 # Matches a bash heredoc opener: `<<EOF`, `<< EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`.
-# Requires `\w+` so plain bit-shifts like `x << 2` don't match.
+# Note: `\w+` also matches numeric shifts like `<< 2`, so the false-positive
+# guard for plain bit-shifts lives in `_looks_like_embedded_heredoc` (the
+# quote-before-`<<` check), not in this regex.
 _HEREDOC_RE = re.compile(r"<<-?\s*['\"]?\w+['\"]?")
 
 # Appended to SyntaxErrors that look like heredoc-in-quoted-string failures.
