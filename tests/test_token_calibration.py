@@ -94,6 +94,10 @@ class TestUpdateTokenCalibration:
         """Reset the module-level calibration before each test."""
         _token_calibration._ratios.clear()
 
+    def teardown_method(self):
+        """Clean up module-level singleton after each test."""
+        _token_calibration._ratios.clear()
+
     def test_updates_from_messages(self):
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -103,7 +107,10 @@ class TestUpdateTokenCalibration:
             "gpt-4o", messages, {"prompt_tokens": 50, "completion_tokens": 10}
         )
         ratio = _token_calibration.ratio("gpt-4o")
-        assert ratio > 1.0  # API reports more than raw text count
+        # API reports 50 prompt tokens; litellm raw estimate is ~9 tokens for this text
+        # Ratio should be significantly > 1.0 (50/9 ≈ 5.6)
+        assert ratio > 1.0
+        assert ratio < 100.0  # sanity upper bound
 
     def test_skips_empty_usage(self):
         messages = [{"role": "user", "content": "hello"}]

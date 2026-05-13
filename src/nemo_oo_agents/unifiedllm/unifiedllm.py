@@ -699,9 +699,10 @@ class TokenCalibration:
     count from ``response.usage`` and maintain a running ratio so that future
     estimates are corrected.
 
-    The ratio is an exponential moving average (EMA) that converges after ~4
-    observations.  Before any observation arrives, ``default_ratio`` (1.0) is
-    used — callers who want a conservative first estimate can raise this.
+    The ratio is an exponential moving average (EMA) that adapts quickly —
+    after ~10 observations the initial value's influence drops below 3%.
+    Before any observation arrives, ``default_ratio`` (1.0) is used — callers
+    who want a conservative first estimate can raise this.
     """
 
     __slots__ = ("_ratios", "_alpha", "_default_ratio")
@@ -748,7 +749,7 @@ def _update_token_calibration(
     over each message's text content, then records the ratio against the
     API-reported prompt_tokens.
     """
-    actual = usage.get("prompt_tokens", 0)
+    actual = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
     if actual <= 0:
         return
     estimated = 0
