@@ -604,7 +604,7 @@ class Session:
                 self._app._agent_task.cancel()
                 try:
                     await self._app._agent_task
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError:
                     pass
             await self._swap_session_manager(result.new_session_manager)
             self._first_message = None
