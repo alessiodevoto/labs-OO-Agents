@@ -690,6 +690,80 @@ def _instantiate_output_model(output_model: type[BaseModel], json_data: Any) -> 
         return output_model(**json_data)
 
 
+class TokenCalibration:
+    """Per-model EMA calibration of token estimates against API-reported usage.
+
+    litellm's token_counter uses OpenAI's cl100k_base tokenizer for all models
+    and ignores chat-template overhead, under-counting by 1.4–2.4× depending on
+    the model family.  After each LLM call we observe the *actual* prompt token
+    count from ``response.usage`` and maintain a running ratio so that future
+    estimates are corrected.
+
+    The ratio is an exponential moving average (EMA) that converges after ~4
+    observations.  Before any observation arrives, ``default_ratio`` (1.0) is
+    used — callers who want a conservative first estimate can raise this.
+    """
+
+    __slots__ = ("_ratios", "_alpha", "_default_ratio")
+
+    def __init__(self, *, alpha: float = 0.3, default_ratio: float = 1.0):
+        self._ratios: dict[str, float] = {}
+        self._alpha = alpha
+        self._default_ratio = default_ratio
+
+    def update(self, model: str, estimated: int, actual: int) -> None:
+        """Record one observation after an LLM call."""
+        if estimated <= 0 or actual <= 0:
+            return
+        observed = actual / estimated
+        prev = self._ratios.get(model)
+        if prev is None:
+            self._ratios[model] = observed
+        else:
+            self._ratios[model] = self._alpha * observed + (1 - self._alpha) * prev
+
+    def ratio(self, model: str) -> float:
+        """Current calibration ratio for *model* (default if unseen)."""
+        return self._ratios.get(model, self._default_ratio)
+
+    def calibrate(self, model: str, estimated: int) -> int:
+        """Apply the calibration ratio to a raw estimate."""
+        return int(estimated * self.ratio(model))
+
+    def __repr__(self) -> str:
+        entries = ", ".join(f"{m}: {r:.3f}" for m, r in self._ratios.items())
+        return f"TokenCalibration({{{entries}}})"
+
+
+# Module-level singleton so all UnifiedLLM instances share calibration data.
+_token_calibration = TokenCalibration()
+
+
+def _update_token_calibration(
+    model: str, messages: list[dict[str, Any]], usage: dict[str, int]
+) -> None:
+    """Update token calibration from an API response's usage data.
+
+    Computes a raw (uncalibrated) estimate by summing litellm.token_counter
+    over each message's text content, then records the ratio against the
+    API-reported prompt_tokens.
+    """
+    actual = usage.get("prompt_tokens", 0)
+    if actual <= 0:
+        return
+    estimated = 0
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, str):
+            estimated += litellm.token_counter(model=model, text=content)
+        elif isinstance(content, list):
+            # Multi-part content (e.g. vision messages)
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    estimated += litellm.token_counter(model=model, text=part.get("text", ""))
+    _token_calibration.update(model, estimated, actual)
+
+
 class UnifiedLLM(ABC):
     _registry_config: dict[str, Any] | None
 
@@ -698,18 +772,29 @@ class UnifiedLLM(ABC):
         self.config = config
         self._registry_config = None
 
+    @property
+    def token_calibration(self) -> TokenCalibration:
+        """Shared calibration state across all UnifiedLLM instances."""
+        return _token_calibration
+
     def count_tokens(self, text: str) -> int:
         """Count tokens using model-appropriate tokenizer.
 
-        Uses litellm's token_counter for accurate counting.
-        Raises if litellm cannot count tokens for this model.
+        Uses litellm's token_counter with a calibration correction derived
+        from API-reported usage.  Before the first LLM call completes the
+        raw litellm estimate is returned unchanged (ratio = 1.0).
 
         Args:
             text: The text to count tokens for.
 
         Returns:
-            Number of tokens in the text.
+            Calibrated number of tokens in the text.
         """
+        raw = litellm.token_counter(model=self.model, text=text)
+        return _token_calibration.calibrate(self.model, raw)
+
+    def count_tokens_raw(self, text: str) -> int:
+        """Raw (uncalibrated) token count — for computing calibration ratios."""
         return litellm.token_counter(model=self.model, text=text)
 
     def supports_vision(self) -> bool:
@@ -1351,6 +1436,7 @@ class CompletionClient(UnifiedLLM):
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
         if usage:
             _record_llm_metric("token_usage", usage)
+            _update_token_calibration(self.model, prepared_messages, usage)
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
@@ -1516,6 +1602,7 @@ class CompletionClient(UnifiedLLM):
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
         if usage:
             _record_llm_metric("token_usage", usage)
+            _update_token_calibration(self.model, prepared_messages, usage)
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
@@ -1800,6 +1887,8 @@ class ResponsesClient(UnifiedLLM):
                 usage = usage_obj.model_dump()
             elif isinstance(usage_obj, dict):
                 usage = usage_obj
+        if usage:
+            _update_token_calibration(self.model, messages, usage)
 
         output: list[Any] = raw_response.output  # type: ignore[assignment]
         raw_tool_calls = [item for item in output if item.type == "function_call"]
@@ -1903,6 +1992,8 @@ class ResponsesClient(UnifiedLLM):
                 usage = usage_obj.model_dump()
             elif isinstance(usage_obj, dict):
                 usage = usage_obj
+        if usage:
+            _update_token_calibration(self.model, messages, usage)
 
         output: list[Any] = raw_response.output  # type: ignore[assignment]
         raw_tool_calls = [item for item in output if item.type == "function_call"]
