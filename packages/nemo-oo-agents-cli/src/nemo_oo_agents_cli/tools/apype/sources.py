@@ -10,6 +10,7 @@ import sys
 from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 
+from nemo_oo_agents.agentdoc._truncating_stream import TruncatingStringIO
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents_cli.tools.apype.errors import make_pipe_error
 from nemo_oo_agents_cli.tools.apype.stream import Stream
@@ -115,11 +116,13 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
         await bash.start()
         try:
             buffer = ""
+            _stderr_io = TruncatingStringIO(limit=_STDERR_CAP)
             async for stream_name, chunk in bash.run_stream(cmd, timeout=timeout):
                 if stream_name == "__done__":
                     parts = chunk.split(",")
                     returncode = int(parts[0])
                     meta["returncode"] = returncode
+                    meta["stderr"] = _stderr_io.getvalue()
                     # Flush trailing partial line first
                     if buffer:
                         yield buffer
@@ -129,7 +132,7 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
                             f"Command failed: {cmd}",
                             cmd=cmd,
                             returncode=returncode,
-                            stderr=meta["stderr"],
+                            stderr=_stderr_io.getvalue(),
                         )
                     break
                 elif stream_name == "stdout":
@@ -138,8 +141,7 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
                         line, buffer = buffer.split("\n", 1)
                         yield line
                 elif stream_name == "stderr":
-                    if len(meta["stderr"]) < _STDERR_CAP:
-                        meta["stderr"] += chunk
+                    _stderr_io.write(chunk)
         finally:
             await bash.close()
 
