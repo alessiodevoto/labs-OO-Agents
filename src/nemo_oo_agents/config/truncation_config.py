@@ -149,8 +149,8 @@ class TruncationConfig(BaseModel):
     # Generous: rendered every turn, especially PythonOutput.value (the LLM
     # needs to see what its code returned).
     event_format: FormatConfig = FormatConfig(max_string=10_000, max_length=200, max_depth=5)
-    # Tight: one-shot per method call; the agent author controls inputs.
-    prefill_format: FormatConfig = FormatConfig(max_string=500, max_length=50, max_depth=4)
+    # Prefill: one-shot per method call; the agent author controls inputs.
+    prefill_format: FormatConfig = FormatConfig(max_string=2_000, max_length=25, max_depth=4)
     # Unlimited: agent-author-curated values placed via self.context[key]=value.
     # If you put a structured object in context, you meant for it to render in
     # full. L4 (eviction) handles whole-block overflow at the assembly step.

@@ -410,11 +410,8 @@ def _is_structured_instance(obj: Any) -> bool:
     if isinstance(obj, (list, tuple, set, frozenset, dict)):
         return False
 
-    # Skip if it's a built-in type
-    if obj_type.__module__ == "builtins":
-        return False
-
-    # Pydantic
+    # Pydantic (check before builtins guard — classes defined in exec()/REPL
+    # get __module__='builtins' but are still structured types)
     if hasattr(obj_type, "model_fields"):
         return True
 
@@ -427,6 +424,10 @@ def _is_structured_instance(obj: Any) -> bool:
     # attrs
     if hasattr(obj_type, "__attrs_attrs__"):
         return True
+
+    # Skip if it's a built-in type (range, slice, memoryview, etc.)
+    if obj_type.__module__ == "builtins":
+        return False
 
     # __slots__-only classes have no __dict__ but do have public slots
     if not hasattr(obj, "__dict__"):
