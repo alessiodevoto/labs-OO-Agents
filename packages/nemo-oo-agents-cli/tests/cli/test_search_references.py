@@ -146,9 +146,7 @@ class TestSearchReferences:
         r = await rt.search_references("Application", path="src/")
         for m in r.matches:
             content = m.split(": ", 1)[-1] if ": " in m else m
-            assert not content.strip().startswith("#"), (
-                f"Comment-only line should be excluded: {m}"
-            )
+            assert not content.strip().startswith("#"), f"Comment-only line should be excluded: {m}"
 
     async def test_reference_search_result_text(self, ref_repo):
         """ReferenceSearchResult.text should format nicely."""
@@ -274,13 +272,15 @@ class TestTreeSitterBackend:
             pytest.skip("tree-sitter not installed")
 
         f = tmp_path / "sample.py"
-        f.write_text(textwrap.dedent("""            class Foo:
+        f.write_text(
+            textwrap.dedent("""            class Foo:
                 def bar(self):
                     pass
 
             def baz():
                 pass
-        """))
+        """)
+        )
         result = ts_extract_symbols(f, "python", 100)
         if result is not None:
             text = "\n".join(result)
@@ -298,14 +298,16 @@ class TestTreeSitterBackend:
             pytest.skip("tree-sitter not installed")
 
         f = tmp_path / "sample.py"
-        f.write_text(textwrap.dedent("""            class Foo:
+        f.write_text(
+            textwrap.dedent("""            class Foo:
                 def bar(self):
                     pass
 
             def baz():
                 x = Foo()
                 x.bar()
-        """))
+        """)
+        )
         result = ts_find_references(f, "python", "Foo")
         if result is not None:
             # Should find usage at "x = Foo()" but not the definition
@@ -325,7 +327,8 @@ class TestTreeSitterBackend:
             pytest.skip("tree-sitter not installed")
 
         f = tmp_path / "sample.py"
-        f.write_text(textwrap.dedent("""            class Foo:
+        f.write_text(
+            textwrap.dedent("""            class Foo:
                 def method(self):
                     pass
 
@@ -337,7 +340,8 @@ class TestTreeSitterBackend:
             f.method()
             b = Bar()
             b.method()
-        """))
+        """)
+        )
         result = ts_find_references(f, "python", "Foo.method")
         # Should only find "method" on lines that also contain "Foo"
         # (but note: heuristic — the qualifier check looks for "Foo" on the line)

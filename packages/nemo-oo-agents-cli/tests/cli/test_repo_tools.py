@@ -11,12 +11,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents_cli.tools.repo_tools import (
     RepoTools,
     _detect_lang,
     _extract_symbols,
 )
+
+from nemo_oo_agents.tools._bash_session import BashSession
 
 
 @pytest.fixture
@@ -258,3 +259,86 @@ class TestRepr:
         r = repr(rt)
         assert "RepoTools" in r
         assert "root=" in r
+
+
+# ==========================================================================
+# rg availability fallback
+# ==========================================================================
+class TestRgFallback:
+    """Test that repo_map and search_symbol work both with and without rg."""
+
+    async def test_repo_map_rg_path(self, sample_repo):
+        """When rg is available, repo_map uses the rg code path."""
+        import shutil
+
+        if not shutil.which("rg"):
+            pytest.skip("rg not installed")
+        session = BashSession(cwd=sample_repo)
+        await session.start()
+        try:
+            rt = RepoTools(root=sample_repo, session=session)
+            rt._has_rg = True  # force rg path
+            r = await rt.repo_map(paths=["src/"])
+            assert r.num_files > 0
+            assert "main.py" in r.summary or "Application" in r.summary
+        finally:
+            await session.close()
+
+    async def test_repo_map_fallback_path(self, sample_repo):
+        """When rg is NOT available, repo_map falls back to directory walking."""
+        session = BashSession(cwd=sample_repo)
+        await session.start()
+        try:
+            rt = RepoTools(root=sample_repo, session=session)
+            rt._has_rg = False  # force fallback path
+            r = await rt.repo_map(paths=["src/"])
+            assert r.num_files > 0
+            assert "main.py" in r.summary or "Application" in r.summary
+        finally:
+            await session.close()
+
+    async def test_repo_map_no_session_uses_fallback(self, sample_repo):
+        """Without a session, repo_map always uses directory walking."""
+        rt = RepoTools(root=sample_repo)
+        r = await rt.repo_map(paths=["src/"])
+        assert r.num_files > 0
+
+    async def test_search_symbol_rg_path(self, sample_repo):
+        """When rg is available, search_symbol uses the rg code path."""
+        import shutil
+
+        if not shutil.which("rg"):
+            pytest.skip("rg not installed")
+        session = BashSession(cwd=sample_repo)
+        await session.start()
+        try:
+            rt = RepoTools(root=sample_repo, session=session)
+            rt._has_rg = True  # force rg path
+            r = await rt.search_symbol("Application", path="src/")
+            assert r.total_matches > 0
+        finally:
+            await session.close()
+
+    async def test_search_symbol_fallback_path(self, sample_repo):
+        """When rg is NOT available, search_symbol falls back to file walking."""
+        session = BashSession(cwd=sample_repo)
+        await session.start()
+        try:
+            rt = RepoTools(root=sample_repo, session=session)
+            rt._has_rg = False  # force fallback path
+            r = await rt.search_symbol("Application", path="src/")
+            assert r.total_matches > 0
+            assert any("Application" in m for m in r.matches)
+        finally:
+            await session.close()
+
+    async def test_check_rg_caches_result(self, sample_repo):
+        """_check_rg caches its result after first call."""
+        rt = RepoTools(root=sample_repo)
+        assert rt._has_rg is None
+        result = await rt._check_rg()
+        assert rt._has_rg is not None
+        assert rt._has_rg == result
+        # Second call uses cache (doesn't re-check)
+        result2 = await rt._check_rg()
+        assert result == result2

@@ -266,9 +266,22 @@ class RepoTools(Skill):
     def __init__(self, root: str | Path = ".", session: BashSession | None = None) -> None:
         self._root = Path(root).resolve()
         self._session = session  # shared session with ShellTools (optional)
+        self._has_rg: bool | None = None  # lazy-checked
 
     def __repr__(self) -> str:
         return f"RepoTools(root={str(self._root)!r})"
+
+    async def _check_rg(self) -> bool:
+        """Check if rg (ripgrep) is available, caching the result."""
+        if self._has_rg is None:
+            if self._session:
+                _, _, code = await self._session.run("command -v rg", timeout=5)
+                self._has_rg = code == 0
+            else:
+                import shutil
+
+                self._has_rg = shutil.which("rg") is not None
+        return self._has_rg
 
     # ------------------------------------------------------------------
     # filemap — show symbols in a single file
@@ -351,17 +364,19 @@ class RepoTools(Skill):
             if not resolved.is_dir():
                 continue
             # Use rg to find files respecting gitignore, or fall back to walking
-            if self._session:
+            if self._session and await self._check_rg():
                 stdout, _, _ = await self._session.run(
-                    f"rg --files --sort modified {shlex.quote(str(resolved))} 2>/dev/null | head -{max_files * 3}",
+                    f"rg --files {shlex.quote(str(resolved))} 2>/dev/null | head -{max_files * 3}",
                     timeout=15,
                 )
                 for line in stdout.splitlines():
                     p = Path(line.strip())
                     if p.is_file() and _detect_lang(p) != "unknown":
                         all_files.append(p)
+                # Sort by mtime (newest first) — rg --sort requires v14+
+                all_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
             else:
-                # Fallback: walk directory
+                # Fallback: walk directory (rg not available or no session)
                 for ext in _LANG_MAP:
                     for p in sorted(resolved.rglob(f"*{ext}"))[:max_files]:
                         all_files.append(p)
@@ -437,19 +452,18 @@ class RepoTools(Skill):
         matches: list[str] = []
 
         # Use grep to find definition patterns matching the name
-        if self._session:
+        if self._session and await self._check_rg():
             # Build a regex that matches common definition patterns
             pattern = f"(def|class|function|func|struct|trait|interface|type|impl|module|const)\\s+\\w*{re.escape(name)}\\w*"
-            stdout, _, code = await self._session.run(
+            stdout, _, _ = await self._session.run(
                 f"rg -n -i --color=never {shlex.quote(pattern)} {shlex.quote(str(resolved))} 2>/dev/null | head -{max_results * 2}",
                 timeout=30,
             )
-            if stdout:
-                for line in stdout.splitlines():
-                    if line.strip():
-                        matches.append(line.strip())
+            for line in stdout.splitlines():
+                if line.strip():
+                    matches.append(line.strip())
         else:
-            # Fallback: walk files and check symbols
+            # Fallback: walk files and check symbols (rg not available or no session)
             name_lower = name.lower()
             for ext in _LANG_MAP:
                 for fpath in resolved.rglob(f"*{ext}"):
