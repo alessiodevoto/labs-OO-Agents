@@ -22,13 +22,14 @@ class Pyp(Skill):
     """Async-native shell piping in Python: method-chaining streams + rg + structured errors.
 
     Usage:
-        errors = await cat("app.log").grep("ERROR").head(10).collect()
-        files  = await find("src", name="*.py").sort().collect()
-        todos  = await rg("TODO", type_filter="py").wc().first()
-        table  = await run("ps aux").head(5).table()
-        text   = await cat("f.txt").grep("key").text()
+        errors = await self.pyp.cat("app.log").grep("ERROR").head(10).collect()
+        files  = await self.pyp.find("src", name="*.py").sort().collect()
+        todos  = await self.pyp.rg("TODO", type_filter="py").wc().first()
+        table  = await self.pyp.run("ps aux").head(5).table()
+        text   = await self.pyp.cat("f.txt").grep("key").text()
 
-    Sources:      cat  run  arun  find  glob  rg  seq  lines  items  empty  stdin
+    Sources:      .cat()  .run()  .arun()  .find()  .glob()  .rg()  .seq()
+                  .lines()  .items()  .empty()  .stdin()
     Transforms:   .grep()  .head()  .tail()  .sort()  .uniq()  .cut()  .sed()  .wc()
                   .skip()  .tee()  .flatten()  .strip()  .map()  .filter()
                   .xargs(fn)  .take_while()  .drop_while()  .pipe(*fns)
@@ -38,3 +39,16 @@ class Pyp(Skill):
     Errors:       PipeError (step, cmd, returncode, stderr, pipeline_repr)
                   Result    (.ok, .lines, .returncode, .stderr, .text)
     """
+
+    # Expose all source functions as instance methods
+    cat = staticmethod(cat)
+    run = staticmethod(run)
+    arun = staticmethod(arun)
+    find = staticmethod(find)
+    glob = staticmethod(glob)
+    rg = staticmethod(rg)
+    seq = staticmethod(seq)
+    lines = staticmethod(lines)
+    items = staticmethod(items)
+    empty = staticmethod(empty)
+    stdin = staticmethod(stdin)
