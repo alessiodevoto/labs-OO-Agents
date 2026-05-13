@@ -615,6 +615,55 @@ class ActorRuntime:
         self._token_calibration_ratio: float | None = None
         self._last_litellm_estimate: int | None = None
 
+    def _archive_on_context_error(self, ctx_window: int | None) -> None:
+        """Archive oldest events after a ContextWindowExceededError from the API.
+
+        Only called when the LLM actually rejects the request as too large.
+        Uses the last context stats to estimate how many events to shed.
+        """
+        stats = self._last_context_stats
+        if not stats or not ctx_window:
+            return
+        active_tags = list(self.event_manager.keys())
+        n_active = len(active_tags)
+        if n_active == 0:
+            return
+        # Use the conservative 70% cap — after an actual API error we want
+        # generous headroom before re-triggering.
+        cap = int(ctx_window * 0.70)
+        target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
+        total_tok = stats.total_tokens
+        events_tok = stats.events_tokens
+        tokens_to_shed = max(0, total_tok - target_tok)
+        if tokens_to_shed == 0:
+            return
+        avg_event_tok = events_tok / max(1, n_active)
+        n_to_archive = min(
+            int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
+            n_active,
+        )
+        if n_to_archive > 0:
+            summary_text = (
+                f"context-window API error: total_tokens={total_tok:,}, "
+                f"cap={cap:,}, archiving {n_to_archive} events to reach "
+                f"{_ARCHIVE_TARGET_UTILIZATION:.0%} utilization"
+            )
+            _collapse_oldest(
+                self.event_manager,
+                active_tags,
+                n_to_archive,
+                summary_text,
+                log_prefix="context-error-archival",
+            )
+            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
+
+            hm = get_harness_metrics()
+            if isinstance(hm, HarnessMetrics):
+                hm.context_limits_events_collapsed += n_to_archive
+                hm.context_limits_tokens_archived += n_to_archive * (
+                    events_tok // max(1, n_active)
+                )
+
     @property
     def _agent_call_stack(self) -> tuple[str | None, ...]:
         """Agent call stack for method call tracking (per async context).
@@ -2613,39 +2662,11 @@ class ActorRuntime:
                 messages, cap, llm_client.model, tool_schemas=tool_schemas
             )
             if dropped:
-                # Archive events until estimated utilization reaches 60% of cap.
-                # Uses the structured token measurement (events_tok) which is what
-                # the API actually sees.
-                active_tags = list(self.event_manager.keys())
-                n_active = len(active_tags)
-                target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
-                tokens_to_shed = max(0, total_tok - target_tok)
-                avg_event_tok = events_tok / max(1, n_active)
-                n_to_archive = min(
-                    int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
-                    n_active,
+                logger.info(
+                    "safety net dropped %d messages (total_tok=%d, cap=%d); "
+                    "archival deferred until an actual context-window API error",
+                    dropped, total_tok, cap,
                 )
-                if n_to_archive > 0:
-                    summary_text = (
-                        f"hit context window limit: before={stats.total_tokens:,}/{cap:,} total_tokens, "
-                        f"after={total_tok:,}/{cap:,}, dropped_messages={dropped}"
-                    )
-
-                    _collapse_oldest(
-                        self.event_manager,
-                        active_tags,
-                        n_to_archive,
-                        summary_text,
-                        log_prefix="post-clamp",
-                    )
-                    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
-
-                    hm = get_harness_metrics()
-                    if isinstance(hm, HarnessMetrics):
-                        hm.context_limits_events_collapsed += n_to_archive
-                        hm.context_limits_tokens_archived += dropped * (
-                            stats.events_tokens // max(1, stats.events_count)
-                        )
             # Always reflect the structured payload size in stats so both
             # the TUI's ``ctx N%`` display and the TokenBudgetSummarizer
             # see the real token count (litellm token_counter), not the
