@@ -10,7 +10,6 @@ from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-
 _TEST_LLM = FakeLLMClient()
 
 
