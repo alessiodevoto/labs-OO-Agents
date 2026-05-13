@@ -420,7 +420,9 @@ class Stream:
         try:
             async for line in self._aiterable:
                 line_str = str(line)
-                await _asyncio.to_thread(fh.write, line_str if line_str.endswith("\n") else line_str + "\n")
+                await _asyncio.to_thread(
+                    fh.write, line_str if line_str.endswith("\n") else line_str + "\n"
+                )
                 n += 1
         finally:
             await _asyncio.to_thread(fh.close)

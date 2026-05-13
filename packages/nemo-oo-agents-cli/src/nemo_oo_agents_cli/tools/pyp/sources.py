@@ -236,7 +236,8 @@ def find(
                             continue
                     if exclude_set:
                         dirnames[:] = [
-                            d for d in dirnames
+                            d
+                            for d in dirnames
                             if not any(_fnmatch.fnmatch(d, pat) for pat in exclude_set)
                         ]
                     for d in dirnames:
@@ -273,7 +274,8 @@ def find(
 
     async def _gen() -> AsyncIterator[str]:
         async for line in _stream_bash_lines(
-            cmd, timeout=30.0,
+            cmd,
+            timeout=30.0,
             ok_codes=(0, 1),  # rg --files returns 1 if no files found
             error_prefix="find failed",
         ):
@@ -294,9 +296,7 @@ def glob(pattern: str, *, root: str | Path = ".") -> Stream:
     root_path = Path(root)
 
     async def _gen() -> AsyncIterator[str]:
-        paths = await asyncio.to_thread(
-            lambda: [str(p) for p in sorted(root_path.glob(pattern))]
-        )
+        paths = await asyncio.to_thread(lambda: [str(p) for p in sorted(root_path.glob(pattern))])
         for p in paths:
             yield p
 
@@ -374,7 +374,8 @@ def rg(
 
     async def _gen() -> AsyncIterator[str]:
         async for line in _stream_bash_lines(
-            cmd, timeout=30.0,
+            cmd,
+            timeout=30.0,
             ok_codes=(0, 1),  # rg returns 1 for "no matches"
             error_prefix="rg failed",
         ):
