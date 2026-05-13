@@ -7,7 +7,7 @@ import fnmatch as _fnmatch
 import os
 import re as _re
 import sys
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 
 from nemo_oo_agents_cli.tools.apype.errors import make_pipe_error
@@ -16,36 +16,42 @@ from nemo_oo_agents_cli.tools.apype.stream import Stream
 
 def cat(*paths: str | Path, encoding: str = "utf-8") -> Stream:
     """
-    Read lines from one or more files (non-blocking via thread pool).
+    Read lines from one or more files, streaming line-by-line (non-blocking).
 
     Lines are stripped of trailing newlines.
 
     Usage:
-        cat("file.txt") | grep("pattern")
-        cat("a.txt", "b.txt") | sort()
+        cat("file.txt").grep("pattern")
+        cat("a.txt", "b.txt").sort()
     """
 
-    async def _gen():
+    async def _gen() -> AsyncIterator[str]:
         for p in paths:
             path = Path(p)
-            content = await asyncio.to_thread(path.read_text, encoding)
-            for line in content.splitlines():
-                yield line
+            fh = await asyncio.to_thread(open, path, "r", encoding=encoding)
+            try:
+                while True:
+                    line = await asyncio.to_thread(fh.readline)
+                    if not line:
+                        break
+                    yield line.rstrip("\n")
+            finally:
+                await asyncio.to_thread(fh.close)
 
     return Stream(_gen(), _steps=[f"cat({', '.join(repr(str(p)) for p in paths)})"])
 
 
 def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None = None) -> Stream:
     """
-    Run a shell command and stream its stdout lines (non-blocking).
+    Run a shell command and stream its stdout lines as they arrive (non-blocking).
 
-    Uses BashSession under the hood for battle-tested timeout handling,
-    stdin isolation, and graceful process cleanup.
+    Uses BashSession.run_stream() for true streaming — lines are yielded
+    as the subprocess emits them, not buffered.
 
     Args:
         cmd: Shell command string.
         check: If True (default), raise PipeError on non-zero exit.
-        timeout: Max seconds to wait (default 30s). On timeout, SIGTERM then SIGKILL.
+        timeout: Max seconds to wait (default 30s).
         cwd: Working directory for the command.
 
     Usage:
@@ -54,27 +60,36 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
     """
     meta = {"returncode": 0, "stderr": "", "cmd": cmd}
 
-    async def _gen():
+    async def _gen() -> AsyncIterator[str]:
         from nemo_oo_agents.tools._bash_session import BashSession
 
         bash = BashSession(cwd=cwd or ".")
         await bash.start()
         try:
-            stdout, stderr, returncode = await bash.run(cmd, timeout=timeout)
-
-            meta["returncode"] = returncode
-            meta["stderr"] = stderr
-
-            if check and returncode != 0:
-                raise make_pipe_error(
-                    f"Command failed: {cmd}",
-                    cmd=cmd,
-                    returncode=returncode,
-                    stderr=stderr,
-                )
-
-            for line in stdout.splitlines():
-                yield line
+            buffer = ""
+            async for stream_name, chunk in bash.run_stream(cmd, timeout=timeout):
+                if stream_name == "__done__":
+                    parts = chunk.split(",")
+                    returncode = int(parts[0])
+                    meta["returncode"] = returncode
+                    if check and returncode != 0:
+                        raise make_pipe_error(
+                            f"Command failed: {cmd}",
+                            cmd=cmd,
+                            returncode=returncode,
+                            stderr=meta["stderr"],
+                        )
+                    # Flush any remaining partial line
+                    if buffer:
+                        yield buffer
+                    break
+                elif stream_name == "stdout":
+                    buffer += chunk
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        yield line
+                elif stream_name == "stderr":
+                    meta["stderr"] += chunk
         finally:
             await bash.close()
 
@@ -95,19 +110,26 @@ def arun(shell_tools, cmd: str, *, timeout: float = 30.0, check: bool = True) ->
         check: If True, raise PipeError on non-zero exit.
 
     Usage:
-        arun(self.shell, "make test") | grep("FAIL")
-        await (arun(self.shell, "tail -f log.txt") | head(100)).collect()
+        arun(self.shell, "make test").grep("FAIL")
+        await arun(self.shell, "tail -f log.txt").head(100).collect()
     """
 
-    async def _gen():
+    async def _gen() -> AsyncIterator[str]:
+        buffer = ""
         returncode = 0
         async for event in shell_tools.run_stream(cmd, timeout=timeout):
             if hasattr(event, "text"):
                 if event.kind == "stdout":
-                    for line in event.text.splitlines():
+                    buffer += event.text
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
                         yield line
             else:
                 returncode = event.returncode
+                # Flush remaining partial line
+                if buffer:
+                    yield buffer
+                    buffer = ""
                 if check and returncode != 0:
                     raise make_pipe_error(
                         f"Command failed: {cmd}",
@@ -133,6 +155,7 @@ def find(
     Walk a directory tree and stream matching paths via ripgrep (non-blocking).
 
     Uses `rg --files` for fast, .gitignore-aware directory traversal.
+    Streams results line-by-line from the subprocess.
 
     Args:
         root: Starting directory.
@@ -145,8 +168,8 @@ def find(
         no_ignore: Don't respect .gitignore (--no-ignore).
 
     Usage:
-        find(".", name="*.py") | grep("test")
-        find("src", name="*.rs") | wc()
+        find(".", name="*.py").grep("test")
+        find("src", name="*.rs").wc()
     """
     regex = _re.compile(pattern) if pattern else None
 
@@ -155,27 +178,30 @@ def find(
         root_path = Path(root)
         exclude_set = set(exclude) if exclude else set()
 
-        def _walk_dirs() -> list[str]:
-            results = []
-            for dirpath_str, dirnames, _ in os.walk(root_path):
-                dirpath = Path(dirpath_str)
-                if max_depth is not None:
-                    rel = dirpath.relative_to(root_path)
-                    if len(rel.parts) > max_depth:
-                        dirnames.clear()
-                        continue
-                if exclude_set:
-                    dirnames[:] = [d for d in dirnames if d not in exclude_set]
-                for d in dirnames:
-                    path_str = str(dirpath / d)
-                    if name and not _fnmatch.fnmatch(d, name):
-                        continue
-                    if regex and not regex.search(path_str):
-                        continue
-                    results.append(path_str)
-            return results
+        async def _gen_dirs() -> AsyncIterator[str]:
+            def _walk_dirs() -> list[str]:
+                results = []
+                for dirpath_str, dirnames, _ in os.walk(root_path):
+                    dirpath = Path(dirpath_str)
+                    if max_depth is not None:
+                        rel = dirpath.relative_to(root_path)
+                        if len(rel.parts) > max_depth:
+                            dirnames.clear()
+                            continue
+                    if exclude_set:
+                        dirnames[:] = [
+                            d for d in dirnames
+                            if not any(_fnmatch.fnmatch(d, pat) for pat in exclude_set)
+                        ]
+                    for d in dirnames:
+                        path_str = str(dirpath / d)
+                        if name and not _fnmatch.fnmatch(d, name):
+                            continue
+                        if regex and not regex.search(path_str):
+                            continue
+                        results.append(path_str)
+                return results
 
-        async def _gen_dirs():
             paths = await asyncio.to_thread(_walk_dirs)
             for p in paths:
                 yield p
@@ -199,18 +225,26 @@ def find(
 
     cmd = " ".join(_shell_quote(a) for a in args)
 
-    async def _gen():
+    async def _gen() -> AsyncIterator[str]:
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout_bytes, stderr_bytes = await proc.communicate()
-        stdout_str = stdout_bytes.decode() if stdout_bytes else ""
+        assert proc.stdout is not None
+        async for raw_line in proc.stdout:
+            line = raw_line.decode().rstrip("\n")
+            if line:
+                if regex and not regex.search(line):
+                    continue
+                yield line
+
+        await proc.wait()
         returncode = proc.returncode or 0
 
         # rg --files returns 1 if no files found — not an error
         if returncode not in (0, 1):
+            stderr_bytes = await proc.stderr.read() if proc.stderr else b""
             stderr_str = stderr_bytes.decode() if stderr_bytes else ""
             raise make_pipe_error(
                 f"find failed: {cmd}",
@@ -218,12 +252,6 @@ def find(
                 returncode=returncode,
                 stderr=stderr_str,
             )
-
-        for line in stdout_str.splitlines():
-            if line:
-                if regex and not regex.search(line):
-                    continue
-                yield line
 
     return Stream(_gen(), _steps=[f"find({str(root)!r})"])
 
@@ -233,15 +261,14 @@ def glob(pattern: str, *, root: str | Path = ".") -> Stream:
     Glob for files and stream matching paths (non-blocking).
 
     Usage:
-        glob("**/*.py") | grep("test")
+        glob("**/*.py").grep("test")
     """
     root_path = Path(root)
 
-    def _glob_sync() -> list[str]:
-        return [str(p) for p in sorted(root_path.glob(pattern))]
-
-    async def _gen():
-        paths = await asyncio.to_thread(_glob_sync)
+    async def _gen() -> AsyncIterator[str]:
+        paths = await asyncio.to_thread(
+            lambda: [str(p) for p in sorted(root_path.glob(pattern))]
+        )
         for p in paths:
             yield p
 
@@ -264,10 +291,10 @@ def rg(
     no_ignore: bool = False,
 ) -> Stream:
     """
-    Search with ripgrep and stream matching lines (non-blocking).
+    Search with ripgrep and stream matching lines as they arrive (non-blocking).
 
     Uses the `rg` binary for high-performance regex search across files.
-    Respects .gitignore by default.
+    Respects .gitignore by default. Streams results line-by-line.
 
     Args:
         pattern: Regex pattern (or fixed string if fixed=True).
@@ -284,9 +311,9 @@ def rg(
         no_ignore: Don't respect .gitignore (--no-ignore).
 
     Usage:
-        rg("TODO", type_filter="py") | cut(fields=[0], sep=":") | sort() | uniq()
-        rg("def test_", include="*.py") | wc()
-        rg("FIXME", files_only=True) | sort()
+        rg("TODO", type_filter="py").cut(fields=[0], sep=":").sort().uniq()
+        rg("def test_", include="*.py").wc()
+        rg("FIXME", files_only=True).sort()
     """
     args = ["rg"]
     if ignore_case:
@@ -317,19 +344,23 @@ def rg(
 
     cmd = " ".join(_shell_quote(a) for a in args)
 
-    async def _gen():
+    async def _gen() -> AsyncIterator[str]:
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout_bytes, stderr_bytes = await proc.communicate()
-        stdout_str = stdout_bytes.decode() if stdout_bytes else ""
-        stderr_str = stderr_bytes.decode() if stderr_bytes else ""
+        assert proc.stdout is not None
+        async for raw_line in proc.stdout:
+            yield raw_line.decode().rstrip("\n")
+
+        await proc.wait()
         returncode = proc.returncode or 0
 
         # rg returns exit code 1 for "no matches" — not a failure
         if returncode not in (0, 1):
+            stderr_bytes = await proc.stderr.read() if proc.stderr else b""
+            stderr_str = stderr_bytes.decode() if stderr_bytes else ""
             raise make_pipe_error(
                 f"rg failed: {cmd}",
                 cmd=cmd,
@@ -337,19 +368,18 @@ def rg(
                 stderr=stderr_str,
             )
 
-        for line in stdout_str.splitlines():
-            yield line
-
     return Stream(_gen(), _steps=[f"rg({pattern!r})"])
 
 
 def stdin() -> Stream:
     """Read lines from sys.stdin as a stream."""
 
-    async def _gen():
-        content = await asyncio.to_thread(sys.stdin.read)
-        for line in content.splitlines():
-            yield line
+    async def _gen() -> AsyncIterator[str]:
+        while True:
+            line = await asyncio.to_thread(sys.stdin.readline)
+            if not line:
+                break
+            yield line.rstrip("\n")
 
     return Stream(_gen(), _steps=["stdin()"])
 
@@ -376,12 +406,14 @@ def seq(start: int = 1, end: int | None = None, *, step: int = 1) -> Stream:
     Args:
         start: Start value (inclusive). If end is None, generates 1..start.
         end: End value (inclusive). If None, start is treated as end with start=1.
-        step: Step between values.
+        step: Step between values (must not be zero).
 
     Usage:
         seq(5)              # 1, 2, 3, 4, 5
         seq(2, 10, step=2)  # 2, 4, 6, 8, 10
     """
+    if step == 0:
+        raise ValueError("step cannot be zero")
     if end is None:
         actual_start, actual_end = 1, start
     else:
@@ -389,9 +421,14 @@ def seq(start: int = 1, end: int | None = None, *, step: int = 1) -> Stream:
 
     def _generate():
         i = actual_start
-        while i <= actual_end:
-            yield str(i)
-            i += step
+        if step > 0:
+            while i <= actual_end:
+                yield str(i)
+                i += step
+        else:
+            while i >= actual_end:
+                yield str(i)
+                i += step
 
     return Stream(_generate(), _steps=[f"seq({actual_start}, {actual_end})"])
 

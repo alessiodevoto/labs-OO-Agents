@@ -16,6 +16,23 @@ class PipeError(Exception):
     pipeline_repr: str
     input_line: int | None
 
+    def format_error(self) -> str:
+        """Format a detailed error message."""
+        parts = [str(self.args[0])]
+        if self.pipeline_repr:
+            parts.append(f"  Pipeline: {self.pipeline_repr}")
+        if self.cmd:
+            parts.append(f"  Command:  {self.cmd}")
+        if self.transform:
+            parts.append(f"  Transform: {self.transform}")
+        if self.returncode is not None:
+            parts.append(f"  Exit:     {self.returncode}")
+        if self.stderr:
+            parts.append(f"  Stderr:   {self.stderr.rstrip()}")
+        if self.input_line is not None:
+            parts.append(f"  At line:  {self.input_line}")
+        return "\n".join(parts)
+
 
 def make_pipe_error(
     message: str,
@@ -38,23 +55,6 @@ def make_pipe_error(
     obj.pipeline_repr = pipeline_repr
     obj.input_line = input_line
     return obj
-
-    def format_error(self) -> str:
-        """Format a detailed error message."""
-        parts = [str(self.args[0])]
-        if self.pipeline_repr:
-            parts.append(f"  Pipeline: {self.pipeline_repr}")
-        if self.cmd:
-            parts.append(f"  Command:  {self.cmd}")
-        if self.transform:
-            parts.append(f"  Transform: {self.transform}")
-        if self.returncode is not None:
-            parts.append(f"  Exit:     {self.returncode}")
-        if self.stderr:
-            parts.append(f"  Stderr:   {self.stderr.rstrip()}")
-        if self.input_line is not None:
-            parts.append(f"  At line:  {self.input_line}")
-        return "\n".join(parts)
 
 
 @dataclass

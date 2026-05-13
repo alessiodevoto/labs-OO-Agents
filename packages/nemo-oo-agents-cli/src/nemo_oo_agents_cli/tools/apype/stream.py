@@ -338,6 +338,61 @@ class Stream:
                 raise TypeError(f"Transform must be callable, got {type(t)}")
         return s
 
+    def xargs(self, fn: Callable, *, concurrency: int = 1) -> Stream:
+        """Apply a function to each item, yielding results (like xargs).
+
+        Supports both sync and async callables. With concurrency > 1,
+        runs up to N invocations in parallel (order preserved).
+
+        Args:
+            fn: Function taking a single string argument. Can be sync or async.
+            concurrency: Max parallel invocations (default 1 = sequential).
+
+        Usage:
+            run("find . -name '*.py'").xargs(process_file).head(10)
+        """
+        import asyncio as _asyncio
+        import inspect as _inspect
+
+        parent = self
+        is_async = _inspect.iscoroutinefunction(fn)
+
+        async def _gen_sequential():
+            async for item in parent:
+                if is_async:
+                    result = await fn(item)
+                else:
+                    result = fn(item)
+                if result is not None:
+                    yield str(result)
+
+        async def _gen_concurrent():
+            # Bounded concurrency with order preservation
+            items = []
+            async for item in parent:
+                items.append(item)
+
+            sem = _asyncio.Semaphore(concurrency)
+
+            async def _run(item):
+                async with sem:
+                    if is_async:
+                        return await fn(item)
+                    return fn(item)
+
+            tasks = [_asyncio.create_task(_run(item)) for item in items]
+            for task in tasks:
+                result = await task
+                if result is not None:
+                    yield str(result)
+
+        if concurrency <= 1:
+            gen = _gen_sequential()
+        else:
+            gen = _gen_concurrent()
+
+        return Stream(gen, _steps=self._steps + ["xargs(...)"], _meta=self._meta)
+
     # ─── Terminal operations (sinks) — all async ───────────────────────
 
     async def collect(self) -> list[str]:

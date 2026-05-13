@@ -31,7 +31,7 @@ class Apype(Skill):
     Sources:      cat  run  arun  find  glob  rg  seq  lines  items  empty  stdin
     Transforms:   .grep()  .head()  .tail()  .sort()  .uniq()  .cut()  .sed()  .wc()
                   .skip()  .tee()  .flatten()  .strip()  .map()  .filter()
-                  .take_while()  .drop_while()  .pipe(*fns)
+                  .xargs(fn)  .take_while()  .drop_while()  .pipe(*fns)
     Sinks:        .collect()  .first()  .last()  .count()  .text()  .table()
                   .result()  .write(path)  .json()  .to_set()  .to_dict()
 
