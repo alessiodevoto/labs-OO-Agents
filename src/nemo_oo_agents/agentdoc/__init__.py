@@ -43,7 +43,9 @@ _TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 def truncating_pformat(
     obj: Annotated[Any, "Object to format"],
     *,
-    max_chars: Annotated[int | None, "Hard char cap on non-string rendering via TruncatingStringIO"] = None,
+    max_chars: Annotated[
+        int | None, "Hard char cap on non-string rendering via TruncatingStringIO"
+    ] = None,
     **kwargs: Any,
 ) -> str:
     """Format *obj* as a string. Strings pass through verbatim; non-strings go
