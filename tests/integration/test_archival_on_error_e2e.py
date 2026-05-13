@@ -117,7 +117,7 @@ class TestArchivalOnContextErrorE2E:
         )
 
         # ── Phase 2: Call at ~105% of real context ──────────────────
-        n_phase2 = _events_for_real_fraction(ctx_window, 1.05, len(all_events))
+        n_phase2 = _events_for_real_fraction(ctx_window, 1.50, len(all_events))
         extra_events = all_events[n_phase1:n_phase2]
         _hydrate_events(agent, extra_events)
 
