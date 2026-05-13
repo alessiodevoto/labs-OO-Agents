@@ -34,7 +34,7 @@ class TestPythonOutputNotReprTruncated:
             f"stdout was truncated by pformat: got {len(rendered)} chars, "
             f"expected full 15000-char string"
         )
-        assert "str(len=" not in rendered or "str(len=15000" not in rendered
+        assert "str(len=" not in rendered
 
     def test_long_stderr_not_truncated(self):
         """A 15k-char stderr must appear in full in pformat output."""
@@ -48,7 +48,6 @@ class TestPythonOutputNotReprTruncated:
 
     def test_other_string_fields_still_truncated(self):
         """Non-exempt string fields should still respect max_string."""
-        event = _make_event()
         event_with_long_error = PythonOutput(
             tool_call_id="tc_test",
             execution_status=ResultStatus.ERROR,

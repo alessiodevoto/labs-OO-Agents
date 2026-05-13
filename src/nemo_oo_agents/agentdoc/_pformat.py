@@ -15,6 +15,7 @@ The unified pformat() function handles:
 - Info objects (TypeInfo, CallableInfo, ModuleInfo) directly
 """
 
+import functools
 import importlib
 import inspect
 import io
@@ -880,6 +881,13 @@ def _format_module_info(info: ModuleInfo, *, concise: bool, indent: int) -> str:
 _MISSING = object()
 
 
+@functools.lru_cache(maxsize=64)
+def _get_type_hints_cached(obj_type: type) -> dict[str, Any]:
+    """Cached wrapper around typing.get_type_hints(include_extras=True)."""
+    import typing
+    return typing.get_type_hints(obj_type, include_extras=True)
+
+
 def _field_spec_override(obj_type: type, field_name: str, key: str) -> Any:
     """Read a per-field ``spec()`` override from ``Annotated`` type hints.
 
@@ -891,7 +899,7 @@ def _field_spec_override(obj_type: type, field_name: str, key: str) -> Any:
 
     from nemo_oo_agents.agentdoc._docs import SpecAnnotation
 
-    hints = typing.get_type_hints(obj_type, include_extras=True)
+    hints = _get_type_hints_cached(obj_type)
     hint = hints.get(field_name)
     if hint is None or typing.get_origin(hint) is not typing.Annotated:
         return _MISSING
