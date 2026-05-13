@@ -40,13 +40,12 @@ def test_summarize_strategy_override_present():
 def test_summarize_truncation_override_present():
     """_strategy_truncation is set on the wrapper directly (decorators.py:128).
 
-    All four guards must be lifted: max_block_chars, plus every structural
-    bound on prefill_format and event_format. ``None`` is the framework's
-    "unconstrained" sentinel (matching pformat's max_string=None semantics).
+    All structural bounds on prefill_format and event_format must be lifted.
+    ``None`` is the framework's "unconstrained" sentinel (matching pformat's
+    max_string=None semantics).
     """
     tc = SummarizationAgent.summarize._strategy_truncation
     assert tc is not None
-    assert tc.max_block_chars is None
     _assert_format_unconstrained(tc.prefill_format)
     _assert_format_unconstrained(tc.event_format)
 
@@ -62,7 +61,6 @@ def test_method_summarizer_inherits_overrides():
 
     tc = MethodSummarizer.summarize._strategy_truncation
     assert tc is not None
-    assert tc.max_block_chars is None
     _assert_format_unconstrained(tc.prefill_format)
     _assert_format_unconstrained(tc.event_format)
 

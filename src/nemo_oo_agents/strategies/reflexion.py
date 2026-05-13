@@ -298,7 +298,6 @@ class ReflexionStrategy(GenerationStrategy):
         # pformat's hidden 150-char fallback.
         return truncating_pformat(
             result,
-            max_chars=tc.max_block_chars,
             **tc.event_format.model_dump(),
         )
 

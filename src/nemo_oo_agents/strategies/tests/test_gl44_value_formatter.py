@@ -66,7 +66,7 @@ class TestFormatParametersValueFormatter:
         big = list(range(10_000))
         call = _make_call(args=(big,))
         result = call.format_parameters_as_code(
-            value_formatter=lambda v: truncating_pformat(v, max_chars=200)
+            value_formatter=lambda v: truncating_pformat(v, max_length=50, max_string=200)
         )
         # Output should be bounded
         assert len(result) < 2000

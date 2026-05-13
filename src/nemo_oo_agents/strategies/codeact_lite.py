@@ -41,9 +41,6 @@ from nemo_oo_agents.events import (
 from nemo_oo_agents.runtime.event_query import EventQuery
 from nemo_oo_agents.strategies.codeact import CodeActStrategy
 
-# Default cap when no TruncationConfig is available (matches TruncationConfig.max_block_chars default).
-_DEFAULT_MAX_CHARS = 20_000
-
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
     from nemo_oo_agents.strategies.base import RuntimeServices
@@ -59,7 +56,6 @@ logger = logging.getLogger(__name__)
 
 def plain_event_content(
     event: Any,
-    max_chars: int | None = _DEFAULT_MAX_CHARS,
     event_format: "FormatConfig | None" = None,
 ) -> str:
     """Render an event as plain text — no type wrappers, no metadata.
@@ -69,9 +65,6 @@ def plain_event_content(
 
     Args:
         event:     An event object (Task, Error, PythonOutput, etc.)
-        max_chars: Hard character cap applied to pformat of non-string values
-                   (e.g. Out[n] Python return values).  Comes from
-                   TruncationConfig.max_block_chars via PlainProviderFormatter.
         event_format: Structural bounds (max_string / max_length / max_depth)
                    for nested values within event fields. Without these,
                    pformat's structured-instance fallback caps nested strings
@@ -100,7 +93,7 @@ def plain_event_content(
             # strings within structured values are bounded by cfg.event_format
             # rather than pformat's hidden 150-char fallback.
             fc_kwargs = event_format.model_dump() if event_format is not None else {}
-            value_str = truncating_pformat(event.value, max_chars=max_chars, **fc_kwargs)
+            value_str = truncating_pformat(event.value, **fc_kwargs)
             parts.append(f"Out[{event.execution_count}]: {value_str}")
         if event.captured_locals:
             parts.append(event.captured_locals)
@@ -132,9 +125,6 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
     (inherited from XMLBlockFormatter).
 
     Args:
-        max_chars: Hard character cap forwarded to ``plain_event_content``
-            for non-string ``Out[n]`` values.  Set from
-            ``TruncationConfig.max_block_chars`` by CodeActLiteStrategy.
         event_format: Structural bounds for nested values inside event fields
             (max_string / max_length / max_depth). Set from
             ``TruncationConfig.event_format`` by CodeActLiteStrategy.
@@ -142,10 +132,8 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
 
     def __init__(
         self,
-        max_chars: int | None = _DEFAULT_MAX_CHARS,
         event_format: "FormatConfig | None" = None,
     ):
-        self._max_chars = max_chars  # set from tc.max_block_chars by CodeActLiteStrategy
         self._event_format = event_format  # set from tc.event_format by CodeActLiteStrategy
 
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
@@ -190,7 +178,6 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
                 if py_out_block and py_out_block.event:
                     content = plain_event_content(
                         py_out_block.event,
-                        max_chars=self._max_chars,
                         event_format=self._event_format,
                     )
                 elif event.result is not None:
@@ -216,7 +203,6 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
                 if block.event is not None:
                     content = plain_event_content(
                         block.event,
-                        max_chars=self._max_chars,
                         event_format=self._event_format,
                     )
                 else:
@@ -285,7 +271,6 @@ class CodeActLiteStrategy(CodeActStrategy):
         runtime.agent.render_config = original_render_config.model_copy(
             update={
                 "block_formatter": PlainCodeActBlockFormatter(
-                    max_chars=tc.max_block_chars,
                     event_format=tc.event_format,
                 )
             }

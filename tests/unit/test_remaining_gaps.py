@@ -629,13 +629,7 @@ class TestTruncationConfigValidators:
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         cfg = TruncationConfig()
-        assert cfg.max_block_chars == 20_000
-
-    def test_max_block_chars_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
-
-        with pytest.raises(Exception, match="max_block_chars must be > 0"):
-            TruncationConfig(max_block_chars=0)
+        assert cfg.capture.max_stdout == 50_000
 
     def test_max_stdout_negative_raises(self):
         from nemo_oo_agents.config.truncation_config import CaptureConfig
@@ -725,8 +719,8 @@ class TestTruncationConfigValidators:
         from nemo_oo_agents.config.truncation_config import CaptureConfig, TruncationConfig
 
         # Top-level error
-        with pytest.raises(Exception, match="max_block_chars"):
-            TruncationConfig(max_block_chars=0)
+        with pytest.raises(Exception, match="max_context_tokens"):
+            TruncationConfig(max_context_tokens=0)
 
         # Sub-config errors collect together
         with pytest.raises(Exception) as exc_info:
@@ -746,9 +740,9 @@ class TestTruncationConfigValidators:
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         base = TruncationConfig()
-        override = TruncationConfig(max_block_chars=5000)
+        override = TruncationConfig(max_context_tokens=5000)
         result = base.merge_with(override)
-        assert result.max_block_chars == 5000
+        assert result.max_context_tokens == 5000
 
     def test_merge_with_no_fields_set_raises(self):
         from nemo_oo_agents.config.truncation_config import TruncationConfig

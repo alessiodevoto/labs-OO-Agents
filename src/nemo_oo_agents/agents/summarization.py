@@ -261,7 +261,6 @@ class SummarizationAgent(Agent):
     @strategy(
         PredictStrategy(PredictConfig(max_param_chars=None)),
         truncation=TruncationConfig(
-            max_block_chars=None,
             prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
             event_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
         ),
@@ -436,7 +435,7 @@ class SummarizationAgent(Agent):
         parts = []
         for tag, event in events:
             event_role = getattr(event, "_role", Role.USER)
-            body = truncating_pformat(event, max_chars=self._truncation.max_block_chars)
+            body = truncating_pformat(event)
             block = ResolvedBlock(
                 key=f"event_{tag}",
                 content=body,

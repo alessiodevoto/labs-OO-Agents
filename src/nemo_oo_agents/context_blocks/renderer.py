@@ -141,7 +141,6 @@ def render_context(
     provider_formatter: ProviderFormatter,
     context_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
-    pre_format_limit: int | None = None,
     event_format: "FormatConfig | None" = None,
     model_context_window: int | None = None,
 ) -> RenderResult:

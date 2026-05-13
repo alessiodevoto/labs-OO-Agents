@@ -589,15 +589,12 @@ class TestMethodLevelTruncationConfig:
         assert agent.runtime.truncation_config.capture.max_stdout == 100_000
 
     @pytest.mark.asyncio
-    async def test_method_level_max_block_chars_limits_context_rendering(self):
-        """Method-level max_block_chars should limit the content the LLM sees
-        in rendered context blocks, independently of the agent-level setting.
+    async def test_method_level_max_context_tokens_limits_context_rendering(self):
+        """Method-level max_context_tokens should override the agent-level setting.
 
         We use a custom strategy that captures what runtime.truncation_config
-        reports for max_block_chars, then verify it matches the method override
-        (not the agent-level value).  The context builder reads this same property
-        when capping block content, so if the property returns the right value the
-        rendering will use the right cap.
+        reports for max_context_tokens, then verify it matches the method override
+        (not the agent-level value).
         """
         from nemo_oo_agents import strategy
         from nemo_oo_agents.strategies.base import GenerationStrategy
@@ -605,8 +602,8 @@ class TestMethodLevelTruncationConfig:
 
         captured = {}
 
-        class BlockCapturingStrategy(GenerationStrategy):
-            name = "BLOCK_CAPTURING"
+        class TokenCapturingStrategy(GenerationStrategy):
+            name = "TOKEN_CAPTURING"
             traceable = False
             requires_lock = False
 
@@ -614,17 +611,17 @@ class TestMethodLevelTruncationConfig:
                 return {}
 
             async def execute(self, runtime, call: CurrentCall):
-                captured["max_block_chars"] = runtime.truncation_config.max_block_chars
+                captured["max_context_tokens"] = runtime.truncation_config.max_context_tokens
                 return "done"
 
         class TestAgent(
             Agent,
             llm=_TEST_LLM,
-            truncation=TruncationConfig(max_block_chars=20_000),  # agent default
+            truncation=TruncationConfig(max_context_tokens=20_000),  # agent default
         ):
             @strategy(
-                BlockCapturingStrategy(),
-                truncation=TruncationConfig(max_block_chars=5_000),  # method override
+                TokenCapturingStrategy(),
+                truncation=TruncationConfig(max_context_tokens=5_000),  # method override
             )
             async def run(self) -> str:
                 """Run."""
@@ -633,8 +630,8 @@ class TestMethodLevelTruncationConfig:
         agent = TestAgent()
         await agent.run()
 
-        # Strategy must have seen the method-level max_block_chars, not the agent's
-        assert captured["max_block_chars"] == 5_000
+        # Strategy must have seen the method-level max_context_tokens, not the agent's
+        assert captured["max_context_tokens"] == 5_000
 
     @pytest.mark.asyncio
     async def test_concurrent_method_calls_have_isolated_truncation_configs(self):
