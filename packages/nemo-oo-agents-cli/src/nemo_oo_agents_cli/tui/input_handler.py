@@ -175,7 +175,10 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
 
             text = buffer.text[: buffer.cursor_position]
             if text.startswith("/") or text.startswith("!"):
-                _set_completions_sync(buffer)
+                try:
+                    _set_completions_sync(buffer)
+                except (IndexError, ValueError):
+                    pass
 
     # Always bind "/" — in vi mode only trigger completion when the buffer
     # already starts with "/" (i.e. we're already in a slash command), so that
