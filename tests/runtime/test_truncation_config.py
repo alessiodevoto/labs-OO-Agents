@@ -22,9 +22,9 @@ class TestTruncationConfig:
         assert config.event_format.max_length == 200
         assert config.event_format.max_string == 10_000
         assert config.event_format.max_depth == 5
-        # prefill: tight (one-shot per call, agent author controls inputs)
-        assert config.prefill_format.max_length == 50
-        assert config.prefill_format.max_string == 500
+        # prefill: one-shot per call, agent author controls inputs
+        assert config.prefill_format.max_length == 25
+        assert config.prefill_format.max_string == 2_000
         assert config.prefill_format.max_depth == 4
         # context_blocks: unlimited (agent-author-curated, L4 handles overflow)
         assert config.context_block_format.max_length is None
@@ -107,7 +107,7 @@ class TestTruncationConfig:
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_stderr == 2_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_error == 10_000
         assert DEFAULT_TRUNCATION_CONFIG.event_format.max_length == 200
-        assert DEFAULT_TRUNCATION_CONFIG.prefill_format.max_length == 50
+        assert DEFAULT_TRUNCATION_CONFIG.prefill_format.max_length == 25
         assert DEFAULT_TRUNCATION_CONFIG.context_block_format.max_length is None
 
     def test_all_limits_positive(self):
@@ -216,7 +216,7 @@ class TestMergeSemantics:
         # events untouched
         assert merged.event_format.max_string == 10_000
         # prefill untouched
-        assert merged.prefill_format.max_string == 500
+        assert merged.prefill_format.max_string == 2_000
 
     def test_explicit_none_overrides(self):
         """Explicitly passing None overrides the base value."""
