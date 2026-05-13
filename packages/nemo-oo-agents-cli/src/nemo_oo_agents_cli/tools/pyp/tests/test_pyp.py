@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents_cli.tools.apype.errors import PipeError, Result, make_pipe_error
-from nemo_oo_agents_cli.tools.apype.sources import cat, empty, find, glob, items, lines, run, seq
-from nemo_oo_agents_cli.tools.apype.stream import Stream
+from nemo_oo_agents_cli.tools.pyp.errors import PipeError, Result, make_pipe_error
+from nemo_oo_agents_cli.tools.pyp.sources import cat, empty, find, glob, items, lines, run, seq
+from nemo_oo_agents_cli.tools.pyp.stream import Stream
 
 # ─── Stream basics ───────────────────────────────────────────────────
 

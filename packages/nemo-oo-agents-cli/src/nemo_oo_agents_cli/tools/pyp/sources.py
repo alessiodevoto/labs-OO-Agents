@@ -12,8 +12,8 @@ from pathlib import Path
 
 from nemo_oo_agents.agentdoc._truncating_stream import TruncatingStringIO
 from nemo_oo_agents.tools._bash_session import BashSession
-from nemo_oo_agents_cli.tools.apype.errors import make_pipe_error
-from nemo_oo_agents_cli.tools.apype.stream import Stream
+from nemo_oo_agents_cli.tools.pyp.errors import make_pipe_error
+from nemo_oo_agents_cli.tools.pyp.stream import Stream
 
 _STDERR_CAP = 128 * 1024  # 128 KB max stderr buffered
 

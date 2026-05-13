@@ -1,4 +1,4 @@
-"""Error types for apype pipelines."""
+"""Error types for pyp pipelines."""
 
 from __future__ import annotations
 

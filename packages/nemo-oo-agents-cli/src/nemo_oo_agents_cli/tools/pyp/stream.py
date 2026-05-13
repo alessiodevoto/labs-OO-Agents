@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
-from nemo_oo_agents_cli.tools.apype.errors import Result
+from nemo_oo_agents_cli.tools.pyp.errors import Result
 
 T = TypeVar("T")
 
