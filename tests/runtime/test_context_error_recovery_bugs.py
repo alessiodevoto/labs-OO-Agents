@@ -138,3 +138,69 @@ class TestArchivalFiresOnContextError:
             f"Summary events: {len(summary_events)}"
         )
         assert len(summary_events) >= 1, "Archival should emit Summary events"
+
+    @pytest.mark.asyncio
+    async def test_archival_fires_with_unparseable_token_count_and_known_ratio(self):
+        """When the error message has no recognizable token count but a
+        calibration ratio was already learned from a prior successful call,
+        archival still fires using the known ratio.
+
+        In practice, the ratio is almost always available by the time
+        context overflows — it's learned from the very first successful call.
+        """
+        from unittest.mock import patch
+
+        llm = _mk_llm(4_096)  # tiny window so small events overflow
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for i in range(20):
+            agent.event_manager.add(Message(content=f"message {i} " * 50))
+
+        n_events_before = len(list(agent.event_manager.keys()))
+
+        # Simulate a prior successful call having set the calibration ratio
+        agent.runtime._token_calibration_ratio = 1.5
+
+        # Error with NO parseable token count — some unknown provider format
+        error = _ContextWindowExceededError(
+            "context length exceeded: too many tokens in the input"
+        )
+
+        summary_events = []
+        agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=error):
+                with patch(
+                    "nemo_oo_agents.runtime.actor._is_context_window_error",
+                    side_effect=lambda exc: isinstance(exc, _ContextWindowExceededError),
+                ):
+                    with pytest.raises(_ContextWindowExceededError):
+                        await agent.runtime.generate(tools=[], max_tokens=None)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+        # _parse_prompt_tokens should return None for this error
+        assert _parse_prompt_tokens(error) is None, (
+            "This error format should NOT be parseable"
+        )
+
+        # Archival should fire using the pre-existing ratio
+        n_events_after = len(list(agent.event_manager.keys()))
+        assert n_events_after < n_events_before, (
+            f"Archival should fire with known ratio even when token count unparseable: "
+            f"{n_events_after} >= {n_events_before}. "
+            f"Summary events: {len(summary_events)}"
+        )
+        assert len(summary_events) >= 1, (
+            "Archival should emit Summary events"
+        )
