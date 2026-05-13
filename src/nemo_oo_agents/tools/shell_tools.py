@@ -52,7 +52,7 @@ _TRUNCATED_MSG = (
     "or view with offset/limit to see specific sections."
 )
 
-# Directories to skip in ls/find
+# Directories to skip in ls/find/grep fallback
 _IGNORE_DIRS = frozenset(
     {
         ".git",
@@ -505,11 +505,23 @@ class ShellTools(Skill):
     ) -> SearchResult:
         """Search for a regex pattern in files. Uses ripgrep if available, falls back to grep."""
         if await self._has_rg():
-            cmd = self._build_rg_grep_cmd(pattern, path, include=include, context=context,
-                                          literal=literal, max_matches=max_matches)
+            cmd = self._build_rg_grep_cmd(
+                pattern,
+                path,
+                include=include,
+                context=context,
+                literal=literal,
+                max_matches=max_matches,
+            )
         else:
-            cmd = self._build_fallback_grep_cmd(pattern, path, include=include, context=context,
-                                                literal=literal, max_matches=max_matches)
+            cmd = self._build_fallback_grep_cmd(
+                pattern,
+                path,
+                include=include,
+                context=context,
+                literal=literal,
+                max_matches=max_matches,
+            )
 
         stdout, _, code = await self._session.run(cmd, timeout=timeout)
 
@@ -531,8 +543,13 @@ class ShellTools(Skill):
 
     @staticmethod
     def _build_rg_grep_cmd(
-        pattern: str, path: str, *, include: str | None,
-        context: int, literal: bool, max_matches: int,
+        pattern: str,
+        path: str,
+        *,
+        include: str | None,
+        context: int,
+        literal: bool,
+        max_matches: int,
     ) -> str:
         """Build a ripgrep command string."""
         parts = ["rg", "-n", "--color=never", "--no-heading"]
@@ -547,11 +564,19 @@ class ShellTools(Skill):
 
     @staticmethod
     def _build_fallback_grep_cmd(
-        pattern: str, path: str, *, include: str | None,
-        context: int, literal: bool, max_matches: int,
+        pattern: str,
+        path: str,
+        *,
+        include: str | None,
+        context: int,
+        literal: bool,
+        max_matches: int,
     ) -> str:
         """Build a GNU/BSD grep command string as ripgrep fallback."""
-        parts = ["grep", "-rn", "--color=never"]
+        parts = ["grep", "-rn", "-I", "--color=never"]
+        # Skip common noise dirs to match rg defaults
+        for d in sorted(_IGNORE_DIRS):
+            parts.extend(["--exclude-dir", _sq(d)])
         if literal:
             parts.append("-F")
         if context > 0:
@@ -579,10 +604,7 @@ class ShellTools(Skill):
         elif await self._has_rg():
             cmd = f"rg --files -g {_sq(pattern)} {_sq(path)}"
         else:
-            cmd = (
-                f"find {_sq(path)} -maxdepth 10 -type f -name {_sq(pattern)} "
-                f"{prune} -not -path '*/.git/*'"
-            )
+            cmd = f"find {_sq(path)} -maxdepth 10 -type f -name {_sq(pattern)} {prune}"
 
         stdout, _, _ = await self._session.run(cmd, timeout=30)
         lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()] if stdout else []
