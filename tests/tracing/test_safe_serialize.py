@@ -69,6 +69,7 @@ class TestSafeSerialize:
         assert isinstance(result, str)
         # Should not contain 500 levels — depth is capped
         from nemo_oo_agents.tracing._hooks_impl import _TRACE_MAX_DEPTH
+
         assert result.count("nested") <= _TRACE_MAX_DEPTH
 
     def test_pydantic_model(self):
