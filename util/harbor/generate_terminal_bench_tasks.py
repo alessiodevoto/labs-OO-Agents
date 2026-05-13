@@ -75,8 +75,10 @@ mcp_servers = []
 
 def _tags_toml(tags: list[str]) -> str:
     """Format a list of strings as a TOML array."""
+    if not tags:
+        return "[]"
     items = ", ".join(repr(t) for t in tags)
-    return f"[ {items},]"
+    return f"[{items}]"
 
 
 def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
