@@ -27,7 +27,7 @@
 
 | Benchmark | CodeAct baseline | Notes |
 |-----------|-----------------|-------|
-| Terminal Bench 1 | **27.97%** (54/236) | 2026-05-12, full 236-task run, ~2h 40min |
+| Terminal Bench 1 | **27.97%** (66/236) | 2026-05-12, full 236-task run, ~2h 40min |
 
 Previous QEMU/Apptainer run (2026-05-11): 11.9% (28/236) — Docker-native is **2.4× faster** and scores **2.3× higher** (no emulation overhead).
 

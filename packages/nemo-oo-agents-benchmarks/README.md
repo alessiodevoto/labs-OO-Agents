@@ -356,9 +356,45 @@ export NVIDIA_INTERNAL_API_KEY="sk-..."   # routes Claude/etc. through NVIDIA in
 # DABStep baseline
 harbor run --config util/harbor/dabstep_baseline.yaml
 
-# Terminal Bench (all 241 tasks, or restrict with --path to a subset)
+# Terminal Bench (all tasks)
 harbor run --config util/harbor/terminal_bench_baseline.yaml
+
+# Terminal Bench — Docker native on galaxy (aarch64, no QEMU)
+harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml
 ```
+
+#### Running a subset of tasks
+
+Use `--include-task-name` / `-i` (supports glob), `--exclude-task-name` / `-x`, or `--n-tasks` / `-l`:
+
+```bash
+# Rerun specific tasks (e.g. after fixing an infra issue)
+harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml \
+  -i mnist-learning-fix -i circuit-fibsqrt -i overfull-hbox
+
+# Exclude known-broken tasks
+harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml \
+  -x triton-interpret -x reverse-engineering
+
+# Quick smoke test — first 5 tasks only
+harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml -l 5
+```
+
+#### Docker mode — `tests/` symlink required for some tasks
+
+In Docker mode the compose `--project-directory` is set to `environment/` only.
+Tasks whose Dockerfile does `COPY tests/` fail at build time because `tests/`
+lives at the task root, not inside `environment/`. Fix with a symlink:
+
+```bash
+ln -s /path/to/task/tests /path/to/harbor_tasks_tb_docker/<task-name>/environment/tests
+```
+
+Affected Terminal Bench tasks (already fixed on galaxy 2026-05-13):
+`break-filter-js-from-html`, `circuit-fibsqrt`, `fix-pandas-version`,
+`leelachess0-pytorch-conversion`, `mnist-learning-fix`, `overfull-hbox`,
+`pandas-sql-query`, `port-compressor`, `predicate-pushdown-bench`,
+`rare-mineral-allocation`, `schemelike-metacircular-eval`.
 
 ---
 
