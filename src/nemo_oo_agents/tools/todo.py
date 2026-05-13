@@ -7,6 +7,7 @@ The TodoManager is exposed to the agent's CodeAct REPL via self.todo,
 and its API is published to LLM context via doc(self.todo).
 """
 
+import uuid as _uuid
 from datetime import datetime
 from typing import Any
 
@@ -66,7 +67,7 @@ class TodoVars:
 class Todo(BaseModel):
     """A single todo item."""
 
-    id: str = Field(default_factory=lambda: __import__("uuid").uuid4().hex[:8])
+    id: str = Field(default_factory=lambda: _uuid.uuid4().hex[:8])
     title: str = ""
     status: str = "open"  # open | done | blocked
     deps: list[str] = Field(default_factory=list)
