@@ -123,16 +123,31 @@ class ShellTools(Skill):
         command: Annotated[str, spec(description="Shell command to execute")],
         timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
     ) -> RunResult:
-        """Run a shell command in the persistent bash session.
+        '''Run a shell command in the persistent bash session.
 
         State persists: ``cd``, ``export``, ``source``, aliases, and
         environment variables carry over between calls.
 
-        Examples:
-            result = await self.shell.run("cd src && ls")
-            result = await self.shell.run("git status")
-            result = await self.shell.run("python -m pytest tests/ -x", timeout=300)
-        """
+        Always use triple-quoted strings for the command.  Single- or
+        double-quoted strings cause SyntaxErrors when the command
+        contains newlines or heredocs::
+
+            # BAD — SyntaxError (unterminated string literal):
+            await shell.run("cat <<EOF
+            hello
+            EOF")
+
+            # GOOD — triple-quoted string handles newlines:
+            await shell.run("""cat <<EOF
+            hello
+            EOF""")
+
+        Examples::
+
+            result = await shell.run("""cd src && ls""")
+            result = await shell.run("""git diff HEAD~1""")
+            result = await shell.run("""python -m pytest tests/ -x""", timeout=300)
+        '''
         stdout, stderr, code, timed_out = await self._session.run_with_timeout_flag(
             command, timeout=timeout
         )
@@ -154,6 +169,8 @@ class ShellTools(Skill):
 
         Yields StreamEvent chunks for stdout/stderr incrementally, then a
         final StreamDone with the exit code once the command completes.
+
+        Always use triple-quoted strings for the command (same as ``run``).
         """
         timed_out = False
         exit_code = 0

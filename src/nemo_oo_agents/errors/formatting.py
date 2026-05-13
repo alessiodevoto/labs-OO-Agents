@@ -30,6 +30,35 @@ _CELL_PATTERN = re.compile(r"^Cell In\[\d+\]$")
 # Internal wrapper function names to replace with <module>
 _WRAPPER_NAMES = ("__repl_wrapper__", "__wrapper__")
 
+# SyntaxError messages that LLMs frequently hit when they embed a bash heredoc
+# inside a single/double-quoted Python string. See issue 199.
+_HEREDOC_TRIGGER_MSGS = (
+    "unterminated string literal",
+    "unexpected character after line continuation character",
+    "invalid syntax. Perhaps you forgot a comma?",
+)
+
+# Matches a bash heredoc opener: `<<EOF`, `<< EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`.
+# Note: `\w+` also matches numeric shifts like `<< 2`, so the false-positive
+# guard for plain bit-shifts lives in `_looks_like_embedded_heredoc` (the
+# quote-before-`<<` check), not in this regex.
+_HEREDOC_RE = re.compile(r"<<-?\s*['\"]?\w+['\"]?")
+
+# Appended to SyntaxErrors that look like heredoc-in-quoted-string failures.
+_HEREDOC_HINT = """\
+Hint: this looks like a bash heredoc (`<<...`) embedded in a single- or
+double-quoted Python string. Python rejects multi-line single/double-quoted
+strings, which is why the parser errored before reaching the heredoc body.
+
+Fix 1 (preferred) — use a triple-quoted Python string so newlines are legal:
+    await shell.run(\"\"\"cat <<EOF
+    content
+    EOF\"\"\")
+
+Fix 2 — write the script to a file first, then run it:
+    await shell.write("/tmp/script.sh", script_text)
+    await shell.run("bash /tmp/script.sh")"""
+
 
 def _is_user_code_frame(filename: str) -> bool:
     """Check if a traceback frame is from user code (not framework internals).
@@ -79,6 +108,40 @@ def _replace_wrapper_names(text: str) -> str:
     for name in _WRAPPER_NAMES:
         text = text.replace(f"in {name}", "in <module>")
     return text
+
+
+def _looks_like_embedded_heredoc(line: str) -> bool:
+    """True if `line` looks like a heredoc embedded in a quoted string.
+
+    Requires both a heredoc opener (`<<EOF` etc) AND a quote character
+    appearing somewhere before the `<<` on the same line. The quote-before-`<<`
+    check is what distinguishes `shell.run("cat <<EOF` (a real failure) from
+    a legitimate bit-shift like `func(a << foo b)`.
+    """
+    match = _HEREDOC_RE.search(line)
+    if not match:
+        return False
+    before = line[: match.start()]
+    return '"' in before or "'" in before
+
+
+def _maybe_heredoc_hint(error: SyntaxError) -> str | None:
+    """Return the heredoc hint to append, or None if the error doesn't match.
+
+    Heuristic: the error's message must be one of the known LLM-confusing
+    SyntaxError messages, AND the offending source line must contain a
+    heredoc opener embedded in what looks like a quoted string.
+
+    The quote-before-`<<` requirement co-locates the two tokens on the same
+    source line, which `error.text` always carries — no broader source scan
+    is needed. See issue 199.
+    """
+    msg = error.msg or ""
+    if not any(trigger in msg for trigger in _HEREDOC_TRIGGER_MSGS):
+        return None
+    if error.text and _looks_like_embedded_heredoc(error.text):
+        return _HEREDOC_HINT
+    return None
 
 
 def _adjust_line_numbers(text: str, offset: int) -> str:
@@ -154,7 +217,13 @@ class IPythonErrorFormatter:
         formatted = _strip_file_prefix(formatted)
 
         # Adjust line numbers for wrapper offset
-        return _adjust_line_numbers(formatted, line_offset)
+        formatted = _adjust_line_numbers(formatted, line_offset)
+
+        hint = _maybe_heredoc_hint(error)
+        if hint:
+            formatted = f"{formatted}\n\n{hint}"
+
+        return formatted
 
     def _format_runtime_error(self, error: Exception, line_offset: int) -> str:
         """Format runtime error using Python's traceback module, IPython-style.
