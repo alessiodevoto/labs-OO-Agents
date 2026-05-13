@@ -267,15 +267,21 @@ class Stream:
 
     def tee(self, path: str, *, append: bool = False) -> Stream:
         """Pass items through while writing a copy to a file (like tee)."""
+        import asyncio as _asyncio
+
         parent = self
 
         async def _gen():
             mode = "a" if append else "w"
-            with open(path, mode) as f:
+            fh = await _asyncio.to_thread(open, path, mode)
+            try:
                 async for item in parent:
                     item_str = str(item)
-                    f.write(item_str if item_str.endswith("\n") else item_str + "\n")
+                    line = item_str if item_str.endswith("\n") else item_str + "\n"
+                    await _asyncio.to_thread(fh.write, line)
                     yield item
+            finally:
+                await _asyncio.to_thread(fh.close)
 
         return Stream(_gen(), _steps=self._steps + [f"tee({path!r})"], _meta=self._meta)
 
@@ -405,14 +411,19 @@ class Stream:
         return n
 
     async def write(self, path: str | Path, *, mode: str = "w") -> int:
-        """Write stream lines to a file. Returns number of lines written."""
+        """Write stream lines to a file (non-blocking). Returns number of lines written."""
+        import asyncio as _asyncio
+
         p = Path(path)
+        fh = await _asyncio.to_thread(open, p, mode)
         n = 0
-        with open(p, mode) as f:
+        try:
             async for line in self._aiterable:
                 line_str = str(line)
-                f.write(line_str if line_str.endswith("\n") else line_str + "\n")
+                await _asyncio.to_thread(fh.write, line_str if line_str.endswith("\n") else line_str + "\n")
                 n += 1
+        finally:
+            await _asyncio.to_thread(fh.close)
         return n
 
     async def print(self, *, end: str = "\n") -> None:
