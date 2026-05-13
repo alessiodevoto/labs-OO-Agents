@@ -1,0 +1,34 @@
+# Harbor config for Terminal Bench 1.0 on ipp1-3404 (x86_64) — Docker mode, specialized agent.
+#
+# Run from /localhome/local-rcabral/nemo_oo_agents:
+#   source .env
+#   harbor run --config util/harbor/terminal_bench_local_docker_specialized.yaml
+
+jobs_dir: /localhome/local-rcabral/harbor_jobs/terminal_bench_local_docker_specialized
+n_attempts: 1
+timeout_multiplier: 1.5
+environment_build_timeout_multiplier: 8.0
+agent_setup_timeout_multiplier: 5.0
+verifier_timeout_multiplier: 3.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+
+environment:
+  type: docker
+  mounts_json:
+    - type: bind
+      source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor
+      target: /opt/harbor
+      read_only: true
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    kwargs:
+      agent_type: terminal-bench-1
+
+datasets:
+  - path: util/harbor/tasks/terminal_bench

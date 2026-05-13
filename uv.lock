@@ -2647,6 +2647,7 @@ dependencies = [
     { name = "openinference-instrumentation-litellm", marker = "python_full_version < '3.14'" },
     { name = "platformdirs", marker = "python_full_version < '3.14'" },
     { name = "pydantic", marker = "python_full_version < '3.14'" },
+    { name = "python-gitlab", marker = "python_full_version < '3.14'" },
     { name = "pyyaml", marker = "python_full_version < '3.14'" },
 ]
 
@@ -2725,6 +2726,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.9.4" },
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "python-dotenv", marker = "extra == 'viewer'", specifier = ">=1.0.0" },
+    { name = "python-gitlab", specifier = ">=8.3.0" },
     { name = "python-multipart", marker = "extra == 'viewer'", specifier = ">=0.0.5" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "pyyaml", marker = "extra == 'viewer'", specifier = ">=6.0" },
@@ -4208,6 +4210,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-gitlab"
+version = "8.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests", marker = "python_full_version < '3.14'" },
+    { name = "requests-toolbelt", marker = "python_full_version < '3.14'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/00/9a9eb79cf3608f9ab172bc6311b40a7ed128cae7be42dbf2d3830d713a48/python_gitlab-8.3.0.tar.gz", hash = "sha256:2ca67cf64b8d9290fe64463cfef6e77dbde066285dd848db2eb7816d6a7e9ec9", size = 410332, upload-time = "2026-04-28T02:32:30.16Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/b1/3e3144c3ada2ae1a60a378396629064ef14e425e356c8e7c1db3a50ef351/python_gitlab-8.3.0-py3-none-any.whl", hash = "sha256:7aace3585d57ee97ebcb74bc776f30af3e861e285290082a91646348aca3f22a", size = 148177, upload-time = "2026-04-28T02:32:28.133Z" },
+]
+
+[[package]]
 name = "python-http-client"
 version = "3.3.7"
 source = { registry = "https://pypi.org/simple" }
@@ -4486,6 +4501,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5f/a4/98b9c7c6428a668bf7e42ebb7c79d576a1c3c1e3ae2d47e674b468388871/requests-2.33.1.tar.gz", hash = "sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517", size = 134120, upload-time = "2026-03-30T16:09:15.531Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/8e/7540e8a2036f79a125c1d2ebadf69ed7901608859186c856fa0388ef4197/requests-2.33.1-py3-none-any.whl", hash = "sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a", size = 64947, upload-time = "2026-03-30T16:09:13.83Z" },
+]
+
+[[package]]
+name = "requests-toolbelt"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests", marker = "python_full_version < '3.14'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/61/d7545dafb7ac2230c70d38d31cbfe4cc64f7144dc41f6e4e4b78ecd9f5bb/requests-toolbelt-1.0.0.tar.gz", hash = "sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6", size = 206888, upload-time = "2023-05-01T04:11:33.229Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/51/d4db610ef29373b879047326cbf6fa98b6c1969d6f6dc423279de2b1be2c/requests_toolbelt-1.0.0-py2.py3-none-any.whl", hash = "sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06", size = 54481, upload-time = "2023-05-01T04:11:28.427Z" },
 ]
 
 [[package]]
