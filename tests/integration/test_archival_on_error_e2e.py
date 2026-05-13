@@ -18,14 +18,13 @@ Run with:
 
 import gzip
 import json
-import math
 import os
 from pathlib import Path
 
 import pytest
 
 from nemo_oo_agents import Agent
-from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+from nemo_oo_agents.context_blocks.events import ToolCallEvent
 from nemo_oo_agents.events import PythonOutput
 from nemo_oo_agents.unifiedllm import CompletionClient
 

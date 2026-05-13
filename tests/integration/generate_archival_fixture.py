@@ -10,7 +10,6 @@ Usage:
 
 import asyncio
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
 from nemo_oo_agents.events import PythonOutput
 from nemo_oo_agents.runtime.actor import _current_llm_var, _current_method_var
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend, SQLiteStorageManager, _ensure_schema
+from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 from nemo_oo_agents.unifiedllm import CompletionClient
 
 _MODEL_NAME = "openai/nvidia/nvidia/Nemotron-3-Nano-30B-A3B"
