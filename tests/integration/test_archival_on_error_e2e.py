@@ -184,10 +184,10 @@ class TestArchivalOnContextErrorE2E:
         estimated_real = stats_post.total_tokens * ratio_post
         utilization = estimated_real / ctx_window
 
-        # After archival targeting 60%, utilization should be 40-80%
-        # (generous range: events from respond() calls add tokens,
-        # and the ratio is an approximation)
-        assert 0.30 <= utilization <= 0.85, (
+        # After archival targeting 60%, utilization should be near 60%.
+        # Tolerance: archival removes whole events (can't shed fractionally),
+        # respond() calls add events, and ratio is approximate.
+        assert 0.40 <= utilization <= 0.75, (
             f"After archival, utilization should be near 60%: "
             f"got {utilization:.1%} ({estimated_real:,.0f} est. real / {ctx_window:,} ctx_window)"
         )

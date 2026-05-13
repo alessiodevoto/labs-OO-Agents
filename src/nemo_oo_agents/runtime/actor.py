@@ -564,7 +564,7 @@ class ActorRuntime:
             if isinstance(hm, HarnessMetrics):
                 hm.context_limits_events_collapsed += n_to_archive
                 hm.context_limits_tokens_archived += n_to_archive * (
-                    events_tok // max(1, n_active)
+                    events_litellm_tok // max(1, n_active)
                 )
 
     @property
