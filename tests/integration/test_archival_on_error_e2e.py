@@ -23,10 +23,12 @@ from nemo_oo_agents.runtime.actor import (
 )
 from nemo_oo_agents.unifiedllm import CompletionClient
 
-# nemotron nano v3 via NIM — 262K context, 8K max output
-_MODEL = os.environ.get(
-    "ARCHIVAL_TEST_MODEL", "nvidia_nim/nvidia/nemotron-nano-3-30b-v1"
-)
+# nemotron nano v3 via NVIDIA inference gateway — 262K context, 65K max output
+_MODEL = os.environ.get("ARCHIVAL_TEST_MODEL", "")
+_MODEL_NAME = "openai/nvidia/nvidia/Nemotron-3-Nano-30B-A3B"
+_API_BASE = "https://inference-api.nvidia.com/v1"
+_API_KEY_ENV = "NVIDIA_INTERNAL_API_KEY"
+_CONTEXT_WINDOW = 262_144
 
 
 def _fill_events(agent, n_events: int, payload_words: int = 80):
@@ -74,21 +76,28 @@ async def _measure_tokens(agent, llm):
     return agent.runtime._last_context_stats
 
 
-async def _fill_to_fraction(agent, llm, target_fraction: float, batch: int = 20):
-    """Add events until litellm-estimated tokens reach target_fraction of ctx_window."""
+async def _fill_to_fraction(agent, llm, target_fraction: float, batch: int = 50):
+    """Add events until litellm-estimated tokens reach target_fraction of ctx_window.
+
+    Uses large batches and only measures every other batch to speed up filling.
+    """
     ctx_window = llm.context_window
     target_tokens = int(ctx_window * target_fraction)
+    rounds = 0
 
     while True:
-        stats = await _measure_tokens(agent, llm)
-        if stats and stats.total_tokens >= target_tokens:
-            return stats
+        _fill_events(agent, batch, payload_words=200)
+        rounds += 1
+        # Only measure every 2nd round to reduce token-counting overhead
+        if rounds % 2 == 0 or len(list(agent.event_manager.keys())) > batch * 2:
+            stats = await _measure_tokens(agent, llm)
+            if stats and stats.total_tokens >= target_tokens:
+                return stats
         if len(list(agent.event_manager.keys())) > 10000:
             pytest.skip(
                 f"Could not reach {target_fraction:.0%} ({target_tokens:,} tokens) "
-                f"after 10000 events (at {stats.total_tokens:,})"
+                f"after 10000 events"
             )
-        _fill_events(agent, batch)
 
 
 @pytest.mark.integration
@@ -97,10 +106,18 @@ class TestArchivalOnContextErrorE2E:
 
     @pytest.mark.asyncio
     async def test_full_archival_lifecycle(self):
-        llm = CompletionClient(model=_MODEL, temperature=0)
+        api_key = os.environ.get(_API_KEY_ENV, "")
+        if not api_key:
+            pytest.skip(f"{_API_KEY_ENV} not set — skipping real LLM test")
+        llm = CompletionClient(
+            model=_MODEL_NAME,
+            api_base=_API_BASE,
+            api_key=api_key,
+            temperature=0,
+        )
         ctx_window = llm.context_window
         assert ctx_window and ctx_window > 0, (
-            f"Model {_MODEL} must report a context_window, got {ctx_window}"
+            f"Model must report a context_window, got {ctx_window}"
         )
 
         class A(Agent, llm=llm):
