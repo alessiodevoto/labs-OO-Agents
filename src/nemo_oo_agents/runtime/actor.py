@@ -199,7 +199,7 @@ _MIN_RECOVERY_OUTPUT_TOKENS = 1024
 
 
 _PROMPT_TOKENS_RE = _re.compile(
-    r"prompt[^0-9]*(?:contains?\s+(?:at\s+least\s+)?)?(\d[\d,]*)\s*(?:input\s+)?tokens",
+    r"(?:prompt|request)[^0-9]*(?:contains?|has)\s+(?:at\s+least\s+)?(\d[\d,]*)\s*(?:input\s+)?tokens",
     _re.IGNORECASE,
 )
 
@@ -496,11 +496,17 @@ class ActorRuntime:
         self._token_calibration_ratio: float | None = None
         self._last_litellm_estimate: int | None = None
 
-    def _archive_on_context_error(self, ctx_window: int | None) -> None:
+    def _archive_on_context_error(
+        self, ctx_window: int | None, exc: BaseException | None = None,
+    ) -> None:
         """Archive oldest events after a ContextWindowExceededError from the API.
 
         Only called when the LLM actually rejects the request as too large.
         Uses the last context stats to estimate how many events to shed.
+
+        If ``exc`` is provided, extracts the prompt token count from the error
+        message to bootstrap the calibration ratio (actual_api / litellm_estimate).
+        This handles the cold-start case where no successful call has occurred yet.
         """
         stats = self._last_context_stats
         if not stats or not ctx_window:
@@ -509,6 +515,17 @@ class ActorRuntime:
         n_active = len(active_tags)
         if n_active == 0:
             return
+        # Bootstrap calibration ratio from the error's prompt token count.
+        # On the first call there's no prior successful response to learn from,
+        # so we extract the real token count from the error message itself.
+        if exc and not self._token_calibration_ratio and stats.total_tokens > 0:
+            actual = _parse_prompt_tokens(exc)
+            if actual and actual > 0:
+                self._token_calibration_ratio = actual / stats.total_tokens
+                logger.info(
+                    "bootstrapped calibration ratio from error: %d / %d = %.2f",
+                    actual, stats.total_tokens, self._token_calibration_ratio,
+                )
         # Express the 70% budget in litellm-token terms.  When the
         # calibration ratio is known (actual_api / litellm_estimate > 1),
         # litellm undercounts — divide by the ratio so the cap in litellm
@@ -724,6 +741,11 @@ class ActorRuntime:
                 except Exception as _cw_exc:
                     if not _is_context_window_error(_cw_exc):
                         raise
+                    # Always archive first — even if we can't reduce max_tokens,
+                    # shedding events lets the retry (or caller's next attempt) succeed.
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None), exc=_cw_exc,
+                    )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
                         getattr(llm_client, "context_window", None),
@@ -735,9 +757,6 @@ class ActorRuntime:
                         "context-window recovery (middleware): reducing max_tokens %s -> %d",
                         ctx.params.get("max_tokens"),
                         _reduced,
-                    )
-                    self._archive_on_context_error(
-                        getattr(llm_client, "context_window", None)
                     )
                     # Re-build messages after archival so the retry sees the
                     # reduced event store.
@@ -776,12 +795,19 @@ class ActorRuntime:
                 except Exception as _cw_exc:
                     if not _is_context_window_error(_cw_exc):
                         raise
+                    # Always archive first — even if we can't reduce max_tokens,
+                    # shedding events lets the retry (or caller's next attempt) succeed.
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None), exc=_cw_exc,
+                    )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
                         getattr(llm_client, "context_window", None),
                         kwargs.get("max_tokens"),
                     )
                     if _reduced is None:
+                        # Can't compute a reduced max_tokens, but archival already ran.
+                        # Re-raise so the caller (e.g. CodeAct) retries with fresh messages.
                         raise
                     logger.warning(
                         "context-window recovery: reducing max_tokens %s -> %d "
@@ -790,9 +816,6 @@ class ActorRuntime:
                         _reduced,
                         _parse_prompt_tokens(_cw_exc),
                         getattr(llm_client, "context_window", None),
-                    )
-                    self._archive_on_context_error(
-                        getattr(llm_client, "context_window", None)
                     )
                     # Re-build messages after archival so the retry sees the
                     # reduced event store. Retrying with the same messages would

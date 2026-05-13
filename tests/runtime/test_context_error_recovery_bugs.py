@@ -89,7 +89,9 @@ class TestArchivalFiresOnContextError:
         """When _compute_reduced_max_tokens returns None (can't parse prompt tokens
         and no max_tokens provided), archival should STILL fire before re-raising.
 
-        Currently broken: archival is called AFTER `if _reduced is None: raise`.
+        generate() archives events then re-raises (since it can't compute a
+        reduced max_tokens). The caller (e.g. CodeAct) retries with fresh
+        messages built from the now-smaller event store.
         """
         from unittest.mock import patch
 
@@ -111,16 +113,6 @@ class TestArchivalFiresOnContextError:
             "However, your request has 500000 input tokens."
         )
 
-        call_count = 0
-        original_acall = llm.acall
-
-        async def mock_acall(messages, **kw):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise error
-            return await original_acall(messages, **kw)
-
         summary_events = []
         agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
 
@@ -128,19 +120,18 @@ class TestArchivalFiresOnContextError:
         llm_token = _current_llm_var.set(llm)
         method_token = _current_method_var.set(method)
         try:
-            with patch.object(llm, "acall", side_effect=mock_acall):
+            with patch.object(llm, "acall", side_effect=error):
                 with patch(
                     "nemo_oo_agents.runtime.actor._is_context_window_error",
                     side_effect=lambda exc: isinstance(exc, _ContextWindowExceededError),
                 ):
-                    response, event_id = await agent.runtime.generate(
-                        tools=[], max_tokens=None
-                    )
+                    with pytest.raises(_ContextWindowExceededError):
+                        await agent.runtime.generate(tools=[], max_tokens=None)
         finally:
             _current_llm_var.reset(llm_token)
             _current_method_var.reset(method_token)
 
-        # Archival should have fired even though max_tokens=None
+        # Archival should have fired BEFORE the re-raise
         n_events_after = len(list(agent.event_manager.keys()))
         assert n_events_after < n_events_before, (
             f"Archival should reduce events: {n_events_after} >= {n_events_before}. "
