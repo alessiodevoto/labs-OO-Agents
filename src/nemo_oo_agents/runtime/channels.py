@@ -664,14 +664,17 @@ class QueueManager:
             spawn_status = "\n".join(spawn_lines)
             body = f"{body}\n{spawn_status}" if body else spawn_status
 
-        # Cheat sheet: show cleanup commands when extra channels have items
+        # Cheat sheet: show cancel/cleanup commands
+        cancel_hints = [f".cancel('{h.name}')" for h in active_spawns]
         extra = [
             n
             for n, ch in self._channels.items()
             if n != "user_messages" and (ch.mode != "queue" or not ch.is_empty())
         ]
-        if extra:
-            hints = " | ".join(f".remove_channel('{n}')" for n in extra)
+        cleanup_hints = [f".remove_channel('{n}')" for n in extra]
+        all_hints = cancel_hints + cleanup_hints
+        if all_hints:
+            hints = " | ".join(all_hints)
             cheat = f"💡 self.queue_manager{hints} | .shutdown()"
             body = f"{body}\n{cheat}" if body else cheat
 
@@ -921,14 +924,14 @@ class QueueManager:
                 return h
         return None
 
-    async def cancel_job(self, name: str) -> bool:
+    async def cancel(self, channel: str) -> bool:
         """Cancel the job on the named channel and flush pending items."""
-        h = self.job(name)
+        h = self.job(channel)
         if h is None:
             return False
         await h.cancel()
         # Flush pending items and cancel waiting consumers.
-        ch = self._channels.get(name)
+        ch = self._channels.get(channel)
         if ch is not None:
             ch.flush()
         return True
