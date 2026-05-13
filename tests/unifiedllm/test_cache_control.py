@@ -352,6 +352,20 @@ class TestPositionBasedInjection:
         assert messages[2]["content"] == "Hello"
         assert "cache_control" not in messages[2]
 
+    def test_does_not_mutate_original_list_content(self, client):
+        """Position-based injection does not mutate existing content blocks."""
+        messages = [
+            {"role": "tool", "content": [{"type": "text", "text": "tool output"}]},
+        ]
+        injection_points = [{"role": "tool", "position": "last"}]
+
+        result = client._inject_cache_control(messages, injection_points)
+
+        assert messages[0]["content"] == [{"type": "text", "text": "tool output"}]
+        assert result[0]["content"] == [
+            {"type": "text", "text": "tool output", "cache_control": {"type": "ephemeral"}}
+        ]
+
     def test_last_user_position(self, client):
         """position='last' works for user role too."""
         messages = [

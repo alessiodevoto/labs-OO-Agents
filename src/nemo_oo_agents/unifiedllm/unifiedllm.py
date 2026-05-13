@@ -1262,7 +1262,7 @@ class CompletionClient(UnifiedLLM):
         if not roles_to_cache_all and not roles_to_cache_last:
             return messages
 
-        messages = [msg.copy() for msg in messages]
+        messages = [copy.deepcopy(msg) for msg in messages]
 
         # Role-based: mark all messages of the specified roles
         for msg in messages:
