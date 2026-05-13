@@ -165,13 +165,13 @@ class ShellTools(Skill):
         command: Annotated[str, spec(description="Shell command to execute")],
         timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
     ) -> AsyncIterator[StreamEvent | StreamDone]:
-        '''Stream command output as it arrives, ending with a done event.
+        """Stream command output as it arrives, ending with a done event.
 
         Yields StreamEvent chunks for stdout/stderr incrementally, then a
         final StreamDone with the exit code once the command completes.
 
         Always use triple-quoted strings for the command (same as ``run``).
-        '''
+        """
         timed_out = False
         exit_code = 0
         async for stream_name, chunk in self._session.run_stream(command, timeout=timeout):
