@@ -778,6 +778,16 @@ Standard Python builtins and agent instance (`self`) are available."""
                     and (_has_text or not _raw_content)
                 ):
                     session.record_iteration()
+                    # Preserve LLM output for trace visibility before removing
+                    runtime.event_manager.add(
+                        DebugTrace(
+                            content=(
+                                f"Removed LLM output (text-only stop, routing to return_result): "
+                                f"finish_reason={response.finish_reason!r}, "
+                                f"content({len(_text)} chars)={_text!r}"
+                            )
+                        )
+                    )
                     runtime.event_manager.remove(event_id)
                     synthetic_id = f"synthetic_{uuid4().hex[:8]}"
                     result_value = _text if _has_text else None
@@ -826,6 +836,16 @@ Standard Python builtins and agent instance (`self`) are available."""
                 # execute_python(reasoning(...)) call that preserves content in traces.
                 elif _has_text:
                     session.record_iteration()
+                    # Preserve LLM output for trace visibility before removing
+                    runtime.event_manager.add(
+                        DebugTrace(
+                            content=(
+                                f"Removed LLM output (text-only, converting to synthetic reasoning): "
+                                f"finish_reason={response.finish_reason!r}, "
+                                f"content({len(_text)} chars)={_text!r}"
+                            )
+                        )
+                    )
                     runtime.event_manager.remove(event_id)
                     synthetic_id = f"synthetic_{uuid4().hex[:8]}"
                     runtime.event_manager.add(

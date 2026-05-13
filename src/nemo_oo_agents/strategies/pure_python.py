@@ -30,6 +30,7 @@ from nemo_oo_agents.errors import GenerationError, XMLFormatError
 from nemo_oo_agents.events import (
     AfterTurn,
     BeforeTurn,
+    DebugTrace,
     Error,
     Feedback,
     Message,
@@ -350,6 +351,17 @@ class PurePythonStrategy(CompositeStrategy):
                     session.record_error()
                     # Remove the empty assistant event — some APIs reject empty content
                     if generate_event_id is not None:
+                        # Preserve LLM output for trace visibility before removing
+                        _evt = runtime.event_manager.get(generate_event_id)
+                        _raw = getattr(_evt, "content", "") if _evt else ""
+                        runtime.event_manager.add(
+                            DebugTrace(
+                                content=(
+                                    "Removed LLM output (empty code extraction): "
+                                    f"raw response({len(_raw)} chars)={_raw!r}"
+                                )
+                            )
+                        )
                         runtime.event_manager.remove(generate_event_id)
                     await self._send_empty_response_error(runtime, call.method_name)
                     continue
@@ -542,6 +554,15 @@ class PurePythonStrategy(CompositeStrategy):
         try:
             code = self._strip_wrappers(raw_code)
         except XMLFormatError as e:
+            # Preserve LLM output for trace visibility before removing
+            runtime.event_manager.add(
+                DebugTrace(
+                    content=(
+                        f"Removed LLM output (XML format error): "
+                        f"raw_code({len(raw_code)} chars)={raw_code!r}"
+                    )
+                )
+            )
             # Remove the malformed LLMOutput — some APIs reject empty/malformed content
             runtime.event_manager.remove(event_id)
             runtime.event_manager.add(Error(content=f"**Format Error**: {e}"))
