@@ -598,7 +598,16 @@ class Session:
         self._emit_text(Text(f"❯ {text}", style="bold cyan"))
         result = await self._handler.handle(text)
         if result.new_session_manager is not None:
+            # Cancel the running agent turn so it doesn't keep working
+            # in the stale session after /clear or /session new.
+            if self._app._agent_task is not None and not self._app._agent_task.done():
+                self._app._agent_task.cancel()
+                try:
+                    await self._app._agent_task
+                except (asyncio.CancelledError, Exception):
+                    pass
             await self._swap_session_manager(result.new_session_manager)
+            self._first_message = None
         if (
             result.compact_done
             and self._first_message
