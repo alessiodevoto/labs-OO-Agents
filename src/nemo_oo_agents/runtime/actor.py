@@ -858,6 +858,15 @@ class ActorRuntime:
                     self._archive_on_context_error(
                         getattr(llm_client, "context_window", None)
                     )
+                    # Re-build messages after archival so the retry sees the
+                    # reduced event store.
+                    ctx.messages = await self._build_messages(
+                        self._current_method,
+                        call_args=self._current_call.args if self._current_call else (),
+                        call_kwargs=self._current_call.kwargs if self._current_call else {},
+                        tools=ctx.params.get("tools"),
+                        max_output_tokens=_reduced,
+                    )
                     ctx.params["max_tokens"] = _reduced
                     ctx = await em.run_middleware("llm_call", ctx, _core_llm)
                 response = ctx.response
@@ -903,6 +912,16 @@ class ActorRuntime:
                     )
                     self._archive_on_context_error(
                         getattr(llm_client, "context_window", None)
+                    )
+                    # Re-build messages after archival so the retry sees the
+                    # reduced event store. Retrying with the same messages would
+                    # fail again when input tokens exceed the context window.
+                    messages = await self._build_messages(
+                        self._current_method,
+                        call_args=self._current_call.args if self._current_call else (),
+                        call_kwargs=self._current_call.kwargs if self._current_call else {},
+                        tools=tools,
+                        max_output_tokens=_reduced,
                     )
                     _recovery_kw = {**kwargs, "max_tokens": _reduced}
                     response = await llm_client.acall(
