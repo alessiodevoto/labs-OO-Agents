@@ -10,8 +10,58 @@ import sys
 from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 
+from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents_cli.tools.apype.errors import make_pipe_error
 from nemo_oo_agents_cli.tools.apype.stream import Stream
+
+_STDERR_CAP = 128 * 1024  # 128 KB max stderr buffered
+
+
+async def _stream_bash_lines(
+    cmd: str,
+    *,
+    timeout: float = 30.0,
+    cwd: str | None = None,
+    ok_codes: tuple[int, ...] = (0,),
+    error_prefix: str = "Command failed",
+) -> AsyncIterator[str]:
+    """Stream stdout lines from a BashSession command, handling line buffering.
+
+    Shared implementation for run(), rg(), and find() sources.
+    Yields complete lines as they arrive. On completion, flushes any
+    trailing partial line, then raises PipeError if returncode not in ok_codes.
+    """
+    bash = BashSession(cwd=cwd or ".")
+    await bash.start()
+    try:
+        buffer = ""
+        stderr_buf = ""
+        async for stream_name, chunk in bash.run_stream(cmd, timeout=timeout):
+            if stream_name == "__done__":
+                parts = chunk.split(",")
+                returncode = int(parts[0])
+                # Flush trailing partial line first
+                if buffer:
+                    yield buffer
+                # Then check for errors
+                if returncode not in ok_codes:
+                    raise make_pipe_error(
+                        f"{error_prefix}: {cmd}",
+                        cmd=cmd,
+                        returncode=returncode,
+                        stderr=stderr_buf,
+                    )
+                break
+            elif stream_name == "stdout":
+                buffer += chunk
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    yield line
+            elif stream_name == "stderr":
+                if len(stderr_buf) < _STDERR_CAP:
+                    stderr_buf += chunk
+    finally:
+        await bash.close()
 
 
 def cat(*paths: str | Path, encoding: str = "utf-8") -> Stream:
@@ -61,8 +111,6 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
     meta = {"returncode": 0, "stderr": "", "cmd": cmd}
 
     async def _gen() -> AsyncIterator[str]:
-        from nemo_oo_agents.tools._bash_session import BashSession
-
         bash = BashSession(cwd=cwd or ".")
         await bash.start()
         try:
@@ -72,6 +120,10 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
                     parts = chunk.split(",")
                     returncode = int(parts[0])
                     meta["returncode"] = returncode
+                    # Flush trailing partial line first
+                    if buffer:
+                        yield buffer
+                    # Then check for errors
                     if check and returncode != 0:
                         raise make_pipe_error(
                             f"Command failed: {cmd}",
@@ -79,9 +131,6 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
                             returncode=returncode,
                             stderr=meta["stderr"],
                         )
-                    # Flush any remaining partial line
-                    if buffer:
-                        yield buffer
                     break
                 elif stream_name == "stdout":
                     buffer += chunk
@@ -89,7 +138,8 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
                         line, buffer = buffer.split("\n", 1)
                         yield line
                 elif stream_name == "stderr":
-                    meta["stderr"] += chunk
+                    if len(meta["stderr"]) < _STDERR_CAP:
+                        meta["stderr"] += chunk
         finally:
             await bash.close()
 
@@ -99,9 +149,6 @@ def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None 
 def arun(shell_tools, cmd: str, *, timeout: float = 30.0, check: bool = True) -> Stream:
     """
     Stream subprocess output line-by-line as it arrives, using ShellTools.run_stream().
-
-    This is the true streaming source — lines are yielded as the subprocess emits them,
-    no buffering of entire output.
 
     Args:
         shell_tools: A ShellTools instance (e.g. self.shell).
@@ -116,7 +163,6 @@ def arun(shell_tools, cmd: str, *, timeout: float = 30.0, check: bool = True) ->
 
     async def _gen() -> AsyncIterator[str]:
         buffer = ""
-        returncode = 0
         async for event in shell_tools.run_stream(cmd, timeout=timeout):
             if hasattr(event, "text"):
                 if event.kind == "stdout":
@@ -125,16 +171,14 @@ def arun(shell_tools, cmd: str, *, timeout: float = 30.0, check: bool = True) ->
                         line, buffer = buffer.split("\n", 1)
                         yield line
             else:
-                returncode = event.returncode
                 # Flush remaining partial line
                 if buffer:
                     yield buffer
-                    buffer = ""
-                if check and returncode != 0:
+                if check and event.returncode != 0:
                     raise make_pipe_error(
                         f"Command failed: {cmd}",
                         cmd=cmd,
-                        returncode=returncode,
+                        returncode=event.returncode,
                     )
 
     return Stream(_gen(), _steps=[f"arun({cmd!r})"])
@@ -155,12 +199,12 @@ def find(
     Walk a directory tree and stream matching paths via ripgrep (non-blocking).
 
     Uses `rg --files` for fast, .gitignore-aware directory traversal.
-    Streams results line-by-line from the subprocess.
+    Streams results line-by-line from BashSession.
 
     Args:
         root: Starting directory.
         name: Glob pattern for file name matching (e.g. "*.py").
-        type: "f" for files only, "d" for dirs only (dirs not supported by rg, falls back to os.walk).
+        type: "f" for files only, "d" for dirs only (falls back to os.walk).
         pattern: Regex pattern to match full path (applied as Python post-filter).
         exclude: Glob patterns to exclude (e.g. ["*.pyc", "vendor/*"]).
         max_depth: Maximum depth to recurse.
@@ -226,43 +270,14 @@ def find(
     cmd = " ".join(_shell_quote(a) for a in args)
 
     async def _gen() -> AsyncIterator[str]:
-        from nemo_oo_agents.tools._bash_session import BashSession
-
-        bash = BashSession()
-        await bash.start()
-        try:
-            buffer = ""
-            stderr_buf = ""
-            returncode = 0
-            async for stream_name, chunk in bash.run_stream(cmd, timeout=30.0):
-                if stream_name == "__done__":
-                    parts = chunk.split(",")
-                    returncode = int(parts[0])
-                    if buffer:
-                        line = buffer.strip()
-                        if line and (not regex or regex.search(line)):
-                            yield line
-                    # rg --files returns 1 if no files found — not an error
-                    if returncode not in (0, 1):
-                        raise make_pipe_error(
-                            f"find failed: {cmd}",
-                            cmd=cmd,
-                            returncode=returncode,
-                            stderr=stderr_buf,
-                        )
-                    break
-                elif stream_name == "stdout":
-                    buffer += chunk
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        if line:
-                            if regex and not regex.search(line):
-                                continue
-                            yield line
-                elif stream_name == "stderr":
-                    stderr_buf += chunk
-        finally:
-            await bash.close()
+        async for line in _stream_bash_lines(
+            cmd, timeout=30.0,
+            ok_codes=(0, 1),  # rg --files returns 1 if no files found
+            error_prefix="find failed",
+        ):
+            if regex and not regex.search(line):
+                continue
+            yield line
 
     return Stream(_gen(), _steps=[f"find({str(root)!r})"])
 
@@ -304,7 +319,7 @@ def rg(
     """
     Search with ripgrep and stream matching lines as they arrive (non-blocking).
 
-    Uses the `rg` binary for high-performance regex search across files.
+    Uses the `rg` binary via BashSession for high-performance regex search.
     Respects .gitignore by default. Streams results line-by-line.
 
     Args:
@@ -356,37 +371,12 @@ def rg(
     cmd = " ".join(_shell_quote(a) for a in args)
 
     async def _gen() -> AsyncIterator[str]:
-        from nemo_oo_agents.tools._bash_session import BashSession
-
-        bash = BashSession()
-        await bash.start()
-        try:
-            buffer = ""
-            stderr_buf = ""
-            async for stream_name, chunk in bash.run_stream(cmd, timeout=30.0):
-                if stream_name == "__done__":
-                    parts = chunk.split(",")
-                    returncode = int(parts[0])
-                    if buffer:
-                        yield buffer
-                    # rg returns exit code 1 for "no matches" — not a failure
-                    if returncode not in (0, 1):
-                        raise make_pipe_error(
-                            f"rg failed: {cmd}",
-                            cmd=cmd,
-                            returncode=returncode,
-                            stderr=stderr_buf,
-                        )
-                    break
-                elif stream_name == "stdout":
-                    buffer += chunk
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        yield line
-                elif stream_name == "stderr":
-                    stderr_buf += chunk
-        finally:
-            await bash.close()
+        async for line in _stream_bash_lines(
+            cmd, timeout=30.0,
+            ok_codes=(0, 1),  # rg returns 1 for "no matches"
+            error_prefix="rg failed",
+        ):
+            yield line
 
     return Stream(_gen(), _steps=[f"rg({pattern!r})"])
 
