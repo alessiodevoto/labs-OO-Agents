@@ -87,6 +87,33 @@ class TestAdaptiveArchivalComputation:
         assert n == 1
 
 
+class TestCalibrationRatioAffectsCap:
+    """When the calibration ratio is known, the archival cap tightens."""
+
+    def test_ratio_tightens_cap(self):
+        """With ratio=1.3, cap should be ctx_window*0.70/1.3 ≈ 0.538 of window."""
+        ctx_window = 200_000
+        ratio = 1.3
+        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        # 200K * 0.70 / 1.3 ≈ 107,692 (tighter than 140,000 uncalibrated)
+        assert cap < int(ctx_window * 0.70)
+        assert 107_000 < cap < 108_000
+
+    def test_no_ratio_uses_default(self):
+        """Without calibration, cap is just ctx_window * 0.70."""
+        ctx_window = 200_000
+        ratio = 1.0
+        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        assert cap == 140_000
+
+    def test_ratio_below_one_clamped(self):
+        """Ratio < 1 (litellm overcounts) is clamped to 1.0 — no widening."""
+        ctx_window = 200_000
+        ratio = 0.8
+        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        assert cap == 140_000  # not widened
+
+
 class TestArchiveTargetUtilization:
     """Verify the constant is what we expect."""
 

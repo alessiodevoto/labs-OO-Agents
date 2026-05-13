@@ -628,9 +628,12 @@ class ActorRuntime:
         n_active = len(active_tags)
         if n_active == 0:
             return
-        # Use the conservative 70% cap — after an actual API error we want
-        # generous headroom before re-triggering.
-        cap = int(ctx_window * 0.70)
+        # Express the 70% budget in litellm-token terms.  When the
+        # calibration ratio is known (actual_api / litellm_estimate > 1),
+        # litellm undercounts — divide by the ratio so the cap in litellm
+        # tokens maps to the correct fraction of the real context window.
+        ratio = self._token_calibration_ratio or 1.0
+        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
         target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
         total_tok = stats.total_tokens
         events_tok = stats.events_tokens
