@@ -328,8 +328,7 @@ async def test_on_command_clear_cancels_agent_task() -> None:
     await session._on_command("/clear")
 
     assert fake_task.cancelled(), (
-        f"_agent_task not cancelled; done={fake_task.done()}, "
-        f"cancelled={fake_task.cancelled()}"
+        f"_agent_task not cancelled; done={fake_task.done()}, cancelled={fake_task.cancelled()}"
     )
     assert session._first_message is None, "_first_message not reset after /clear"
     session._swap_session_manager.assert_awaited_once_with(new_sm)
