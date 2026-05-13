@@ -2531,7 +2531,7 @@ class ActorRuntime:
                 provider_formatter=provider_formatter,
                 context_limit=effective_context_limit,
                 count_tokens=count_tokens,
-                pre_format_limit=tc.max_block_chars,
+                pre_format_limit=None,
                 event_format=tc.event_format,
                 model_context_window=getattr(llm_client, "context_window", None),
             )

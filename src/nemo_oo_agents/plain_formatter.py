@@ -19,10 +19,6 @@ from nemo_oo_agents.context_blocks.formatter import FORMAT_PLAIN, FormatType, XM
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
 
-# Default cap when no TruncationConfig is available (e.g. standalone use).
-# Matches TruncationConfig.max_block_chars default.
-
-
 class PlainBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]
     """Renders system blocks as XML (same as XMLBlockFormatter) but serializes
     conversation events as plain text with no XML wrapper.

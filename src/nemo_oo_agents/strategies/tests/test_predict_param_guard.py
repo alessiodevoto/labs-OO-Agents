@@ -102,168 +102,12 @@ class TestPredictParamGuard:
         strategy2._assert_param_sizes(call)  # must not raise
 
 
-class TestPredictPromptSizeGuard:
-    """PredictStrategy.execute raises when task prompt would be silently truncated.
-
-    max_block_chars caps how much of the Task event the LLM sees.  If the built
-    task prompt exceeds this limit, the input is silently cropped — PredictStrategy
-    must detect this and raise ValueError before adding the event.
-    """
-
-    @staticmethod
-    def _make_mock_runtime(max_block_chars: int):
-        """Create a full MockRuntime satisfying RuntimeServices with a custom truncation cap."""
-        from unittest.mock import MagicMock
-
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
-
-        _tc = TruncationConfig(max_block_chars=max_block_chars)
-
-        class _MockRuntime:
-            @property
-            def agent(self):
-                return MagicMock()
-
-            @property
-            def event_manager(self):
-                return MagicMock()
-
-            @property
-            def truncation_config(self):
-                return _tc
-
-            async def generate(self, *, tools=None, output_model=None, **kwargs):
-                raise NotImplementedError("generate() not needed for these tests")
-
-            async def execute_code(self, code, *, builtins=None, validate=True, **kwargs):
-                raise NotImplementedError("execute_code() not needed for these tests")
-
-            async def execute_nested(self, strat, call):
-                return await strat.execute(self, call)
-
-            def get_generation_id(self):
-                return "mock-id"
-
-            def get_parent_generation_id(self):
-                return None
-
-            async def expand_variables(self, template, extra_context=None, error_mode="show"):
-                import string
-
-                context = extra_context or {}
-                formatter = string.Formatter()
-                result_parts = []
-                for literal_text, field_name, format_spec, conversion in formatter.parse(template):
-                    result_parts.append(literal_text)
-                    if field_name is not None:
-                        try:
-                            value = eval(field_name, {}, context)  # noqa: S307
-                            if conversion == "r":
-                                value = repr(value)
-                            elif conversion == "s":
-                                value = str(value)
-                            result_parts.append(
-                                format(value, format_spec) if format_spec else str(value)
-                            )
-                        except Exception as e:
-                            if error_mode == "raise":
-                                raise
-                            result_parts.append(f"{{{field_name} | ERROR: {e}}}")
-                return "".join(result_parts)
-
-        return _MockRuntime()
-
-    @staticmethod
-    def _make_call(docstring: str, kwargs: dict):
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-
-        return CurrentCall(
-            id="test",
-            method_name="test_method",
-            decorator="agent",
-            docstring=docstring,
-            args=(),
-            kwargs=kwargs,
-            return_type=str,  # PredictStrategy requires a return type
-        )
-
-    @pytest.mark.asyncio
-    async def test_oversized_prompt_raises_before_adding_event(self):
-        """Task prompt exceeding max_block_chars must raise ValueError with clear message."""
-        big_docstring = "Analyze the following. " + "x" * 2000
-        call = self._make_call(big_docstring, {})
-        runtime = self._make_mock_runtime(max_block_chars=100)  # Too small
-
-        strategy = PredictStrategy()
-        with pytest.raises(ValueError, match="silently truncated") as exc_info:
-            await strategy.execute(runtime, call)  # type: ignore[arg-type]
-
-        error_msg = str(exc_info.value)
-        assert "test_method" in error_msg
-        assert "max_block_chars" in error_msg
-        assert "TruncationConfig" in error_msg
-
-    @pytest.mark.asyncio
-    async def test_error_message_names_the_method(self):
-        """Error message must include the method name."""
-        call = self._make_call("x" * 5000, {})
-        runtime = self._make_mock_runtime(max_block_chars=100)
-
-        strategy = PredictStrategy()
-        with pytest.raises(ValueError, match="test_method"):
-            await strategy.execute(runtime, call)  # type: ignore[arg-type]
-
-    @pytest.mark.asyncio
-    async def test_error_message_mentions_max_block_chars_value(self):
-        """Error message must include the max_block_chars value."""
-        call = self._make_call("x" * 5000, {})
-        runtime = self._make_mock_runtime(max_block_chars=750)
-
-        strategy = PredictStrategy()
-        with pytest.raises(ValueError, match="750"):
-            await strategy.execute(runtime, call)  # type: ignore[arg-type]
-
-    @pytest.mark.asyncio
-    async def test_small_prompt_passes_the_size_check(self):
-        """Task prompt within max_block_chars should NOT trigger the truncation guard.
-
-        The method will still fail later (no LLM), but NOT with the truncation guard error.
-        """
-        call = self._make_call("Classify the following text.", {"text": "hello world"})
-        runtime = self._make_mock_runtime(max_block_chars=100_000)
-
-        strategy = PredictStrategy()
-        with pytest.raises(Exception) as exc_info:
-            await strategy.execute(runtime, call)  # type: ignore[arg-type]
-        # The error must NOT be our truncation guard
-        assert "silently truncated" not in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_error_suggests_exact_limit_to_use(self):
-        """Error message should suggest a specific TruncationConfig value."""
-        call = self._make_call("x" * 500, {})
-        runtime = self._make_mock_runtime(max_block_chars=50)
-
-        strategy = PredictStrategy()
-        with pytest.raises(ValueError) as exc_info:
-            await strategy.execute(runtime, call)  # type: ignore[arg-type]
-
-        # Should mention TruncationConfig with max_block_chars= in the suggestion
-        assert "max_block_chars=" in str(exc_info.value)
-
-
 class TestPredictPromptSizeGuardImages:
     """Images on Task are repr=False — excluded from text rendering.
 
-    The guard fires solely on len(task_prompt), which is the exact same
-    value that PlainBlockFormatter would truncate at for a Task event.
     Image content blocks bypass the text truncation pipeline entirely —
     they are attached to the LLM message *after* formatting via the
     provider-level _append_images path, not through format_event.
-
-    Consequence: the guard is exact for the text portion regardless of
-    whether images are present.  There is no "XML wrapper overhead" gap
-    because format_event never includes the images field.
     """
 
     def test_task_images_excluded_from_plain_formatter(self):
@@ -301,37 +145,21 @@ class TestPredictPromptSizeGuardImages:
         assert formatted == prompt
         assert len(formatted) == len(prompt)
 
-    def test_guard_fires_on_text_regardless_of_images_being_tiny(self):
-        """Guard fires when task_prompt > max_block_chars even if images are small.
-
-        The guard correctly ignores image size — it checks text chars only.
-        Block-level head/tail truncation has been removed; format_event now
-        passes long prompts through verbatim. The guard at predict.py:185 is
-        what raises a clear error before the LLM sees the oversize prompt.
-        """
+    def test_long_prompt_with_images_passes_through_verbatim(self):
+        """format_event passes long prompts through verbatim regardless of images."""
         from nemo_oo_agents.events import Task
         from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
         long_prompt = "x" * 2000
         small_image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
         task = Task(prompt=long_prompt, images=[small_image])
-        max_block_chars = 500
 
-        # Guard condition: len(task_prompt) > max_block_chars → guard would fire
-        assert len(long_prompt) > max_block_chars
-
-        # format_event no longer head/tail-squashes — content passes through verbatim.
         formatted = PlainBlockFormatter().format_event(task)
         assert long_prompt in formatted  # full prompt present
-        assert "<truncated-output>" not in formatted  # legacy wrapper gone
         assert "image_url" not in formatted  # images still excluded from text
 
-    def test_no_gap_for_prompt_within_limit(self):
-        """When len(task_prompt) <= max_block_chars, format_event does NOT truncate.
-
-        This confirms the guard is tight: passing the guard guarantees no truncation
-        of the text content, even when images are attached.
-        """
+    def test_short_prompt_with_images_not_truncated(self):
+        """format_event does not truncate short prompts even when images are large."""
         from nemo_oo_agents.events import Task
         from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
@@ -341,11 +169,6 @@ class TestPredictPromptSizeGuardImages:
             "image_url": {"url": "data:image/png;base64," + "C" * 100_000},
         }
         task = Task(prompt=prompt, images=[big_image])
-        max_block_chars = 500
 
-        # Guard would pass: len(prompt) < max_block_chars
-        assert len(prompt) <= max_block_chars
-
-        # format_event does not truncate either
         formatted = PlainBlockFormatter().format_event(task)
         assert formatted == prompt  # no truncation

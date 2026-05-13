@@ -43,20 +43,15 @@ _TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 def truncating_pformat(
     obj: Annotated[Any, "Object to format"],
     *,
-    max_chars: Annotated[int | None, "Optional cap; only used to bound non-string OOM"] = None,
+    max_chars: Annotated[int | None, "Hard char cap on non-string rendering via TruncatingStringIO"] = None,
     **kwargs: Any,
 ) -> str:
     """Format *obj* as a string. Strings pass through verbatim; non-strings go
     through :func:`pformat` with the supplied structural kwargs.
 
     Per-value bounds (``max_string``, ``max_length``, ``max_depth``) come from
-    ``kwargs``. The legacy ``max_chars`` head/tail-squash mechanism has been
-    removed — block-level truncation is no longer applied here. Whole-block
-    eviction at context-assembly time (L4) handles overflow.
-
-    The ``max_chars`` parameter remains for backward compatibility but only
-    fires as a TruncatingStringIO OOM-safety cap on non-string rendering. It
-    no longer head/tail-truncates strings.
+    ``kwargs``.  ``max_chars`` is an independent hard cap on the total rendered
+    output for non-string objects via :class:`TruncatingStringIO`.
 
     Raises:
         ValueError: if ``max_chars`` is set and <= 0.
@@ -67,9 +62,6 @@ def truncating_pformat(
     if isinstance(obj, str):
         return obj
 
-    # Non-strings: delegate to _pformat. If max_chars is set, use a
-    # TruncatingStringIO as a hard OOM-safety net. Per-value bounds
-    # (max_string, max_length, max_depth) come from kwargs.
     if max_chars is None:
         from io import StringIO
 

@@ -28,11 +28,12 @@ class TestPlainEventContentBounded:
         )
 
     def test_large_list_value_is_bounded(self) -> None:
-        """Out[n] with a 1 M-element list must be bounded."""
+        """Out[n] with a 1 M-element list must be bounded when event_format is set."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
         from nemo_oo_agents.strategies.codeact_lite import plain_event_content
 
         event = self._make_output(list(range(1_000_000)))
-        result = plain_event_content(event)
+        result = plain_event_content(event, event_format=DEFAULT_TRUNCATION_CONFIG.event_format)
         assert "Out[1]:" in result
         assert len(result) < 1_000_000  # full repr would be ~7 MB
 
@@ -81,6 +82,7 @@ class TestPlainBlockFormatterBounded:
 
     def test_large_non_string_value_is_bounded(self) -> None:
         """A PythonOutput whose value is a huge list must produce bounded output."""
+        from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
         from nemo_oo_agents.events import PythonOutput, ResultStatus
         from nemo_oo_agents.plain_formatter import PlainBlockFormatter
 
@@ -93,5 +95,5 @@ class TestPlainBlockFormatterBounded:
             stderr="",
             value=list(range(500_000)),
         )
-        result = fmt.format_event(event)
+        result = fmt.format_event(event, event_format=DEFAULT_TRUNCATION_CONFIG.event_format)
         assert len(result) < 1_000_000

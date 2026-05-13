@@ -2,13 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Configuration for output truncation across the agent framework.
 
-Three layers of bounds, each with its own sub-config:
+Two layers of bounds:
 
 1. **Whole-context token budget** (optional, applied at assembly):
    ``max_context_tokens``, ``max_event_tokens``.
-2. **Per-block hard cap** (always applied at render time):
-   ``max_block_chars``.
-3. **Sub-configs by mechanism**:
+2. **Sub-configs by mechanism**:
    - ``capture`` (head/tail truncation of raw text streams via
      ``TruncatingStringIO`` — used for execute_python's stdout / stderr /
      error fields).
@@ -123,15 +121,11 @@ class TruncationConfig(BaseModel):
 
     See module docstring for the layering. The four sub-configs (``capture``,
     ``event_format``, ``prefill_format``, ``context_block_format``) cover the distinct mechanisms
-    / rendering moments; the top-level fields are cross-cutting (block cap,
-    token budgets).
+    / rendering moments; the top-level fields are cross-cutting (token budgets).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    max_block_chars: Annotated[
-        int | None, Field(description="Max chars rendered per block; None = unlimited")
-    ] = 20_000
     max_context_tokens: Annotated[int | None, Field(description="Total context token budget")] = (
         None
     )
@@ -153,8 +147,7 @@ class TruncationConfig(BaseModel):
     ] = 4_096
     capture: CaptureConfig = CaptureConfig()
     # Generous: rendered every turn, especially PythonOutput.value (the LLM
-    # needs to see what its code returned). Per-field budgets sized so a
-    # single value doesn't dominate the 20K block cap on its own.
+    # needs to see what its code returned).
     event_format: FormatConfig = FormatConfig(max_string=10_000, max_length=200, max_depth=5)
     # Tight: one-shot per method call; the agent author controls inputs.
     prefill_format: FormatConfig = FormatConfig(max_string=500, max_length=50, max_depth=4)
@@ -168,8 +161,6 @@ class TruncationConfig(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> "TruncationConfig":
         errors = []
-        if self.max_block_chars is not None and self.max_block_chars <= 0:
-            errors.append(f"max_block_chars must be > 0 or None, got {self.max_block_chars}")
         for name in ("max_context_tokens", "max_event_tokens"):
             v = getattr(self, name)
             if v is not None and v <= 0:
