@@ -444,3 +444,140 @@ class TestIPythonErrorFormatter:
         error = ValueError("test")
         result = formatter.format(error, None, line_offset=3)
         assert result == "CUSTOM: ValueError (offset=3)"
+
+
+class TestHeredocHint:
+    """Heredoc hint appended to SyntaxErrors that look like LLM-embedded bash heredocs.
+
+    See https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/199.
+    """
+
+    @staticmethod
+    def _compile_and_format(code: str) -> str:
+        try:
+            compile(code, "Cell In[1]", "exec")
+        except SyntaxError as e:
+            return format_error_for_llm(e, code)
+        raise AssertionError(f"expected SyntaxError compiling: {code!r}")
+
+    @staticmethod
+    def _assert_hint_present(result: str) -> None:
+        assert "heredoc" in result, f"expected 'heredoc' in output, got:\n{result}"
+        assert '"""' in result, f"expected triple-quote (Fix 1) in output, got:\n{result}"
+        assert "shell.write" in result, f"expected shell.write (Fix 2) in output, got:\n{result}"
+
+    @staticmethod
+    def _assert_hint_absent(result: str) -> None:
+        assert "heredoc" not in result, f"unexpected 'heredoc' in output:\n{result}"
+        assert "shell.write" not in result, f"unexpected shell.write in output:\n{result}"
+
+    # ----- Positive cases: one per trigger message -----
+
+    def test_hint_on_unterminated_string_literal(self):
+        """Canonical case: heredoc in a single-quoted string → unterminated string literal."""
+        code = 'shell.run("cat <<EOF\ncontent\nEOF")'
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "unterminated string literal" in result
+        self._assert_hint_present(result)
+
+    def test_hint_on_invalid_syntax_forgot_comma(self):
+        """Heredoc + implicit string concat shape → 'Perhaps you forgot a comma?'."""
+        code = 'shell.run("cat <<EOF" b)'
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "forgot a comma" in result
+        self._assert_hint_present(result)
+
+    def test_hint_on_line_continuation_character(self):
+        """Heredoc + stray backslash → 'unexpected character after line continuation character'."""
+        code = 'shell.run("cat <<EOF" \\xyz)'
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "line continuation character" in result
+        self._assert_hint_present(result)
+
+    # ----- Negative cases -----
+
+    def test_no_hint_when_trigger_msg_but_no_heredoc(self):
+        """Same trigger message (unterminated string literal), no heredoc marker → no hint."""
+        code = 'x = "hello'
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "unterminated string literal" in result
+        self._assert_hint_absent(result)
+
+    def test_no_hint_when_heredoc_marker_but_unrelated_msg(self):
+        """Source contains `<< 2` shaped tokens but Python emits bare 'invalid syntax' → no hint.
+
+        `x = << 2` triggers bare 'invalid syntax', which is not one of the three trigger messages.
+        """
+        code = "x = << 2"
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        # The hint must not fire on bare 'invalid syntax'
+        self._assert_hint_absent(result)
+
+    def test_no_hint_when_unrelated_syntax_error_with_heredoc_in_source(self):
+        """`'await' outside function` with `<<EOF` literally in the source → no hint.
+
+        Proves the gate is `msg ∈ TRIGGERS`, not just "source contains <<".
+        """
+        # `await` outside an async function — error msg is "'await' outside function",
+        # not one of the three triggers. The source still contains `<<EOF`.
+        code = 'await shell.run("<<EOF foo")'
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "await" in result.lower()
+        self._assert_hint_absent(result)
+
+    def test_no_hint_on_legitimate_bitshift_with_forgot_comma(self):
+        """Real bit-shift `a << foo` inside a call that forgot a comma → no hint (best-effort).
+
+        Reviewer flagged this as the regex's worst-case false positive: `<< foo` matches
+        the heredoc regex. The mitigation in this version is to require either a quote
+        before `<<` on the source line, OR a heredoc-shaped terminator on a later line.
+        A bare `func(a << foo b)` has neither, so no hint should be appended.
+        """
+        code = "func(a << foo b)"
+        result = self._compile_and_format(code)
+        assert "SyntaxError" in result
+        assert "forgot a comma" in result
+        self._assert_hint_absent(result)
+
+    def test_no_hint_when_heredoc_marker_is_on_different_line_than_error(self):
+        """Heredoc on a non-flagged line → no hint.
+
+        Documents the design: the hint requires the heredoc marker *and* a
+        preceding quote on the offending line (error.text). A heredoc marker
+        on some unrelated later line doesn't trigger the hint, because that
+        situation isn't the LLM-embedded-heredoc pattern we're targeting.
+        """
+        code = (
+            'shell.run("foo" "bar")\n'  # the offending line — Python flags missing comma
+            "something = 1\n"
+            "cat <<EOF\n"  # heredoc marker is here, line 3 — but bare shell, not embedded
+            "content\n"
+            "EOF"
+        )
+        error = SyntaxError("invalid syntax. Perhaps you forgot a comma?")
+        error.text = 'shell.run("foo" "bar")'
+        error.lineno = 1
+        error.offset = 17
+        error.filename = "Cell In[1]"
+
+        result = format_error_for_llm(error, code)
+        assert "SyntaxError" in result
+        self._assert_hint_absent(result)
+
+    # ----- Hint text shape -----
+
+    def test_hint_mentions_both_fixes(self):
+        """The hint surfaces both fix patterns explicitly."""
+        code = 'shell.run("cat <<EOF\ncontent\nEOF")'
+        result = self._compile_and_format(code)
+        # Fix 1: triple-quoted string
+        assert "triple-quoted" in result or '"""' in result
+        # Fix 2: write to file then bash it
+        assert "shell.write" in result
+        assert "bash" in result.lower()
