@@ -70,7 +70,10 @@ class TestArchivalOnContextErrorE2E:
         model_name = "openai/" + fixture_data["model"]
 
         llm = CompletionClient(
-            model=model_name, api_base=_API_BASE, api_key=api_key, temperature=0,
+            model=model_name,
+            api_base=_API_BASE,
+            api_key=api_key,
+            temperature=0,
         )
         if llm.context_window is None:
             llm._registry_config = {"context_window": ctx_window}
@@ -97,9 +100,7 @@ class TestArchivalOnContextErrorE2E:
         assert result1, "Phase 1 (initial): should succeed"
 
         ratio = agent.runtime._token_calibration_ratio
-        assert ratio is not None and ratio > 0, (
-            f"Calibration ratio should be learned, got {ratio}"
-        )
+        assert ratio is not None and ratio > 0, f"Calibration ratio should be learned, got {ratio}"
 
         # Now compute how many events we need for 95% of real context
         stats = agent.runtime._last_context_stats
@@ -114,7 +115,7 @@ class TestArchivalOnContextErrorE2E:
             # Add more events to reach 95%
             extra_95 = min(n_for_95 - n_current, len(all_events) - n_current)
             if extra_95 > 0:
-                _hydrate_events(agent, all_events[n_current:n_current + extra_95])
+                _hydrate_events(agent, all_events[n_current : n_current + extra_95])
 
                 # Verify this call still succeeds at ~95%
                 summary_events.clear()
@@ -141,7 +142,7 @@ class TestArchivalOnContextErrorE2E:
         assert extra_105 > 0, (
             f"Not enough fixture events to reach 105%: need {n_for_105}, have {len(all_events)}"
         )
-        _hydrate_events(agent, all_events[n_at_95:n_at_95 + extra_105])
+        _hydrate_events(agent, all_events[n_at_95 : n_at_95 + extra_105])
 
         n_events_before = len(list(agent.event_manager.keys()))
         summary_events.clear()

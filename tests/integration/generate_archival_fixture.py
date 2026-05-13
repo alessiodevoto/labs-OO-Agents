@@ -124,15 +124,20 @@ async def main():
 
     # Save metadata alongside the DB
     import json
+
     meta_path = FIXTURE_DIR / "archival_95pct_meta.json"
     with open(meta_path, "w") as f:
-        json.dump({
-            "model": _MODEL_NAME,
-            "context_window": ctx_window,
-            "target_fraction": _TARGET_FRACTION,
-            "total_tokens": stats.total_tokens,
-            "n_events": n_events,
-        }, f, indent=2)
+        json.dump(
+            {
+                "model": _MODEL_NAME,
+                "context_window": ctx_window,
+                "target_fraction": _TARGET_FRACTION,
+                "total_tokens": stats.total_tokens,
+                "n_events": n_events,
+            },
+            f,
+            indent=2,
+        )
 
     storage.close()
     print(f"\nFixture saved: {FIXTURE_DB}")

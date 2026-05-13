@@ -233,6 +233,7 @@ class TestTokenCounterRegression:
         # Context blocks must not exceed the configured context cap.
         assert stats.context_blocks_tokens <= stats.max_context_tokens
 
+
 class TestMaxOutputTokensBudget:
     """The safety net must account for ``max_output_tokens`` when computing
     the input budget.  With ``max_tokens=64000`` on a 131072-token window

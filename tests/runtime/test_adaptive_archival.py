@@ -31,23 +31,17 @@ class TestAdaptiveArchivalComputation:
         """Basic case: over budget, archives proportionally."""
         # cap=1000, target=600, total_tok=800 → tokens_to_shed=200
         # 10 events → avg=500/10=50 per event → need ceil(200/50)=4
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=800, events_tok=500, n_active=10
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=800, events_tok=500, n_active=10)
         assert n == 4
 
     def test_under_target_no_archival(self):
         """When total_tok <= target, no archival needed."""
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=500, events_tok=400, n_active=10
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=500, events_tok=400, n_active=10)
         assert n == 0
 
     def test_exactly_at_target(self):
         """When total_tok == target, no archival needed."""
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=600, events_tok=500, n_active=10
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=600, events_tok=500, n_active=10)
         assert n == 0
 
     def test_n_active_zero(self):
@@ -63,27 +57,21 @@ class TestAdaptiveArchivalComputation:
 
     def test_capped_at_n_active(self):
         """n_to_archive never exceeds n_active."""
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=950, events_tok=50, n_active=3
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=950, events_tok=50, n_active=3)
         assert n <= 3
 
     def test_large_tokens_to_shed(self):
         """When way over budget, archives aggressively but respects n_active cap."""
         # cap=1000, target=600, total_tok=950 → tokens_to_shed=350
         # 5 events, events_tok=250 → avg=50 → ceil(350/50)=7, min(7,5)=5
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=950, events_tok=250, n_active=5
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=950, events_tok=250, n_active=5)
         assert n == 5
 
     def test_small_overshoot(self):
         """Small overshoot archives just 1 event."""
         # cap=1000, target=600, total_tok=610 → tokens_to_shed=10
         # 10 events, events_tok=500 → avg=50 → ceil(10/50)=1
-        n = self._compute_n_to_archive(
-            cap=1000, total_tok=610, events_tok=500, n_active=10
-        )
+        n = self._compute_n_to_archive(cap=1000, total_tok=610, events_tok=500, n_active=10)
         assert n == 1
 
 

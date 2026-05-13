@@ -25,11 +25,13 @@ from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 class _ContextWindowExceededError(Exception):
     """Simulates litellm.BadRequestError wrapping ContextWindowExceededError."""
+
     pass
 
 
 class _FakeLLM(FakeLLMClient):
     _cw = 262_144
+
     @property
     def context_window(self):
         return self._cw
@@ -38,6 +40,7 @@ class _FakeLLM(FakeLLMClient):
 def _mk_llm(context_window=262_144):
     class _LLM(_FakeLLM):
         _cw = context_window
+
     llm = _LLM()
     llm.model = "gpt-4o"
     return llm
@@ -63,9 +66,7 @@ class TestPromptTokensRegex:
             "Please reduce the length of the input messages."
         )
         result = _parse_prompt_tokens(exc)
-        assert result == 1203158, (
-            f"Should extract 1203158 from NVIDIA gateway format, got {result}"
-        )
+        assert result == 1203158, f"Should extract 1203158 from NVIDIA gateway format, got {result}"
 
     def test_litellm_wrapped_nvidia_format(self):
         """litellm wraps: 'ContextWindowExceededError: ... request has N input tokens'."""
@@ -76,9 +77,7 @@ class TestPromptTokensRegex:
             "However, your request has 1203158 input tokens."
         )
         result = _parse_prompt_tokens(exc)
-        assert result == 1203158, (
-            f"Should handle litellm-wrapped NVIDIA format, got {result}"
-        )
+        assert result == 1203158, f"Should handle litellm-wrapped NVIDIA format, got {result}"
 
 
 class TestArchivalFiresOnContextError:
@@ -167,9 +166,7 @@ class TestArchivalFiresOnContextError:
         agent.runtime._token_calibration_ratio = 1.5
 
         # Error with NO parseable token count — some unknown provider format
-        error = _ContextWindowExceededError(
-            "context length exceeded: too many tokens in the input"
-        )
+        error = _ContextWindowExceededError("context length exceeded: too many tokens in the input")
 
         summary_events = []
         agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
@@ -190,9 +187,7 @@ class TestArchivalFiresOnContextError:
             _current_method_var.reset(method_token)
 
         # _parse_prompt_tokens should return None for this error
-        assert _parse_prompt_tokens(error) is None, (
-            "This error format should NOT be parseable"
-        )
+        assert _parse_prompt_tokens(error) is None, "This error format should NOT be parseable"
 
         # Archival should fire using the pre-existing ratio
         n_events_after = len(list(agent.event_manager.keys()))
@@ -201,6 +196,4 @@ class TestArchivalFiresOnContextError:
             f"{n_events_after} >= {n_events_before}. "
             f"Summary events: {len(summary_events)}"
         )
-        assert len(summary_events) >= 1, (
-            "Archival should emit Summary events"
-        )
+        assert len(summary_events) >= 1, "Archival should emit Summary events"

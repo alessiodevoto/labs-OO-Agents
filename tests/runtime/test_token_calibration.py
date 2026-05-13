@@ -27,6 +27,7 @@ class _CalibratingFakeLLM(FakeLLMClient):
 
     def count_tokens(self, text: str) -> int:
         import litellm
+
         return litellm.token_counter(model="anthropic/claude-3-5-sonnet-20240620", text=text)
 
 

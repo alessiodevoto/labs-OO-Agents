@@ -496,7 +496,9 @@ class ActorRuntime:
         self._token_calibration_ratio: float | None = None
 
     def _archive_on_context_error(
-        self, ctx_window: int | None, exc: BaseException | None = None,
+        self,
+        ctx_window: int | None,
+        exc: BaseException | None = None,
     ) -> None:
         """Archive oldest events after a ContextWindowExceededError from the API.
 
@@ -523,7 +525,9 @@ class ActorRuntime:
                 self._token_calibration_ratio = actual / stats.total_tokens
                 logger.info(
                     "bootstrapped calibration ratio from error: %d / %d = %.2f",
-                    actual, stats.total_tokens, self._token_calibration_ratio,
+                    actual,
+                    stats.total_tokens,
+                    self._token_calibration_ratio,
                 )
         # Express the 70% budget in litellm-token terms.  When the
         # calibration ratio is known (actual_api / litellm_estimate > 1),
@@ -745,7 +749,8 @@ class ActorRuntime:
                     # Always archive first — even if we can't reduce max_tokens,
                     # shedding events lets the retry (or caller's next attempt) succeed.
                     self._archive_on_context_error(
-                        getattr(llm_client, "context_window", None), exc=_cw_exc,
+                        getattr(llm_client, "context_window", None),
+                        exc=_cw_exc,
                     )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
@@ -799,7 +804,8 @@ class ActorRuntime:
                     # Always archive first — even if we can't reduce max_tokens,
                     # shedding events lets the retry (or caller's next attempt) succeed.
                     self._archive_on_context_error(
-                        getattr(llm_client, "context_window", None), exc=_cw_exc,
+                        getattr(llm_client, "context_window", None),
+                        exc=_cw_exc,
                     )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
@@ -844,10 +850,11 @@ class ActorRuntime:
             if isinstance(usage, dict):
                 actual_input = usage.get("prompt_tokens") or usage.get("input_tokens")
             else:
-                actual_input = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
+                actual_input = getattr(usage, "prompt_tokens", None) or getattr(
+                    usage, "input_tokens", None
+                )
             if actual_input and self._last_context_stats.total_tokens > 0:
                 self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
-
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -2560,9 +2567,7 @@ class ActorRuntime:
         if ctx_window and isinstance(messages, list) and messages:
             import litellm
 
-            total_tok = litellm.token_counter(
-                model=llm_client.model, messages=messages
-            )
+            total_tok = litellm.token_counter(model=llm_client.model, messages=messages)
             stats = stats.model_copy(
                 update={
                     "total_tokens": total_tok,
