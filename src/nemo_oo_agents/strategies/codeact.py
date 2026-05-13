@@ -922,9 +922,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         "Increase `max_tokens` in the model config "
                         "(16384+ recommended for reasoning models)."
                     )
-                feedback = await self._tool_use_reminder(
-                    runtime, reason="Empty response received."
-                )
+                feedback = await self._tool_use_reminder(runtime, reason="Empty response received.")
                 runtime.event_manager.add(Error(content=feedback))
 
         # Loop exhausted without success

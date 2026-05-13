@@ -13,7 +13,9 @@ from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 _TEST_LLM = FakeLLMClient()
 
 
-def _resp(content: str, tool_calls: list | None = None, finish_reason: str | None = None) -> LLMResponse:
+def _resp(
+    content: str, tool_calls: list | None = None, finish_reason: str | None = None
+) -> LLMResponse:
     """Create a test LLM response."""
     if finish_reason is None:
         finish_reason = "tool_calls" if tool_calls else "stop"
