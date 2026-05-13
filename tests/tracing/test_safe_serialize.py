@@ -60,7 +60,7 @@ class TestSafeSerialize:
         # Build a 500-level deep nested dict — well beyond any reasonable stack
         obj: dict = {}
         current = obj
-        for i in range(500):
+        for _i in range(500):
             current["nested"] = {}
             current = current["nested"]
         current["leaf"] = "value"
