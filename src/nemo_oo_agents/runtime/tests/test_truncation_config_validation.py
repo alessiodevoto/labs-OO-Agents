@@ -63,11 +63,12 @@ class TestTruncationConfigValidation:
         assert cfg.tail == 200
 
     def test_collects_multiple_errors(self) -> None:
-        """Top-level errors surface."""
+        """Multiple invalid fields surface all errors at once."""
         with pytest.raises(ValueError) as exc_info:
-            TruncationConfig(max_context_tokens=0)
+            TruncationConfig(max_context_tokens=0, max_event_tokens=-1)
         msg = str(exc_info.value)
         assert "max_context_tokens" in msg
+        assert "max_event_tokens" in msg
 
     def test_rejects_zero_context_tokens(self) -> None:
         with pytest.raises(ValueError, match="max_context_tokens"):
