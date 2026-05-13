@@ -1091,7 +1091,10 @@ def _extract_think_tags(content: str) -> tuple[str, str | None]:
     return content, None
 
 
-DEFAULT_CACHE_CONTROL_INJECTION_POINTS = [{"location": "message", "role": "system"}]
+DEFAULT_CACHE_CONTROL_INJECTION_POINTS = [
+    {"role": "system"},
+    {"role": "tool", "position": "last"},
+]
 
 
 # ============================================================================
@@ -1178,6 +1181,30 @@ class CompletionClient(UnifiedLLM):
             },
         }
 
+    @staticmethod
+    def _inject_cache_control_on_content(msg: dict) -> None:
+        """Add cache_control to the last content block of a message.
+
+        Anthropic's API requires cache_control on content blocks (not message level)
+        for non-system messages.  When content is a plain string, converts it to
+        the array-of-blocks format so cache_control can be attached.
+
+        Mutates ``msg`` in place.
+        """
+        content = msg.get("content")
+        if content is None:
+            msg["cache_control"] = {"type": "ephemeral"}
+        elif isinstance(content, str):
+            msg["content"] = [
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+            ]
+        elif isinstance(content, list) and len(content) > 0:
+            last_block = content[-1]
+            if isinstance(last_block, dict):
+                last_block["cache_control"] = {"type": "ephemeral"}
+        else:
+            msg["cache_control"] = {"type": "ephemeral"}
+
     def _inject_cache_control(
         self, messages: list[dict[str, Any]], injection_points: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -1188,26 +1215,66 @@ class CompletionClient(UnifiedLLM):
         This format also survives OpenAI SDK validation since the SDK only strips
         extra fields from content blocks, not from messages themselves.
 
+        Supports two injection modes:
+
+        1. **Role-based** (existing): marks ALL messages of a given role.
+           ``{"role": "system"}``
+
+        2. **Position-based** (new): marks only the last message of a given role.
+           ``{"role": "assistant", "position": "last"}``
+
+        Anthropic supports up to 4 cache breakpoints. Using both modes together
+        caches both the stable system prompt and the conversation history prefix::
+
+            [
+                {"role": "system"},                        # breakpoint 1
+                {"role": "assistant", "position": "last"}, # breakpoint 2
+            ]
+
         Args:
             messages: The message list to process.
-            injection_points: List of dicts with "role" key indicating which
-                messages should have cache_control added.
-                Example: [{"location": "message", "role": "system"}]
+            injection_points: List of dicts specifying where to add cache_control.
+                Each dict must have a "role" key. Optional "position" key with
+                value "last" restricts marking to only the last message of that role.
 
         Returns:
-            A shallow copy of messages with cache_control injected into matching messages.
+            A deep copy of messages with cache_control injected at breakpoints.
         """
         if not injection_points:
             return messages
 
-        roles_to_cache = {p["role"] for p in injection_points if "role" in p}
-        if not roles_to_cache:
+        # Separate role-based (mark all) from position-based (mark last only)
+        roles_to_cache_all: set[str] = set()
+        roles_to_cache_last: set[str] = set()
+        for p in injection_points:
+            role = p.get("role")
+            if not role:
+                continue
+            if p.get("position") == "last":
+                roles_to_cache_last.add(role)
+            else:
+                roles_to_cache_all.add(role)
+
+        if not roles_to_cache_all and not roles_to_cache_last:
             return messages
 
-        messages = [msg.copy() for msg in messages]
+        messages = [copy.deepcopy(msg) for msg in messages]
+
+        # Role-based: mark all messages of the specified roles
         for msg in messages:
-            if msg.get("role") in roles_to_cache:
+            if msg.get("role") in roles_to_cache_all:
                 msg["cache_control"] = {"type": "ephemeral"}
+
+        # Position-based: mark only the last message of each specified role.
+        # Uses content-block-level injection for compatibility with Anthropic's API:
+        # the cache_control must be on the last content block, not the message itself,
+        # for non-system messages to be recognized as cache breakpoints.
+        for role in roles_to_cache_last:
+            for msg in reversed(messages):
+                if msg.get("role") == role:
+                    self._inject_cache_control_on_content(msg)
+                    break
+
         return messages
 
     def call(

@@ -140,7 +140,12 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
             # buffer.start_completion() creates an empty CompletionState before
             # completions load, which races with the renderer: prompt_toolkit's
             # _get_menu_width calls max() on the empty list → ValueError.
-            _set_completions_sync(buffer)
+            try:
+                _set_completions_sync(buffer)
+            except (IndexError, ValueError):
+                # prompt_toolkit race: completion state accessed with empty list.
+                # Safe to ignore — the next keystroke will retry.
+                pass
 
     if not vi_mode:
         # Bind alphanumeric + path-relevant punctuation to maintain completion.
@@ -170,7 +175,10 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
 
             text = buffer.text[: buffer.cursor_position]
             if text.startswith("/") or text.startswith("!"):
-                _set_completions_sync(buffer)
+                try:
+                    _set_completions_sync(buffer)
+                except (IndexError, ValueError):
+                    pass
 
     # Always bind "/" — in vi mode only trigger completion when the buffer
     # already starts with "/" (i.e. we're already in a slash command), so that
