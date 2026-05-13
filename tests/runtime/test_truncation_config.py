@@ -15,7 +15,6 @@ class TestTruncationConfig:
         """Default config should have expected values."""
         config = TruncationConfig()
 
-        assert config.max_block_chars == 20_000
         assert config.capture.max_stdout == 50_000
         assert config.capture.max_stderr == 2_000
         assert config.capture.max_error == 10_000
@@ -35,12 +34,10 @@ class TestTruncationConfig:
     def test_custom_values(self):
         """Custom values should override defaults."""
         config = TruncationConfig(
-            max_block_chars=10_000,
             capture=CaptureConfig(max_stdout=100_000, max_stderr=30_000),
             event_format=FormatConfig(max_length=100, max_string=1000, max_depth=5),
         )
 
-        assert config.max_block_chars == 10_000
         assert config.capture.max_stdout == 100_000
         assert config.capture.max_stderr == 30_000
         assert config.event_format.max_length == 100
@@ -106,7 +103,6 @@ class TestTruncationConfig:
 
     def test_default_truncation_config_instance(self):
         """DEFAULT_TRUNCATION_CONFIG should exist and have defaults."""
-        assert DEFAULT_TRUNCATION_CONFIG.max_block_chars == 20_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_stdout == 50_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_stderr == 2_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_error == 10_000
@@ -118,7 +114,6 @@ class TestTruncationConfig:
         """All limits should be positive integers."""
         config = TruncationConfig()
 
-        assert config.max_block_chars > 0
         assert config.capture.max_stdout > 0
         assert config.capture.max_stderr > 0
         assert config.capture.max_error > 0
@@ -179,7 +174,6 @@ class TestMergeSemantics:
         """Partial override should only change specified fields, including
         across nested sub-configs (capture/value)."""
         base = TruncationConfig(
-            max_block_chars=10_000,
             capture=CaptureConfig(max_stdout=100_000, max_stderr=30_000),
             event_format=FormatConfig(max_length=100),
         )
@@ -187,7 +181,6 @@ class TestMergeSemantics:
 
         merged = base.merge_with(override)
 
-        assert merged.max_block_chars == 10_000
         assert merged.capture.max_stdout == 100_000
         assert merged.capture.max_stderr == 30_000
         assert merged.event_format.max_length == 200
@@ -249,9 +242,9 @@ class TestMergeSemantics:
 
     def test_explicit_default_value_overrides(self):
         """Explicitly setting a field to the default value still overrides."""
-        base = TruncationConfig(max_block_chars=10_000)
-        override = TruncationConfig(max_block_chars=20_000)
+        base = TruncationConfig(max_context_tokens=10_000)
+        override = TruncationConfig(max_context_tokens=20_000)
 
         merged = base.merge_with(override)
 
-        assert merged.max_block_chars == 20_000
+        assert merged.max_context_tokens == 20_000

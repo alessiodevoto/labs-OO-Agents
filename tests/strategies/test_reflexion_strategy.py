@@ -540,7 +540,7 @@ class TestReflexionStrategyResultFormatting:
         from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
         strategy = ReflexionStrategy()
-        tc = TruncationConfig(max_block_chars=1000)
+        tc = TruncationConfig()
         long_result = "x" * 3000
         formatted = strategy._format_result_for_reflection(long_result, tc)
 
