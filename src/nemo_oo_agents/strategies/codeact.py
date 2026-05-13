@@ -910,7 +910,21 @@ Standard Python builtins and agent instance (`self`) are available."""
                 )
                 # Remove the empty assistant event - APIs reject empty content
                 runtime.event_manager.remove(event_id)
-                feedback = await self._tool_use_reminder(runtime, reason="Empty response received.")
+                # Reasoning models that exhaust max_tokens produce empty output.
+                # Retrying won't help — abort immediately with an actionable message.
+                if response.finish_reason == "length":
+                    turn_state.is_final = True
+                    raise GenerationError(
+                        "Empty response: the model used all available output tokens "
+                        "on reasoning and had none left for a tool call. "
+                        "This typically means `max_tokens` is too low for a "
+                        "reasoning model (e.g. GPT-5.5, o-series). "
+                        "Increase `max_tokens` in the model config "
+                        "(16384+ recommended for reasoning models)."
+                    )
+                feedback = await self._tool_use_reminder(
+                    runtime, reason="Empty response received."
+                )
                 runtime.event_manager.add(Error(content=feedback))
 
         # Loop exhausted without success
