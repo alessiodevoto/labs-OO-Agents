@@ -275,8 +275,8 @@ def _clamp_messages_to_budget(
 # Shared collapse/archival helpers (L4 boundary + structured safety net)
 # ---------------------------------------------------------------------------
 
-# When the safety net fires, archive events until utilization drops to this fraction
-# of the token budget cap. Lower = more headroom before re-triggering.
+# When the LLM API returns a context-window error, archive events until utilization
+# drops to this fraction of the token budget cap. Lower = more headroom before re-triggering.
 _ARCHIVE_TARGET_UTILIZATION = 0.60
 
 
@@ -2638,13 +2638,7 @@ class ActorRuntime:
         messages = result.output
         stats = result.stats
         if ctx_window and isinstance(messages, list) and messages:
-            # When calibrated from prior API response, tighten the margin.
-            # Uncalibrated: 30% margin (conservative). Calibrated: 5% margin.
-            if self._token_calibration_ratio and self._token_calibration_ratio > 0:
-                # We know the real overhead ratio — only need 5% safety margin
-                default_cap = int(ctx_window * 0.92)
-            else:
-                default_cap = int(ctx_window * 0.70)
+            default_cap = int(ctx_window * 0.70)
             if max_output_tokens:
                 # 5 % margin covers litellm ↔ API tokenizer gap
                 margin = int(ctx_window * 0.05)
