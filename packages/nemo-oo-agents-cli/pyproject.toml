@@ -22,13 +22,6 @@ dependencies = [
     "pydantic>=2.5.0",
     # CLI/TUI config files
     "pyyaml>=6.0",
-    # AST-aware code analysis for RepoTools
-    "tree-sitter>=0.23.0",
-    "tree-sitter-python>=0.23.0",
-    "tree-sitter-javascript>=0.23.0",
-    "tree-sitter-typescript>=0.23.0",
-    "tree-sitter-go>=0.23.0",
-    "tree-sitter-rust>=0.23.0",
 ]
 
 [project.scripts]
@@ -38,6 +31,16 @@ nemo = "nemo_oo_agents_cli:main"
 sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
 
 [project.optional-dependencies]
+# AST-aware code analysis for RepoTools (tree-sitter grammars).
+# The CLI works without these — RepoTools falls back to regex.
+ast = [
+    "tree-sitter>=0.23.0",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-javascript>=0.23.0",
+    "tree-sitter-typescript>=0.23.0",
+    "tree-sitter-go>=0.23.0",
+    "tree-sitter-rust>=0.23.0",
+]
 # Data-science stack pre-loaded into the agent's REPL execution namespace
 # (np, pd, px, go, scipy, sklearn). Soft-imported via try/except in
 # nemo_oo_agents_cli.tui.agent — the CLI/TUI works without these too;

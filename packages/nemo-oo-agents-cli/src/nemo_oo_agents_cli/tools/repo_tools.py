@@ -251,13 +251,14 @@ class RepoTools(Skill):
     """Repository analysis and code intelligence.
 
     Tools for understanding codebases: file structure overviews,
-    repository maps showing key files and their symbols, and
-    cross-file symbol search.
+    repository maps showing key files and their symbols, cross-file
+    symbol search, and reference finding.
 
     Tools:
-        filemap(path)            — show file symbols (functions, classes)
-        repo_map(paths, depth)   — overview of key files and their exports
-        search_symbol(name)      — find function/class definitions across files
+        filemap(path)              — show file symbols (functions, classes)
+        repo_map(paths, depth)     — overview of key files and their exports
+        search_symbol(name)        — find function/class definitions across files
+        search_references(name)    — find call sites / usages of a symbol
     """
 
     __nosnapshot__ = True
@@ -605,7 +606,7 @@ class RepoTools(Skill):
     # Helpers
     # ------------------------------------------------------------------
     def _iter_source_files(self, root: Path, max_files: int = 500):
-        """Yield source files under root, respecting .gitignore patterns."""
+        """Yield source files under *root*, skipping non-source and common build dirs."""
         count = 0
         for fpath in sorted(root.rglob("*")):
             if count >= max_files:
