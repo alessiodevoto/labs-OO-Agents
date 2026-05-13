@@ -1091,34 +1091,6 @@ def _extract_think_tags(content: str) -> tuple[str, str | None]:
     return content, None
 
 
-def _inject_cache_control_on_content(msg: dict) -> None:
-    """Add cache_control to the last content block of a message.
-
-    Anthropic's API requires cache_control on content blocks (not message level)
-    for non-system messages.  When content is a plain string, converts it to
-    the array-of-blocks format so cache_control can be attached.
-
-    Mutates ``msg`` in place.
-    """
-    content = msg.get("content")
-    if content is None:
-        # Messages with only tool_calls and no content — mark at message level as fallback
-        msg["cache_control"] = {"type": "ephemeral"}
-    elif isinstance(content, str):
-        # Convert string → array-of-blocks with cache_control on the block
-        msg["content"] = [
-            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
-        ]
-    elif isinstance(content, list) and len(content) > 0:
-        # Already array format — mark the last block
-        last_block = content[-1]
-        if isinstance(last_block, dict):
-            last_block["cache_control"] = {"type": "ephemeral"}
-    else:
-        # Fallback: mark at message level
-        msg["cache_control"] = {"type": "ephemeral"}
-
-
 DEFAULT_CACHE_CONTROL_INJECTION_POINTS = [
     {"role": "system"},
     {"role": "tool", "position": "last"},
@@ -1209,6 +1181,30 @@ class CompletionClient(UnifiedLLM):
             },
         }
 
+    @staticmethod
+    def _inject_cache_control_on_content(msg: dict) -> None:
+        """Add cache_control to the last content block of a message.
+
+        Anthropic's API requires cache_control on content blocks (not message level)
+        for non-system messages.  When content is a plain string, converts it to
+        the array-of-blocks format so cache_control can be attached.
+
+        Mutates ``msg`` in place.
+        """
+        content = msg.get("content")
+        if content is None:
+            msg["cache_control"] = {"type": "ephemeral"}
+        elif isinstance(content, str):
+            msg["content"] = [
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+            ]
+        elif isinstance(content, list) and len(content) > 0:
+            last_block = content[-1]
+            if isinstance(last_block, dict):
+                last_block["cache_control"] = {"type": "ephemeral"}
+        else:
+            msg["cache_control"] = {"type": "ephemeral"}
+
     def _inject_cache_control(
         self, messages: list[dict[str, Any]], injection_points: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -1242,7 +1238,7 @@ class CompletionClient(UnifiedLLM):
                 value "last" restricts marking to only the last message of that role.
 
         Returns:
-            A shallow copy of messages with cache_control injected at breakpoints.
+            A deep copy of messages with cache_control injected at breakpoints.
         """
         if not injection_points:
             return messages
@@ -1276,7 +1272,7 @@ class CompletionClient(UnifiedLLM):
         for role in roles_to_cache_last:
             for msg in reversed(messages):
                 if msg.get("role") == role:
-                    _inject_cache_control_on_content(msg)
+                    self._inject_cache_control_on_content(msg)
                     break
 
         return messages

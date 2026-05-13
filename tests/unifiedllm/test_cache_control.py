@@ -278,7 +278,9 @@ class TestPositionBasedInjection:
         assert "cache_control" not in result[2]  # assistant (not last) - unchanged
         assert "cache_control" not in result[3]  # user
         # Last assistant: content converted to array with cache_control on the block
-        assert result[4]["content"] == [{"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}]
+        assert result[4]["content"] == [
+            {"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}
+        ]
         assert "cache_control" not in result[5]  # user (current turn)
 
     def test_combined_role_and_position(self, client):
@@ -298,12 +300,16 @@ class TestPositionBasedInjection:
 
         result = client._inject_cache_control(messages, injection_points)
 
-        assert result[0]["cache_control"] == {"type": "ephemeral"}  # system (role-based, message-level)
+        assert result[0]["cache_control"] == {
+            "type": "ephemeral"
+        }  # system (role-based, message-level)
         assert "cache_control" not in result[1]  # user
         assert "cache_control" not in result[2]  # assistant (not last)
         assert "cache_control" not in result[3]  # user
         # Last assistant: content-block-level injection
-        assert result[4]["content"] == [{"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}]
+        assert result[4]["content"] == [
+            {"type": "text", "text": "Response 2", "cache_control": {"type": "ephemeral"}}
+        ]
         assert "cache_control" not in result[5]  # user
 
     def test_no_message_of_role_is_noop(self, client):
@@ -332,7 +338,9 @@ class TestPositionBasedInjection:
         result = client._inject_cache_control(messages, injection_points)
 
         # Content-block-level injection on the assistant message
-        assert result[2]["content"] == [{"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}]
+        assert result[2]["content"] == [
+            {"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}
+        ]
         assert "cache_control" not in result[0]
         assert "cache_control" not in result[1]
         assert "cache_control" not in result[3]
@@ -380,7 +388,9 @@ class TestPositionBasedInjection:
 
         assert "cache_control" not in result[1]  # first user - unchanged
         # Last user: content-block-level injection
-        assert result[3]["content"] == [{"type": "text", "text": "Turn 2", "cache_control": {"type": "ephemeral"}}]
+        assert result[3]["content"] == [
+            {"type": "text", "text": "Turn 2", "cache_control": {"type": "ephemeral"}}
+        ]
 
 
 class TestDefaultIncludesPositionBased:
@@ -401,15 +411,38 @@ class TestDefaultIncludesPositionBased:
         with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = mock_response
 
-            await client.acall([
-                {"role": "system", "content": "You are helpful."},
-                {"role": "user", "content": "Do something"},
-                {"role": "assistant", "content": None, "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "run", "arguments": "{}"}}]},
-                {"role": "tool", "content": "first result", "tool_call_id": "tc1"},
-                {"role": "assistant", "content": None, "tool_calls": [{"id": "tc2", "type": "function", "function": {"name": "run", "arguments": "{}"}}]},
-                {"role": "tool", "content": "final result", "tool_call_id": "tc2"},
-                {"role": "user", "content": "Current turn"},
-            ], tools=[])
+            await client.acall(
+                [
+                    {"role": "system", "content": "You are helpful."},
+                    {"role": "user", "content": "Do something"},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "tc1",
+                                "type": "function",
+                                "function": {"name": "run", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "content": "first result", "tool_call_id": "tc1"},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "tc2",
+                                "type": "function",
+                                "function": {"name": "run", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "content": "final result", "tool_call_id": "tc2"},
+                    {"role": "user", "content": "Current turn"},
+                ],
+                tools=[],
+            )
 
             sent_messages = mock_acompletion.call_args[1]["messages"]
 
