@@ -30,14 +30,12 @@ _MODEL = os.environ.get(
 
 
 def _fill_events(agent, n_events: int, payload_words: int = 80):
-    """Add n_events tool-call + output pairs.
-
-    Each pair contributes roughly ``payload_words * 6`` tokens
-    (3 fields × 2 words→tokens overhead).
-    """
+    """Add n_events tool-call + output pairs."""
+    base = len(list(agent.event_manager.keys()))
     for i in range(n_events):
-        tc_id = f"call_{i}"
-        payload = f"data_{i} " * payload_words
+        idx = base + i
+        tc_id = f"call_{idx}"
+        payload = f"data_{idx} " * payload_words
         agent.event_manager.add(
             ToolCallEvent(
                 tool_call_id=tc_id,
@@ -53,7 +51,7 @@ def _fill_events(agent, n_events: int, payload_words: int = 80):
         agent.event_manager.add(
             PythonOutput(
                 tool_call_id=tc_id,
-                execution_count=i,
+                execution_count=idx,
                 stdout=payload,
                 stderr="",
                 execution_status=ResultStatus.COMPLETE,
@@ -62,7 +60,7 @@ def _fill_events(agent, n_events: int, payload_words: int = 80):
 
 
 async def _measure_tokens(agent, llm):
-    """Build messages and return the litellm-estimated total tokens."""
+    """Build messages and return the context stats."""
     method = type(agent).respond
     llm_token = _current_llm_var.set(llm)
     method_token = _current_method_var.set(method)
@@ -76,12 +74,26 @@ async def _measure_tokens(agent, llm):
     return agent.runtime._last_context_stats
 
 
+async def _fill_to_fraction(agent, llm, target_fraction: float, batch: int = 20):
+    """Add events until litellm-estimated tokens reach target_fraction of ctx_window."""
+    ctx_window = llm.context_window
+    target_tokens = int(ctx_window * target_fraction)
+
+    while True:
+        stats = await _measure_tokens(agent, llm)
+        if stats and stats.total_tokens >= target_tokens:
+            return stats
+        if len(list(agent.event_manager.keys())) > 10000:
+            pytest.skip(
+                f"Could not reach {target_fraction:.0%} ({target_tokens:,} tokens) "
+                f"after 10000 events (at {stats.total_tokens:,})"
+            )
+        _fill_events(agent, batch)
+
+
 @pytest.mark.integration
 class TestArchivalOnContextErrorE2E:
-    """E2E: fill context → succeed → overfill → error → archive → succeed.
-
-    Verifies the full lifecycle with a real LLM.
-    """
+    """E2E: fill to 95% → succeed → fill to 105% → fail → archive → succeed."""
 
     @pytest.mark.asyncio
     async def test_full_archival_lifecycle(self):
@@ -98,95 +110,86 @@ class TestArchivalOnContextErrorE2E:
 
         agent = A()
 
-        # ── Phase 1: Fill to ~60% of context window ─────────────────
-        # Add events in batches until we reach ~60% utilization.
-        target_tokens = int(ctx_window * 0.55)
-        batch = 30
-
-        while True:
-            _fill_events(agent, batch)
-            stats = await _measure_tokens(agent, llm)
-            if stats and stats.total_tokens >= target_tokens:
-                break
-            if len(list(agent.event_manager.keys())) > 5000:
-                pytest.skip(
-                    f"Could not reach {target_tokens:,} tokens after 5000 events "
-                    f"(at {stats.total_tokens:,})"
-                )
-
-        phase1_events = len(list(agent.event_manager.keys()))
-        phase1_tokens = stats.total_tokens
-
         # Subscribe to Summary events (emitted by archival)
         summary_events: list = []
         agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
 
-        # ── Phase 1 call: should succeed, no archival ───────────────
-        result1 = await agent.respond("Say hello in one word.")
-        assert result1, "Phase 1 call should return a response"
-        assert len(summary_events) == 0, (
-            f"Phase 1: no archival expected, got {len(summary_events)} Summary events"
+        # ── Phase 1: Fill to 95% of context window ──────────────────
+        stats_95 = await _fill_to_fraction(agent, llm, 0.95)
+        n_events_at_95 = len(list(agent.event_manager.keys()))
+
+        assert stats_95.total_tokens >= int(ctx_window * 0.90), (
+            f"Should be near 95%: {stats_95.total_tokens:,} < {int(ctx_window * 0.90):,}"
         )
 
-        # ── Phase 2: Overshoot the context window ───────────────────
-        # Fill enough events to push well past ctx_window so the LLM
-        # call actually fails with a context-window error.
-        # The proactive clamp (70%) will drop messages, but if the real
-        # token count exceeds the clamped budget (litellm undercounts),
-        # the API returns an error and archival fires.
-        overshoot_target = int(ctx_window * 1.5)
-        while True:
-            _fill_events(agent, batch, payload_words=120)
-            stats = await _measure_tokens(agent, llm)
-            if stats and stats.total_tokens >= overshoot_target:
-                break
-            if len(list(agent.event_manager.keys())) > 10000:
-                break  # enough — the clamp will take care of the rest
+        # Call the LLM — the proactive clamp (70%) drops messages for this
+        # call, but no events are archived. Call should succeed.
+        result1 = await agent.respond("Say hello in one word.")
+        assert result1, "Phase 1: call should succeed"
 
-        n_events_before_call = len(list(agent.event_manager.keys()))
+        assert len(summary_events) == 0, (
+            f"Phase 1: no archival expected (proactive clamp handles it), "
+            f"got {len(summary_events)} Summary events"
+        )
+        # Event count should not decrease (new events from respond() may be added)
+        n_after_phase1 = len(list(agent.event_manager.keys()))
+        assert n_after_phase1 >= n_events_at_95, (
+            f"Phase 1: events should not decrease: {n_after_phase1} < {n_events_at_95}"
+        )
+
+        # ── Phase 2: Fill to 105% of context window ─────────────────
+        stats_105 = await _fill_to_fraction(agent, llm, 1.05)
+        n_events_at_105 = len(list(agent.event_manager.keys()))
+
+        assert stats_105.total_tokens >= ctx_window, (
+            f"Should exceed ctx_window: {stats_105.total_tokens:,} < {ctx_window:,}"
+        )
+
         summary_events.clear()
 
-        # ── Phase 2 call: may fail → archive → retry → succeed ─────
-        # If the proactive clamp is tight enough, the call may succeed
-        # without an API error. That's OK — the clamp is doing its job.
-        # If it fails, the recovery + archival path fires.
+        # Call the LLM — context is over 100%. The proactive clamp
+        # (70%) drops a LOT of messages. If litellm's token estimate is
+        # accurate enough, the clamped request fits and succeeds. If the
+        # API sees more tokens than litellm estimated, it rejects →
+        # recovery fires → archival → retry.
         result2 = await agent.respond("Say goodbye in one word.")
-        assert result2, "Phase 2 call should eventually succeed (after recovery)"
+        assert result2, "Phase 2: call should eventually succeed"
 
-        n_events_after_call = len(list(agent.event_manager.keys()))
+        n_events_after = len(list(agent.event_manager.keys()))
 
         if len(summary_events) > 0:
-            # ── Archival fired — verify everything ──────────────────
+            # ── Archival fired — verify the invariants ──────────────
             ev = summary_events[0]
             assert "context-window API error" in ev.summary_text, (
-                f"Summary text should mention context-window API error, "
-                f"got: {ev.summary_text[:200]}"
+                f"Summary should mention API error: {ev.summary_text[:200]}"
             )
             assert ev.children_tags, "Summary must reference archived child tags"
 
             # Events should have decreased
-            assert n_events_after_call < n_events_before_call, (
-                f"Archival should reduce event count: "
-                f"{n_events_after_call} >= {n_events_before_call}"
+            assert n_events_after < n_events_at_105, (
+                f"Archival should reduce events: "
+                f"{n_events_after} >= {n_events_at_105}"
             )
 
-            # Verify the archival targeted ~60% utilization.
-            # Re-measure tokens after archival.
-            stats_after = await _measure_tokens(agent, llm)
-            cap = int(ctx_window * 0.70)
-            # If calibration ratio is known, cap is tighter
+            # Re-measure utilization after archival
+            stats_post = await _measure_tokens(agent, llm)
+
+            # The archival cap accounts for calibration ratio
             ratio = agent.runtime._token_calibration_ratio or 1.0
             effective_cap = int(ctx_window * 0.70 / max(ratio, 1.0))
-            target = int(effective_cap * _ARCHIVE_TARGET_UTILIZATION)
+            target_tok = int(effective_cap * _ARCHIVE_TARGET_UTILIZATION)
 
-            # Allow 20% tolerance — token estimates are imprecise
-            assert stats_after.total_tokens <= target * 1.20, (
-                f"After archival, tokens ({stats_after.total_tokens:,}) should be "
-                f"near 60% target ({target:,}) ± 20%"
+            # After archival, utilization should be near the 60% target.
+            # Allow generous tolerance: events added by respond() itself
+            # and imprecise token counting shift the exact number.
+            assert stats_post.total_tokens <= target_tok * 1.50, (
+                f"After archival, tokens ({stats_post.total_tokens:,}) "
+                f"should be near 60% target ({target_tok:,}) — too high"
             )
         else:
-            # Proactive clamp was sufficient — no API error, no archival.
-            # Verify the stats show the clamp working.
+            # ── Proactive clamp was sufficient ──────────────────────
+            # The 70% clamp dropped enough messages that the API didn't
+            # reject. No archival expected. This is valid — verify.
             stats2 = agent.runtime._last_context_stats
             assert stats2 is not None
             cap = int(ctx_window * 0.70)
@@ -195,11 +198,9 @@ class TestArchivalOnContextErrorE2E:
                 f"{stats2.total_tokens:,} > {cap:,}"
             )
 
-        # ── Phase 3: Verify calibration ratio was learned ───────────
-        # After successful API calls, the runtime should have stored
-        # the calibration ratio from response.usage.
+        # ── Calibration ratio should be learned ─────────────────────
+        # After at least one successful API call, response.usage should
+        # have been extracted and the ratio computed.
         ratio = agent.runtime._token_calibration_ratio
         if ratio is not None:
             assert ratio > 0, f"Calibration ratio should be positive, got {ratio}"
-            # Typical: litellm undercounts by 20-60%, so ratio > 1.0
-            # But some models may overcount, so just check > 0.
