@@ -784,7 +784,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                             content=(
                                 f"Removed LLM output (text-only stop, routing to return_result): "
                                 f"finish_reason={response.finish_reason!r}, "
-                                f"content({len(_text)} chars)={_text[:2000]!r}"
+                                f"content({len(_text)} chars)={_text!r}"
                             )
                         )
                     )
@@ -842,7 +842,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                             content=(
                                 f"Removed LLM output (text-only, converting to synthetic reasoning): "
                                 f"finish_reason={response.finish_reason!r}, "
-                                f"content({len(_text)} chars)={_text[:2000]!r}"
+                                f"content({len(_text)} chars)={_text!r}"
                             )
                         )
                     )
