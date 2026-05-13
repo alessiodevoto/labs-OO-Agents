@@ -852,6 +852,9 @@ class ActorRuntime:
                         ctx.params.get("max_tokens"),
                         _reduced,
                     )
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None)
+                    )
                     ctx.params["max_tokens"] = _reduced
                     ctx = await em.run_middleware("llm_call", ctx, _core_llm)
                 response = ctx.response
@@ -894,6 +897,9 @@ class ActorRuntime:
                         _reduced,
                         _parse_prompt_tokens(_cw_exc),
                         getattr(llm_client, "context_window", None),
+                    )
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None)
                     )
                     _recovery_kw = {**kwargs, "max_tokens": _reduced}
                     response = await llm_client.acall(

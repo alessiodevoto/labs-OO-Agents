@@ -230,12 +230,11 @@ class TestStructuredPayloadSafetyNet:
         finally:
             _current_llm_var.reset(token)
 
-        # Clamp path must emit a Summary with context-window details.
-        assert len(summary_events) >= 1, "clamp must emit a Summary event"
-        ev = summary_events[0]
-        assert ev.summary_text is not None
-        assert "hit context window limit" in ev.summary_text
-        assert ev.children_tags, "summary must reference archived child tags"
+        # Clamp drops messages but does NOT archive events — archival is
+        # deferred until an actual ContextWindowExceededError from the API.
+        assert len(summary_events) == 0, (
+            "clamp must NOT archive events (archival only on API context-window error)"
+        )
 
     @pytest.mark.asyncio
     async def test_per_call_llm_override_is_honored(self):

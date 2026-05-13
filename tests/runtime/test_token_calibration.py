@@ -74,7 +74,7 @@ class TestTokenCalibration:
             )
 
         # Before any LLM call, ratio should be None
-        runtime = agent._runtime
+        runtime = agent.runtime
         assert runtime._token_calibration_ratio is None
 
         # Trigger an LLM call
@@ -105,7 +105,7 @@ class TestTokenCalibration:
                 ...
 
         agent = A()
-        runtime = agent._runtime
+        runtime = agent.runtime
 
         # Simulate having a calibration ratio (as if a prior call set it)
         runtime._token_calibration_ratio = 1.63
@@ -169,7 +169,7 @@ class TestTokenCalibrationEdgeCases:
                 ...
 
         agent = A()
-        runtime = agent._runtime
+        runtime = agent.runtime
         assert runtime._token_calibration_ratio is None
 
     def test_ratio_not_set_when_stats_missing(self):
@@ -182,6 +182,6 @@ class TestTokenCalibrationEdgeCases:
                 ...
 
         agent = A()
-        runtime = agent._runtime
+        runtime = agent.runtime
         assert runtime._last_context_stats is None
         assert runtime._token_calibration_ratio is None
