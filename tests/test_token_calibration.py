@@ -120,8 +120,6 @@ class TestUpdateTokenCalibration:
                 ],
             }
         ]
-        _update_token_calibration(
-            "gpt-4o", messages, {"prompt_tokens": 30, "completion_tokens": 5}
-        )
+        _update_token_calibration("gpt-4o", messages, {"prompt_tokens": 30, "completion_tokens": 5})
         ratio = _token_calibration.ratio("gpt-4o")
         assert ratio > 0  # didn't crash on multipart
