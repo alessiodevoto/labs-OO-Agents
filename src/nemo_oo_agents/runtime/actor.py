@@ -131,48 +131,6 @@ warnings.filterwarnings(
 )
 
 
-def _schemas_for_budget(tools: list[Any]) -> list[dict[str, Any]]:
-    """Convert a mixed list of ``Tool`` objects / raw schema dicts to the
-    OpenAI function-schema dicts ``litellm.token_counter`` understands.
-
-    Used by ``_build_messages`` to give the safety net a view of the
-    tool-schema cost. Non-raising: anything we can't convert falls back
-    to an empty stub so the count keeps working.
-    """
-    out: list[dict[str, Any]] = []
-    for tool in tools:
-        if isinstance(tool, dict):
-            out.append(tool)
-            continue
-        name = getattr(tool, "name", None)
-        desc = getattr(tool, "description", None)
-        get_params = getattr(tool, "get_parameter_schema", None)
-        if name and callable(get_params):
-            try:
-                out.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": name,
-                            "description": desc or "",
-                            "parameters": get_params(),
-                        },
-                    }
-                )
-                continue
-            except Exception:  # noqa: BLE001
-                pass
-        # Unknown shape — fall back to an empty stub so the counter doesn't
-        # raise. Under-counting here is preferable to breaking the pipeline.
-        out.append(
-            {
-                "type": "function",
-                "function": {"name": str(name or "unknown"), "description": "", "parameters": {}},
-            }
-        )
-    return out
-
-
 def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     """Auto-select provider formatter based on LLM client type.
 
@@ -194,89 +152,13 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
     return default_formatter
 
 
-def _clamp_messages_to_budget(
-    messages: list[dict[str, Any]],
-    budget: int,
-    model: str,
-    *,
-    tool_schemas: list[dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, Any]], int, int, int]:
-    """Drop oldest non-system messages until structured tokens fit ``budget``.
-
-    Uses ``litellm.token_counter`` to measure the structured payload (the
-    same counter the API will use). Single O(n) walk from newest backward.
-    System messages are always kept.
-
-    When ``tool_schemas`` is provided, it is forwarded as ``tools=…`` to
-    ``litellm.token_counter`` so the tool-schema cost is accounted for in
-    the budget (issue #133 — the safety net previously ignored tools and
-    was short by exactly the schema size on every call).
-
-    Returns ``(clamped_messages, total_tokens, events_tokens, dropped)``
-    where ``total_tokens`` is the post-clamp structured count, ``events_tokens``
-    is that minus the system-message share, and ``dropped`` is how many
-    non-system messages were removed.
-    """
-    try:
-        import litellm
-    except ImportError:
-        return messages, 0, 0, 0
-
-    # ``tools=…`` is the kwarg litellm exposes; collapsing to None avoids
-    # passing an empty list when we know we have nothing to forward.
-    tools_kw: dict[str, Any] = {"tools": tool_schemas} if tool_schemas else {}
-
-    system = [m for m in messages if m.get("role") == "system"]
-    rest = [m for m in messages if m.get("role") != "system"]
-    # Tools live at the request level, not inside any one message, so we
-    # attribute their cost to the system-message budget (they aren't part
-    # of ``rest`` and we never drop them).
-    system_cost = (
-        int(litellm.token_counter(model=model, messages=system, **tools_kw))
-        if system or tool_schemas
-        else 0
-    )
-
-    # Fast path: already fits.
-    total = int(litellm.token_counter(model=model, messages=messages, **tools_kw))
-    if total <= budget:
-        return messages, total, max(0, total - system_cost), 0
-
-    available = budget - system_cost
-    if available <= 0:
-        # System alone exceeds budget — nothing we can do here; let the
-        # API surface the error.
-        return messages, total, max(0, total - system_cost), 0
-
-    # Walk newest → oldest, keep as long as we fit.
-    running = 0
-    keep_from = len(rest)
-    for i in range(len(rest) - 1, -1, -1):
-        cost = int(litellm.token_counter(model=model, messages=[rest[i]]))
-        if running + cost > available:
-            break
-        running += cost
-        keep_from = i
-
-    dropped = keep_from
-    logger.warning(
-        "context-window safety net: dropped %d oldest message(s) "
-        "(structured total %d > budget %d → keeping %d, sum=%d)",
-        dropped,
-        total,
-        budget,
-        len(rest) - dropped,
-        system_cost + running,
-    )
-    return system + rest[keep_from:], system_cost + running, running, dropped
-
-
 # ---------------------------------------------------------------------------
-# Shared collapse/archival helpers (L4 boundary + structured safety net)
+# Shared collapse/archival helpers (L4 boundary + error-driven archival)
 # ---------------------------------------------------------------------------
 
-# Archive 25% more than the drop count to avoid re-hitting the boundary next turn.
-_ARCHIVE_HYSTERESIS = 1.25
+# When the LLM API returns a context-window error, archive events until utilization
+# drops to this fraction of the token budget cap. Lower = more headroom before re-triggering.
+_ARCHIVE_TARGET_UTILIZATION = 0.60
 
 
 def _collapse_oldest(
@@ -317,7 +199,7 @@ _MIN_RECOVERY_OUTPUT_TOKENS = 1024
 
 
 _PROMPT_TOKENS_RE = _re.compile(
-    r"prompt[^0-9]*(?:contains?\s+(?:at\s+least\s+)?)?(\d[\d,]*)\s*(?:input\s+)?tokens",
+    r"(?:prompt|request)[^0-9]*(?:contains?|has)\s+(?:at\s+least\s+)?(\d[\d,]*)\s*(?:input\s+)?tokens",
     _re.IGNORECASE,
 )
 
@@ -608,6 +490,86 @@ class ActorRuntime:
         # asyncio.gather on the same agent, the last write wins. For per-task
         # isolation, read stats from the on_messages_built hook's context_stats kwarg.
         self._last_context_stats: ContextWindowStats | None = None
+        # Token calibration: ratio of actual API tokens to litellm estimate.
+        # Learned from response.usage.input_tokens after each successful LLM call.
+        # Used by _archive_on_context_error to compute accurate archival targets.
+        self._token_calibration_ratio: float | None = None
+
+    def _archive_on_context_error(
+        self,
+        ctx_window: int | None,
+        exc: BaseException | None = None,
+    ) -> None:
+        """Archive oldest events after a ContextWindowExceededError from the API.
+
+        Only called when the LLM actually rejects the request as too large.
+        Uses the last context stats to estimate how many events to shed.
+
+        If ``exc`` is provided, extracts the prompt token count from the error
+        message to bootstrap the calibration ratio (actual_api / litellm_estimate).
+        This handles the cold-start case where no successful call has occurred yet.
+        """
+        stats = self._last_context_stats
+        if not stats or not ctx_window:
+            return
+        active_tags = list(self.event_manager.keys())
+        n_active = len(active_tags)
+        if n_active == 0:
+            return
+        # Bootstrap calibration ratio from the error's prompt token count.
+        # On the first call there's no prior successful response to learn from,
+        # so we extract the real token count from the error message itself.
+        if exc and not self._token_calibration_ratio and stats.total_tokens > 0:
+            actual = _parse_prompt_tokens(exc)
+            if actual and actual > 0:
+                self._token_calibration_ratio = actual / stats.total_tokens
+                logger.info(
+                    "bootstrapped calibration ratio from error: %d / %d = %.2f",
+                    actual,
+                    stats.total_tokens,
+                    self._token_calibration_ratio,
+                )
+        # Express the 70% budget in litellm-token terms.  When the
+        # calibration ratio is known (actual_api / litellm_estimate > 1),
+        # litellm undercounts — divide by the ratio so the cap in litellm
+        # tokens maps to the correct fraction of the real context window.
+        ratio = self._token_calibration_ratio or 1.0
+        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
+        total_tok = stats.total_tokens
+        tokens_to_shed = max(0, total_tok - target_tok)
+        if tokens_to_shed == 0:
+            return
+        # Use litellm-scale for both: estimate per-event tokens as
+        # (total - context_blocks) / n_active so numerator and denominator
+        # are in the same scale.
+        events_litellm_tok = max(0, total_tok - stats.context_blocks_tokens)
+        avg_event_tok = events_litellm_tok / max(1, n_active)
+        n_to_archive = min(
+            int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
+            n_active,
+        )
+        if n_to_archive > 0:
+            summary_text = (
+                f"context-window API error: total_tokens={total_tok:,}, "
+                f"cap={cap:,}, archiving {n_to_archive} events to reach "
+                f"{_ARCHIVE_TARGET_UTILIZATION:.0%} utilization"
+            )
+            _collapse_oldest(
+                self.event_manager,
+                active_tags,
+                n_to_archive,
+                summary_text,
+                log_prefix="context-error-archival",
+            )
+            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
+
+            hm = get_harness_metrics()
+            if isinstance(hm, HarnessMetrics):
+                hm.context_limits_events_collapsed += n_to_archive
+                hm.context_limits_tokens_archived += n_to_archive * (
+                    events_litellm_tok // max(1, n_active)
+                )
 
     @property
     def _agent_call_stack(self) -> tuple[str | None, ...]:
@@ -722,10 +684,9 @@ class ActorRuntime:
             raise RuntimeError("generate() called with no current method context")
 
         # Build messages from context + events (timers inside _build_messages).
-        # The structured-payload safety net inside _build_messages clamps
-        # against ``llm.context_window`` × 0.70 and now accounts for tool
-        # schemas too (issue #133 — previously they were ignored, leaving
-        # the safety net short by the full tool-schema cost).
+        # No proactive clamping — recovery is error-driven. If the API rejects
+        # with ContextWindowExceededError, the except handler archives events,
+        # rebuilds messages, and retries.
         messages = await self._build_messages(
             self._current_method,
             call_args=self._current_call.args if self._current_call else (),
@@ -785,6 +746,12 @@ class ActorRuntime:
                 except Exception as _cw_exc:
                     if not _is_context_window_error(_cw_exc):
                         raise
+                    # Always archive first — even if we can't reduce max_tokens,
+                    # shedding events lets the retry (or caller's next attempt) succeed.
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None),
+                        exc=_cw_exc,
+                    )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
                         getattr(llm_client, "context_window", None),
@@ -796,6 +763,15 @@ class ActorRuntime:
                         "context-window recovery (middleware): reducing max_tokens %s -> %d",
                         ctx.params.get("max_tokens"),
                         _reduced,
+                    )
+                    # Re-build messages after archival so the retry sees the
+                    # reduced event store.
+                    ctx.messages = await self._build_messages(
+                        self._current_method,
+                        call_args=self._current_call.args if self._current_call else (),
+                        call_kwargs=self._current_call.kwargs if self._current_call else {},
+                        tools=ctx.params.get("tools"),
+                        max_output_tokens=_reduced,
                     )
                     ctx.params["max_tokens"] = _reduced
                     ctx = await em.run_middleware("llm_call", ctx, _core_llm)
@@ -825,12 +801,20 @@ class ActorRuntime:
                 except Exception as _cw_exc:
                     if not _is_context_window_error(_cw_exc):
                         raise
+                    # Always archive first — even if we can't reduce max_tokens,
+                    # shedding events lets the retry (or caller's next attempt) succeed.
+                    self._archive_on_context_error(
+                        getattr(llm_client, "context_window", None),
+                        exc=_cw_exc,
+                    )
                     _reduced = _compute_reduced_max_tokens(
                         _cw_exc,
                         getattr(llm_client, "context_window", None),
                         kwargs.get("max_tokens"),
                     )
                     if _reduced is None:
+                        # Can't compute a reduced max_tokens, but archival already ran.
+                        # Re-raise so the caller (e.g. CodeAct) retries with fresh messages.
                         raise
                     logger.warning(
                         "context-window recovery: reducing max_tokens %s -> %d "
@@ -840,6 +824,16 @@ class ActorRuntime:
                         _parse_prompt_tokens(_cw_exc),
                         getattr(llm_client, "context_window", None),
                     )
+                    # Re-build messages after archival so the retry sees the
+                    # reduced event store. Retrying with the same messages would
+                    # fail again when input tokens exceed the context window.
+                    messages = await self._build_messages(
+                        self._current_method,
+                        call_args=self._current_call.args if self._current_call else (),
+                        call_kwargs=self._current_call.kwargs if self._current_call else {},
+                        tools=tools,
+                        max_output_tokens=_reduced,
+                    )
                     _recovery_kw = {**kwargs, "max_tokens": _reduced}
                     response = await llm_client.acall(
                         messages,
@@ -847,6 +841,20 @@ class ActorRuntime:
                         output_model=output_model,
                         **_recovery_kw,
                     )
+
+        # Calibrate token ratio from API response usage.
+        # The ground truth comes back as either an object (.prompt_tokens)
+        # or a dict ({"input_tokens": N}) depending on the provider.
+        usage = getattr(response, "usage", None)
+        if usage and self._last_context_stats:
+            if isinstance(usage, dict):
+                actual_input = usage.get("prompt_tokens") or usage.get("input_tokens")
+            else:
+                actual_input = getattr(usage, "prompt_tokens", None) or getattr(
+                    usage, "input_tokens", None
+                )
+            if actual_input and self._last_context_stats.total_tokens > 0:
+                self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage
@@ -2477,9 +2485,9 @@ class ActorRuntime:
         then render_context() to format them using the agent's configured
         block and provider formatters.
 
-        ``tools`` (optional) is used by the structured-payload safety net
-        so the tool-schema cost is included in the budget calculation
-        (otherwise the safety net systematically under-counts; see #133).
+        ``tools`` is currently unused after the proactive clamp removal
+        but kept in the signature for future use (e.g., tool-schema-aware
+        token counting).
         """
         hm = get_harness_metrics()
         with hm.timer("time_prepare_context"):
@@ -2547,83 +2555,22 @@ class ActorRuntime:
 
         set_journal_payload_from_messages(result.messages)
 
-        # Authoritative structured-payload safety net. The content-level
-        # counter used inside render_context misses ~60% of the tokens
-        # the API actually sees — JSON message wrappers (role/content-
-        # array/tool_use/tool_result) plus the ``<event_xxx>`` XML that
-        # ``format_message_content`` emits. Observed on a real session:
-        # 101K content → 163K structured (litellm) → 207K at Bedrock.
+        # Count the full structured message list with litellm.token_counter
+        # so the TUI ctx% and TokenBudgetSummarizer see the real payload size.
         #
-        # Count the final messages list with ``litellm.token_counter``
-        # and drop oldest non-system messages until total fits under
-        # the available input budget.  When ``max_output_tokens`` is
-        # known we subtract it (plus a 5 % margin for tokenizer
-        # divergence) from the context window; otherwise fall back to
-        # the old 70 % heuristic.
+        # No proactive clamping — if the context exceeds the model's limit,
+        # the API returns ContextWindowExceededError and the recovery path
+        # in generate() archives events, rebuilds messages, and retries.
         messages = result.output
         stats = result.stats
         if ctx_window and isinstance(messages, list) and messages:
-            default_cap = int(ctx_window * 0.70)
-            if max_output_tokens:
-                # 5 % margin covers litellm ↔ API tokenizer gap
-                margin = int(ctx_window * 0.05)
-                output_aware_cap = ctx_window - max_output_tokens - margin
-                if output_aware_cap <= 0:
-                    logger.warning(
-                        "max_output_tokens (%d) + margin (%d) >= ctx_window (%d); "
-                        "falling back to default cap — the LLM call will likely "
-                        "fail and the recovery path will reduce max_tokens",
-                        max_output_tokens,
-                        margin,
-                        ctx_window,
-                    )
-                    cap = default_cap
-                else:
-                    cap = min(default_cap, output_aware_cap)
-            else:
-                cap = default_cap
-            tool_schemas = _schemas_for_budget(tools) if tools else None
-            messages, total_tok, events_tok, dropped = _clamp_messages_to_budget(
-                messages, cap, llm_client.model, tool_schemas=tool_schemas
-            )
-            if dropped:
-                # Fraction of non-system messages dropped is a reasonable proxy
-                # for how much active history to archive. Add hysteresis so we
-                # don't immediately re-hit the boundary next turn.
-                active_tags = list(self.event_manager.keys())
-                rest_total = len(messages) + dropped  # non-system messages rendered
-                fraction = dropped / rest_total if rest_total else 0
-                n_to_archive = int(math.ceil(len(active_tags) * fraction * _ARCHIVE_HYSTERESIS))
-                if n_to_archive > 0:
-                    summary_text = (
-                        f"hit context window limit: before={stats.total_tokens:,}/{cap:,} total_tokens, "
-                        f"after={total_tok:,}/{cap:,}, dropped_messages={dropped}"
-                    )
+            import litellm
 
-                    _collapse_oldest(
-                        self.event_manager,
-                        active_tags,
-                        n_to_archive,
-                        summary_text,
-                        log_prefix="post-clamp",
-                    )
-                    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
-
-                    hm = get_harness_metrics()
-                    if isinstance(hm, HarnessMetrics):
-                        hm.context_limits_events_collapsed += n_to_archive
-                        hm.context_limits_tokens_archived += dropped * (
-                            stats.events_tokens // max(1, stats.events_count)
-                        )
-            # Always reflect the structured payload size in stats so both
-            # the TUI's ``ctx N%`` display and the TokenBudgetSummarizer
-            # see the real token count (litellm token_counter), not the
-            # content-level estimate which underreports by ~60%.
+            total_tok = litellm.token_counter(model=llm_client.model, messages=messages)
             stats = stats.model_copy(
                 update={
                     "total_tokens": total_tok,
-                    "events_tokens": events_tok,
-                    "events_dropped": stats.events_dropped + dropped,
+                    "events_tokens": stats.events_tokens,
                 }
             )
         self._last_context_stats = stats
