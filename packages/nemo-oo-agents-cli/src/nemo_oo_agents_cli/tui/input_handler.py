@@ -140,7 +140,12 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
             # buffer.start_completion() creates an empty CompletionState before
             # completions load, which races with the renderer: prompt_toolkit's
             # _get_menu_width calls max() on the empty list → ValueError.
-            _set_completions_sync(buffer)
+            try:
+                _set_completions_sync(buffer)
+            except (IndexError, ValueError):
+                # prompt_toolkit race: completion state accessed with empty list.
+                # Safe to ignore — the next keystroke will retry.
+                pass
 
     if not vi_mode:
         # Bind alphanumeric + path-relevant punctuation to maintain completion.
