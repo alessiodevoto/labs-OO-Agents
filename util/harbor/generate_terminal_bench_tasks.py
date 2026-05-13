@@ -24,15 +24,14 @@ from typing import Any
 
 import yaml
 
-_REWARD_LOGGING_SUFFIX = """
-_EXIT_CODE=$?
-if [ $_EXIT_CODE -eq 0 ]; then
-    echo 1 > /logs/verifier/reward.txt
-else
-    echo 0 > /logs/verifier/reward.txt
-fi
-exit $_EXIT_CODE
-"""
+# Injected immediately after the shebang line so it fires on ANY exit, even
+# when set -e is active (suffix-based capture is unreachable after set -e exits).
+_REWARD_TRAP = (
+    "trap '_ec=$?;"
+    ' [ "$_ec" -eq 0 ] && echo 1 > /logs/verifier/reward.txt'
+    " || echo 0 > /logs/verifier/reward.txt;"
+    " exit \"$_ec\"' EXIT\n"
+)
 
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
 TASKS_OUT_DIR = WORKTREE_ROOT / "util/harbor/tasks/terminal_bench"
@@ -152,7 +151,8 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
     # -------------------------------------------------- tests/test.sh (Harbor requires this)
     # Harbor's TaskPaths.is_valid() checks for tests/test.sh.
     # Copy run-tests.sh → tests/test.sh, replace $TEST_DIR with /tests,
-    # and append reward logging so Harbor can read /logs/verifier/reward.txt.
+    # and inject a trap-based reward writer after the shebang so it fires on
+    # ANY exit — including early exits caused by set -e when pytest fails.
     run_tests_sh = src / "run-tests.sh"
     if run_tests_sh.exists():
         tests_dst.mkdir(exist_ok=True)
@@ -160,7 +160,12 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
         if not content.endswith("\n"):
             content += "\n"
         content = content.replace("$TEST_DIR", "/tests")
-        content += _REWARD_LOGGING_SUFFIX
+        # Insert trap after shebang line (or at the top if no shebang).
+        first, _, rest = content.partition("\n")
+        if first.startswith("#!"):
+            content = first + "\n" + _REWARD_TRAP + rest
+        else:
+            content = _REWARD_TRAP + content
         test_sh = tests_dst / "test.sh"
         test_sh.write_text(content)
         test_sh.chmod(test_sh.stat().st_mode | 0o111)
