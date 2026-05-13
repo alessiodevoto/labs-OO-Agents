@@ -55,6 +55,17 @@ async def _grep_without_rg(shell, *args, **kwargs):
         shell._rg_available = None
 
 
+async def _grep_without_rg_no_git(shell, *args, **kwargs):
+    """Run grep forcing fallback path without git integration."""
+    shell._rg_available = False
+    shell._in_git_repo_override = False
+    try:
+        return await shell.grep(*args, **kwargs)
+    finally:
+        shell._rg_available = None
+        shell._in_git_repo_override = None
+
+
 async def _find_with_rg(shell, *args, **kwargs):
     """Run find forcing ripgrep path."""
     shell._rg_available = True
@@ -71,6 +82,17 @@ async def _find_without_rg(shell, *args, **kwargs):
         return await shell.find(*args, **kwargs)
     finally:
         shell._rg_available = None
+
+
+async def _find_without_rg_no_git(shell, *args, **kwargs):
+    """Run find forcing fallback path without git integration."""
+    shell._rg_available = False
+    shell._in_git_repo_override = False
+    try:
+        return await shell.find(*args, **kwargs)
+    finally:
+        shell._rg_available = None
+        shell._in_git_repo_override = None
 
 
 def _normalize_matches(matches):
@@ -187,10 +209,10 @@ class TestFindBackCompat:
         assert any("test_main.py" in f for f in rg_files)
 
     async def test_find_ignores_pycache(self, shell, sample_tree):
-        """Fallback find should skip __pycache__ directories via _IGNORE_DIRS pruning."""
+        """Fallback find (non-git path) should skip __pycache__ via _IGNORE_DIRS pruning."""
         # rg --files respects .gitignore (covered by test_find_respects_gitignore in
-        # test_shell_tools.py). Here we verify the fallback path also skips __pycache__.
-        fallback_result = await _find_without_rg(shell, "*.pyc", str(sample_tree))
+        # test_shell_tools.py). Here we verify the non-git fallback path skips __pycache__.
+        fallback_result = await _find_without_rg_no_git(shell, "*.pyc", str(sample_tree))
 
         for m in fallback_result.matches:
             assert "__pycache__" not in m
@@ -211,16 +233,14 @@ class TestFallbackOnly:
     """Test that the fallback grep/find paths work correctly on their own."""
 
     async def test_fallback_grep_basic(self, shell, sample_tree):
-        """Fallback grep finds expected matches."""
-        shell._rg_available = False
-        result = await shell.grep("hello", str(sample_tree / "src"))
+        """Fallback grep finds expected matches (non-git path)."""
+        result = await _grep_without_rg_no_git(shell, "hello", str(sample_tree / "src"))
         assert result.total_matches > 0
         assert any("hello" in m for m in result.matches)
 
     async def test_fallback_grep_returns_file_line_format(self, shell, sample_tree):
-        """Fallback grep output has file:line:text format."""
-        shell._rg_available = False
-        result = await shell.grep("def hello", str(sample_tree / "src"))
+        """Fallback grep output has file:line:text format (non-git path)."""
+        result = await _grep_without_rg_no_git(shell, "def hello", str(sample_tree / "src"))
         assert result.total_matches > 0
         # Each match should contain filename:linenum:content
         for m in result.matches:
@@ -228,9 +248,12 @@ class TestFallbackOnly:
             assert len(parts) >= 3  # file:num:text
 
     async def test_fallback_find_basic(self, shell, sample_tree):
-        """Fallback find locates files by glob."""
+        """Fallback find locates files by glob (non-git path)."""
         shell._rg_available = False
+        shell._in_git_repo_override = False
         result = await shell.find("*.py", str(sample_tree))
+        shell._rg_available = None
+        shell._in_git_repo_override = None
         assert result.total_matches > 0
         assert any("main.py" in m for m in result.matches)
 
@@ -260,8 +283,7 @@ class TestFallbackExclusions:
         text_path = sample_tree / "findme.txt"
         text_path.write_text("FINDME in text\n")
 
-        shell._rg_available = False
-        result = await shell.grep("FINDME", str(sample_tree))
+        result = await _grep_without_rg_no_git(shell, "FINDME", str(sample_tree))
 
         # Should find the text file but NOT the binary file
         assert result.total_matches > 0
@@ -269,7 +291,7 @@ class TestFallbackExclusions:
         assert not any("data.bin" in m for m in result.matches)
 
     async def test_fallback_grep_skips_git_dir(self, shell, sample_tree):
-        """Fallback grep should not search inside .git directories."""
+        """Fallback grep (non-git path) should not search inside .git directories."""
         # Create a .git directory with searchable content
         git_dir = sample_tree / ".git" / "objects"
         git_dir.mkdir(parents=True)
@@ -277,8 +299,7 @@ class TestFallbackExclusions:
         # Also create a normal file with different content
         (sample_tree / "normal.txt").write_text("SECRETGIT visible\n")
 
-        shell._rg_available = False
-        result = await shell.grep("SECRETGIT", str(sample_tree))
+        result = await _grep_without_rg_no_git(shell, "SECRETGIT", str(sample_tree))
 
         # Should find normal.txt but not .git contents
         assert result.total_matches > 0
@@ -286,13 +307,12 @@ class TestFallbackExclusions:
         assert not any(".git" in m for m in result.matches)
 
     async def test_fallback_grep_skips_pycache(self, shell, sample_tree):
-        """Fallback grep should not search inside __pycache__ directories."""
+        """Fallback grep (non-git path) should not search inside __pycache__ directories."""
         # __pycache__ already exists in sample_tree fixture
         (sample_tree / "__pycache__" / "module.cpython-313.pyc").write_text("CACHEDSTR\n")
         (sample_tree / "visible.txt").write_text("CACHEDSTR here too\n")
 
-        shell._rg_available = False
-        result = await shell.grep("CACHEDSTR", str(sample_tree))
+        result = await _grep_without_rg_no_git(shell, "CACHEDSTR", str(sample_tree))
 
         assert result.total_matches > 0
         assert any("visible.txt" in m for m in result.matches)
@@ -316,17 +336,89 @@ class TestFallbackExclusions:
 
     @has_rg
     async def test_hidden_dir_skipping_matches_rg(self, shell, sample_tree):
-        """Both rg and fallback should skip .git directory consistently."""
+        """Both rg and fallback (non-git path) should skip .git directory consistently."""
         git_dir = sample_tree / ".git" / "refs"
         git_dir.mkdir(parents=True)
         (git_dir / "heads").write_text("HIDDENREF\n")
         (sample_tree / "visible.txt").write_text("HIDDENREF\n")
 
         rg_result = await _grep_with_rg(shell, "HIDDENREF", str(sample_tree))
-        fallback_result = await _grep_without_rg(shell, "HIDDENREF", str(sample_tree))
+        fallback_result = await _grep_without_rg_no_git(shell, "HIDDENREF", str(sample_tree))
 
         # Both should find visible.txt, neither should find .git contents
         assert any("visible.txt" in m for m in rg_result.matches)
         assert any("visible.txt" in m for m in fallback_result.matches)
         assert not any(".git" in m for m in rg_result.matches)
         assert not any(".git" in m for m in fallback_result.matches)
+
+
+# ==========================================================================
+# Git-aware fallback tests (git grep / git ls-files paths)
+# ==========================================================================
+class TestGitFallback:
+    """Verify the git-aware fallback paths (git grep, git ls-files) work correctly."""
+
+    async def test_git_grep_respects_gitignore(self, shell, sample_tree):
+        """git grep fallback should respect .gitignore."""
+        # Export GIT_DIR/GIT_WORK_TREE to isolate from any outer git repo (e.g. CI checkout)
+        await shell.run(
+            f"cd {sample_tree} && git init -q"
+            f" && export GIT_DIR={sample_tree}/.git"
+            f" && export GIT_WORK_TREE={sample_tree}"
+        )
+        (sample_tree / ".gitignore").write_text("ignored/\n")
+        (sample_tree / "visible.txt").write_text("FINDME\n")
+        await shell.run(f"cd {sample_tree} && git add .gitignore visible.txt")
+        # Create ignored dir AFTER .gitignore is staged
+        (sample_tree / "ignored").mkdir()
+        (sample_tree / "ignored" / "secret.txt").write_text("FINDME\n")
+
+        shell._rg_available = False
+        result = await shell.grep("FINDME", ".")
+        shell._rg_available = None
+
+        assert result.total_matches > 0, f"No matches found, expected at least 1"
+        assert any("visible.txt" in m for m in result.matches), (
+            f"visible.txt not in {result.matches}"
+        )
+        ignored_matches = [m for m in result.matches if "ignored" in m]
+        assert not ignored_matches, f"Found ignored files in matches: {ignored_matches}"
+
+    async def test_git_grep_finds_untracked_files(self, shell, sample_tree):
+        """git grep --untracked should find files not yet staged."""
+        await shell.run(f"cd {sample_tree} && git init -q")
+        (sample_tree / ".gitignore").write_text("__pycache__/\n")
+        await shell.run(f"cd {sample_tree} && git add .gitignore")
+        # Create an untracked (but not ignored) file
+        (sample_tree / "new_file.txt").write_text("UNTRACKED\n")
+
+        shell._rg_available = False
+        result = await shell.grep("UNTRACKED", ".")
+        shell._rg_available = None
+
+        assert result.total_matches > 0
+        assert any("new_file.txt" in m for m in result.matches)
+
+    async def test_git_ls_files_respects_gitignore(self, shell, sample_tree):
+        """git ls-files fallback should respect .gitignore for find()."""
+        await shell.run(f"cd {sample_tree} && git init -q")
+        (sample_tree / ".gitignore").write_text("__pycache__/\n")
+        await shell.run(f"cd {sample_tree} && git add .")
+
+        shell._rg_available = False
+        result = await shell.find("*.pyc", ".")
+        shell._rg_available = None
+
+        assert not any("__pycache__" in m for m in result.matches)
+
+    async def test_git_ls_files_finds_py_files(self, shell, sample_tree):
+        """git ls-files fallback should find Python files recursively."""
+        await shell.run(f"cd {sample_tree} && git init -q && git add .")
+        await shell.run(f"cd {sample_tree}")
+
+        shell._rg_available = False
+        result = await shell.find("*.py", ".")
+        shell._rg_available = None
+
+        assert result.total_matches > 0
+        assert any("main.py" in m for m in result.matches)
