@@ -32,6 +32,7 @@ def _get_active_spans() -> dict[str, Span]:
 
 
 _ERROR_MESSAGE_LIMIT = 5_000
+_TRACE_MAX_DEPTH = 16  # prevent stack overflow on deeply nested objects
 
 
 def _error_message(exception: BaseException) -> str:
@@ -749,16 +750,22 @@ class OpenInferenceHooks:
 
         data: dict[str, Any] = {}
         if hasattr(result, "stdout"):
-            data["stdout"] = truncating_pformat(result.stdout, max_chars=max_chars)
+            data["stdout"] = truncating_pformat(
+                result.stdout, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+            )
         if hasattr(result, "stderr"):
-            data["stderr"] = truncating_pformat(result.stderr, max_chars=max_chars)
+            data["stderr"] = truncating_pformat(
+                result.stderr, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+            )
         if hasattr(result, "returned_value"):
             rv = result.returned_value
             # Check for _NO_RETURN sentinel or None
             if rv is None or (hasattr(rv, "__class__") and rv.__class__.__name__ == "object"):
                 data["returned_value"] = None
             else:
-                data["returned_value"] = truncating_pformat(rv, max_chars=max_chars)
+                data["returned_value"] = truncating_pformat(
+                    rv, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+                )
         return json.dumps(data)
 
     @staticmethod
@@ -774,6 +781,6 @@ class OpenInferenceHooks:
         human inspection in the trace viewer, so a 50 K cap is generous.
         """
         try:
-            return truncating_pformat(obj, max_chars=max_chars)
+            return truncating_pformat(obj, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH)
         except Exception:
             return "<unserializable>"

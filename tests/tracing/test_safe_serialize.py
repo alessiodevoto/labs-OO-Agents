@@ -55,6 +55,23 @@ class TestSafeSerialize:
         result = OpenInferenceHooks._safe_serialize(Bomb())
         assert isinstance(result, str)  # doesn't crash
 
+    def test_deeply_nested_object_does_not_overflow_stack(self):
+        """Deeply nested objects are depth-limited to prevent stack overflow (segfault)."""
+        # Build a 500-level deep nested dict — well beyond any reasonable stack
+        obj: dict = {}
+        current = obj
+        for _i in range(500):
+            current["nested"] = {}
+            current = current["nested"]
+        current["leaf"] = "value"
+
+        result = OpenInferenceHooks._safe_serialize(obj)
+        assert isinstance(result, str)
+        # Should not contain 500 levels — depth is capped
+        from nemo_oo_agents.tracing._hooks_impl import _TRACE_MAX_DEPTH
+
+        assert result.count("nested") <= _TRACE_MAX_DEPTH
+
     def test_pydantic_model(self):
         """Pydantic models are serialized via safe_pformat."""
         from nemo_oo_agents.events import ExecutionResult
