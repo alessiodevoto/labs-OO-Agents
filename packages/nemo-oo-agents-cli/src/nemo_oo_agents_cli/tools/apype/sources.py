@@ -226,32 +226,43 @@ def find(
     cmd = " ".join(_shell_quote(a) for a in args)
 
     async def _gen() -> AsyncIterator[str]:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        assert proc.stdout is not None
-        async for raw_line in proc.stdout:
-            line = raw_line.decode().rstrip("\n")
-            if line:
-                if regex and not regex.search(line):
-                    continue
-                yield line
+        from nemo_oo_agents.tools._bash_session import BashSession
 
-        await proc.wait()
-        returncode = proc.returncode or 0
-
-        # rg --files returns 1 if no files found — not an error
-        if returncode not in (0, 1):
-            stderr_bytes = await proc.stderr.read() if proc.stderr else b""
-            stderr_str = stderr_bytes.decode() if stderr_bytes else ""
-            raise make_pipe_error(
-                f"find failed: {cmd}",
-                cmd=cmd,
-                returncode=returncode,
-                stderr=stderr_str,
-            )
+        bash = BashSession()
+        await bash.start()
+        try:
+            buffer = ""
+            stderr_buf = ""
+            returncode = 0
+            async for stream_name, chunk in bash.run_stream(cmd, timeout=30.0):
+                if stream_name == "__done__":
+                    parts = chunk.split(",")
+                    returncode = int(parts[0])
+                    if buffer:
+                        line = buffer.strip()
+                        if line and (not regex or regex.search(line)):
+                            yield line
+                    # rg --files returns 1 if no files found — not an error
+                    if returncode not in (0, 1):
+                        raise make_pipe_error(
+                            f"find failed: {cmd}",
+                            cmd=cmd,
+                            returncode=returncode,
+                            stderr=stderr_buf,
+                        )
+                    break
+                elif stream_name == "stdout":
+                    buffer += chunk
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        if line:
+                            if regex and not regex.search(line):
+                                continue
+                            yield line
+                elif stream_name == "stderr":
+                    stderr_buf += chunk
+        finally:
+            await bash.close()
 
     return Stream(_gen(), _steps=[f"find({str(root)!r})"])
 
@@ -345,28 +356,37 @@ def rg(
     cmd = " ".join(_shell_quote(a) for a in args)
 
     async def _gen() -> AsyncIterator[str]:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        assert proc.stdout is not None
-        async for raw_line in proc.stdout:
-            yield raw_line.decode().rstrip("\n")
+        from nemo_oo_agents.tools._bash_session import BashSession
 
-        await proc.wait()
-        returncode = proc.returncode or 0
-
-        # rg returns exit code 1 for "no matches" — not a failure
-        if returncode not in (0, 1):
-            stderr_bytes = await proc.stderr.read() if proc.stderr else b""
-            stderr_str = stderr_bytes.decode() if stderr_bytes else ""
-            raise make_pipe_error(
-                f"rg failed: {cmd}",
-                cmd=cmd,
-                returncode=returncode,
-                stderr=stderr_str,
-            )
+        bash = BashSession()
+        await bash.start()
+        try:
+            buffer = ""
+            stderr_buf = ""
+            async for stream_name, chunk in bash.run_stream(cmd, timeout=30.0):
+                if stream_name == "__done__":
+                    parts = chunk.split(",")
+                    returncode = int(parts[0])
+                    if buffer:
+                        yield buffer
+                    # rg returns exit code 1 for "no matches" — not a failure
+                    if returncode not in (0, 1):
+                        raise make_pipe_error(
+                            f"rg failed: {cmd}",
+                            cmd=cmd,
+                            returncode=returncode,
+                            stderr=stderr_buf,
+                        )
+                    break
+                elif stream_name == "stdout":
+                    buffer += chunk
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        yield line
+                elif stream_name == "stderr":
+                    stderr_buf += chunk
+        finally:
+            await bash.close()
 
     return Stream(_gen(), _steps=[f"rg({pattern!r})"])
 
