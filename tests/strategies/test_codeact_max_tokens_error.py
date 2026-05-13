@@ -83,15 +83,12 @@ class TestMaxTokensExhaustedError:
                 """A task."""
                 ...
 
-        def _tc(code, cid="c1"):
-            return ToolCall(id=cid, name="execute_python", arguments=json.dumps({"code": code}))
-
         def _ret(val, cid="c2"):
             return ToolCall(id=cid, name="return_result", arguments=json.dumps({"result": val}))
 
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp("", finish_reason="content_filter"),  # Empty but not length
+                _resp("", finish_reason="stop"),  # Empty but not length
                 _resp("", tool_calls=[_ret("hello")], finish_reason="tool_calls"),  # Recovery
             ]
         )
