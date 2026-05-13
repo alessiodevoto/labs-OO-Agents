@@ -25,6 +25,9 @@ with hidden:
     from nemo_oo_agents.tools import LibraryWriting, TodoManager
     from nemo_oo_agents.tools.repo_tools import RepoTools
     from nemo_oo_agents.tools.shell_tools import ShellTools
+    from nemo_oo_agents_cli.tools.apype import (
+        Apype, Stream, cat, run, arun, find, glob, rg, seq, lines, items, empty,
+    )
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
 
@@ -286,6 +289,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
         self.producers = ProducersSkill()
+        self.apype = Apype()
         # Surface pending-queue counts (and a short preview of each item)
         # to the LLM every turn — the agent reads queue depth straight
         # from the ``queues`` context block. Composed via
