@@ -233,13 +233,15 @@ class TestPostRenderEventCollapse:
     """When rendered payload exceeds context_window, events are collapsed."""
 
     @pytest.mark.asyncio
-    async def test_overflow_triggers_collapse(self):
-        """Events are collapsed when payload exceeds context_window budget."""
-        import litellm
+    async def test_overflow_passes_all_messages_through(self):
+        """Without proactive clamping, all events pass through _build_messages.
 
+        The API will reject if context is too large, and the recovery path
+        in generate() handles archival.
+        """
         agent = _mk_agent(context_window=4096)
 
-        # Fill with many events
+        # Fill with many events (will exceed 4096 token window)
         for i in range(20):
             tc_id = f"tc_{i}"
             agent.event_manager.add(
@@ -277,14 +279,9 @@ class TestPostRenderEventCollapse:
             _current_llm_var.reset(token)
 
         assert messages is not None
-        structured = litellm.token_counter(model=agent._llm.model, messages=messages)
-        assert structured + 2048 < 4096, (
-            f"Payload ({structured}) + output (2048) exceeds window (4096)"
-        )
-
-        # Collapse should have reduced active events
-        active_after = len(list(agent.event_manager.keys()))
-        assert active_after < 40
+        # No clamping — all events should be in the message list
+        active = len(list(agent.event_manager.keys()))
+        assert active == 40, f"All 40 events should still be active, got {active}"
 
 
 # ── Default budget split ─────────────────────────────────────────────────

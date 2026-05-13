@@ -26,8 +26,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.events import PythonOutput, Summary
-from nemo_oo_agents.runtime.actor import _ARCHIVE_TARGET_UTILIZATION
+from nemo_oo_agents.events import PythonOutput
 from nemo_oo_agents.unifiedllm import CompletionClient
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "archival_95pct.json.gz"
