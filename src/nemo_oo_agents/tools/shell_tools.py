@@ -52,7 +52,7 @@ _TRUNCATED_MSG = (
     "or view with offset/limit to see specific sections."
 )
 
-# Directories to skip in ls/find
+# Directories to skip in ls/find/grep fallback
 _IGNORE_DIRS = frozenset(
     {
         ".git",
@@ -89,8 +89,8 @@ class ShellTools(Skill):
         edit(path, old, new)    — str_replace with fuzzy fallback
         insert(path, line, content) — insert text at a line number
         write(path, content)    — create or overwrite a file
-        grep(pattern, path)     — regex search via ripgrep
-        find(pattern, path)     — find files by glob
+        grep(pattern, path)     — regex search (ripgrep with grep fallback)
+        find(pattern, path)     — find files by glob (ripgrep with find fallback)
         ls(path, depth)         — tree-structured directory listing
     """
 
@@ -100,6 +100,19 @@ class ShellTools(Skill):
         self._session = BashSession(cwd=cwd)
         self._current_file: str | None = None
         self._current_line: int | None = None
+        self._rg_available: bool | None = None
+
+    async def _has_rg(self) -> bool:
+        """Check whether ripgrep (rg) is available, caching the result."""
+        if self._rg_available is None:
+            _, _, code = await self._session.run("command -v rg", timeout=5)
+            self._rg_available = code == 0
+            if not self._rg_available:
+                logger.warning(
+                    "ripgrep (rg) not found; falling back to grep/find. "
+                    "Install ripgrep for better performance: https://github.com/BurntSushi/ripgrep"
+                )
+        return self._rg_available
 
     @property
     def cwd(self) -> Path:
@@ -507,7 +520,55 @@ class ShellTools(Skill):
         max_matches: Annotated[int, spec(description="Maximum matches to return")] = 100,
         timeout: Annotated[float, spec(description="Timeout in seconds for the search")] = 30.0,
     ) -> SearchResult:
-        """Search for a regex pattern in files via ripgrep. Respects .gitignore."""
+        """Search for a regex pattern in files. Uses ripgrep if available, falls back to grep."""
+        if await self._has_rg():
+            cmd = self._build_rg_grep_cmd(
+                pattern,
+                path,
+                include=include,
+                context=context,
+                literal=literal,
+                max_matches=max_matches,
+            )
+        else:
+            cmd = self._build_fallback_grep_cmd(
+                pattern,
+                path,
+                include=include,
+                context=context,
+                literal=literal,
+                max_matches=max_matches,
+            )
+
+        stdout, _, code = await self._session.run(cmd, timeout=timeout)
+
+        if code == 1:  # no matches
+            return SearchResult(matches=[], total_matches=0)
+
+        all_lines = [ln for ln in stdout.splitlines() if ln.strip()] if stdout else []
+        if context > 0:
+            # With -C, both rg and grep output match lines as "file:num:text"
+            # and context lines as "file:num-text". Separators are "--".
+            total = sum(1 for ln in all_lines if ln != "--" and re.search(r"(?:^|:)\d+:", ln))
+        else:
+            total = len(all_lines)
+        return SearchResult(
+            matches=all_lines[:max_matches],
+            total_matches=total,
+            truncated=total >= max_matches,
+        )
+
+    @staticmethod
+    def _build_rg_grep_cmd(
+        pattern: str,
+        path: str,
+        *,
+        include: str | None,
+        context: int,
+        literal: bool,
+        max_matches: int,
+    ) -> str:
+        """Build a ripgrep command string."""
         parts = ["rg", "-n", "--color=never", "--no-heading"]
         if literal:
             parts.append("-F")
@@ -516,26 +577,30 @@ class ShellTools(Skill):
         if include:
             parts.extend(["-g", _sq(include)])
         parts.extend(["-m", str(max_matches), "--", _sq(pattern), _sq(path)])
+        return " ".join(parts)
 
-        stdout, _, code = await self._session.run(" ".join(parts), timeout=timeout)
-
-        if code == 1:  # rg: no matches
-            return SearchResult(matches=[], total_matches=0)
-
-        all_lines = [ln for ln in stdout.splitlines() if ln.strip()] if stdout else []
+    @staticmethod
+    def _build_fallback_grep_cmd(
+        pattern: str,
+        path: str,
+        *,
+        include: str | None,
+        context: int,
+        literal: bool,
+        max_matches: int,
+    ) -> str:
+        """Build a GNU/BSD grep command string as ripgrep fallback."""
+        parts = ["grep", "-rn", "-I", "--color=never"]
+        for d in sorted(_IGNORE_DIRS):
+            parts.extend(["--exclude-dir", _sq(d)])
+        if literal:
+            parts.append("-F")
         if context > 0:
-            # With -C, rg outputs match lines as "file:num:text" and context
-            # lines as "file:num-text" (note the dash vs colon after the
-            # line number).  Separators between groups are "--".
-            # Count only actual match lines.
-            total = sum(1 for ln in all_lines if ln != "--" and re.search(r"(?:^|:)\d+:", ln))
-        else:
-            total = len(all_lines)
-        return SearchResult(
-            matches=all_lines[:max_matches],  # include context in output
-            total_matches=total,  # but count only matches
-            truncated=total >= max_matches,
-        )
+            parts.extend(["-C", str(context)])
+        if include:
+            parts.extend(["--include", _sq(include)])
+        parts.extend(["-m", str(max_matches), "--", _sq(pattern), _sq(path)])
+        return " ".join(parts)
 
     # ------------------------------------------------------------------
     # find
@@ -548,12 +613,14 @@ class ShellTools(Skill):
         type: Annotated[str, spec(description="'f' for files, 'd' for directories")] = "f",
         max_results: Annotated[int, spec(description="Maximum results to return")] = 200,
     ) -> SearchResult:
-        """Find files or directories by glob pattern using ripgrep/find."""
+        """Find files or directories by glob pattern. Uses ripgrep if available, falls back to find."""
+        prune = " ".join(f"-not -path '*/{d}/*'" for d in sorted(_IGNORE_DIRS))
         if type == "d":
-            prune = " ".join(f"-not -path '*/{d}/*'" for d in sorted(_IGNORE_DIRS))
             cmd = f"find {_sq(path)} -maxdepth 10 -type d -name {_sq(pattern)} {prune}"
-        else:
+        elif await self._has_rg():
             cmd = f"rg --files -g {_sq(pattern)} {_sq(path)}"
+        else:
+            cmd = f"find {_sq(path)} -maxdepth 10 -type f -name {_sq(pattern)} {prune}"
 
         stdout, _, _ = await self._session.run(cmd, timeout=30)
         lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()] if stdout else []
