@@ -1,14 +1,12 @@
 """Tests for pysh library — method-chaining, async-native."""
 
-import os
 from pathlib import Path
 
 import pytest
 
 from nemo_oo_agents_cli.tools.apype.errors import PipeError, Result, make_pipe_error
+from nemo_oo_agents_cli.tools.apype.sources import cat, empty, find, glob, items, lines, run, seq
 from nemo_oo_agents_cli.tools.apype.stream import Stream
-from nemo_oo_agents_cli.tools.apype.sources import cat, run, find, glob, lines, items, empty, seq
-
 
 # ─── Stream basics ───────────────────────────────────────────────────
 
@@ -252,7 +250,9 @@ async def test_map():
 
 @pytest.mark.asyncio
 async def test_filter():
-    result = await items(["short", "a very long line indeed"]).filter(lambda x: len(x) > 10).collect()
+    result = (
+        await items(["short", "a very long line indeed"]).filter(lambda x: len(x) > 10).collect()
+    )
     assert result == ["a very long line indeed"]
 
 
@@ -314,7 +314,9 @@ async def test_strip():
 
 @pytest.mark.asyncio
 async def test_chained_pipeline():
-    result = await items(["banana", "apple", "avocado", "cherry"]).grep("a").sort().head(2).collect()
+    result = (
+        await items(["banana", "apple", "avocado", "cherry"]).grep("a").sort().head(2).collect()
+    )
     assert result == ["apple", "avocado"]
 
 

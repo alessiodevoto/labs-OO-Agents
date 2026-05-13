@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import os
 import fnmatch as _fnmatch
+import os
 import re as _re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import AsyncIterator, Iterable
 
+from nemo_oo_agents_cli.tools.apype.errors import make_pipe_error
 from nemo_oo_agents_cli.tools.apype.stream import Stream
-from nemo_oo_agents_cli.tools.apype.errors import PipeError, make_pipe_error
 
 
 def cat(*paths: str | Path, encoding: str = "utf-8") -> Stream:
@@ -36,8 +35,7 @@ def cat(*paths: str | Path, encoding: str = "utf-8") -> Stream:
     return Stream(_gen(), _steps=[f"cat({', '.join(repr(str(p)) for p in paths)})"])
 
 
-def run(cmd: str, *, check: bool = True, timeout: float = 30.0,
-        cwd: str | None = None) -> Stream:
+def run(cmd: str, *, check: bool = True, timeout: float = 30.0, cwd: str | None = None) -> Stream:
     """
     Run a shell command and stream its stdout lines (non-blocking).
 
@@ -120,10 +118,17 @@ def arun(shell_tools, cmd: str, *, timeout: float = 30.0, check: bool = True) ->
     return Stream(_gen(), _steps=[f"arun({cmd!r})"])
 
 
-def find(root: str | Path = ".", *, name: str | None = None, type: str | None = None,
-         pattern: str | None = None, exclude: list[str] | None = None,
-         max_depth: int | None = None, hidden: bool = False,
-         no_ignore: bool = False) -> Stream:
+def find(
+    root: str | Path = ".",
+    *,
+    name: str | None = None,
+    type: str | None = None,
+    pattern: str | None = None,
+    exclude: list[str] | None = None,
+    max_depth: int | None = None,
+    hidden: bool = False,
+    no_ignore: bool = False,
+) -> Stream:
     """
     Walk a directory tree and stream matching paths via ripgrep (non-blocking).
 
@@ -243,12 +248,21 @@ def glob(pattern: str, *, root: str | Path = ".") -> Stream:
     return Stream(_gen(), _steps=[f"glob({pattern!r})"])
 
 
-def rg(pattern: str, path: str = ".", *, type_filter: str | None = None,
-       include: str | None = None, exclude: list[str] | None = None,
-       ignore_case: bool = False, fixed: bool = False,
-       files_only: bool = False, context: int = 0,
-       max_count: int | None = None, hidden: bool = False,
-       no_ignore: bool = False) -> Stream:
+def rg(
+    pattern: str,
+    path: str = ".",
+    *,
+    type_filter: str | None = None,
+    include: str | None = None,
+    exclude: list[str] | None = None,
+    ignore_case: bool = False,
+    fixed: bool = False,
+    files_only: bool = False,
+    context: int = 0,
+    max_count: int | None = None,
+    hidden: bool = False,
+    no_ignore: bool = False,
+) -> Stream:
     """
     Search with ripgrep and stream matching lines (non-blocking).
 

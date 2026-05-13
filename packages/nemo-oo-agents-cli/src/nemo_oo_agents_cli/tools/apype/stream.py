@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re as _re
-from typing import Any, AsyncIterator, Callable, Iterator, TypeVar
-from pathlib import Path
 from collections import deque
+from collections.abc import AsyncIterator, Callable
+from pathlib import Path
+from typing import Any, TypeVar
 
-from nemo_oo_agents_cli.tools.apype.errors import PipeError, Result
+from nemo_oo_agents_cli.tools.apype.errors import Result
 
 T = TypeVar("T")
 
@@ -52,7 +53,9 @@ class Stream:
     def __or__(self, other):
         """Pipe operator: stream | callable for custom transforms."""
         if callable(other):
-            return Stream(other(self._aiterable), _steps=self._steps + [repr(other)], _meta=self._meta)
+            return Stream(
+                other(self._aiterable), _steps=self._steps + [repr(other)], _meta=self._meta
+            )
         return NotImplemented
 
     def __repr__(self) -> str:
@@ -61,10 +64,12 @@ class Stream:
 
     # ─── Transforms (return new Stream) ────────────────────────────────
 
-    def grep(self, pattern: str, *, invert: bool = False, ignore_case: bool = False,
-             fixed: bool = False) -> Stream:
+    def grep(
+        self, pattern: str, *, invert: bool = False, ignore_case: bool = False, fixed: bool = False
+    ) -> Stream:
         """Filter lines matching a pattern (like grep)."""
         if fixed:
+
             def _match(line):
                 if ignore_case:
                     return pattern.lower() in line.lower()
@@ -72,6 +77,7 @@ class Stream:
         else:
             flags = _re.IGNORECASE if ignore_case else 0
             regex = _re.compile(pattern, flags)
+
             def _match(line):
                 return bool(regex.search(line))
 
@@ -113,8 +119,9 @@ class Stream:
 
         return Stream(_gen(), _steps=self._steps + [f"tail({n})"], _meta=self._meta)
 
-    def sort(self, *, key: Callable | None = None, reverse: bool = False,
-             numeric: bool = False) -> Stream:
+    def sort(
+        self, *, key: Callable | None = None, reverse: bool = False, numeric: bool = False
+    ) -> Stream:
         """Sort items (like sort). Buffering."""
         parent = self
 
@@ -124,11 +131,13 @@ class Stream:
                 items.append(item)
             sort_key = key
             if numeric and sort_key is None:
+
                 def _num_key(x):
                     try:
                         return float(x)
                     except (ValueError, TypeError):
                         return float("inf")
+
                 sort_key = _num_key
             items.sort(key=sort_key, reverse=reverse)
             for item in items:
@@ -171,8 +180,9 @@ class Stream:
         gen = _gen_all if all_unique else _gen_consecutive
         return Stream(gen(), _steps=self._steps + ["uniq()"], _meta=self._meta)
 
-    def cut(self, fields: list[int], *, sep: str | None = None,
-            out_sep: str | None = None) -> Stream:
+    def cut(
+        self, fields: list[int], *, sep: str | None = None, out_sep: str | None = None
+    ) -> Stream:
         """Extract fields from each line (like cut)."""
         actual_out_sep = out_sep or sep or "\t"
         parent = self
@@ -354,10 +364,10 @@ class Stream:
 
     async def last(self) -> str | None:
         """Return the last item or None."""
-        item = None
-        async for item in self._aiterable:
-            pass
-        return item
+        last_item = None
+        async for x in self._aiterable:
+            last_item = x
+        return last_item
 
     async def count(self) -> int:
         """Count items in the stream (consumes it)."""
@@ -380,14 +390,16 @@ class Stream:
     async def print(self, *, end: str = "\n") -> None:
         """Print each item to stdout."""
         import builtins
+
         async for item in self._aiterable:
             builtins.print(item, end=end)
 
     async def json(self) -> Any:
         """Parse the collected text as JSON."""
         import json as _json
+
         items = await self.collect()
-        return _json.loads("\n".join(str(l) for l in items))
+        return _json.loads("\n".join(str(line) for line in items))
 
     async def to_set(self) -> set[str]:
         """Collect into a set."""

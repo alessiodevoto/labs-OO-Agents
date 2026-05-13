@@ -25,11 +25,11 @@ with hidden:
     from nemo_oo_agents.tools import LibraryWriting, TodoManager
     from nemo_oo_agents.tools.repo_tools import RepoTools
     from nemo_oo_agents.tools.shell_tools import ShellTools
-    from nemo_oo_agents_cli.tools.apype import (
-        Apype, Stream, cat, run, arun, find, glob, rg, seq, lines, items, empty,
-    )
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
+    from nemo_oo_agents_cli.tools.apype import (
+        Apype,
+    )
 
 # Standard library — all visible in REPL
 import asyncio  # noqa: F401
