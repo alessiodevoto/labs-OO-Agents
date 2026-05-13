@@ -267,3 +267,120 @@ async def test_session_cancel_background_tasks_skips_done_tasks() -> None:
     await session._cancel_background_tasks()
     assert session._background_tasks == set()
     assert not t.cancelled()  # done tasks aren't flipped to cancelled
+
+
+async def test_on_command_clear_cancels_agent_task() -> None:
+    """``/clear`` while the agent is mid-turn must cancel ``_agent_task``
+    so the old turn doesn't keep running in the stale session."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.output import ClearScreen
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._first_message = "hello"
+    session._background_tasks = set()
+    session._emit_console = None
+
+    agent = MagicMock()
+    agent._storage = MagicMock()
+    agent.event_manager = MagicMock()
+    agent.event_manager.set_backend = MagicMock()
+    agent.queue_manager = MagicMock()
+    agent.queue_manager.shutdown = AsyncMock()
+    agent.queue_manager._channels = {}
+    agent.queue_manager.names = MagicMock(return_value=[])
+    session.agent = agent
+
+    registry = MagicMock()
+    registry.commands = MagicMock(return_value=[])
+    session.registry = registry
+    session._session_manager = MagicMock()
+    session._session_manager.close = MagicMock()
+
+    # Simulate a running agent task
+    async def _fake_agent_work():
+        await asyncio.sleep(999)
+
+    fake_task = asyncio.ensure_future(_fake_agent_work())
+
+    app = MagicMock()
+    app._agent_task = fake_task
+    session._app = app
+    session._emit_text = MagicMock()
+
+    # Make _handler.handle return a result with new_session_manager
+    new_sm = MagicMock()
+    new_sm.session_id = "new-session-id"
+    new_sm._storage = MagicMock()
+
+    fake_result = CommandResult(success=True, outputs=[ClearScreen()])
+    fake_result.new_session_manager = new_sm
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+
+    # Mock _swap_session_manager so it doesn't try real session operations
+    session._swap_session_manager = AsyncMock()
+
+    await session._on_command("/clear")
+
+    assert fake_task.cancelled(), (
+        f"_agent_task not cancelled; done={fake_task.done()}, cancelled={fake_task.cancelled()}"
+    )
+    assert session._first_message is None, "_first_message not reset after /clear"
+    session._swap_session_manager.assert_awaited_once_with(new_sm)
+
+
+async def test_on_command_clear_without_running_task() -> None:
+    """``/clear`` when no agent task is running must not crash."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.output import ClearScreen
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._first_message = "hello"
+    session._background_tasks = set()
+
+    agent = MagicMock()
+    agent._storage = MagicMock()
+    agent.event_manager = MagicMock()
+    agent.event_manager.set_backend = MagicMock()
+    agent.queue_manager = MagicMock()
+    agent.queue_manager.shutdown = AsyncMock()
+    agent.queue_manager._channels = {}
+    agent.queue_manager.names = MagicMock(return_value=[])
+    session.agent = agent
+
+    registry = MagicMock()
+    registry.commands = MagicMock(return_value=[])
+    session.registry = registry
+    session._session_manager = MagicMock()
+    session._session_manager.close = MagicMock()
+
+    app = MagicMock()
+    app._agent_task = None  # no running task
+    session._app = app
+    session._emit_text = MagicMock()
+
+    new_sm = MagicMock()
+    new_sm.session_id = "new-session-id"
+    new_sm._storage = MagicMock()
+
+    fake_result = CommandResult(success=True, outputs=[ClearScreen()])
+    fake_result.new_session_manager = new_sm
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+
+    # Mock _swap_session_manager so it doesn't try real session operations
+    session._swap_session_manager = AsyncMock()
+
+    # Must not raise
+    await session._on_command("/clear")
+    assert session._first_message is None
