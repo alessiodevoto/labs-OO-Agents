@@ -68,7 +68,8 @@ class TestSafeSerialize:
         result = OpenInferenceHooks._safe_serialize(obj)
         assert isinstance(result, str)
         # Should not contain 500 levels — depth is capped
-        assert result.count("nested") < 500
+        from nemo_oo_agents.tracing._hooks_impl import _TRACE_MAX_DEPTH
+        assert result.count("nested") <= _TRACE_MAX_DEPTH
 
     def test_pydantic_model(self):
         """Pydantic models are serialized via safe_pformat."""
