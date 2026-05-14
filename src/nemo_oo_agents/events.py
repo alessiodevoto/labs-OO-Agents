@@ -23,6 +23,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, Field
 
+from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.context_blocks import EventBase as EventBase
 from nemo_oo_agents.context_blocks import ResultStatus as ResultStatus
 from nemo_oo_agents.context_blocks.models import Role
@@ -140,8 +141,12 @@ class PythonOutput(EventBase):  # type: ignore[misc]
             repr=False, description="Jupyter-style execution count (1, 2, 3, ...) for Out[n] access"
         ),
     ]
-    stdout: str = Field(default="", description="Captured stdout from execution")
-    stderr: str = Field(default="", description="Captured stderr from execution")
+    stdout: Annotated[str, spec(max_string=None)] = Field(
+        default="", description="Captured stdout from execution"
+    )
+    stderr: Annotated[str, spec(max_string=None)] = Field(
+        default="", description="Captured stderr from execution"
+    )
     error: str = Field(default="", description="Formatted error message if execution failed")
     value: Any = Field(default=None, description="Python object returned (for Out[n] access)")
     explicit_return: bool = Field(

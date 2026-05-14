@@ -15,6 +15,7 @@ The unified pformat() function handles:
 - Info objects (TypeInfo, CallableInfo, ModuleInfo) directly
 """
 
+import functools
 import importlib
 import inspect
 import io
@@ -877,6 +878,43 @@ def _format_module_info(info: ModuleInfo, *, concise: bool, indent: int) -> str:
     return "\n".join(lines).rstrip()
 
 
+_MISSING = object()
+
+
+@functools.lru_cache(maxsize=64)
+def _get_type_hints_cached(obj_type: type) -> dict[str, Any]:
+    """Cached wrapper around typing.get_type_hints(include_extras=True)."""
+    import typing
+
+    try:
+        return typing.get_type_hints(obj_type, include_extras=True)
+    except Exception:
+        return {}
+
+
+def _field_spec_override(obj_type: type, field_name: str, key: str) -> Any:
+    """Read a per-field ``spec()`` override from ``Annotated`` type hints.
+
+    Returns the value of *key* (e.g. ``"max_string"``) from the first
+    ``SpecAnnotation`` found in ``Annotated[T, spec(...)]``, or ``_MISSING``
+    if absent.
+    """
+    import typing
+
+    from nemo_oo_agents.agentdoc._docs import SpecAnnotation
+
+    hints = _get_type_hints_cached(obj_type)
+    hint = hints.get(field_name)
+    if hint is None or typing.get_origin(hint) is not typing.Annotated:
+        return _MISSING
+    for metadata in typing.get_args(hint)[1:]:
+        if isinstance(metadata, SpecAnnotation):
+            val = metadata.kwargs.get(key, _MISSING)
+            if val is not _MISSING:
+                return val
+    return _MISSING
+
+
 def _format_instance_repr(
     obj: Any,
     *,
@@ -996,10 +1034,14 @@ def _format_instance_repr(
         # only keep types (classes), since those are intentional class-level tools.
         if callable(value) and not isinstance(value, type):
             continue
+        # Per-field spec(max_string=...) overrides the caller's default.
+        field_max_string = _field_spec_override(obj_type, field.name, "max_string")
+        if field_max_string is _MISSING:
+            field_max_string = max_string
         value_str = _format_value_to_str(
             value,
             max_length=max_length,
-            max_string=max_string,
+            max_string=field_max_string,
             max_depth=(max_depth - 1) if max_depth else None,
             expand_all=False,
             depth=0,
@@ -1149,11 +1191,14 @@ def _format_nested_instance(
     for name in field_names:
         if name in values:
             value = values[name]
-            # Propagate caller's bounds — no hidden tightening.
+            # Per-field spec(max_string=...) overrides the caller's default.
+            field_max_string = _field_spec_override(obj_type, name, "max_string")
+            if field_max_string is _MISSING:
+                field_max_string = nested_max_string
             value_str = _format_value_to_str(
                 value,
                 max_length=nested_max_length,
-                max_string=nested_max_string,
+                max_string=field_max_string,
                 max_depth=(max_depth - 1) if max_depth else None,
                 expand_all=False,
                 depth=depth + 1,
