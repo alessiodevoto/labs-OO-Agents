@@ -705,10 +705,11 @@ class TokenCalibration:
     who want a conservative first estimate can raise this.
     """
 
-    __slots__ = ("_ratios", "_alpha", "_default_ratio")
+    __slots__ = ("_ratios", "_alpha", "_default_ratio", "_last_actual")
 
     def __init__(self, *, alpha: float = 0.3, default_ratio: float = 1.0):
         self._ratios: dict[str, float] = {}
+        self._last_actual: dict[str, int] = {}
         self._alpha = alpha
         self._default_ratio = default_ratio
 
@@ -716,6 +717,7 @@ class TokenCalibration:
         """Record one observation after an LLM call."""
         if estimated <= 0 or actual <= 0:
             return
+        self._last_actual[model] = actual
         observed = actual / estimated
         prev = self._ratios.get(model)
         if prev is None:
@@ -726,6 +728,10 @@ class TokenCalibration:
     def ratio(self, model: str) -> float:
         """Current calibration ratio for *model* (default if unseen)."""
         return self._ratios.get(model, self._default_ratio)
+
+    def last_actual(self, model: str) -> int | None:
+        """Last API-reported prompt_tokens for *model*, or None if unseen."""
+        return self._last_actual.get(model)
 
     def calibrate(self, model: str, estimated: int) -> int:
         """Apply the calibration ratio to a raw estimate."""
