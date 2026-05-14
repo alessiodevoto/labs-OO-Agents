@@ -1465,9 +1465,10 @@ class ActorRuntime:
                 _media_buffer_var.reset(media_token)
             # Close file handles for file-backed buffers (but keep files on disk
             # so the LLM can reference the full output via the path in the notice).
-            for _buf in (stdout_buffer, stderr_buffer):
-                if isinstance(_buf, FileBackedTruncatingStringIO):
-                    _buf.close()
+            if isinstance(stdout_buffer, FileBackedTruncatingStringIO):
+                stdout_buffer.close()
+            if isinstance(stderr_buffer, FileBackedTruncatingStringIO):
+                stderr_buffer.close()
             # Reset parent agent context
             _parent_agent_var.reset(parent_token)
             # Call after_code_execution hook
