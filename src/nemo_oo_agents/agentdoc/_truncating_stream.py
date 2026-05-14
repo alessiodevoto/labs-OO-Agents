@@ -3,10 +3,22 @@
 """StringIO with hard character limit and truncation notices.
 
 Used by pformat/truncating_pformat to bound memory during formatting of large objects.
+
+Two flavors:
+
+- :class:`TruncatingStringIO` — pure in-memory head/tail buffer (default).
+- :class:`FileBackedTruncatingStringIO` — same truncation, but also streams
+  all output to a temp file and includes the file path in the truncation
+  notice.  Gated behind ``CaptureConfig.file_backed``.
 """
 
 import collections
 import io
+import logging
+import os
+import tempfile
+
+_log = logging.getLogger(__name__)
 
 
 class TruncatingStringIO(io.StringIO):
@@ -106,6 +118,15 @@ class TruncatingStringIO(io.StringIO):
         tail_chars = len(tail)
         dropped = total - head_chars - tail_chars
 
+        return self._format_truncation_notice(head, tail, total, head_chars, tail_chars, dropped)
+
+    def _format_truncation_notice(
+        self, head: str, tail: str, total: int, head_chars: int, tail_chars: int, dropped: int
+    ) -> str:
+        """Build the truncated-output wrapper.
+
+        Subclasses override this to inject extra information (e.g. a file path).
+        """
         return (
             f"<truncated-output>\n"
             f"Output too large ({total:,} chars). "
@@ -125,3 +146,108 @@ class TruncatingStringIO(io.StringIO):
     def chars_written(self) -> int:
         """Total characters written (including chars that were dropped)."""
         return self._chars_written
+
+
+class FileBackedTruncatingStringIO(TruncatingStringIO):
+    """TruncatingStringIO that also writes full output to a temp file.
+
+    Behaves identically to :class:`TruncatingStringIO` for in-memory
+    head/tail truncation, but additionally streams all written content to a
+    temporary file on disk.  When truncated, ``getvalue()`` includes the
+    file path in the notice so the user can inspect the full output.
+
+    File I/O errors are handled gracefully — if the temp file cannot be
+    created or written to, the stream falls back to pure in-memory behavior
+    (identical to the parent class).
+
+    The caller is responsible for cleanup via :meth:`cleanup` (which removes
+    the temp file) or :meth:`close` (which closes the file handle but leaves
+    the file on disk for later reference).
+    """
+
+    def __init__(
+        self,
+        limit: int = TruncatingStringIO.DEFAULT_LIMIT,
+        tail_chars: int | None = None,
+        *,
+        dir: str | None = None,
+        prefix: str = "nemo_output_",
+        suffix: str = ".txt",
+    ):
+        super().__init__(limit=limit, tail_chars=tail_chars)
+        self._file_failed = False
+        self._file_path: str | None = None
+        self._file: io.TextIOWrapper | None = None
+        try:
+            fd, path = tempfile.mkstemp(dir=dir, prefix=prefix, suffix=suffix)
+            self._file = os.fdopen(fd, "w")
+            self._file_path = path
+        except OSError:
+            _log.warning("Failed to create temp file for output capture; falling back to in-memory", exc_info=True)
+            self._file_failed = True
+
+    def write(self, s: str) -> int:
+        """Write to both the temp file and the in-memory truncating buffer."""
+        if self._file is not None and not self._file_failed:
+            try:
+                self._file.write(s)
+                self._file.flush()
+            except OSError:
+                _log.warning("Failed to write to temp file; disabling file backing", exc_info=True)
+                self._file_failed = True
+        return super().write(s)
+
+    def _format_truncation_notice(
+        self, head: str, tail: str, total: int, head_chars: int, tail_chars: int, dropped: int
+    ) -> str:
+        """Include the temp file path in the truncation notice."""
+        file_line = ""
+        if self._file_path and not self._file_failed:
+            self._flush_file()
+            file_line = f"Full output saved to: {self._file_path}\n"
+
+        return (
+            f"<truncated-output>\n"
+            f"Output too large ({total:,} chars). "
+            f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n"
+            f"{file_line}\n"
+            f"{head}\n\n"
+            f"... {dropped:,} chars not shown ...\n\n"
+            f"{tail}\n"
+            f"</truncated-output>"
+        )
+
+    def _flush_file(self) -> None:
+        """Flush the temp file, ignoring errors."""
+        if self._file is not None and not self._file.closed:
+            try:
+                self._file.flush()
+            except OSError:
+                pass
+
+    @property
+    def file_path(self) -> str | None:
+        """Path to the temp file, or None if file creation failed."""
+        return self._file_path
+
+    def close(self) -> None:
+        """Close the temp file handle (file remains on disk).
+
+        Intentionally does NOT call ``super().close()`` — the underlying
+        ``io.StringIO`` must stay open so ``getvalue()`` remains usable
+        after the temp file handle is closed.
+        """
+        if self._file is not None:
+            try:
+                self._file.close()
+            except OSError:
+                pass
+
+    def cleanup(self) -> None:
+        """Close the file handle and remove the temp file from disk."""
+        self.close()
+        if self._file_path is not None:
+            try:
+                os.unlink(self._file_path)
+            except OSError:
+                pass

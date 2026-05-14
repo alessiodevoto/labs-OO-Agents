@@ -10,7 +10,7 @@ Middleware types are imported directly from ``nemo_oo_agents.runtime.middleware`
     from nemo_oo_agents.runtime.middleware import LLMCallContext, LLMCallMiddleware
 """
 
-from nemo_oo_agents.agentdoc import TruncatingStringIO
+from nemo_oo_agents.agentdoc import FileBackedTruncatingStringIO, TruncatingStringIO
 from nemo_oo_agents.config.truncation_config import TruncationConfig
 from nemo_oo_agents.runtime.actor import ActorRuntime
 from nemo_oo_agents.runtime.event_manager import EventManager
@@ -33,6 +33,7 @@ __all__ = [
     # Truncation system
     "TruncationConfig",
     "TruncatingStringIO",
+    "FileBackedTruncatingStringIO",
     "pprint",
     "show",
 ]
