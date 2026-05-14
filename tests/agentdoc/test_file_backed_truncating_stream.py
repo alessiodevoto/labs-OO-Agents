@@ -269,7 +269,6 @@ class TestFileBackedCleanup:
     def test_cleanup_then_getvalue(self, small_buf):
         """After cleanup the file is gone; in-memory truncation notice still renders."""
         small_buf.write("x" * 100)
-        path = small_buf.file_path
         small_buf.cleanup()
         value = small_buf.getvalue()
         assert "Output too large" in value

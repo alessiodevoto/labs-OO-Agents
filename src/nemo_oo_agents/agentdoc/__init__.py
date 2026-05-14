@@ -27,7 +27,10 @@ from typing import Annotated, Any
 
 from nemo_oo_agents.agentdoc._docs import spec
 from nemo_oo_agents.agentdoc._pformat import _pformat
-from nemo_oo_agents.agentdoc._truncating_stream import FileBackedTruncatingStringIO, TruncatingStringIO
+from nemo_oo_agents.agentdoc._truncating_stream import (
+    FileBackedTruncatingStringIO,
+    TruncatingStringIO,
+)
 from nemo_oo_agents.agentdoc._visibility import hidden
 from nemo_oo_agents.agentdoc.core import doc
 from nemo_oo_agents.agentdoc.doc_config import DocConfig

@@ -1465,10 +1465,15 @@ class ActorRuntime:
                 _media_buffer_var.reset(media_token)
             # Close file handles for file-backed buffers (but keep files on disk
             # so the LLM can reference the full output via the path in the notice).
-            if isinstance(stdout_buffer, FileBackedTruncatingStringIO):
-                stdout_buffer.close()
-            if isinstance(stderr_buffer, FileBackedTruncatingStringIO):
-                stderr_buffer.close()
+            # stdout_buffer/stderr_buffer may not be defined if an early return
+            # (validation, SyntaxError) exited before buffer creation.
+            try:
+                if isinstance(stdout_buffer, FileBackedTruncatingStringIO):
+                    stdout_buffer.close()
+                if isinstance(stderr_buffer, FileBackedTruncatingStringIO):
+                    stderr_buffer.close()
+            except NameError:
+                pass
             # Reset parent agent context
             _parent_agent_var.reset(parent_token)
             # Call after_code_execution hook
