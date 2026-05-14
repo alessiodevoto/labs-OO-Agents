@@ -27,7 +27,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.config.truncation_config import CaptureConfig, FormatConfig, TruncationConfig
 from nemo_oo_agents.context_blocks import BlockMetadata, ResolvedBlock, Role
-from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+from nemo_oo_agents.context_blocks.events import ResultStatus
 from nemo_oo_agents.context_blocks.formatter import XMLBlockFormatter
 from nemo_oo_agents.context_blocks.renderer import render_context
 from nemo_oo_agents.events import PythonOutput
@@ -577,10 +577,8 @@ class TestL4EventArchival:
 
         # Active events should not include the collapsed ones
         active_values = list(agent.event_manager.values())
-        active_content = " ".join(str(e) for e in active_values)
 
-        # The first 5 markers should be gone from active events
-        # (replaced by Summary)
+        # Collapsed events should be replaced by a Summary
         has_summary = any(
             hasattr(e, "summary_tag") for e in active_values
         )
