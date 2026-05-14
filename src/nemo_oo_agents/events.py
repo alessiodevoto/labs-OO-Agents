@@ -141,8 +141,12 @@ class PythonOutput(EventBase):  # type: ignore[misc]
             repr=False, description="Jupyter-style execution count (1, 2, 3, ...) for Out[n] access"
         ),
     ]
-    stdout: Annotated[str, spec(max_string=None)] = Field(default="", description="Captured stdout from execution")
-    stderr: Annotated[str, spec(max_string=None)] = Field(default="", description="Captured stderr from execution")
+    stdout: Annotated[str, spec(max_string=None)] = Field(
+        default="", description="Captured stdout from execution"
+    )
+    stderr: Annotated[str, spec(max_string=None)] = Field(
+        default="", description="Captured stderr from execution"
+    )
     error: str = Field(default="", description="Formatted error message if execution failed")
     value: Any = Field(default=None, description="Python object returned (for Out[n] access)")
     explicit_return: bool = Field(
