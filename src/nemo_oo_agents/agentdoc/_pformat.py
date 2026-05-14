@@ -885,7 +885,10 @@ _MISSING = object()
 def _get_type_hints_cached(obj_type: type) -> dict[str, Any]:
     """Cached wrapper around typing.get_type_hints(include_extras=True)."""
     import typing
-    return typing.get_type_hints(obj_type, include_extras=True)
+    try:
+        return typing.get_type_hints(obj_type, include_extras=True)
+    except Exception:
+        return {}
 
 
 def _field_spec_override(obj_type: type, field_name: str, key: str) -> Any:
