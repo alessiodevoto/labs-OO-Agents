@@ -130,7 +130,8 @@ class TruncatingStringIO(io.StringIO):
         return (
             f"<truncated-output>\n"
             f"Output too large ({total:,} chars). "
-            f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n\n"
+            f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n"
+            f"The {dropped:,} chars in the middle are not recoverable.\n\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
             f"{tail}\n"
@@ -204,16 +205,20 @@ class FileBackedTruncatingStringIO(TruncatingStringIO):
         self, head: str, tail: str, total: int, head_chars: int, tail_chars: int, dropped: int
     ) -> str:
         """Include the temp file path in the truncation notice."""
-        file_line = ""
         if self._file_path and not self._file_failed:
             self._flush_file()
-            file_line = f"Full output saved to: {self._file_path}\n"
+            file_notice = (
+                f"The full untruncated output ({total:,} chars) is in: {self._file_path}\n"
+                f"Read that file to see the {dropped:,} chars not shown here.\n"
+            )
+        else:
+            file_notice = f"The {dropped:,} chars in the middle are not recoverable.\n"
 
         return (
             f"<truncated-output>\n"
             f"Output too large ({total:,} chars). "
             f"Showing first {head_chars:,} and last {tail_chars:,} chars.\n"
-            f"{file_line}\n"
+            f"{file_notice}\n"
             f"{head}\n\n"
             f"... {dropped:,} chars not shown ...\n\n"
             f"{tail}\n"

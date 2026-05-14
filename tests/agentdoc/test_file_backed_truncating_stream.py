@@ -157,7 +157,7 @@ class TestFileBackedTruncationNotice:
         small_buf.write("x" * 100)
         value = small_buf.getvalue()
         assert small_buf.file_path in value
-        assert "Full output saved to:" in value
+        assert "full untruncated output" in value
 
     def test_truncation_notice_has_standard_format(self, small_buf):
         """Truncation notice uses the standard <truncated-output> wrapper format."""
@@ -206,7 +206,7 @@ class TestFileBackedErrorHandling:
             assert buf.was_truncated
             value = buf.getvalue()
             assert "Output too large" in value
-            assert "Full output saved to:" not in value
+            assert "full untruncated output" not in value
         finally:
             buf.cleanup()
 
