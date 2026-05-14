@@ -374,7 +374,9 @@ def _pop_generation_id() -> str | None:
     return popped
 
 
-def _make_capture_buffer(limit: int, tail_chars: int | None, file_backed: bool) -> TruncatingStringIO:
+def _make_capture_buffer(
+    limit: int, tail_chars: int | None, file_backed: bool
+) -> TruncatingStringIO:
     """Create a stdout/stderr capture buffer, optionally file-backed."""
     if file_backed:
         return FileBackedTruncatingStringIO(limit=limit, tail_chars=tail_chars)

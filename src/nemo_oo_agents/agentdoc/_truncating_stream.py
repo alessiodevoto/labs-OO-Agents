@@ -183,7 +183,10 @@ class FileBackedTruncatingStringIO(TruncatingStringIO):
             self._file = os.fdopen(fd, "w")
             self._file_path = path
         except OSError:
-            _log.warning("Failed to create temp file for output capture; falling back to in-memory", exc_info=True)
+            _log.warning(
+                "Failed to create temp file for output capture; falling back to in-memory",
+                exc_info=True,
+            )
             self._file_failed = True
 
     def write(self, s: str) -> int:
