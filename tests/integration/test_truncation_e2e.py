@@ -32,7 +32,6 @@ from nemo_oo_agents.context_blocks.formatter import XMLBlockFormatter
 from nemo_oo_agents.context_blocks.renderer import render_context
 from nemo_oo_agents.events import PythonOutput
 from nemo_oo_agents.runtime.actor import _current_llm_var
-from nemo_oo_agents.runtime.harness_metrics import harness_metrics_session
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
@@ -396,19 +395,20 @@ class TestL4ContextBlockEviction:
             context_limit=60,
             count_tokens=_count_tokens,
         )
-        # If only one was evicted, it should be the user block
-        if result.stats.context_blocks_dropped == 1:
-            output_str = str(result.output)
-            assert "EVICTED" in output_str
-            # framework block should survive
-            assert "framework" in output_str.replace("EVICTED", "")
+        assert result.stats.context_blocks_dropped >= 1, (
+            f"Expected at least one block to be evicted, got {result.stats.context_blocks_dropped}"
+        )
+        output_str = str(result.output)
+        assert "EVICTED" in output_str
+        # User block should be evicted first; framework block should survive
+        assert "framework" in output_str.replace("EVICTED", "")
 
     def test_boundary_block_just_under_then_second_pushes_over(self):
         """One block fits just under the budget; adding a second pushes
         total over the limit and triggers eviction of the newest block."""
-        # Budget = 100 tokens. Static system prompt ~4 tokens.
-        # Block A = 380 chars = 95 tokens → fits (4 + 95 = 99 ≤ 100)
-        # Block B = 40 chars = 10 tokens → total 109 > 100 → B gets evicted
+        # Budget = 100 tokens. Static system prompt ~1 token.
+        # Block A = 380 chars = 95 tokens → fits (1 + 95 = 96 ≤ 100)
+        # Block B = 40 chars = 10 tokens → total 106 > 100 → B gets evicted
         blocks = [
             ResolvedBlock(
                 key="system_prompt",
