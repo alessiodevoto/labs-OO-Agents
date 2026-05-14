@@ -544,7 +544,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
                 if actual is not None:
                     return actual > self.config.max_tokens
         except Exception:
-            pass
+            logger.warning("TokenBudgetSummarizer: failed to read API-reported token count", exc_info=True)
 
         # Fallback to render_context estimate (calibrated via EMA).
         stats = agent.context_stats
