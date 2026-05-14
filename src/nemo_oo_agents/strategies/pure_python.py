@@ -218,7 +218,7 @@ class PurePythonStrategy(CompositeStrategy):
 
         **Complete**: Use `return <value>` when done.
 
-        **Forbidden**: `import` statements (use modules shown in "Already Imported"); attaching callables to the agent (`self.foo = fn`, `setattr(self, ...)`, `type(self).foo = fn`)."""
+        **Forbidden**: attaching callables to the agent (`self.foo = fn`, `setattr(self, ...)`, `type(self).foo = fn`)."""
         ...
 
     @strategy(TemplateStrategy())
