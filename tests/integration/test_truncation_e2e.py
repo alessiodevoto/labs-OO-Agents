@@ -274,7 +274,8 @@ class TestL3EventRendering:
         moderate_stdout = "M" * 15_000
         event = _make_python_output(stdout=moderate_stdout)
         rendered = pformat(
-            event, max_string=10_000  # default event_format setting
+            event,
+            max_string=10_000,  # default event_format setting
         )
         assert moderate_stdout in rendered
 
@@ -578,9 +579,7 @@ class TestL4EventArchival:
         active_values = list(agent.event_manager.values())
 
         # Collapsed events should be replaced by a Summary
-        has_summary = any(
-            hasattr(e, "summary_tag") for e in active_values
-        )
+        has_summary = any(hasattr(e, "summary_tag") for e in active_values)
         assert has_summary, "Collapsed events should produce a Summary"
 
 
@@ -805,4 +804,3 @@ def _openai_formatter():
     from nemo_oo_agents.context_blocks.formatter import OpenAIProviderFormatter
 
     return OpenAIProviderFormatter()
-
