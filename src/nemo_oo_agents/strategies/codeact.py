@@ -443,7 +443,6 @@ Standard Python builtins and agent instance (`self`) are available."""
             "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
         )
 
-
         # Members section — Skill attrs on the agent.
         # Includes both instance attrs and class-level Skill attrs, so that
         # `frontend_design = Skill(path=...)` at class level is visible here.
