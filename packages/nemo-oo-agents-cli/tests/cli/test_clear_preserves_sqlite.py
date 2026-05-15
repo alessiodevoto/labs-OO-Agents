@@ -395,7 +395,6 @@ async def test_clear_resets_workflow_phase(tmp_path):
     assert agent._workflow_state == {}, "/clear left stale _workflow_state"
 
 
-
 # ── /session new resets agent state ────────────────────────────────────
 
 
