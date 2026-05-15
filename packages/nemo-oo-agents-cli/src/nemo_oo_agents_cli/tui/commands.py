@@ -1378,6 +1378,16 @@ class SessionCommand(Command):
                 except Exception:
                     pass
 
+            # Cancel background jobs so they don't keep running in the
+            # old session — same as /clear. Fixes the same leak that
+            # GitLab #172 fixed for /clear.
+            qm = getattr(self.agent, "queue_manager", None)
+            if qm is not None and hasattr(qm, "shutdown"):
+                try:
+                    await qm.shutdown()
+                except Exception:
+                    pass
+
             # Reset the agent's in-memory working state (vars, todos,
             # context blocks, shell) — same as /clear.
             await _reset_agent_working_state(self.agent)

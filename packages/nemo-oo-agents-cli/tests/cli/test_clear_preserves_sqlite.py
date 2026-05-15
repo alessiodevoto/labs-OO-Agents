@@ -392,4 +392,97 @@ async def test_clear_resets_workflow_phase(tmp_path):
         old_sm.close()
 
     assert agent._phase == "idle", f"/clear left _phase={agent._phase!r}"
-    assert agent._workflow_state == {}, f"/clear left stale _workflow_state"
+    assert agent._workflow_state == {}, "/clear left stale _workflow_state"
+
+
+
+# ── /session new resets agent state ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_session_new_resets_agent_vars(tmp_path):
+    """``/session new`` must wipe ``agent.vars`` so ``self.v`` starts fresh."""
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+        agent.vars = {"spec": "old plan", "cursor": 42}
+
+        registry = CommandRegistry(
+            frontend=AsyncMock(),
+            config=MagicMock(default_model="test"),
+            agent=agent,
+            session_manager=old_sm,
+            skills_dirs=None,
+            mcp_file=None,
+        )
+        handler = CommandHandler(registry=registry, frontend=AsyncMock())
+
+        result = await handler.handle("/session new")
+
+        if result.new_session_manager is not None:
+            result.new_session_manager.close()
+        old_sm.close()
+
+    assert agent.vars == {}, f"/session new left stale vars: {agent.vars}"
+
+
+@pytest.mark.asyncio
+async def test_session_new_resets_user_context_blocks(tmp_path):
+    """``/session new`` must remove user-set context blocks but keep protected ones."""
+    from nemo_oo_agents.runtime.context_manager import ContextManager
+
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+
+        cm = ContextManager()
+        cm.set_static_protected("system_prompt", "you are an agent")
+        cm["user_note"] = "remember this"
+        agent.context_manager = cm
+
+        registry = CommandRegistry(
+            frontend=AsyncMock(),
+            config=MagicMock(default_model="test"),
+            agent=agent,
+            session_manager=old_sm,
+            skills_dirs=None,
+            mcp_file=None,
+        )
+        handler = CommandHandler(registry=registry, frontend=AsyncMock())
+
+        result = await handler.handle("/session new")
+
+        if result.new_session_manager is not None:
+            result.new_session_manager.close()
+        old_sm.close()
+
+    assert "system_prompt" in cm, "protected block was removed"
+    assert "user_note" not in cm, "/session new left user context block"
+
+
+@pytest.mark.asyncio
+async def test_session_new_resets_shell(tmp_path):
+    """``/session new`` must reset the shell session."""
+    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
+        old_sm = _make_sm(tmp_path)
+        agent = _make_mock_agent(old_sm._storage)
+        agent.shell = MagicMock()
+        agent.shell.reset = AsyncMock()
+
+        registry = CommandRegistry(
+            frontend=AsyncMock(),
+            config=MagicMock(default_model="test"),
+            agent=agent,
+            session_manager=old_sm,
+            skills_dirs=None,
+            mcp_file=None,
+        )
+        handler = CommandHandler(registry=registry, frontend=AsyncMock())
+
+        result = await handler.handle("/session new")
+
+        if result.new_session_manager is not None:
+            result.new_session_manager.close()
+        old_sm.close()
+
+    agent.shell.reset.assert_awaited_once()
