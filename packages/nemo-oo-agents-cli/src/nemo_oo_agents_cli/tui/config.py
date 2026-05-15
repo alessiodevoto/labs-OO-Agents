@@ -104,6 +104,10 @@ class TUIConfig:
     # Goal mode: when on, unresolved todos auto-feed the agent after each turn
     goal_mode: bool = False
 
+    # Custom toolbar Python snippet (evaluated each render to produce label text).
+    # Available vars: datetime, config, model, short_model, time, agent.
+    toolbar_snippet: str | None = None
+
 
 @dataclass
 class Config:
