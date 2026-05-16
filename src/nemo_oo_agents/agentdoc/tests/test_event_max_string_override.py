@@ -8,7 +8,7 @@ existing behavior of PythonOutput.stdout/stderr.
 """
 
 from nemo_oo_agents.agentdoc import pformat
-from nemo_oo_agents.events import LLMOutput, PythonOutput, Summary, Task
+from nemo_oo_agents.events import LLMOutput, PythonOutput, ResultStatus, Summary, Task
 
 LONG_STRING = "x" * 20_000
 MAX_STRING = 100  # Aggressively low to verify the override works
@@ -43,7 +43,7 @@ class TestEventMaxStringOverride:
         """Existing behavior — regression guard."""
         event = PythonOutput(
             tool_call_id="test",
-            execution_status="complete",
+            execution_status=ResultStatus.COMPLETE,
             execution_count=1,
             stdout=LONG_STRING,
         )
@@ -54,7 +54,7 @@ class TestEventMaxStringOverride:
         """Existing behavior — regression guard."""
         event = PythonOutput(
             tool_call_id="test",
-            execution_status="complete",
+            execution_status=ResultStatus.COMPLETE,
             execution_count=1,
             stderr=LONG_STRING,
         )
