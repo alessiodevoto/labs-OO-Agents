@@ -235,9 +235,7 @@ class PurePythonStrategy(CompositeStrategy):
     _SESSION_INTERNAL_KEYS = frozenset({"Out", "__repl_captured_locals__"})
 
     @staticmethod
-    def _sync_session_locals(
-        call: "CurrentCall", session: "GenerationSession"
-    ) -> None:
+    def _sync_session_locals(call: "CurrentCall", session: "GenerationSession") -> None:
         """Write back session_locals to caller's dict, filtering session internals."""
         if call.session_locals is None:
             return

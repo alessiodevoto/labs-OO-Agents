@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for injectable session_locals in CodeAct and PurePython strategies.
 
 Tests that callers can inject initial session_locals into a strategy method call
@@ -54,9 +56,11 @@ class TestCodeActSessionLocalsInjection:
                 """Return 42."""
                 ...
 
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_return_result(result=42)]),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_return_result(result=42)]),
+            ]
+        )
         agent = TestAgent(llm=fake_llm)
         result = await agent.compute()
         assert result == 42
@@ -74,9 +78,11 @@ class TestCodeActSessionLocalsInjection:
         # LLM code reads `injected_value` from session_locals and returns inline.
         # Single scripted response: if injection fails (NameError), there's no
         # fallback response so the test correctly fails.
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_tool_call("return_result(injected_value * 2)")]),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_tool_call("return_result(injected_value * 2)")]),
+            ]
+        )
         stack: dict[str, Any] = {"injected_value": 42}
         agent = TestAgent(llm=fake_llm)
         result = await agent.compute(_session_locals=stack)
@@ -93,10 +99,12 @@ class TestCodeActSessionLocalsInjection:
                 ...
 
         # LLM defines a variable, then returns
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_tool_call("computed = 99\nprint(computed)")]),
-            _resp("", tool_calls=[_return_result(result=99)]),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_tool_call("computed = 99\nprint(computed)")]),
+                _resp("", tool_calls=[_return_result(result=99)]),
+            ]
+        )
         stack: dict[str, Any] = {}
         agent = TestAgent(llm=fake_llm)
         result = await agent.compute(_session_locals=stack)
@@ -115,20 +123,24 @@ class TestCodeActSessionLocalsInjection:
                 ...
 
         # First call: define counter = 1
-        fake_llm1 = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_tool_call("counter = 1")]),
-            _resp("", tool_calls=[_return_result(result="done")]),
-        ])
+        fake_llm1 = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_tool_call("counter = 1")]),
+                _resp("", tool_calls=[_return_result(result="done")]),
+            ]
+        )
         stack: dict[str, Any] = {}
         agent = TestAgent(llm=fake_llm1)
         await agent.step(_session_locals=stack)
         assert stack.get("counter") == 1
 
         # Second call: LLM reads counter (injected) and increments
-        fake_llm2 = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_tool_call("counter = counter + 1")]),
-            _resp("", tool_calls=[_return_result(result="done")]),
-        ])
+        fake_llm2 = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_tool_call("counter = counter + 1")]),
+                _resp("", tool_calls=[_return_result(result="done")]),
+            ]
+        )
         agent2 = TestAgent(llm=fake_llm2)
         await agent2.step(_session_locals=stack)
         assert stack.get("counter") == 2
@@ -143,9 +155,11 @@ class TestCodeActSessionLocalsInjection:
                 """Return 1."""
                 ...
 
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _resp("", tool_calls=[_return_result(result=1)]),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _resp("", tool_calls=[_return_result(result=1)]),
+            ]
+        )
         stack: dict[str, Any] = {}
         agent = TestAgent(llm=fake_llm)
         await agent.compute(_session_locals=stack)
@@ -176,9 +190,11 @@ class TestPurePythonSessionLocalsInjection:
                 """Use injected_value."""
                 ...
 
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _pure_resp("return injected_value + 10"),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _pure_resp("return injected_value + 10"),
+            ]
+        )
         stack: dict[str, Any] = {"injected_value": 42}
         agent = TestAgent(llm=fake_llm)
         result = await agent.compute(_session_locals=stack)
@@ -194,10 +210,12 @@ class TestPurePythonSessionLocalsInjection:
                 """Compute something."""
                 ...
 
-        fake_llm = FakeLLMClient(scripted_responses=[
-            _pure_resp("my_var = 123"),
-            _pure_resp("return my_var"),
-        ])
+        fake_llm = FakeLLMClient(
+            scripted_responses=[
+                _pure_resp("my_var = 123"),
+                _pure_resp("return my_var"),
+            ]
+        )
         stack: dict[str, Any] = {}
         agent = TestAgent(llm=fake_llm)
         await agent.compute(_session_locals=stack)

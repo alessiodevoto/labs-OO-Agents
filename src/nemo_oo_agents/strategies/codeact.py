@@ -578,9 +578,7 @@ Standard Python builtins and agent instance (`self`) are available."""
     _SESSION_INTERNAL_KEYS = frozenset({"Out", "__repl_captured_locals__"})
 
     @staticmethod
-    def _sync_session_locals(
-        call: "CurrentCall", session: "CodeActSession"
-    ) -> None:
+    def _sync_session_locals(call: "CurrentCall", session: "CodeActSession") -> None:
         """Write back session_locals to caller's dict, filtering session internals."""
         if call.session_locals is None:
             return
