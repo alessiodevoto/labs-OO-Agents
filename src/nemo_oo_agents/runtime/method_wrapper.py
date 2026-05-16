@@ -93,7 +93,15 @@ def create_agent_method_wrapper(
 
                 _tc = DEFAULT_TRUNCATION_CONFIG
 
-            ArgumentValidator().validate(original_func, args, kwargs, _tc)
+            # Strip framework kwargs before validation — they're consumed by
+            # _execute_with_generation, not the user's method signature.
+            _fw_session_locals = kwargs.pop("_session_locals", None)
+            try:
+                ArgumentValidator().validate(original_func, args, kwargs, _tc)
+            finally:
+                # Restore so _execute_with_generation can pop them
+                if _fw_session_locals is not None:
+                    kwargs["_session_locals"] = _fw_session_locals
 
             # Strategy resolution if not provided
             if resolved_strategy is None:
