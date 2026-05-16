@@ -60,7 +60,9 @@ class Task(EventBase):  # type: ignore[misc]
 
     _role: ClassVar[Role] = Role.USER
 
-    prompt: Annotated[str, Field(description="Task prompt describing what to do")]
+    prompt: Annotated[
+        str, spec(max_string=None), Field(description="Task prompt describing what to do")
+    ]
     images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,
@@ -117,7 +119,9 @@ class LLMOutput(EventBase):  # type: ignore[misc]
 
     _role: ClassVar[Role] = Role.ASSISTANT
 
-    content: Annotated[str, Field(description="LLM response content (code or JSON)")]
+    content: Annotated[
+        str, spec(max_string=None), Field(description="LLM response content (code or JSON)")
+    ]
 
 
 class PythonOutput(EventBase):  # type: ignore[misc]
@@ -286,7 +290,7 @@ class Summary(EventBase):  # type: ignore[misc]
     children_tags: list[str] = Field(
         default_factory=list, repr=False, description="Tags of directly replaced events"
     )
-    summary_text: str | None = Field(
+    summary_text: Annotated[str | None, spec(max_string=None)] = Field(
         default=None, description="LLM-generated summary, or None for truncation"
     )
     doc: str = Field(default="", description="Usage hint for accessing collapsed events")
