@@ -1105,6 +1105,82 @@ class GoalModeCommand(Command):
         return CommandResult.ok(TextOutput("Goal mode disabled.", "success"))
 
 
+class ToolbarCommand(Command):
+    """Configure the toolbar (rule above the input area).
+
+    Without args: show current snippet.
+    /toolbar reset: revert to default (time + model).
+    /toolbar <snippet>: set a Python expression evaluated on each render.
+
+    The snippet replaces the time + model portion of the toolbar.
+    Context usage and session info are always appended after it.
+
+    Available variables in the snippet:
+        time        — current time as "HH:MM"
+        short_model — short model name (e.g. "sonnet-4-5")
+        model       — full model name
+        config      — TUIConfig instance
+        datetime    — datetime module
+        agent       — the agent instance
+
+    Snippets run with full Python access (same as the agent REPL).
+    """
+
+    @property
+    def name(self) -> str:
+        return "toolbar"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {
+            "/toolbar [reset|snippet]": "Configure the toolbar label (time, model, custom Python)"
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args:
+            snippet = self.config.toolbar_snippet
+            if snippet:
+                return CommandResult.ok(TextOutput(f"Current toolbar snippet: {snippet}", "info"))
+            return CommandResult.ok(TextOutput("Toolbar: default (time · model)", "info"))
+
+        text = " ".join(args)
+        if text.strip().lower() == "reset":
+            self.config.toolbar_snippet = None
+            return CommandResult.ok(
+                TextOutput("Toolbar reset to default (time · model).", "success")
+            )
+
+        # Validate the snippet by trial-evaluating it.
+        # Snippets run with full Python access — this is a local CLI
+        # where the user already has arbitrary code execution via the
+        # agent REPL, so no sandboxing is attempted.
+        import datetime as _dt
+
+        from .session import _short_model_name
+
+        try:
+            eval(
+                text,
+                {},
+                {
+                    "datetime": _dt,
+                    "config": self.config,
+                    "model": self.config.default_model,
+                    "short_model": _short_model_name(self.config.default_model),
+                    "time": _dt.datetime.now().strftime("%H:%M"),
+                    "agent": self.agent,
+                },
+            )
+        except Exception as e:
+            return CommandResult.err(f"Invalid snippet: {e}")
+
+        self.config.toolbar_snippet = text
+        return CommandResult.ok(TextOutput(f"Toolbar snippet set: {text}", "success"))
+
+
 # ---------------------------------------------------------------------------
 # Edit command
 # ---------------------------------------------------------------------------
@@ -2165,6 +2241,7 @@ class CommandRegistry:
         "events": EventsCommand,
         "time-travel": TimeTravelCommand,
         "trace-url": TraceUrlCommand,
+        "toolbar": ToolbarCommand,
     }
 
     def __init__(

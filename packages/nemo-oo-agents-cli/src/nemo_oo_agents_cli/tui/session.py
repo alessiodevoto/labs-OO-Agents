@@ -13,6 +13,7 @@ decisions.  Frontends are pure rendering.
 
 import asyncio
 import io
+import logging
 import re
 import sys
 import traceback
@@ -21,6 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 from rich.console import Console as RichConsole
 from rich.text import Text
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
@@ -630,8 +633,18 @@ class Session:
 
     def _session_label(self) -> str:
         """Right-aligned session label on the rule above the input:
-        ``ctx 20% · my-session [abc12345]``."""
+        ``14:32 · sonnet-4-5 · ctx 20% · my-session [abc12345]``."""
+        import datetime as _dt
+
         bits: list[str] = []
+        # Custom toolbar snippet (set via /toolbar command)
+        custom = self._eval_toolbar_snippet()
+        if custom:
+            bits.append(custom)
+        else:
+            # Default: show current time + model
+            bits.append(_dt.datetime.now().strftime("%H:%M"))
+            bits.append(_short_model_name(self.config.tui.default_model))
         usage = self._context_usage_label()
         if usage:
             bits.append(usage)
@@ -644,6 +657,36 @@ class Session:
             elif short:
                 bits.append(f"[{short}]")
         return " · ".join(bits)
+
+    def _eval_toolbar_snippet(self) -> str:
+        """Evaluate the custom toolbar snippet, returning its result or empty string.
+
+        Snippets run with full Python access — this is a local CLI
+        where the user already has arbitrary code execution via the
+        agent REPL, so no sandboxing is attempted.
+        """
+        snippet = self.config.tui.toolbar_snippet
+        if not snippet:
+            return ""
+        try:
+            import datetime as _dt
+
+            result = eval(
+                snippet,
+                {},
+                {
+                    "datetime": _dt,
+                    "config": self.config,
+                    "model": self.config.tui.default_model,
+                    "short_model": _short_model_name(self.config.tui.default_model),
+                    "time": _dt.datetime.now().strftime("%H:%M"),
+                    "agent": self.agent,
+                },
+            )
+            return str(result) if result is not None else ""
+        except Exception:
+            logger.debug("toolbar snippet failed: %s", snippet, exc_info=True)
+            return ""
 
     def _on_user_message(self, text: str) -> None:
         """Render the user's submitted text as a full-width grey bar and
