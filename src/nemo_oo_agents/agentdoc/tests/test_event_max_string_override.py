@@ -1,11 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that certain event fields are never truncated by pformat max_string.
 
 Fields annotated with spec(max_string=None) should render their full content
 regardless of the max_string kwarg passed to pformat(). This matches the
 existing behavior of PythonOutput.stdout/stderr.
 """
-
-import pytest
 
 from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.events import LLMOutput, PythonOutput, Summary, Task
@@ -18,6 +18,7 @@ class TestEventMaxStringOverride:
     """Fields with spec(max_string=None) must not be truncated."""
 
     def test_summary_text_not_truncated(self):
+        """Summary.summary_text is already condensed — truncating defeats its purpose."""
         event = Summary(
             summary_tag="1..50",
             replaced_range=(1, 50),
@@ -27,11 +28,13 @@ class TestEventMaxStringOverride:
         assert LONG_STRING in rendered
 
     def test_task_prompt_not_truncated(self):
+        """Task.prompt carries critical instructions — must never be truncated."""
         event = Task(prompt=LONG_STRING)
         rendered = pformat(event, max_string=MAX_STRING)
         assert LONG_STRING in rendered
 
     def test_llm_output_content_not_truncated(self):
+        """LLMOutput.content is bounded by token limits — truncating hides previous code."""
         event = LLMOutput(content=LONG_STRING)
         rendered = pformat(event, max_string=MAX_STRING)
         assert LONG_STRING in rendered
