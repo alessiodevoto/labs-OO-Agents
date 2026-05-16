@@ -60,7 +60,9 @@ class Task(EventBase):  # type: ignore[misc]
 
     _role: ClassVar[Role] = Role.USER
 
-    prompt: Annotated[str, spec(max_string=None), Field(description="Task prompt describing what to do")]
+    prompt: Annotated[
+        str, spec(max_string=None), Field(description="Task prompt describing what to do")
+    ]
     images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,
@@ -117,7 +119,9 @@ class LLMOutput(EventBase):  # type: ignore[misc]
 
     _role: ClassVar[Role] = Role.ASSISTANT
 
-    content: Annotated[str, spec(max_string=None), Field(description="LLM response content (code or JSON)")]
+    content: Annotated[
+        str, spec(max_string=None), Field(description="LLM response content (code or JSON)")
+    ]
 
 
 class PythonOutput(EventBase):  # type: ignore[misc]
