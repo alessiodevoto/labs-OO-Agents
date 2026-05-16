@@ -197,26 +197,53 @@ class ExitCommand(Command):
         return CommandResult.bye()
 
 
-def _reset_agent_working_state(agent: "Agent") -> None:
+async def _reset_agent_working_state(agent: "Agent") -> None:
     """Reset the agent's in-memory working state for a fresh ``/clear``.
 
     The event manager is already pointed at the new (empty) storage via
     ``_swap_session_manager`` — that handles conversation history. Here
     we clear the *snapshotable* fields that live on the agent instance
-    itself and don't get reset by storage swap alone:
+    itself and don't get reset by storage swap alone.
 
-    - ``agent.todo`` — ``TodoManager``'s ``_todos`` / ``_order``
-    - future fields should be added here as they're discovered
-
-    Guarded by ``hasattr`` and a duck-typed ``clear`` check so agents
-    without a todo skill keep working.
+    Guarded by ``hasattr`` / duck-typed checks so agents without a
+    particular skill keep working.
     """
+    # 1. TodoManager
     todo = getattr(agent, "todo", None)
     if todo is not None and hasattr(todo, "clear") and callable(todo.clear):
         try:
             todo.clear()
         except Exception:
             pass
+
+    # 2. Persistent vars (self.v / agent.vars)
+    if hasattr(agent, "vars") and isinstance(agent.vars, dict):
+        agent.vars.clear()
+
+    # 3. User-set context blocks (preserve framework-protected ones)
+    cm = getattr(agent, "context_manager", None)
+    if cm is not None:
+        user_keys = [k for k in cm.keys() if k not in cm.protected_keys]
+        for k in user_keys:
+            try:
+                del cm[k]
+            except Exception:
+                pass
+
+    # 4. Shell session — kill and restart so env vars / cwd / aliases
+    #    from the old session don't leak.
+    shell = getattr(agent, "shell", None)
+    if shell is not None and hasattr(shell, "reset") and callable(shell.reset):
+        try:
+            await shell.reset()
+        except Exception:
+            pass
+
+    # 5. Workflow phase tracking
+    if hasattr(agent, "_phase"):
+        agent._phase = "idle"
+    if hasattr(agent, "_workflow_state"):
+        agent._workflow_state = {}
 
 
 class ClearCommand(Command):
@@ -275,7 +302,7 @@ class ClearCommand(Command):
         # /session <id> has its own restore path (``restore_latest_snapshot``
         # replaces in-memory state wholesale); /clear has no snapshot to
         # restore, so we explicitly reset the known fresh-start fields.
-        _reset_agent_working_state(self.agent)
+        await _reset_agent_working_state(self.agent)
 
         outputs: list[Output] = [
             ClearScreen(),
@@ -1426,6 +1453,20 @@ class SessionCommand(Command):
                     )
                 except Exception:
                     pass
+
+            # Cancel background jobs so they don't keep running in the
+            # old session — same as /clear. Fixes the same leak that
+            # GitLab #172 fixed for /clear.
+            qm = getattr(self.agent, "queue_manager", None)
+            if qm is not None and hasattr(qm, "shutdown"):
+                try:
+                    await qm.shutdown()
+                except Exception:
+                    pass
+
+            # Reset the agent's in-memory working state (vars, todos,
+            # context blocks, shell) — same as /clear.
+            await _reset_agent_working_state(self.agent)
 
             outputs: list[Output] = [
                 ClearScreen(),
