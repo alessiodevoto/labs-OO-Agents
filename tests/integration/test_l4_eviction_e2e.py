@@ -47,10 +47,9 @@ def _mk_agent(context_window: int = 4096, max_context_tokens: int | None = None)
     llm.model = "anthropic/claude-3-5-sonnet-20240620"  # type: ignore[attr-defined]
 
     if max_context_tokens is not None:
+        tc = TruncationConfig(max_context_tokens=max_context_tokens)
 
-        class A(Agent, llm=llm):
-            _truncation_config = TruncationConfig(max_context_tokens=max_context_tokens)
-
+        class A(Agent, llm=llm, truncation=tc):
             async def respond(self, prompt: str) -> str:
                 """Respond to {prompt}."""
                 ...
