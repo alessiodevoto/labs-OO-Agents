@@ -442,7 +442,6 @@ Standard Python builtins and agent instance (`self`) are available."""
         parts.append(
             "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
         )
-        parts.append("Do NOT import — use what's in the Execution Context.")
 
         # Members section — Skill attrs on the agent.
         # Includes both instance attrs and class-level Skill attrs, so that
@@ -549,7 +548,6 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         ## Restrictions (will throw)
 
-        - `import` — use what's in the Execution Context
         - `eval`, `exec`, `compile`, `__import__`, `input`, `breakpoint`
         - `globals`, `locals`, `vars`, `asyncio.run`, `loop.run_until_complete`
         - Attaching callables to the agent: `self.foo = fn`, `setattr(self, 'foo', fn)`, `type(self).foo = fn`
