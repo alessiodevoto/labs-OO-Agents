@@ -18,7 +18,7 @@ with hidden:
 
     from nemo_oo_agents import Agent
     from nemo_oo_agents.agents import TokenBudgetSummarizer
-    from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.config import CodeActConfig, PredictConfig
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
@@ -355,7 +355,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             print(text)
 
     @hidden
-    @strategy(PredictStrategy())
+    @strategy(PredictStrategy(PredictConfig(output_serialization="tool_call")))
     async def name_session(self, user_message: str) -> str:
         """Generate an ultra-short 2-5 word session title.
 
@@ -761,7 +761,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         ...
 
     @hidden
-    @strategy(PredictStrategy())
+    @strategy(PredictStrategy(PredictConfig(output_serialization="tool_call")))
     async def classify_intent(self, user_message: str) -> Intent:
         """Classify the user's message into a task type.
 
