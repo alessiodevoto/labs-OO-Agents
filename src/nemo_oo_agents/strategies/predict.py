@@ -18,13 +18,14 @@ import json
 import logging
 import types
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
+from uuid import uuid4
 
 from pydantic import BaseModel, RootModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
 from nemo_oo_agents.agentdoc import pformat
 from nemo_oo_agents.agentdoc.visibility import is_hidden_field
-from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Error, Task
@@ -214,6 +215,9 @@ class PredictStrategy(GenerationStrategy):
 
                 logger.debug(f"[PREDICT attempt={attempt}] Validation successful")
 
+                if self.config.output_serialization == "tool_call":
+                    self._replace_with_tool_call(runtime, _event_id, validated_data)
+
                 return validated_data
 
             except (PydanticValidationError, ValueError, TypeError, json.JSONDecodeError) as e:
@@ -370,6 +374,41 @@ class PredictStrategy(GenerationStrategy):
                     f"Chunk or summarise the input before calling this method, "
                     f"or raise PredictConfig(max_param_chars=...) if the size is intentional."
                 )
+
+    def _jsonable(self, value: Any) -> Any:
+        """Convert a validated Predict result into JSON-compatible tool arguments."""
+        if isinstance(value, BaseModel):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return {str(k): self._jsonable(v) for k, v in value.items()}
+        if isinstance(value, set):
+            converted = [self._jsonable(v) for v in value]
+            return sorted(converted, key=lambda item: json.dumps(item, sort_keys=True))
+        if isinstance(value, (list, tuple)):
+            return [self._jsonable(v) for v in value]
+        try:
+            json.dumps(value)
+            return value
+        except TypeError:
+            return str(value)
+
+    def _replace_with_tool_call(self, runtime: RuntimeServices, event_id: str, result: Any) -> None:
+        """Replace Predict's LLMOutput with a synthetic return_result tool call."""
+        runtime.event_manager.remove(event_id)
+        tool_call_id = f"predict_{uuid4().hex[:8]}"
+        runtime.event_manager.add(
+            ToolCallEvent(
+                tool_call_id=tool_call_id,
+                name="return_result",
+                arguments={"result": self._jsonable(result)},
+                result=ToolResult(
+                    tool_call_id=tool_call_id,
+                    content="Result accepted.",
+                    result_status=ResultStatus.COMPLETE,
+                ),
+                metadata={"synthetic": True, "synthetic_type": "predict_return_result"},
+            )
+        )
 
     def _extract_raw_from_llm_response(self, llm_response: Any) -> str | None:
         """Extract raw content from LLMResponse object for error reporting.

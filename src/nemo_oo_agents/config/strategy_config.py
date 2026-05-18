@@ -105,6 +105,12 @@ class PredictConfig(BaseModel):
     max_error_chars: int = 1000
     # ``None`` = unconstrained (parameter-size guard disabled).
     max_param_chars: int | None = 200_000
+    # How the Predict output is serialized back into the conversation history:
+    # - "event": Current behavior — LLMOutput event wrapped in <agent> tag.
+    # - "tool_call": Replace with a synthetic return_result() ToolCallEvent that
+    #   renders natively through the provider formatter. Prevents models from
+    #   mimicking the <agent>LLMOutput(...)</agent> pattern in future outputs.
+    output_serialization: Literal["event", "tool_call"] = "event"
 
     def merge_with(self, other: "PredictConfig") -> "PredictConfig":
         if not other.model_fields_set:
