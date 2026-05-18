@@ -165,6 +165,14 @@ def _extract_types_from_field(
     if field_name in annotations:
         _extract_types_from_hint(annotations[field_name], discovered)
 
+    # 1b. For Pydantic models, also check model_fields[].annotation which has
+    # resolved forward refs that __annotations__ still holds as strings.
+    model_fields = getattr(cls, "model_fields", None)
+    if model_fields and field_name in model_fields:
+        resolved_annotation = getattr(model_fields[field_name], "annotation", None)
+        if resolved_annotation is not None:
+            _extract_types_from_hint(resolved_annotation, discovered)
+
     # 2. Check if the field value itself is a type (like child agent classes)
     # e.g., WorkerAgent = WorkerAgent where the value IS a class
     if field_name in cls.__dict__:
