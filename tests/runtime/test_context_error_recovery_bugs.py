@@ -197,3 +197,21 @@ class TestArchivalFiresOnContextError:
             f"Summary events: {len(summary_events)}"
         )
         assert len(summary_events) >= 1, "Archival should emit Summary events"
+
+
+class TestContextWindowErrorDetection:
+    """Provider context-window errors must be recognized for fallback archival."""
+
+    def test_azure_context_length_exceeded_format(self):
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = Exception(
+            "litellm.BadRequestError: AzureException BadRequestError - "
+            "{\n  \"error\": {\n"
+            "    \"message\": \"Your input exceeds the context window of this model. "
+            "Please adjust your input and try again.\",\n"
+            "    \"code\": \"context_length_exceeded\"\n"
+            "  }\n}"
+        )
+
+        assert _is_context_window_error(exc)

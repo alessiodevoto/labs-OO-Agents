@@ -185,6 +185,25 @@ class TestContextBudget:
         llm.context_window = 200_000
         assert context_budget(llm) == 160_000
 
+    def test_returns_fallback_when_context_window_is_zero(self):
+        from nemo_oo_agents.agents.summarization import context_budget
+
+        llm = MagicMock(spec=["context_window"])
+        llm.context_window = 0
+        assert context_budget(llm) == 100_000
+
+    def test_rejects_zero_percent(self):
+        from nemo_oo_agents.agents.summarization import context_budget
+
+        llm = MagicMock(spec=["context_window"])
+        llm.context_window = 200_000
+        try:
+            context_budget(llm, 0)
+        except ValueError as exc:
+            assert "percent" in str(exc)
+        else:
+            raise AssertionError("context_budget should reject percent=0")
+
 
 # =============================================================================
 # Task 3: predict.py create_model failure

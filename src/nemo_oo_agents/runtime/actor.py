@@ -212,7 +212,12 @@ def _is_context_window_error(exc: BaseException) -> bool:
         seen.add(id(cur))
         name = type(cur).__name__
         msg = str(cur).lower()
-        if "contextwindowexceeded" in name.lower() or "context length" in msg:
+        if (
+            "contextwindowexceeded" in name.lower()
+            or "context length" in msg
+            or "context_length_exceeded" in msg
+            or "context window" in msg
+        ):
             return True
         cur = cur.__cause__ or cur.__context__
     return False
