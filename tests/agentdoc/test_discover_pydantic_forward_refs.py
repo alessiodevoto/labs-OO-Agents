@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 from nemo_oo_agents.agentdoc._discover import discover_referenced_types
 
-
 # ---------------------------------------------------------------------------
 # Bug 1: Forward-ref Pydantic fields not discovered
 # ---------------------------------------------------------------------------
