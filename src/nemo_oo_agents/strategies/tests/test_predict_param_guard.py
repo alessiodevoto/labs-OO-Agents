@@ -172,3 +172,35 @@ class TestPredictPromptSizeGuardImages:
 
         formatted = PlainBlockFormatter().format_event(task)
         assert formatted == prompt  # no truncation
+
+
+class TestPredictNoInputTruncation:
+    """Predict renders accepted inputs without truncation and without config."""
+
+    def test_default_runtime_truncates_long_strings(self):
+        """Documents the bug source: normal prefill formatting truncates long strings."""
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        long_str = "x" * 5291
+        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
+
+        truncated = call.format_parameters_as_code(tc=TruncationConfig())
+        assert "str(len=" in truncated
+
+    def test_predict_uses_no_tc_so_long_strings_are_not_truncated(self):
+        """Predict calls format_parameters_as_code() with no tc, so repr() renders in full."""
+        long_str = "x" * 5291
+        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
+
+        output = call.format_parameters_as_code()
+        assert "str(len=" not in output
+        assert long_str in output
+
+    def test_predict_no_tc_preserves_full_content(self):
+        """A 5K-char string that passes the param guard renders verbatim in the prompt."""
+        content = "Knowledge guide: " + "a" * 5000 + " end."
+        call = _make_call(args=(content,), signature="(knowledge_md: str)")
+
+        output = call.format_parameters_as_code()
+
+        assert content in output
