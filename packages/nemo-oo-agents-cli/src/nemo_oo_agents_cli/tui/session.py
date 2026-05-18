@@ -462,7 +462,23 @@ class Session:
         # convention in tui_application.py for the same lookup.
         queue = getattr(self.agent, "_user_messages_in", None)
         if queue is not None:
-            queue.set_on_get(self._on_user_message)
+
+            def _on_user_message_ui_thread(text: str) -> None:
+                app = self._app
+                loop = getattr(app, "_loop", None) if app is not None else None
+                if loop is None:
+                    self._on_user_message(text)
+                    return
+                try:
+                    on_ui_loop = asyncio.get_running_loop() is loop
+                except RuntimeError:
+                    on_ui_loop = False
+                if on_ui_loop:
+                    self._on_user_message(text)
+                else:
+                    loop.call_soon_threadsafe(self._on_user_message, text)
+
+            queue.set_on_get(_on_user_message_ui_thread)
 
         # Swap the frontend's Rich Console for one that writes through
         # our block queue, so slash-command output (e.g. /help tables)

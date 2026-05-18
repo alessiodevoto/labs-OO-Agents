@@ -440,7 +440,10 @@ class SQLiteStorageManager:
             resuming this one.
     """
 
-    def __init__(self, db_path: str | Path = ":memory:") -> None:
+    def __init__(self, db_path: str | Path = ":memory:", *, check_same_thread: bool = True) -> None:
+        # Safety invariant for check_same_thread=False: callers (the TUI)
+        # guarantee that all DB access is serialized through a single
+        # asyncio event loop on the agent thread. No concurrent writes.
         self._db_path = str(db_path)
         self._lock_fd: int | None = None
         self._closed = False
@@ -450,7 +453,7 @@ class SQLiteStorageManager:
             self._lock_fd = _acquire_session_lock(lock_path)
 
         try:
-            self._conn = sqlite3.connect(self._db_path)
+            self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
             self._conn.execute("PRAGMA journal_mode=WAL")
             _ensure_schema(self._conn)
             self._backend = SQLiteEventBackend(self._conn)

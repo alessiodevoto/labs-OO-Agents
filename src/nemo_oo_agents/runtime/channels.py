@@ -263,12 +263,37 @@ class Channel[T]:
             if self._on_put is not None:
                 self._on_put()
             return
-        # queue mode: hand to a pending waiter or buffer
+        # queue mode: hand to a pending waiter or buffer. Waiters may
+        # belong to the agent-loop thread while producers run on the TUI
+        # loop, so set the result via the Future's owning loop.
         while self._waiters:
             waiter = self._waiters.popleft()
-            if not waiter.done():
-                waiter.set_result(item)
-                return
+            if waiter.done():
+                continue
+            waiter_loop = waiter.get_loop()
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is waiter_loop:
+                if not waiter.done():
+                    waiter.set_result(item)
+                else:
+                    # Waiter was cancelled between our check and now — re-buffer.
+                    self._items.appendleft(item)
+            else:
+                # Schedule on the waiter's loop; handle the case where the
+                # waiter is cancelled between now and callback execution.
+                def _safe_deliver(w=waiter, v=item) -> None:
+                    if not w.done():
+                        w.set_result(v)
+                    else:
+                        self._items.appendleft(v)
+                        if self._on_put is not None:
+                            self._on_put()
+
+                waiter_loop.call_soon_threadsafe(_safe_deliver)
+            return
         self._items.append(item)
         if self._on_put is not None:
             self._on_put()
@@ -533,13 +558,30 @@ class QueueManager:
         # queue-mode buffer) so race() can wake on puts that don't
         # have a direct _drain_one waiter.  Created lazily on first
         # race() call to avoid requiring a running event loop at
-        # construction time.
-        self._notify: asyncio.Event | None = None
+        # construction time. Stored as a (event, loop) tuple for
+        # atomic publication to _set_notify from other threads.
+        self._notify_pair: tuple[asyncio.Event, asyncio.AbstractEventLoop] | None = None
 
     def _set_notify(self) -> None:
-        """Callback passed to channels; sets the _notify event."""
-        if self._notify is not None:
-            self._notify.set()
+        """Callback passed to channels; sets the _notify event.
+
+        Channels can be produced from the TUI thread while ``race()`` is
+        waiting on the agent-loop thread, so wake the event via its owning
+        loop instead of mutating it cross-thread. Reads the (event, loop)
+        tuple atomically to avoid init races.
+        """
+        pair = self._notify_pair
+        if pair is None:
+            return
+        event, loop = pair
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is loop:
+            event.set()
+        else:
+            loop.call_soon_threadsafe(event.set)
 
     # ---- factories -------------------------------------------------------
 
@@ -723,12 +765,16 @@ class QueueManager:
             raise ValueError("QueueManager.race() requires at least one channel")
 
         # Lazy-init: avoid requiring a running loop at construction time.
-        if self._notify is None:
-            self._notify = asyncio.Event()
+        # Published as an atomic tuple so _set_notify never sees a
+        # half-initialized state from another thread.
+        if self._notify_pair is None:
+            self._notify_pair = (asyncio.Event(), asyncio.get_running_loop())
+
+        notify_event = self._notify_pair[0]
 
         # Clear before checking fast path — any put() that arrives
         # between here and the await will re-set it.
-        self._notify.clear()
+        notify_event.clear()
 
         # Fast path: any queue channel already has an item — return
         # without creating tasks. Preserves FIFO by registration order.
@@ -743,7 +789,7 @@ class QueueManager:
 
         async def _wait_notify() -> None:
             """Await the _notify event; used as a sentinel task."""
-            await self._notify.wait()  # type: ignore[union-attr]
+            await notify_event.wait()
 
         notify_task = asyncio.create_task(_wait_notify(), name="qm.race[_notify]")
 
@@ -769,7 +815,7 @@ class QueueManager:
 
             if not drain_done:
                 # Only _notify fired — event-mode wakeup.
-                self._notify.clear()
+                notify_event.clear()
                 return []
 
             # Pick winner by registration order (= dict insertion order).
@@ -788,7 +834,7 @@ class QueueManager:
                     continue
                 ch._items.appendleft(lost_item)
             winner_ch._fire_on_get(winner_item)
-            self._notify.clear()
+            notify_event.clear()
             return [(winner_ch.name, winner_item)]
         except BaseException:
             # Outer cancellation: cancel any tasks still in flight,

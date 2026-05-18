@@ -22,8 +22,6 @@ right now because every listed behaviour is implemented.
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from .tui_app_harness import FakeAgent, TUIHarness
@@ -236,7 +234,7 @@ async def test_commands_bang_suspends_app_and_runs_shell():
 def _blocking_agent() -> FakeAgent:
     """Agent whose ``handle()`` blocks until we manually set ``block``."""
     agent = FakeAgent()
-    agent.block = asyncio.Event()  # unset → handle() blocks on wait()
+    agent.block.clear()  # unset → handle() blocks on wait()
     return agent
 
 
@@ -509,6 +507,35 @@ async def test_hard_ctrl_c_emits_interrupted_notice_to_scrollback() -> None:
         await h.wait_for(lambda: h.app.is_thinking())
         await h.press("c-c")
         await h.wait_output_contains("Interrupted")
+
+
+async def test_hard_sync_blocking_agent_keeps_input_responsive() -> None:
+    """A bad synchronous agent step must not starve prompt_toolkit.
+
+    Regression guard for the TUI freezing while the agent does sync work
+    on the UI event loop: typing during the blocking turn should still
+    update the live input buffer.
+    """
+    import time
+
+    agent = FakeAgent()
+
+    async def _sync_blocking_handle(notification):
+        for items in notification.values():
+            for item in items:
+                agent.messages_received.append(str(item))
+        time.sleep(0.35)
+        from nemo_oo_agents_cli.tui.tui_application import DispatcherExit
+
+        raise DispatcherExit()
+
+    agent.handle = _sync_blocking_handle  # type: ignore[method-assign]
+
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("start")
+        await h.wait_for(lambda: h.app.is_thinking())
+        await h.type_keys("still responsive")
+        await h.wait_input_equals("still responsive", timeout=1.0)
 
 
 async def test_hard_submit_message_re_entry_pushes_to_queue_not_stomps_task() -> None:
