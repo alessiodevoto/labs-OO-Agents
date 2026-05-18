@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the cached renderer (static-prefix / events / dynamic-suffix)."""
 
-from nemo_oo_agents.context_blocks.events import AssistantEvent, UserEvent
+from nemo_oo_agents.context_blocks.events import (
+    AssistantEvent,
+    ToolCallEvent,
+    ToolResult,
+    UserEvent,
+)
 from nemo_oo_agents.context_blocks.formatter import (
     AnthropicProviderFormatter,
     OpenAIProviderFormatter,
@@ -110,7 +115,11 @@ class TestCachedRendererEndToEndOpenAI:
         assert "<context>" in result[1]["content"]
         assert "<plan" in result[1]["content"]
 
-    def test_volatile_merges_into_trailing_user_event(self):
+    def test_volatile_appended_after_trailing_user_event(self):
+        """Dynamic ``<context>`` is its own user message — never merged into a
+        historical user event. Merging would mutate that event's bytes when a
+        later turn becomes the new trailing event, breaking provider prompt
+        caching (issue #208)."""
         user_event = UserEvent(content="hi")
         user_event.tag = "1"
         blocks = [
@@ -118,7 +127,7 @@ class TestCachedRendererEndToEndOpenAI:
             _dynamic_block("plan", "P"),
             ResolvedBlock(
                 key="event_1",
-                content="",
+                content="hi",
                 role=Role.USER,
                 metadata=BlockMetadata(tag="1"),
                 event=user_event,
@@ -130,11 +139,86 @@ class TestCachedRendererEndToEndOpenAI:
             provider_formatter=OpenAIProviderFormatter(),
         ).output
         roles = [m["role"] for m in result]
-        # system + one user (volatile merged into the single trailing user event)
-        assert roles == ["system", "user"]
-        user_content = result[1]["content"]
-        assert "<context>" in user_content
-        assert "<plan>" in user_content
+        assert roles == ["system", "user", "user"]
+        # The user-event message is preserved verbatim — no context envelope.
+        event_content = result[1]["content"]
+        assert "<context>" not in event_content
+        assert "<plan>" not in event_content
+        assert "hi" in event_content
+        # The trailing user message holds only the context envelope.
+        context_content = result[2]["content"]
+        assert context_content.startswith("<context>")
+        assert context_content.endswith("</context>")
+        assert "<plan>" in context_content
+        assert "hi" not in context_content
+
+    def test_trailing_user_event_byte_stable_across_renders(self):
+        """The bytes of a historical user-event message must not depend on
+        whether a fresh tool turn is appended after it, nor on the value of
+        the dynamic ``<context>`` blocks. This is the property OpenAI/
+        Anthropic prompt caching relies on to hit the cache for the event
+        tail across consecutive LLM calls (issue #208)."""
+        user_event = UserEvent(content="please run task X")
+        user_event.tag = "1"
+        user_block = ResolvedBlock(
+            key="event_1",
+            content="please run task X",
+            role=Role.USER,
+            metadata=BlockMetadata(tag="1"),
+            event=user_event,
+        )
+
+        def render(dynamic_value: str, extra_blocks: list[ResolvedBlock]) -> list[dict]:
+            blocks = [
+                _static_block("sys", "S"),
+                _dynamic_block("plan", dynamic_value),
+                user_block,
+                *extra_blocks,
+            ]
+            return render_context(
+                blocks,
+                block_formatter=CachedBlockFormatter(),
+                provider_formatter=OpenAIProviderFormatter(),
+            ).output
+
+        # Render 1: user_event is trailing event, dynamic value v1.
+        out1 = render("plan-v1", [])
+        # Render 2: user_event is trailing event, dynamic value v2 (dynamic content churn between turns).
+        out2 = render("plan-v2", [])
+        # Render 3: user_event is no longer trailing — a tool_call/tool_result pair has been appended.
+        tool_event = ToolCallEvent(
+            tool_call_id="call_42",
+            name="do_thing",
+            arguments={"x": 1},
+            result=ToolResult(tool_call_id="call_42", content="ok"),
+        )
+        tool_event.tag = "2"
+        tool_block = ResolvedBlock(
+            key="event_2",
+            content="",
+            role=Role.ASSISTANT,
+            metadata=BlockMetadata(tag="2"),
+            event=tool_event,
+        )
+        out3 = render("plan-v3", [tool_block])
+
+        # Locate the user-event message in each render (the first "user" dict
+        # whose content contains "please run task X").
+        def find_user_event_msg(out: list[dict]) -> dict:
+            for m in out:
+                if m.get("role") == "user" and "please run task X" in (m.get("content") or ""):
+                    return m
+            raise AssertionError("user-event message not found")
+
+        msg1 = find_user_event_msg(out1)
+        msg2 = find_user_event_msg(out2)
+        msg3 = find_user_event_msg(out3)
+
+        # Byte-identical user-event content across all three renders — this is
+        # exactly what the bug in cached.py:125-147 violated.
+        assert msg1["content"] == msg2["content"] == msg3["content"]
+        # And specifically: no context envelope leaked into the user-event msg.
+        assert "<context>" not in msg1["content"]
 
     def test_volatile_appended_after_assistant(self):
         asst_event = AssistantEvent(content="done")
