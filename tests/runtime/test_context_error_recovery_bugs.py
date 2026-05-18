@@ -224,3 +224,33 @@ class TestContextWindowErrorDetection:
         exc = Exception('{"code": "context_length_exceeded", "message": "Bad request"}')
 
         assert _is_context_window_error(exc)
+
+    def test_litellm_typed_context_window_error(self):
+        """LiteLLM typed context-window errors are caught before provider text fallback."""
+        from litellm.exceptions import ContextWindowExceededError
+
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = ContextWindowExceededError(
+            message="provider-specific wording not listed in our substring fallback",
+            model="test-model",
+            llm_provider="test-provider",
+        )
+
+        assert _is_context_window_error(exc)
+
+    def test_litellm_typed_context_window_error_in_cause_chain(self):
+        """Wrapped LiteLLM context-window errors are recognized through exception chaining."""
+        from litellm.exceptions import ContextWindowExceededError
+
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        cause = ContextWindowExceededError(
+            message="provider-specific wording not listed in our substring fallback",
+            model="test-model",
+            llm_provider="test-provider",
+        )
+        exc = RuntimeError("outer wrapper")
+        exc.__cause__ = cause
+
+        assert _is_context_window_error(exc)
