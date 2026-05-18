@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from opentelemetry.sdk.trace.export import SpanExporter
@@ -134,6 +135,50 @@ def console() -> SpanExporter:
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
     return ConsoleSpanExporter()
+
+
+def atif(
+    path: str | Path,
+    *,
+    session_id: str,
+    agent_name: str,
+    agent_version: str,
+    model_name: str | None = None,
+    agent_extra: dict[str, Any] | None = None,
+    write_on_each_export: bool = True,
+) -> SpanExporter:
+    """ATIF v1.7 trajectory exporter.
+
+    Writes the trajectory JSON to *path*, derived from openinference-
+    instrumented OTLP spans.  *path* is the full output path including the
+    filename — any filename is accepted; the ATIF v1.7 schema does not
+    mandate ``trajectory.json``.  See
+    :class:`~nemo_oo_agents.tracing._atif_exporter.AtifTrajectoryExporter`
+    for the field semantics.
+
+    Example::
+
+        enable_tracing(exporters=[
+            exporters.jsonl("/logs/artifacts/traces"),
+            exporters.atif(
+                "/logs/agent/trajectory.json",
+                session_id=trial_id,
+                agent_name="my-agent",
+                agent_version="0.1.0",
+            ),
+        ])
+    """
+    from nemo_oo_agents.tracing._atif_exporter import AtifTrajectoryExporter
+
+    return AtifTrajectoryExporter(
+        path,
+        session_id=session_id,
+        agent_name=agent_name,
+        agent_version=agent_version,
+        model_name=model_name,
+        agent_extra=agent_extra,
+        write_on_each_export=write_on_each_export,
+    )
 
 
 def _auto_detect_trace_dir() -> Path:
