@@ -425,7 +425,7 @@ def _print_trace_target(exporters: list[SpanExporter], experiment: str | None) -
     suffix = f" (experiment={experiment})" if experiment else ""
     print(f"OTel tracing enabled: {', '.join(descriptions)}{suffix}")
 
-    if has_file_exporter:
+    if has_file_exporter and len(exporters) == 1:
         print(
             "  Tip: Run `nemo_oo_agents start-dev` to launch the trace viewer for interactive exploration."
         )
