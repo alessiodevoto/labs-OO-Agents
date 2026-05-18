@@ -172,3 +172,65 @@ class TestPredictPromptSizeGuardImages:
 
         formatted = PlainBlockFormatter().format_event(task)
         assert formatted == prompt  # no truncation
+
+
+class TestPredictNoInputTruncation:
+    """Predict inputs must never be truncated — _build_task_message uses unlimited formatting."""
+
+    def test_format_parameters_no_truncation_with_unlimited_tc(self):
+        """format_parameters_as_code with unlimited FormatConfig renders strings in full."""
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+
+        # A string longer than default prefill_format.max_string (2000)
+        long_str = "x" * 5291
+        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
+
+        # Default tc would truncate
+        default_tc = TruncationConfig()
+        truncated = call.format_parameters_as_code(tc=default_tc)
+        assert "str(len=" in truncated, "default tc should truncate long strings"
+
+        # Unlimited tc (as PredictStrategy now uses) should NOT truncate
+        unlimited_tc = TruncationConfig(
+            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
+        )
+        full_output = call.format_parameters_as_code(tc=unlimited_tc)
+        assert "str(len=" not in full_output, "unlimited tc must not truncate"
+        assert long_str in full_output or repr(long_str) in full_output
+
+    def test_format_parameters_preserves_full_content(self):
+        """A 5K-char string that passes the param guard renders verbatim in the prompt."""
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+
+        content = "Knowledge guide: " + "a" * 5000 + " end."
+        call = _make_call(args=(content,), signature="(knowledge_md: str)")
+
+        unlimited_tc = TruncationConfig(
+            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
+        )
+        output = call.format_parameters_as_code(tc=unlimited_tc)
+
+        # The full content must appear (possibly as repr with quotes)
+        assert content in output or content in output.replace("\'", "'")
+
+    def test_default_prefill_truncates_long_string(self):
+        """Confirms the bug scenario: default prefill_format.max_string=2000 truncates."""
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
+
+        long_str = "y" * 5291
+        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
+
+        default_tc = TruncationConfig()
+        output = call.format_parameters_as_code(tc=default_tc)
+        # Default truncates - shows str(len=...) marker
+        assert "str(len=5291" in output
+
+    def test_no_tc_uses_repr_no_truncation(self):
+        """format_parameters_as_code(tc=None) uses repr() which never truncates."""
+        long_str = "z" * 5291
+        call = _make_call(args=(long_str,), signature="(text: str)")
+
+        output = call.format_parameters_as_code()  # tc=None -> repr
+        assert "str(len=" not in output
+        assert "z" * 5291 in output
+
