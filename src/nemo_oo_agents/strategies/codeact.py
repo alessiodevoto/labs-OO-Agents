@@ -572,6 +572,22 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         ...
 
+    # Keys added by the session itself that should not leak to the caller.
+    _SESSION_INTERNAL_KEYS = frozenset({"Out", "__repl_captured_locals__"})
+
+    @staticmethod
+    def _sync_session_locals(call: "CurrentCall", session: "CodeActSession") -> None:
+        """Write back session_locals to caller's dict, filtering session internals."""
+        if call.session_locals is None:
+            return
+        filtered = {
+            k: v
+            for k, v in session.session_locals.items()
+            if k not in CodeActStrategy._SESSION_INTERNAL_KEYS
+        }
+        call.session_locals.clear()
+        call.session_locals.update(filtered)
+
     async def execute(self, runtime: RuntimeServices, call: "CurrentCall") -> Any:
         """Execute CodeAct strategy with two-tool approach.
 
@@ -604,6 +620,10 @@ Standard Python builtins and agent instance (`self`) are available."""
             target_method_name=call.method_name,
             event_manager=runtime.event_manager,
         )
+
+        # Seed session_locals from caller-provided dict (persistent stack)
+        if call.session_locals is not None:
+            session.session_locals.update(call.session_locals)
 
         # Build builtins for code execution
         _init_hm = get_harness_metrics()
@@ -752,6 +772,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     if result.completed:
                         turn_state.success = True
                         turn_state.is_final = True
+                        self._sync_session_locals(call, session)
                         return result.final_value
                     continue
 
@@ -812,6 +833,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     if result.completed:
                         turn_state.success = True
                         turn_state.is_final = True
+                        self._sync_session_locals(call, session)
                         return result.final_value
                     # Validation failed — track consecutive stops and abort if threshold.
                     session.record_text_only()
@@ -937,6 +959,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             ),
             record=False,
         )
+        self._sync_session_locals(call, session)
         raise session.build_failure_error()
 
     def _translate_tool_call_to_code(

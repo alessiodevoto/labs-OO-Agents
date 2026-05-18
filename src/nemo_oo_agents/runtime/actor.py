@@ -2087,6 +2087,7 @@ class ActorRuntime:
         # Extract framework parameters (don't pass to generated method)
         call_strategy = kwargs.pop("_strategy", None)
         call_llm = kwargs.pop("llm", None)
+        call_session_locals = kwargs.pop("_session_locals", None)
 
         # Get strategy with priority: call-level > decorator > default
         base_method = getattr(method, "__func__", method)
@@ -2241,6 +2242,7 @@ class ActorRuntime:
                     is_async=inspect.iscoroutinefunction(method),
                     return_type=return_type,
                     pre_ellipsis_code=pre_ellipsis_code,
+                    session_locals=call_session_locals,
                 )
 
                 # Store current call context in context vars for RuntimeServices.generate()

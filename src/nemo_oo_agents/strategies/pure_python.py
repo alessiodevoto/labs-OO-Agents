@@ -231,8 +231,29 @@ class PurePythonStrategy(CompositeStrategy):
         """Code executed successfully. Please continue (if you know the result use `return` to complete the task)"""
         ...
 
+    # Keys added by the session itself that should not leak to the caller.
+    _SESSION_INTERNAL_KEYS = frozenset({"Out", "__repl_captured_locals__"})
+
+    @staticmethod
+    def _sync_session_locals(call: "CurrentCall", session: "GenerationSession") -> None:
+        """Write back session_locals to caller's dict, filtering session internals."""
+        if call.session_locals is None:
+            return
+        filtered = {
+            k: v
+            for k, v in session.session_locals.items()
+            if k not in PurePythonStrategy._SESSION_INTERNAL_KEYS
+        }
+        call.session_locals.clear()
+        call.session_locals.update(filtered)
+
     async def execute(self, runtime: RuntimeServices, call: "CurrentCall") -> Any:
         session = self._initialize_session(call, runtime)
+
+        # Seed session_locals from caller-provided dict (persistent stack)
+        if call.session_locals is not None:
+            session.session_locals.update(call.session_locals)
+
         builtins = self._build_builtins(runtime, call)
 
         task_content = await self._build_task_message(runtime, original_call=call)
@@ -310,6 +331,7 @@ class PurePythonStrategy(CompositeStrategy):
                     if session.is_exhausted():
                         turn_final = True
                         turn_exception = "GenerationError"
+                        self._sync_session_locals(call, session)
                         raise session.build_failure_error() from None
                 except Exception as e:
                     # Catch other LLM API errors (rate limits, connection errors, etc.)
@@ -408,6 +430,7 @@ class PurePythonStrategy(CompositeStrategy):
                     if success:
                         turn_success = True
                         turn_final = True
+                        self._sync_session_locals(call, session)
                         return validated  # finally runs, then returns
                     # If validation failed, turn_success stays False
                     continue
@@ -445,6 +468,7 @@ class PurePythonStrategy(CompositeStrategy):
             ),
             record=False,
         )
+        self._sync_session_locals(call, session)
         raise session.build_failure_error()
 
     def _initialize_session(
