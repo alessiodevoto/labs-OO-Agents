@@ -175,13 +175,11 @@ class PredictStrategy(GenerationStrategy):
         # PredictStrategy is single-shot — a truncated input produces silently wrong output.
         self._assert_param_sizes(call)
 
-        # Build task prompt with UNLIMITED string formatting — PredictStrategy is
-        # single-shot so inputs must never be truncated. The _assert_param_sizes
-        # guard already rejects oversized params; anything that passes is safe.
-        from nemo_oo_agents.config.truncation_config import FormatConfig
-
+        # Build task prompt with PredictStrategy's input format. The default is
+        # unlimited because Predict is single-shot: inputs that pass the size
+        # guard must render in full.
         predict_tc = runtime.truncation_config.model_copy(
-            update={"prefill_format": FormatConfig(max_string=None, max_length=None, max_depth=None)}
+            update={"prefill_format": self.config.input_format}
         )
         task_prompt = await self._build_task_message(
             runtime, original_call=call, predict_tc=predict_tc

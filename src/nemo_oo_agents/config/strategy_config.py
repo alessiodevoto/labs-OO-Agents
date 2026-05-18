@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nemo_oo_agents.config.truncation_config import FormatConfig
 from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
 if TYPE_CHECKING:
@@ -105,6 +106,8 @@ class PredictConfig(BaseModel):
     max_error_chars: int = 1000
     # ``None`` = unconstrained (parameter-size guard disabled).
     max_param_chars: int | None = 200_000
+    # Predict is single-shot: inputs that pass ``max_param_chars`` must render in full.
+    input_format: FormatConfig = FormatConfig(max_string=None, max_length=None, max_depth=None)
     # How the Predict output is serialized back into the conversation history:
     # - "event": Current behavior — LLMOutput event wrapped in <agent> tag.
     # - "tool_call": Replace with a synthetic return_result() ToolCallEvent that

@@ -175,55 +175,39 @@ class TestPredictPromptSizeGuardImages:
 
 
 class TestPredictNoInputTruncation:
-    """Predict inputs must never be truncated — _build_task_message uses unlimited formatting."""
+    """Predict's default input format must render accepted inputs in full."""
 
-    def test_format_parameters_no_truncation_with_unlimited_tc(self):
-        """format_parameters_as_code with unlimited FormatConfig renders strings in full."""
-        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+    def test_predict_config_default_does_not_truncate_long_strings(self):
+        """PredictConfig.input_format is unlimited by default."""
+        from nemo_oo_agents.config.strategy_config import PredictConfig
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
 
-        # A string longer than default prefill_format.max_string (2000)
         long_str = "x" * 5291
         call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
 
-        # Default tc would truncate
         default_tc = TruncationConfig()
         truncated = call.format_parameters_as_code(tc=default_tc)
-        assert "str(len=" in truncated, "default tc should truncate long strings"
+        assert "str(len=" in truncated, "default runtime tc should truncate long strings"
 
-        # Unlimited tc (as PredictStrategy now uses) should NOT truncate
-        unlimited_tc = TruncationConfig(
-            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
-        )
-        full_output = call.format_parameters_as_code(tc=unlimited_tc)
-        assert "str(len=" not in full_output, "unlimited tc must not truncate"
+        predict_tc = default_tc.model_copy(update={"prefill_format": PredictConfig().input_format})
+        full_output = call.format_parameters_as_code(tc=predict_tc)
+        assert "str(len=" not in full_output, "PredictConfig default must not truncate"
         assert long_str in full_output or repr(long_str) in full_output
 
-    def test_format_parameters_preserves_full_content(self):
+    def test_predict_config_default_preserves_full_content(self):
         """A 5K-char string that passes the param guard renders verbatim in the prompt."""
-        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+        from nemo_oo_agents.config.strategy_config import PredictConfig
+        from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         content = "Knowledge guide: " + "a" * 5000 + " end."
         call = _make_call(args=(content,), signature="(knowledge_md: str)")
 
-        unlimited_tc = TruncationConfig(
-            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
+        predict_tc = TruncationConfig().model_copy(
+            update={"prefill_format": PredictConfig().input_format}
         )
-        output = call.format_parameters_as_code(tc=unlimited_tc)
+        output = call.format_parameters_as_code(tc=predict_tc)
 
-        # The full content must appear (possibly as repr with quotes)
-        assert content in output or content in output.replace("\'", "'")
-
-    def test_default_prefill_truncates_long_string(self):
-        """Confirms the bug scenario: default prefill_format.max_string=2000 truncates."""
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
-
-        long_str = "y" * 5291
-        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
-
-        default_tc = TruncationConfig()
-        output = call.format_parameters_as_code(tc=default_tc)
-        # Default truncates - shows str(len=...) marker
-        assert "str(len=5291" in output
+        assert content in output
 
     def test_no_tc_uses_repr_no_truncation(self):
         """format_parameters_as_code(tc=None) uses repr() which never truncates."""
@@ -232,5 +216,4 @@ class TestPredictNoInputTruncation:
 
         output = call.format_parameters_as_code()  # tc=None -> repr
         assert "str(len=" not in output
-        assert "z" * 5291 in output
-
+        assert long_str in output
