@@ -81,14 +81,6 @@ class PredictStrategy(GenerationStrategy):
             "strategy_prompt": DynamicContext("strategy.strategy_instructions(runtime)"),
         }
 
-    def get_truncation_overrides(self):
-        """Predict inputs must render in full unless the method explicitly overrides them."""
-        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
-
-        return TruncationConfig(
-            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
-        )
-
     @strategy(TemplateStrategy())
     async def strategy_instructions(self, runtime: RuntimeServices) -> str:
         """You are generating structured data matching the specified return type.
@@ -317,7 +309,7 @@ class PredictStrategy(GenerationStrategy):
         {original_call.docstring}
 
         ## Input parameters:
-        {original_call.format_parameters_as_code(tc=tc)}
+        {original_call.format_parameters_as_code()}
 
         Perform the task and return the result directly.
         """

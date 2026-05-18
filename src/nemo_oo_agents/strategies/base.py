@@ -230,14 +230,6 @@ class GenerationStrategy(ABC, metaclass=AgentMeta):
         """
         return {}
 
-    def get_truncation_overrides(self) -> "TruncationConfig | None":
-        """Return strategy-specific truncation defaults, or None.
-
-        Runtime merges this after the agent-level truncation config and before
-        method-level ``@strategy(truncation=...)`` overrides.
-        """
-        return None
-
     def get_block_order(self) -> list[str] | None:
         """Return desired ordering of system-role block keys, or None for default.
 

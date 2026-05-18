@@ -175,42 +175,32 @@ class TestPredictPromptSizeGuardImages:
 
 
 class TestPredictNoInputTruncation:
-    """Predict's strategy-level truncation default renders accepted inputs in full."""
+    """Predict renders accepted inputs without truncation and without config."""
 
-    def test_predict_strategy_default_does_not_truncate_long_strings(self):
-        """PredictStrategy.get_truncation_overrides makes prefill formatting unlimited."""
+    def test_default_runtime_truncates_long_strings(self):
+        """Documents the bug source: normal prefill formatting truncates long strings."""
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         long_str = "x" * 5291
         call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
 
-        default_tc = TruncationConfig()
-        truncated = call.format_parameters_as_code(tc=default_tc)
-        assert "str(len=" in truncated, "default runtime tc should truncate long strings"
+        truncated = call.format_parameters_as_code(tc=TruncationConfig())
+        assert "str(len=" in truncated
 
-        strategy = PredictStrategy()
-        predict_tc = default_tc.merge_with(strategy.get_truncation_overrides())
-        full_output = call.format_parameters_as_code(tc=predict_tc)
-        assert "str(len=" not in full_output, "PredictStrategy default must not truncate"
-        assert long_str in full_output or repr(long_str) in full_output
+    def test_predict_uses_no_tc_so_long_strings_are_not_truncated(self):
+        """Predict calls format_parameters_as_code() with no tc, so repr() renders in full."""
+        long_str = "x" * 5291
+        call = _make_call(args=(long_str,), signature="(knowledge_md: str)")
 
-    def test_predict_strategy_default_preserves_full_content(self):
+        output = call.format_parameters_as_code()
+        assert "str(len=" not in output
+        assert long_str in output
+
+    def test_predict_no_tc_preserves_full_content(self):
         """A 5K-char string that passes the param guard renders verbatim in the prompt."""
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
-
         content = "Knowledge guide: " + "a" * 5000 + " end."
         call = _make_call(args=(content,), signature="(knowledge_md: str)")
 
-        predict_tc = TruncationConfig().merge_with(PredictStrategy().get_truncation_overrides())
-        output = call.format_parameters_as_code(tc=predict_tc)
+        output = call.format_parameters_as_code()
 
         assert content in output
-
-    def test_no_tc_uses_repr_no_truncation(self):
-        """format_parameters_as_code(tc=None) uses repr() which never truncates."""
-        long_str = "z" * 5291
-        call = _make_call(args=(long_str,), signature="(text: str)")
-
-        output = call.format_parameters_as_code()  # tc=None -> repr
-        assert "str(len=" not in output
-        assert long_str in output
