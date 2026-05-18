@@ -2117,9 +2117,13 @@ class ActorRuntime:
         if llm_client is None:
             raise RuntimeError(f"No LLM client available for {method_name}")
 
-        # Resolve truncation config: method-level @strategy(truncation=...) > agent-level
+        # Resolve truncation config:
+        # agent-level < strategy defaults < method-level @strategy(truncation=...)
         method_truncation = getattr(base_method, "_strategy_truncation", None)
-        resolved_truncation = self.agent._truncation.merge_with(method_truncation)
+        strategy_truncation = strategy.get_truncation_overrides()
+        resolved_truncation = self.agent._truncation.merge_with(strategy_truncation).merge_with(
+            method_truncation
+        )
 
         # Mark that we're in a generation session
         # This allows nested ellipsis method calls to execute inline without deadlocking

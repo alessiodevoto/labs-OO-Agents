@@ -175,11 +175,10 @@ class TestPredictPromptSizeGuardImages:
 
 
 class TestPredictNoInputTruncation:
-    """Predict's default input format must render accepted inputs in full."""
+    """Predict's strategy-level truncation default renders accepted inputs in full."""
 
-    def test_predict_config_default_does_not_truncate_long_strings(self):
-        """PredictConfig.input_format is unlimited by default."""
-        from nemo_oo_agents.config.strategy_config import PredictConfig
+    def test_predict_strategy_default_does_not_truncate_long_strings(self):
+        """PredictStrategy.get_truncation_overrides makes prefill formatting unlimited."""
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         long_str = "x" * 5291
@@ -189,22 +188,20 @@ class TestPredictNoInputTruncation:
         truncated = call.format_parameters_as_code(tc=default_tc)
         assert "str(len=" in truncated, "default runtime tc should truncate long strings"
 
-        predict_tc = default_tc.model_copy(update={"prefill_format": PredictConfig().input_format})
+        strategy = PredictStrategy()
+        predict_tc = default_tc.merge_with(strategy.get_truncation_overrides())
         full_output = call.format_parameters_as_code(tc=predict_tc)
-        assert "str(len=" not in full_output, "PredictConfig default must not truncate"
+        assert "str(len=" not in full_output, "PredictStrategy default must not truncate"
         assert long_str in full_output or repr(long_str) in full_output
 
-    def test_predict_config_default_preserves_full_content(self):
+    def test_predict_strategy_default_preserves_full_content(self):
         """A 5K-char string that passes the param guard renders verbatim in the prompt."""
-        from nemo_oo_agents.config.strategy_config import PredictConfig
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         content = "Knowledge guide: " + "a" * 5000 + " end."
         call = _make_call(args=(content,), signature="(knowledge_md: str)")
 
-        predict_tc = TruncationConfig().model_copy(
-            update={"prefill_format": PredictConfig().input_format}
-        )
+        predict_tc = TruncationConfig().merge_with(PredictStrategy().get_truncation_overrides())
         output = call.format_parameters_as_code(tc=predict_tc)
 
         assert content in output

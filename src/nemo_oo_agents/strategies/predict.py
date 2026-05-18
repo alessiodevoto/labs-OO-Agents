@@ -81,6 +81,14 @@ class PredictStrategy(GenerationStrategy):
             "strategy_prompt": DynamicContext("strategy.strategy_instructions(runtime)"),
         }
 
+    def get_truncation_overrides(self):
+        """Predict inputs must render in full unless the method explicitly overrides them."""
+        from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+
+        return TruncationConfig(
+            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None)
+        )
+
     @strategy(TemplateStrategy())
     async def strategy_instructions(self, runtime: RuntimeServices) -> str:
         """You are generating structured data matching the specified return type.
@@ -175,15 +183,8 @@ class PredictStrategy(GenerationStrategy):
         # PredictStrategy is single-shot — a truncated input produces silently wrong output.
         self._assert_param_sizes(call)
 
-        # Build task prompt with PredictStrategy's input format. The default is
-        # unlimited because Predict is single-shot: inputs that pass the size
-        # guard must render in full.
-        predict_tc = runtime.truncation_config.model_copy(
-            update={"prefill_format": self.config.input_format}
-        )
-        task_prompt = await self._build_task_message(
-            runtime, original_call=call, predict_tc=predict_tc
-        )
+        # Build task prompt first so we can check its size before adding it to events.
+        task_prompt = await self._build_task_message(runtime, original_call=call)
 
         # Add task event (with media attachments if any)
         runtime.event_manager.add(
@@ -309,14 +310,14 @@ class PredictStrategy(GenerationStrategy):
 
     @strategy(TemplateStrategy())
     async def _build_task_message(
-        self, runtime: RuntimeServices, original_call: "CurrentCall", predict_tc: Any = None
+        self, runtime: RuntimeServices, original_call: "CurrentCall"
     ) -> str:
         """
         # Your task
         {original_call.docstring}
 
         ## Input parameters:
-        {original_call.format_parameters_as_code(tc=predict_tc)}
+        {original_call.format_parameters_as_code(tc=tc)}
 
         Perform the task and return the result directly.
         """
