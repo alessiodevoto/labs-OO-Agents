@@ -7,8 +7,11 @@ Structure produced:
     (SYSTEM)    static blocks, stable across turns — cacheable prefix
     (events)    the full event history, append-only
     (USER)      trailing message wrapping dynamic blocks in a ``<context>``
-                envelope (merged into the last user event when one is
-                trailing, so user/assistant alternation is preserved)
+                envelope (always emitted as its own message — never merged
+                into a historical event — so the bytes of every prior
+                message stay stable across consecutive renders, which is
+                what enables provider-side prompt caching to hit on the
+                event tail)
 
 Implemented as a single :class:`CachedBlockFormatter`. Pair with any stock
 provider formatter (``OpenAIProviderFormatter``, ``AnthropicProviderFormatter``);
@@ -68,8 +71,10 @@ class CachedBlockFormatter(BlockFormatter):
 
     The static half becomes a SYSTEM message at the head of the output. The
     dynamic half, if any, is wrapped in a ``<context>`` envelope and emitted
-    as a trailing USER message — or merged into the last event message if
-    that is already user-role (preserving strict user/assistant alternation).
+    as its own trailing USER message — always appended, never merged into a
+    historical event. Merging would mutate the bytes of a prior event message
+    when a later turn becomes the new trailing event, which breaks
+    provider-side prompt caching for the entire event tail (see issue #208).
 
     Both the SYSTEM message and the trailing ``<context>`` USER message carry
     ``parts`` with per-block references so the journal publisher can
@@ -122,33 +127,11 @@ class CachedBlockFormatter(BlockFormatter):
                 envelope_parts.append(BlockPart(key=block.key, content=rendered))
             envelope_parts.append(TextPart(text="\n</context>"))
 
-            if (
-                messages
-                and messages[-1].role == Role.USER
-                and messages[-1].tool_call is None
-                and messages[-1].tool_call_id is None
-            ):
-                # Merge with the trailing user event. Preserve the user event
-                # as its own BlockPart (the event already has parts=[BlockPart(...)])
-                # and append the <context> envelope after a "\n\n" separator.
-                last = messages[-1]
-                last_parts: list[MessagePart] = list(last.parts or [])
-                if last.content:
-                    merged_content = f"{last.content}\n\n{suffix}"
-                    if last_parts:
-                        last_parts.append(TextPart(text="\n\n"))
-                    else:
-                        last_parts.append(TextPart(text=last.content + "\n\n"))
-                else:
-                    merged_content = suffix
-                last_parts.extend(envelope_parts)
-                messages[-1] = last.model_copy(
-                    update={"content": merged_content, "parts": last_parts}
-                )
-            else:
-                messages.append(
-                    RenderedMessage(role=Role.USER, content=suffix, parts=envelope_parts)
-                )
+            # Always append; never merge into a trailing event. Merging would
+            # mutate the bytes of a historical event message whenever a later
+            # turn becomes the new trailing event, breaking provider prompt
+            # caching for the entire event tail (issue #208).
+            messages.append(RenderedMessage(role=Role.USER, content=suffix, parts=envelope_parts))
 
         return messages
 
