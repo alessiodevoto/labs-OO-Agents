@@ -8,9 +8,6 @@ shutdown_traces() silently drops all execution data from timed-out tasks.
 import json
 import subprocess
 import sys
-from pathlib import Path
-
-import pytest
 
 
 def _build_timeout_task_input(trace_dir: str, timeout_seconds: float = 1.0) -> dict:
