@@ -129,6 +129,18 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     except Exception as e:
         _execute_error = e
 
+    # End any active spans that were never closed (e.g. due to timeout cancellation).
+    # OTel SDK only exports ended spans; without this, timed-out executions lose
+    # all tracing data because shutdown_traces() silently drops un-ended spans.
+    if _execute_error is not None or (result and result.error):
+        try:
+            from nemo_oo_agents.tracing import end_active_spans
+
+            _reason = str(_execute_error) if _execute_error else result.error
+            end_active_spans(_reason)
+        except Exception as e:
+            log.debug(f"end_active_spans() failed (non-fatal): {e}")
+
     # Shut down tracing regardless of success/failure.
     #
     # flush_traces() alone (force_flush) is not sufficient:
