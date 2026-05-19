@@ -14,7 +14,6 @@ from io import StringIO
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nemo_oo_agents_cli.tui.session import Session
 
 
@@ -239,7 +238,9 @@ class TestLockInspection:
         """If shell inspection raises, it's caught and noted."""
         session = _make_session_stub()
         # Make shell access raise
-        type(session.agent).shell = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+        type(session.agent).shell = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
 
         loop = asyncio.new_event_loop()
         exc = RuntimeError("bound to a different event loop")
@@ -254,7 +255,9 @@ class TestLockInspection:
         """If actor inspection raises, it's caught and noted."""
         session = _make_session_stub()
         # Make _actor access raise
-        type(session.agent)._actor = property(lambda self: (_ for _ in ()).throw(RuntimeError("kaboom")))
+        type(session.agent)._actor = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("kaboom"))
+        )
 
         loop = asyncio.new_event_loop()
         exc = RuntimeError("bound to a different event loop")
@@ -416,4 +419,3 @@ class TestStartupLoop:
         diag_text = session._app.emit_block.call_args_list[0][0][0]
         # getattr with default None should produce id(None)
         assert "startup loop:" in diag_text
-
