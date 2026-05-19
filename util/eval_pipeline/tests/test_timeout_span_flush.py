@@ -79,6 +79,7 @@ class TestTimeoutSpanFlush:
 
         # Now check that trace spans were actually written to the jsonl file
         import os
+
         actual_files = os.listdir(trace_dir)
         trace_files = [f for f in actual_files if f.endswith(".jsonl")]
         assert len(trace_files) >= 1, (
