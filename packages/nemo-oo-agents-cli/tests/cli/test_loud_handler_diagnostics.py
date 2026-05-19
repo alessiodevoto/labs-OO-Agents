@@ -24,7 +24,9 @@ def _make_session_stub(*, emit_block_side_effect=None):
     session._app = MagicMock()
     if emit_block_side_effect:
         session._app.emit_block.side_effect = emit_block_side_effect
-    session._startup_loop = asyncio.new_event_loop()
+    # Use a MagicMock as _startup_loop to avoid leaking real event loops.
+    # The diagnostic code only calls id() and `is` on it.
+    session._startup_loop = MagicMock(spec=asyncio.AbstractEventLoop)
     session.agent = MagicMock()
     # Default: agent has no shell or _actor
     session.agent.shell = None
@@ -179,7 +181,12 @@ class TestLockInspection:
         assert "BashSession._lock:" in diag_text
 
     def test_bash_session_lock_with_loop_attr(self):
-        """When lock has _loop attribute, its id is reported."""
+        """When lock has _loop attribute (pre-3.10 or custom lock), its id is reported.
+
+        Note: real asyncio.Lock on Python >=3.12 has no _loop attribute. This test
+        simulates a non-standard/legacy lock that does have _loop to exercise the
+        hasattr(lock, "_loop") code path.
+        """
         session = _make_session_stub()
         mock_lock = MagicMock()
         mock_lock._loop = asyncio.new_event_loop()
@@ -237,10 +244,16 @@ class TestLockInspection:
     def test_bash_inspection_failure_handled(self):
         """If shell inspection raises, it's caught and noted."""
         session = _make_session_stub()
-        # Make shell access raise
-        type(session.agent).shell = property(
-            lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-        )
+
+        # Use a dedicated class to avoid leaking property descriptors onto MagicMock
+        class _Agent:
+            @property
+            def shell(self):
+                raise RuntimeError("boom")
+
+            _actor = None
+
+        session.agent = _Agent()
 
         loop = asyncio.new_event_loop()
         exc = RuntimeError("bound to a different event loop")
@@ -254,10 +267,16 @@ class TestLockInspection:
     def test_actor_inspection_failure_handled(self):
         """If actor inspection raises, it's caught and noted."""
         session = _make_session_stub()
-        # Make _actor access raise
-        type(session.agent)._actor = property(
-            lambda self: (_ for _ in ()).throw(RuntimeError("kaboom"))
-        )
+
+        # Use a dedicated class to avoid leaking property descriptors onto MagicMock
+        class _Agent:
+            shell = None
+
+            @property
+            def _actor(self):
+                raise RuntimeError("kaboom")
+
+        session.agent = _Agent()
 
         loop = asyncio.new_event_loop()
         exc = RuntimeError("bound to a different event loop")
@@ -324,9 +343,18 @@ class TestReentrancyGuard:
         calls = session._app.emit_block.call_args_list
         assert any("[gl-212]" in call[0][0] for call in calls)
 
-    def test_emit_block_failure_does_not_prevent_normal_handler(self):
-        """If emit_block raises in the diagnostic section, the normal
-        handler path should still execute (falls through)."""
+    def test_emit_block_failure_in_diag_propagates(self):
+        """Known limitation: emit_block failure in diagnostic section propagates.
+
+        The diagnostic block uses try/finally without except, so if emit_block
+        raises during the diagnostic emit (plausible during a degraded loop-mismatch
+        state), the exception escapes _loud_handler and the normal handler path
+        (which formats the full traceback) is never reached.
+
+        This test documents the current behavior. A follow-up fix should wrap
+        the diagnostic emit_block in try/except (matching the normal handler's
+        pattern at the end of _loud_handler) so the original traceback is preserved.
+        """
         session = _make_session_stub()
         call_count = [0]
 
@@ -334,7 +362,6 @@ class TestReentrancyGuard:
             call_count[0] += 1
             if call_count[0] == 1:
                 raise RuntimeError("emit_block failed")
-            # Subsequent calls succeed (normal handler)
 
         session._app.emit_block.side_effect = emit_block_side_effect
 
@@ -342,9 +369,7 @@ class TestReentrancyGuard:
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
-        # Current code: try/finally without except means this WILL raise.
-        # This test documents the current behavior (which the Greptile bot flagged).
-        # The exception from emit_block propagates out.
+        # Current behavior: exception propagates (see docstring for rationale)
         with pytest.raises(RuntimeError, match="emit_block failed"):
             session._loud_handler(loop, context)
 
