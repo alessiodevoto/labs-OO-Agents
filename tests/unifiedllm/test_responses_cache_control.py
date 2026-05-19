@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, patch
 
-import litellm
 import pytest
 
 from nemo_oo_agents.unifiedllm import ResponsesClient
