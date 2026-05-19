@@ -340,15 +340,29 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
 
   if (viewState === 'concise') {
     // Show last input message + output + tool calls
-    // Skip <context>...</context> wrapper messages (from cached block formatter)
+    // Separate <context> wrapper messages (from cached block formatter) into a collapsed section
+    const isContextMsg = (m: Message) => m.role === 'user' && m.content?.trimStart().startsWith('<context>\n');
+    const contextMsgs = inputMessages.filter(isContextMsg);
     const lastMsg = inputMessages.length > 0
-      ? inputMessages.findLast(m => !(m.role === 'user' && m.content?.trimStart().startsWith('<context>\n')))
-        ?? null
+      ? inputMessages.findLast(m => !isContextMsg(m)) ?? null
       : null;
 
     return (
       <div>
         {headerLine}
+
+        {contextMsgs.length > 0 && (
+          <details className="mb-2 rounded border border-gray-700 overflow-hidden">
+            <summary className="px-3 py-1.5 text-xs text-gray-500 cursor-pointer hover:text-gray-300 bg-gray-800/40">
+              Context ({contextMsgs.length} {contextMsgs.length === 1 ? 'block' : 'blocks'})
+            </summary>
+            <div className="p-2">
+              {contextMsgs.map((msg, i) => (
+                <MessageBox key={`ctx-${i}`} role={msg.role} content={msg.content!} />
+              ))}
+            </div>
+          </details>
+        )}
 
         {lastMsg && lastMsg.content && (
           <MessageBox
