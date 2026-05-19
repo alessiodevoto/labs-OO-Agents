@@ -351,6 +351,18 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
       <div>
         {headerLine}
 
+        {lastMsg && lastMsg.content && (
+          <MessageBox
+            role={lastMsg.role}
+            content={lastMsg.content}
+            toolCallId={lastMsg.tool_call_id}
+          />
+        )}
+
+        {lastMsg?.tool_calls?.map((tc, i) => (
+          <ToolCallBox key={i} tc={tc} index={i} total={lastMsg.tool_calls!.length} />
+        ))}
+
         {contextMsgs.length > 0 && (
           <details className="mb-2 rounded border border-gray-700 overflow-hidden">
             <summary className="px-3 py-1.5 text-xs text-gray-500 cursor-pointer hover:text-gray-300 bg-gray-800/40">
@@ -363,18 +375,6 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
             </div>
           </details>
         )}
-
-        {lastMsg && lastMsg.content && (
-          <MessageBox
-            role={lastMsg.role}
-            content={lastMsg.content}
-            toolCallId={lastMsg.tool_call_id}
-          />
-        )}
-
-        {lastMsg?.tool_calls?.map((tc, i) => (
-          <ToolCallBox key={i} tc={tc} index={i} total={lastMsg.tool_calls!.length} />
-        ))}
 
         {(outputText || outputToolCalls.length > 0) && (
           <div>
