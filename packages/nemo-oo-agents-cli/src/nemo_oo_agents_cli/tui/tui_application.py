@@ -98,6 +98,16 @@ def _coalesce_string_into_queue(inq: Any, text: str) -> None:
     inq.put(text)
 
 
+async def _stop_litellm_worker() -> None:
+    """Stop litellm's global logging worker so its tasks don't outlive the loop."""
+    try:
+        from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
+
+        await GLOBAL_LOGGING_WORKER.stop()
+    except Exception:
+        pass
+
+
 class TUIApplication:
     """Owns a single, long-lived ``prompt_toolkit.Application`` for the TUI."""
 
@@ -637,6 +647,18 @@ class TUIApplication:
 
         def _run() -> None:
             asyncio.set_event_loop(loop)
+
+            def _suppress_litellm_task_destroyed(
+                loop_: asyncio.AbstractEventLoop, context: dict
+            ) -> None:
+                msg = context.get("message", "")
+                if "Task was destroyed" in msg:
+                    task = context.get("task")
+                    if task is not None and "LoggingWorker" in repr(task):
+                        return
+                loop_.default_exception_handler(context)
+
+            loop.set_exception_handler(_suppress_litellm_task_destroyed)
             self._agent_loop_ready.set()
             try:
                 loop.run_forever()
@@ -670,6 +692,14 @@ class TUIApplication:
             return
         if self._agent_thread_future is not None and not self._agent_thread_future.done():
             self._agent_thread_future.cancel()
+        # Gracefully stop litellm's global logging worker so its tasks are
+        # cancelled before we tear down the loop (prevents "Task was destroyed
+        # but it is pending!" warnings from orphaned _worker_loop tasks).
+        try:
+            fut = asyncio.run_coroutine_threadsafe(_stop_litellm_worker(), loop)
+            await asyncio.wait_for(asyncio.wrap_future(fut), timeout=2.0)
+        except Exception:
+            pass
         loop.call_soon_threadsafe(loop.stop)
         if thread is not None and thread.is_alive():
             await asyncio.to_thread(thread.join, 5.0)

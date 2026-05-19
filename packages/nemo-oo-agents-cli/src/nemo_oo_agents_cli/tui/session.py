@@ -749,6 +749,11 @@ class Session:
             return
         exc = context.get("exception")
         task = context.get("task")
+        # litellm's LoggingWorker._worker_loop tasks get orphaned when the
+        # global singleton detects an event loop change and drops the old
+        # _worker_task reference without cancelling it. Harmless upstream noise.
+        if "Task was destroyed" in msg and task is not None and "LoggingWorker" in repr(task):
+            return
         future = context.get("future")
         source_tb = context.get("source_traceback")
         line = f"[asyncio] {msg}"
