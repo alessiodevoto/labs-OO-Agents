@@ -649,6 +649,42 @@ def _extract_dataclass_fields(obj: type) -> list[FieldInfo]:
         fields.append(
             FieldInfo(name=field.name, type=type_str, default=default, description=description)
         )
+
+    # Also extract @property and @cached_property descriptors (same as _extract_plain_class_fields step 4)
+    from nemo_oo_agents.agentdoc._metadata import get_field_metadata
+    from nemo_oo_agents.agentdoc._visibility import is_hidden_field
+
+    seen_names = {f.name for f in fields}
+    for klass in reversed(obj.__mro__):
+        if klass is object:
+            continue
+        for name, value in klass.__dict__.items():
+            if not isinstance(value, (property, functools.cached_property)):
+                continue
+            if name.startswith("_"):
+                continue
+            if name in seen_names:
+                continue
+            explicitly_unhidden = get_field_metadata(obj, name).get("hidden") is False
+            if not explicitly_unhidden:
+                if is_hidden_field(obj, name):
+                    continue
+                if isinstance(value, property):
+                    fget = value.fget
+                    if fget is not None and getattr(fget, "_agentdoc_hidden", None) is True:
+                        continue
+                else:
+                    if (
+                        getattr(value, "_agentdoc_hidden", None) is True
+                        or getattr(value.func, "_agentdoc_hidden", None) is True
+                    ):
+                        continue
+            if isinstance(value, property):
+                fields.append(_extract_property_field(obj, name, value))
+            else:
+                fields.append(_extract_cached_property_field(obj, name, value))
+            seen_names.add(name)
+
     return fields
 
 
