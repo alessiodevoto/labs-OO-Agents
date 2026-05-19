@@ -53,20 +53,10 @@ class BashSession:
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
-        self.__lock: asyncio.Lock | None = None
-        self.__lock_loop: asyncio.AbstractEventLoop | None = None
+        self._lock = asyncio.Lock()
         self._last_successful_command: float | None = None
         self._last_command: str = ""
         self._start_count: int = 0
-
-    @property
-    def _lock(self) -> asyncio.Lock:
-        """Loop-safe lock: recreates if the event loop has changed (gl-212)."""
-        loop = asyncio.get_running_loop()
-        if self.__lock is None or self.__lock_loop is not loop:
-            self.__lock = asyncio.Lock()
-            self.__lock_loop = loop
-        return self.__lock
 
     @property
     def cwd(self) -> Path:

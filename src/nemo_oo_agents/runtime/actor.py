@@ -486,8 +486,7 @@ class ActorRuntime:
         self.agent: Any = agent
 
         # Lock for generation serialization (only one LLM generation session at a time)
-        self.__generation_lock: asyncio.Lock | None = None
-        self.__generation_lock_loop: asyncio.AbstractEventLoop | None = None
+        self._generation_lock = asyncio.Lock()
 
         # NOTE: Current generation context uses context variables (not instance attributes)
         # to support parallel nested calls via asyncio.gather.
@@ -508,15 +507,6 @@ class ActorRuntime:
         # Learned from response.usage.input_tokens after each successful LLM call.
         # Used by _archive_on_context_error to compute accurate archival targets.
         self._token_calibration_ratio: float | None = None
-
-    @property
-    def _generation_lock(self) -> asyncio.Lock:
-        """Loop-safe lock: recreates if the event loop has changed (gl-212)."""
-        loop = asyncio.get_running_loop()
-        if self.__generation_lock is None or self.__generation_lock_loop is not loop:
-            self.__generation_lock = asyncio.Lock()
-            self.__generation_lock_loop = loop
-        return self.__generation_lock
 
     def _archive_on_context_error(
         self,
