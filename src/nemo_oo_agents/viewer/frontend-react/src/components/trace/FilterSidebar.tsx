@@ -25,6 +25,7 @@ interface FilterSidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   searchInputRef?: Ref<HTMLInputElement>;
+  onSetAllViewState?: (state: 'collapsed' | 'concise' | 'expanded') => void;
 }
 
 function truncateId(id: string): string {
@@ -39,6 +40,7 @@ export function FilterSidebar({
   collapsed,
   onToggleCollapsed,
   searchInputRef,
+  onSetAllViewState,
 }: FilterSidebarProps) {
   const [typeSearchInput, setTypeSearchInput] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -227,6 +229,25 @@ export function FilterSidebar({
           </button>
         </div>
       </div>
+
+      {/* View state bulk controls */}
+      {onSetAllViewState && (
+        <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-auto">View</span>
+          <button
+            onClick={() => onSetAllViewState('collapsed')}
+            className="px-2 py-0.5 text-[10px] text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700"
+          >
+            All Collapsed
+          </button>
+          <button
+            onClick={() => onSetAllViewState('concise')}
+            className="px-2 py-0.5 text-[10px] text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700"
+          >
+            All Concise
+          </button>
+        </div>
+      )}
 
       <div className="p-3 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
         {/* Text search */}

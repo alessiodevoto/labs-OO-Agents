@@ -90,6 +90,23 @@ function nsDuration(startStr: string | undefined, endStr: string | undefined): n
   }
 }
 
+/**
+ * Derive the viewer plugin type, using span.name for more specific grouping
+ * when the plugin is a generic category (e.g. "method" -> "method.handle").
+ */
+function derivePluginType(attrs: Record<string, unknown>, spanName: string | undefined): string {
+  const plugin = attrs['nemo_oo_agents.viewer.plugin'] as string | undefined;
+  if (!plugin) return spanName || 'unknown';
+
+  // For method/method_call plugins, the span name (e.g. "method.handle")
+  // provides the specific method name — use it for sub-type grouping in the sidebar.
+  if ((plugin === 'method' || plugin === 'method_call') && spanName && spanName.startsWith(plugin + '.')) {
+    return spanName;
+  }
+
+  return plugin;
+}
+
 export function convertOtlpSpansToEvents(spans: OtlpSpan[]): TraceEvent[] {
   const events: TraceEvent[] = [];
 
@@ -109,7 +126,7 @@ export function convertOtlpSpansToEvents(spans: OtlpSpan[]): TraceEvent[] {
     else if (statusCode === 2) statusStr = 'ERROR';
 
     events.push({
-      type: `span.${(flatAttrs['nemo_oo_agents.viewer.plugin'] as string) || span.name || 'unknown'}`,
+      type: `span.${derivePluginType(flatAttrs, span.name)}`,
       timestamp: startTimestamp,
       ids: {
         span_id: span.spanId,
