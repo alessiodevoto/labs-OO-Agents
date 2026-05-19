@@ -340,7 +340,11 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
 
   if (viewState === 'concise') {
     // Show last input message + output + tool calls
-    const lastMsg = inputMessages.length > 0 ? inputMessages[inputMessages.length - 1] : null;
+    // Skip <context>...</context> wrapper messages (from cached block formatter)
+    const lastMsg = inputMessages.length > 0
+      ? inputMessages.findLast(m => !(m.role === 'user' && m.content?.trimStart().startsWith('<context>\n')))
+        ?? null
+      : null;
 
     return (
       <div>
