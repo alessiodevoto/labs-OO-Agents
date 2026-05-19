@@ -197,3 +197,60 @@ class TestArchivalFiresOnContextError:
             f"Summary events: {len(summary_events)}"
         )
         assert len(summary_events) >= 1, "Archival should emit Summary events"
+
+
+class TestContextWindowErrorDetection:
+    """Provider context-window errors must be recognized for fallback archival."""
+
+    def test_azure_context_length_exceeded_format(self):
+        """Azure context-window messages must be recognized for fallback archival."""
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = Exception(
+            "litellm.BadRequestError: AzureException BadRequestError - "
+            '{\n  "error": {\n'
+            '    "message": "Your input exceeds the context window of this model. '
+            'Please adjust your input and try again.",\n'
+            '    "code": "context_length_exceeded"\n'
+            "  }\n}"
+        )
+
+        assert _is_context_window_error(exc)
+
+    def test_context_length_exceeded_code_only(self):
+        """Azure errors with only context_length_exceeded code must be recognized."""
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = Exception('{"code": "context_length_exceeded", "message": "Bad request"}')
+
+        assert _is_context_window_error(exc)
+
+    def test_litellm_typed_context_window_error(self):
+        """LiteLLM typed context-window errors are caught before provider text fallback."""
+        from litellm.exceptions import ContextWindowExceededError
+
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = ContextWindowExceededError(
+            message="provider-specific wording not listed in our substring fallback",
+            model="test-model",
+            llm_provider="test-provider",
+        )
+
+        assert _is_context_window_error(exc)
+
+    def test_litellm_typed_context_window_error_in_cause_chain(self):
+        """Wrapped LiteLLM context-window errors are recognized through exception chaining."""
+        from litellm.exceptions import ContextWindowExceededError
+
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        cause = ContextWindowExceededError(
+            message="provider-specific wording not listed in our substring fallback",
+            model="test-model",
+            llm_provider="test-provider",
+        )
+        exc = RuntimeError("outer wrapper")
+        exc.__cause__ = cause
+
+        assert _is_context_window_error(exc)

@@ -467,13 +467,18 @@ def context_budget(llm: Any, percent: float = 0.8, fallback: int = 100_000) -> i
             agent, config=TokenBudgetConfig(max_tokens=context_budget(my_llm, 0.8))
         )
     """
+    if percent <= 0:
+        raise ValueError("percent must be > 0")
+
     # ``context_window`` is the UnifiedLLM convention. ``context_limit`` was
     # the originally-documented attribute name but no shipped LLM client sets
     # it — falling back keeps the helper useful for any custom wrapper that
-    # does.
-    limit = getattr(llm, "context_window", None) or getattr(llm, "context_limit", None)
-    if limit is not None:
-        return int(limit * percent)
+    # does. Treat non-positive limits as unavailable; returning 0 silently
+    # disables useful token-budget summarization.
+    for attr in ("context_window", "context_limit"):
+        limit = getattr(llm, attr, None)
+        if limit is not None and limit > 0:
+            return int(limit * percent)
     return fallback
 
 

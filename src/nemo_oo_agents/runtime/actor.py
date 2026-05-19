@@ -205,14 +205,27 @@ _PROMPT_TOKENS_RE = _re.compile(
 
 
 def _is_context_window_error(exc: BaseException) -> bool:
-    """Walk the exception chain looking for ContextWindowExceeded."""
+    """Recognize context-window errors using typed and provider-normalized signals."""
+    try:
+        from litellm.exceptions import ContextWindowExceededError
+    except Exception:  # pragma: no cover - litellm is optional at import time
+        ContextWindowExceededError = None  # type: ignore[assignment]
+
     seen: set[int] = set()
     cur: BaseException | None = exc
     while cur is not None and id(cur) not in seen:
         seen.add(id(cur))
-        name = type(cur).__name__
+        if ContextWindowExceededError is not None and isinstance(cur, ContextWindowExceededError):
+            return True
+
+        name = type(cur).__name__.lower()
         msg = str(cur).lower()
-        if "contextwindowexceeded" in name.lower() or "context length" in msg:
+        if (
+            "contextwindowexceeded" in name
+            or "context length" in msg
+            or "context_length_exceeded" in msg
+            or "context window" in msg
+        ):
             return True
         cur = cur.__cause__ or cur.__context__
     return False
