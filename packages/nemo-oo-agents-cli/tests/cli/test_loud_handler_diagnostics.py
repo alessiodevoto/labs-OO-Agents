@@ -449,7 +449,7 @@ class TestStartupLoop:
 class TestBangShell:
     """Tests for the TUI-owned shell used by bang (!) commands."""
 
-    def test_get_bang_shell_creates_shell_tools(self):
+    async def test_get_bang_shell_creates_shell_tools(self):
         """_get_bang_shell lazily creates a ShellTools instance."""
         from nemo_oo_agents.tools.shell_tools import ShellTools
 
@@ -459,11 +459,11 @@ class TestBangShell:
         session.agent.shell = MagicMock()
         session.agent.shell.cwd = "/tmp"
 
-        shell = session._get_bang_shell()
+        shell = await session._get_bang_shell()
         assert isinstance(shell, ShellTools)
         assert session._bang_shell is shell
 
-    def test_get_bang_shell_returns_same_instance(self):
+    async def test_get_bang_shell_returns_same_instance(self):
         """Repeated calls return the same ShellTools instance."""
         session = Session.__new__(Session)
         session._bang_shell = None
@@ -471,11 +471,11 @@ class TestBangShell:
         session.agent.shell = MagicMock()
         session.agent.shell.cwd = "/tmp"
 
-        shell1 = session._get_bang_shell()
-        shell2 = session._get_bang_shell()
+        shell1 = await session._get_bang_shell()
+        shell2 = await session._get_bang_shell()
         assert shell1 is shell2
 
-    def test_get_bang_shell_is_not_agent_shell(self):
+    async def test_get_bang_shell_is_not_agent_shell(self):
         """The bang shell is a distinct instance from the agent's shell."""
         from nemo_oo_agents.tools.shell_tools import ShellTools
 
@@ -484,10 +484,10 @@ class TestBangShell:
         session.agent = MagicMock()
         session.agent.shell = ShellTools(cwd="/tmp")
 
-        bang_shell = session._get_bang_shell()
+        bang_shell = await session._get_bang_shell()
         assert bang_shell is not session.agent.shell
 
-    def test_get_bang_shell_uses_agent_cwd(self):
+    async def test_get_bang_shell_uses_agent_cwd(self):
         """The bang shell inherits cwd from the agent's shell."""
         from pathlib import Path
 
@@ -497,5 +497,24 @@ class TestBangShell:
         session.agent.shell = MagicMock()
         session.agent.shell.cwd = Path("/some/dir")
 
-        shell = session._get_bang_shell()
+        shell = await session._get_bang_shell()
         assert str(shell.cwd) == "/some/dir"
+
+    async def test_get_bang_shell_syncs_cwd(self):
+        """When agent shell cwd changes, bang shell syncs on next call."""
+        from pathlib import Path
+
+        session = Session.__new__(Session)
+        session._bang_shell = None
+        session.agent = MagicMock()
+        session.agent.shell = MagicMock()
+        session.agent.shell.cwd = Path("/tmp")
+
+        shell = await session._get_bang_shell()
+        assert str(shell.cwd) == "/tmp"
+
+        # Simulate agent changing directory to a real path
+        session.agent.shell.cwd = Path("/")
+        await session._get_bang_shell()
+        # The bang shell should have cd'd to /
+        assert str(shell.cwd) == "/"

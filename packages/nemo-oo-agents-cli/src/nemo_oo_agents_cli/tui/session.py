@@ -986,7 +986,7 @@ class Session:
             return
 
         try:
-            shell = self._get_bang_shell()
+            shell = await self._get_bang_shell()
             result = await shell.run(cmd)
             if result:
                 await self.frontend.render(
@@ -1000,16 +1000,23 @@ class Session:
         except Exception as e:
             await self.frontend.render(TextOutput(f"Bash error: {e}", "error"))
 
-    def _get_bang_shell(self) -> "ShellTools":
+    async def _get_bang_shell(self) -> "ShellTools":
         """Return (lazily creating) a ShellTools owned by the TUI for bang commands.
 
         The agent's ShellTools may have its asyncio.Lock bound to a different
         event loop.  This dedicated instance is created on the TUI's loop,
         avoiding "attached to a different loop" errors.
+
+        Syncs cwd from the agent's shell on each call so the two stay
+        in step when the agent changes directory during a session.
         """
         from nemo_oo_agents.tools.shell_tools import ShellTools
 
         if self._bang_shell is None:
             cwd = self.agent.shell.cwd if hasattr(self.agent, "shell") else "."
             self._bang_shell = ShellTools(cwd=cwd)
+        elif hasattr(self.agent, "shell"):
+            agent_cwd = str(self.agent.shell.cwd)
+            if str(self._bang_shell.cwd) != agent_cwd:
+                await self._bang_shell.run(f"cd {agent_cwd}")
         return self._bang_shell

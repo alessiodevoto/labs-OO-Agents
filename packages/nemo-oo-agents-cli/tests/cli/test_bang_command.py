@@ -22,6 +22,7 @@ class TestBangCommand:
         session = object.__new__(Session)
         session.agent = agent
         bang_shell = MagicMock()
+        bang_shell.cwd = "/tmp"  # match agent.shell.cwd so no sync cd happens
         bang_shell.run = AsyncMock(
             return_value=MagicMock(
                 stdout="hello",
