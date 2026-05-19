@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 # This flag tells litellm to auto-insert a dummy tool instead of raising.
 litellm.modify_params = True
 
+# litellm defaults to aiohttp for async HTTP (faster than httpx at high RPS).
+# But it never closes sessions on shutdown, producing noisy ResourceWarnings:
+#   "Unclosed client session" / "Unclosed connector"
+# For a TUI agent making sequential calls the perf difference is irrelevant,
+# and we already patch httpx for connection management. Disable aiohttp.
+litellm.disable_aiohttp_transport = True
+
 # Optional integration with nemo_oo_agents debug handler for LLM call tracking
 # This allows the debug signal handler to show pending LLM calls
 try:
