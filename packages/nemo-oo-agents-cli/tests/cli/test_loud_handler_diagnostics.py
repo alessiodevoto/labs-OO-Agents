@@ -444,3 +444,58 @@ class TestStartupLoop:
         diag_text = session._app.emit_block.call_args_list[0][0][0]
         # getattr with default None should produce id(None)
         assert "startup loop:" in diag_text
+
+
+class TestBangShell:
+    """Tests for the TUI-owned shell used by bang (!) commands."""
+
+    def test_get_bang_shell_creates_shell_tools(self):
+        """_get_bang_shell lazily creates a ShellTools instance."""
+        from nemo_oo_agents.tools.shell_tools import ShellTools
+
+        session = Session.__new__(Session)
+        session._bang_shell = None
+        session.agent = MagicMock()
+        session.agent.shell = MagicMock()
+        session.agent.shell.cwd = "/tmp"
+
+        shell = session._get_bang_shell()
+        assert isinstance(shell, ShellTools)
+        assert session._bang_shell is shell
+
+    def test_get_bang_shell_returns_same_instance(self):
+        """Repeated calls return the same ShellTools instance."""
+        session = Session.__new__(Session)
+        session._bang_shell = None
+        session.agent = MagicMock()
+        session.agent.shell = MagicMock()
+        session.agent.shell.cwd = "/tmp"
+
+        shell1 = session._get_bang_shell()
+        shell2 = session._get_bang_shell()
+        assert shell1 is shell2
+
+    def test_get_bang_shell_is_not_agent_shell(self):
+        """The bang shell is a distinct instance from the agent's shell."""
+        from nemo_oo_agents.tools.shell_tools import ShellTools
+
+        session = Session.__new__(Session)
+        session._bang_shell = None
+        session.agent = MagicMock()
+        session.agent.shell = ShellTools(cwd="/tmp")
+
+        bang_shell = session._get_bang_shell()
+        assert bang_shell is not session.agent.shell
+
+    def test_get_bang_shell_uses_agent_cwd(self):
+        """The bang shell inherits cwd from the agent's shell."""
+        from pathlib import Path
+
+        session = Session.__new__(Session)
+        session._bang_shell = None
+        session.agent = MagicMock()
+        session.agent.shell = MagicMock()
+        session.agent.shell.cwd = Path("/some/dir")
+
+        shell = session._get_bang_shell()
+        assert str(shell.cwd) == "/some/dir"

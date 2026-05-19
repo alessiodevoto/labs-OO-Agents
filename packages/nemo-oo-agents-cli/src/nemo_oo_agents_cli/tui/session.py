@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
+    from nemo_oo_agents.tools.shell_tools import ShellTools
 
     from .agent_event_renderer import AgentEventRenderer
     from .commands import CommandRegistry
@@ -328,6 +329,9 @@ class Session:
         self._renderer: AgentEventRenderer | None = None
         self._emit_console: RichConsole | None = None
         self._loud_handler_reentrant: bool = False
+        # Own ShellTools for bang (!) commands — avoids cross-loop issues
+        # when the agent's shell was created on a different event loop.
+        self._bang_shell: ShellTools | None = None
 
     @property
     def show_python(self) -> bool:
@@ -537,6 +541,9 @@ class Session:
             if qm is not None:
                 await qm.shutdown()
             await self._cancel_background_tasks()
+            if self._bang_shell is not None:
+                await self._bang_shell.close()
+                self._bang_shell = None
             self._dump_exit_diagnostics()
             self.frontend.close()
             if self._session_manager is not None:
@@ -979,7 +986,8 @@ class Session:
             return
 
         try:
-            result = await self.agent.shell.run(cmd)
+            shell = self._get_bang_shell()
+            result = await shell.run(cmd)
             if result:
                 await self.frontend.render(
                     BashOutput(
@@ -991,3 +999,17 @@ class Session:
                 )
         except Exception as e:
             await self.frontend.render(TextOutput(f"Bash error: {e}", "error"))
+
+    def _get_bang_shell(self) -> "ShellTools":
+        """Return (lazily creating) a ShellTools owned by the TUI for bang commands.
+
+        The agent's ShellTools may have its asyncio.Lock bound to a different
+        event loop.  This dedicated instance is created on the TUI's loop,
+        avoiding "attached to a different loop" errors.
+        """
+        from nemo_oo_agents.tools.shell_tools import ShellTools
+
+        if self._bang_shell is None:
+            cwd = self.agent.shell.cwd if hasattr(self.agent, "shell") else "."
+            self._bang_shell = ShellTools(cwd=cwd)
+        return self._bang_shell
