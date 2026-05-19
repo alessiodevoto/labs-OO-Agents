@@ -81,7 +81,7 @@ class TestResponsesClientCacheControlInjection:
         ]
         # Inject cache_control on last tool
         prepared = client._inject_cache_control(messages, [{"role": "tool", "position": "last"}])
-        input_msgs, instructions = client._transform_messages(prepared)
+        input_msgs, _ = client._transform_messages(prepared)
 
         # Find the function_call_output item
         fco_items = [m for m in input_msgs if m.get("type") == "function_call_output"]
@@ -116,6 +116,42 @@ class TestResponsesClientCacheControlInjection:
         input_msgs, _ = client._transform_messages(prepared)
         user_msgs = [m for m in input_msgs if m.get("role") == "user"]
         assert user_msgs[0].get("cache_control") == {"type": "ephemeral"}
+
+
+class TestToolOutputNotCorrupted:
+    """Ensure tool message output stays a string after position-based injection."""
+
+    def test_tool_output_remains_string_after_position_injection(self):
+        """When last-tool injection converts content to blocks, output must stay a string."""
+        client = ResponsesClient(model="test-model")
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Do it"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {"name": "run", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "content": "tool output text", "tool_call_id": "tc1"},
+            {"role": "user", "content": "Next"},
+        ]
+        # Position-based injection converts tool content to list of blocks
+        prepared = client._inject_cache_control(messages, [{"role": "tool", "position": "last"}])
+        input_msgs, _ = client._transform_messages(prepared)
+
+        fco = [m for m in input_msgs if m.get("type") == "function_call_output"]
+        assert len(fco) == 1
+        # output MUST be a string, not a list
+        assert isinstance(fco[0]["output"], str)
+        assert fco[0]["output"] == "tool output text"
+        # cache_control should also be present
+        assert fco[0].get("cache_control") == {"type": "ephemeral"}
 
 
 class TestResponsesClientEndToEnd:
