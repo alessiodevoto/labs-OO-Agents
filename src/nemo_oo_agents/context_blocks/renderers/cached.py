@@ -17,8 +17,9 @@ Implemented as a single :class:`CachedBlockFormatter`. Pair with any stock
 provider formatter (``OpenAIProviderFormatter``, ``AnthropicProviderFormatter``);
 no paired provider formatter is needed.
 
-Decoration is minimal by design: no "you are an agent" prose, no format
-description. Authors see the structure through the XML tags themselves.
+Decoration is minimal by design: no "you are an agent" prose. The format
+description mirrors XMLBlockFormatter since the wire format is the same XML
+envelope.
 """
 
 from nemo_oo_agents.context_blocks.formatter import (
@@ -84,6 +85,16 @@ class CachedBlockFormatter(BlockFormatter):
     @property
     def format_type(self) -> FormatType:
         return FORMAT_XML
+
+    def format_description(self) -> str:
+        return (
+            "Your prompt is organized in XML context blocks: `<name>CONTENT</name>`.\n"
+            "Blocks produced by `self.context.set_dynamic()` carry an "
+            '`expr="..."` attribute whose value is the Python expression '
+            "re-evaluated each turn.\n"
+            'Event history: system entries in `<sys tag="N">`; '
+            'reference via `self.events["N"]`.'
+        )
 
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
         system_blocks = [b for b in blocks if b.role == Role.SYSTEM]
