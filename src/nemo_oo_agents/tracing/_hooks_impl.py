@@ -51,7 +51,7 @@ def end_active_spans(reason: str = "timeout") -> int:
             continue
         try:
             span.set_status(Status(StatusCode.ERROR, reason))
-            span.set_attribute("error.type", "Timeout")
+            span.set_attribute("error.type", "Timeout" if "timeout" in reason.lower() else "Cancelled")
             span.set_attribute("error.message", reason)
             span.end(end_time=time.time_ns())
             count += 1

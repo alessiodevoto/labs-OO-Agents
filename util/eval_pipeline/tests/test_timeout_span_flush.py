@@ -90,7 +90,8 @@ class TestTimeoutSpanFlush:
 
         # Read the trace file and verify it contains an AGENT span
         trace_file_path = os.path.join(trace_dir, trace_files[0])
-        trace_content = open(trace_file_path).read().strip()
+        with open(trace_file_path) as tf:
+            trace_content = tf.read().strip()
         assert trace_content, f"Trace file {trace_files[0]} is empty"
 
         # Parse OTLP JSON lines and look for spans
