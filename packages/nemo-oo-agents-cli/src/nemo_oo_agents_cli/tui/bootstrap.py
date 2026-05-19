@@ -212,7 +212,7 @@ async def bootstrap(
     agent_db = SESSIONS_DIR / f"{_session_id}.db"
 
     try:
-        agent_storage = SQLiteStorageManager(agent_db)
+        agent_storage = SQLiteStorageManager(agent_db, check_same_thread=False)
     except SessionAlreadyActiveError as e:
         # Another process owns this session — start a fresh one instead.
         detail = f" (pid {e.owner_pid})" if e.owner_pid is not None else ""
@@ -226,7 +226,7 @@ async def bootstrap(
         _session_id = str(_uuid.uuid4())
         _resumed = False
         agent_db = SESSIONS_DIR / f"{_session_id}.db"
-        agent_storage = SQLiteStorageManager(agent_db)
+        agent_storage = SQLiteStorageManager(agent_db, check_same_thread=False)
     except Exception as e:
         messages.append(TextOutput(f"Agent storage unavailable: {e}", "warning"))
 

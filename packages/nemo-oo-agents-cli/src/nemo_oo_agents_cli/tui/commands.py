@@ -272,7 +272,9 @@ class ClearCommand(Command):
 
                 _new_id = str(_uuid.uuid4())
                 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-                _new_storage = SQLiteStorageManager(SESSIONS_DIR / f"{_new_id}.db")
+                _new_storage = SQLiteStorageManager(
+                    SESSIONS_DIR / f"{_new_id}.db", check_same_thread=False
+                )
                 new_sm = SessionManager(
                     storage=_new_storage,
                     session_id=_new_id,
@@ -1386,7 +1388,7 @@ class SessionCommand(Command):
             from nemo_oo_agents.storage import SQLiteStorageManager
 
             try:
-                old_storage = SQLiteStorageManager(_session_db_path)
+                old_storage = SQLiteStorageManager(_session_db_path, check_same_thread=False)
                 restored = old_storage.restore_latest_snapshot(self.agent)
                 if restored:
                     outputs.append(
@@ -1443,7 +1445,9 @@ class SessionCommand(Command):
 
                     _new_id = str(_uuid.uuid4())
                     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-                    _new_storage = SQLiteStorageManager(SESSIONS_DIR / f"{_new_id}.db")
+                    _new_storage = SQLiteStorageManager(
+                        SESSIONS_DIR / f"{_new_id}.db", check_same_thread=False
+                    )
                     new_sm = SessionManager(
                         storage=_new_storage,
                         session_id=_new_id,
@@ -2220,7 +2224,7 @@ class TimeTravelCommand(Command):
 
         # --- 7. Open the new session and switch into it ---
         try:
-            new_storage = SQLiteStorageManager(new_db_path)
+            new_storage = SQLiteStorageManager(new_db_path, check_same_thread=False)
             new_sm = SessionManager(
                 storage=new_storage,
                 session_id=new_session_id,

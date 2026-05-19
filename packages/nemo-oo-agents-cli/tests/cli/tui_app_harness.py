@@ -30,6 +30,7 @@ a chance to drain the pipe before the next assertion runs.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -76,6 +77,49 @@ def _key_sequence(key: str) -> str:
 # ── scriptable agent mock ----------------------------------------------------
 
 
+class ThreadGate:
+    """Small awaitable gate safe to set from a different event loop thread."""
+
+    def __init__(self, *, initially_set: bool = False) -> None:
+        self._set = initially_set
+        self._lock = threading.Lock()
+        self._waiters: list[asyncio.Future[None]] = []
+
+    def set(self) -> None:
+        with self._lock:
+            self._set = True
+            waiters = list(self._waiters)
+            self._waiters.clear()
+        for waiter in waiters:
+            if waiter.done():
+                continue
+            waiter.get_loop().call_soon_threadsafe(waiter.set_result, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._set = False
+
+    def is_set(self) -> bool:
+        with self._lock:
+            return self._set
+
+    async def wait(self) -> None:
+        with self._lock:
+            if self._set:
+                return
+            waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            self._waiters.append(waiter)
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            with self._lock:
+                try:
+                    self._waiters.remove(waiter)
+                except ValueError:
+                    pass
+            raise
+
+
 class FakeAgent:
     """Scriptable stand-in for ``TUIAgent`` used by harness tests.
 
@@ -101,8 +145,7 @@ class FakeAgent:
 
         self.script: list[Callable[[FakeAgent, str], Any]] = []
         self.messages_received: list[str] = []
-        self.block = asyncio.Event()
-        self.block.set()  # default: handle returns immediately
+        self.block = ThreadGate(initially_set=True)  # default: handle returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
         # Tests don't need event-mode channels, so no event_manager.
         self.queue_manager = QueueManager(agent=self)

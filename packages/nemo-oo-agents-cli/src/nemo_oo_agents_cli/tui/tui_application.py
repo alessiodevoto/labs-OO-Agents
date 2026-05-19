@@ -20,7 +20,9 @@ import datetime
 import logging
 import re
 import shutil
+import threading
 from collections.abc import Awaitable, Callable
+from concurrent.futures import Future as ConcurrentFuture
 from typing import Any
 
 from prompt_toolkit.application import Application
@@ -184,7 +186,12 @@ class TUIApplication:
         self._spinner_task: asyncio.Task | None = None
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
-        self._agent_task: asyncio.Task | None = None
+        self._agent_task: asyncio.Future | None = None
+        self._agent_thread_future: ConcurrentFuture | None = None
+        self._agent_loop: asyncio.AbstractEventLoop | None = None
+        self._agent_thread: threading.Thread | None = None
+        self._agent_loop_ready = threading.Event()
+        self._agent_loop_stopped = threading.Event()
         # True while the dispatcher is inside an ``agent.handle()`` call.
         # ``is_thinking()`` checks this flag rather than the user_messages
         # queue's waiter count — counting waiters conflated "dispatcher
@@ -599,9 +606,78 @@ class TUIApplication:
             return
         if self._agent_task is not None and not self._agent_task.done():
             return
-        self._agent_task = asyncio.ensure_future(self._dispatcher_loop())
+        if self._loop is None:
+            # Unit tests call submit_message() without running the prompt_toolkit
+            # app. In that mode there is no UI loop to protect, so preserve the
+            # old same-loop dispatcher semantics.
+            self._agent_task = asyncio.ensure_future(self._dispatcher_loop())
+        else:
+            agent_loop = self._ensure_agent_loop()
+            self._agent_thread_future = asyncio.run_coroutine_threadsafe(
+                self._dispatcher_loop(), agent_loop
+            )
+            self._agent_task = asyncio.wrap_future(self._agent_thread_future)
         self._agent_task.add_done_callback(self._on_agent_done)
         self._ensure_spinner_task()
+
+    def _ensure_agent_loop(self) -> asyncio.AbstractEventLoop:
+        """Return the dedicated event loop used for agent dispatch.
+
+        prompt_toolkit stays on the main/UI loop. Agent turns run here so
+        synchronous work inside ``agent.handle()`` cannot freeze input or
+        spinner redraws.
+        """
+        if self._agent_loop is not None and self._agent_loop.is_running():
+            return self._agent_loop
+
+        self._agent_loop_ready.clear()
+        self._agent_loop_stopped.clear()
+        loop = asyncio.new_event_loop()
+        self._agent_loop = loop
+
+        def _run() -> None:
+            asyncio.set_event_loop(loop)
+            self._agent_loop_ready.set()
+            try:
+                loop.run_forever()
+            finally:
+                try:
+                    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                finally:
+                    loop.close()
+                    self._agent_loop_stopped.set()
+
+        self._agent_thread = threading.Thread(
+            target=_run,
+            name="nemo-tui-agent-loop",
+            daemon=True,
+        )
+        self._agent_thread.start()
+        if not self._agent_loop_ready.wait(timeout=5.0):
+            raise RuntimeError("Agent event loop thread failed to start within 5s")
+        return loop
+
+    async def _stop_agent_loop(self) -> None:
+        """Stop the dedicated agent loop without blocking prompt_toolkit."""
+        loop = self._agent_loop
+        thread = self._agent_thread
+        if loop is None:
+            return
+        if self._agent_thread_future is not None and not self._agent_thread_future.done():
+            self._agent_thread_future.cancel()
+        loop.call_soon_threadsafe(loop.stop)
+        if thread is not None and thread.is_alive():
+            await asyncio.to_thread(thread.join, 5.0)
+            if thread.is_alive():
+                logger.warning("Agent loop thread did not stop within 5s — abandoning")
+        self._agent_loop = None
+        self._agent_thread = None
+        self._agent_thread_future = None
 
     async def _dispatcher_loop(self) -> None:
         """Drive ``agent.handle()`` turn-by-turn until DispatcherExit or cancellation.
@@ -738,6 +814,14 @@ class TUIApplication:
         ``is_thinking()`` was False between turns — a new turn wants
         it running again.
         """
+        ui_loop = self._loop
+        try:
+            on_ui_loop = asyncio.get_running_loop() is ui_loop
+        except RuntimeError:
+            on_ui_loop = False
+        if ui_loop is not None and not on_ui_loop:
+            ui_loop.call_soon_threadsafe(self._on_dispatcher_dequeued)
+            return
         if self._app.is_running:
             self._app.invalidate()
         self._ensure_spinner_task()
@@ -913,6 +997,7 @@ class TUIApplication:
                     await self._spinner_task
                 except (asyncio.CancelledError, BaseException):
                     pass
+            await self._stop_agent_loop()
             self._consumer_task = None
             self._spinner_task = None
             self._block_queue = None
