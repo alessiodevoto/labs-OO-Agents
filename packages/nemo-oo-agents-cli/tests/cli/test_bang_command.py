@@ -8,25 +8,28 @@ from nemo_oo_agents_cli.tui.session import Session
 
 
 class TestBangCommand:
-    """Verify that ! commands route through shell.run, not self.bash."""
+    """Verify that ! commands route through the TUI's own ShellTools."""
 
     async def test_bang_command_works_with_shell_agent(self):
-        """An agent with self.shell (not self.bash) must handle ! commands."""
+        """An agent with self.shell must handle ! commands via TUI-owned shell."""
         # Create a mock agent with shell but no bash
         agent = MagicMock()
         del agent.bash  # ensure no bash attribute
         agent.shell = MagicMock()
-        agent.shell.run = AsyncMock(
+        agent.shell.cwd = "/tmp"
+
+        # Create a minimal session with a pre-set _bang_shell mock
+        session = object.__new__(Session)
+        session.agent = agent
+        bang_shell = MagicMock()
+        bang_shell.run = AsyncMock(
             return_value=MagicMock(
                 stdout="hello",
                 stderr="",
-                return_code=0,
+                returncode=0,
             )
         )
-
-        # Create a minimal session
-        session = object.__new__(Session)
-        session.agent = agent
+        session._bang_shell = bang_shell
 
         # The session should detect shell support
         assert hasattr(session.agent, "shell")
@@ -38,5 +41,6 @@ class TestBangCommand:
 
         await session._handle_bang("!echo hello")
 
-        # Should have called shell.run, not shown a warning
-        agent.shell.run.assert_called_once_with("echo hello")
+        # Should have called the TUI's own bang shell, not the agent's
+        bang_shell.run.assert_called_once_with("echo hello")
+        agent.shell.run.assert_not_called()
