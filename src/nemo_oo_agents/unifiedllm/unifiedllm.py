@@ -786,7 +786,9 @@ class UnifiedLLM(ABC):
         self.config = config
         self._registry_config = None
         # Cache control injection — shared by CompletionClient and ResponsesClient
-        self.cache_control_injection_points: list[dict[str, Any]] = DEFAULT_CACHE_CONTROL_INJECTION_POINTS
+        self.cache_control_injection_points: list[dict[str, Any]] = (
+            DEFAULT_CACHE_CONTROL_INJECTION_POINTS
+        )
 
     @staticmethod
     def _inject_cache_control_on_content(msg: dict) -> None:

@@ -12,9 +12,7 @@ def make_mock_responses_response(content: str = "ok"):
     from unittest.mock import MagicMock
 
     resp = MagicMock()
-    resp.output = [
-        MagicMock(type="message", content=[MagicMock(type="output_text", text=content)])
-    ]
+    resp.output = [MagicMock(type="message", content=[MagicMock(type="output_text", text=content)])]
     resp.output_text = content
     resp.usage = None
     return resp
@@ -67,9 +65,17 @@ class TestResponsesClientCacheControlInjection:
         messages = [
             {"role": "system", "content": "System"},
             {"role": "user", "content": "Do something"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "tc1", "type": "function", "function": {"name": "run", "arguments": "{}"}}
-            ]},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {"name": "run", "arguments": "{}"},
+                    }
+                ],
+            },
             {"role": "tool", "content": "result 1", "tool_call_id": "tc1"},
             {"role": "user", "content": "What next?"},
         ]
@@ -128,10 +134,17 @@ class TestResponsesClientEndToEnd:
                 [
                     {"role": "system", "content": "You are helpful."},
                     {"role": "user", "content": "Do something"},
-                    {"role": "assistant", "content": None, "tool_calls": [
-                        {"id": "tc1", "type": "function",
-                         "function": {"name": "run", "arguments": "{}"}}
-                    ]},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "tc1",
+                                "type": "function",
+                                "function": {"name": "run", "arguments": "{}"},
+                            }
+                        ],
+                    },
                     {"role": "tool", "content": "tool output", "tool_call_id": "tc1"},
                     {"role": "user", "content": "Current turn"},
                 ],
