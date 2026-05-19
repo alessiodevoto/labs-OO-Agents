@@ -759,7 +759,9 @@ class Session:
                         lock = getattr(bash, "_lock", None)
                         diag_lines.append(f"  BashSession._lock: {lock!r}")
                         if lock is not None and hasattr(lock, "_loop"):
-                            diag_lines.append(f"    lock._loop: id={id(lock._loop):#x} (same={lock._loop is _loop})")
+                            diag_lines.append(
+                                f"    lock._loop: id={id(lock._loop):#x} (same={lock._loop is _loop})"
+                            )
             except Exception as e:
                 diag_lines.append(f"  [BashSession inspection failed: {e}]")
             try:
@@ -768,7 +770,9 @@ class Session:
                     gen_lock = getattr(actor, "_generation_lock", None)
                     diag_lines.append(f"  Actor._generation_lock: {gen_lock!r}")
                     if gen_lock is not None and hasattr(gen_lock, "_loop"):
-                        diag_lines.append(f"    lock._loop: id={id(gen_lock._loop):#x} (same={gen_lock._loop is _loop})")
+                        diag_lines.append(
+                            f"    lock._loop: id={id(gen_lock._loop):#x} (same={gen_lock._loop is _loop})"
+                        )
             except Exception as e:
                 diag_lines.append(f"  [Actor inspection failed: {e}]")
             diag_lines.append("  Suggestion: restart the TUI. File details on gl#212.")
