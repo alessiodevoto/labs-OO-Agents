@@ -16,13 +16,13 @@ class TestBangCommand:
         agent = MagicMock()
         del agent.bash  # ensure no bash attribute
         agent.shell = MagicMock()
-        agent.shell.cwd = "/tmp"
+        agent.shell.cwd = "/var"
 
         # Create a minimal session with a pre-set _bang_shell mock
         session = object.__new__(Session)
         session.agent = agent
         bang_shell = MagicMock()
-        bang_shell.cwd = "/tmp"  # match agent.shell.cwd so no sync cd happens
+        bang_shell.cwd = "/var"  # match agent.shell.cwd so no sync cd happens
         bang_shell.run = AsyncMock(
             return_value=MagicMock(
                 stdout="hello",

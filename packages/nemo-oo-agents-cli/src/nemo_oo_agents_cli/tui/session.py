@@ -15,6 +15,7 @@ import asyncio
 import io
 import logging
 import re
+import shlex
 import sys
 import traceback
 from collections.abc import Callable
@@ -1018,5 +1019,5 @@ class Session:
         elif hasattr(self.agent, "shell"):
             agent_cwd = str(self.agent.shell.cwd)
             if str(self._bang_shell.cwd) != agent_cwd:
-                await self._bang_shell.run(f"cd {agent_cwd}")
+                await self._bang_shell.run(f"cd {shlex.quote(agent_cwd)}")
         return self._bang_shell
