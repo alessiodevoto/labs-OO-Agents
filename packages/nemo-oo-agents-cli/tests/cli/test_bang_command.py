@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Test that TUI bang (!) commands work with ShellTools-based agents."""
 
+import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 from nemo_oo_agents_cli.tui.session import Session
@@ -16,13 +17,13 @@ class TestBangCommand:
         agent = MagicMock()
         del agent.bash  # ensure no bash attribute
         agent.shell = MagicMock()
-        agent.shell.cwd = "/var"
+        agent.shell.cwd = tempfile.gettempdir()
 
         # Create a minimal session with a pre-set _bang_shell mock
         session = object.__new__(Session)
         session.agent = agent
         bang_shell = MagicMock()
-        bang_shell.cwd = "/var"  # match agent.shell.cwd so no sync cd happens
+        bang_shell.cwd = tempfile.gettempdir()  # match agent.shell.cwd so no sync cd happens
         bang_shell.run = AsyncMock(
             return_value=MagicMock(
                 stdout="hello",
