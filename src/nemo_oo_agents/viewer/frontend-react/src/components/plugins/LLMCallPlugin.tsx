@@ -341,7 +341,7 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
   if (viewState === 'concise') {
     // Show last input message + output + tool calls
     // Separate <context> wrapper messages (from cached block formatter) into a collapsed section
-    const isContextMsg = (m: Message) => m.role === 'user' && m.content?.trimStart().startsWith('<context>\n');
+    const isContextMsg = (m: Message): boolean => m.role === 'user' && (m.content?.trimStart().startsWith('<context>\n') ?? false);
     const contextMsgs = inputMessages.filter(isContextMsg);
     const lastMsg = inputMessages.length > 0
       ? inputMessages.findLast(m => !isContextMsg(m)) ?? null

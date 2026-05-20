@@ -246,14 +246,15 @@ export function TraceView({ sessionId, onBack }: TraceViewProps) {
   }, [sidebarCollapsed, toggleSidebar]);
 
   const handleSetAllViewState = useCallback((state: ViewState) => {
+    const count = filteredEvents.length;
     setEventStates((prev) => {
       const next = new Map(prev);
-      for (let i = 0; i < filteredEvents.length; i++) {
+      for (let i = 0; i < count; i++) {
         next.set(i, state);
       }
       return next;
     });
-  }, [filteredEvents.length]);
+  }, [filteredEvents]);
 
   useKeyboardNav({
     getItemCount: () => filteredEvents.length,
