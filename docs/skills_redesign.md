@@ -31,7 +31,12 @@ Skills are discovered from entry points:
 "nemo.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
 "nemo.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
 "nemo.todo" = "nemo_oo_agents.tools.todo:TodoManager"
-"superpowers.skillwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
+"nemo.context" = "nemo_oo_agents.runtime.context:ContextApi"
+"nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"
+"nemo.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
+"nemo.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
+"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
+"superpowers.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
 ```
 
 Names use `category.skill_name` notation (dot-separated).
@@ -98,7 +103,7 @@ a namespace proxy. No bracket access, no leaf shortcuts on `self.skills`.
 | Category | Skills |
 |----------|--------|
 | `nemo` | shell, repo, todo, context, events, producers, web |
-| `superpowers` | skillwriting, methodwriting |
+| `superpowers` | libwriting, methodwriting |
 
 ## Skill Authoring
 
