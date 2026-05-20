@@ -37,8 +37,8 @@ class SkillRegistry(Skill):
 
     Usage in agent constructor::
 
-        self.skills.load(['nemo/*'])
-        self.skills.activate(['nemo/shell', 'nemo/repo'])
+        self.skills.load(['nemo.*'])
+        self.skills.activate(['nemo.shell', 'nemo.repo'])
     """
 
     __agentdoc_skip__ = True
@@ -67,7 +67,7 @@ class SkillRegistry(Skill):
             self._discovered[ep.name] = _SkillEntry(
                 name=ep.name,
                 entry_point=ep,
-                category=ep.name.split(".")[0] if "/" in ep.name else "",
+                category=ep.name.split(".")[0] if "." in ep.name else "",
             )
 
     def discovered(self) -> list[str]:
@@ -85,7 +85,7 @@ class SkillRegistry(Skill):
     def load(self, patterns: list[str]) -> None:
         """Load skills matching patterns from the discovered set.
 
-        Patterns support fnmatch globs: 'nemo/*', '*', 'nemo/shell'.
+        Patterns support fnmatch globs: 'nemo.*', '*', 'nemo.shell'.
         Skills with empty constructors are auto-instantiated. Skills requiring
         args must be constructed manually and registered via register().
         """
@@ -321,12 +321,12 @@ class SkillRegistry(Skill):
         attr_map = object.__getattribute__(self, "_attr_map")
         agent = object.__getattribute__(self, "_agent")
 
-        categories = {n.split("/")[0] for n in loaded if "." in n}
+        categories = {n.split(".")[0] for n in loaded if "." in n}
         if name in categories:
             return _NamespaceProxy(self, name)
         # Check if it's a leaf name
         for reg_name in loaded:
-            leaf = reg_name.split(".")[-1] if "/" in reg_name else reg_name
+            leaf = reg_name.split(".")[-1] if "." in reg_name else reg_name
             if leaf == name:
                 attr = attr_map.get(reg_name, name)
                 return getattr(agent, attr)
