@@ -41,7 +41,7 @@ from opentelemetry.sdk.trace.export import (
 
 from nemo_oo_agents.tracing import exporters as exporters_mod
 from nemo_oo_agents.tracing._atif_exporter import AtifTrajectoryExporter
-from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
+from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks, end_active_spans
 from nemo_oo_agents.tracing._metadata import get_all_metadata
 from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
 from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
@@ -461,6 +461,7 @@ __all__ = [
     "OtlpJsonFileExporter",
     "OtlpJsonHttpExporter",
     "enable_tracing",
+    "end_active_spans",
     "exporters",
     "probe_otlp_endpoint",
     "set_session",

@@ -31,6 +31,37 @@ def _get_active_spans() -> dict[str, Span]:
     return spans
 
 
+def end_active_spans(reason: str = "timeout") -> int:
+    """End all active (un-ended) spans with an error status.
+
+    Call this before shutdown_traces() when a task is cancelled or timed out,
+    so that OTel SDK can export the spans. Without ending them first,
+    force_flush/shutdown silently drops un-ended spans.
+
+    Returns the number of spans that were ended.
+    """
+    spans = _context_active_spans.get()
+    if not spans:
+        return 0
+    count = 0
+    # End in reverse order (most recent/child first) to preserve parent-child ordering
+    for span_id in list(reversed(list(spans.keys()))):
+        span = spans.pop(span_id, None)
+        if span is None:
+            continue
+        try:
+            span.set_status(Status(StatusCode.ERROR, reason))
+            span.set_attribute(
+                "error.type", "Timeout" if "timeout" in reason.lower() else "Cancelled"
+            )
+            span.set_attribute("error.message", reason)
+            span.end(end_time=time.time_ns())
+            count += 1
+        except Exception:
+            pass  # Span may already be ended or invalid
+    return count
+
+
 _ERROR_MESSAGE_LIMIT = 5_000
 _TRACE_MAX_DEPTH = 16  # prevent stack overflow on deeply nested objects
 
