@@ -13,7 +13,6 @@ import sys
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-import pytest
 from nemo_oo_agents_cli.tui.session import Session
 
 
