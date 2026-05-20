@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import tempfile
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -456,7 +457,7 @@ class TestBangShell:
         session._bang_shell = None
         session.agent = MagicMock()
         session.agent.shell = MagicMock()
-        session.agent.shell.cwd = "/tmp"
+        session.agent.shell.cwd = tempfile.gettempdir()
 
         shell = await session._get_bang_shell()
         assert isinstance(shell, ShellTools)
@@ -468,7 +469,7 @@ class TestBangShell:
         session._bang_shell = None
         session.agent = MagicMock()
         session.agent.shell = MagicMock()
-        session.agent.shell.cwd = "/tmp"
+        session.agent.shell.cwd = tempfile.gettempdir()
 
         shell1 = await session._get_bang_shell()
         shell2 = await session._get_bang_shell()
@@ -481,7 +482,7 @@ class TestBangShell:
         session = Session.__new__(Session)
         session._bang_shell = None
         session.agent = MagicMock()
-        session.agent.shell = ShellTools(cwd="/tmp")
+        session.agent.shell = ShellTools(cwd=tempfile.gettempdir())
 
         bang_shell = await session._get_bang_shell()
         assert bang_shell is not session.agent.shell
@@ -507,10 +508,10 @@ class TestBangShell:
         session._bang_shell = None
         session.agent = MagicMock()
         session.agent.shell = MagicMock()
-        session.agent.shell.cwd = Path("/tmp")
+        session.agent.shell.cwd = Path(tempfile.gettempdir())
 
         shell = await session._get_bang_shell()
-        assert str(shell.cwd) == "/tmp"
+        assert str(shell.cwd) == tempfile.gettempdir()
 
         # Simulate agent changing directory to a real path
         session.agent.shell.cwd = Path("/")
