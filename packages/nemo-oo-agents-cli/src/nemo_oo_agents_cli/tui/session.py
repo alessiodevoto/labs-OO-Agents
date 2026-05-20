@@ -514,6 +514,7 @@ class Session:
         # background bookkeeping) that raises vanishes into logging and
         # the user sees "nothing happened".
         self._startup_loop = asyncio.get_running_loop()
+        self._prev_exception_handler = self._startup_loop.get_exception_handler()
         self._startup_loop.set_exception_handler(self._loud_handler)
 
         # Subscribe inside the try so any exception between attach and
@@ -555,6 +556,10 @@ class Session:
                     except Exception:
                         pass
                 self._session_manager.close()
+            # Restore the previous exception handler so we don't pin
+            # this Session or route unrelated failures through a torn-down TUI.
+            if self._startup_loop is not None:
+                self._startup_loop.set_exception_handler(self._prev_exception_handler)
             self._print_exit_message()
 
     def _print_exit_message(self) -> None:
@@ -795,6 +800,13 @@ class Session:
                 self._loud_handler_reentrant = True
                 try:
                     self._app.emit_block(diag_msg)
+                except Exception:
+                    # emit_block failed (plausible during degraded loop state) —
+                    # fall back to stderr so the diagnostic isn't lost.
+                    err = sys.__stderr__
+                    if err is not None:
+                        err.write(diag_msg)
+                        err.flush()
                 finally:
                     self._loud_handler_reentrant = False
             # Fall through to normal handler for the full traceback

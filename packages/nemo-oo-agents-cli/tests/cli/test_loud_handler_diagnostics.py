@@ -40,7 +40,7 @@ class TestDiagnosticTrigger:
     def test_triggers_on_bound_to_different_loop(self):
         """Diagnostic dump emits when exception message matches."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("Task <foo> cb=[...] bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -56,7 +56,7 @@ class TestDiagnosticTrigger:
     def test_does_not_trigger_on_unrelated_exception(self):
         """No diagnostic dump for exceptions without the loop-mismatch message."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = ValueError("something else entirely")
         context = {"message": "", "exception": exc}
 
@@ -71,7 +71,7 @@ class TestDiagnosticTrigger:
     def test_does_not_trigger_without_exception(self):
         """No diagnostic dump when context has no exception."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         context = {"message": "Task was destroyed but it is pending!"}
 
         session._loud_handler(loop, context)
@@ -88,7 +88,7 @@ class TestDiagnosticContent:
     def test_includes_handler_loop_id(self):
         """Dump shows the handler loop's id."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -100,7 +100,7 @@ class TestDiagnosticContent:
     def test_includes_startup_loop_id(self):
         """Dump shows the startup loop's id."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -124,7 +124,7 @@ class TestDiagnosticContent:
     def test_includes_same_flag_when_loops_differ(self):
         """When handler loop is NOT the startup loop, same=False."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -136,7 +136,7 @@ class TestDiagnosticContent:
     def test_includes_exception_repr(self):
         """Dump shows the repr of the exception."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -149,7 +149,7 @@ class TestDiagnosticContent:
     def test_includes_restart_suggestion(self):
         """Dump includes the user-facing suggestion to restart."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -171,7 +171,7 @@ class TestLockInspection:
         session.agent.shell._session = MagicMock()
         session.agent.shell._session._lock = mock_lock
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -189,13 +189,13 @@ class TestLockInspection:
         """
         session = _make_session_stub()
         mock_lock = MagicMock()
-        mock_lock._loop = asyncio.new_event_loop()
+        mock_lock._loop = MagicMock(spec=asyncio.AbstractEventLoop)
         # hasattr check must pass
         session.agent.shell = MagicMock()
         session.agent.shell._session = MagicMock()
         session.agent.shell._session._lock = mock_lock
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -213,7 +213,7 @@ class TestLockInspection:
         session.agent.shell._session = MagicMock()
         session.agent.shell._session._lock = real_lock
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -232,7 +232,7 @@ class TestLockInspection:
         session.agent._actor = MagicMock()
         session.agent._actor._generation_lock = mock_lock
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -255,7 +255,7 @@ class TestLockInspection:
 
         session.agent = _Agent()
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -278,7 +278,7 @@ class TestLockInspection:
 
         session.agent = _Agent()
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -292,7 +292,7 @@ class TestLockInspection:
         session = _make_session_stub()
         session.agent.shell = None
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -304,7 +304,7 @@ class TestLockInspection:
         session = _make_session_stub()
         session.agent._actor = None
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -320,7 +320,7 @@ class TestReentrancyGuard:
         session = _make_session_stub()
         session._loud_handler_reentrant = True
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -334,7 +334,7 @@ class TestReentrancyGuard:
     def test_non_reentrant_uses_emit_block(self):
         """When not reentrant, diagnostic goes through emit_block."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -343,17 +343,12 @@ class TestReentrancyGuard:
         calls = session._app.emit_block.call_args_list
         assert any("[gl-212]" in call[0][0] for call in calls)
 
-    def test_emit_block_failure_in_diag_propagates(self):
-        """Known limitation: emit_block failure in diagnostic section propagates.
+    def test_emit_block_failure_in_diag_falls_back_to_stderr(self):
+        """If emit_block raises during diagnostic emit, fall back to stderr.
 
-        The diagnostic block uses try/finally without except, so if emit_block
-        raises during the diagnostic emit (plausible during a degraded loop-mismatch
-        state), the exception escapes _loud_handler and the normal handler path
-        (which formats the full traceback) is never reached.
-
-        This test documents the current behavior. A follow-up fix should wrap
-        the diagnostic emit_block in try/except (matching the normal handler's
-        pattern at the end of _loud_handler) so the original traceback is preserved.
+        The diagnostic try/except catches the failure and writes to stderr
+        instead, then continues to the normal handler path so the original
+        traceback is not lost.
         """
         session = _make_session_stub()
         call_count = [0]
@@ -365,18 +360,23 @@ class TestReentrancyGuard:
 
         session._app.emit_block.side_effect = emit_block_side_effect
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
-        # Current behavior: exception propagates (see docstring for rationale)
-        with pytest.raises(RuntimeError, match="emit_block failed"):
+        fake_stderr = StringIO()
+        with patch.object(sys, "__stderr__", fake_stderr):
             session._loud_handler(loop, context)
+
+        # Diagnostic was written to stderr as fallback
+        assert "[gl-212]" in fake_stderr.getvalue()
+        # Normal handler still ran (second emit_block call)
+        assert call_count[0] >= 2
 
     def test_reentrant_flag_reset_after_emit(self):
         """_loud_handler_reentrant is reset to False after emit_block."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
@@ -391,7 +391,7 @@ class TestFallThrough:
     def test_normal_handler_formats_exception_after_diag(self):
         """The full traceback is still emitted via normal handler path."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "error in task", "exception": exc}
 
@@ -408,7 +408,7 @@ class TestFallThrough:
         """'Unclosed client session' messages are still dropped even if diag
         section was not triggered."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         context = {"message": "Unclosed client session"}
 
         session._loud_handler(loop, context)
@@ -419,7 +419,7 @@ class TestFallThrough:
     def test_unclosed_connector_still_filtered(self):
         """'Unclosed connector' messages are still dropped."""
         session = _make_session_stub()
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         context = {"message": "Unclosed connector"}
 
         session._loud_handler(loop, context)
@@ -435,7 +435,7 @@ class TestStartupLoop:
         session = _make_session_stub()
         del session._startup_loop  # simulate never having run()
 
-        loop = asyncio.new_event_loop()
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
         exc = RuntimeError("bound to a different event loop")
         context = {"message": "", "exception": exc}
 
