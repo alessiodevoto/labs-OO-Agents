@@ -22,7 +22,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.agentdoc import TruncatingStringIO
+from nemo_oo_agents.agentdoc import FileBackedTruncatingStringIO, TruncatingStringIO
 from nemo_oo_agents.agentdoc.introspect import methods, variables
 from nemo_oo_agents.context_blocks import (
     DynamicContext,
@@ -385,6 +385,15 @@ def _pop_generation_id() -> str | None:
     popped = current[-1]
     _generation_id_stack_var.set(current[:-1])
     return popped
+
+
+def _make_capture_buffer(
+    limit: int, tail_chars: int | None, file_backed: bool
+) -> TruncatingStringIO:
+    """Create a stdout/stderr capture buffer, optionally file-backed."""
+    if file_backed:
+        return FileBackedTruncatingStringIO(limit=limit, tail_chars=tail_chars)
+    return TruncatingStringIO(limit=limit, tail_chars=tail_chars)
 
 
 def _extract_captured_locals(exec_globals: dict[str, Any]) -> dict[str, Any]:
@@ -1138,13 +1147,15 @@ class ActorRuntime:
             # executions are isolated. TruncatingStringIO prevents LLMs from
             # filling the context window.
             truncation_config = self.truncation_config
-            stdout_buffer = TruncatingStringIO(
+            stdout_buffer = _make_capture_buffer(
                 limit=truncation_config.capture.max_stdout,
                 tail_chars=truncation_config.capture.tail,
+                file_backed=truncation_config.capture.file_backed,
             )
-            stderr_buffer = TruncatingStringIO(
+            stderr_buffer = _make_capture_buffer(
                 limit=truncation_config.capture.max_stderr,
                 tail_chars=truncation_config.capture.tail,
+                file_backed=truncation_config.capture.file_backed,
             )
             stdout_token = _stdout_buffer_var.set(stdout_buffer)
             stderr_token = _stderr_buffer_var.set(stderr_buffer)
@@ -1467,6 +1478,17 @@ class ActorRuntime:
                 _block_stdin_var.reset(stdin_token)
             if media_token is not None:
                 _media_buffer_var.reset(media_token)
+            # Close file handles for file-backed buffers (but keep files on disk
+            # so the LLM can reference the full output via the path in the notice).
+            # stdout_buffer/stderr_buffer may not be defined if an early return
+            # (validation, SyntaxError) exited before buffer creation.
+            try:
+                if isinstance(stdout_buffer, FileBackedTruncatingStringIO):
+                    stdout_buffer.close()
+                if isinstance(stderr_buffer, FileBackedTruncatingStringIO):
+                    stderr_buffer.close()
+            except NameError:
+                pass
             # Reset parent agent context
             _parent_agent_var.reset(parent_token)
             # Call after_code_execution hook

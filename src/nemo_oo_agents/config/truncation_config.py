@@ -57,6 +57,17 @@ class CaptureConfig(BaseModel):
             ),
         ),
     ] = None
+    file_backed: Annotated[
+        bool,
+        Field(
+            description=(
+                "When True, stdout/stderr capture uses FileBackedTruncatingStringIO "
+                "which streams full output to a temp file on disk while still "
+                "truncating the in-memory representation. The temp file path is "
+                "included in the truncation notice so the LLM can reference it."
+            ),
+        ),
+    ] = False
 
     @model_validator(mode="after")
     def _check(self) -> "CaptureConfig":
