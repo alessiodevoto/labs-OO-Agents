@@ -327,10 +327,15 @@ class SessionManager:
     @classmethod
     def delete_session(cls, session_id: str) -> bool:
         path = SESSIONS_DIR / f"{session_id}.db"
-        if path.exists():
-            path.unlink()
-            return True
-        return False
+        if not path.exists():
+            return False
+        path.unlink()
+        # Clean up WAL-mode auxiliary files
+        for suffix in (".db-wal", ".db-shm"):
+            aux = SESSIONS_DIR / f"{session_id}{suffix}"
+            if aux.exists():
+                aux.unlink()
+        return True
 
 
 # Default number of turns to show on session resume.  Keeps the terminal
