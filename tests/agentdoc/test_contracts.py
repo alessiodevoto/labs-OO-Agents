@@ -64,7 +64,11 @@ class TestHiddenOnProperty:
                 return "hi"
 
         assert "secret" not in doc(MyClass())
-        assert "visible" in doc(MyClass())
+        # Properties no longer show on instance formatting (only on Type).
+        # Instance formatting reads __dict__ only to avoid blocking I/O.
+        assert "visible" not in doc(MyClass())
+        # But properties DO show on the class (type introspection, no execution):
+        assert "visible" in doc(MyClass)
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +303,8 @@ class TestPropertyInInstanceDoc:
     Properties that raise on access must be silently omitted (not crash).
     """
 
-    def test_working_property_shown(self):
+    def test_working_property_not_shown_on_instance(self):
+        # Properties no longer execute on instance formatting (prevents blocking I/O).
         class MyClass:
             @property
             def value(self) -> str:
@@ -307,9 +312,12 @@ class TestPropertyInInstanceDoc:
                 return "hello"
 
         out = doc(MyClass())
-        assert "value" in out
+        assert "value" not in out
+        # But they DO show on the type:
+        assert "value" in doc(MyClass)
 
-    def test_property_value_included(self):
+    def test_property_value_not_included_on_instance(self):
+        # Property values are not computed during instance formatting.
         class MyClass:
             @property
             def count(self) -> int:
@@ -317,7 +325,7 @@ class TestPropertyInInstanceDoc:
                 return 42
 
         out = doc(MyClass())
-        assert "42" in out
+        assert "42" not in out
 
     def test_raising_property_silently_omitted(self):
         class MyClass:
@@ -752,12 +760,12 @@ class TestPropertyContract:
         out = doc(PropClass)
         assert "hidden_inner" not in out
 
-    def test_doc_instance_shows_computed_value(self):
-        """doc(instance): computed property shows its actual value."""
+    def test_doc_instance_omits_computed_property(self):
+        """doc(instance): computed properties are not executed (prevents blocking I/O)."""
         PropClass = self._make_class()
         obj = PropClass(5)
         out = doc(obj)
-        assert "computed: str = 'hello'" in out
+        assert "computed" not in out
 
     def test_doc_instance_omits_raising_property(self):
         """doc(instance): raising property is silently omitted."""
@@ -780,12 +788,12 @@ class TestPropertyContract:
         out = doc(obj)
         assert "hidden_inner" not in out
 
-    def test_pformat_includes_property_value(self):
-        """pformat(instance) includes computed property values in repr."""
+    def test_pformat_excludes_property_value(self):
+        """pformat(instance) does NOT execute properties (prevents blocking I/O)."""
         PropClass = self._make_class()
         obj = PropClass(5)
         out = pformat(obj)
-        assert "computed='hello'" in out
+        assert "computed" not in out
 
     def test_pformat_excludes_hidden_properties(self):
         """pformat(instance) excludes hidden properties."""
@@ -807,12 +815,12 @@ class TestPropertyContract:
         out = doc(PropClass)
         assert "@property" not in out
 
-    def test_doc_instance_property_shows_docstring(self):
-        """doc(instance): property fields show their docstring as inline comment."""
+    def test_doc_instance_omits_property_docstring(self):
+        """doc(instance): properties are not shown (prevents blocking I/O)."""
         PropClass = self._make_class()
         obj = PropClass(5)
         out = doc(obj)
-        assert "# A computed value." in out
+        assert "# A computed value." not in out
 
     def test_doc_instance_no_at_property_prefix(self):
         """doc(instance) must not prefix property descriptions with '@property —'."""
@@ -880,11 +888,18 @@ class TestCachedPropertyContract:
         out = doc(CP)
         assert "hidden_inner" not in out
 
-    def test_doc_instance_shows_computed_value(self):
+    def test_doc_instance_omits_uncached_property(self):
+        # cached_property only shows if already cached (in __dict__).
+        # First access caches it; before that, it's a descriptor.
         CP = self._make_class()
         obj = CP(5)
+        # Before accessing .expensive, it's not in __dict__
         out = doc(obj)
-        assert "expensive: str = 'result'" in out
+        assert "expensive" not in out
+        # After access, it's cached in __dict__ and WILL show:
+        _ = obj.expensive
+        out2 = doc(obj)
+        assert "expensive" in out2
 
     def test_doc_instance_hides_hidden_outer(self):
         CP = self._make_class()
@@ -898,11 +913,16 @@ class TestCachedPropertyContract:
         out = doc(obj)
         assert "hidden_inner" not in out
 
-    def test_pformat_includes_cached_value(self):
+    def test_pformat_cached_property_only_after_access(self):
+        # cached_property shows in pformat only after first access (cached in __dict__).
         CP = self._make_class()
         obj = CP(5)
         out = pformat(obj)
-        assert "expensive='result'" in out
+        assert "expensive" not in out  # not cached yet
+        # After access, it's in __dict__:
+        _ = obj.expensive
+        out2 = pformat(obj)
+        assert "expensive" in out2
 
     def test_pformat_excludes_hidden_cached_properties(self):
         CP = self._make_class()
