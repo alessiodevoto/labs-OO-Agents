@@ -1501,7 +1501,10 @@ def _extract_methods(obj: type) -> list[CallableInfo]:
             if is_hidden_method(value) or is_hidden_method(raw):
                 continue
             seen_names.add(name)
-            methods.append(extract_callable_info(value))
+            info = extract_callable_info(value)
+            if isinstance(raw, classmethod):
+                info = dataclasses.replace(info, is_classmethod=True)
+            methods.append(info)
 
     # Third pass: class-level metadata (covers C-extension methods that can't have
     # _agentdoc_hidden set directly — e.g. list.__init__ stored via __objclass__)
