@@ -230,6 +230,42 @@ class SkillRegistry(Skill):
             logger.debug("Failed to hide skill %s (attr=%s)", name, attr, exc_info=True)
 
     # ------------------------------------------------------------------
+    # Access
+    # ------------------------------------------------------------------
+
+    def __getitem__(self, name: str) -> Any:
+        """Access a skill by its fully-qualified registry name."""
+        attr = self._attr_map.get(name)
+        if attr is None:
+            raise KeyError(f"Skill {name!r} is not loaded")
+        return getattr(self._agent, attr)
+
+    def __getattr__(self, name: str) -> Any:
+        """Access skills by category namespace or leaf name.
+
+        self.skills.nvidia.shell → self.skills['nvidia/shell']
+        self.skills.shell → looks up any loaded skill with leaf 'shell'
+        """
+        # Avoid recursion on internal attrs
+        if name.startswith("_"):
+            raise AttributeError(name)
+        # Check if it's a category prefix
+        loaded = object.__getattribute__(self, "_loaded")
+        attr_map = object.__getattribute__(self, "_attr_map")
+        agent = object.__getattribute__(self, "_agent")
+
+        categories = {n.split("/")[0] for n in loaded if "/" in n}
+        if name in categories:
+            return _NamespaceProxy(self, name)
+        # Check if it's a leaf name
+        for reg_name in loaded:
+            leaf = reg_name.split("/")[-1] if "/" in reg_name else reg_name
+            if leaf == name:
+                attr = attr_map.get(reg_name, name)
+                return getattr(agent, attr)
+        raise AttributeError(f"No skill with name or category {name!r}")
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
@@ -242,6 +278,23 @@ class SkillRegistry(Skill):
                 if fnmatch.fnmatch(candidate, pattern):
                     matched.add(candidate)
         return matched
+
+
+class _NamespaceProxy:
+    """Proxy for dotted namespace access: self.skills.nvidia.shell."""
+
+    __slots__ = ("_registry", "_prefix")
+
+    def __init__(self, registry: SkillRegistry, prefix: str) -> None:
+        object.__setattr__(self, "_registry", registry)
+        object.__setattr__(self, "_prefix", prefix)
+
+    def __getattr__(self, name: str) -> Any:
+        key = f"{object.__getattribute__(self, '_prefix')}/{name}"
+        return object.__getattribute__(self, "_registry")[key]
+
+    def __repr__(self) -> str:
+        return f"<SkillNamespace: {object.__getattribute__(self, '_prefix')}>"
 
 
 class _SkillEntry:
