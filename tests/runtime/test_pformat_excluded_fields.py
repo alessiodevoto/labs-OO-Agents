@@ -107,8 +107,6 @@ def test_pformat_no_hang_on_importlib_metadata_entrypoints():
         signal.signal(signal.SIGALRM, old_handler)
 
 
-
-
 def test_exact_regression_real_execution_result():
     """Exact regression test for the TUI hang reported in #214.
 
@@ -158,4 +156,3 @@ def test_exact_regression_real_execution_result():
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
-
