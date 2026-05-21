@@ -785,6 +785,113 @@ class UnifiedLLM(ABC):
         self.model = model
         self.config = config
         self._registry_config = None
+        # Cache control injection — shared by CompletionClient and ResponsesClient
+        self.cache_control_injection_points: list[dict[str, Any]] = (
+            DEFAULT_CACHE_CONTROL_INJECTION_POINTS
+        )
+
+    @staticmethod
+    def _inject_cache_control_on_content(msg: dict) -> None:
+        """Add cache_control to the last content block of a message.
+
+        Anthropic's API requires cache_control on content blocks (not message level)
+        for non-system messages.  When content is a plain string, converts it to
+        the array-of-blocks format so cache_control can be attached.
+
+        Mutates ``msg`` in place.
+        """
+        content = msg.get("content")
+        if content is None:
+            msg["cache_control"] = {"type": "ephemeral"}
+        elif isinstance(content, str):
+            msg["content"] = [
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+            ]
+        elif isinstance(content, list) and len(content) > 0:
+            last_block = content[-1]
+            if isinstance(last_block, dict):
+                last_block["cache_control"] = {"type": "ephemeral"}
+        else:
+            msg["cache_control"] = {"type": "ephemeral"}
+
+    def _inject_cache_control(
+        self, messages: list[dict[str, Any]], injection_points: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Add cache_control to designated messages for prompt caching.
+
+        Adds cache_control at the message level (sibling of role/content), which
+        is the format expected by NVIDIA's OpenAI-compatible gateway endpoints.
+        This format also survives OpenAI SDK validation since the SDK only strips
+        extra fields from content blocks, not from messages themselves.
+
+        Supports two injection modes:
+
+        1. **Role-based** (existing): marks ALL messages of a given role.
+           ``{"role": "system"}``
+
+        2. **Position-based** (new): marks only the last message of a given role.
+           ``{"role": "assistant", "position": "last"}``
+
+        Anthropic supports up to 4 cache breakpoints. Using both modes together
+        caches both the stable system prompt and the conversation history prefix::
+
+            [
+                {"role": "system"},                        # breakpoint 1
+                {"role": "tool", "position": "last"},      # breakpoint 2
+            ]
+
+        Args:
+            messages: The message list to process.
+            injection_points: List of dicts specifying where to add cache_control.
+                Each dict must have a "role" key. Optional "position" key with
+                value "last" restricts marking to only the last message of that role.
+
+        Returns:
+            A deep copy of messages with cache_control injected at breakpoints.
+        """
+        if not injection_points:
+            return messages
+
+        roles_to_cache_all: set[str] = set()
+        roles_to_cache_last: set[str] = set()
+        for p in injection_points:
+            role = p.get("role")
+            if not role:
+                continue
+            if p.get("position") == "last":
+                roles_to_cache_last.add(role)
+            else:
+                roles_to_cache_all.add(role)
+
+        if not roles_to_cache_all and not roles_to_cache_last:
+            return messages
+
+        messages = [copy.deepcopy(msg) for msg in messages]
+
+        # Map role names to native Responses API type equivalents
+        _ROLE_TO_TYPE = {"tool": "function_call_output"}
+
+        for msg in messages:
+            role = msg.get("role")
+            if role and role in roles_to_cache_all:
+                msg["cache_control"] = {"type": "ephemeral"}
+            elif not role:
+                # Native Responses format: match by type equivalent
+                msg_type = msg.get("type")
+                for r, t in _ROLE_TO_TYPE.items():
+                    if t == msg_type and r in roles_to_cache_all:
+                        msg["cache_control"] = {"type": "ephemeral"}
+                        break
+
+        for role in roles_to_cache_last:
+            # Search for matching messages by role OR by equivalent native type
+            native_type = _ROLE_TO_TYPE.get(role)
+            for msg in reversed(messages):
+                if msg.get("role") == role or (native_type and msg.get("type") == native_type):
+                    self._inject_cache_control_on_content(msg)
+                    break
+
+        return messages
 
     @property
     def token_calibration(self) -> TokenCalibration:
@@ -1280,102 +1387,6 @@ class CompletionClient(UnifiedLLM):
             },
         }
 
-    @staticmethod
-    def _inject_cache_control_on_content(msg: dict) -> None:
-        """Add cache_control to the last content block of a message.
-
-        Anthropic's API requires cache_control on content blocks (not message level)
-        for non-system messages.  When content is a plain string, converts it to
-        the array-of-blocks format so cache_control can be attached.
-
-        Mutates ``msg`` in place.
-        """
-        content = msg.get("content")
-        if content is None:
-            msg["cache_control"] = {"type": "ephemeral"}
-        elif isinstance(content, str):
-            msg["content"] = [
-                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
-            ]
-        elif isinstance(content, list) and len(content) > 0:
-            last_block = content[-1]
-            if isinstance(last_block, dict):
-                last_block["cache_control"] = {"type": "ephemeral"}
-        else:
-            msg["cache_control"] = {"type": "ephemeral"}
-
-    def _inject_cache_control(
-        self, messages: list[dict[str, Any]], injection_points: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Add cache_control to designated messages for prompt caching.
-
-        Adds cache_control at the message level (sibling of role/content), which
-        is the format expected by NVIDIA's OpenAI-compatible Anthropic endpoint.
-        This format also survives OpenAI SDK validation since the SDK only strips
-        extra fields from content blocks, not from messages themselves.
-
-        Supports two injection modes:
-
-        1. **Role-based** (existing): marks ALL messages of a given role.
-           ``{"role": "system"}``
-
-        2. **Position-based** (new): marks only the last message of a given role.
-           ``{"role": "assistant", "position": "last"}``
-
-        Anthropic supports up to 4 cache breakpoints. Using both modes together
-        caches both the stable system prompt and the conversation history prefix::
-
-            [
-                {"role": "system"},                        # breakpoint 1
-                {"role": "assistant", "position": "last"}, # breakpoint 2
-            ]
-
-        Args:
-            messages: The message list to process.
-            injection_points: List of dicts specifying where to add cache_control.
-                Each dict must have a "role" key. Optional "position" key with
-                value "last" restricts marking to only the last message of that role.
-
-        Returns:
-            A deep copy of messages with cache_control injected at breakpoints.
-        """
-        if not injection_points:
-            return messages
-
-        # Separate role-based (mark all) from position-based (mark last only)
-        roles_to_cache_all: set[str] = set()
-        roles_to_cache_last: set[str] = set()
-        for p in injection_points:
-            role = p.get("role")
-            if not role:
-                continue
-            if p.get("position") == "last":
-                roles_to_cache_last.add(role)
-            else:
-                roles_to_cache_all.add(role)
-
-        if not roles_to_cache_all and not roles_to_cache_last:
-            return messages
-
-        messages = [copy.deepcopy(msg) for msg in messages]
-
-        # Role-based: mark all messages of the specified roles
-        for msg in messages:
-            if msg.get("role") in roles_to_cache_all:
-                msg["cache_control"] = {"type": "ephemeral"}
-
-        # Position-based: mark only the last message of each specified role.
-        # Uses content-block-level injection for compatibility with Anthropic's API:
-        # the cache_control must be on the last content block, not the message itself,
-        # for non-system messages to be recognized as cache breakpoints.
-        for role in roles_to_cache_last:
-            for msg in reversed(messages):
-                if msg.get("role") == role:
-                    self._inject_cache_control_on_content(msg)
-                    break
-
-        return messages
-
     def call(
         self,
         messages: list[dict[str, Any]],
@@ -1392,7 +1403,11 @@ class CompletionClient(UnifiedLLM):
         returns empty content but has reasoning_content (common with some reasoning models).
         """
         # Inject cache_control at the message level for prompt caching
-        cache_points = cache_control_injection_points or self.cache_control_injection_points
+        cache_points = (
+            self.cache_control_injection_points
+            if cache_control_injection_points is None
+            else cache_control_injection_points
+        )
         prepared_messages = self._inject_cache_control(messages, cache_points)
 
         api_params = {
@@ -1558,7 +1573,11 @@ class CompletionClient(UnifiedLLM):
         returns empty content but has reasoning_content (common with some reasoning models).
         """
         # Inject cache_control at the message level for prompt caching
-        cache_points = cache_control_injection_points or self.cache_control_injection_points
+        cache_points = (
+            self.cache_control_injection_points
+            if cache_control_injection_points is None
+            else cache_control_injection_points
+        )
         prepared_messages = self._inject_cache_control(messages, cache_points)
 
         api_params = {
@@ -1856,6 +1875,7 @@ class ResponsesClient(UnifiedLLM):
         messages: list[dict[str, Any]],
         tools: list[Tool] | None = None,
         output_model: type[BaseModel] | None = None,
+        cache_control_injection_points: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> LLMResponse:
         """
@@ -1864,7 +1884,14 @@ class ResponsesClient(UnifiedLLM):
         Handles both native Responses format (from ResponsesProviderFormatter) and
         legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        input_messages, instructions = self._transform_messages(messages)
+        # Inject cache_control for prompt caching before transforming to native format
+        cache_points = (
+            self.cache_control_injection_points
+            if cache_control_injection_points is None
+            else cache_control_injection_points
+        )
+        prepared_messages = self._inject_cache_control(messages, cache_points)
+        input_messages, instructions = self._transform_messages(prepared_messages)
 
         api_params = {
             "model": self.model,
@@ -1961,6 +1988,7 @@ class ResponsesClient(UnifiedLLM):
         messages: list[dict[str, Any]],
         tools: list[Tool] | None = None,
         output_model: type[BaseModel] | None = None,
+        cache_control_injection_points: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> LLMResponse:
         """
@@ -1969,7 +1997,14 @@ class ResponsesClient(UnifiedLLM):
         Handles both native Responses format (from ResponsesProviderFormatter) and
         legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        input_messages, instructions = self._transform_messages(messages)
+        # Inject cache_control for prompt caching before transforming to native format
+        cache_points = (
+            self.cache_control_injection_points
+            if cache_control_injection_points is None
+            else cache_control_injection_points
+        )
+        prepared_messages = self._inject_cache_control(messages, cache_points)
+        input_messages, instructions = self._transform_messages(prepared_messages)
 
         api_params = {
             "model": self.model,
@@ -2094,13 +2129,34 @@ class ResponsesClient(UnifiedLLM):
 
             # Legacy OpenAI format: tool result messages
             if msg.get("role") == "tool":
-                transformed.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": msg["tool_call_id"],
-                        "output": msg.get("content", ""),
-                    }
-                )
+                # Extract output text: content may be a string OR a list of blocks
+                # (position-based cache injection converts strings to block arrays)
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Extract text from content blocks and cache_control from the last block
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict):
+                            if block.get("text"):
+                                text_parts.append(block["text"])
+                    output_str = "".join(text_parts)
+                else:
+                    output_str = content
+
+                item: dict[str, Any] = {
+                    "type": "function_call_output",
+                    "call_id": msg["tool_call_id"],
+                    "output": output_str,
+                }
+                # Preserve cache_control for prompt caching
+                if "cache_control" in msg:
+                    item["cache_control"] = msg["cache_control"]
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and "cache_control" in block:
+                            item["cache_control"] = block["cache_control"]
+                            break
+                transformed.append(item)
                 continue
 
             # Legacy OpenAI format: assistant messages with tool_calls
@@ -2120,12 +2176,15 @@ class ResponsesClient(UnifiedLLM):
                     )
                 continue
 
-            # User/Assistant text messages → passthrough
+            # User/Assistant text messages → passthrough with cache_control preservation
             if msg.get("role") in ["user", "assistant"]:
                 content = msg.get("content", "")
                 if content is None:
                     content = ""
-                transformed.append({"role": msg["role"], "content": content})
+                item = {"role": msg["role"], "content": content}
+                if "cache_control" in msg:
+                    item["cache_control"] = msg["cache_control"]
+                transformed.append(item)
                 continue
 
             # Unknown format → passthrough
