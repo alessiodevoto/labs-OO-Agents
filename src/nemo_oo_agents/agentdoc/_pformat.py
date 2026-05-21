@@ -1039,8 +1039,11 @@ def _format_instance_repr(
                 value = _obj_dict[field.name]
             else:
                 # Class-level plain values (non-descriptors) are safe.
-                class_val = getattr(obj_type, field.name, _MISSING)
-                if class_val is not _MISSING and not hasattr(class_val, "__get__"):
+                class_val = inspect.getattr_static(obj_type, field.name, _MISSING)
+                if (
+                    class_val is not _MISSING
+                    and inspect.getattr_static(type(class_val), "__get__", None) is None
+                ):
                     value = class_val
                 else:
                     continue
@@ -1124,7 +1127,11 @@ def _extract_instance_values(obj: Any, type_info: TypeInfo) -> dict[str, Any]:
     # Collect slot names for __slots__-based classes (no __dict__)
     _slots: set[str] = set()
     for cls in obj_type.__mro__:
-        _slots.update(getattr(cls, "__slots__", ()))
+        slots = getattr(cls, "__slots__", ())
+        if isinstance(slots, str):
+            _slots.add(slots)
+        else:
+            _slots.update(slots)
 
     for field in type_info.fields:
         if field.name in _excluded_fields:
@@ -1146,8 +1153,11 @@ def _extract_instance_values(obj: Any, type_info: TypeInfo) -> dict[str, Any]:
             # This handles annotated class defaults like `x: int = 5`.
             # Descriptors (property, classmethod, etc.) are skipped — they
             # can trigger arbitrary I/O.
-            class_val = getattr(obj_type, field.name, _MISSING)
-            if class_val is not _MISSING and not hasattr(class_val, "__get__"):
+            class_val = inspect.getattr_static(obj_type, field.name, _MISSING)
+            if (
+                class_val is not _MISSING
+                and inspect.getattr_static(type(class_val), "__get__", None) is None
+            ):
                 values[field.name] = class_val
 
     # Also include all __dict__ attributes (for instances without annotations)

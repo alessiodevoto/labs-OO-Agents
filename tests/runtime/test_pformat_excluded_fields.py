@@ -7,8 +7,10 @@ was ignoring that annotation, walking into the dict, and triggering
 expensive property access (importlib_metadata .files → stat loop).
 """
 
+import signal
 from typing import Any
 
+import pytest
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +24,11 @@ class FakeExecutionResult(BaseModel):
         description="Local variables — should NOT be serialized",
         exclude=True,
     )
+
+
+def _require_sigalrm():
+    if not hasattr(signal, "SIGALRM"):
+        pytest.skip("requires signal.SIGALRM (Unix-only)")
 
 
 class ExpensiveObject:
@@ -89,7 +96,7 @@ def test_pformat_no_hang_on_importlib_metadata_entrypoints():
         captured_locals={"eps": eps},
     )
 
-    import signal
+    _require_sigalrm()
 
     def timeout_handler(signum, frame):
         raise TimeoutError(
@@ -122,7 +129,8 @@ def test_exact_regression_real_execution_result():
     hasattr(ep, 'files') which triggered Distribution.files property
     → thousands of os.stat() calls → blocked the event loop.
     """
-    import signal
+    _require_sigalrm()
+
     from importlib.metadata import entry_points
 
     from nemo_oo_agents.agentdoc import truncating_pformat

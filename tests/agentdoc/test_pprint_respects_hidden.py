@@ -206,3 +206,41 @@ def test_pformat_slots_only_class_no_annotations():
     assert "Point" in result
     assert "3" in result
     assert "4" in result
+
+
+def test_pformat_does_not_trigger_class_descriptor_for_annotated_field():
+    """Class-level descriptor lookup must be static and skipped, not executed."""
+
+    class ExplodingDescriptor:
+        def __init__(self) -> None:
+            self.accessed = False
+
+        def __get__(self, obj, objtype=None):
+            self.accessed = True
+            raise RuntimeError("descriptor should not be invoked by pformat")
+
+    class Config:
+        dangerous: str = ExplodingDescriptor()  # type: ignore[assignment]
+
+    result = pformat(Config())
+
+    descriptor = Config.__dict__["dangerous"]
+    assert descriptor.accessed is False
+    assert "dangerous" not in result
+
+
+def test_pformat_single_string_slots_treated_as_one_slot_name():
+    """A single-string __slots__ value is one slot name, not characters."""
+
+    class SingleSlot:
+        __slots__ = "value"
+        value: int
+
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+    result = pformat(SingleSlot(42))
+
+    assert "SingleSlot" in result
+    assert "value" in result
+    assert "42" in result

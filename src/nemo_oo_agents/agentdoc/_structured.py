@@ -998,8 +998,8 @@ def _extract_plain_class_fields(obj: type) -> list[FieldInfo]:
 
             description = get_field_metadata(obj, name).get("description")
 
-        # Get default value, converting instances to clean markers
-        raw_default = getattr(obj, name, REQUIRED)
+        # Get default value without invoking descriptors, converting instances to clean markers.
+        raw_default = inspect.getattr_static(obj, name, REQUIRED)
         if isinstance(raw_default, types.MemberDescriptorType):
             raw_default = REQUIRED
         # If a @property or @cached_property is defined, skip here — step 4 handles it
@@ -1476,36 +1476,32 @@ def _extract_methods(obj: type) -> list[CallableInfo]:
     methods = []
     seen_names = set()
 
-    for name, value in inspect.getmembers(obj, predicate=inspect.isfunction):
-        explicitly_shown = getattr(value, "_agentdoc_hidden", None) is False
-        if name.startswith("_") and not explicitly_shown:
-            continue
-        if name in seen_names:
-            continue
-        # Skip Pydantic BaseModel methods
-        if name in _PYDANTIC_METHODS:
-            continue
-        raw = next((vars(klass).get(name) for klass in obj.__mro__ if name in vars(klass)), None)
-        if is_hidden_method(value) or (raw is not None and is_hidden_method(raw)):
-            continue
-        seen_names.add(name)
-        methods.append(extract_callable_info(value))
+    # Walk the MRO dictionaries directly instead of inspect.getmembers().
+    # inspect.getmembers() calls getattr() for every name and can execute arbitrary
+    # descriptors while formatting an object.
+    for klass in obj.__mro__:
+        for name, raw in vars(klass).items():
+            value = raw
+            if isinstance(raw, (classmethod, staticmethod)):
+                value = raw.__func__
+            if not inspect.isfunction(value) and not inspect.ismethod(value):
+                continue
 
-    # Also check for methods defined in the class itself
-    for name, value in inspect.getmembers(obj, predicate=inspect.ismethod):
-        explicitly_shown = getattr(value, "_agentdoc_hidden", None) is False
-        if name.startswith("_") and not explicitly_shown:
-            continue
-        if name in seen_names:
-            continue
-        # Skip Pydantic BaseModel methods
-        if name in _PYDANTIC_METHODS:
-            continue
-        raw = next((vars(klass).get(name) for klass in obj.__mro__ if name in vars(klass)), None)
-        if is_hidden_method(value) or (raw is not None and is_hidden_method(raw)):
-            continue
-        seen_names.add(name)
-        methods.append(extract_callable_info(value))
+            explicitly_shown = (
+                getattr(value, "_agentdoc_hidden", None) is False
+                or getattr(raw, "_agentdoc_hidden", None) is False
+            )
+            if name.startswith("_") and not explicitly_shown:
+                continue
+            if name in seen_names:
+                continue
+            # Skip Pydantic BaseModel methods
+            if name in _PYDANTIC_METHODS:
+                continue
+            if is_hidden_method(value) or is_hidden_method(raw):
+                continue
+            seen_names.add(name)
+            methods.append(extract_callable_info(value))
 
     # Third pass: class-level metadata (covers C-extension methods that can't have
     # _agentdoc_hidden set directly — e.g. list.__init__ stored via __objclass__)
