@@ -1087,3 +1087,72 @@ async def test_mcp_list_servers_exception_returns_error(handler):
         "config file unreadable" in o.content or "Failed to read MCP" in o.content
         for o in text_outputs
     )
+
+
+# ============================================================================
+# Session Command Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_session_list_excludes_empty_sessions(handler):
+    """/session list excludes sessions with turn_count == 0."""
+    from nemo_oo_agents_cli.tui.session_manager import SessionMeta
+
+    empty_session = SessionMeta(
+        id="aaaa0000-0000-0000-0000-000000000001",
+        model="test-model",
+        agent="TUIAgent",
+        started_at=1000.0,
+        last_active=1000.0,
+        turn_count=0,
+        name="empty",
+    )
+    active_session = SessionMeta(
+        id="bbbb0000-0000-0000-0000-000000000002",
+        model="test-model",
+        agent="TUIAgent",
+        started_at=2000.0,
+        last_active=2000.0,
+        turn_count=3,
+        name="active",
+    )
+
+    with patch(
+        "nemo_oo_agents_cli.tui.commands.SessionManager.list_sessions",
+        return_value=[active_session, empty_session],
+    ):
+        result = await handler.handle("/session list")
+
+    assert result.success is True
+    table_outputs = [o for o in result.outputs if isinstance(o, TableOutput)]
+    assert len(table_outputs) == 1
+    # Only the active session should be in rows
+    rows = table_outputs[0].rows
+    assert len(rows) == 1
+    assert rows[0][0] == "bbbb0000"  # short id of active session
+
+
+@pytest.mark.asyncio
+async def test_session_list_shows_no_sessions_when_all_empty(handler):
+    """/session list shows 'No sessions found' when all sessions are empty."""
+    from nemo_oo_agents_cli.tui.session_manager import SessionMeta
+
+    empty_session = SessionMeta(
+        id="aaaa0000-0000-0000-0000-000000000001",
+        model="test-model",
+        agent="TUIAgent",
+        started_at=1000.0,
+        last_active=1000.0,
+        turn_count=0,
+    )
+
+    with patch(
+        "nemo_oo_agents_cli.tui.commands.SessionManager.list_sessions",
+        return_value=[empty_session],
+    ):
+        result = await handler.handle("/session list")
+
+    assert result.success is True
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("No sessions found" in o.content for o in text_outputs)

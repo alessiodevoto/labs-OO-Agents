@@ -1334,7 +1334,7 @@ class SessionCommand(Command):
         subcmd = args[0].lower()
 
         if subcmd == "list":
-            sessions = SessionManager.list_sessions()
+            sessions = [s for s in SessionManager.list_sessions() if s.turn_count > 0]
             if not sessions:
                 return CommandResult.ok(TextOutput("No sessions found.", "info"))
             rows = []
