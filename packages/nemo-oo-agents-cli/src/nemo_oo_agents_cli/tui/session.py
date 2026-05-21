@@ -15,6 +15,7 @@ import asyncio
 import io
 import logging
 import re
+import shlex
 import sys
 import traceback
 from collections.abc import Callable
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
+    from nemo_oo_agents.tools.shell_tools import ShellTools
 
     from .agent_event_renderer import AgentEventRenderer
     from .commands import CommandRegistry
@@ -328,6 +330,9 @@ class Session:
         self._renderer: AgentEventRenderer | None = None
         self._emit_console: RichConsole | None = None
         self._loud_handler_reentrant: bool = False
+        # Own ShellTools for bang (!) commands — avoids cross-loop issues
+        # when the agent's shell was created on a different event loop.
+        self._bang_shell: ShellTools | None = None
 
     @property
     def show_python(self) -> bool:
@@ -508,7 +513,9 @@ class Session:
         # Without this, any coroutine we schedule (spinner, commands,
         # background bookkeeping) that raises vanishes into logging and
         # the user sees "nothing happened".
-        asyncio.get_running_loop().set_exception_handler(self._loud_handler)
+        self._startup_loop = asyncio.get_running_loop()
+        self._prev_exception_handler = self._startup_loop.get_exception_handler()
+        self._startup_loop.set_exception_handler(self._loud_handler)
 
         # Subscribe inside the try so any exception between attach and
         # ``app.run_async`` completion still fires ``renderer.detach``
@@ -536,6 +543,9 @@ class Session:
             if qm is not None:
                 await qm.shutdown()
             await self._cancel_background_tasks()
+            if self._bang_shell is not None:
+                await self._bang_shell.close()
+                self._bang_shell = None
             self._dump_exit_diagnostics()
             self.frontend.close()
             if self._session_manager is not None:
@@ -546,6 +556,10 @@ class Session:
                     except Exception:
                         pass
                 self._session_manager.close()
+            # Restore the previous exception handler so we don't pin
+            # this Session or route unrelated failures through a torn-down TUI.
+            if self._startup_loop is not None:
+                self._startup_loop.set_exception_handler(self._prev_exception_handler)
             self._print_exit_message()
 
     def _print_exit_message(self) -> None:
@@ -739,6 +753,63 @@ class Session:
         assert self._app is not None
 
         msg = context.get("message", "")
+        exc = context.get("exception")
+        # --- gl-212 diagnostics: enrich "bound to a different event loop" ---
+        if exc is not None and "bound to a different event loop" in str(exc):
+            startup_loop = getattr(self, "_startup_loop", None)
+            diag_lines = [
+                "[gl-212] asyncio.Lock bound to a different event loop — diagnostic dump:",
+                f"  handler loop: id={id(_loop):#x}",
+                f"  startup loop: id={id(startup_loop):#x} (same={startup_loop is _loop})",
+                f"  exception: {exc!r}",
+            ]
+            # Inspect known Lock instances on the agent
+            try:
+                shell = getattr(self.agent, "shell", None)
+                if shell is not None:
+                    bash = getattr(shell, "_session", None)
+                    if bash is not None:
+                        lock = getattr(bash, "_lock", None)
+                        diag_lines.append(f"  BashSession._lock: {lock!r}")
+                        if lock is not None and hasattr(lock, "_loop"):
+                            diag_lines.append(
+                                f"    lock._loop: id={id(lock._loop):#x} (same={lock._loop is _loop})"
+                            )
+            except Exception as e:
+                diag_lines.append(f"  [BashSession inspection failed: {e}]")
+            try:
+                actor = getattr(self.agent, "_actor", None)
+                if actor is not None:
+                    gen_lock = getattr(actor, "_generation_lock", None)
+                    diag_lines.append(f"  Actor._generation_lock: {gen_lock!r}")
+                    if gen_lock is not None and hasattr(gen_lock, "_loop"):
+                        diag_lines.append(
+                            f"    lock._loop: id={id(gen_lock._loop):#x} (same={gen_lock._loop is _loop})"
+                        )
+            except Exception as e:
+                diag_lines.append(f"  [Actor inspection failed: {e}]")
+            diag_lines.append("  Suggestion: restart the TUI. File details on gl#212.")
+            diag_lines.append("")
+            diag_msg = "\n".join(diag_lines)
+            if self._loud_handler_reentrant:
+                err = sys.__stderr__
+                if err is not None:
+                    err.write(diag_msg)
+                    err.flush()
+            else:
+                self._loud_handler_reentrant = True
+                try:
+                    self._app.emit_block(diag_msg)
+                except Exception:
+                    # emit_block failed (plausible during degraded loop state) —
+                    # fall back to stderr so the diagnostic isn't lost.
+                    err = sys.__stderr__
+                    if err is not None:
+                        err.write(diag_msg)
+                        err.flush()
+                finally:
+                    self._loud_handler_reentrant = False
+            # Fall through to normal handler for the full traceback
         # litellm's LiteLLMAiohttpTransport recreates its cached aiohttp
         # ClientSession on error-recovery / loop-mismatch / session-closed
         # paths without awaiting close() on the old one. When GC reaps the
@@ -747,7 +818,6 @@ class Session:
         # drowns real diagnostics — drop it before formatting.
         if msg == "Unclosed client session" or msg == "Unclosed connector":
             return
-        exc = context.get("exception")
         task = context.get("task")
         # litellm's LoggingWorker._worker_loop tasks get orphaned when the
         # global singleton detects an event loop change and drops the old
@@ -929,7 +999,8 @@ class Session:
             return
 
         try:
-            result = await self.agent.shell.run(cmd)
+            shell = await self._get_bang_shell()
+            result = await shell.run(cmd)
             if result:
                 await self.frontend.render(
                     BashOutput(
@@ -941,3 +1012,24 @@ class Session:
                 )
         except Exception as e:
             await self.frontend.render(TextOutput(f"Bash error: {e}", "error"))
+
+    async def _get_bang_shell(self) -> "ShellTools":
+        """Return (lazily creating) a ShellTools owned by the TUI for bang commands.
+
+        The agent's ShellTools may have its asyncio.Lock bound to a different
+        event loop.  This dedicated instance is created on the TUI's loop,
+        avoiding "attached to a different loop" errors.
+
+        Syncs cwd from the agent's shell on each call so the two stay
+        in step when the agent changes directory during a session.
+        """
+        from nemo_oo_agents.tools.shell_tools import ShellTools
+
+        if self._bang_shell is None:
+            cwd = self.agent.shell.cwd if hasattr(self.agent, "shell") else "."
+            self._bang_shell = ShellTools(cwd=cwd)
+        elif hasattr(self.agent, "shell"):
+            agent_cwd = str(self.agent.shell.cwd)
+            if str(self._bang_shell.cwd) != agent_cwd:
+                await self._bang_shell.run(f"cd {shlex.quote(agent_cwd)}")
+        return self._bang_shell
