@@ -21,6 +21,7 @@ with hidden:
     from nemo_oo_agents.config import CodeActConfig, PredictConfig
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
+    from nemo_oo_agents.skill_registry import SkillRegistry
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import SkillWriting, TodoManager
     from nemo_oo_agents.tools.shell_tools import ShellTools
@@ -640,6 +641,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     repo: Annotated[RepoTools, nosnapshot]
     libs: Annotated[SkillWriting, nosnapshot]
     todo: TodoManager
+    skills: Annotated[SkillRegistry, nosnapshot]
     _skills_dirs: Annotated[list, hidden, nosnapshot]
     _summarizers: Annotated[list, hidden, nosnapshot]
 
@@ -675,6 +677,14 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
         self.libs = SkillWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
+
+        # Skill registry: register + activate skills
+        self.skills = SkillRegistry(self)
+        self.skills.register("nemo.shell", self.shell)
+        self.skills.register("nemo.repo", self.repo)
+        self.skills.register("nemo.todo", self.todo)
+        self.skills.register("superpowers.libwriting", self.libs)
+        self.skills.activate(["nemo.*", "superpowers.*"])
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)

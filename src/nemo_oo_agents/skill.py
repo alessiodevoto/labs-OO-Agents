@@ -12,6 +12,73 @@ from pydantic import BaseModel
 
 
 # ---------------------------------------------------------------------------
+# @slash_command decorator
+# ---------------------------------------------------------------------------
+
+_SLASH_COMMAND_ATTR = "_slash_command_meta"
+
+
+class SlashCommandMeta:
+    """Metadata attached to a method by @slash_command."""
+
+    __slots__ = ("name", "argument_hint", "user_only")
+
+    def __init__(self, name: str, argument_hint: str | None, user_only: bool):
+        self.name = name
+        self.argument_hint = argument_hint
+        self.user_only = user_only
+
+
+def slash_command(
+    name: str,
+    *,
+    argument_hint: str | None = None,
+    user_only: bool = False,
+):
+    """Mark a Skill method as a user-invocable slash command.
+
+    The decorated method receives the raw argument string and returns a
+    prompt string that is injected as a user message.
+
+    Args:
+        name: Command name (without leading /). E.g. "gl-ci" -> /gl-ci.
+        argument_hint: Shown in help. E.g. "<pipeline-id>".
+        user_only: If True, only the user can invoke (not the LLM).
+
+    Usage::
+
+        class GitLabSkill(Skill):
+            @slash_command("gl-ci", argument_hint="<pipeline-id>")
+            async def monitor_ci(self, args: str) -> str:
+                '''Monitor a CI pipeline.'''
+                return f"Monitor CI pipeline {args}."
+    """
+
+    def decorator(fn):
+        setattr(fn, _SLASH_COMMAND_ATTR, SlashCommandMeta(name, argument_hint, user_only))
+        return fn
+
+    return decorator
+
+
+def get_slash_commands(skill) -> list[tuple[SlashCommandMeta, Any]]:
+    """Extract all @slash_command methods from a Skill instance.
+
+    Returns list of (meta, bound_method) pairs.
+    """
+    results = []
+    for attr_name in dir(type(skill)):
+        try:
+            obj = getattr(type(skill), attr_name)
+        except AttributeError:
+            continue
+        meta = getattr(obj, _SLASH_COMMAND_ATTR, None)
+        if meta is not None:
+            results.append((meta, getattr(skill, attr_name)))
+    return results
+
+
+# ---------------------------------------------------------------------------
 # SKILL.md frontmatter parsing
 # ---------------------------------------------------------------------------
 class _SkillProperties(BaseModel):

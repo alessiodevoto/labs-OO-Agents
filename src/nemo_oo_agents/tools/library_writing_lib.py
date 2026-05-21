@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""SkillWriting — create and edit persistent code libraries for agents."""
+"""LibraryWriting — create and edit persistent code libraries for agents."""
 
 import ast
 import inspect
@@ -51,7 +51,7 @@ class LintReport:
 
 
 # ---------------------------------------------------------------------------
-# SkillWriting
+# LibraryWriting
 # ---------------------------------------------------------------------------
 
 
@@ -73,6 +73,11 @@ class SkillWriting(Skill):
     via ``Skill(module)`` — you get the module docstring and attributes
     but not method-level discovery.
 
+    After ``write_file()`` or ``edit_file()`` hot-reloads the library,
+    the updated Skill is available immediately on ``self``. Access all
+    library functionality through ``self.<lib_name>`` — libraries are
+    not available as bare names.
+
     Example ``__init__.py``::
 
         '''Grep-style search across multiple repos.'''
@@ -80,62 +85,39 @@ class SkillWriting(Skill):
 
         class MultiGrep(Skill):
             '''Grep across a configured list of repos.'''
-            requires = ("nemo/shell",)  # declare dependencies
-
             def __init__(self):
                 self._roots = [...]
 
             def search(self, pattern: str) -> list[str]:
                 ...
 
+        # Consumer uses the Skill API via self:
+        self.multigrep.search("todo")   # Skill API, visible in doc(self)
+
     ## Lifecycle
 
         # 1. Scaffold the package
         await self.libs.create("stats", "Statistical utilities for numerical data.")
 
-        # 2. Write code using self.shell
-        await self.shell.write(f"{self.libs._path}/stats/stats.py", source)
+        # 2. Write code (any .py file name)
+        await self.libs.write_file("stats", "stats.py", source)
+        # → lints, writes, hot-reloads; self.stats is now available for use
 
-        # 3. Hot-reload to pick up changes
-        await self.libs.reload("stats")
-        # → self.stats is now available for use
-
-        # 4. Use it
+        # 3. Use it via self
         result = self.stats.percentile(my_data, 95)
 
-        # 5. Edit + reload
-        await self.shell.edit(f"{self.libs._path}/stats/stats.py", old, new)
-        await self.libs.reload("stats")
+        # 4. Edit
+        await self.libs.edit_file("stats", "stats.py", old_block, new_block)
 
-        # 6. Test
-        await self.shell.write(f"{self.libs._path}/stats/tests/test_stats.py", test_src)
+        # 5. Test
+        await self.libs.write_file("stats", "tests/test_stats.py", test_source)
         await self.libs.run_tests("stats")
-
-    ## Skill features
-
-    Skills can declare dependencies via the ``requires`` class attribute::
-
-        class MySkill(Skill):
-            requires = ("nemo/shell", "nemo/repo")
-
-    Skills are registered in ``pyproject.toml`` entry points for auto-discovery::
-
-        [project.entry-points."nemo_oo_agents.skills"]
-        "nemo/myskill" = "my_package:MySkill"
-
-    To make a skill a TUI slash command, add a ``SKILL.md`` with frontmatter::
-
-        ---
-        name: mycommand
-        description: Do something useful
-        argument-hint: <action>
-        ---
-        Body text shown to the agent when /mycommand is invoked.
 
     ## Discovery
 
-        await self.libs.list()            # all library names
-        # Use self.shell/self.repo for file viewing, grep, tree
+        await self.libs.list()       # all library names
+        await self.libs.repo_tree()  # directory tree
+        await self.libs.grep(pat)    # search across all library files
 
     ## Rules
     - Always provide a meaningful description when calling create()
@@ -144,7 +126,6 @@ class SkillWriting(Skill):
     - Use a library for logic worth naming and reusing; use inline code for one-offs
     - Always write a ``Skill`` subclass in ``__init__.py`` — this is how
       ``doc(self.<lib>)`` discovers your library's API
-    - After editing library files with self.shell, call ``self.libs.reload(name)``
     """
 
     def __init__(self, agent: Any, path: Path) -> None:
@@ -155,17 +136,31 @@ class SkillWriting(Skill):
         libs_str = str(self._path)
         if libs_str not in sys.path:
             sys.path.insert(0, libs_str)
-        self._libmgr = LibraryManager.install(self._agent, libs_dir=self._path)
-        super().__init__()
+        # Discover and register libs via SkillRegistry if available
+        if hasattr(agent, "skills"):
+            agent.skills.discover_libs(self._path)
+            agent.skills.activate(["local.*"])
+        else:
+            from nemo_oo_agents.library_manager import LibraryManager
 
-    @property
-    def path(self) -> "Path":
-        """Root path where libraries are stored."""
-        return self._path
+            LibraryManager.install(self._agent, libs_dir=self._path)
+        super().__init__()
 
     async def list(self) -> list[str]:
         """Return sorted names of all libraries (directories with a pyproject.toml)."""
-        return self._libmgr.discover(self._path)
+        return sorted(
+            p.parent.name for p in self._path.glob("*/pyproject.toml") if p.parent.is_dir()
+        )
+
+    def _reload_lib(self, lib_name: str) -> None:
+        """Hot-reload a library, using SkillRegistry if available."""
+        if hasattr(self._agent, "skills"):
+            self._agent.skills.reload(f"local.{lib_name}")
+        else:
+            from nemo_oo_agents.library_manager import LibraryManager
+
+            mgr = LibraryManager(self._agent, self._path)
+            mgr._reload(lib_name)
 
     async def create(self, lib_name: str, description: str) -> str:
         """Scaffold a new library: writes pyproject.toml + __init__.py.
@@ -203,6 +198,136 @@ class SkillWriting(Skill):
         (lib_dir / "__init__.py").write_text(init_content)
 
         return f"Created library '{lib_name}' at {lib_dir}"
+
+    async def write_file(self, lib_name: str, path: str, content: str) -> str:
+        """Write a file within the library directory.
+
+        For any .py file (except __init__.py): lints the content, writes if no hard errors,
+        and hot-reloads the library if the lint report is clean. This includes test files
+        (e.g. tests/test_foo.py).
+
+        For __init__.py: writes directly (star re-exports are allowed here).
+
+        For pyproject.toml: writes and checks declared dependencies.
+
+        For non-.py, non-pyproject paths (e.g. README.md, data.json): writes without linting.
+
+        Args:
+            lib_name: Library name.
+            path: Relative path within the library (e.g. "stats.py", "tests/test_lib.py").
+            content: File content to write.
+
+        Returns:
+            LintReport string for .py/pyproject.toml, plain confirmation otherwise.
+        """
+        dest = self._path / lib_name / path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.endswith(".py"):
+            declared_deps = self._get_declared_deps(lib_name)
+            report = self._lint_source(content, declared_deps)
+            if report.errors:
+                return str(report)
+            dest.write_text(content)
+            report.written = True
+            if not report.warnings:
+                self._reload_lib(lib_name)
+                report.loaded = True
+            return str(report)
+
+        if path == "pyproject.toml":
+            dest.write_text(content)
+            deps = self._parse_pyproject_deps(content)
+            report = self._lint_pyproject(deps)
+            report.written = True
+            return str(report)
+
+        dest.write_text(content)
+        return f"Written {len(content)} bytes to {lib_name}/{path}"
+
+    async def edit_file(
+        self,
+        lib_name: str,
+        path: str,
+        search_block: str,
+        replace_block: str,
+    ) -> str:
+        """Edit a file in the library using search/replace.
+
+        For any .py file (except __init__.py): lints the result and hot-reloads if clean.
+
+        Args:
+            lib_name: Library name.
+            path: Relative path within the library.
+            search_block: Exact string to find (must be unique in the file).
+            replace_block: Replacement string.
+
+        Returns:
+            LintReport string for .py files, plain confirmation otherwise.
+        """
+        result = await self._shell.edit(
+            str(self._path / lib_name / path),
+            search_block,
+            replace_block,
+        )
+
+        if path.endswith(".py"):
+            source = (self._path / lib_name / path).read_text()
+            declared_deps = self._get_declared_deps(lib_name)
+            report = self._lint_source(source, declared_deps)
+            report.written = True
+            if not report.errors and not report.warnings:
+                self._reload_lib(lib_name)
+                report.loaded = True
+            return str(report)
+
+        if path == "pyproject.toml":
+            content = (self._path / lib_name / path).read_text()
+            deps = self._parse_pyproject_deps(content)
+            report = self._lint_pyproject(deps)
+            report.written = True
+            return str(report)
+
+        return str(result)
+
+    async def view_file(self, lib_name: str, path: str) -> str:
+        """Read and return the contents of a file in the library.
+
+        Args:
+            lib_name: Library name.
+            path: Relative path within the library.
+
+        Returns:
+            File contents as a string.
+        """
+        return (self._path / lib_name / path).read_text()
+
+    async def grep(self, pattern: str, directory: str = ".") -> str:
+        """Search for a pattern across library files.
+
+        Args:
+            pattern: Regex pattern to search for.
+            directory: Subdirectory to search in (relative to libs root, default ".").
+
+        Returns:
+            Grep output as a string.
+        """
+        path = str(self._path / directory) if directory != "." else str(self._path)
+        result = await self._shell.grep(pattern, path)
+        return "\n".join(result.matches)
+
+    async def repo_tree(self, directory: str = ".") -> str:
+        """Show the directory tree of the libraries root (or a subdirectory).
+
+        Args:
+            directory: Subdirectory to show (relative to libs root, default ".").
+
+        Returns:
+            Tree output as a string.
+        """
+        path = str(self._path / directory) if directory != "." else str(self._path)
+        result = await self._shell.find("*", path)
+        return "\n".join(result.matches)
 
     async def run_tests(self, lib_name: str) -> str:
         """Run pytest on the library's tests/ directory.
@@ -304,7 +429,3 @@ class SkillWriting(Skill):
                 if dep_name:
                     deps.append(dep_name)
         return deps
-
-
-# Backward-compatible alias; preferred name is SkillWriting.
-LibraryWriting = SkillWriting

@@ -74,6 +74,105 @@ class SkillRegistry(Skill):
         """All discovered skill names (category/name format)."""
         return sorted(self._discovered.keys())
 
+    def discover_libs(self, libs_path: "Path") -> None:
+        """Scan a libs directory and register each package as local.<lib_name>.
+
+        Each subdirectory containing a pyproject.toml is imported and
+        registered. The Skill subclass from __init__.py is used if found;
+        otherwise a Skill(module) fallback wraps the module.
+
+        Args:
+            libs_path: Directory containing library packages.
+        """
+        from pathlib import Path
+
+        libs_path = Path(libs_path)
+        if not libs_path.is_dir():
+            return
+        for lib_dir in sorted(libs_path.iterdir()):
+            if not (lib_dir.is_dir() and (lib_dir / "pyproject.toml").exists()):
+                continue
+            lib_name = lib_dir.name
+            reg_name = f"local.{lib_name}"
+            if reg_name in self._loaded:
+                continue
+            try:
+                skill = self._import_lib(lib_dir, lib_name)
+                if skill is not None:
+                    self.register(reg_name, skill)
+            except Exception:
+                logger.warning("Library %s skipped", lib_name, exc_info=True)
+
+    def _import_lib(self, lib_dir: "Path", lib_name: str) -> "Skill | None":
+        """Import a library package and extract its Skill instance."""
+        import importlib
+        import sys as _sys
+
+        libs_str = str(lib_dir.parent)
+        if libs_str not in _sys.path:
+            _sys.path.insert(0, libs_str)
+
+        prefix = lib_name + "."
+        for key in [k for k in _sys.modules if k == lib_name or k.startswith(prefix)]:
+            del _sys.modules[key]
+
+        module = importlib.import_module(lib_name)
+
+        from nemo_oo_agents.skill_manager import skill_from_module
+
+        return skill_from_module(module, lib_name, source=f"Library {lib_name!r}")
+
+    def discover_skills_dirs(self, dirs: "list[Path]") -> None:
+        """Scan skills directories for TextSkills and Python skills.
+
+        TextSkills (SKILL.md directories) register as cmd.<skill_id>.
+        Python skills (.py files with Skill subclass) register as ext.<name>.
+
+        Args:
+            dirs: List of directories to scan.
+        """
+        from pathlib import Path
+
+        for skills_dir in dirs:
+            skills_dir = Path(skills_dir)
+            if not skills_dir.is_dir():
+                continue
+            for entry in skills_dir.iterdir():
+                if entry.is_dir():
+                    skill_md = entry / "SKILL.md"
+                    if not skill_md.exists():
+                        skill_md = entry / "skill.md"
+                    if skill_md.exists():
+                        self._register_text_skill(entry)
+                elif entry.is_file() and entry.suffix == ".py" and not entry.name.startswith("_"):
+                    self._register_python_skill(entry)
+
+    def _register_text_skill(self, entry: "Path") -> None:
+        """Register a TextSkill from a SKILL.md directory."""
+        from nemo_oo_agents.skill import TextSkill
+
+        try:
+            skill = TextSkill(path=entry)
+            reg_name = f"cmd.{skill.id}"
+            if reg_name not in self._loaded:
+                self.register(reg_name, skill)
+        except Exception:
+            logger.warning("TextSkill %s skipped", entry, exc_info=True)
+
+    def _register_python_skill(self, entry: "Path") -> None:
+        """Register a Python skill from a .py file."""
+        from nemo_oo_agents.skill_manager import _load_python_skill
+
+        try:
+            skill = _load_python_skill(entry)
+            if skill is not None:
+                name = entry.stem.replace("-", "_").replace(" ", "_")
+                reg_name = f"ext.{name}"
+                if reg_name not in self._loaded:
+                    self.register(reg_name, skill)
+        except Exception:
+            logger.warning("Python skill %s skipped", entry, exc_info=True)
+
     # ------------------------------------------------------------------
     # Loading
     # ------------------------------------------------------------------

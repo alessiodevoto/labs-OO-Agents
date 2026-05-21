@@ -1508,6 +1508,7 @@ class _UserSkill:
     body: str
     description: str
     argument_hint: str | None = None
+    _method: Any = field(default=None, repr=False)
 
     def help_entry(self) -> tuple[str, str]:
         hint = self.argument_hint or ""
@@ -2409,6 +2410,41 @@ class CommandRegistry:
                     )
                 except Exception as e:
                     logger.warning("Failed to load skill from %s: %s", entry, e)
+        # Also discover @slash_command methods from loaded Skills
+        skills.update(self._discover_skill_commands())
+        return skills
+
+    def _discover_skill_commands(self) -> "dict[str, _UserSkill]":
+        """Discover @slash_command methods from loaded Skill instances on the agent."""
+        skills: dict[str, _UserSkill] = {}
+        try:
+            from nemo_oo_agents.skill import get_slash_commands
+        except ImportError:
+            return skills
+
+        from nemo_oo_agents.skill import Skill
+
+        for attr_name in dir(self.agent):
+            if attr_name.startswith("_"):
+                continue
+            try:
+                obj = getattr(self.agent, attr_name)
+            except Exception:
+                continue
+            if not isinstance(obj, Skill):
+                continue
+            for meta, method in get_slash_commands(obj):
+                cmd_name = meta.name.lower()
+                if cmd_name in self._commands or cmd_name in skills:
+                    continue
+                description = (method.__doc__ or "").strip().split("\n")[0]
+                skills[cmd_name] = _UserSkill(
+                    name=cmd_name,
+                    body="",
+                    description=description,
+                    argument_hint=meta.argument_hint,
+                    _method=method,
+                )
         return skills
 
     def _auto_install_skills(self) -> None:
@@ -2508,6 +2544,13 @@ class CommandHandler:
         # Check user-invocable skills before falling through to unknown-command error
         skill = self.registry.get_user_skill(cmd_name)
         if skill is not None:
+            if skill._method is not None:
+                import inspect
+
+                result_str = skill._method(" ".join(args))
+                if inspect.isawaitable(result_str):
+                    result_str = await result_str
+                return CommandResult(success=True, agent_message=str(result_str))
             return CommandResult(success=True, agent_message=skill.make_agent_message(args))
 
         command = self.registry.get_command(cmd_name)
