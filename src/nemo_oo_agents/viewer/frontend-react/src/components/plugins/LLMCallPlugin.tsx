@@ -340,7 +340,12 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
 
   if (viewState === 'concise') {
     // Show last input message + output + tool calls
-    const lastMsg = inputMessages.length > 0 ? inputMessages[inputMessages.length - 1] : null;
+    // Separate <context> wrapper messages (from cached block formatter) into a collapsed section
+    const isContextMsg = (m: Message): boolean => m.role === 'user' && (m.content?.trimStart().startsWith('<context>\n') ?? false);
+    const contextMsgs = inputMessages.filter(isContextMsg);
+    const lastMsg = inputMessages.length > 0
+      ? inputMessages.findLast(m => !isContextMsg(m)) ?? null
+      : null;
 
     return (
       <div>
@@ -357,6 +362,19 @@ export function LLMCallPlugin({ event, viewState, rawJsonOpen, viewControls }: P
         {lastMsg?.tool_calls?.map((tc, i) => (
           <ToolCallBox key={i} tc={tc} index={i} total={lastMsg.tool_calls!.length} />
         ))}
+
+        {contextMsgs.length > 0 && (
+          <details className="mb-2 rounded border border-gray-700 overflow-hidden">
+            <summary className="px-3 py-1.5 text-xs text-gray-500 cursor-pointer hover:text-gray-300 bg-gray-800/40">
+              Context ({contextMsgs.length} {contextMsgs.length === 1 ? 'block' : 'blocks'})
+            </summary>
+            <div className="p-2">
+              {contextMsgs.map((msg, i) => (
+                <MessageBox key={`ctx-${i}`} role={msg.role} content={msg.content!} />
+              ))}
+            </div>
+          </details>
+        )}
 
         {(outputText || outputToolCalls.length > 0) && (
           <div>

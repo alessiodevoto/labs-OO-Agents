@@ -245,6 +245,17 @@ export function TraceView({ sessionId, onBack }: TraceViewProps) {
     }
   }, [sidebarCollapsed, toggleSidebar]);
 
+  const handleSetAllViewState = useCallback((state: ViewState) => {
+    const count = filteredEvents.length;
+    setEventStates((prev) => {
+      const next = new Map(prev);
+      for (let i = 0; i < count; i++) {
+        next.set(i, state);
+      }
+      return next;
+    });
+  }, [filteredEvents]);
+
   useKeyboardNav({
     getItemCount: () => filteredEvents.length,
     getSelectedIndex: () => selectedIndex,
@@ -348,6 +359,7 @@ export function TraceView({ sessionId, onBack }: TraceViewProps) {
           collapsed={sidebarCollapsed}
           onToggleCollapsed={toggleSidebar}
           searchInputRef={filterSearchRef}
+          onSetAllViewState={handleSetAllViewState}
         />
 
         <div
