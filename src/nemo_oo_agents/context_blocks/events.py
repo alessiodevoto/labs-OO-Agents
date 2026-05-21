@@ -17,6 +17,7 @@ Each event class has:
 - timestamp: Creation time
 """
 
+import inspect
 import logging
 from datetime import datetime
 from enum import StrEnum
@@ -131,7 +132,7 @@ class EventBase(BaseModel):
         # Determine the registry key.
         # If the subclass explicitly declares event_type with a non-empty
         # default, use that value. Otherwise use the class name.
-        own_annotations = cls.__dict__.get("__annotations__", {})
+        own_annotations = inspect.get_annotations(cls)
         has_explicit = "event_type" in own_annotations
 
         if has_explicit:

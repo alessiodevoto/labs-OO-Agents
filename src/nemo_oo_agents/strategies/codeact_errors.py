@@ -6,6 +6,7 @@ Pure functions that format validation errors into actionable LLM feedback.
 Extracted from CodeActStrategy to keep the strategy class focused on control flow.
 """
 
+import inspect
 import json
 from typing import Any
 
@@ -141,7 +142,7 @@ def _format_expected_schema(return_type: Any) -> str:
 
     # Check if it's a TypedDict (has __annotations__ and is dict subclass)
     if hasattr(return_type, "__annotations__") and isinstance(return_type, type):
-        annotations = getattr(return_type, "__annotations__", {})
+        annotations = inspect.get_annotations(return_type)
         if annotations:
             items = [(k, v) for k, v in annotations.items() if not is_hidden_field(return_type, k)]
             fields = ", ".join(f"{k}: {get_type_hint_str(v)}" for k, v in items)
