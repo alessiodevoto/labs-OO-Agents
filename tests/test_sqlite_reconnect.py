@@ -1,13 +1,11 @@
 """Tests for SQLiteStorageManager reconnect-on-IOERR behavior."""
 
 import sqlite3
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from nemo_oo_agents.context_blocks import Metadata
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend, SQLiteStorageManager
+from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
 
 
 @pytest.fixture
