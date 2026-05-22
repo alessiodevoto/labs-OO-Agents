@@ -756,6 +756,13 @@ class ActorRuntime:
                     )
                     om = ctx.params.get("output_model", None)
                     call_params = {k: v for k, v in ctx.params.items() if k != "output_model"}
+                    _mw_strategy = _current_strategy_var.get()
+                    _mw_strategy_tag = (
+                        type(_mw_strategy).__name__ if _mw_strategy is not None else "default"
+                    )
+                    call_params.setdefault(
+                        "prompt_cache_key", f"{self.agent._agent_id}-{_mw_strategy_tag}"
+                    )
                     ctx.response = await llm_client.acall(
                         ctx.messages,
                         output_model=om,
@@ -813,12 +820,29 @@ class ActorRuntime:
                     generation_id=current_generation_id or "",
                     context_stats=self._last_context_stats,
                 )
+                # Default prompt_cache_key to per-(agent, strategy) so:
+                #   - Parallel agents (same prefix) get distinct shards by
+                #     agent_id, avoiding the cybergym multi-trial collision
+                #     above the ~15 req/min per-shard ceiling.
+                #   - Within one agent, calls that use different strategies
+                #     (e.g. CodeAct vs Predict) get separate shards because
+                #     their cacheable prefixes diverge anyway — preventing
+                #     them from compounding load on a shared shard.
+                #   - Same-strategy methods on one agent stay on one shard,
+                #     keeping shared-prefix caching (system prompt + strategy
+                #     prompt + execution_context + agent doc all match).
+                _kwargs = dict(kwargs)
+                _current_strategy = _current_strategy_var.get()
+                _strategy_tag = (
+                    type(_current_strategy).__name__ if _current_strategy is not None else "default"
+                )
+                _kwargs.setdefault("prompt_cache_key", f"{self.agent._agent_id}-{_strategy_tag}")
                 try:
                     response = await llm_client.acall(
                         messages,
                         tools=tools,
                         output_model=output_model,
-                        **kwargs,
+                        **_kwargs,
                     )
                 except Exception as _cw_exc:
                     if not _is_context_window_error(_cw_exc):
@@ -856,7 +880,9 @@ class ActorRuntime:
                         tools=tools,
                         max_output_tokens=_reduced,
                     )
-                    _recovery_kw = {**kwargs, "max_tokens": _reduced}
+                    # Reuse _kwargs (already has the per-(agent, strategy) key set)
+                    # so recovery lands on the same shard as the original attempt.
+                    _recovery_kw = {**_kwargs, "max_tokens": _reduced}
                     response = await llm_client.acall(
                         messages,
                         tools=tools,
@@ -993,6 +1019,11 @@ class ActorRuntime:
         stderr_token: contextvars.Token[Any] | None = None
         stdin_token: contextvars.Token[Any] | None = None
         media_token: contextvars.Token[Any] | None = None
+        # Initialize buffer vars so the finally block can safely
+        # isinstance-check them even if an early validation return
+        # exited before they were assigned (caught by NameError previously).
+        stdout_buffer: Any = None
+        stderr_buffer: Any = None
         # Set parent agent context for LLM inheritance by subagents
         parent_token = _parent_agent_var.set(self.agent)
         try:

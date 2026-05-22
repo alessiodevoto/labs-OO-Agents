@@ -356,7 +356,7 @@ class CodeActStrategy(CompositeStrategy):
 
     def get_static_block_keys(self) -> set[str]:
         """Block keys from get_block_overrides() that should be in the static partition."""
-        return {"execution_context"}
+        return {"execution_context", "strategy_prompt"}
 
     def get_block_order(self) -> list[str] | None:
         """Place doc(self) after execution_context so the LLM sees instructions first."""
