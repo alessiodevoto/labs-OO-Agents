@@ -3,7 +3,7 @@
 """Session management — UUID-keyed persistent conversation history.
 
 Each session gets a ``SQLiteStorageManager`` at
-``USER_DATA_DIR/sessions/<uuid>.db``.  TUI metadata (session start info,
+``<project-root>/.nemo_oo_agents/sessions/<uuid>.db``.  TUI metadata (session start info,
 user input, renames) is stored as ``Metadata`` events via the event
 manager.  Agent turns are reconstructed from ``Message`` events already
 recorded by the agent framework.
@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from nemo_oo_agents.storage import SQLiteStorageManager
 
-from nemo_oo_agents.paths import get_user_dir
+from nemo_oo_agents.paths import get_project_dir
 
-SESSIONS_DIR = get_user_dir("sessions")
+SESSIONS_DIR = get_project_dir("sessions")
 
 
 def _make_trace_session_name(session_id: str) -> str:

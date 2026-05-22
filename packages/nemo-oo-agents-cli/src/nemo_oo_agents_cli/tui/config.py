@@ -89,7 +89,7 @@ class TUIConfig:
     # Default LLM model (from unifiedllm registry)
     default_model: str = DEFAULT_MODEL
 
-    # Trace output directory (None = OTLP auto-probe only; set via --trace to write files)
+    # Trace output directory (None = OTLP auto-probe only; --trace writes files)
     trace_dir: Path | None = None
 
     # Vi keybindings in prompt_toolkit input

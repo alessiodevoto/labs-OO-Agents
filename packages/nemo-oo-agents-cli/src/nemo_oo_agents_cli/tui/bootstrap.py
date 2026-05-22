@@ -122,6 +122,7 @@ async def bootstrap(
     _set_trace_session = None  # deferred: called once _session_id is known
     if not config.no_trace:
         try:
+            from nemo_oo_agents.paths import find_project_root, get_project_dir
             from nemo_oo_agents.tracing import (
                 enable_tracing,
                 exporters,
@@ -130,6 +131,10 @@ async def bootstrap(
 
             trace_dir = config.tui.trace_dir
             if trace_dir is not None:
+                if str(trace_dir) == ":project:":
+                    trace_dir = get_project_dir("traces")
+                elif not trace_dir.is_absolute():
+                    trace_dir = find_project_root() / trace_dir
                 trace_dir.mkdir(parents=True, exist_ok=True)
                 enable_tracing(exporters=[exporters.jsonl(trace_dir), exporters.journal()])
             else:
@@ -354,7 +359,10 @@ def build_startup_info(result: BootstrapResult) -> "Output":
 
     trace_dir_str: str | None = None
     if result.tracing_enabled and config.tui.trace_dir:
-        trace_dir_str = str(config.tui.trace_dir)
+        from nemo_oo_agents.paths import get_project_dir
+
+        _td = config.tui.trace_dir
+        trace_dir_str = str(get_project_dir("traces") if str(_td) == ":project:" else _td)
 
     return StartupInfo(
         model=config.tui.default_model,
