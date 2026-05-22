@@ -1006,7 +1006,16 @@ def _format_instance_repr(
     # Build repr-style output
     parts = []
     field_count = 0
-    eligible_fields = [f for f in type_info.fields if f.repr]
+    # Respect Pydantic exclude=True — excluded fields should never be formatted
+    # (they often contain large internal state like captured_locals).
+    _repr_excluded: set[str] = set()
+    if hasattr(obj_type, "model_fields"):
+        _repr_excluded = {
+            name
+            for name, field_info in obj_type.model_fields.items()
+            if getattr(field_info, "exclude", False)
+        }
+    eligible_fields = [f for f in type_info.fields if f.repr and f.name not in _repr_excluded]
     for field in eligible_fields:
         if max_length and field_count >= max_length:
             # Truncation 3.0: bare ``...`` matches the inner-marker convention
@@ -1020,16 +1029,24 @@ def _format_instance_repr(
         if uses_instance_values_protocol and field.name not in values:
             continue
 
-        # Get value from values dict, or use getattr for non-protocol extraction.
-        # Wrap in try/except: properties may raise non-AttributeError exceptions.
+        # Get value from values dict or __dict__. Never use getattr as fallback —
+        # it triggers descriptors that can block indefinitely.
         if field.name in values:
             value = values[field.name]
         else:
-            try:
-                value = getattr(obj, field.name)
-            except Exception:
-                # Attribute not set or property raises — skip this field
-                continue
+            _obj_dict = getattr(obj, "__dict__", None)
+            if _obj_dict is not None and field.name in _obj_dict:
+                value = _obj_dict[field.name]
+            else:
+                # Class-level plain values (non-descriptors) are safe.
+                class_val = inspect.getattr_static(obj_type, field.name, _MISSING)
+                if (
+                    class_val is not _MISSING
+                    and inspect.getattr_static(type(class_val), "__get__", None) is None
+                ):
+                    value = class_val
+                else:
+                    continue
         # Skip callable instance attributes (e.g. assigned lambdas/functions);
         # only keep types (classes), since those are intentional class-level tools.
         if callable(value) and not isinstance(value, type):
@@ -1092,28 +1109,68 @@ def _extract_instance_values(obj: Any, type_info: TypeInfo) -> dict[str, Any]:
     values = {}
 
     # First, get values for type fields
+    obj_type = type(obj)
+
+    # Respect Pydantic's exclude=True — those fields often contain large
+    # internal state (e.g. captured_locals with arbitrary user objects that
+    # can trigger expensive I/O when formatted, blocking the event loop).
+    _excluded_fields: set[str] = set()
+    if hasattr(obj_type, "model_fields"):
+        _excluded_fields = {
+            name
+            for name, field_info in obj_type.model_fields.items()
+            if getattr(field_info, "exclude", False)
+        }
+
+    obj_dict = getattr(obj, "__dict__", None) or {}
+
+    # Collect slot names for __slots__-based classes (no __dict__)
+    _slots: set[str] = set()
+    for cls in obj_type.__mro__:
+        slots = getattr(cls, "__slots__", ())
+        if isinstance(slots, str):
+            _slots.add(slots)
+        else:
+            _slots.update(slots)
+
     for field in type_info.fields:
-        try:
-            if hasattr(obj, field.name):
-                values[field.name] = getattr(obj, field.name)
-            elif isinstance(obj, dict) and field.name in obj:
-                # TypedDict instances are dicts
-                values[field.name] = obj[field.name]
-        except Exception:
-            # Skip fields whose properties raise (ValueError, RuntimeError, etc.)
-            pass
+        if field.name in _excluded_fields:
+            continue
+        # Read from __dict__ first (instance data, always safe).
+        if field.name in obj_dict:
+            values[field.name] = obj_dict[field.name]
+        elif field.name in _slots:
+            # __slots__ values are safe to read — they're data, not descriptors.
+            try:
+                values[field.name] = object.__getattribute__(obj, field.name)
+            except AttributeError:
+                pass
+        elif isinstance(obj, dict) and field.name in obj:
+            # TypedDict instances are dicts
+            values[field.name] = obj[field.name]
+        else:
+            # Fall back to class-level plain values (non-descriptors).
+            # This handles annotated class defaults like `x: int = 5`.
+            # Descriptors (property, classmethod, etc.) are skipped — they
+            # can trigger arbitrary I/O.
+            class_val = inspect.getattr_static(obj_type, field.name, _MISSING)
+            if (
+                class_val is not _MISSING
+                and inspect.getattr_static(type(class_val), "__get__", None) is None
+            ):
+                values[field.name] = class_val
 
     # Also include all __dict__ attributes (for instances without annotations)
     if hasattr(obj, "__dict__"):
         from nemo_oo_agents.agentdoc._visibility import is_hidden_field as _is_hidden_field
 
-        obj_type = type(obj)
         for name, value in obj.__dict__.items():
             if (
                 name not in values
                 and not name.startswith("_")
                 and not callable(value)
                 and not _is_hidden_field(obj_type, name)
+                and name not in _excluded_fields
             ):
                 values[name] = value
 
