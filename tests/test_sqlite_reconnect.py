@@ -71,6 +71,7 @@ class TestReconnect:
 
     def test_store_raises_on_non_io_error(self, storage):
         """store() should NOT retry on non-I/O OperationalErrors."""
+
         def always_fail(tag, event, data, order):
             raise sqlite3.OperationalError("database is locked")
 
@@ -81,6 +82,7 @@ class TestReconnect:
 
     def test_store_raises_if_retry_also_fails(self, storage):
         """If reconnect doesn't help, the second failure should propagate."""
+
         def always_fail(tag, event, data, order):
             raise sqlite3.OperationalError("disk I/O error")
 
