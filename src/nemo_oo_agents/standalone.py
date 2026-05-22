@@ -42,6 +42,8 @@ def _get_agent_cls(module_name: str) -> type:
     if module_name in _agent_cls_cache:
         return _agent_cls_cache[module_name]
 
+    from uuid import uuid4
+
     from nemo_oo_agents.config import TruncationConfig
     from nemo_oo_agents.context_blocks.render_config import RenderConfig
     from nemo_oo_agents.runtime.actor import ActorRuntime
@@ -61,6 +63,8 @@ def _get_agent_cls(module_name: str) -> type:
             self.event_manager = EventManager()
             self.context_manager = ContextManager()
             self.runtime = ActorRuntime(self)
+            # Used by ActorRuntime to default prompt_cache_key per agent.
+            self._agent_id = str(uuid4())
 
     cls = type("_StandaloneAgent", (_StandaloneAgent,), {})
     # Setting __module__ makes inspect.getmodule(cls) return the function's module,

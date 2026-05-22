@@ -577,6 +577,23 @@ def _is_bedrock_model(model: str) -> bool:
     return "bedrock" in m or "/aws/" in m or m.startswith("aws/")
 
 
+def _is_anthropic_model(model: str) -> bool:
+    """Return True if the model is served by Anthropic (direct or via Bedrock).
+
+    Used to gate features that are only meaningful for Anthropic's API,
+    such as the explicit ``cache_control`` markers that don't affect
+    OpenAI's automatic byte-prefix cache.
+
+    Bedrock routes are only counted as Anthropic when the model id
+    actually mentions Anthropic or Claude — otherwise we'd over-match
+    Bedrock-hosted Titan/Cohere/Llama, which don't use the marker.
+    """
+    m = model.lower()
+    if "anthropic" in m or m.startswith(("claude/", "claude-")):
+        return True
+    return _is_bedrock_model(model) and "claude" in m
+
+
 def _sanitize_schema_for_bedrock(schema: dict[str, Any]) -> dict[str, Any]:
     """Deep-copy *schema* and strip/fix keywords unsupported by Bedrock.
 
@@ -1325,7 +1342,7 @@ def _apply_cache_control_preserve_patch():
         _original_remove = OpenAIGPTConfig.remove_cache_control_flag_from_messages_and_tools
 
         def _patched_remove(self, model, messages, tools=None):
-            if "anthropic" in model.lower():
+            if _is_anthropic_model(model):
                 return messages, tools
             return _original_remove(self, model, messages, tools)
 
