@@ -83,10 +83,10 @@ def parse_args() -> argparse.Namespace:
         "--trace",
         type=str,
         nargs="?",
-        const="traces/tui",
+        const=":project:",
         default=None,
         metavar="DIR",
-        help="Also write traces to DIR as JSONL files (default: traces/tui when flag is given)",
+        help="Write traces to DIR (default: project dir when flag given without arg)",
     )
     parser.add_argument(
         "--no-trace",
