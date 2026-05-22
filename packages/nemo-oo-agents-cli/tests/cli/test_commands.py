@@ -18,6 +18,14 @@ from nemo_oo_agents_cli.tui.output import (
 )
 
 from nemo_oo_agents.context_blocks.models import ContextWindowStats
+from nemo_oo_agents.skill_registry import SkillRegistry
+
+
+def _attach_registry(agent):
+    """Attach a SkillRegistry (with no entry points) to a fake agent for testing."""
+    with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+        agent.skills = SkillRegistry(agent)
+    return agent.skills
 
 
 @pytest.fixture
@@ -48,6 +56,7 @@ def mock_agent(mock_config):
     agent.event_manager = MagicMock()
     agent.event_manager.clear = MagicMock()
     agent.event_manager.keys = MagicMock(return_value=["tag1", "tag2"])
+    _attach_registry(agent)
     agent.get_summarization_status = MagicMock(
         return_value={
             "active_events": 10,
@@ -74,7 +83,7 @@ def registry(mock_frontend, mock_config, mock_agent):
         frontend=mock_frontend,
         config=mock_config,
         agent=mock_agent,
-        skills_dirs=[Path(".cursor/skills")],
+        skills_dirs=[Path("/nonexistent/skills")],
         mcp_file=Path(".mcp.json"),
     )
 
@@ -397,10 +406,12 @@ async def test_skills_command_invalid_subcommand_output(handler):
 @pytest.mark.asyncio
 async def test_skills_list_no_dirs_output(mock_frontend, mock_config):
     """Test /skills list with no directories - shows info."""
+    agent = MagicMock()
+    _attach_registry(agent)
     registry = CommandRegistry(
         frontend=mock_frontend,
         config=MagicMock(default_model="test"),
-        agent=MagicMock(),
+        agent=agent,
         skills_dirs=None,
         mcp_file=None,
     )
@@ -410,90 +421,99 @@ async def test_skills_list_no_dirs_output(mock_frontend, mock_config):
 
     assert result.success is True
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("No skills directories configured" in o.content for o in text_outputs)
+    assert any("No skills found" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
-async def test_skills_list_empty_output(handler):
+async def test_skills_list_empty_output(mock_frontend, mock_config):
     """Test /skills list with no skills - shows info."""
-    with patch("nemo_oo_agents.SkillManager") as mock_skill:
-        mock_skill.discover.return_value = {}
-        result = await handler.handle("/skills list")
+    agent = MagicMock()
+    _attach_registry(agent)
+    registry = CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=agent,
+        skills_dirs=None,
+        mcp_file=None,
+    )
+    handler = CommandHandler(registry=registry, frontend=mock_frontend)
+    result = await handler.handle("/skills list")
 
-        assert result.success is True
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("No skills found" in o.content for o in text_outputs)
+    assert result.success is True
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("No skills found" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
 async def test_skills_activate_not_found_output(handler):
     """Test /skills activate with non-existent skill - shows error."""
-    with patch("nemo_oo_agents.SkillManager") as mock_skill:
-        mock_skill.discover.return_value = {"other-skill": MagicMock()}
-        result = await handler.handle("/skills activate nonexistent")
+    result = await handler.handle("/skills activate nonexistent")
 
-        assert result.success is False
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("nonexistent" in o.content for o in text_outputs)
+    assert result.success is False
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("nonexistent" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
 async def test_skills_activate_already_active_output(handler, mock_agent):
     """Test /skills activate with already active skill - shows error."""
-    with patch("nemo_oo_agents.SkillManager") as mock_skill:
-        mock_skill.discover.return_value = {"test-skill": MagicMock()}
-        mock_agent.test_skill = MagicMock()
-        skills_cmd = handler.registry.get_command("skills")
-        skills_cmd._active_skills.add("test-skill")
-        result = await handler.handle("/skills activate test-skill")
+    from nemo_oo_agents.skill import Skill
 
-        assert result.success is False
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("test-skill" in o.content and "already" in o.content for o in text_outputs)
+    class _TestSkill(Skill):
+        pass
+
+    skill = _TestSkill()
+    mock_agent.skills.register("test.skill", skill)
+    mock_agent.skills.activate(["test.skill"])
+    result = await handler.handle("/skills activate test.skill")
+
+    assert result.success is False
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("test.skill" in o.content and "already" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
 async def test_skills_activate_success_output(handler, mock_agent):
     """Test /skills activate with valid skill - activates."""
-    with patch("nemo_oo_agents.SkillManager") as mock_skill:
-        skill_obj = MagicMock()
-        mock_skill.discover.return_value = {"test-skill": skill_obj}
-        if hasattr(mock_agent, "test_skill"):
-            delattr(mock_agent, "test_skill")
-        skills_cmd = handler.registry.get_command("skills")
-        skills_cmd._active_skills.discard("test-skill")
+    from nemo_oo_agents.skill import Skill
 
-        result = await handler.handle("/skills activate test-skill")
+    class _TestSkill(Skill):
+        pass
 
-        assert result.success is True
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("test-skill" in o.content and "activated" in o.content for o in text_outputs)
+    # Register but don't activate
+    mock_agent.skills.register("test.skill", _TestSkill())
+    result = await handler.handle("/skills activate test.skill")
+
+    assert result.success is True
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("test.skill" in o.content and "activated" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
 async def test_skills_deactivate_not_active_output(handler, mock_agent):
     """Test /skills deactivate with non-active skill - shows error."""
-    if hasattr(mock_agent, "test_skill"):
-        delattr(mock_agent, "test_skill")
-
-    result = await handler.handle("/skills deactivate test-skill")
+    result = await handler.handle("/skills deactivate test.skill")
 
     assert result.success is False
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("test-skill" in o.content for o in text_outputs)
+    assert any("test.skill" in o.content for o in text_outputs)
 
 
 @pytest.mark.asyncio
 async def test_skills_deactivate_success_output(handler, mock_agent):
     """Test /skills deactivate with active skill - deactivates."""
-    mock_agent.test_skill = MagicMock()
-    skills_cmd = handler.registry.get_command("skills")
-    skills_cmd._active_skills.add("test-skill")
-    result = await handler.handle("/skills deactivate test-skill")
+    from nemo_oo_agents.skill import Skill
+
+    class _TestSkill(Skill):
+        pass
+
+    mock_agent.skills.register("test.skill", _TestSkill())
+    mock_agent.skills.activate(["test.skill"])
+    result = await handler.handle("/skills deactivate test.skill")
 
     assert result.success is True
     text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("test-skill" in o.content and "deactivated" in o.content for o in text_outputs)
+    assert any("test.skill" in o.content and "deactivated" in o.content for o in text_outputs)
 
 
 # ============================================================================
@@ -593,18 +613,16 @@ async def test_mcp_list_tableoutput_fields(handler):
 
 
 @pytest.mark.asyncio
-async def test_skills_list_tableoutput_fields(registry, mock_frontend):
+async def test_skills_list_tableoutput_fields(registry, mock_frontend, mock_agent):
     """/skills list produces a TableOutput with correct title, columns, and rows."""
-    from unittest.mock import patch as _patch
+    from nemo_oo_agents.skill import Skill
 
-    mock_skill = MagicMock()
-    mock_skill.id = "my-skill"
-    mock_skill.description = "does something"
+    class _MySkill(Skill):
+        pass
 
-    with _patch("nemo_oo_agents.SkillManager") as mock_sm:
-        mock_sm.discover.return_value = {"my-skill": mock_skill}
-        handler = CommandHandler(registry=registry, frontend=mock_frontend)
-        result = await handler.handle("/skills list")
+    mock_agent.skills.register("test.myskill", _MySkill())
+    handler = CommandHandler(registry=registry, frontend=mock_frontend)
+    result = await handler.handle("/skills list")
 
     tables = [o for o in result.outputs if isinstance(o, TableOutput)]
     assert tables, "Expected a TableOutput from /skills list"
@@ -893,6 +911,7 @@ def test_all_skills_auto_attached_to_agent(skills_dir, mock_frontend, mock_confi
     real_agent.event_manager = MagicMock()
     real_agent.bash = MagicMock()
     real_agent._llm = MagicMock()
+    _attach_registry(real_agent)
 
     CommandRegistry(
         frontend=mock_frontend,
@@ -933,6 +952,7 @@ def test_user_invokable_skill_also_attached_to_agent(skills_dir, mock_frontend, 
     agent.event_manager = MagicMock()
     agent.bash = MagicMock()
     agent._llm = MagicMock()
+    _attach_registry(agent)
 
     CommandRegistry(
         frontend=mock_frontend,

@@ -683,10 +683,11 @@ class SkillsCommand(Command):
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        try:
-            from nemo_oo_agents import SkillManager
-        except ImportError:
-            return CommandResult.err("Skills not enabled. Run `uv sync --extra skills`.")
+        from nemo_oo_agents.skill_registry import SkillRegistry
+
+        registry = getattr(self.agent, "skills", None)
+        if not isinstance(registry, SkillRegistry):
+            return CommandResult.err("Agent has no SkillRegistry. Skills require self.skills = SkillRegistry(self).")
 
         subcmd = args[0].lower()
         subargs = args[1:]
@@ -828,47 +829,36 @@ class SkillsCommand(Command):
             )
 
         if subcmd == "list":
-            if not self.skills_dirs:
-                return CommandResult.ok(TextOutput("No skills directories configured", "info"))
-            skills_dict = SkillManager.discover(self.skills_dirs)
-            if not skills_dict:
+            all_names = registry.discovered()
+            activated = set(registry.activated())
+            if not all_names:
                 return CommandResult.ok(TextOutput("No skills found", "info"))
             rows = [
-                [
-                    sid,
-                    "\u2713" if sid in self._active_skills else "",
-                    getattr(skill, "description", ""),
-                ]
-                for sid, skill in sorted(skills_dict.items())
+                [name, "\u2713" if name in activated else "", ""]
+                for name in all_names
             ]
             return CommandResult.ok(
                 TableOutput(columns=["ID", "Active", "Description"], rows=rows, title="Skills"),
-                TextOutput(f"Dirs: {self.skills_dirs}", "status"),
             )
 
         if subcmd == "activate":
             skill_id = subargs[0]
-            if not self.skills_dirs:
-                return CommandResult.err("No skills directories configured")
-            available = SkillManager.discover(self.skills_dirs)
-            if skill_id not in available:
-                return CommandResult.err(f"Skill `{skill_id}` not found. Use /skills list.")
-            if skill_id in self._active_skills:
+            if skill_id in registry.activated():
                 return CommandResult.err(f"Skill `{skill_id}` already active")
+            if skill_id not in registry.discovered():
+                return CommandResult.err(f"Skill `{skill_id}` not found. Use /skills list.")
             try:
-                setattr(self.agent, _to_attr_name(skill_id), available[skill_id])
-                self._active_skills.add(skill_id)
+                registry.activate([skill_id])
                 return CommandResult.ok(TextOutput(f"Skill `{skill_id}` activated", "success"))
             except Exception as e:
                 return CommandResult.err(f"Failed to activate `{skill_id}`: {e}")
 
         # deactivate
         skill_id = subargs[0]
-        if skill_id not in self._active_skills:
+        if skill_id not in registry.activated():
             return CommandResult.err(f"`{skill_id}` not active. Use /skills list.")
         try:
-            delattr(self.agent, _to_attr_name(skill_id))
-            self._active_skills.discard(skill_id)
+            registry.deactivate([skill_id])
             return CommandResult.ok(TextOutput(f"Skill `{skill_id}` deactivated", "success"))
         except Exception as e:
             return CommandResult.err(f"Failed to deactivate `{skill_id}`: {e}")
@@ -2336,7 +2326,7 @@ class CommandRegistry:
     def _discover_user_skills(self) -> "dict[str, _UserSkill]":
         """Scan skills dirs for install-as:command skills and register them as slash commands.
 
-        Uses rglob to match SkillManager.discover() — finds skills at any depth.
+        Uses rglob to match SkillRegistry.discover_skills_dirs() — finds skills at any depth.
         Parses SKILL.md frontmatter inline to avoid depending on private nemo_oo_agents
         internals that may not be present in older installed versions.
         """
@@ -2452,9 +2442,12 @@ class CommandRegistry:
         if not self.skills_dirs:
             return
         try:
-            from nemo_oo_agents import SkillManager
+            from nemo_oo_agents.skill_registry import SkillRegistry
 
-            SkillManager.install(self.agent, skills_dir=self.skills_dirs)
+            registry = getattr(self.agent, "skills", None)
+            if isinstance(registry, SkillRegistry):
+                registry.discover_skills_dirs(self.skills_dirs)
+                registry.activate(["cmd.*", "ext.*"])
         except ImportError:
             pass
         except Exception as e:
