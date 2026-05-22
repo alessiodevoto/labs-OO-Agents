@@ -151,6 +151,9 @@ class SQLiteEventBackend:
         # up at the right number. ``store()`` keeps it coherent when a
         # caller writes a tag higher than the current value.
         self._next_tag_num: int = self.max_tag_num() + 1
+        # Optional callback invoked on OperationalError("disk I/O error")
+        # to allow the owning StorageManager to reconnect before retry.
+        self._on_io_error: typing.Callable[[], None] | None = None
 
     def register_event_type(self, cls: type[EventBase]) -> None:
         """Register a custom EventBase subclass for deserialization.
@@ -201,6 +204,24 @@ class SQLiteEventBackend:
         data = self._serialize(event)
         order = self._insertion_counter
         self._insertion_counter += 1
+        try:
+            self._do_store(tag, event, data, order)
+        except sqlite3.OperationalError as e:
+            if "disk I/O error" not in str(e) or self._on_io_error is None:
+                raise
+            logger.warning("store(%s): disk I/O error, attempting reconnect + retry", tag)
+            self._on_io_error()
+            # Retry once after reconnect. If the original write partially
+            # committed before the I/O error, the retry hits IntegrityError
+            # on the UNIQUE constraint — that means the data IS stored, so
+            # we treat it as success.
+            try:
+                self._do_store(tag, event, data, order)
+            except sqlite3.IntegrityError:
+                logger.info("store(%s): row already persisted before I/O error", tag)
+        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
+
+    def _do_store(self, tag: str, event: EventBase, data: str, order: int) -> None:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO events (tag, event_id, event_type, status, data, insertion_order) "
@@ -212,7 +233,17 @@ class SQLiteEventBackend:
                 "INSERT INTO active_tags (position, tag) VALUES (?, ?)",
                 (pos, tag),
             )
-        self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
+
+    def _retry_on_io_error(self, fn: typing.Callable[[], typing.Any]) -> typing.Any:
+        """Run *fn*; on disk I/O error, reconnect and retry once."""
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "disk I/O error" not in str(e) or self._on_io_error is None:
+                raise
+            logger.warning("disk I/O error, attempting reconnect + retry")
+            self._on_io_error()
+            return fn()
 
     def get(self, tag: str) -> EventBase | None:
         row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
@@ -229,45 +260,54 @@ class SQLiteEventBackend:
         return self._deserialize(row[0])
 
     def update(self, tag: str, **fields: object) -> bool:
-        row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
-        if row is None:
-            return False
-        event = self._deserialize(row[0])
-        for key, value in fields.items():
-            if key == "metadata":
-                event.metadata.update(typing.cast(dict, value))
-            elif hasattr(event, key):
-                setattr(event, key, value)
-        new_data = self._serialize(event)
-        with self._conn:
-            self._conn.execute(
-                "UPDATE events SET data = ?, status = ? WHERE tag = ?",
-                (new_data, event.status.value, tag),
-            )
-        return True
+        def _do_update() -> bool:
+            row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
+            if row is None:
+                return False
+            event = self._deserialize(row[0])
+            for key, value in fields.items():
+                if key == "metadata":
+                    event.metadata.update(typing.cast(dict, value))
+                elif hasattr(event, key):
+                    setattr(event, key, value)
+            new_data = self._serialize(event)
+            with self._conn:
+                self._conn.execute(
+                    "UPDATE events SET data = ?, status = ? WHERE tag = ?",
+                    (new_data, event.status.value, tag),
+                )
+            return True
+
+        return self._retry_on_io_error(_do_update)
 
     def remove(self, tag: str) -> bool:
-        row = self._conn.execute("SELECT tag FROM events WHERE tag = ?", (tag,)).fetchone()
-        if row is None:
-            return False
-        with self._conn:
-            self._conn.execute("DELETE FROM events WHERE tag = ?", (tag,))
-            self._conn.execute("DELETE FROM active_tags WHERE tag = ?", (tag,))
-        return True
+        def _do_remove() -> bool:
+            row = self._conn.execute("SELECT tag FROM events WHERE tag = ?", (tag,)).fetchone()
+            if row is None:
+                return False
+            with self._conn:
+                self._conn.execute("DELETE FROM events WHERE tag = ?", (tag,))
+                self._conn.execute("DELETE FROM active_tags WHERE tag = ?", (tag,))
+            return True
+
+        return self._retry_on_io_error(_do_remove)
 
     def set_status(self, tag: str, status: EventStatus) -> bool:
-        row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
-        if row is None:
-            return False
-        event = self._deserialize(row[0])
-        event.status = status
-        new_data = self._serialize(event)
-        with self._conn:
-            self._conn.execute(
-                "UPDATE events SET data = ?, status = ? WHERE tag = ?",
-                (new_data, status.value, tag),
-            )
-        return True
+        def _do_set_status() -> bool:
+            row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
+            if row is None:
+                return False
+            event = self._deserialize(row[0])
+            event.status = status
+            new_data = self._serialize(event)
+            with self._conn:
+                self._conn.execute(
+                    "UPDATE events SET data = ?, status = ? WHERE tag = ?",
+                    (new_data, status.value, tag),
+                )
+            return True
+
+        return self._retry_on_io_error(_do_set_status)
 
     def active_tags(self) -> list[str]:
         rows = self._conn.execute("SELECT tag FROM active_tags ORDER BY position").fetchall()
@@ -445,6 +485,7 @@ class SQLiteStorageManager:
         # guarantee that all DB access is serialized through a single
         # asyncio event loop on the agent thread. No concurrent writes.
         self._db_path = str(db_path)
+        self._check_same_thread = check_same_thread
         self._lock_fd: int | None = None
         self._closed = False
 
@@ -453,13 +494,44 @@ class SQLiteStorageManager:
             self._lock_fd = _acquire_session_lock(lock_path)
 
         try:
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=check_same_thread)
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn = self._open_connection()
             _ensure_schema(self._conn)
             self._backend = SQLiteEventBackend(self._conn)
+            self._backend._on_io_error = self._reconnect
         except Exception:
             self.close()
             raise
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """Create and configure a new SQLite connection."""
+        conn = sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread)
+        conn.execute("PRAGMA journal_mode=WAL")
+        # Retry up to 5 s on SQLITE_BUSY before raising, giving concurrent
+        # readers time to release shared locks on virtiofs/FUSE mounts.
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+
+    def _reconnect(self) -> None:
+        """Close the current connection and open a fresh one.
+
+        Used to recover from sticky SQLITE_IOERR states where the pager
+        cache is poisoned but the underlying database file is healthy.
+        Must only be called from the same thread that owns the connection.
+        """
+        logger.warning("SQLiteStorageManager: reconnecting to %s", self._db_path)
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+        try:
+            new_conn = self._open_connection()
+        except Exception:
+            # Reconnect failed — mark as closed so callers get a clear error
+            # rather than "cannot operate on a closed database".
+            self._closed = True
+            raise
+        self._conn = new_conn
+        self._backend._conn = self._conn
 
     @property
     def event_backend(self) -> "SQLiteEventBackend":
