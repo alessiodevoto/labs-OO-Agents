@@ -397,10 +397,11 @@ def _make_capture_buffer(
 
 
 def _extract_captured_locals(exec_globals: dict[str, Any]) -> dict[str, Any]:
-    """Extract captured locals from __repl_captured_locals__, filtering non-data types.
+    """Extract captured locals from __repl_captured_locals__, filtering out bound methods.
 
     The wrapper's finally block captures locals into exec_globals["__repl_captured_locals__"].
-    This function extracts them, filtering out bound methods and modules.
+    This function extracts them, filtering out bound methods. Modules are preserved
+    so that `import X` in one cell persists to subsequent cells.
 
     Args:
         exec_globals: The globals dict from code execution
@@ -414,9 +415,6 @@ def _extract_captured_locals(exec_globals: dict[str, Any]) -> dict[str, Any]:
         # Skip callables that are helper methods (they're handled separately)
         if callable(v) and hasattr(v, "__self__"):
             continue  # Skip bound methods
-        # Skip modules and other non-data types
-        if isinstance(v, types.ModuleType):
-            continue
         captured[k] = v
     return captured
 
