@@ -196,6 +196,14 @@ class BashSession:
         await self._process.stdin.drain()
         await self._read_control_until(sentinel, timeout=5.0)
 
+    def _ensure_lock_on_current_loop(self) -> None:
+        """Recreate the lock if the event loop changed since it was created."""
+        if (
+            self._started_on_loop is not None
+            and self._started_on_loop is not asyncio.get_running_loop()
+        ):
+            self._lock = asyncio.Lock()
+
     async def run(self, command: str, timeout: float = 30.0) -> tuple[str, str, int]:
         """Run a command and return (stdout, stderr, exit_code).
 
@@ -206,6 +214,7 @@ class BashSession:
         Use ``run_with_timeout_flag()`` if you need to distinguish a real
         timeout from a command that exits 124 naturally.
         """
+        self._ensure_lock_on_current_loop()
         async with self._lock:
             stdout, stderr, code, _ = await self._run_unlocked(command, timeout)
             return stdout, stderr, code
@@ -214,6 +223,7 @@ class BashSession:
         self, command: str, timeout: float = 30.0
     ) -> tuple[str, str, int, bool]:
         """Like run(), but returns a 4th element: whether the command timed out."""
+        self._ensure_lock_on_current_loop()
         async with self._lock:
             return await self._run_unlocked(command, timeout)
 
@@ -271,6 +281,7 @@ class BashSession:
 
         Concurrent calls are serialized via an internal lock.
         """
+        self._ensure_lock_on_current_loop()
         async with self._lock:
             async for item in self._run_stream_unlocked(command, timeout):
                 yield item
@@ -631,3 +642,4 @@ class BashSession:
         self._process = None
         self._started = False
         self._started_on_loop = None
+        self._lock = asyncio.Lock()
