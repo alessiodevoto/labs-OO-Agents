@@ -199,6 +199,7 @@ class TUIApplication:
         self._agent_task: asyncio.Future | None = None
         self._agent_thread_future: ConcurrentFuture | None = None
         self._agent_loop: asyncio.AbstractEventLoop | None = None
+        self._agent_sentinel: asyncio.Task | None = None
         self._agent_thread: threading.Thread | None = None
         self._agent_loop_ready = threading.Event()
         self._agent_loop_stopped = threading.Event()
@@ -636,6 +637,10 @@ class TUIApplication:
         prompt_toolkit stays on the main/UI loop. Agent turns run here so
         synchronous work inside ``agent.handle()`` cannot freeze input or
         spinner redraws.
+
+        A sentinel task keeps the loop alive even when the dispatcher exits
+        (gl-212). Without it, run_forever() returns when the last task
+        finishes, closing the loop and invalidating BashSession pipes.
         """
         if self._agent_loop is not None and self._agent_loop.is_running():
             return self._agent_loop
@@ -659,6 +664,12 @@ class TUIApplication:
                 loop_.default_exception_handler(context)
 
             loop.set_exception_handler(_suppress_litellm_task_destroyed)
+
+            # gl-212 sentinel: keeps run_forever() alive across dispatcher restarts.
+            async def _sentinel():
+                await asyncio.Future()
+
+            self._agent_sentinel = loop.create_task(_sentinel(), name="agent-loop-sentinel")
             self._agent_loop_ready.set()
             try:
                 loop.run_forever()
@@ -692,6 +703,11 @@ class TUIApplication:
             return
         if self._agent_thread_future is not None and not self._agent_thread_future.done():
             self._agent_thread_future.cancel()
+        # Cancel the sentinel so run_forever() can exit (gl-212).
+        # Use call_soon_threadsafe: sentinel lives on the agent loop thread.
+        if self._agent_sentinel is not None:
+            loop.call_soon_threadsafe(self._agent_sentinel.cancel)
+            self._agent_sentinel = None
         # Gracefully stop litellm's global logging worker so its tasks are
         # cancelled before we tear down the loop (prevents "Task was destroyed
         # but it is pending!" warnings from orphaned _worker_loop tasks).

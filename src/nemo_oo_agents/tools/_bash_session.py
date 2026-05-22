@@ -53,6 +53,7 @@ class BashSession:
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
         self._started = False
+        self._started_on_loop: asyncio.AbstractEventLoop | None = None
         self._lock = asyncio.Lock()
         self._last_successful_command: float | None = None
         self._last_command: str = ""
@@ -187,6 +188,7 @@ class BashSession:
         self._control_reader = reader
         self._control_transport = transport
         self._started = True
+        self._started_on_loop = asyncio.get_running_loop()
 
         # Drain startup — send a no-op through the control channel.
         sentinel = f"__CTRL_{secrets.token_hex(8)}__"
@@ -222,6 +224,8 @@ class BashSession:
         """
         if not self._started:
             await self.start()
+        elif self._started_on_loop is not asyncio.get_running_loop():
+            await self._reset_for_loop_change()
 
         self._last_command = command
         sentinel = f"__CTRL_{secrets.token_hex(8)}__"
@@ -277,6 +281,8 @@ class BashSession:
         """Actual run_stream implementation (caller must hold self._lock)."""
         if not self._started:
             await self.start()
+        elif self._started_on_loop is not asyncio.get_running_loop():
+            await self._reset_for_loop_change()
 
         self._last_command = command
         sentinel = f"__CTRL_{secrets.token_hex(8)}__"
@@ -560,6 +566,21 @@ class BashSession:
             return True
         return False
 
+    async def _reset_for_loop_change(self) -> None:
+        """Reset after detecting that the event loop changed (gl-212)."""
+        logger.warning("BashSession: event loop changed — resetting (env/aliases lost)")
+        try:
+            from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+            get_harness_metrics().shell_death(
+                "loop_change_reset",
+                f"BashSession reset due to event loop change (gl-212). "
+                f"cwd={self._cwd}, start_count={self._start_count}",
+            )
+        except Exception:
+            pass
+        await self.reset()
+
     async def reset(self) -> None:
         """Kill the current session and start a fresh one, preserving cwd."""
         cwd = self._cwd
@@ -570,26 +591,43 @@ class BashSession:
     async def close(self) -> None:
         """Terminate the bash session cleanly."""
         if self._control_transport is not None:
-            self._control_transport.close()
+            try:
+                self._control_transport.close()
+            except Exception:
+                pass  # Transport may be bound to a dead loop (gl-212)
             self._control_transport = None
         self._control_reader = None
 
         if self._process is not None and self._process.returncode is None:
-            try:
-                pgid = os.getpgid(self._process.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except (ProcessLookupError, OSError):
+            same_loop = self._started_on_loop is asyncio.get_running_loop()
+            if same_loop:
+                # Graceful shutdown: SIGTERM → wait → SIGKILL on timeout
                 try:
-                    self._process.kill()
-                except Exception:
-                    pass
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=3.0)
-            except TimeoutError:
+                    pgid = os.getpgid(self._process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except (ProcessLookupError, OSError):
+                    try:
+                        self._process.kill()
+                    except Exception:
+                        pass
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=3.0)
+                except TimeoutError:
+                    try:
+                        pgid = os.getpgid(self._process.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except (ProcessLookupError, OSError):
+                        pass
+            else:
+                # Cross-loop (gl-212): transport is dead, just kill immediately.
                 try:
                     pgid = os.getpgid(self._process.pid)
                     os.killpg(pgid, signal.SIGKILL)
                 except (ProcessLookupError, OSError):
-                    pass
+                    try:
+                        self._process.kill()
+                    except Exception:
+                        pass
         self._process = None
         self._started = False
+        self._started_on_loop = None
