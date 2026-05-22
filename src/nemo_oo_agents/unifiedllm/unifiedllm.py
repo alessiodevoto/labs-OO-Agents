@@ -1901,13 +1901,20 @@ class ResponsesClient(UnifiedLLM):
         Handles both native Responses format (from ResponsesProviderFormatter) and
         legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        # Inject cache_control for prompt caching before transforming to native format
-        cache_points = (
-            self.cache_control_injection_points
-            if cache_control_injection_points is None
-            else cache_control_injection_points
-        )
-        prepared_messages = self._inject_cache_control(messages, cache_points)
+        # Inject cache_control only for Anthropic-served models. litellm.responses
+        # passes input[] through verbatim — no equivalent of the Chat Completions
+        # OpenAIGPTConfig.remove_cache_control_flag strip — so leaving the marker
+        # on OpenAI/Azure/NIM Responses calls triggers a 400 "Unknown parameter:
+        # input[N].cache_control" at the gateway.
+        if _is_anthropic_model(self.model):
+            cache_points = (
+                self.cache_control_injection_points
+                if cache_control_injection_points is None
+                else cache_control_injection_points
+            )
+            prepared_messages = self._inject_cache_control(messages, cache_points)
+        else:
+            prepared_messages = messages
         input_messages, instructions = self._transform_messages(prepared_messages)
 
         api_params = {
@@ -2014,13 +2021,17 @@ class ResponsesClient(UnifiedLLM):
         Handles both native Responses format (from ResponsesProviderFormatter) and
         legacy OpenAI Chat format. System messages are extracted to the `instructions` param.
         """
-        # Inject cache_control for prompt caching before transforming to native format
-        cache_points = (
-            self.cache_control_injection_points
-            if cache_control_injection_points is None
-            else cache_control_injection_points
-        )
-        prepared_messages = self._inject_cache_control(messages, cache_points)
+        # See ResponsesClient.call for why cache_control injection is gated on
+        # Anthropic models only.
+        if _is_anthropic_model(self.model):
+            cache_points = (
+                self.cache_control_injection_points
+                if cache_control_injection_points is None
+                else cache_control_injection_points
+            )
+            prepared_messages = self._inject_cache_control(messages, cache_points)
+        else:
+            prepared_messages = messages
         input_messages, instructions = self._transform_messages(prepared_messages)
 
         api_params = {
