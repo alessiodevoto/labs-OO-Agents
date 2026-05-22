@@ -130,10 +130,12 @@ class TestBusyTimeout:
     """Test that busy_timeout PRAGMA is set."""
 
     def test_busy_timeout_is_set(self, storage):
+        """busy_timeout PRAGMA should be configured to 5000 ms on open."""
         row = storage._conn.execute("PRAGMA busy_timeout").fetchone()
         assert row[0] == 5000
 
     def test_busy_timeout_persists_after_reconnect(self, storage):
+        """busy_timeout should be reconfigured on a fresh connection after reconnect."""
         storage._reconnect()
         row = storage._conn.execute("PRAGMA busy_timeout").fetchone()
         assert row[0] == 5000
@@ -143,5 +145,6 @@ class TestOpenConnection:
     """Test _open_connection helper."""
 
     def test_wal_mode(self, storage):
+        """WAL journal mode should be set on connection open."""
         row = storage._conn.execute("PRAGMA journal_mode").fetchone()
         assert row[0] == "wal"
