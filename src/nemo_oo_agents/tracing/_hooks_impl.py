@@ -470,7 +470,15 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             try:
-                span.set_attribute("result", self._safe_serialize(result))
+                # JSON-encoded {stdout, stderr, returned_value} — gives the
+                # ATIF exporter a parseable observation source. See
+                # ``.development/docs/design/issue-215-atif-v1.7-compliance.md``
+                # (F1a). Falls back to the generic repr serializer when the
+                # result doesn't look like an ExecutionResult.
+                if any(hasattr(result, attr) for attr in ("stdout", "stderr", "returned_value")):
+                    span.set_attribute("result", self._safe_serialize_execution_result(result))
+                else:
+                    span.set_attribute("result", self._safe_serialize(result))
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
