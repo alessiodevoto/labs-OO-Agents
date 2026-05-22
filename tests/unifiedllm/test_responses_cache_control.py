@@ -155,12 +155,20 @@ class TestToolOutputNotCorrupted:
 
 
 class TestResponsesClientEndToEnd:
-    """End-to-end tests that cache_control reaches litellm.aresponses."""
+    """End-to-end tests that cache_control reaches litellm.aresponses on Anthropic models.
+
+    The end-to-end pipeline is gated on _is_anthropic_model so that OpenAI/Azure/NIM
+    Responses calls don't ship cache_control keys (the Responses API rejects them).
+    These tests pin a Claude alias so the pipeline runs and we can assert the marker
+    survives _transform_messages.
+    """
+
+    ANTHROPIC_MODEL = "anthropic/claude-haiku-4-5"
 
     @pytest.mark.asyncio
     async def test_acall_injects_cache_control(self):
         """acall() injects cache_control on messages before calling litellm."""
-        client = ResponsesClient(model="openai/gpt-5.5")
+        client = ResponsesClient(model=self.ANTHROPIC_MODEL)
         mock_response = make_mock_responses_response()
 
         with patch("litellm.aresponses", new_callable=AsyncMock) as mock_aresponses:
@@ -198,7 +206,7 @@ class TestResponsesClientEndToEnd:
     @pytest.mark.asyncio
     async def test_acall_no_injection_when_empty(self):
         """No cache_control when injection_points is empty."""
-        client = ResponsesClient(model="openai/gpt-5.5")
+        client = ResponsesClient(model=self.ANTHROPIC_MODEL)
         client.cache_control_injection_points = []
         mock_response = make_mock_responses_response()
 
@@ -221,7 +229,7 @@ class TestResponsesClientEndToEnd:
     @pytest.mark.asyncio
     async def test_acall_custom_injection_points(self):
         """Custom injection points override defaults."""
-        client = ResponsesClient(model="openai/gpt-5.5")
+        client = ResponsesClient(model=self.ANTHROPIC_MODEL)
         mock_response = make_mock_responses_response()
 
         with patch("litellm.aresponses", new_callable=AsyncMock) as mock_aresponses:
@@ -243,3 +251,105 @@ class TestResponsesClientEndToEnd:
             last_user = [m for m in input_items if m.get("role") == "user"][-1]
             assert isinstance(last_user["content"], list)
             assert last_user["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def _has_cache_control_anywhere(item: dict) -> bool:
+    """Recursively check whether `cache_control` appears anywhere in an input[] item."""
+    if not isinstance(item, dict):
+        return False
+    if "cache_control" in item:
+        return True
+    for v in item.values():
+        if isinstance(v, dict) and _has_cache_control_anywhere(v):
+            return True
+        if isinstance(v, list):
+            for sub in v:
+                if isinstance(sub, dict) and _has_cache_control_anywhere(sub):
+                    return True
+    return False
+
+
+def _make_non_anthropic_messages() -> list[dict]:
+    """Fresh message payload for each non-Anthropic regression test.
+
+    A factory (rather than a shared class-level constant) so that even if a
+    future change to _transform_messages or _inject_cache_control starts
+    mutating the input list, parametrized cases stay independent.
+    """
+    return [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "Do something"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "tc1",
+                    "type": "function",
+                    "function": {"name": "run", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "content": "tool output", "tool_call_id": "tc1"},
+        {"role": "user", "content": "Current turn"},
+    ]
+
+
+class TestNonAnthropicResponsesPath:
+    """Regression: non-Anthropic Responses calls must NOT ship cache_control.
+
+    litellm.aresponses passes input[] through verbatim — unlike the Chat Completions
+    path, there's no OpenAIGPTConfig strip — so a stray cache_control key on any item
+    triggers a 400 'Unknown parameter: input[N].cache_control' at the OpenAI/Azure/NIM
+    gateway. ResponsesClient.{call,acall} must gate the inject on _is_anthropic_model.
+    """
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            # Direct OpenAI route via NVIDIA gateway (the bug reported in 24bbe09f)
+            "openai/openai/openai/gpt-5.5",
+            # Azure-routed OpenAI
+            "openai/azure/openai/gpt-5.5",
+            # NVIDIA Nemotron
+            "openai/nvidia/nemotron-3-super-v3",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_acall_no_cache_control_on_non_anthropic(self, model: str):
+        """acall() must not inject cache_control for non-Anthropic Responses models.
+
+        litellm.aresponses passes input[] verbatim; a stray cache_control key
+        triggers a 400 'Unknown parameter: input[N].cache_control' at the gateway.
+        """
+        client = ResponsesClient(model=model)
+        mock_response = make_mock_responses_response()
+
+        with patch("litellm.aresponses", new_callable=AsyncMock) as mock_aresponses:
+            mock_aresponses.return_value = mock_response
+            await client.acall(_make_non_anthropic_messages())
+
+            call_kwargs = mock_aresponses.call_args[1]
+            input_items = call_kwargs["input"]
+
+            for i, item in enumerate(input_items):
+                assert not _has_cache_control_anywhere(item), (
+                    f"cache_control leaked to input[{i}] for non-Anthropic model {model!r}: "
+                    f"{item!r}"
+                )
+
+    def test_call_no_cache_control_on_non_anthropic(self):
+        """Sync variant — same gate."""
+        client = ResponsesClient(model="openai/openai/openai/gpt-5.5")
+        mock_response = make_mock_responses_response()
+
+        with patch("litellm.responses") as mock_responses:
+            mock_responses.return_value = mock_response
+            client.call(_make_non_anthropic_messages())
+
+            call_kwargs = mock_responses.call_args[1]
+            input_items = call_kwargs["input"]
+            for i, item in enumerate(input_items):
+                assert not _has_cache_control_anywhere(item), (
+                    f"cache_control leaked to input[{i}] (sync path): {item!r}"
+                )
