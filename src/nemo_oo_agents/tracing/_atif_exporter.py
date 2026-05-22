@@ -192,6 +192,7 @@ class LlmCall:
         self.completion_tokens = _i(rec.attrs.get("llm.token_count.completion"))
         self.reasoning_tokens = _i(rec.attrs.get("llm.token_count.completion_details.reasoning"))
         self.cost = _f(rec.attrs.get("llm.cost.total"))
+        self.reasoning_content = rec.attrs.get("llm.reasoning_content", "") or ""
 
     @property
     def is_summarizer(self) -> bool:
@@ -217,6 +218,41 @@ class ToolCall:
     @property
     def duration_s(self) -> float:
         return (self.end_ns - self.start_ns) / 1e9 if self.end_ns and self.start_ns else 0.0
+
+
+def _tool_span_observation_content(tc: ToolCall) -> str:
+    """Format a TOOL span's ``result`` attribute as observation content.
+
+    ``after_code_execution`` writes ``result`` as a JSON-encoded
+    ``{stdout, stderr, returned_value}`` blob (see ``_hooks_impl.py`` —
+    ``_safe_serialize_execution_result``). Parse it and emit a compact,
+    human-readable rendering. On parse failure, return the raw string —
+    older runs may have the Python-repr serialization.
+    """
+    raw = tc.result if isinstance(tc.result, str) else _clean_content(tc.result)
+    if not raw:
+        return ""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+    if not isinstance(data, dict):
+        return raw
+    parts: list[str] = []
+    stdout = data.get("stdout")
+    stderr = data.get("stderr")
+    returned_value = data.get("returned_value")
+    if stdout:
+        parts.append(f"stdout:\n{stdout}")
+    if stderr:
+        parts.append(f"stderr:\n{stderr}")
+    if returned_value is not None and returned_value != "None":
+        parts.append(f"returned_value:\n{returned_value}")
+    # When parts is empty, the execution produced no observable output —
+    # return "" so ``_attach_observation`` skips attaching a result.
+    # Falling back to ``raw`` here would emit ``{"stdout": "", ...}`` as
+    # observation content, which is JSON metadata, not a tool result.
+    return "\n".join(parts)
 
 
 def _partition_records(records: list[SpanRecord]) -> tuple[list[LlmCall], list[ToolCall]]:
@@ -274,6 +310,7 @@ def build_trajectory_from_records(
         return {
             "schema_version": SCHEMA_VERSION,
             "session_id": session_id,
+            "trajectory_id": session_id,
             "agent": agent,
             "steps": [],
             "final_metrics": {"total_steps": 0},
@@ -288,14 +325,22 @@ def build_trajectory_from_records(
     # timestamp lookups.
     log: list[dict[str, Any]] = []
     log_ts: list[int] = []
+    # Parallel list: index of the originating ``LlmCall`` in ``main_calls``,
+    # or ``None`` for messages that came from a prior call's ``input_msgs``
+    # (pre-existing history, not produced by the current call).  This is
+    # how we look up per-step ``metrics``, ``llm_call_count``, and
+    # ``reasoning_content`` for each emitted agent step.
+    log_call_idx: list[int | None] = []
 
-    for call in main_calls:
+    for call_idx, call in enumerate(main_calls):
         for m in call.input_msgs[len(log) :]:
             log.append(m)
             log_ts.append(call.start_ns)
+            log_call_idx.append(None)
         for m in call.output_msgs:
             log.append(m)
             log_ts.append(call.end_ns)
+            log_call_idx.append(call_idx)
 
     model_name = next((c.model_name for c in main_calls if c.model_name), "")
     if model_name:
@@ -336,7 +381,18 @@ def build_trajectory_from_records(
     system_emitted = False
 
     def _attach_observation(step: dict[str, Any], tc_id: str) -> None:
-        content = obs_by_tc_id.get(tc_id)
+        # Prefer the TOOL span's result attribute — it's the authoritative
+        # observation content, written locally by the code_execution hook
+        # regardless of how the LLM provider serializes follow-up messages
+        # (chat ``role: "tool"`` vs Responses ``function_call_output``).
+        # Fall back to the message-log scan for tools that don't have a
+        # corresponding TOOL span (non-execute_python flows).
+        tspan = tools_by_id.get(tc_id)
+        content: str = ""
+        if tspan:
+            content = _tool_span_observation_content(tspan)
+        if not content:
+            content = obs_by_tc_id.get(tc_id, "") or ""
         if not content:
             return
         obs = step.setdefault("observation", {"results": []})
@@ -349,13 +405,16 @@ def build_trajectory_from_records(
                 "content": _clean_content(content),
             }
         )
-        tspan = tools_by_id.get(tc_id)
         if tspan:
             extra = step.setdefault("extra", {})
+            # Key tool_metadata by tool_call_id so multi-tool agent steps
+            # don't collide on a single shared dict (with the first tool's
+            # metadata winning and later tools losing theirs).
             tool_meta = extra.setdefault("tool_metadata", {})
-            tool_meta.setdefault("duration_seconds", round(tspan.duration_s, 3))
+            tc_meta = tool_meta.setdefault(tc_id, {})
+            tc_meta["duration_seconds"] = round(tspan.duration_s, 3)
             if tspan.result_type:
-                tool_meta.setdefault("result_type", tspan.result_type)
+                tc_meta["result_type"] = tspan.result_type
 
     for idx, m in enumerate(log):
         ts_ns = log_ts[idx]
@@ -384,6 +443,12 @@ def build_trajectory_from_records(
             continue
 
         if role == "user" and not tool_call_id:
+            # F3: drop envelope-only user messages whose content is empty
+            # after stripping the trailing ``<context>...</context>``.  These
+            # come from CachedBlockFormatter's per-call trailing context
+            # message; they carry no user-facing content per ATIF.
+            if not content.strip():
+                continue
             # If the body references a tool_call_id, it's the verbose follow-up
             # -- already indexed in obs_by_tc_id; skip.
             if tcid_in_body_re.search(content):
@@ -413,16 +478,37 @@ def build_trajectory_from_records(
             if model_name:
                 step["model_name"] = model_name
             if tcs:
-                first_id = tcs[0].get("tool_call_id", "")
-                fn_name = tcs[0].get("function_name", "tool")
-                msg_summary = (content or "").strip()
-                step["message"] = msg_summary or f"Executed {fn_name} {first_id}".strip()
+                # F2: ``message`` is the assistant's actual text — empty
+                # string when the inference was purely a tool call. Do NOT
+                # fall back to a synthetic ``"Executed {fn} {id}"`` log line;
+                # that is not assistant output (per ATIF §StepObject) and
+                # poisons SFT extraction.
+                step["message"] = _clean_content(content)
                 step["tool_calls"] = tcs
                 for tc in tcs:
                     if tc.get("tool_call_id"):
                         _attach_observation(step, tc["tool_call_id"])
             else:
                 step["message"] = _clean_content(content)
+            # F4/F5/F7: per-step metrics and llm_call_count from the
+            # originating LlmCall. Only emitted on agent steps that
+            # correspond to a real LLM inference (i.e. produced by an
+            # output_msgs entry — log_call_idx is not None).
+            call_idx = log_call_idx[idx]
+            if call_idx is not None:
+                call = main_calls[call_idx]
+                metrics: dict[str, Any] = {
+                    "prompt_tokens": call.prompt_tokens,
+                    "completion_tokens": call.completion_tokens,
+                    "cached_tokens": call.cached_tokens,
+                    "cost_usd": round(call.cost, 6),
+                }
+                if call.reasoning_tokens:
+                    metrics["extra"] = {"reasoning_tokens": call.reasoning_tokens}
+                step["metrics"] = metrics
+                step["llm_call_count"] = 1
+                if call.reasoning_content:
+                    step["reasoning_content"] = call.reasoning_content
             steps.append(step)
             continue
 
@@ -446,11 +532,11 @@ def build_trajectory_from_records(
         "total_prompt_tokens": total_prompt,
         "total_completion_tokens": total_completion,
         "total_cached_tokens": total_cached,
+        "total_cost_usd": round(total_cost, 6),
         "total_steps": len(steps),
         "extra": {
             "reasoning_output_tokens": total_reasoning,
             "total_tokens": total_prompt + total_completion,
-            "total_cost_usd": round(total_cost, 6),
             "last_token_usage": {
                 "input_tokens": last.prompt_tokens,
                 "cached_input_tokens": last.cached_tokens,
@@ -464,6 +550,7 @@ def build_trajectory_from_records(
     return {
         "schema_version": SCHEMA_VERSION,
         "session_id": session_id,
+        "trajectory_id": session_id,
         "agent": agent,
         "steps": steps,
         "final_metrics": final_metrics,
