@@ -695,7 +695,7 @@ def _extract_namedtuple_fields(obj: type) -> list[FieldInfo]:
     try:
         field_types = typing.get_type_hints(obj, include_extras=True)
     except (NameError, AttributeError, TypeError):
-        field_types = getattr(obj, "__annotations__", {})
+        field_types = inspect.get_annotations(obj)
     defaults = getattr(obj, "_field_defaults", {})
 
     for name in field_names:
@@ -716,7 +716,7 @@ def _extract_typeddict_fields(obj: type) -> list[FieldInfo]:
     try:
         annotations = typing.get_type_hints(obj, include_extras=True)
     except (NameError, AttributeError, TypeError):
-        annotations = getattr(obj, "__annotations__", {})
+        annotations = inspect.get_annotations(obj)
     required = getattr(obj, "__required_keys__", set())
     fields = []
     for name, type_hint in annotations.items():
@@ -967,7 +967,7 @@ def _extract_plain_class_fields(obj: type) -> list[FieldInfo]:
 
     # Collect annotation names across the full MRO (base-to-derived order) so that
     # inherited fields appear in doc() output.  We read each class's own
-    # __dict__['__annotations__'] (not getattr, which stops at the first ancestor)
+    # inspect.get_annotations(klass) (own annotations only, PEP 649 compatible)
     # and merge in MRO order: later (more-derived) entries override earlier ones,
     # so a child that re-declares a parent field keeps its own version.
     #
@@ -980,7 +980,7 @@ def _extract_plain_class_fields(obj: type) -> list[FieldInfo]:
         (c for c in obj.__mro__ if c is not object),
         key=lambda c: (len(c.__mro__), mro_index[c]),
     ):
-        for name, raw_hint in _klass.__dict__.get("__annotations__", {}).items():
+        for name, raw_hint in inspect.get_annotations(_klass).items():
             all_raw_annotations[name] = raw_hint
 
     for name, _raw_hint in all_raw_annotations.items():

@@ -17,6 +17,7 @@ Blocked modules are still stripped by the runtime after filtering.
 from __future__ import annotations
 
 import functools
+import inspect
 import sys
 import threading
 import types
@@ -153,7 +154,7 @@ def is_hidden_field(cls: Any, name: str) -> bool:
         return False
 
     for klass in cls.__mro__:
-        if name not in klass.__dict__.get("__annotations__", {}):
+        if name not in inspect.get_annotations(klass):
             continue
         # get_type_hints resolves string annotations and forward refs
         try:
@@ -188,7 +189,7 @@ def _resolve_single_annotation(klass: type, name: str) -> Any:
     annotations as strings and ``get_type_hints(klass)`` fails because OTHER
     annotations in the MRO reference types not available in the current module.
     """
-    raw = klass.__dict__.get("__annotations__", {}).get(name)
+    raw = inspect.get_annotations(klass).get(name)
     if raw is None or not isinstance(raw, str):
         return raw
 
@@ -203,10 +204,10 @@ def _resolve_single_annotation(klass: type, name: str) -> Any:
 def is_hidden_module_variable(module: types.ModuleType, name: str) -> bool:
     """Check if a module-level variable is annotated with Annotated[T, hidden].
 
-    Uses the module's __annotations__ and resolves string annotations
-    (e.g. from ``from __future__ import annotations``) via the module's namespace.
+    Uses the module's annotations (via inspect.get_annotations) and resolves
+    string annotations (e.g. from ``from __future__ import annotations``) via the module's namespace.
     """
-    ann = getattr(module, "__annotations__", {}).get(name)
+    ann = inspect.get_annotations(module).get(name)
     if ann is None:
         return False
     if isinstance(ann, str):

@@ -12,6 +12,7 @@ Usage::
         memory: list[str]                            # snapshotted normally
 """
 
+import inspect
 import sys
 import typing
 from typing import Annotated, Any
@@ -41,7 +42,7 @@ def is_nosnapshot_field(cls: type, name: str) -> bool:
     Walks the MRO so subclasses can override parent annotations.
     """
     for klass in cls.__mro__:
-        if name not in klass.__dict__.get("__annotations__", {}):
+        if name not in inspect.get_annotations(klass):
             continue
         try:
             resolved = typing.get_type_hints(klass, include_extras=True)
@@ -62,7 +63,7 @@ def is_nosnapshot_field(cls: type, name: str) -> bool:
 
 def _resolve_single(klass: type, name: str) -> Any:
     """Resolve a single string annotation when full get_type_hints fails."""
-    raw = klass.__dict__.get("__annotations__", {}).get(name)
+    raw = inspect.get_annotations(klass).get(name)
     if raw is None or not isinstance(raw, str):
         return raw
     mod = sys.modules.get(klass.__module__)

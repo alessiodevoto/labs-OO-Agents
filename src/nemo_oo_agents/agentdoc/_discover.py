@@ -161,7 +161,7 @@ def _extract_types_from_field(
         discovered: Set to add discovered types to (modified in place)
     """
     # 1. Check if field is a class-level annotation
-    annotations = getattr(cls, "__annotations__", {})
+    annotations = inspect.get_annotations(cls)
     if field_name in annotations:
         _extract_types_from_hint(annotations[field_name], discovered)
 
