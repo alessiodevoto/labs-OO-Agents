@@ -89,7 +89,7 @@ class LibraryManager:
         so the agent accesses it via ``self.<lib_name>``.
         """
         from nemo_oo_agents.skill import Skill
-        from nemo_oo_agents.skill_manager import skill_from_module
+        from nemo_oo_agents.skill_registry import skill_from_module
 
         module = self._import_module(lib_dir)
 

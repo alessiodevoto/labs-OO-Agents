@@ -3,11 +3,15 @@
 """SkillRegistry — discover, load, and activate skills on an agent."""
 
 import fnmatch
+import importlib.util
+import inspect
 import logging
+import sys
 from importlib.metadata import entry_points
+from pathlib import Path
 from typing import Any
 
-from nemo_oo_agents.skill import Skill
+from nemo_oo_agents.skill import Skill, TextSkill
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,105 @@ _RESERVED_ATTRS = frozenset(
         "event_query",
     }
 )
+
+
+# ---------------------------------------------------------------------------
+# Skill loading utilities (formerly in skill_manager.py)
+# ---------------------------------------------------------------------------
+
+
+def skill_from_module(module: Any, module_name: str, source: str = "") -> "Skill | None":
+    """Extract a ``Skill`` instance from an already-imported module.
+
+    Resolution order:
+
+    1. Module-level ``skill`` attribute that is a ``Skill`` instance.
+    2. First ``Skill`` subclass *defined in this module*
+       (``cls.__module__`` equals ``module_name``).
+    3. First re-exported ``Skill`` subclass in the module namespace.
+
+    Returns ``None`` when none found, or when the class can't be
+    instantiated without args. All failures log at WARNING.
+    """
+    explicit = vars(module).get("skill")
+    if isinstance(explicit, Skill):
+        return explicit
+
+    local: list[type] = []
+    reexported: list[type] = []
+    for _name, obj in vars(module).items():
+        if not inspect.isclass(obj):
+            continue
+        if not issubclass(obj, Skill):
+            continue
+        if obj is Skill or obj is TextSkill:
+            continue
+        if obj.__module__ == module_name:
+            local.append(obj)
+        else:
+            reexported.append(obj)
+    candidates = local + reexported
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        picked = candidates[0]
+        extras = ", ".join(c.__name__ for c in candidates[1:])
+        logger.warning(
+            "%s defines multiple Skill subclasses; using %s, ignoring: %s",
+            source or module_name,
+            picked.__name__,
+            extras,
+        )
+    cls = candidates[0]
+    try:
+        return cls()
+    except TypeError:
+        logger.warning(
+            "%s skipped: class %s needs constructor args "
+            "(Python skills must have a zero-arg __init__)",
+            source or module_name,
+            cls.__name__,
+            exc_info=True,
+        )
+        return None
+    except Exception:
+        logger.warning(
+            "%s skipped: %s.__init__ raised",
+            source or module_name,
+            cls.__name__,
+            exc_info=True,
+        )
+        return None
+
+
+def _load_python_skill(path: Path) -> "Skill | None":
+    """Import *path* and extract a ``Skill`` via :func:`skill_from_module`."""
+    module_name = f"_nemo_oo_skill_{path.stem}_{abs(hash(str(path.resolve()))) & 0xFFFFFFFF:08x}"
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if spec is None or spec.loader is None:
+            logger.warning("Skill file %s skipped: could not build import spec", path)
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+    except Exception:
+        logger.warning("Skill file %s skipped: import failed", path, exc_info=True)
+        return None
+
+    try:
+        return skill_from_module(module, module_name, source=f"Skill file {path}")
+    finally:
+        sys.modules.pop(module_name, None)
+
+
+def _is_python_skill_file(entry: Path) -> bool:
+    """True if *entry* is a candidate Python skill file."""
+    return entry.is_file() and entry.suffix == ".py" and not entry.name.startswith("_")
 
 
 class SkillRegistry(Skill):
@@ -118,8 +221,6 @@ class SkillRegistry(Skill):
 
         module = importlib.import_module(lib_name)
 
-        from nemo_oo_agents.skill_manager import skill_from_module
-
         return skill_from_module(module, lib_name, source=f"Library {lib_name!r}")
 
     def discover_skills_dirs(self, dirs: "list[Path]") -> None:
@@ -161,7 +262,6 @@ class SkillRegistry(Skill):
 
     def _register_python_skill(self, entry: "Path") -> None:
         """Register a Python skill from a .py file."""
-        from nemo_oo_agents.skill_manager import _load_python_skill
 
         try:
             skill = _load_python_skill(entry)
