@@ -10,12 +10,16 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import typing
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
+
+from pydantic import ValidationError as PydanticValidationError
 
 from nemo_oo_agents.context_blocks import Event, EventBase, EventStatus, Metadata
 from nemo_oo_agents.context_blocks.events import _EVENT_REGISTRY
@@ -121,6 +125,42 @@ CREATE TABLE IF NOT EXISTS snapshots (
 """
 
 
+@lru_cache(maxsize=8)
+def _is_virtiofs(db_path: str) -> bool:
+    """Detect if *db_path* resides on a virtiofs mount (Docker Desktop file sharing)."""
+    if db_path == ":memory:":
+        return False
+    try:
+        result = subprocess.run(
+            ["df", "-T", "--", db_path],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("virtiofs detection failed for %s: %s", db_path, type(e).__name__)
+        return False
+    return "virtiofs" in result.stdout
+
+
+def _is_corruption_error(exc: sqlite3.Error) -> bool:
+    """Return True for SQLite failures caused by corrupt/unreadable DB content."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    _CORRUPT = getattr(sqlite3, "SQLITE_CORRUPT", 11)
+    _NOTADB = getattr(sqlite3, "SQLITE_NOTADB", 26)
+    if code in {_CORRUPT, _NOTADB}:
+        return True
+    msg = str(exc).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "could not decode to utf-8",
+            "database disk image is malformed",
+            "file is not a database",
+        )
+    )
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Create tables if needed and verify schema version."""
     conn.executescript(_SCHEMA)
@@ -174,15 +214,35 @@ class SQLiteEventBackend:
         self._registry[event_type] = cls
 
     def _max_insertion_order(self) -> int:
-        row = self._conn.execute("SELECT MAX(insertion_order) FROM events").fetchone()
+        try:
+            row = self._conn.execute("SELECT MAX(insertion_order) FROM events").fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.warning(
+                "_max_insertion_order(): events table unreadable, starting counter at 0: %s",
+                type(e).__name__,
+            )
+            return -1
         return row[0] if row[0] is not None else -1
 
     def _max_position(self) -> int:
-        row = self._conn.execute("SELECT MAX(position) FROM active_tags").fetchone()
+        try:
+            row = self._conn.execute("SELECT MAX(position) FROM active_tags").fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.warning(
+                "_max_position(): active_tags table unreadable, starting positions at 0: %s",
+                type(e).__name__,
+            )
+            return -1
         return row[0] if row[0] is not None else -1
 
     def _deserialize(self, data: str) -> EventBase:
         raw = json.loads(data)
+        if not isinstance(raw, dict):
+            raise TypeError("event data JSON root must be an object")
         event_type = raw.get("event_type", "")
         cls = self._registry.get(event_type)
         if cls is None:
@@ -192,6 +252,13 @@ class SQLiteEventBackend:
             logger.warning("Unknown event_type %r, falling back to Metadata", event_type)
             return Metadata.model_validate(raw)
         return cls.model_validate(raw)
+
+    def _try_deserialize(self, data: str, *, context: str) -> EventBase | None:
+        try:
+            return self._deserialize(data)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, PydanticValidationError) as e:
+            logger.warning("%s: skipping corrupt event data (%s)", context, type(e).__name__)
+            return None
 
     def _serialize(self, event: EventBase) -> str:
         return str(event.model_dump_json())
@@ -246,25 +313,43 @@ class SQLiteEventBackend:
             return fn()
 
     def get(self, tag: str) -> EventBase | None:
-        row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
+        try:
+            row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.warning("get(%s): corrupt/unreadable row, skipping (%s)", tag, type(e).__name__)
+            return None
         if row is None:
             return None
-        return self._deserialize(row[0])
+        return self._try_deserialize(row[0], context=f"get({tag})")
 
     def get_by_id(self, event_id: str) -> EventBase | None:
-        row = self._conn.execute(
-            "SELECT data FROM events WHERE event_id = ?", (event_id,)
-        ).fetchone()
+        try:
+            row = self._conn.execute(
+                "SELECT data FROM events WHERE event_id = ?", (event_id,)
+            ).fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.warning(
+                "get_by_id(%s): corrupt/unreadable row, skipping (%s)",
+                event_id,
+                type(e).__name__,
+            )
+            return None
         if row is None:
             return None
-        return self._deserialize(row[0])
+        return self._try_deserialize(row[0], context=f"get_by_id({event_id})")
 
     def update(self, tag: str, **fields: object) -> bool:
         def _do_update() -> bool:
             row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
             if row is None:
                 return False
-            event = self._deserialize(row[0])
+            event = self._try_deserialize(row[0], context=f"update({tag})")
+            if event is None:
+                return False
             for key, value in fields.items():
                 if key == "metadata":
                     event.metadata.update(typing.cast(dict, value))
@@ -297,7 +382,9 @@ class SQLiteEventBackend:
             row = self._conn.execute("SELECT data FROM events WHERE tag = ?", (tag,)).fetchone()
             if row is None:
                 return False
-            event = self._deserialize(row[0])
+            event = self._try_deserialize(row[0], context=f"set_status({tag})")
+            if event is None:
+                return False
             event.status = status
             new_data = self._serialize(event)
             with self._conn:
@@ -310,7 +397,13 @@ class SQLiteEventBackend:
         return self._retry_on_io_error(_do_set_status)
 
     def active_tags(self) -> list[str]:
-        rows = self._conn.execute("SELECT tag FROM active_tags ORDER BY position").fetchall()
+        try:
+            rows = self._conn.execute("SELECT tag FROM active_tags ORDER BY position").fetchall()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.error("active_tags(): table corrupt, returning empty (%s)", type(e).__name__)
+            return []
         return [r[0] for r in rows]
 
     def insert_active_tag(self, tag: str, index: int) -> None:
@@ -331,14 +424,27 @@ class SQLiteEventBackend:
         return cursor.rowcount > 0
 
     def all_events(self) -> Iterator[EventBase]:
-        rows = self._conn.execute("SELECT data FROM events ORDER BY insertion_order").fetchall()
+        try:
+            rows = self._conn.execute("SELECT data FROM events ORDER BY insertion_order").fetchall()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.error("all_events(): query failed due to corruption (%s)", type(e).__name__)
+            return
         for (data,) in rows:
-            yield self._deserialize(data)
+            if event := self._try_deserialize(data, context="all_events()"):
+                yield event
 
     def find_tag(self, event: EventBase) -> str | None:
-        row = self._conn.execute(
-            "SELECT tag FROM events WHERE event_id = ?", (event.id,)
-        ).fetchone()
+        try:
+            row = self._conn.execute(
+                "SELECT tag FROM events WHERE event_id = ?", (event.id,)
+            ).fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
+            logger.warning("find_tag(): corrupt table, returning None (%s)", type(e).__name__)
+            return None
         if row is None:
             return None
         return str(row[0])
@@ -360,19 +466,26 @@ class SQLiteEventBackend:
         #   - simple tags ("5")      → CAST("5" AS INTEGER) = 5
         #   - range tags ("2..40")   → substr after ".." → CAST("40" AS INTEGER) = 40
         # COALESCE handles the empty-table case where MAX returns NULL.
-        row = self._conn.execute(
-            """
-            SELECT COALESCE(MAX(
-                CAST(
-                    CASE WHEN instr(tag, '..') > 0
-                         THEN substr(tag, instr(tag, '..') + 2)
-                         ELSE tag
-                    END AS INTEGER
-                )
-            ), 0)
-            FROM events
-            """
-        ).fetchone()
+        try:
+            row = self._conn.execute(
+                """
+                SELECT COALESCE(MAX(
+                    CAST(
+                        CASE WHEN instr(tag, '..') > 0
+                             THEN substr(tag, instr(tag, '..') + 2)
+                             ELSE tag
+                        END AS INTEGER
+                    )
+                ), 0)
+                FROM events
+                """
+            ).fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            logger.warning(
+                "max_tag_num(): events table unreadable, starting tag counter at 1: %s",
+                type(e).__name__,
+            )
+            return 0
         return int(row[0])
 
     def __len__(self) -> int:
@@ -505,10 +618,22 @@ class SQLiteStorageManager:
     def _open_connection(self) -> sqlite3.Connection:
         """Create and configure a new SQLite connection."""
         conn = sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread)
-        conn.execute("PRAGMA journal_mode=WAL")
         # Retry up to 5 s on SQLITE_BUSY before raising, giving concurrent
         # readers time to release shared locks on virtiofs/FUSE mounts.
         conn.execute("PRAGMA busy_timeout=5000")
+        if _is_virtiofs(self._db_path):
+            # virtiofs (Docker Desktop file sharing) has weak fsync semantics.
+            # Avoid WAL entirely: its checkpoint step can lose pages on crash,
+            # producing zeroed pages. DELETE journal + FULL sync preserves the
+            # original page until the replacement is durably committed.
+            conn.execute("PRAGMA journal_mode=DELETE")
+            conn.execute("PRAGMA synchronous=FULL")
+            logger.info(
+                "Detected virtiofs at %s — using journal_mode=DELETE + synchronous=FULL",
+                self._db_path,
+            )
+        else:
+            conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
     def _reconnect(self) -> None:
