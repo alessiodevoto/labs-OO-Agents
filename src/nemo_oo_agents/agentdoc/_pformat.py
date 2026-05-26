@@ -440,6 +440,14 @@ def _is_structured_instance(obj: Any) -> bool:
             if not slot.startswith("_")
         )
 
+    # If the class defines its own __repr__ (not inherited from object),
+    # trust the library author's representation over field extraction.
+    for klass in obj_type.__mro__:
+        if klass is object:
+            break
+        if "__repr__" in klass.__dict__:
+            return False
+
     # Any other custom class instance with __dict__
     return True
 

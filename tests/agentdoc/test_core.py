@@ -831,23 +831,24 @@ class TestLargeValueTruncation:
         assert len(result) < 2000
 
     def test_doc_on_object_with_huge_repr(self):
-        """Test doc() on object whose __repr__ returns huge string."""
+        """Test doc() on object with huge data doesn't blow up context.
 
-        class HugeRepr:
+        Classes without __repr__ go through field extraction which shows
+        AST expressions (compact). Classes WITH __repr__ get repr() —
+        we trust the author's intent.
+        """
+
+        class HugeData:
             def __init__(self):
                 # Use public attribute so it shows in variables
                 self.data = "z" * 100_000
 
-            def __repr__(self):
-                return f"HugeRepr(data={self.data})"
-
-        obj = HugeRepr()
+        obj = HugeData()
         result = doc(obj)
 
-        # Should be compact - the huge data should not blow up context
-        # Now that we extract non-annotated instance attributes from __init__,
-        # we show the AST expression (e.g., "'z' * 100000") not the evaluated value
-        assert len(result) < 1000, f"doc() on huge repr too large: {len(result)}"
+        # Should be compact - field extraction shows the AST expression
+        # (e.g., "'z' * 100000") not the evaluated 100k-char value
+        assert len(result) < 1000, f"doc() on huge data too large: {len(result)}"
         # Verify the field is extracted and shown as an AST expression
         assert "data:" in result
 
