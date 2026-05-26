@@ -27,11 +27,29 @@ import types
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
+from uuid import uuid4
 
 # Cache of per-module _StandaloneAgent subclasses, keyed by module __name__.
 # Each subclass has __module__ set to the function's module so that
 # ActorRuntime.execute_code's filter_module_globals picks up the right symbols.
 _agent_cls_cache: dict[str, type] = {}
+
+# Per-Python-process token, generated once at module import.
+#
+# Blended into the standalone ``_agent_id`` (alongside the decorated function's
+# identity) so the resulting ``prompt_cache_key`` shards behave correctly:
+#
+# - Within one process, all calls to the same standalone function share a
+#   shard — fan-out like ``asyncio.gather(*(summarise(t) for t in texts))``
+#   keeps shared-prefix cache hits.
+# - Two separate Python processes running the same code get different shards
+#   — 50 parallel benchmark trials (cybergym-style) spread across 50 shards
+#   instead of compounding load on one (the ~15 req/min per-shard ceiling).
+#
+# Caveat: ``multiprocessing.fork`` workers inherit the parent's token; they
+# would collide on shards. Spawn-style multiprocessing and separate
+# ``python script.py`` invocations are unaffected.
+_PROCESS_AGENT_ID = uuid4().hex[:8]
 
 
 def _get_agent_cls(module_name: str) -> type:
@@ -41,8 +59,6 @@ def _get_agent_cls(module_name: str) -> type:
     """
     if module_name in _agent_cls_cache:
         return _agent_cls_cache[module_name]
-
-    from uuid import uuid4
 
     from nemo_oo_agents.config import TruncationConfig
     from nemo_oo_agents.context_blocks.render_config import RenderConfig
@@ -56,7 +72,7 @@ def _get_agent_cls(module_name: str) -> type:
         event_query = None
         _execution_config = None
 
-        def __init__(self, llm: Any) -> None:
+        def __init__(self, llm: Any, agent_id: str) -> None:
             self._llm = llm
             self._truncation = TruncationConfig()
             self.render_config = RenderConfig()
@@ -64,7 +80,9 @@ def _get_agent_cls(module_name: str) -> type:
             self.context_manager = ContextManager()
             self.runtime = ActorRuntime(self)
             # Used by ActorRuntime to default prompt_cache_key per agent.
-            self._agent_id = str(uuid4())
+            # The wrapper passes a deterministic id derived from the
+            # decorated function's identity so repeated calls share a shard.
+            self._agent_id = agent_id
 
     cls = type("_StandaloneAgent", (_StandaloneAgent,), {})
     # Setting __module__ makes inspect.getmodule(cls) return the function's module,
@@ -141,6 +159,17 @@ def create_standalone_wrapper(
     # Build the adapter once — func and strategy are decoration-time constants.
     _adapted = _make_adapter(func, strategy=strategy)
 
+    # Deterministic agent_id per (process, decorated function). See
+    # ``_PROCESS_AGENT_ID`` above for the design rationale; in short:
+    #
+    #   - same function, same process → same shard (fan-out cache hits)
+    #   - different functions, same process → different shards (prefixes
+    #     already diverge, no benefit to sharing)
+    #   - same function, different processes → different shards (50
+    #     parallel ``python script.py`` invocations spread their load
+    #     instead of stacking on one shard)
+    _standalone_agent_id = f"standalone:{_PROCESS_AGENT_ID}:{func.__module__}:{func.__qualname__}"
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         resolved_llm = llm
@@ -159,7 +188,7 @@ def create_standalone_wrapper(
 
         # Fresh agent per call — no shared state, history resets automatically
         agent_cls = _get_agent_cls(func.__module__)
-        agent = agent_cls(llm=resolved_llm)
+        agent = agent_cls(llm=resolved_llm, agent_id=_standalone_agent_id)
 
         return await agent.runtime._execute_with_generation(_adapted, args, kwargs, func.__name__)
 
