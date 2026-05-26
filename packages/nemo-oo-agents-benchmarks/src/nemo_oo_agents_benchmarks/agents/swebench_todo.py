@@ -212,7 +212,7 @@ class SWEBenchTodoAgent(
         t8 = self.todo.add(
             "Phase 3b: Regressions — run related tests", deps=[t7.id]
         )
-        t9 = self.todo.add(
+        self.todo.add(
             "Phase 3c: Review diff — git diff, no debug prints or spurious changes",
             deps=[t8.id],
         )
@@ -233,10 +233,7 @@ class SWEBenchTodoAgent(
         Follow the phases in self.todo. Mark each done as you complete it.
         Only return when tests pass and diff is clean.
         """
-        reasoning(
-            "I have self.shell and self.todo pre-filled with workflow phases. "
-            "I should start with Phase 1a: explore the repo structure."
-        )
+        # Start with Phase 1a: explore the repo structure
         r = await self.shell.ls(".", depth=3)
         print("=== Repo Structure ===")
         print(r.text)
