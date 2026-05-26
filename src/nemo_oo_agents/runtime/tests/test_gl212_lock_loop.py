@@ -88,6 +88,7 @@ class TestGenerationLockLoopChange:
         t1.start()
         assert phase1_done.wait(timeout=10), "Phase 1 timed out"
         t1.join(timeout=2)
+        assert not t1.is_alive(), "Phase 1 thread still alive after join"
         assert phase1_error[0] is None, f"Phase 1 failed: {phase1_error[0]}"
 
         # Phase 2: use on loop B (simulates agent loop restart)
@@ -122,6 +123,7 @@ class TestGenerationLockLoopChange:
         t2.start()
         assert phase2_done.wait(timeout=10), "Phase 2 timed out"
         t2.join(timeout=2)
+        assert not t2.is_alive(), "Phase 2 thread still alive after join"
         assert phase2_error[0] is None, f"Cross-loop contention raised: {phase2_error[0]}"
 
 
