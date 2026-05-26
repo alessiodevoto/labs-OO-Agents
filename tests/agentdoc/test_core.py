@@ -852,7 +852,6 @@ class TestLargeValueTruncation:
         # Verify the field is extracted and shown as an AST expression
         assert "data:" in result
 
-
     def test_doc_on_class_with_repr_uses_repr(self):
         """Classes with custom __repr__ should use repr(), not field extraction."""
 
