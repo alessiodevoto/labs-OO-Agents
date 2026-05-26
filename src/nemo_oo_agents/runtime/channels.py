@@ -767,8 +767,10 @@ class QueueManager:
         # Lazy-init: avoid requiring a running loop at construction time.
         # Published as an atomic tuple so _set_notify never sees a
         # half-initialized state from another thread.
-        if self._notify_pair is None:
-            self._notify_pair = (asyncio.Event(), asyncio.get_running_loop())
+        # Recreate if the loop changed (gl-212: TUI agent loop restart).
+        current_loop = asyncio.get_running_loop()
+        if self._notify_pair is None or self._notify_pair[1] is not current_loop:
+            self._notify_pair = (asyncio.Event(), current_loop)
 
         notify_event = self._notify_pair[0]
 

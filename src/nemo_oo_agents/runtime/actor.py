@@ -494,6 +494,7 @@ class ActorRuntime:
 
         # Lock for generation serialization (only one LLM generation session at a time)
         self._generation_lock = asyncio.Lock()
+        self._generation_lock_loop: asyncio.AbstractEventLoop | None = None
 
         # NOTE: Current generation context uses context variables (not instance attributes)
         # to support parallel nested calls via asyncio.gather.
@@ -514,6 +515,20 @@ class ActorRuntime:
         # Learned from response.usage.input_tokens after each successful LLM call.
         # Used by _archive_on_context_error to compute accurate archival targets.
         self._token_calibration_ratio: float | None = None
+
+    def _ensure_generation_lock_on_current_loop(self) -> None:
+        """Recreate _generation_lock if the event loop changed (gl-212).
+
+        asyncio.Lock binds to the first loop that contends it. In the TUI,
+        the agent loop can be recreated after a crash or ESC-cancel, leaving
+        the lock bound to the dead loop. Recreating it avoids RuntimeError.
+        """
+        loop = asyncio.get_running_loop()
+        if self._generation_lock_loop is None:
+            self._generation_lock_loop = loop
+        elif self._generation_lock_loop is not loop:
+            self._generation_lock = asyncio.Lock()
+            self._generation_lock_loop = loop
 
     def _archive_on_context_error(
         self,
@@ -2118,6 +2133,7 @@ class ActorRuntime:
 
                 # Only acquire lock if strategy requires it
                 if isinstance(strategy, GenerationStrategyABC) and strategy.requires_lock:
+                    self._ensure_generation_lock_on_current_loop()
                     async with self._generation_lock:
                         return await self._execute_with_generation(
                             method, args, kwargs, method_name
