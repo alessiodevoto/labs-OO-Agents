@@ -687,7 +687,9 @@ class SkillsCommand(Command):
 
         registry = getattr(self.agent, "skills", None)
         if not isinstance(registry, SkillRegistry):
-            return CommandResult.err("Agent has no SkillRegistry. Skills require self.skills = SkillRegistry(self).")
+            return CommandResult.err(
+                "Agent has no SkillRegistry. Skills require self.skills = SkillRegistry(self)."
+            )
 
         subcmd = args[0].lower()
         subargs = args[1:]
@@ -833,10 +835,7 @@ class SkillsCommand(Command):
             activated = set(registry.activated())
             if not all_names:
                 return CommandResult.ok(TextOutput("No skills found", "info"))
-            rows = [
-                [name, "\u2713" if name in activated else "", ""]
-                for name in all_names
-            ]
+            rows = [[name, "\u2713" if name in activated else "", ""] for name in all_names]
             return CommandResult.ok(
                 TableOutput(columns=["ID", "Active", "Description"], rows=rows, title="Skills"),
             )

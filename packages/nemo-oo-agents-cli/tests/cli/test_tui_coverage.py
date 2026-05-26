@@ -917,7 +917,9 @@ class TestSkillsCommandExecute:
         cmd = SkillsCommand(mock_console, mock_config, agent, skills_dirs=[Path(".")])
         result = await cmd.execute(["list"])
         assert result.success is False
-        assert any("SkillRegistry" in o.content for o in result.outputs if isinstance(o, TextOutput))
+        assert any(
+            "SkillRegistry" in o.content for o in result.outputs if isinstance(o, TextOutput)
+        )
 
     async def test_list_empty_skills(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
