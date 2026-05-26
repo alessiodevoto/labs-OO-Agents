@@ -882,6 +882,52 @@ class TestLargeValueTruncation:
         result = doc(SlotsWithRepr())
         assert "SlotsWithRepr(custom)" in result
 
+    def test_pydantic_still_uses_field_extraction_despite_repr(self):
+        """Pydantic models define __repr__ but should still use field extraction."""
+        from pydantic import BaseModel
+
+        class MyModel(BaseModel):
+            name: str = "hello"
+            count: int = 42
+
+        result = pformat(MyModel())
+        # Field extraction produces ClassName(field=value) style
+        assert "name=" in result
+        assert "hello" in result
+        assert "count=" in result
+
+    def test_dataclass_still_uses_field_extraction_despite_repr(self):
+        """Dataclasses define __repr__ but should still use field extraction."""
+        import dataclasses
+
+        @dataclasses.dataclass
+        class DC:
+            x: int = 1
+            y: str = "hi"
+
+        result = pformat(DC())
+        assert "x=" in result
+        assert "y=" in result
+        assert "hi" in result
+
+    def test_plain_class_with_repr_uses_repr_not_fields(self):
+        """Plain class with __repr__ should use repr, not extract fields."""
+        from nemo_oo_agents.agentdoc import pformat
+
+        class ToolLike:
+            def __init__(self):
+                self.cwd = "/tmp/project"
+                self._internal = "secret"
+
+            def __repr__(self):
+                return f"ToolLike(cwd={self.cwd!r})"
+
+        result = pformat(ToolLike())
+        # Should use __repr__, not field extraction
+        assert result == "ToolLike(cwd='/tmp/project')"
+        # Should NOT show _internal (repr doesn't include it)
+        assert "_internal" not in result
+
 
 class TestDocTruncationHeader:
     """Tests for truncation behavior in doc() output.
