@@ -680,3 +680,146 @@ class TestStandaloneScopedContext:
             ...
 
         assert await fn("input") == "combined"
+
+
+# ---------------------------------------------------------------------------
+# prompt_cache_key sharding for standalone functions
+# ---------------------------------------------------------------------------
+
+
+class _CaptureKwargsLLM(FakeLLMClient):
+    """FakeLLMClient that records ``prompt_cache_key`` from each acall."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.prompt_cache_keys: list[str | None] = []
+
+    async def acall(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Any = None,
+        output_model: Any = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        self.prompt_cache_keys.append(kwargs.get("prompt_cache_key"))
+        return await super().acall(messages, tools, output_model, **kwargs)
+
+
+class TestStandaloneAgentIdSharding:
+    """`prompt_cache_key` sharding contract for standalone functions.
+
+    Each standalone call creates a fresh agent stub. The stub's ``_agent_id``
+    feeds the actor's default ``prompt_cache_key = f"{agent_id}-{strategy_tag}"``.
+    The id must satisfy three properties:
+
+    1. Same function in the same process → same shard (fan-out cache hits).
+    2. Different functions in the same process → different shards (no benefit
+       to sharing because their cacheable prefixes already diverge).
+    3. Same function in different processes → different shards (50 parallel
+       benchmark trials shouldn't stack onto a single shard above the
+       per-shard rate-limit ceiling).
+
+    The wrapper derives the id from a per-process token blended with the
+    decorated function's identity (module + qualname).
+    """
+
+    @pytest.mark.asyncio
+    async def test_same_function_repeated_calls_share_cache_key(self) -> None:
+        """Two calls to the same standalone function → identical prompt_cache_key."""
+        fake_llm = _CaptureKwargsLLM(
+            scripted_responses=[
+                _resp('{"value": "first"}'),
+                _resp('{"value": "second"}'),
+            ]
+        )
+
+        @strategy(PredictStrategy(), llm=fake_llm)
+        async def classify(text: str) -> str:
+            """Classify {text}."""
+            ...
+
+        await classify("first")
+        await classify("second")
+
+        assert len(fake_llm.prompt_cache_keys) == 2
+        assert fake_llm.prompt_cache_keys[0] == fake_llm.prompt_cache_keys[1]
+        assert fake_llm.prompt_cache_keys[0] is not None
+        # The id must carry function identity so two different functions diverge
+        # (asserted in the next test) — sanity-check the format here.
+        assert "classify" in fake_llm.prompt_cache_keys[0]
+
+    @pytest.mark.asyncio
+    async def test_different_functions_get_different_cache_keys(self) -> None:
+        """Two different standalone functions → different prompt_cache_keys."""
+        fake_llm = _CaptureKwargsLLM(
+            scripted_responses=[
+                _resp('{"value": "en"}'),
+                _resp('{"value": "pos"}'),
+            ]
+        )
+
+        @strategy(PredictStrategy(), llm=fake_llm)
+        async def detect_language(text: str) -> str:
+            """Detect the language of {text}."""
+            ...
+
+        @strategy(PredictStrategy(), llm=fake_llm)
+        async def detect_sentiment(text: str) -> str:
+            """Detect the sentiment of {text}."""
+            ...
+
+        await detect_language("hello")
+        await detect_sentiment("hello")
+
+        assert len(fake_llm.prompt_cache_keys) == 2
+        assert fake_llm.prompt_cache_keys[0] != fake_llm.prompt_cache_keys[1]
+
+    @pytest.mark.asyncio
+    async def test_parallel_fanout_shares_cache_key(self) -> None:
+        """asyncio.gather() over the same standalone function shares one shard.
+
+        This is the load pattern the fresh-uuid behaviour broke most visibly —
+        N parallel calls to ``summarise`` would have produced N different keys
+        and lost all shared-prefix cache benefit.
+        """
+        fake_llm = _CaptureKwargsLLM(
+            scripted_responses=[_resp(f'{{"value": "r{i}"}}') for i in range(5)]
+        )
+
+        @strategy(PredictStrategy(), llm=fake_llm)
+        async def summarise(text: str) -> str:
+            """Summarise {text} in one sentence."""
+            ...
+
+        await asyncio.gather(*(summarise(f"text-{i}") for i in range(5)))
+
+        assert len(fake_llm.prompt_cache_keys) == 5
+        assert len(set(fake_llm.prompt_cache_keys)) == 1, (
+            f"Expected all 5 fan-out calls to share one prompt_cache_key, got "
+            f"{set(fake_llm.prompt_cache_keys)!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_agent_id_carries_per_process_token(self) -> None:
+        """The id format must include the module-level per-process token.
+
+        This is what spreads load when the same code is run as N separate
+        Python processes — each gets a different ``_PROCESS_AGENT_ID`` at
+        import time, so two trials of ``benchmark.py`` calling ``summarise``
+        end up on different shards.
+        """
+        from nemo_oo_agents import standalone as standalone_mod
+
+        fake_llm = _CaptureKwargsLLM(scripted_responses=[_resp('{"value": "x"}')])
+
+        @strategy(PredictStrategy(), llm=fake_llm)
+        async def summarise(text: str) -> str:
+            """Summarise {text}."""
+            ...
+
+        await summarise("input")
+
+        assert fake_llm.prompt_cache_keys[0] is not None
+        # Locks in the contract: if anyone ever drops the per-process token
+        # the cybergym-style multi-trial collision returns.
+        assert standalone_mod._PROCESS_AGENT_ID in fake_llm.prompt_cache_keys[0]
