@@ -179,6 +179,11 @@ async def _run(
         if hasattr(agent, "feedback") and agent.feedback is not None:
             agent.feedback.swebench = swebench_tools
 
+    # Auto-inject terminal tools for terminal-bench agents — Harbor YAML configs
+    # don't pass --tools, so we infer from agent_type rather than requiring it.
+    if agent_type.startswith("terminal-bench"):
+        tools = tools | {"terminal"}
+
     if "terminal" in tools:
         from nemo_oo_agents_benchmarks.tools import TerminalBenchTools
 
