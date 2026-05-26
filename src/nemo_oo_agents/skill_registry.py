@@ -473,27 +473,32 @@ class SkillRegistry(Skill):
         skill = getattr(self._agent, attr, None)
         if skill is None:
             return f"Skill {name!r} has no instance on agent"
-        # Try to reimport the module the skill class came from
         import importlib
         import sys as _sys
 
         mod_name = type(skill).__module__
-        if mod_name in _sys.modules:
-            try:
-                mod = importlib.reload(_sys.modules[mod_name])
-                # Find the Skill subclass in the reloaded module
-                from nemo_oo_agents.skill import Skill as _Skill
+        # For package modules (e.g. "excalidraw.__init__"), use the top-level package
+        top_pkg = mod_name.split(".")[0]
+        if top_pkg not in _sys.modules:
+            return f"Module {mod_name} not in sys.modules — cannot reload"
+        try:
+            # Clear all submodules so reimport gets fresh code from disk
+            prefix = top_pkg + "."
+            for key in [k for k in _sys.modules if k == top_pkg or k.startswith(prefix)]:
+                del _sys.modules[key]
+            mod = importlib.import_module(top_pkg)
+            # Find the Skill subclass in the reloaded module
+            from nemo_oo_agents.skill import Skill as _Skill
 
-                for obj in vars(mod).values():
-                    if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
-                        new_skill = obj()
-                        setattr(self._agent, attr, new_skill)
-                        new_skill.attach(self._agent)
-                        return f"Reloaded {name} (self.{attr})"
-                return f"Reloaded module {mod_name} but no Skill subclass found"
-            except Exception as e:
-                return f"Reload failed for {name}: {e}"
-        return f"Module {mod_name} not in sys.modules — cannot reload"
+            for obj in vars(mod).values():
+                if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
+                    new_skill = obj()
+                    setattr(self._agent, attr, new_skill)
+                    new_skill.attach(self._agent)
+                    return f"Reloaded {name} (self.{attr})"
+            return f"Reloaded module {top_pkg} but no Skill subclass found"
+        except Exception as e:
+            return f"Reload failed for {name}: {e}"
 
     # ------------------------------------------------------------------
     # Access
@@ -530,6 +535,69 @@ class SkillRegistry(Skill):
                 attr = attr_map.get(reg_name, name)
                 return getattr(agent, attr)
         raise AttributeError(f"No skill with name or category {name!r}")
+
+    # ------------------------------------------------------------------
+    # Status (context block rendering)
+    # ------------------------------------------------------------------
+
+    def status(self) -> str:
+        """Render the skills context block for the LLM.
+
+        Shows active tools and available-but-inactive skills with one-liners.
+        Excludes cmd.* (slash commands) since the agent cannot invoke them.
+        """
+        lines: list[str] = []
+
+        # Active skills (excluding cmd.*)
+        active_tools: list[tuple[str, str, str]] = []  # (name, attr, one_liner)
+        for name in sorted(self._activated):
+            if name.startswith("cmd."):
+                continue
+            attr = self._attr_map.get(name, "")
+            skill = getattr(self._agent, attr, None) if attr else None
+            if skill is None:
+                continue
+            doc_str = type(skill).__doc__ or ""
+            one_liner = doc_str.strip().split("\n")[0][:65]
+            active_tools.append((name, attr, one_liner))
+
+        if active_tools:
+            lines.append("Active Skills (use via self.<attr>, docs with doc(self.<attr>)):")
+            for _name, attr, desc in active_tools:
+                lines.append(f"  self.{attr:18s} {desc}")
+
+        # Available but not activated (excluding cmd.*)
+        available: list[tuple[str, str]] = []  # (name, one_liner)
+        for name in sorted(set(self._discovered.keys()) - self._activated):
+            if name.startswith("cmd."):
+                continue
+            # Try to get one-liner from loaded skill or entry point
+            attr = self._attr_map.get(name, "")
+            skill = getattr(self._agent, attr, None) if attr else None
+            if skill:
+                doc_str = type(skill).__doc__ or ""
+                one_liner = doc_str.strip().split("\n")[0][:65]
+            else:
+                entry = self._discovered.get(name)
+                if entry and entry.entry_point:
+                    try:
+                        cls = entry.entry_point.load()
+                        doc_str = cls.__doc__ or ""
+                        one_liner = doc_str.strip().split("\n")[0][:65]
+                    except Exception:
+                        one_liner = ""
+                else:
+                    one_liner = ""
+            available.append((name, one_liner))
+
+        if available:
+            if active_tools:
+                lines.append("")
+            lines.append("Available Skills (activate with self.skills.activate(['name'])):")
+            for name, desc in available:
+                lines.append(f"  {name:28s} {desc}")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Helpers

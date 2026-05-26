@@ -486,7 +486,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       attaches it as ``agent.<lib_name>`` automatically next session.
     - **Existing skill needs an update** — if the task surfaced a
       missing method, a clearer docstring, a better default, edit the
-      skill's library (``self.libs.edit_file(lib_name, path, old, new)``).
+      skill's library (edit with ``self.shell.edit()`` then ``self.libs.reload(lib_name)``).
 
     Don't over-do it. A task that was just "run these tests and report"
     doesn't need a new skill. But if you just invented a non-obvious way
@@ -685,6 +685,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.todo", self.todo)
         self.skills.register("superpowers.libwriting", self.libs)
         self.skills.activate(["nemo.*", "superpowers.*"])
+
+        # Show available skills to the LLM every turn
+        self.context.set_dynamic("skills", "self.skills.status()")
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)

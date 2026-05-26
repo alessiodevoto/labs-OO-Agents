@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class EventsApi(Skill):
-    """Query past events by type, tag, text, or call ID. Like a database, not an array.
+    """Query past events by type, tag, text, or call ID. Compact context by summarizing or collapsing events.
 
     Use self.events to search conversation history: tool calls, outputs, tasks, errors.
     All queries return events in chronological order. Tags are stable string labels
@@ -53,6 +53,16 @@ class EventsApi(Skill):
 
         # Check if a specific task was done
         tasks = events.query(type="Task", query="summarise")
+
+    Context compaction:
+        When context grows too large, use events to summarize or collapse
+        old history. The summarizer does this automatically at token budget
+        thresholds, but you can also compact manually:
+
+        events.query(limit=20)       # inspect what's taking space
+        # Summarization happens at the runtime level — old events get
+        # replaced by summary events with range tags like "1..22".
+        # After compaction, access originals via summary.children_tags.
 
     Load this library:
         doc(self.events)
