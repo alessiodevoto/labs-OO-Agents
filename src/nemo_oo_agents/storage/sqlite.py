@@ -481,6 +481,8 @@ class SQLiteEventBackend:
                 """
             ).fetchone()
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            if not _is_corruption_error(e):
+                raise
             logger.warning(
                 "max_tag_num(): events table unreadable, starting tag counter at 1: %s",
                 type(e).__name__,
