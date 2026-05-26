@@ -853,6 +853,37 @@ class TestLargeValueTruncation:
         assert "data:" in result
 
 
+    def test_doc_on_class_with_repr_uses_repr(self):
+        """Classes with custom __repr__ should use repr(), not field extraction."""
+
+        class WithRepr:
+            def __init__(self):
+                self.hidden = "not extracted"
+
+            def __repr__(self):
+                return "custom_repr_sentinel"
+
+        result = doc(WithRepr())
+        assert "custom_repr_sentinel" in result
+        assert "hidden" not in result
+
+    def test_slots_class_with_repr_uses_repr(self):
+        """__slots__-only classes with __repr__ should also trust repr()."""
+
+        class SlotsWithRepr:
+            __slots__ = ("x", "y")
+
+            def __init__(self):
+                self.x = 1
+                self.y = 2
+
+            def __repr__(self):
+                return "SlotsWithRepr(custom)"
+
+        result = doc(SlotsWithRepr())
+        assert "SlotsWithRepr(custom)" in result
+
+
 class TestDocTruncationHeader:
     """Tests for truncation behavior in doc() output.
 
