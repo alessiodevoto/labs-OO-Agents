@@ -5,8 +5,6 @@
 import asyncio
 import threading
 
-import pytest
-
 
 class TestGenerationLockLoopChange:
     """Verify ActorRuntime._generation_lock survives event loop changes."""
