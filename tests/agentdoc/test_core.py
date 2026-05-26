@@ -846,11 +846,12 @@ class TestLargeValueTruncation:
         obj = HugeData()
         result = doc(obj)
 
-        # Should be compact - field extraction shows the AST expression
-        # (e.g., "'z' * 100000") not the evaluated 100k-char value
+        # Should be compact - field extraction truncates the huge string
+        # using the str(len=N, ...) marker, not the raw 100k-char value
         assert len(result) < 1000, f"doc() on huge data too large: {len(result)}"
-        # Verify the field is extracted and shown as an AST expression
+        # Verify the field is extracted with truncation marker
         assert "data:" in result
+        assert "str(len=100000," in result
 
     def test_doc_on_class_with_repr_uses_repr(self):
         """Classes with custom __repr__ should use repr(), not field extraction."""
@@ -890,11 +891,16 @@ class TestLargeValueTruncation:
             name: str = "hello"
             count: int = 42
 
+            def __repr__(self):
+                return "PYDANTIC_REPR_SENTINEL"
+
         result = pformat(MyModel())
         # Field extraction produces ClassName(field=value) style
         assert "name=" in result
         assert "hello" in result
         assert "count=" in result
+        # Must NOT fall through to __repr__
+        assert "PYDANTIC_REPR_SENTINEL" not in result
 
     def test_dataclass_still_uses_field_extraction_despite_repr(self):
         """Dataclasses define __repr__ but should still use field extraction."""
@@ -905,10 +911,15 @@ class TestLargeValueTruncation:
             x: int = 1
             y: str = "hi"
 
+            def __repr__(self):
+                return "DC_REPR_SENTINEL"
+
         result = pformat(DC())
         assert "x=" in result
         assert "y=" in result
         assert "hi" in result
+        # Must NOT fall through to __repr__
+        assert "DC_REPR_SENTINEL" not in result
 
     def test_plain_class_with_repr_uses_repr_not_fields(self):
         """Plain class with __repr__ should use repr, not extract fields."""
