@@ -340,13 +340,17 @@ class SkillRegistry(Skill):
                 raise TypeError("Cannot pass kwargs with a pre-constructed Skill instance")
             skill = skill_or_cls
         else:
-            raise TypeError(f"Expected Skill class or instance, got {type(skill_or_cls)}")
+            # Accept any object (duck-typing) — tools like ShellTools may be
+            # mocked in tests or may not inherit from Skill in all contexts.
+            if kwargs:
+                raise TypeError("Cannot pass kwargs with a pre-constructed instance")
+            skill = skill_or_cls
 
         attr = self._attr_name(name)
         if attr.startswith("_") or attr in _RESERVED_ATTRS:
             raise ValueError(f"Cannot register skill with reserved attr name {attr!r}")
         setattr(self._agent, attr, skill)
-        if getattr(skill, "_agent", None) is None:
+        if hasattr(skill, "attach") and getattr(skill, "_agent", None) is None:
             skill.attach(self._agent)
         self._loaded.add(name)
         self._attr_map[name] = attr
