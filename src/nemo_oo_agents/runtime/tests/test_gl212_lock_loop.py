@@ -67,6 +67,7 @@ class TestGenerationLockLoopChange:
 
                 async def concurrent_acquires():
                     actor._ensure_generation_lock_on_current_loop()
+
                     async def acquire_and_release():
                         async with actor._generation_lock:
                             await asyncio.sleep(0.01)
@@ -100,6 +101,7 @@ class TestGenerationLockLoopChange:
 
                 async def concurrent_acquires():
                     actor._ensure_generation_lock_on_current_loop()
+
                     async def acquire_and_release():
                         async with actor._generation_lock:
                             await asyncio.sleep(0.01)
