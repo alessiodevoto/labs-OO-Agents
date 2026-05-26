@@ -190,6 +190,9 @@ class SWEBenchTodoAgent(
         if self.response_format:
             self.context["response_format"] = self.response_format
 
+        # Reset todo state so each evaluation starts with a clean slate.
+        self.todo.clear()
+
         # Pre-fill todos for the standard SWE-bench workflow
         t1 = self.todo.add("Phase 1a: Explore — repo structure, key files, test layout")
         t2 = self.todo.add(
