@@ -12,6 +12,7 @@ from __future__ import annotations
 #   swebench/basic      — SWE-bench Verified, single-pass CodeAct
 #   swebench/opt1       — SWE-bench Verified, opt1 (feedback loop)
 #   swebench/pro        — SWE-bench Pro, multi-language opt1 variant (gl-18)
+#   swebench/todo       — SWE-bench Verified, todo-driven single agent with ShellTools
 #   terminal-bench-1    — Terminal Bench 1 (stub, see gl-16)
 #   terminal-bench-2    — Terminal Bench 2 (stub, see gl-15)
 #   locomo              — LoCoMo / long-context memory (stub, see gl-14)
@@ -25,6 +26,7 @@ AGENT_CLASSES: dict[str, str] = {
     "swebench/basic": "nemo_oo_agents_benchmarks.agents.swebench_basic:SWEBenchBasicAgent",
     "swebench/opt1": "nemo_oo_agents_benchmarks.agents.swebench_opt1:SWEBenchOpt1Agent",
     "swebench/pro": "nemo_oo_agents_benchmarks.agents.swebench_pro:SWEBenchProAgent",
+    "swebench/todo": "nemo_oo_agents_benchmarks.agents.swebench_todo:SWEBenchTodoAgent",
     # Terminal Bench — stubs
     "terminal-bench-1": "nemo_oo_agents_benchmarks.agents.terminal_bench1:TerminalBench1Agent",
     "terminal-bench-2": "nemo_oo_agents_benchmarks.agents.terminal_bench2:TerminalBench2Agent",
