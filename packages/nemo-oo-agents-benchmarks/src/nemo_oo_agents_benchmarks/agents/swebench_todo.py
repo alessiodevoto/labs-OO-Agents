@@ -195,26 +195,18 @@ class SWEBenchTodoAgent(
 
         # Pre-fill todos for the standard SWE-bench workflow
         t1 = self.todo.add("Phase 1a: Explore — repo structure, key files, test layout")
-        t2 = self.todo.add(
-            "Phase 1b: Reproduce — run failing tests, read the error", deps=[t1.id]
-        )
+        t2 = self.todo.add("Phase 1b: Reproduce — run failing tests, read the error", deps=[t1.id])
         t3 = self.todo.add(
             "Phase 1c: Read test code — understand what the tests expect", deps=[t2.id]
         )
-        t4 = self.todo.add(
-            "Phase 1d: Trace root cause — find the bug in source code", deps=[t3.id]
-        )
+        t4 = self.todo.add("Phase 1d: Trace root cause — find the bug in source code", deps=[t3.id])
         t5 = self.todo.add(
             "Phase 1e: Summarise — rewrite the issue as a root-cause description",
             deps=[t4.id],
         )
         t6 = self.todo.add("Phase 2: Implement — fix all affected files", deps=[t5.id])
-        t7 = self.todo.add(
-            "Phase 3a: Verify — run failing tests, confirm they pass", deps=[t6.id]
-        )
-        t8 = self.todo.add(
-            "Phase 3b: Regressions — run related tests", deps=[t7.id]
-        )
+        t7 = self.todo.add("Phase 3a: Verify — run failing tests, confirm they pass", deps=[t6.id])
+        t8 = self.todo.add("Phase 3b: Regressions — run related tests", deps=[t7.id])
         self.todo.add(
             "Phase 3c: Review diff — git diff, no debug prints or spurious changes",
             deps=[t8.id],
