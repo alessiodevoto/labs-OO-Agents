@@ -581,7 +581,10 @@ class QueueManager:
         if running is loop:
             event.set()
         else:
-            loop.call_soon_threadsafe(event.set)
+            try:
+                loop.call_soon_threadsafe(event.set)
+            except (RuntimeError, AttributeError):
+                pass  # Loop closed or replaced (gl-212); race() will recreate
 
     # ---- factories -------------------------------------------------------
 
