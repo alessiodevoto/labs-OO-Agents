@@ -37,9 +37,7 @@ class TestCorruptEventResilience:
         storage._backend.store("1", event)
 
         # Corrupt the data column with invalid UTF-8 bytes
-        storage._conn.execute(
-            "UPDATE events SET data = CAST(X'80808080' AS TEXT) WHERE tag = '1'"
-        )
+        storage._conn.execute("UPDATE events SET data = CAST(X'80808080' AS TEXT) WHERE tag = '1'")
         storage._conn.commit()
 
         # Should not raise — returns None
@@ -53,9 +51,7 @@ class TestCorruptEventResilience:
         event_id = event.id
 
         # Write invalid JSON
-        storage._conn.execute(
-            "UPDATE events SET data = '{not valid json' WHERE tag = '1'"
-        )
+        storage._conn.execute("UPDATE events SET data = '{not valid json' WHERE tag = '1'")
         storage._conn.commit()
 
         result = storage._backend.get_by_id(event_id)
@@ -67,9 +63,7 @@ class TestCorruptEventResilience:
         storage._backend.store("1", event)
 
         # Store a zeroed blob where JSON event text is expected.
-        storage._conn.execute(
-            "UPDATE events SET data = zeroblob(4096) WHERE tag = '1'"
-        )
+        storage._conn.execute("UPDATE events SET data = zeroblob(4096) WHERE tag = '1'")
         storage._conn.commit()
 
         result = storage._backend.get("1")
@@ -134,9 +128,7 @@ class TestCorruptEventResilience:
             storage._backend.store(str(i), _make_event(str(i)))
 
         # Corrupt the middle event
-        storage._conn.execute(
-            "UPDATE events SET data = '{broken}' WHERE tag = '2'"
-        )
+        storage._conn.execute("UPDATE events SET data = '{broken}' WHERE tag = '2'")
         storage._conn.commit()
 
         events = list(storage._backend.all_events())
@@ -164,9 +156,7 @@ class TestCorruptEventResilience:
             storage._backend.store(str(i), _make_event(str(i)))
 
         # Corrupt one in the middle
-        storage._conn.execute(
-            "UPDATE events SET data = CAST(X'FF' AS TEXT) WHERE tag = '3'"
-        )
+        storage._conn.execute("UPDATE events SET data = CAST(X'FF' AS TEXT) WHERE tag = '3'")
         storage._conn.commit()
 
         # get() on the corrupt tag returns None
@@ -196,7 +186,6 @@ class TestCorruptEventResilience:
         assert backend._next_tag_num == 1
 
 
-
 # ─── P1: virtiofs detection ───────────────────────────────────────────────
 
 
@@ -208,20 +197,28 @@ class TestVirtiofsDetection:
 
     @patch("subprocess.run")
     def test_detects_virtiofs_in_df_output(self, mock_run):
-        mock_run.return_value = type("Result", (), {
-            "stdout": "Filesystem     Type  1K-blocks  Used Available Use% Mounted on\n"
-                      "bind-abc123    virtiofs 971350180 886768724  84581456  92% /Users/dev\n",
-            "returncode": 0,
-        })()
+        mock_run.return_value = type(
+            "Result",
+            (),
+            {
+                "stdout": "Filesystem     Type  1K-blocks  Used Available Use% Mounted on\n"
+                "bind-abc123    virtiofs 971350180 886768724  84581456  92% /Users/dev\n",
+                "returncode": 0,
+            },
+        )()
         assert _is_virtiofs("/Users/dev/project/test.db") is True
 
     @patch("subprocess.run")
     def test_non_virtiofs_returns_false(self, mock_run):
-        mock_run.return_value = type("Result", (), {
-            "stdout": "Filesystem     Type  1K-blocks  Used Available Use% Mounted on\n"
-                      "/dev/sda1      ext4  971350180 886768724  84581456  92% /\n",
-            "returncode": 0,
-        })()
+        mock_run.return_value = type(
+            "Result",
+            (),
+            {
+                "stdout": "Filesystem     Type  1K-blocks  Used Available Use% Mounted on\n"
+                "/dev/sda1      ext4  971350180 886768724  84581456  92% /\n",
+                "returncode": 0,
+            },
+        )()
         assert _is_virtiofs("/home/user/test.db") is False
 
     @patch("subprocess.run", side_effect=FileNotFoundError("df not found"))
@@ -265,8 +262,9 @@ class TestVirtiofsDetection:
         def recording_connect(*args, **kwargs):
             return RecordingConnection(real_connect(*args, **kwargs))
 
-        with patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=True), patch(
-            "sqlite3.connect", side_effect=recording_connect
+        with (
+            patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=True),
+            patch("sqlite3.connect", side_effect=recording_connect),
         ):
             sm = SQLiteStorageManager(tmp_db)
             sm.close()
@@ -274,7 +272,6 @@ class TestVirtiofsDetection:
         assert "PRAGMA journal_mode=WAL" not in seen_pragmas
         assert "PRAGMA journal_mode=DELETE" in seen_pragmas
         assert "PRAGMA synchronous=FULL" in seen_pragmas
-
 
     def test_synchronous_normal_on_ext4(self, tmp_db):
         """Storage manager uses default synchronous on non-virtiofs."""
