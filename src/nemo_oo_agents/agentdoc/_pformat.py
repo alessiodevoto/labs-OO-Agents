@@ -1101,6 +1101,29 @@ def _format_instance_repr(
             parts.append(f"{name}={value_str}")
             field_count += 1
 
+    # If no fields were extracted but the class defines a custom __repr__,
+    # fall back to repr — the library author likely provides a richer view
+    # (e.g. pandas DataFrame, matplotlib objects).
+    if not parts:
+        for klass in obj_type.__mro__:
+            if klass is object:
+                break
+            if "__repr__" in klass.__dict__:
+                try:
+                    r = repr(obj)
+                except Exception:
+                    break
+                if max_string is not None and len(r) > max_string:
+                    n = len(r)
+                    n_head = (max_string + 1) // 2
+                    n_tail = max_string - n_head
+                    head_repr = repr(r[:n_head])
+                    if n_tail > 0:
+                        tail_repr = repr(r[-n_tail:])
+                        return f"{type_name}(repr_len={n}, [:{n_head}]={head_repr}, [-{n_tail}:]={tail_repr})"
+                    return f"{type_name}(repr_len={n}, [:{n_head}]={head_repr})"
+                return r
+
     return f"{type_name}({', '.join(parts)})"
 
 

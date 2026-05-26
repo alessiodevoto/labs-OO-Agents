@@ -55,7 +55,7 @@ from nemo_oo_agents.runtime.context_manager import ContextManager  # noqa: E402
 # Export event filtering
 from nemo_oo_agents.runtime.event_query import EventQuery  # noqa: E402
 from nemo_oo_agents.runtime.events import EventsApi  # noqa: E402
-from nemo_oo_agents.skill import Skill, TextSkill, slash_command, get_slash_commands  # noqa: E402
+from nemo_oo_agents.skill import Skill, TextSkill, get_slash_commands, slash_command  # noqa: E402
 from nemo_oo_agents.skill_registry import skill_from_module  # noqa: E402
 
 # Export storage
@@ -123,6 +123,8 @@ __all__ = [
     "Agent",
     "Skill",
     "TextSkill",
+    "slash_command",
+    "get_slash_commands",
     "skill_from_module",
     "LibraryManager",
     "strategy",
