@@ -41,6 +41,13 @@ models:
     top_p: 0.7
     max_tokens: 16384
 
+  nemotron-3-ultra-preview:
+    model_name: openai/nvidia/nvidia/nemotron-3-ultra-preview
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 262144
+    max_tokens: 16384
+
   nemotron-super-49b:
     model_name: openai/nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5
     api_base: https://inference-api.nvidia.com/v1
