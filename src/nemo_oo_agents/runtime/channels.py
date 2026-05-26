@@ -561,6 +561,9 @@ class QueueManager:
         # construction time. Stored as a (event, loop) tuple for
         # atomic publication to _set_notify from other threads.
         self._notify_pair: tuple[asyncio.Event, asyncio.AbstractEventLoop] | None = None
+        # Thread-safe flag: set by _set_notify when it can't deliver a wake
+        # (stale/closed loop). race() checks this after recreating the pair.
+        self._notify_pending = False
 
     def _set_notify(self) -> None:
         """Callback passed to channels; sets the _notify event.
@@ -584,7 +587,7 @@ class QueueManager:
             try:
                 loop.call_soon_threadsafe(event.set)
             except (RuntimeError, AttributeError):
-                pass  # Loop closed or replaced (gl-212); race() will recreate
+                self._notify_pending = True  # race() will consume on next call
 
     # ---- factories -------------------------------------------------------
 
@@ -780,6 +783,12 @@ class QueueManager:
         # Clear before checking fast path — any put() that arrives
         # between here and the await will re-set it.
         notify_event.clear()
+
+        # Consume pending wake that _set_notify couldn't deliver (gl-212).
+        # Must come AFTER clear() so the event stays set for the slow path.
+        if self._notify_pending:
+            self._notify_pending = False
+            notify_event.set()
 
         # Fast path: any queue channel already has an item — return
         # without creating tasks. Preserves FIFO by registration order.
