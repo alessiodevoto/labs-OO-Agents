@@ -752,6 +752,7 @@ class TUIApplication:
         # Wait for the first user message (already queued by submit_message
         # that started us). qsize()>0 → get() returns immediately.
         item = await user_messages_in.get()
+        self._in_respond = True
         self._on_dispatcher_dequeued()
         notification: dict[str, list] = {"user_messages": [item]}
 
@@ -848,6 +849,7 @@ class TUIApplication:
                         val = ch._items.popleft()
                         ch._fire_on_get(val)
                         pending.setdefault(ch.name, []).append(val)
+            self._in_respond = True
             self._on_dispatcher_dequeued()
             notification = pending
 
