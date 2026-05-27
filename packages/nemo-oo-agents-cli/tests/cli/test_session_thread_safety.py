@@ -156,28 +156,18 @@ class TestInlineWrites:
         finally:
             sm.close()
 
-    def test_threaded_flag_is_always_false(self, tmp_path):
-        """The _threaded flag is always False (writer thread removed)."""
+    def test_no_writer_thread(self, tmp_path):
+        """No background writer thread exists (all writes are inline)."""
         sm = _make_sm(tmp_path)
         try:
-            assert not sm._threaded
-        finally:
-            sm.close()
-
-        # Also verify with check_same_thread=True
-        sid = str(uuid.uuid4())
-        storage = SQLiteStorageManager(tmp_path / f"{sid}.db")
-        sm2 = SessionManager(
-            storage=storage, session_id=sid, model="test", agent_cls="T", working_dir=""
-        )
-        try:
-            assert not sm2._threaded
-            sm2.record_user("inline write")
-            events = list(sm2._event_manager._backend.all_events())
+            assert not hasattr(sm, "_writer_thread")
+            # Writes work inline
+            sm.record_user("inline write")
+            events = list(sm._event_manager._backend.all_events())
             user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
             assert len(user_events) == 1
         finally:
-            sm2.close()
+            sm.close()
 
     def test_concurrent_read_write_from_agent_and_session(self, tmp_path):
         """Simulate the real TUI pattern: agent thread reads while session writes.

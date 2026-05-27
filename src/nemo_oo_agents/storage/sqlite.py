@@ -207,16 +207,17 @@ class SQLiteEventBackend:
         (class name, or explicit event_type default).  Logs a warning if the
         key already maps to a different class.
         """
-        event_type = _registry_key(cls)
-        existing = self._registry.get(event_type)
-        if existing is not None and existing is not cls:
-            logger.warning(
-                "register_event_type: %r overwrites existing %s for event_type %r",
-                cls.__name__,
-                existing.__name__,
-                event_type,
-            )
-        self._registry[event_type] = cls
+        with self._lock:
+            event_type = _registry_key(cls)
+            existing = self._registry.get(event_type)
+            if existing is not None and existing is not cls:
+                logger.warning(
+                    "register_event_type: %r overwrites existing %s for event_type %r",
+                    cls.__name__,
+                    existing.__name__,
+                    event_type,
+                )
+            self._registry[event_type] = cls
 
     def _max_insertion_order(self) -> int:
         try:
@@ -436,6 +437,8 @@ class SQLiteEventBackend:
             return cursor.rowcount > 0
 
     def all_events(self) -> Iterator[EventBase]:
+        # fetchall() under lock, yield outside: avoids holding the lock during
+        # potentially slow deserialization while iterating large event sets.
         with self._lock:
             try:
                 rows = self._conn.execute("SELECT data FROM events ORDER BY insertion_order").fetchall()

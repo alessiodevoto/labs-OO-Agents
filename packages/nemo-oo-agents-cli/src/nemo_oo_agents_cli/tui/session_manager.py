@@ -15,9 +15,7 @@ exposes the same public API as before (``record_user``,
 
 import json
 import logging
-import queue
 import sqlite3
-import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -130,17 +128,7 @@ class SessionManager:
                 )
             )
 
-        # Writer thread removed: the SQLiteEventBackend now uses a
-        # threading.RLock so all callers can write from any thread safely.
-        self._threaded = False
 
-    def _start_writer(self) -> None:
-        """No-op — kept for API compatibility. Writer thread is no longer used."""
-        pass
-
-    def _enqueue_write(self, fn, *args) -> None:
-        """Execute a write operation. Always inline — the DB lock serializes access."""
-        fn(*args)
 
     @property
     def agent_db_path(self) -> Path:
@@ -160,7 +148,7 @@ class SessionManager:
         self._name = name
         if user_named:
             self._user_named = True
-        self._enqueue_write(self._do_rename, name, user_named)
+        self._do_rename(name, user_named)
 
     def _do_rename(self, name: str, user_named: bool) -> None:
         from .tui_events import TUISessionRename
@@ -178,7 +166,7 @@ class SessionManager:
 
     def record_user(self, text: str) -> None:
         """Store the user's raw input as a TUIUserInput metadata event."""
-        self._enqueue_write(self._do_record_user, text)
+        self._do_record_user(text)
 
     def _do_record_user(self, text: str) -> None:
         from .tui_events import TUIUserInput
