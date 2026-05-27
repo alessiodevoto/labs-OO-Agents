@@ -7,10 +7,10 @@ import shlex
 from pathlib import Path
 from typing import Annotated, Any
 
-from nemo_oo_agents.agentdoc import hidden
-
 import yaml
 from pydantic import BaseModel
+
+from nemo_oo_agents.agentdoc import hidden
 
 # ---------------------------------------------------------------------------
 # @slash_command decorator
@@ -24,7 +24,13 @@ class SlashCommandMeta:
 
     __slots__ = ("name", "argument_hint", "user_only", "completions")
 
-    def __init__(self, name: str, argument_hint: str | None, user_only: bool, completions: tuple[str, ...] = ()):
+    def __init__(
+        self,
+        name: str,
+        argument_hint: str | None,
+        user_only: bool,
+        completions: tuple[str, ...] = (),
+    ):
         self.name = name
         self.argument_hint = argument_hint
         self.user_only = user_only
@@ -59,7 +65,11 @@ def slash_command(
     """
 
     def decorator(fn):
-        setattr(fn, _SLASH_COMMAND_ATTR, SlashCommandMeta(name, argument_hint, user_only, tuple(completions)))
+        setattr(
+            fn,
+            _SLASH_COMMAND_ATTR,
+            SlashCommandMeta(name, argument_hint, user_only, tuple(completions)),
+        )
         return fn
 
     return decorator

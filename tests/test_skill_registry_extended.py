@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for SkillRegistry — file-based discovery, deps, libs, reload."""
 
-import sys
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,11 +14,13 @@ from nemo_oo_agents.skill_registry import SkillRegistry
 
 class FakeSkill(Skill):
     """A test skill."""
+
     requires: tuple[str, ...] = ()
 
 
 class DepSkill(Skill):
     """Skill that declares a dependency."""
+
     requires = ("nemo.base",)
 
 
@@ -47,13 +48,15 @@ class TestDiscoverSkillsDirs:
     def test_python_skill_file_discovered(self, registry, agent, tmp_path):
         """A .py file with a Skill subclass is discovered as ext.<name>."""
         skill_file = tmp_path / "my_tool.py"
-        skill_file.write_text(textwrap.dedent("""
+        skill_file.write_text(
+            textwrap.dedent("""
             from nemo_oo_agents.skill import Skill
 
             class MyTool(Skill):
                 \"\"\"A custom tool.\"\"\"
                 pass
-        """))
+        """)
+        )
         registry.discover_skills_dirs([tmp_path])
         assert "ext.my_tool" in registry.loaded()
         assert hasattr(agent, "my_tool")
@@ -61,10 +64,12 @@ class TestDiscoverSkillsDirs:
     def test_underscore_files_skipped(self, registry, tmp_path):
         """Files starting with _ are not loaded."""
         skill_file = tmp_path / "_private.py"
-        skill_file.write_text(textwrap.dedent("""
+        skill_file.write_text(
+            textwrap.dedent("""
             from nemo_oo_agents.skill import Skill
             class Priv(Skill): pass
-        """))
+        """)
+        )
         registry.discover_skills_dirs([tmp_path])
         assert "ext._private" not in registry.loaded()
 
@@ -72,7 +77,9 @@ class TestDiscoverSkillsDirs:
         """A directory with SKILL.md is discovered as cmd.<id>."""
         skill_dir = tmp_path / "my-cmd"
         skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text("---\nname: my-cmd\ndescription: A test command\n---\nDo the thing.\n")
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: my-cmd\ndescription: A test command\n---\nDo the thing.\n"
+        )
         registry.discover_skills_dirs([tmp_path])
         assert "cmd.my-cmd" in registry.loaded()
 
@@ -107,7 +114,7 @@ class TestDiscoverLibs:
         (lib_dir / "__init__.py").write_text(
             "from nemo_oo_agents.skill import Skill\n\n"
             "class MyLibSkill(Skill):\n"
-            "    \"\"\"A library skill.\"\"\"\n"
+            '    """A library skill."""\n'
         )
         registry.discover_libs(tmp_path)
         assert "local.my_lib" in registry.loaded()
@@ -129,14 +136,18 @@ class TestDiscoverLibs:
         """A library already loaded is not re-imported."""
         lib_dir = tmp_path / "dup_lib"
         lib_dir.mkdir()
-        (lib_dir / "pyproject.toml").write_text(textwrap.dedent("""
+        (lib_dir / "pyproject.toml").write_text(
+            textwrap.dedent("""
             [project]
             name = "dup-lib"
-        """))
-        (lib_dir / "__init__.py").write_text(textwrap.dedent("""
+        """)
+        )
+        (lib_dir / "__init__.py").write_text(
+            textwrap.dedent("""
             from nemo_oo_agents.skill import Skill
             class DupSkill(Skill): pass
-        """))
+        """)
+        )
         # Pre-register to simulate already loaded
         registry.register("local.dup_lib", FakeSkill())
         registry.discover_libs(tmp_path)

@@ -349,12 +349,13 @@ class SkillRegistry(Skill):
                 if attr_name.startswith("_") or attr_name in _RESERVED_ATTRS:
                     logger.warning("Refusing to load skill with reserved name %s", attr_name)
                     continue
-                if hasattr(self._agent, attr_name) and attr_name not in {
-                    v for v in self._attr_map.values()
-                }:
+                if hasattr(self._agent, attr_name) and attr_name not in set(
+                    self._attr_map.values()
+                ):
                     logger.warning(
                         "Skill %s overwrites existing agent attr '%s'",
-                        name, attr_name,
+                        name,
+                        attr_name,
                     )
                 setattr(self._agent, attr_name, skill)
                 skill.attach(self._agent)

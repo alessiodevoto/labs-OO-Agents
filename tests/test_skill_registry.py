@@ -165,6 +165,7 @@ class TestActivation:
         assert "nemo.auto" in reg.loaded()
         assert "nemo.auto" in reg.activated()
 
+
 # ---------------------------------------------------------------------------
 # Tests: Context Block Registration
 # ---------------------------------------------------------------------------
