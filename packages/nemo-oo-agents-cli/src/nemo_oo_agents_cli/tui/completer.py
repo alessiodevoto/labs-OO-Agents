@@ -196,33 +196,30 @@ class Completer:
     # ------------------------------------------------------------------
 
     def _skill_id_completions(self, text: str, prefix: str) -> list[CompletionItem]:
-        try:
-            from nemo_oo_agents import SkillManager
-        except ImportError:
+        agent = getattr(self._registry, "agent", None)
+        if agent is None:
             return []
-
-        skills_dirs = getattr(self._registry, "skills_dirs", None)
-        if not skills_dirs:
+        skills_reg = getattr(agent, "skills", None)
+        if skills_reg is None:
             return []
 
         partial = text[len(prefix) :]
+        items = []
         try:
-            skills = SkillManager.discover(skills_dirs)
+            for sid in sorted(skills_reg.discovered()):
+                if partial and not sid.startswith(partial):
+                    continue
+                entry = skills_reg._discovered.get(sid)
+                desc = getattr(entry, "category", "") if entry else ""
+                items.append(
+                    CompletionItem(
+                        text=prefix + sid,
+                        display=prefix + sid,
+                        description=desc,
+                    )
+                )
         except Exception:
             return []
-
-        items = []
-        for sid, skill in sorted(skills.items()):
-            if partial and not sid.startswith(partial):
-                continue
-            desc = getattr(skill, "description", "")
-            items.append(
-                CompletionItem(
-                    text=prefix + sid,
-                    display=prefix + sid,
-                    description=desc,
-                )
-            )
         return items
 
     # ------------------------------------------------------------------

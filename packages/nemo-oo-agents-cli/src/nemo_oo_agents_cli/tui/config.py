@@ -187,7 +187,7 @@ class Config:
             cfg.tui.trace_dir = None
 
         # ── Skills-dirs ordering ──────────────────────────────────────
-        # Intentional precedence (first wins in SkillManager.install):
+        # Intentional precedence (first wins in SkillRegistry.discover_skills_dirs):
         #   1. --skills-dir from the CLI / env (user-explicit)
         #   2. Entry-point discovery (package-provided, e.g. wtf-issues)
         #   3. Default locations (~/.claude/commands, etc.) as fallback
