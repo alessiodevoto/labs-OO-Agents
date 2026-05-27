@@ -185,13 +185,13 @@ class SWEBenchTodoAgent(
             self.problem_statement = task_input.get("problem_statement", "")
             self.response_format = task_input.get("response_format", "")
 
-        if self.initial_observation:
-            self.context["initial_observation"] = self.initial_observation
-        if self.response_format:
-            self.context["response_format"] = self.response_format
-
-        # Reset todo state so each evaluation starts with a clean slate.
+        # Reset stateful tools so each evaluation starts clean.
+        self.shell = ShellTools(cwd="/testbed")
         self.todo.clear()
+
+        # Set context blocks unconditionally (clear stale values from prior runs).
+        self.context["initial_observation"] = self.initial_observation or None
+        self.context["response_format"] = self.response_format or None
 
         # Pre-fill todos for the standard SWE-bench workflow
         t1 = self.todo.add("Phase 1a: Explore — repo structure, key files, test layout")
