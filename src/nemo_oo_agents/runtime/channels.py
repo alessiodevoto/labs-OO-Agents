@@ -561,6 +561,9 @@ class QueueManager:
         # construction time. Stored as a (event, loop) tuple for
         # atomic publication to _set_notify from other threads.
         self._notify_pair: tuple[asyncio.Event, asyncio.AbstractEventLoop] | None = None
+        # Thread-safe flag: set by _set_notify when it can't deliver a wake
+        # (stale/closed loop). race() checks this after recreating the pair.
+        self._notify_pending = False
 
     def _set_notify(self) -> None:
         """Callback passed to channels; sets the _notify event.
@@ -581,7 +584,10 @@ class QueueManager:
         if running is loop:
             event.set()
         else:
-            loop.call_soon_threadsafe(event.set)
+            try:
+                loop.call_soon_threadsafe(event.set)
+            except (RuntimeError, AttributeError):
+                self._notify_pending = True  # race() will consume on next call
 
     # ---- factories -------------------------------------------------------
 
@@ -767,14 +773,22 @@ class QueueManager:
         # Lazy-init: avoid requiring a running loop at construction time.
         # Published as an atomic tuple so _set_notify never sees a
         # half-initialized state from another thread.
-        if self._notify_pair is None:
-            self._notify_pair = (asyncio.Event(), asyncio.get_running_loop())
+        # Recreate if the loop changed (gl-212: TUI agent loop restart).
+        current_loop = asyncio.get_running_loop()
+        if self._notify_pair is None or self._notify_pair[1] is not current_loop:
+            self._notify_pair = (asyncio.Event(), current_loop)
 
         notify_event = self._notify_pair[0]
 
         # Clear before checking fast path — any put() that arrives
         # between here and the await will re-set it.
         notify_event.clear()
+
+        # Consume pending wake that _set_notify couldn't deliver (gl-212).
+        # Must come AFTER clear() so the event stays set for the slow path.
+        if self._notify_pending:
+            self._notify_pending = False
+            notify_event.set()
 
         # Fast path: any queue channel already has an item — return
         # without creating tasks. Preserves FIFO by registration order.
