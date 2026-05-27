@@ -13,16 +13,21 @@ verifier_timeout_multiplier: 3.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 16
+  n_concurrent_trials: 8
   quiet: false
 
 environment:
   type: docker
+  env:
+    NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
   mounts_json:
     - type: bind
       source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor
       target: /opt/harbor
       read_only: true
+    - type: bind
+      source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/installed-agent
+      target: /installed-agent
 
 agents:
   - name: nemo-oo-agents

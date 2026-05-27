@@ -30,7 +30,7 @@ _REWARD_TRAP = (
     "trap '_ec=$?;"
     ' [ "$_ec" -eq 0 ] && echo 1 > /logs/verifier/reward.txt'
     " || echo 0 > /logs/verifier/reward.txt;"
-    " exit \"$_ec\"' EXIT\n"
+    ' exit "$_ec"\' EXIT\n'
 )
 
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -114,6 +114,33 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
     dockerfile = src / "Dockerfile"
     if dockerfile.exists():
         shutil.copy2(dockerfile, env_dir / "Dockerfile")
+    else:
+        # Some tasks use a docker-compose.yaml that builds from a sub-context
+        # (e.g. context: client). For these, write a Harbor-compatible
+        # docker-compose.yaml that overrides the build context.
+        orig_compose = src / "docker-compose.yaml"
+        if orig_compose.exists():
+            orig_compose_data: dict[str, Any] = yaml.safe_load(orig_compose.read_text())
+            for svc_config in (orig_compose_data.get("services") or {}).values():
+                build = svc_config.get("build") or {}
+                if isinstance(build, dict):
+                    context = build.get("context", "")
+                    dockerfile_rel = build.get("dockerfile", "Dockerfile")
+                    if context and (src / context / dockerfile_rel).exists():
+                        harbor_compose = {
+                            "services": {
+                                "main": {
+                                    "build": {
+                                        "context": context,
+                                        "dockerfile": dockerfile_rel,
+                                    }
+                                }
+                            }
+                        }
+                        (env_dir / "docker-compose.yaml").write_text(
+                            yaml.dump(harbor_compose, default_flow_style=False)
+                        )
+                        break
 
     # Copy all non-metadata, non-test files (data files referenced by COPY).
     skip_names = {
