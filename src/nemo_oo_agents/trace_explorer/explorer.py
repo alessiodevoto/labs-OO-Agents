@@ -30,7 +30,10 @@ import sys
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
 
 from nemo_oo_agents.agentdoc import pformat as _pformat
 
@@ -6667,11 +6670,11 @@ def main() -> None:
 
 async def _try_thin_client(
     viewer_url: str, session_id: str, root_generation: int | None
-) -> "TraceExplorerClient | None":
+) -> TraceExplorerClient | None:
     """Try to connect via thin-client endpoints; return None if unavailable."""
-    from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
-
     import httpx
+
+    from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
 
     base = viewer_url.rstrip("/")
     try:
