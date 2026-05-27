@@ -14,6 +14,8 @@ from pathlib import Path
 
 import click
 
+_RESUME_LAST = "__last__"
+
 
 @click.command()
 @click.option(
@@ -87,7 +89,7 @@ import click
     "-c",
     "continue_session",
     is_flag=False,
-    flag_value="__last__",
+    flag_value=_RESUME_LAST,
     default=None,
     help="Resume a session: -c (last session) or -c <short-hash>",
 )
@@ -135,9 +137,9 @@ def command(
         python=python,
     )
 
-    continue_last = continue_session == "__last__"
+    continue_last = continue_session == _RESUME_LAST
     resume_session_id = (
-        continue_session if continue_session and continue_session != "__last__" else None
+        continue_session if continue_session and continue_session != _RESUME_LAST else None
     )
 
     try:

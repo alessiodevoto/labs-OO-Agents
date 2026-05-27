@@ -12,6 +12,8 @@ import sys
 
 import click
 
+_RESUME_LAST = "__last__"
+
 
 @click.command()
 @click.option("--model", "-m", help="LLM model to use (overrides config default)")
@@ -55,7 +57,7 @@ import click
     "-c",
     "continue_session",
     is_flag=False,
-    flag_value="__last__",
+    flag_value=_RESUME_LAST,
     default=None,
     help="Resume a session: -c (last session) or -c <short-hash>",
 )
@@ -267,7 +269,7 @@ def _build_tui_argv(
     if python:
         argv.append("--python")
     if continue_session:
-        if continue_session == "__last__":
+        if continue_session == _RESUME_LAST:
             argv.append("--continue")
         else:
             argv += ["--continue", continue_session]
