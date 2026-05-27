@@ -2566,7 +2566,10 @@ class CommandHandler:
                     msg = f"/{cmd_name}: {e.message}"
                     if e.hint:
                         msg += f"\nUsage: /{cmd_name} {e.hint}"
-                    return CommandResult.err(msg)
+                    result = CommandResult.err(msg)
+                    for output in result.outputs:
+                        await self.frontend.render(output)
+                    return result
 
                 result_val = skill._method(**kwargs)
                 if inspect.isawaitable(result_val):
