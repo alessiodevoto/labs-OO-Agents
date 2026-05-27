@@ -32,6 +32,7 @@ def _make_otlp_spans():
 @pytest.fixture
 def app():
     from fastapi import FastAPI
+
     from nemo_oo_agents.viewer.explorer_routes import router
     test_app = FastAPI()
     test_app.include_router(router)

@@ -70,7 +70,8 @@ def _make_multi_agent_otlp_spans():
 @pytest.fixture
 def app():
     from fastapi import FastAPI
-    from nemo_oo_agents.viewer.explorer_routes import router, clear_explorer_cache
+
+    from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache, router
     clear_explorer_cache()
     test_app = FastAPI()
     test_app.include_router(router)

@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for trace explorer thin-client path (explorer_routes + client)."""
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
-
 
 # =============================================================================
 # Fixtures

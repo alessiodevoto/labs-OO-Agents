@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for filtered/paginated span loading."""
 
-import json
 from unittest.mock import patch
 
 import pytest
