@@ -193,6 +193,19 @@ async def get_descendant_spans(
     return {"spans": spans, "count": len(spans)}
 
 
+@router.post("/backfill-fts")
+async def backfill_fts(
+    session_id: str = Query(None, description="Session to backfill (or all if omitted)"),
+) -> dict[str, Any]:
+    """Backfill FTS index for existing spans.
+
+    Run once after deploying the FTS feature to index pre-existing spans.
+    Idempotent — safe to run multiple times.
+    """
+    count = await asyncio.to_thread(otlp_store.backfill_fts, session_id)
+    return {"indexed": count, "session_id": session_id or "all"}
+
+
 @router.get("/search-fast")
 async def search_fast(
     session_id: str = Query(..., description="Viewer session ID"),

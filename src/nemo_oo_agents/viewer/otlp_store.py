@@ -1877,3 +1877,63 @@ def search_spans_fts(session_id: str, query: str, limit: int = 100) -> list[dict
     except Exception:
         # FTS table might not exist or query syntax invalid — return empty
         return []
+
+
+
+def backfill_fts(session_id: str | None = None) -> int:
+    """Backfill the FTS index for existing spans.
+
+    Populates spans_fts from all spans in the given session (or all sessions
+    if session_id is None). Idempotent — clears existing FTS entries for the
+    session before re-inserting.
+
+    Args:
+        session_id: If provided, backfill only this session. Otherwise backfill all.
+
+    Returns:
+        Number of spans indexed.
+    """
+    db = _get_db()
+
+    # Clear existing FTS entries for the scope
+    if session_id:
+        db.execute("DELETE FROM spans_fts WHERE session_id = ?", (session_id,))
+    else:
+        db.execute("DELETE FROM spans_fts")
+
+    # Select spans to index
+    if session_id:
+        rows = db.execute(
+            "SELECT session_id, span_id, name, attributes FROM spans WHERE session_id = ?",
+            (session_id,),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT session_id, span_id, name, attributes FROM spans"
+        ).fetchall()
+
+    if not rows:
+        return 0
+
+    fts_rows = []
+    for r in rows:
+        attrs_json = r["attributes"]
+        content_parts = []
+        try:
+            attrs = json.loads(attrs_json) if attrs_json else []
+            for attr in attrs:
+                val = attr.get("value", {})
+                sv = val.get("stringValue")
+                if sv:
+                    content_parts.append(sv)
+        except (json.JSONDecodeError, TypeError):
+            if attrs_json:
+                content_parts.append(attrs_json)
+        fts_rows.append((r["session_id"], r["span_id"], r["name"] or "", " ".join(content_parts)))
+
+    db.executemany(
+        "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
+        fts_rows,
+    )
+    db.commit()
+    return len(fts_rows)
