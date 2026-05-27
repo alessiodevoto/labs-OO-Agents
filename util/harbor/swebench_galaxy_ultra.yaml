@@ -1,0 +1,67 @@
+# Harbor config for SWE-bench Verified on galaxy (lab@10.87.108.113, aarch64) — Apptainer/QEMU.
+# Agent: nemo-oo-agents baseline (swebench/basic).
+# Model: nvidia/nvidia/nemotron-3-ultra-preview via inference-api.nvidia.com.
+#
+# SIF files are x86_64 — run under QEMU binfmt emulation on the aarch64 Galaxy node.
+# Expect 5-10x slower than native x86; verifier runs the full pytest suite per task.
+# Start with n_concurrent_trials: 1 and increase only if the machine stays stable.
+#
+# Prerequisites on Galaxy (lab@10.87.108.113):
+#   1. qemu-user-static + binfmt_misc registered for x86_64 (check: ls /proc/sys/fs/binfmt_misc/qemu-x86_64)
+#   2. Harbor installed: source /home/lab/miniforge3/bin/activate
+#   3. SWE-bench Verified task files at /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all
+#      Rsync from ipp1-3404:
+#        rsync -a /localhome/local-rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all/ \
+#          lab@10.87.108.113:/home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all/
+#   4. SWE-bench SIF files at /home/lab/3p/sif_cache
+#      Pull from DFW Lustre (run on DFW login node or via SSH tunnel):
+#        rsync -a \
+#          cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:\
+#          /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache/swebench_* \
+#          lab@10.87.108.113:/home/lab/3p/sif_cache/
+#   5. Env vars in /home/lab/rcabral/nemo_oo_agents/.env (use `export KEY=value` form):
+#        export OPENAI_API_KEY=<key-for-inference-api.nvidia.com>
+#        export OPENAI_BASE_URL=https://inference-api.nvidia.com/v1
+#        export NVIDIA_INTERNAL_API_KEY=<nvidia-internal-key>
+#        export NEMO_OO_AGENTS_GIT_URL=<gitlab-oauth-url>
+#        export NEMO_OO_AGENTS_GIT_REF=<branch>
+#
+# Smoke test (5 tasks — generate with swebench adapter first):
+#   harbor run --config util/harbor/swebench_galaxy_ultra.yaml \
+#     --path /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_smoke
+#
+# Full run (500 tasks):
+#   source /home/lab/rcabral/nemo_oo_agents/.env
+#   source /home/lab/miniforge3/bin/activate
+#   harbor run --config util/harbor/swebench_galaxy_ultra.yaml
+
+jobs_dir: /home/lab/rcabral/harbor_jobs/swebench_galaxy_ultra
+n_attempts: 1
+timeout_multiplier: 8.0                      # QEMU overhead; SWEBench base timeout ~30 min → ~4 hr
+environment_build_timeout_multiplier: 5.0
+agent_setup_timeout_multiplier: 10.0
+verifier_timeout_multiplier: 10.0            # full pytest suites under QEMU emulation
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1                     # SWEBench+QEMU is very CPU-heavy; raise only after smoke test passes
+  quiet: false
+
+environment:
+  type: apptainer
+  override_memory_mb: 4096
+  kwargs:
+    apptainer_binary: /home/lab/miniforge3/bin/apptainer
+    apptainer_fakeroot: true
+    apptainer_image_cache_dir: /home/lab/3p/sif_cache
+    apptainer_bootstrap_overlay: /home/lab/3p/harbor_bootstrap_overlay_v2
+    env_passthrough: OPENAI_API_KEY,OPENAI_BASE_URL,NVIDIA_INTERNAL_API_KEY,NEMO_OO_AGENTS_GIT_URL,NEMO_OO_AGENTS_GIT_REF
+
+agents:
+  - name: nemo-oo-agents
+    model_name: openai/nvidia/nvidia/nemotron-3-ultra-preview
+    kwargs:
+      agent_type: swebench/basic
+
+datasets:
+  - path: /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all

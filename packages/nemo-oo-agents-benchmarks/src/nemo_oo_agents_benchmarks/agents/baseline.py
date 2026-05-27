@@ -82,7 +82,8 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
         if system_prompt := task_input.get("system_prompt"):
             parts.append(f"## Context\n{system_prompt}")
 
-        if env_tools := task_input.get("environment_tools"):
+        env_tools = task_input.get("environment_tools")
+        if env_tools:
             tools_docs = [
                 "## Available Environment Tools",
                 "Use `await self.<tool>.<method>()` to interact with the environment.\n",
@@ -93,6 +94,19 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
                     tools_docs.append(f"### self.{tool_name}")
                     tools_docs.append(doc(tool))
             parts.append("\n".join(tools_docs))
+        else:
+            # No environment tools — inject built-in bash/file tools so the LLM
+            # has reliable shell access from the first turn (matches ReAct behavior).
+            from nemo_oo_agents_benchmarks.agents.react_baseline import _BashTools
+
+            object.__setattr__(self, "bash", _BashTools())
+            parts.append(
+                "## Available Shell Tools\n"
+                "Use these inside `execute_python()` blocks to interact with the container:\n"
+                "- `self.bash.run_command(command, timeout=120)` — run a shell command, returns stdout+stderr\n"
+                "- `self.bash.read_file(path)` — read a text file\n"
+                "- `self.bash.write_file(path, content)` — write a file (creates parent dirs)\n"
+            )
 
         description = (
             task_input.get("user_prompt")
@@ -126,8 +140,9 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
 
         Instructions:
         - For environment tasks: use ``await self.<tool>.<method>()`` directly in
-          ``execute_python()`` blocks. Those run inside the environment.
-          Direct commands run on the host.
+          ``execute_python()`` blocks.
+        - If ``self.bash`` is available (no injected environment tools), use it to
+          run shell commands: ``self.bash.run_command("ls /app")``.
         - Use the REPL to iterate and validate before returning.
         - ``return``/``return_result`` ends execution. Only use it for the final answer.
         - Check ``doc(self)`` to see available tools and methods.

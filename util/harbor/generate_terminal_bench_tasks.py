@@ -24,15 +24,14 @@ from typing import Any
 
 import yaml
 
-_REWARD_LOGGING_SUFFIX = """
-_EXIT_CODE=$?
-if [ $_EXIT_CODE -eq 0 ]; then
-    echo 1 > /logs/verifier/reward.txt
-else
-    echo 0 > /logs/verifier/reward.txt
-fi
-exit $_EXIT_CODE
-"""
+# Injected immediately after the shebang line so it fires on ANY exit, even
+# when set -e is active (suffix-based capture is unreachable after set -e exits).
+_REWARD_TRAP = (
+    "trap '_ec=$?;"
+    ' [ "$_ec" -eq 0 ] && echo 1 > /logs/verifier/reward.txt'
+    " || echo 0 > /logs/verifier/reward.txt;"
+    ' exit "$_ec"\' EXIT\n'
+)
 
 WORKTREE_ROOT = Path(__file__).resolve().parent.parent.parent
 TASKS_OUT_DIR = WORKTREE_ROOT / "util/harbor/tasks/terminal_bench"
@@ -115,6 +114,33 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
     dockerfile = src / "Dockerfile"
     if dockerfile.exists():
         shutil.copy2(dockerfile, env_dir / "Dockerfile")
+    else:
+        # Some tasks use a docker-compose.yaml that builds from a sub-context
+        # (e.g. context: client). For these, write a Harbor-compatible
+        # docker-compose.yaml that overrides the build context.
+        orig_compose = src / "docker-compose.yaml"
+        if orig_compose.exists():
+            orig_compose_data: dict[str, Any] = yaml.safe_load(orig_compose.read_text())
+            for svc_config in (orig_compose_data.get("services") or {}).values():
+                build = svc_config.get("build") or {}
+                if isinstance(build, dict):
+                    context = build.get("context", "")
+                    dockerfile_rel = build.get("dockerfile", "Dockerfile")
+                    if context and (src / context / dockerfile_rel).exists():
+                        harbor_compose = {
+                            "services": {
+                                "main": {
+                                    "build": {
+                                        "context": context,
+                                        "dockerfile": dockerfile_rel,
+                                    }
+                                }
+                            }
+                        }
+                        (env_dir / "docker-compose.yaml").write_text(
+                            yaml.dump(harbor_compose, default_flow_style=False)
+                        )
+                        break
 
     # Copy all non-metadata, non-test files (data files referenced by COPY).
     skip_names = {
@@ -152,7 +178,8 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
     # -------------------------------------------------- tests/test.sh (Harbor requires this)
     # Harbor's TaskPaths.is_valid() checks for tests/test.sh.
     # Copy run-tests.sh → tests/test.sh, replace $TEST_DIR with /tests,
-    # and append reward logging so Harbor can read /logs/verifier/reward.txt.
+    # and inject a trap-based reward writer after the shebang so it fires on
+    # ANY exit — including early exits caused by set -e when pytest fails.
     run_tests_sh = src / "run-tests.sh"
     if run_tests_sh.exists():
         tests_dst.mkdir(exist_ok=True)
@@ -160,7 +187,12 @@ def generate_task(src: Path, out_dir: Path, dry_run: bool) -> bool:
         if not content.endswith("\n"):
             content += "\n"
         content = content.replace("$TEST_DIR", "/tests")
-        content += _REWARD_LOGGING_SUFFIX
+        # Insert trap after shebang line (or at the top if no shebang).
+        first, _, rest = content.partition("\n")
+        if first.startswith("#!"):
+            content = first + "\n" + _REWARD_TRAP + rest
+        else:
+            content = _REWARD_TRAP + content
         test_sh = tests_dst / "test.sh"
         test_sh.write_text(content)
         test_sh.chmod(test_sh.stat().st_mode | 0o111)
