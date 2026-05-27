@@ -702,13 +702,8 @@ class Session:
         if result.exit:
             self._app.exit()
             return
-        # Render any outputs (errors, status messages) from the command
-        if result.outputs:
-            for output in result.outputs:
-                if hasattr(output, "content"):
-                    self._app.emit_block(output.content + "\n")
-                else:
-                    self._app.emit_block(str(output) + "\n")
+        # NOTE: outputs are already rendered by CommandHandler.handle() — do not
+        # re-render here to avoid double output.
         if result.slash_result is not None:
             # Show the text output to the user immediately in the TUI
             text = str(result.slash_result)
