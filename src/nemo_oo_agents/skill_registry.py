@@ -121,8 +121,9 @@ def _load_python_skill(path: Path) -> "Skill | None":
 
     try:
         return skill_from_module(module, module_name, source=f"Skill file {path}")
-    finally:
+    except Exception:
         sys.modules.pop(module_name, None)
+        raise
 
 
 def _is_python_skill_file(entry: Path) -> bool:
@@ -153,6 +154,7 @@ class SkillRegistry(Skill):
         self._loaded: set[str] = set()
         self._activated: set[str] = set()
         self._attr_map: dict[str, str] = {}  # registry name → actual attr name on agent
+        self._lib_paths: dict[str, str] = {}  # lib_name → sys.path entry added for it
         self._discover()
         super().__init__()
 
@@ -236,14 +238,25 @@ class SkillRegistry(Skill):
         import sys as _sys
 
         libs_str = str(lib_dir.parent)
+        added_to_path = False
         if libs_str not in _sys.path:
             _sys.path.insert(0, libs_str)
+            added_to_path = True
 
         prefix = lib_name + "."
         for key in [k for k in _sys.modules if k == lib_name or k.startswith(prefix)]:
             del _sys.modules[key]
 
-        module = importlib.import_module(lib_name)
+        try:
+            module = importlib.import_module(lib_name)
+        except Exception:
+            if added_to_path:
+                _sys.path.remove(libs_str)
+            raise
+
+        # Track the path addition so it can be cleaned up if the skill is unloaded
+        if added_to_path:
+            self._lib_paths[lib_name] = libs_str
 
         return skill_from_module(module, lib_name, source=f"Library {lib_name!r}")
 
@@ -331,6 +344,13 @@ class SkillRegistry(Skill):
                 if attr_name.startswith("_") or attr_name in _RESERVED_ATTRS:
                     logger.warning("Refusing to load skill with reserved name %s", attr_name)
                     continue
+                if hasattr(self._agent, attr_name) and attr_name not in {
+                    v for v in self._attr_map.values()
+                }:
+                    logger.warning(
+                        "Skill %s overwrites existing agent attr '%s'",
+                        name, attr_name,
+                    )
                 setattr(self._agent, attr_name, skill)
                 skill.attach(self._agent)
                 self._loaded.add(name)
@@ -373,9 +393,16 @@ class SkillRegistry(Skill):
         attr = self._attr_name(name)
         if attr.startswith("_") or attr in _RESERVED_ATTRS:
             raise ValueError(f"Cannot register skill with reserved attr name {attr!r}")
+        if hasattr(self._agent, attr) and attr not in self._attr_map.values():
+            logger.warning("Skill %s overwrites existing agent attr '%s'", name, attr)
         setattr(self._agent, attr, skill)
-        if hasattr(skill, "attach") and getattr(skill, "_agent", None) is None:
-            skill.attach(self._agent)
+        if hasattr(skill, "attach"):
+            existing_agent = getattr(skill, "_agent", None)
+            if existing_agent is not None and existing_agent is not self._agent:
+                if hasattr(skill, "detach"):
+                    skill.detach()
+            if existing_agent is not self._agent:
+                skill.attach(self._agent)
         self._loaded.add(name)
         self._attr_map[name] = attr
         if name not in self._discovered:

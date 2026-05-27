@@ -277,6 +277,8 @@ class Skill:
     # transitively when activate() is called.
     requires: tuple[str, ...] = ()
 
+    _agent: Any = None
+
     def __init__(self, obj: Any = None, *, content: str | None = None, name: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
         if n_given > 1:

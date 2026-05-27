@@ -706,9 +706,11 @@ class Session:
             # Post the full SlashCommandResult to the slash_commands queue.
             # The agent receives it in notification["slash_commands"] with
             # the actual Python value preserved (not stringified).
-            slash_ch = getattr(self._agent, "_slash_commands_in", None)
+            slash_ch = getattr(self.agent, "_slash_commands_in", None)
             if slash_ch is not None:
                 slash_ch.put(result.slash_result)
+                # Ensure the dispatcher wakes up to process the queued result
+                self._app._ensure_dispatcher_task()
             else:
                 # Fallback: submit as text if queue not available
                 self._app.submit_message(str(result.slash_result))
