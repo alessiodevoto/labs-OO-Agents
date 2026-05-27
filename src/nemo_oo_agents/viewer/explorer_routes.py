@@ -63,6 +63,37 @@ def clear_explorer_cache():
 # ---------------------------------------------------------------------------
 
 
+def _build_explorer_for_span(session_id: str, span_id: str):
+    """Build a mini-TraceExplorer from just the subtree under span_id.
+
+    Uses get_descendant_spans() to load only the relevant spans,
+    then parses just that subset into a TraceExplorer. Much faster
+    for large traces when drilling into a specific session.
+    """
+    from nemo_oo_agents.trace_explorer.explorer import (
+        TraceExplorer,
+        _normalize_otlp_span,
+        _parse_trace_from_spans,
+        set_quiet_mode,
+    )
+
+    otlp_spans = otlp_store.get_descendant_spans(session_id, span_id)
+    if not otlp_spans:
+        raise HTTPException(status_code=404, detail=f"Span not found: {span_id}")
+
+    raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
+    set_quiet_mode(True)
+    sessions = _parse_trace_from_spans(raw_spans)
+
+    return TraceExplorer(
+        sessions=sessions,
+        trace_file=f"viewer://{session_id}",
+        eval_result=None,
+        raw_spans=raw_spans,
+        viewer_url=None,
+    )
+
+
 def _build_explorer(session_id: str):
     """Load spans from DB and build a TraceExplorer, with LRU caching.
 
@@ -160,6 +191,39 @@ async def get_descendant_spans(
     if not spans:
         raise HTTPException(status_code=404, detail=f"Span not found: {span_id}")
     return {"spans": spans, "count": len(spans)}
+
+
+@router.get("/session-fast")
+async def get_session_fast(
+    session_id: str = Query(..., description="Viewer session ID"),
+    target_session_id: str = Query(..., description="6-char session ID to inspect"),
+    span_id: str = Query(..., description="Span ID of the target agent session"),
+    concise: bool = Query(False, description="Truncate long content"),
+) -> ExplorerTextResponse:
+    """Load only the subtree for a specific session and run get_session().
+
+    Uses get_descendant_spans() to avoid loading the full trace — much faster
+    for large traces when you already know the span_id of the agent session.
+    """
+    explorer = await asyncio.to_thread(_build_explorer_for_span, session_id, span_id)
+    result = await explorer.get_session(target_session_id, concise=concise)
+    return ExplorerTextResponse(result=result)
+
+
+@router.get("/turn-fast")
+async def get_turn_fast(
+    session_id: str = Query(..., description="Viewer session ID"),
+    target_session_id: str = Query(..., description="6-char session ID"),
+    span_id: str = Query(..., description="Span ID of the target agent session"),
+    turn_index: int = Query(..., description="Turn index"),
+) -> ExplorerTextResponse:
+    """Load only the subtree for a specific session and run get_turn().
+
+    Uses get_descendant_spans() to avoid loading the full trace.
+    """
+    explorer = await asyncio.to_thread(_build_explorer_for_span, session_id, span_id)
+    result = await explorer.get_turn(target_session_id, turn_index)
+    return ExplorerTextResponse(result=result)
 
 
 @router.get("/overview")

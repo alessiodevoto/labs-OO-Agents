@@ -173,6 +173,39 @@ class TraceExplorerClient:
         """Get only error spans for the session (direct DB query)."""
         return await self._get("error-spans")
 
+    async def get_session_fast(self, session_id: str, span_id: str, *, concise: bool = False) -> str:
+        """Get session details using only the subtree under span_id.
+
+        Much faster than get_session() for large traces — only loads the
+        spans belonging to that specific agent session.
+
+        Args:
+            session_id: The 6-char session ID to inspect.
+            span_id: The full span_id of the target agent session.
+            concise: If True, truncate long content.
+        """
+        return await self._get_text("session-fast", {
+            "target_session_id": session_id,
+            "span_id": span_id,
+            "concise": concise,
+        })
+
+    async def get_turn_fast(self, session_id: str, span_id: str, turn_index: int) -> str:
+        """Get turn details using only the subtree under span_id.
+
+        Much faster than get_turn() for large traces.
+
+        Args:
+            session_id: The 6-char session ID.
+            span_id: The full span_id of the target agent session.
+            turn_index: Turn index (0-based).
+        """
+        return await self._get_text("turn-fast", {
+            "target_session_id": session_id,
+            "span_id": span_id,
+            "turn_index": turn_index,
+        })
+
     async def get_descendant_spans(self, span_id: str) -> dict[str, Any]:
         """Get a span and all its descendants (targeted subtree loading).
 
