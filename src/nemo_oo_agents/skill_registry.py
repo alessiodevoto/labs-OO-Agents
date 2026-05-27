@@ -523,6 +523,13 @@ class SkillRegistry(Skill):
                     new_skill = obj()
                     setattr(self._agent, attr, new_skill)
                     new_skill.attach(self._agent)
+                    # Refresh slash commands so CommandRegistry picks up new methods
+                    cmd_reg = getattr(self._agent, "_command_registry", None)
+                    if cmd_reg is not None and hasattr(cmd_reg, "refresh_skill_commands"):
+                        try:
+                            cmd_reg.refresh_skill_commands()
+                        except Exception:
+                            pass
                     return f"Reloaded {name} (self.{attr})"
             return f"Reloaded module {top_pkg} but no Skill subclass found"
         except Exception as e:
