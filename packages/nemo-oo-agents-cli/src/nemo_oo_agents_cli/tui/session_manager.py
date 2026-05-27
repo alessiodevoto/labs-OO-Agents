@@ -130,36 +130,17 @@ class SessionManager:
                 )
             )
 
-        # Start the writer thread only when cross-thread access is allowed.
-        # In tests with check_same_thread=True, writes go inline.
-        self._threaded = not getattr(self._storage, "_check_same_thread", True)
-        if self._threaded:
-            self._start_writer()
+        # Writer thread removed: the SQLiteEventBackend now uses a
+        # threading.RLock so all callers can write from any thread safely.
+        self._threaded = False
 
     def _start_writer(self) -> None:
-        """Start the background writer thread that serializes all DB writes."""
-        self._write_queue: queue.Queue = queue.Queue()
-
-        def _writer():
-            while True:
-                item = self._write_queue.get()
-                if item is None:
-                    break
-                fn, args = item
-                try:
-                    fn(*args)
-                except Exception:
-                    logger.exception("SessionManager: write %s failed", fn.__name__)
-
-        self._writer_thread = threading.Thread(target=_writer, name="session-writer", daemon=True)
-        self._writer_thread.start()
+        """No-op — kept for API compatibility. Writer thread is no longer used."""
+        pass
 
     def _enqueue_write(self, fn, *args) -> None:
-        """Enqueue a write for the writer thread, or execute inline if not threaded."""
-        if self._threaded:
-            self._write_queue.put((fn, args))
-        else:
-            fn(*args)
+        """Execute a write operation. Always inline — the DB lock serializes access."""
+        fn(*args)
 
     @property
     def agent_db_path(self) -> Path:
@@ -208,10 +189,6 @@ class SessionManager:
         if getattr(self, "_closed", False):
             return
         self._closed = True
-        # Drain the writer queue: send sentinel and wait for thread to finish
-        if self._threaded and hasattr(self, "_write_queue"):
-            self._write_queue.put(None)
-            self._writer_thread.join(timeout=2.0)
         try:
             self._storage.close()
         except Exception:

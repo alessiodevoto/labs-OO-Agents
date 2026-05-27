@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Threading test for SessionManager writer queue (gl-212)."""
+"""Thread-safety tests for SessionManager (gl-212).
+
+The writer thread has been replaced by a threading.RLock on
+SQLiteEventBackend — writes now execute inline on the caller's thread
+and the lock serializes concurrent access from multiple threads.
+"""
 
 import threading
 import uuid
@@ -19,17 +24,16 @@ def _make_sm(tmp_path):
     )
 
 
-class TestWriterQueue:
-    """Verify the dedicated writer thread serializes all DB writes."""
+class TestInlineWrites:
+    """Verify writes are persisted correctly with lock-based serialization."""
 
     def test_record_user_persisted(self, tmp_path):
-        """record_user enqueues and the writer persists the event."""
+        """record_user persists the event immediately."""
         sm = _make_sm(tmp_path)
         try:
             sm.record_user("hello")
-            sm.close()  # drain queue
+            sm.close()
 
-            # Reopen to verify persistence
             storage = SQLiteStorageManager(
                 tmp_path / f"{sm.session_id}.db", check_same_thread=False
             )
@@ -42,13 +46,13 @@ class TestWriterQueue:
             sm.close()
 
     def test_rename_persisted(self, tmp_path):
-        """rename enqueues and the writer persists the event."""
+        """rename persists the event immediately."""
         sm = _make_sm(tmp_path)
         try:
             sm.rename("new name", user_named=True)
             assert sm.name == "new name"
             assert sm.user_named is True
-            sm.close()  # drain queue
+            sm.close()
 
             storage = SQLiteStorageManager(
                 tmp_path / f"{sm.session_id}.db", check_same_thread=False
@@ -62,8 +66,8 @@ class TestWriterQueue:
         finally:
             sm.close()
 
-    def test_writes_execute_on_writer_thread(self, tmp_path):
-        """Writes execute on the dedicated writer thread, not the caller."""
+    def test_writes_execute_on_caller_thread(self, tmp_path):
+        """Writes execute inline on the caller's thread (no writer thread)."""
         sm = _make_sm(tmp_path)
         write_thread_ids: list[int] = []
 
@@ -78,18 +82,16 @@ class TestWriterQueue:
         try:
             caller_thread_id = threading.current_thread().ident
             sm.record_user("test")
-            sm.close()  # drain
 
             assert len(write_thread_ids) == 1
-            assert write_thread_ids[0] != caller_thread_id, (
-                "Write should run on writer thread, not caller"
+            assert write_thread_ids[0] == caller_thread_id, (
+                "Write should run inline on the caller thread"
             )
-            assert write_thread_ids[0] == sm._writer_thread.ident
         finally:
             sm.close()
 
     def test_concurrent_writes_from_multiple_threads(self, tmp_path):
-        """Multiple threads can safely enqueue writes concurrently."""
+        """Multiple threads can safely write concurrently (RLock serializes)."""
         sm = _make_sm(tmp_path)
         barrier = threading.Barrier(3)  # 2 writers + main
         n_writes = 30
@@ -115,7 +117,7 @@ class TestWriterQueue:
             assert not w.is_alive(), f"Writer thread {w.name} did not terminate"
 
         try:
-            sm.close()  # drain queue
+            sm.close()
             assert not errors
 
             storage = SQLiteStorageManager(
@@ -128,28 +130,6 @@ class TestWriterQueue:
         finally:
             sm.close()
 
-    def test_close_drains_queue(self, tmp_path):
-        """close() waits for all queued writes to complete."""
-        sm = _make_sm(tmp_path)
-        try:
-            for i in range(10):
-                sm.record_user(f"msg-{i}")
-            sm.close()
-
-            # Writer thread should be terminated
-            assert not sm._writer_thread.is_alive()
-
-            # All writes should be persisted
-            storage = SQLiteStorageManager(
-                tmp_path / f"{sm.session_id}.db", check_same_thread=False
-            )
-            events = list(storage.event_backend.all_events())
-            user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
-            assert len(user_events) == 10
-            storage.close()
-        finally:
-            sm.close()
-
     def test_close_is_idempotent(self, tmp_path):
         """Multiple close() calls don't raise."""
         sm = _make_sm(tmp_path)
@@ -157,74 +137,8 @@ class TestWriterQueue:
         sm.close()
         sm.close()  # should not raise
 
-    def test_writer_continues_after_error(self, tmp_path):
-        """A failed write doesn't kill the writer — subsequent writes succeed."""
-        sm = _make_sm(tmp_path)
-        call_count = {"n": 0}
-        original = sm._do_record_user
-
-        def _failing_then_ok(text):
-            call_count["n"] += 1
-            if call_count["n"] == 2:
-                raise RuntimeError("simulated DB error")
-            original(text)
-
-        sm._do_record_user = _failing_then_ok
-
-        try:
-            sm.record_user("first")  # succeeds
-            sm.record_user("second")  # fails (logged, writer continues)
-            sm.record_user("third")  # succeeds
-            sm.close()
-
-            storage = SQLiteStorageManager(
-                tmp_path / f"{sm.session_id}.db", check_same_thread=False
-            )
-            events = list(storage.event_backend.all_events())
-            user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
-            # first and third should persist, second was lost
-            assert len(user_events) == 2
-            texts = [e.text for e in user_events]
-            assert "first" in texts
-            assert "third" in texts
-            assert "second" not in texts
-            storage.close()
-        finally:
-            sm.close()
-
-    def test_inline_mode_when_check_same_thread_true(self, tmp_path):
-        """With check_same_thread=True (default), writes are inline, no thread."""
-        sid = str(uuid.uuid4())
-        # Default: check_same_thread=True → _threaded=False
-        storage = SQLiteStorageManager(tmp_path / f"{sid}.db")
-        sm = SessionManager(
-            storage=storage, session_id=sid, model="test", agent_cls="T", working_dir=""
-        )
-        try:
-            assert not sm._threaded
-            assert not hasattr(sm, "_writer_thread") or not hasattr(sm, "_write_queue")
-
-            # Writes still work (inline)
-            sm.record_user("inline write")
-            events = list(sm._event_manager._backend.all_events())
-            user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
-            assert len(user_events) == 1
-        finally:
-            sm.close()
-
-    def test_write_after_close_does_not_raise(self, tmp_path):
-        """Writing after close doesn't crash (graceful degradation)."""
-        sm = _make_sm(tmp_path)
-        sm.close()
-        # This shouldn't raise even though the writer thread is gone
-        # (the queue.put will succeed but no one processes it — that's OK)
-        try:
-            sm.record_user("after close")
-        except Exception:
-            pass  # either path is acceptable — just don't crash hard
-
-    def test_many_rapid_writes_then_close(self, tmp_path):
-        """Rapid burst of writes followed by immediate close — all persist."""
+    def test_many_rapid_writes(self, tmp_path):
+        """Rapid burst of writes — all persist immediately."""
         sm = _make_sm(tmp_path)
         n = 100
         try:
@@ -239,5 +153,85 @@ class TestWriterQueue:
             user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
             assert len(user_events) == n, f"Expected {n}, got {len(user_events)}"
             storage.close()
+        finally:
+            sm.close()
+
+    def test_threaded_flag_is_always_false(self, tmp_path):
+        """The _threaded flag is always False (writer thread removed)."""
+        sm = _make_sm(tmp_path)
+        try:
+            assert not sm._threaded
+        finally:
+            sm.close()
+
+        # Also verify with check_same_thread=True
+        sid = str(uuid.uuid4())
+        storage = SQLiteStorageManager(tmp_path / f"{sid}.db")
+        sm2 = SessionManager(
+            storage=storage, session_id=sid, model="test", agent_cls="T", working_dir=""
+        )
+        try:
+            assert not sm2._threaded
+            sm2.record_user("inline write")
+            events = list(sm2._event_manager._backend.all_events())
+            user_events = [e for e in events if getattr(e, "event_type", "") == "TUIUserInput"]
+            assert len(user_events) == 1
+        finally:
+            sm2.close()
+
+    def test_concurrent_read_write_from_agent_and_session(self, tmp_path):
+        """Simulate the real TUI pattern: agent thread reads while session writes.
+
+        This is the core gl-212 race condition that the RLock fixes.
+        """
+        sid = str(uuid.uuid4())
+        storage = SQLiteStorageManager(tmp_path / f"{sid}.db", check_same_thread=False)
+        backend = storage.event_backend
+
+        # Pre-populate with events (simulates an active session)
+        from nemo_oo_agents.context_blocks import Metadata
+
+        for i in range(20):
+            backend.store(f"evt-{i}", Metadata(content=f"event {i}"))
+
+        sm = SessionManager(
+            storage=storage, session_id=sid, model="test", agent_cls="T", working_dir=""
+        )
+
+        errors = []
+        barrier = threading.Barrier(3)
+
+        def _agent_reader():
+            """Simulate agent reading events (build_context)."""
+            try:
+                barrier.wait(timeout=5)
+                for _ in range(100):
+                    tags = backend.active_tags()
+                    for tag in tags[:5]:
+                        backend.get(tag)
+            except Exception as e:
+                errors.append(("reader", e))
+
+        def _session_writer():
+            """Simulate session recording user input."""
+            try:
+                barrier.wait(timeout=5)
+                for i in range(50):
+                    sm.record_user(f"msg-{i}")
+            except Exception as e:
+                errors.append(("writer", e))
+
+        reader = threading.Thread(target=_agent_reader)
+        writer = threading.Thread(target=_session_writer)
+        reader.start()
+        writer.start()
+        barrier.wait(timeout=5)
+        reader.join(timeout=30)
+        writer.join(timeout=30)
+
+        try:
+            assert not errors, f"Thread-safety violation: {errors}"
+            assert not reader.is_alive()
+            assert not writer.is_alive()
         finally:
             sm.close()
