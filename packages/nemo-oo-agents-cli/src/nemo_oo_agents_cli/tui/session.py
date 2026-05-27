@@ -959,8 +959,12 @@ class Session:
         # is what keeps subscribers (e.g. AgentEventRenderer) alive
         # across the swap.
         if hasattr(self.agent, "_storage"):
-            self._app.agent_run(lambda: setattr(self.agent, "_storage", new_sm._storage))
-            self._app.agent_run(lambda: self.agent.event_manager.set_backend(new_sm._storage.event_backend))
+            if self._app is not None:
+                self._app.agent_run(lambda: setattr(self.agent, "_storage", new_sm._storage))
+                self._app.agent_run(lambda: self.agent.event_manager.set_backend(new_sm._storage.event_backend))
+            else:
+                self.agent._storage = new_sm._storage
+                self.agent.event_manager.set_backend(new_sm._storage.event_backend)
         # Propagate to registry and all command instances so /session export etc. use new ID.
         self.registry.session_manager = new_sm
         for cmd in self.registry.commands():

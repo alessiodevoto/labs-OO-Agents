@@ -684,10 +684,10 @@ class SQLiteStorageManager:
         self._backend._conn = self._conn
 
     @property
-    def event_backend(self) -> "SQLiteEventBackend":
+    def event_backend(self) -> SQLiteEventBackend:
         return self._backend
 
-    def save_snapshot(self, agent: "Agent") -> str:
+    def save_snapshot(self, agent: Agent) -> str:
         snapshot = AgentSnapshot.from_agent(agent)
         data = snapshot_to_dict(snapshot)
         snapshot_id = str(uuid.uuid4())
@@ -700,7 +700,7 @@ class SQLiteStorageManager:
                 )
         return snapshot_id
 
-    def restore_snapshot(self, snapshot_id: str, agent: "Agent") -> None:
+    def restore_snapshot(self, snapshot_id: str, agent: Agent) -> None:
         from nemo_oo_agents.errors.storage import SnapshotNotFoundError
 
         with self._db_lock:
@@ -731,7 +731,7 @@ class SQLiteStorageManager:
                 return None
             return datetime.fromisoformat(row[0])
 
-    def restore_latest_snapshot(self, agent: "Agent") -> bool:
+    def restore_latest_snapshot(self, agent: Agent) -> bool:
         """Restore the most recent snapshot into agent.
 
         Args:

@@ -910,8 +910,6 @@ class TUIApplication:
         Returns whatever *fn* (or the coroutine) returns. Propagates
         exceptions. Times out after 30 seconds.
         """
-        import concurrent.futures
-
         loop = self._agent_loop
         if loop is None or not loop.is_running():
             # No agent loop (tests or pre-startup) — run inline.
