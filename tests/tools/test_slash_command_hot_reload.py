@@ -1,23 +1,25 @@
 """Test that slash command hot-reload picks up new code after SkillRegistry.reload()."""
+
 import sys
 import types
 from unittest.mock import patch
 
-import pytest
-
-from nemo_oo_agents.skill import Skill, slash_command, get_slash_commands
+from nemo_oo_agents.skill import Skill, slash_command
 from nemo_oo_agents.skill_registry import SkillRegistry
 
 
 def _make_skill_class(version: str):
     """Create a Skill subclass dynamically with a slash command."""
     ns = {"Skill": Skill, "slash_command": slash_command}
-    exec(f"""
+    exec(
+        f"""
 class TestSkill(Skill):
     @slash_command("greet", argument_hint="<name>")
     def greet(self, args: str) -> str:
         return "{version}: " + args
-""", ns)
+""",
+        ns,
+    )
     cls = ns["TestSkill"]
     cls.__module__ = "test_hot_skill"
     return cls
@@ -75,6 +77,7 @@ def test_skill_registry_reload_one_calls_refresh():
     This test verifies the fix: after _reload_one replaces the skill instance,
     it should call agent._command_registry.refresh_skill_commands().
     """
+
     class FakeAgent:
         pass
 
