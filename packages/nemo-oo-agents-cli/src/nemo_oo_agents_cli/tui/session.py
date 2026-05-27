@@ -321,6 +321,7 @@ class Session:
         # ``PythonOutput`` event.
         self._pending_code: dict[str, str] = {}
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
+        self._naming_futures: set = set()  # concurrent.futures.Future from agent-loop dispatch
 
         # Populated at the start of ``run()``; referenced by the handler
         # methods (``_on_command``, ``_on_user_message``, ``_loud_handler``,
@@ -647,7 +648,7 @@ class Session:
             and self._session_manager
             and not self._session_manager.user_named
         ):
-            self._fire_and_forget(self._auto_name_session(self._first_message))
+            self._name_session_on_agent_loop(self._first_message)
         if result.exit:
             self._app.exit()
             return
@@ -736,7 +737,7 @@ class Session:
                 and not self._session_manager.user_named
                 and not (self._session_manager.name or "").strip()
             ):
-                self._fire_and_forget(self._auto_name_session(text))
+                self._name_session_on_agent_loop(text)
 
         self._app.emit_block(_build_user_bar(text, self._app, self._colors))
         self._renderer.reset_turn()
@@ -908,6 +909,12 @@ class Session:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._background_tasks.clear()
+        # Cancel any naming futures dispatched to the agent loop.
+        naming = getattr(self, "_naming_futures", None)
+        if naming:
+            for f in list(naming):
+                f.cancel()
+            naming.clear()
 
     # ------------------------------------------------------------------
     # Session manager swap (triggered by /session new)
@@ -960,6 +967,21 @@ class Session:
     # ------------------------------------------------------------------
     # Session auto-naming
     # ------------------------------------------------------------------
+
+    def _name_session_on_agent_loop(self, first_message: str) -> None:
+        """Dispatch auto-naming to the agent loop to avoid cross-thread sqlite access."""
+        agent_loop = getattr(self._app, "_agent_loop", None)
+        if isinstance(agent_loop, asyncio.AbstractEventLoop) and agent_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                self._auto_name_session(first_message), agent_loop
+            )
+            # Track for cancellation on shutdown. concurrent.futures.Future isn't
+            # awaitable so we keep a separate set from _background_tasks.
+            self._naming_futures.add(future)
+            future.add_done_callback(self._naming_futures.discard)
+        else:
+            # No agent loop available — fall back to local scheduling.
+            self._fire_and_forget(self._auto_name_session(first_message))
 
     async def _auto_name_session(self, first_message: str) -> None:
         """Generate and persist a session name from the first user message."""
