@@ -6665,6 +6665,28 @@ def main() -> None:
     asyncio.run(_async_main())
 
 
+async def _try_thin_client(
+    viewer_url: str, session_id: str, root_generation: int | None
+) -> "TraceExplorerClient | None":
+    """Try to connect via thin-client endpoints; return None if unavailable."""
+    from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
+
+    import httpx
+
+    base = viewer_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{base}/api/explorer/summary",
+                params={"session_id": session_id},
+            )
+            if resp.status_code == 200:
+                return TraceExplorerClient(viewer_url, session_id)
+    except Exception:
+        pass
+    return None
+
+
 async def _async_main() -> None:
     """Async implementation of the CLI."""
     import argparse
@@ -6817,11 +6839,18 @@ Examples (experiment mode):
     # Load trace from file or viewer
     try:
         if args.viewer:
-            trace = await TraceExplorer.from_viewer(
-                args.viewer,
-                args.session_id,
-                root_generation_index=args.root_generation,
-            )
+            # Try thin-client path first (server-side execution, much faster)
+            if not args.json and not args.diff and not args.raw and not args.harness:
+                trace = await _try_thin_client(args.viewer, args.session_id, args.root_generation)
+            else:
+                trace = None
+            # Fall back to full loading if thin client unavailable
+            if trace is None:
+                trace = await TraceExplorer.from_viewer(
+                    args.viewer,
+                    args.session_id,
+                    root_generation_index=args.root_generation,
+                )
         else:
             trace = await TraceExplorer.from_file(
                 args.trace_file,

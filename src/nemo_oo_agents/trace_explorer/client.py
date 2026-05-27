@@ -132,11 +132,12 @@ class TraceExplorerClient:
         """List all errors in the trace with context."""
         return await self._get_text("errors")
 
-    async def search(self, pattern: str) -> str:
+    async def search(self, pattern: str, *, concise: bool = True) -> str:
         """Search for a pattern across all trace content.
 
         Args:
             pattern: Text pattern to search for.
+            concise: Ignored (server always returns full results).
         """
         return await self._get_text("search", {"pattern": pattern})
 
