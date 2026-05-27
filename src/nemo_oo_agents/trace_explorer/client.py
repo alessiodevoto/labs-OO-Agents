@@ -16,7 +16,6 @@ Usage:
 
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
 
 import httpx
@@ -63,7 +62,11 @@ class TraceExplorerClient:
             try:
                 resp = await client.get(url, params=all_params)
                 if resp.status_code == 404:
-                    raise ValueError(f"Session not found: {self._session_id}")
+                    try:
+                        detail = resp.json().get("detail", f"Session not found: {self._session_id}")
+                    except Exception:
+                        detail = resp.text[:200] or f"Session not found: {self._session_id}"
+                    raise ValueError(detail)
                 resp.raise_for_status()
                 return resp.json()
             except httpx.ConnectError as e:

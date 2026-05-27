@@ -8,7 +8,6 @@ against spans loaded directly from the DB.
 """
 
 import asyncio
-import logging
 import threading
 from collections import OrderedDict
 from typing import Any
@@ -17,8 +16,6 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from . import otlp_store
-
-log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/explorer", tags=["explorer"])
 
@@ -43,13 +40,10 @@ def _get_cached_explorer(session_id: str):
 def _put_cached_explorer(session_id: str, explorer):
     """Store a TraceExplorer in the cache, evicting LRU if full."""
     with _cache_lock:
-        if session_id in _explorer_cache:
-            _explorer_cache.move_to_end(session_id)
-        else:
-            _explorer_cache[session_id] = explorer
-            _explorer_cache.move_to_end(session_id)
-            while len(_explorer_cache) > _CACHE_MAX_SIZE:
-                _explorer_cache.popitem(last=False)
+        _explorer_cache[session_id] = explorer
+        _explorer_cache.move_to_end(session_id)
+        while len(_explorer_cache) > _CACHE_MAX_SIZE:
+            _explorer_cache.popitem(last=False)
 
 
 def clear_explorer_cache():
@@ -74,6 +68,7 @@ def _build_explorer_for_span(session_id: str, span_id: str):
         TraceExplorer,
         _normalize_otlp_span,
         _parse_trace_from_spans,
+        get_quiet_mode,
         set_quiet_mode,
     )
 
@@ -82,8 +77,12 @@ def _build_explorer_for_span(session_id: str, span_id: str):
         raise HTTPException(status_code=404, detail=f"Span not found: {span_id}")
 
     raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
+    prev_quiet = get_quiet_mode()
     set_quiet_mode(True)
-    sessions = _parse_trace_from_spans(raw_spans)
+    try:
+        sessions = _parse_trace_from_spans(raw_spans)
+    finally:
+        set_quiet_mode(prev_quiet)
 
     return TraceExplorer(
         sessions=sessions,
@@ -107,6 +106,7 @@ def _build_explorer(session_id: str):
         TraceExplorer,
         _normalize_otlp_span,
         _parse_trace_from_spans,
+        get_quiet_mode,
         set_quiet_mode,
     )
 
@@ -117,12 +117,15 @@ def _build_explorer(session_id: str):
     if not otlp_spans:
         raise HTTPException(status_code=404, detail=f"No spans found for session: {session_id}")
 
-    # Normalize from OTLP wire format to internal flat-attribute format
     raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
 
+    prev_quiet = get_quiet_mode()
     set_quiet_mode(True)
-    sessions = _parse_trace_from_spans(raw_spans)
-    eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
+    try:
+        sessions = _parse_trace_from_spans(raw_spans)
+        eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
+    finally:
+        set_quiet_mode(prev_quiet)
 
     explorer = TraceExplorer(
         sessions=sessions,
@@ -231,7 +234,6 @@ async def get_overview_fast(
     and error status — but no turn content or message details. Much faster
     than get_overview() for large traces.
     """
-    from nemo_oo_agents.trace_explorer.explorer import _normalize_otlp_span, _otlp_attrs_to_dict
 
     otlp_spans = await asyncio.to_thread(otlp_store.get_agent_spans, session_id)
     if not otlp_spans:
