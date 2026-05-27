@@ -557,14 +557,14 @@ class Session:
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
                     try:
-                        self._app.agent_run(lambda: storage.save_snapshot(self.agent))
-                    except Exception:
-                        # Agent loop may already be stopped — fall back to inline
-                        # (still safe: the RLock protects the connection).
-                        try:
+                        app = getattr(self, "_app", None)
+                        if app is not None:
+                            app.agent_run(lambda: storage.save_snapshot(self.agent))
+                        else:
+                            # No agent loop — safe to call inline (single-threaded).
                             storage.save_snapshot(self.agent)
-                        except Exception:
-                            pass
+                    except Exception:
+                        logger.debug("save_snapshot on shutdown failed", exc_info=True)
                 self._session_manager.close()
             # Restore the previous exception handler so we don't pin
             # this Session or route unrelated failures through a torn-down TUI.
@@ -946,12 +946,13 @@ class Session:
             storage = getattr(self.agent, "_storage", None)
             if storage is not None and hasattr(storage, "save_snapshot"):
                 try:
-                    self._app.agent_run(lambda: storage.save_snapshot(self.agent))
-                except Exception:
-                    try:
+                    app = getattr(self, "_app", None)
+                    if app is not None:
+                        app.agent_run(lambda: storage.save_snapshot(self.agent))
+                    else:
                         storage.save_snapshot(self.agent)
-                    except Exception:
-                        pass
+                except Exception:
+                    logger.debug("save_snapshot on session swap failed", exc_info=True)
             self._session_manager.close()
         self._session_manager = new_sm
         # Point the agent at the new storage AND repoint the agent's
@@ -959,12 +960,16 @@ class Session:
         # is what keeps subscribers (e.g. AgentEventRenderer) alive
         # across the swap.
         if hasattr(self.agent, "_storage"):
-            if self._app is not None:
-                self._app.agent_run(lambda: setattr(self.agent, "_storage", new_sm._storage))
-                self._app.agent_run(lambda: self.agent.event_manager.set_backend(new_sm._storage.event_backend))
-            else:
+
+            def _do_swap():
                 self.agent._storage = new_sm._storage
                 self.agent.event_manager.set_backend(new_sm._storage.event_backend)
+
+            app = getattr(self, "_app", None)
+            if app is not None:
+                app.agent_run(_do_swap)
+            else:
+                _do_swap()
         # Propagate to registry and all command instances so /session export etc. use new ID.
         self.registry.session_manager = new_sm
         for cmd in self.registry.commands():

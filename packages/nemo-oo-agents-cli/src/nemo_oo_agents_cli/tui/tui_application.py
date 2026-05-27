@@ -915,8 +915,20 @@ class TUIApplication:
             # No agent loop (tests or pre-startup) — run inline.
             result = fn()
             if asyncio.iscoroutine(result):
+                raise TypeError("agent_run() with a coroutine requires a running agent loop")
+            return result
+
+        # Guard: if already on the agent loop, run inline to avoid deadlock.
+        # (agent_run blocks the caller waiting for the loop to execute the
+        # wrapper — if the caller IS the loop, that's a guaranteed hang.)
+        import threading
+
+        if getattr(loop, "_thread_id", None) == threading.current_thread().ident:
+            result = fn()
+            if asyncio.iscoroutine(result):
                 raise TypeError(
-                    "agent_run() with a coroutine requires a running agent loop"
+                    "agent_run() called from agent loop with a coroutine — "
+                    "use 'await' directly instead"
                 )
             return result
 
@@ -929,7 +941,11 @@ class TUIApplication:
             return result
 
         future = asyncio.run_coroutine_threadsafe(_wrapper(), loop)
-        return future.result(timeout=30)
+        try:
+            return future.result(timeout=30)
+        except TimeoutError:
+            future.cancel()
+            raise
 
     # ── output pipeline -----------------------------------------------
 

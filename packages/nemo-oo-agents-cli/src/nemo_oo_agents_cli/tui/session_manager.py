@@ -128,8 +128,6 @@ class SessionManager:
                 )
             )
 
-
-
     @property
     def agent_db_path(self) -> Path:
         """Path for the per-session agent state DB."""

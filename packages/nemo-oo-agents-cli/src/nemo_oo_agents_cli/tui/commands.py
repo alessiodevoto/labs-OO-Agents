@@ -354,16 +354,15 @@ class ModelCommand(Command):
         selected = args[0]
         self.config.default_model = selected
         try:
-            self.agent_run(lambda: setattr(self.agent, "_llm", get_llm_client(selected)))
+            from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+            def _switch():
+                self.agent._llm = get_llm_client(selected)
+                apply_model_limits(self.agent)
+
+            self.agent_run(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
-        # Summarizer trigger and event-truncation cap both scale with the
-        # model's context window. Swapping the LLM without also swapping
-        # these budgets leaves a large-context session stranded on a
-        # smaller model — e.g. 420K events on a 200K Sonnet window.
-        from nemo_oo_agents_cli.tui.agent import apply_model_limits
-
-        apply_model_limits(self.agent)
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -416,16 +415,15 @@ class SwitchCommand(Command):
         selected = args[0]
         self.config.default_model = selected
         try:
-            self.agent_run(lambda: setattr(self.agent, "_llm", get_llm_client(selected)))
+            from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+            def _switch():
+                self.agent._llm = get_llm_client(selected)
+                apply_model_limits(self.agent)
+
+            self.agent_run(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
-
-        # Re-resolve summarizer trigger + truncation cap against the new
-        # context window — see apply_model_limits for the math.
-        from nemo_oo_agents_cli.tui.agent import apply_model_limits
-
-        apply_model_limits(self.agent)
-
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -1017,7 +1015,9 @@ class CompactCommand(Command):
                 history_md = summarizer._render_range_to_markdown(start_tag, end_tag)
                 target_chars = getattr(getattr(summarizer, "config", None), "target_chars", 2000)
                 summary_text = await summarizer.summarize(history_md, target_chars)
-                self.agent_run(lambda: self.agent.event_manager.collapse(start_tag, end_tag, summary_text))
+                self.agent_run(
+                    lambda: self.agent.event_manager.collapse(start_tag, end_tag, summary_text)
+                )
                 events_after = len(self.agent.event_manager.keys())
                 tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
                 result = CommandResult.ok(

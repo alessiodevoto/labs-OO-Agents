@@ -327,7 +327,9 @@ class SQLiteEventBackend:
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                 if not _is_corruption_error(e):
                     raise
-                logger.warning("get(%s): corrupt/unreadable row, skipping (%s)", tag, type(e).__name__)
+                logger.warning(
+                    "get(%s): corrupt/unreadable row, skipping (%s)", tag, type(e).__name__
+                )
                 return None
             if row is None:
                 return None
@@ -409,7 +411,9 @@ class SQLiteEventBackend:
     def active_tags(self) -> list[str]:
         with self._lock:
             try:
-                rows = self._conn.execute("SELECT tag FROM active_tags ORDER BY position").fetchall()
+                rows = self._conn.execute(
+                    "SELECT tag FROM active_tags ORDER BY position"
+                ).fetchall()
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                 if not _is_corruption_error(e):
                     raise
@@ -441,7 +445,9 @@ class SQLiteEventBackend:
         # potentially slow deserialization while iterating large event sets.
         with self._lock:
             try:
-                rows = self._conn.execute("SELECT data FROM events ORDER BY insertion_order").fetchall()
+                rows = self._conn.execute(
+                    "SELECT data FROM events ORDER BY insertion_order"
+                ).fetchall()
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                 if not _is_corruption_error(e):
                     raise
