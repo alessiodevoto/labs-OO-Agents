@@ -577,6 +577,12 @@ class SkillRegistry(Skill):
         mod_name = type(skill).__module__
         # For package modules (e.g. "excalidraw.__init__"), use the top-level package
         top_pkg = mod_name.split(".")[0]
+        # Refuse to reload skills from non-reloadable locations (test modules,
+        # __main__, framework internals) — clearing their sys.modules entries
+        # would corrupt the process.
+        _NO_RELOAD = {"tests", "__main__", "nemo_oo_agents", "nemo_oo_agents_cli"}
+        if top_pkg in _NO_RELOAD or top_pkg.startswith("_"):
+            return f"Skill {name!r} (module {mod_name}) is not reloadable"
         if top_pkg not in _sys.modules:
             return f"Module {mod_name} not in sys.modules — cannot reload"
         try:
