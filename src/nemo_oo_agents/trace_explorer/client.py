@@ -64,12 +64,12 @@ class TraceExplorerClient:
                 if resp.status_code == 404:
                     try:
                         detail = resp.json().get("detail", f"Session not found: {self._session_id}")
-                    except Exception:
+                    except (ValueError, TypeError):
                         detail = resp.text[:200] or f"Session not found: {self._session_id}"
                     raise ValueError(detail)
                 resp.raise_for_status()
                 return resp.json()
-            except httpx.ConnectError as e:
+            except httpx.RequestError as e:
                 raise ConnectionError(f"Cannot reach viewer at {self._base_url}: {e}") from e
             except httpx.HTTPStatusError as e:
                 raise ValueError(
@@ -250,6 +250,20 @@ class TraceExplorerClient:
         """
         return await self._get("descendant-spans", {"span_id": span_id})
 
+    async def find_span(self, span_id: str, *, json_output: bool = False) -> str:
+        """Find a span by ID and show it with navigation breadcrumbs.
+
+        Args:
+            span_id: Full span_id or prefix to search for.
+            json_output: If True, return structured JSON.
+
+        Returns:
+            Turn details with navigation breadcrumbs, or error message.
+        """
+        return await self._get_text(
+            "find-span", {"span_id": span_id, "json_output": json_output}
+        )
+
     async def help(self) -> str:
         """Return usage guide for the TraceExplorer API."""
         return """# TraceExplorerClient (thin-client mode)
@@ -266,6 +280,7 @@ the need to download and parse all spans locally.
 - get_errors() — All errors with context
 - search(pattern) — Find pattern across all trace content
 - get_timeline(max_events=50) — Chronological event timeline
+- find_span(span_id, json_output=False) — Find span by ID with navigation
 - find_first_error() — Jump to first error
 - get_eval_context(concise=True) — Evaluation inputs/outputs/scores
 

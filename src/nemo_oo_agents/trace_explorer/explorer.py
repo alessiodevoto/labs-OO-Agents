@@ -6685,7 +6685,7 @@ async def _try_thin_client(
             )
             if resp.status_code == 200:
                 return TraceExplorerClient(viewer_url, session_id)
-    except Exception:
+    except httpx.RequestError:
         pass
     return None
 
@@ -6843,7 +6843,7 @@ Examples (experiment mode):
     try:
         if args.viewer:
             # Try thin-client path first (server-side execution, much faster)
-            if not args.json and not args.diff and not args.raw and not args.harness:
+            if not args.json and not args.diff and not args.raw and not args.harness and not args.root_generation:
                 trace = await _try_thin_client(args.viewer, args.session_id, args.root_generation)
             else:
                 trace = None

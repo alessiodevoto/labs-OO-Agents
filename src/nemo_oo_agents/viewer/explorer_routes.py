@@ -415,6 +415,18 @@ async def find_first_error(
     return ExplorerTextResponse(result=result)
 
 
+@router.get("/find-span")
+async def find_span(
+    session_id: str = Query(..., description="Viewer session ID"),
+    span_id: str = Query(..., description="Full span_id or prefix to search for"),
+    json_output: bool = Query(False, description="Return structured JSON"),
+) -> ExplorerTextResponse:
+    """Run find_span() server-side."""
+    explorer = await asyncio.to_thread(_build_explorer, session_id)
+    result = await explorer.find_span(span_id, json_output=json_output)
+    return ExplorerTextResponse(result=result)
+
+
 @router.get("/eval-context")
 async def get_eval_context(
     session_id: str = Query(..., description="Viewer session ID"),
