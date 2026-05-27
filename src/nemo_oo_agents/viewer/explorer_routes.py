@@ -9,6 +9,8 @@ against spans loaded directly from the DB.
 
 import asyncio
 import logging
+import threading
+from collections import OrderedDict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -20,6 +22,41 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/explorer", tags=["explorer"])
 
+# ---------------------------------------------------------------------------
+# LRU Cache for TraceExplorer instances
+# ---------------------------------------------------------------------------
+
+_CACHE_MAX_SIZE = 16
+_explorer_cache: OrderedDict[str, Any] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _get_cached_explorer(session_id: str):
+    """Return a cached TraceExplorer or None."""
+    with _cache_lock:
+        if session_id in _explorer_cache:
+            _explorer_cache.move_to_end(session_id)
+            return _explorer_cache[session_id]
+    return None
+
+
+def _put_cached_explorer(session_id: str, explorer):
+    """Store a TraceExplorer in the cache, evicting LRU if full."""
+    with _cache_lock:
+        if session_id in _explorer_cache:
+            _explorer_cache.move_to_end(session_id)
+        else:
+            _explorer_cache[session_id] = explorer
+            _explorer_cache.move_to_end(session_id)
+            while len(_explorer_cache) > _CACHE_MAX_SIZE:
+                _explorer_cache.popitem(last=False)
+
+
+def clear_explorer_cache():
+    """Clear the explorer cache."""
+    with _cache_lock:
+        _explorer_cache.clear()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,10 +64,14 @@ router = APIRouter(prefix="/api/explorer", tags=["explorer"])
 
 
 def _build_explorer(session_id: str):
-    """Load spans from DB and build a TraceExplorer for the given session.
+    """Load spans from DB and build a TraceExplorer, with LRU caching.
 
-    Imports are deferred to avoid circular imports at module level.
+    Returns a cached instance if available; otherwise builds fresh and caches.
     """
+    cached = _get_cached_explorer(session_id)
+    if cached is not None:
+        return cached
+
     from nemo_oo_agents.trace_explorer.explorer import (
         TraceExplorer,
         _normalize_otlp_span,
@@ -52,13 +93,16 @@ def _build_explorer(session_id: str):
     sessions = _parse_trace_from_spans(raw_spans)
     eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
 
-    return TraceExplorer(
+    explorer = TraceExplorer(
         sessions=sessions,
         trace_file=f"viewer://{session_id}",
         eval_result=eval_result,
         raw_spans=raw_spans,
         viewer_url=None,
     )
+
+    _put_cached_explorer(session_id, explorer)
+    return explorer
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +119,47 @@ class ExplorerTextResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/summary")
+async def get_summary(
+    session_id: str = Query(..., description="Viewer session ID"),
+) -> dict[str, Any]:
+    """Lightweight session summary using direct DB queries (no TraceExplorer build)."""
+    summary = await asyncio.to_thread(otlp_store.get_session_summary, session_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    return summary
+
+
+@router.get("/agent-spans")
+async def get_agent_spans(
+    session_id: str = Query(..., description="Viewer session ID"),
+) -> dict[str, Any]:
+    """Return only AGENT spans for a session (lightweight tree structure)."""
+    spans = await asyncio.to_thread(otlp_store.get_agent_spans, session_id)
+    return {"spans": spans, "count": len(spans)}
+
+
+@router.get("/error-spans")
+async def get_error_spans(
+    session_id: str = Query(..., description="Viewer session ID"),
+) -> dict[str, Any]:
+    """Return only error spans for a session (direct DB query)."""
+    spans = await asyncio.to_thread(otlp_store.get_error_spans, session_id)
+    return {"spans": spans, "count": len(spans)}
+
+
+@router.get("/descendant-spans")
+async def get_descendant_spans(
+    session_id: str = Query(..., description="Viewer session ID"),
+    span_id: str = Query(..., description="Root span ID to get descendants of"),
+) -> dict[str, Any]:
+    """Return a span subtree (span + all descendants). For targeted loading."""
+    spans = await asyncio.to_thread(otlp_store.get_descendant_spans, session_id, span_id)
+    if not spans:
+        raise HTTPException(status_code=404, detail=f"Span not found: {span_id}")
+    return {"spans": spans, "count": len(spans)}
 
 
 @router.get("/overview")

@@ -154,6 +154,33 @@ class TraceExplorerClient:
         """
         return await self._get_text("eval-context", {"concise": concise})
 
+    # =========================================================================
+    # Lightweight endpoints (no full TraceExplorer build needed)
+    # =========================================================================
+
+    async def get_summary(self) -> dict[str, Any]:
+        """Get lightweight session summary (span count, duration, error count).
+
+        Uses direct DB queries — much faster than get_overview() for large traces.
+        """
+        return await self._get("summary")
+
+    async def get_agent_spans(self) -> dict[str, Any]:
+        """Get only AGENT spans for the session (tree structure without content)."""
+        return await self._get("agent-spans")
+
+    async def get_error_spans(self) -> dict[str, Any]:
+        """Get only error spans for the session (direct DB query)."""
+        return await self._get("error-spans")
+
+    async def get_descendant_spans(self, span_id: str) -> dict[str, Any]:
+        """Get a span and all its descendants (targeted subtree loading).
+
+        Args:
+            span_id: The root span ID to get descendants of.
+        """
+        return await self._get("descendant-spans", {"span_id": span_id})
+
     async def help(self) -> str:
         """Return usage guide for the TraceExplorer API."""
         return """# TraceExplorerClient (thin-client mode)

@@ -1670,3 +1670,140 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
             rec["span_id"] = row["span_id"]
         result.append(rec)
     return result
+
+
+
+# ---------------------------------------------------------------------------
+# Incremental queries for trace explorer thin-client
+# ---------------------------------------------------------------------------
+
+
+def get_session_summary(session_id: str) -> dict[str, Any] | None:
+    """Return lightweight session summary from DB without loading all spans.
+
+    Returns a dict with session_id, span_count, duration_ms, has_errors,
+    or None if the session doesn't exist.
+    """
+    db = _get_db()
+    row = db.execute(
+        "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if not row:
+        return None
+
+    # Get duration from min/max span timestamps
+    time_row = db.execute(
+        "SELECT MIN(start_time_ns) as t_start, MAX(end_time_ns) as t_end, COUNT(*) as cnt "
+        "FROM spans WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+
+    t_start = time_row["t_start"] or 0
+    t_end = time_row["t_end"] or 0
+    duration_ms = (t_end - t_start) / 1_000_000 if t_end > t_start else 0.0
+
+    # Check for errors
+    error_count = db.execute(
+        "SELECT COUNT(*) as cnt FROM spans WHERE session_id = ? AND status_code = 2",
+        (session_id,),
+    ).fetchone()["cnt"]
+
+    return {
+        "session_id": session_id,
+        "span_count": time_row["cnt"],
+        "duration_ms": duration_ms,
+        "has_errors": error_count > 0,
+        "error_count": error_count,
+        "experiment": row["experiment"],
+    }
+
+
+def get_agent_spans(session_id: str) -> list[dict[str, Any]]:
+    """Return only AGENT-kind spans for a session.
+
+    Filters by the openinference.span.kind attribute being AGENT
+    at the SQL level using JSON extraction, avoiding full span loading.
+    """
+    db = _get_db()
+    # Check session exists
+    exists = db.execute(
+        "SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if not exists:
+        return []
+
+    # Filter by attributes containing AGENT kind
+    # SQLite JSON: attributes is stored as a JSON array of {key, value} objects
+    rows = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? "
+        "AND attributes LIKE ? "
+        "AND attributes LIKE ? "
+        "ORDER BY start_time_ns",
+        (session_id, '%openinference.span.kind%', '%AGENT%'),
+    ).fetchall()
+
+    spans = []
+    for r in rows:
+        span = _row_to_span(r)
+        # Verify it's actually an AGENT span (the LIKE is a coarse filter)
+        attrs = json.loads(r["attributes"]) if r["attributes"] else []
+        is_agent = any(
+            a.get("key") == "openinference.span.kind"
+            and a.get("value", {}).get("stringValue") == "AGENT"
+            for a in attrs
+        )
+        if is_agent:
+            spans.append(span)
+    return spans
+
+
+def get_error_spans(session_id: str) -> list[dict[str, Any]]:
+    """Return spans with error status (status_code=2) for a session.
+
+    Uses SQL filtering on the status_code column - no need to load all spans.
+    """
+    db = _get_db()
+    rows = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? AND status_code = 2 "
+        "ORDER BY start_time_ns",
+        (session_id,),
+    ).fetchall()
+
+    return [_row_to_span(r) for r in rows]
+
+
+
+def get_descendant_spans(session_id: str, root_span_id: str) -> list[dict[str, Any]]:
+    """Return a span and all its descendants within a session.
+
+    Walks the parent_span_id tree starting from root_span_id,
+    loading only the relevant subtree rather than all session spans.
+    Returns OTLP-format span dicts (via _row_to_span).
+
+    Returns empty list if root_span_id is not found in the session.
+    """
+    db = _get_db()
+
+    # Verify the root span exists in this session
+    root_row = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? AND span_id = ?",
+        (session_id, root_span_id),
+    ).fetchone()
+    if not root_row:
+        return []
+
+    # BFS to collect all descendant span_ids
+    collected_rows = [root_row]
+    queue = [root_span_id]
+
+    while queue:
+        parent_id = queue.pop(0)
+        child_rows = db.execute(
+            "SELECT * FROM spans WHERE session_id = ? AND parent_span_id = ?",
+            (session_id, parent_id),
+        ).fetchall()
+        for row in child_rows:
+            collected_rows.append(row)
+            queue.append(row["span_id"])
+
+    return [_row_to_span(r) for r in collected_rows]
