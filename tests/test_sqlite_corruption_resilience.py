@@ -1,6 +1,7 @@
 """Tests for SQLite corruption resilience (P0) and virtiofs detection (P1)."""
 
 import sqlite3
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -192,6 +193,9 @@ class TestCorruptEventResilience:
 class TestVirtiofsDetection:
     """_is_virtiofs() correctly identifies virtiofs mounts."""
 
+    def setup_method(self):
+        _is_virtiofs.cache_clear()
+
     def test_memory_db_is_not_virtiofs(self):
         assert _is_virtiofs(":memory:") is False
 
@@ -225,7 +229,7 @@ class TestVirtiofsDetection:
     def test_returns_false_on_error(self, mock_run):
         assert _is_virtiofs("/some/path/test.db") is False
 
-    @patch("subprocess.run", side_effect=TimeoutError())
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="df", timeout=2))
     def test_returns_false_on_timeout(self, mock_run):
         assert _is_virtiofs("/some/path/test.db") is False
 
