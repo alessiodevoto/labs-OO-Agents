@@ -136,9 +136,15 @@ def command(
     )
 
     continue_last = continue_session == "__last__"
-    resume_session_id = continue_session if continue_session and continue_session != "__last__" else None
+    resume_session_id = (
+        continue_session if continue_session and continue_session != "__last__" else None
+    )
 
     try:
-        asyncio.run(tui_main(config=config, continue_last=continue_last, resume_session_id=resume_session_id))
+        asyncio.run(
+            tui_main(
+                config=config, continue_last=continue_last, resume_session_id=resume_session_id
+            )
+        )
     except KeyboardInterrupt:
         sys.exit(0)

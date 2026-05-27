@@ -596,7 +596,9 @@ class Session:
         suffix = f" — {tag}" if tag else ""
         sys.stderr.write(f"\n\x1b[2mGoodbye! Stay vibing.{suffix}\x1b[0m\n")
         if sm is not None and short:
-            sys.stderr.write(f"\x1b[2mResume this session with \x1b[0m\x1b[1mnemo oo tui -c {short}\x1b[0m\n")
+            sys.stderr.write(
+                f"\x1b[2mResume this session with \x1b[0m\x1b[1mnemo oo tui -c {short}\x1b[0m\n"
+            )
 
     # ------------------------------------------------------------------
     # Handlers — driven by TUIApplication, called in run()'s event loop.
