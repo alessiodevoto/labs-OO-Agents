@@ -41,8 +41,8 @@ from nemo_oo_agents.agentdoc import pformat as _pformat
 # Module Configuration
 # =============================================================================
 
-_quiet_mode = False
-_root_generation_index: int | None = None
+_quiet_mode: ContextVar[bool] = ContextVar("_quiet_mode", default=False)
+_root_generation_index: ContextVar[int | None] = ContextVar("_root_generation_index", default=None)
 _cli_mode: ContextVar[bool] = ContextVar("_cli_mode", default=False)
 
 
@@ -55,8 +55,7 @@ def set_quiet_mode(quiet: bool) -> None:
     Args:
         quiet: True to suppress warnings, False to show them.
     """
-    global _quiet_mode
-    _quiet_mode = quiet
+    _quiet_mode.set(quiet)
 
 
 def set_root_generation_index(index: int | None) -> None:
@@ -65,18 +64,17 @@ def set_root_generation_index(index: int | None) -> None:
     Args:
         index: 0-based index into the sorted root generation IDs, or None for default (first).
     """
-    global _root_generation_index
-    _root_generation_index = index
+    _root_generation_index.set(index)
 
 
 def get_root_generation_index() -> int | None:
     """Return the current root generation selection index."""
-    return _root_generation_index
+    return _root_generation_index.get()
 
 
 def get_quiet_mode() -> bool:
     """Return the current quiet mode setting."""
-    return _quiet_mode
+    return _quiet_mode.get()
 
 
 # =============================================================================
@@ -467,9 +465,9 @@ def _load_spans(trace_path: str | Path) -> list[dict[str, Any]]:
                         spans.append(_normalize_otlp_span(raw))
                 except json.JSONDecodeError as e:
                     parse_errors += 1
-                    if not _quiet_mode and parse_errors <= 3:  # Limit noise
+                    if not _quiet_mode.get() and parse_errors <= 3:  # Limit noise
                         print(f"Warning: Parse error at line {line_num}: {e}", file=sys.stderr)
-    if not _quiet_mode and parse_errors > 3:
+    if not _quiet_mode.get() and parse_errors > 3:
         print(f"Warning: {parse_errors} total JSON parse errors in trace file", file=sys.stderr)
     return spans
 
@@ -490,7 +488,7 @@ def _build_span_index(spans: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             duplicates += 1
         index[span_id] = span
 
-    if duplicates > 0 and not _quiet_mode:
+    if duplicates > 0 and not _quiet_mode.get():
         import warnings
 
         warnings.warn(f"Found {duplicates} duplicate span_id(s) in trace", stacklevel=2)
@@ -1026,21 +1024,22 @@ def _populate_session_turns(
     # Note: Multiple roots might indicate concurrent executions or parsing ambiguity
     sorted_root_ids = sorted(root_gen_ids)
     selected_index = 0
-    if _root_generation_index is not None:
-        if 0 <= _root_generation_index < len(sorted_root_ids):
-            selected_index = _root_generation_index
-        elif not _quiet_mode:
+    _rgi = _root_generation_index.get()
+    if _rgi is not None:
+        if 0 <= _rgi < len(sorted_root_ids):
+            selected_index = _rgi
+        elif not _quiet_mode.get():
             import warnings
 
             warnings.warn(
                 f"Session {session.session_id}: Requested root generation index "
-                f"{_root_generation_index} out of range (0..{len(sorted_root_ids) - 1}); "
+                f"{_rgi} out of range (0..{len(sorted_root_ids) - 1}); "
                 f"using 0",
                 stacklevel=2,
             )
 
     gen_key = sorted_root_ids[selected_index]
-    if not _quiet_mode and (len(root_gen_ids) > 1 or used_time_fallback):
+    if not _quiet_mode.get() and (len(root_gen_ids) > 1 or used_time_fallback):
         import warnings
 
         if used_time_fallback:
