@@ -246,7 +246,6 @@ def _build_script_command(
     return cmd.strip()
 
 
-
 class Skill:
     """Base class for agent skills.
 

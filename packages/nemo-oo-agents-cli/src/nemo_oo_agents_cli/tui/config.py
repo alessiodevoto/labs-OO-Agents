@@ -145,7 +145,10 @@ class Config:
         "vi": "tui.vi_mode",
         "agent": "tui.agent_spec",
         "python": "tui.show_python",
-        "libs_dirs": ("tui.libs_dirs", lambda v: [Path(p) for p in (v if isinstance(v, list) else [v])]),
+        "libs_dirs": (
+            "tui.libs_dirs",
+            lambda v: [Path(p) for p in (v if isinstance(v, list) else [v])],
+        ),
     }
 
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)

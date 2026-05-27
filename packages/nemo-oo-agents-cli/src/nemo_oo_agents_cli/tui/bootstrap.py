@@ -415,7 +415,9 @@ def build_registry(
             result.agent.skills.discover_libs(libs_dir)
     # Activate all discovered library skills (local.* from project libs, plus any prefixed ones)
     discovered = result.agent.skills.discovered()
-    lib_patterns = {n.split(".")[0] + ".*" for n in discovered if n not in result.agent.skills.loaded()}
+    lib_patterns = {
+        n.split(".")[0] + ".*" for n in discovered if n not in result.agent.skills.loaded()
+    }
     if lib_patterns:
         result.agent.skills.activate(list(lib_patterns))
 
