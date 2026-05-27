@@ -117,6 +117,7 @@ class TodoManager(Skill):
     """
 
     __nosnapshot__ = False  # Override Skill's __nosnapshot__ = True
+    context_block = ("todo_status", "self.todo.status()")
 
     def __init__(self, state: dict | None = None) -> None:
         self._todos: dict[str, Todo] = {}

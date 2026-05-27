@@ -147,6 +147,7 @@ class SkillRegistry(Skill):
 
     __agentdoc_skip__ = True
     __nosnapshot__ = True
+    context_block = ("skills", "self.skills.status()")
 
     def __init__(self, agent: Any) -> None:
         self._agent = agent
@@ -157,6 +158,10 @@ class SkillRegistry(Skill):
         self._lib_paths: dict[str, str] = {}  # lib_name → sys.path entry added for it
         self._discover()
         super().__init__()
+        # Self-register our own context block (we're never activated through ourselves)
+        if self.context_block and hasattr(agent, "context_manager"):
+            key, expr = self.context_block
+            agent.context_manager.set_dynamic(key, expr)
 
     # ------------------------------------------------------------------
     # Discovery
@@ -438,6 +443,7 @@ class SkillRegistry(Skill):
         for name in matched:
             self._activated.add(name)
             self._unhide_skill(name)
+            self._register_context_block(name)
 
         # Refresh slash commands so the TUI picks up @slash_command methods
         if matched:
@@ -477,6 +483,7 @@ class SkillRegistry(Skill):
         for name in matched:
             self._activated.discard(name)
             self._hide_skill(name)
+            self._unregister_context_block(name)
 
     # ------------------------------------------------------------------
     # Visibility wiring
@@ -506,6 +513,32 @@ class SkillRegistry(Skill):
             spec(self._agent, attr, hidden=True)
         except Exception:
             logger.debug("Failed to hide skill %s (attr=%s)", name, attr, exc_info=True)
+
+    def _register_context_block(self, name: str) -> None:
+        """Register a dynamic context block if the skill declares one."""
+        attr = self._attr_map.get(name) or self._attr_name(name)
+        skill = getattr(self._agent, attr, None)
+        if skill is None:
+            return
+        block = getattr(skill, "context_block", None)
+        if isinstance(block, tuple) and len(block) == 2:
+            key, expr = block
+            cm = self._agent.context_manager
+            if key not in cm.protected_keys:
+                cm.set_dynamic(key, expr)
+
+    def _unregister_context_block(self, name: str) -> None:
+        """Remove a dynamic context block if the skill declares one."""
+        attr = self._attr_map.get(name) or self._attr_name(name)
+        skill = getattr(self._agent, attr, None)
+        if skill is None:
+            return
+        block = getattr(skill, "context_block", None)
+        if isinstance(block, tuple) and len(block) == 2:
+            key, _ = block
+            cm = self._agent.context_manager
+            if key in cm and key not in cm.protected_keys:
+                cm.pop(key, None)
 
     # ------------------------------------------------------------------
     # Reload
@@ -633,7 +666,7 @@ class SkillRegistry(Skill):
             active_tools.append((name, attr, one_liner))
 
         if active_tools:
-            lines.append("Active Skills (use via self.<attr>, docs with doc(self.<attr>)):")
+            lines.append("Active Skills (use via self.<attr>, docs with doc(self.<attr>), deactivate with self.skills.deactivate(['name'])):")
             for _name, attr, desc in active_tools:
                 lines.append(f"  self.{attr:18s} {desc}")
 

@@ -5,7 +5,9 @@
 import re
 import shlex
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from nemo_oo_agents.agentdoc import hidden
 
 import yaml
 from pydantic import BaseModel
@@ -275,7 +277,11 @@ class Skill:
     # Skill dependencies — list of skill names (category/name) that must be
     # loaded before this skill can function. SkillRegistry resolves these
     # transitively when activate() is called.
-    requires: tuple[str, ...] = ()
+    requires: Annotated[tuple[str, ...], hidden] = ()
+
+    # If set, SkillRegistry.activate() registers a dynamic context block
+    # with this (key, expr) pair. deactivate() removes it.
+    context_block: Annotated[tuple[str, str] | None, hidden] = None
 
     _agent: Any = None
 

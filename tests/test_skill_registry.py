@@ -164,3 +164,117 @@ class TestActivation:
         reg.activate(["nemo.auto"])
         assert "nemo.auto" in reg.loaded()
         assert "nemo.auto" in reg.activated()
+
+# ---------------------------------------------------------------------------
+# Tests: Context Block Registration
+# ---------------------------------------------------------------------------
+
+
+class SkillWithContextBlock(Skill):
+    """A skill that declares a context block."""
+
+    context_block = ("my_status", "self.my_skill.status()")
+
+    def status(self) -> str:
+        return "ok"
+
+
+class SkillWithoutContextBlock(Skill):
+    """A skill that does not declare a context block."""
+
+    def do_something(self) -> str:
+        return "done"
+
+
+class _FakeAgentWithContext:
+    """Agent mock with a context_manager."""
+
+    def __init__(self):
+        from nemo_oo_agents.runtime.context_manager import ContextManager
+
+        self.context_manager = ContextManager()
+
+
+@pytest.fixture
+def agent_ctx():
+    return _FakeAgentWithContext()
+
+
+@pytest.fixture
+def registry_ctx(agent_ctx):
+    """SkillRegistry with context_manager available on the agent."""
+    with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+        return SkillRegistry(agent_ctx)
+
+
+class TestContextBlockRegistration:
+    def test_activate_registers_context_block(self, registry_ctx, agent_ctx):
+        skill = SkillWithContextBlock()
+        registry_ctx.register("nemo.my_skill", skill)
+        registry_ctx.activate(["nemo.my_skill"])
+
+        # The context_manager should now have the dynamic block
+        cm = agent_ctx.context_manager
+        assert "my_status" in cm
+
+    def test_activate_does_not_register_when_no_context_block(self, registry_ctx, agent_ctx):
+        skill = SkillWithoutContextBlock()
+        registry_ctx.register("nemo.plain", skill)
+        registry_ctx.activate(["nemo.plain"])
+
+        cm = agent_ctx.context_manager
+        assert "my_status" not in cm
+
+    def test_deactivate_removes_context_block(self, registry_ctx, agent_ctx):
+        skill = SkillWithContextBlock()
+        registry_ctx.register("nemo.my_skill", skill)
+        registry_ctx.activate(["nemo.my_skill"])
+
+        # Verify it's registered
+        cm = agent_ctx.context_manager
+        assert "my_status" in cm
+
+        # Deactivate should remove it
+        registry_ctx.deactivate(["nemo.my_skill"])
+        assert "my_status" not in cm
+
+    def test_deactivate_does_not_remove_protected_block(self, registry_ctx, agent_ctx):
+        """If a context block key happens to be protected, deactivate won't remove it."""
+        cm = agent_ctx.context_manager
+        cm.set_dynamic_protected("my_status", "self.something()")
+
+        skill = SkillWithContextBlock()
+        registry_ctx.register("nemo.my_skill", skill)
+        registry_ctx.activate(["nemo.my_skill"])
+        registry_ctx.deactivate(["nemo.my_skill"])
+
+        # Protected block should still be present
+        assert "my_status" in cm
+
+    def test_context_block_with_mocked_skill_is_ignored(self, registry_ctx, agent_ctx):
+        """MagicMock skills (from test patches) should not crash context block registration."""
+        mock_skill = MagicMock()
+        registry_ctx.register("nemo.mocked", mock_skill)
+        # Should not raise — MagicMock.context_block is a Mock, not a tuple
+        registry_ctx.activate(["nemo.mocked"])
+
+        cm = agent_ctx.context_manager
+        # Only the SkillRegistry's own "skills" block should exist (from __init__),
+        # NOT a block from the MagicMock skill
+        non_protected = [k for k in cm if k not in cm.protected_keys]
+        assert "skills" in non_protected  # from SkillRegistry itself
+        assert len(non_protected) == 1  # no block from the mock
+
+    def test_skill_registry_registers_own_context_block(self, agent_ctx):
+        """SkillRegistry itself has context_block and registers it on activate."""
+        # SkillRegistry is registered on the agent as "skills" attr
+        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+            reg = SkillRegistry(agent_ctx)
+        agent_ctx.skills = reg
+        # Manually trigger context block registration for the registry itself
+        reg._attr_map["nemo.skills"] = "skills"
+        reg._loaded.add("nemo.skills")
+        reg.activate(["nemo.skills"])
+
+        cm = agent_ctx.context_manager
+        assert "skills" in cm

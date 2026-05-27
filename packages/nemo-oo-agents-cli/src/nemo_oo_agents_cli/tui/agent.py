@@ -695,15 +695,13 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("superpowers.libwriting", self.libs)
         self.skills.activate(["nemo.*", "superpowers.*"])
 
-        # Show available skills to the LLM every turn
-        self.context.set_dynamic("skills", "self.skills.status()")
+        # Skills register their own context blocks via context_block class attr
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
 
-        # Show todo progress to the LLM every turn
-        self.context.set_dynamic("todo_status", "self.todo.status()")
+
 
         # Show context-window usage to the LLM every turn (lets the agent
         # decide when to call /compact). Value is from the PREVIOUS turn's
