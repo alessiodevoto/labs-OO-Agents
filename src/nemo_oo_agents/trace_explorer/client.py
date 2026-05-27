@@ -260,9 +260,7 @@ class TraceExplorerClient:
         Returns:
             Turn details with navigation breadcrumbs, or error message.
         """
-        return await self._get_text(
-            "find-span", {"span_id": span_id, "json_output": json_output}
-        )
+        return await self._get_text("find-span", {"span_id": span_id, "json_output": json_output})
 
     async def help(self) -> str:
         """Return usage guide for the TraceExplorer API."""
