@@ -26,6 +26,8 @@ router = APIRouter(prefix="/api/explorer", tags=["explorer"])
 _CACHE_MAX_SIZE = 16
 _explorer_cache: OrderedDict[str, Any] = OrderedDict()
 _cache_lock = threading.Lock()
+_build_locks: dict[str, threading.Lock] = {}
+_build_locks_lock = threading.Lock()
 
 
 def _get_cached_explorer(session_id: str):
@@ -97,46 +99,62 @@ def _build_explorer(session_id: str):
     """Load spans from DB and build a TraceExplorer, with LRU caching.
 
     Returns a cached instance if available; otherwise builds fresh and caches.
+    Serializes builds per session_id to prevent duplicate work under load.
     """
     cached = _get_cached_explorer(session_id)
     if cached is not None:
         return cached
 
-    from nemo_oo_agents.trace_explorer.explorer import (
-        TraceExplorer,
-        _normalize_otlp_span,
-        _parse_trace_from_spans,
-        get_quiet_mode,
-        set_quiet_mode,
-    )
+    # Serialize builds for the same session to avoid duplicate work
+    with _build_locks_lock:
+        if session_id not in _build_locks:
+            _build_locks[session_id] = threading.Lock()
+        build_lock = _build_locks[session_id]
 
-    if not otlp_store.session_exists(session_id):
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    with build_lock:
+        # Double-check after acquiring lock
+        cached = _get_cached_explorer(session_id)
+        if cached is not None:
+            return cached
 
-    otlp_spans = otlp_store.get_session_spans(session_id, augment=True)
-    if not otlp_spans:
-        raise HTTPException(status_code=404, detail=f"No spans found for session: {session_id}")
+        from nemo_oo_agents.trace_explorer.explorer import (
+            TraceExplorer,
+            _normalize_otlp_span,
+            _parse_trace_from_spans,
+            get_quiet_mode,
+            set_quiet_mode,
+        )
 
-    raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
+        if not otlp_store.session_exists(session_id):
+            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
 
-    prev_quiet = get_quiet_mode()
-    set_quiet_mode(True)
-    try:
-        sessions = _parse_trace_from_spans(raw_spans)
-        eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
-    finally:
-        set_quiet_mode(prev_quiet)
+        otlp_spans = otlp_store.get_session_spans(session_id, augment=True)
+        if not otlp_spans:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No spans found for session: {session_id}",
+            )
 
-    explorer = TraceExplorer(
-        sessions=sessions,
-        trace_file=f"viewer://{session_id}",
-        eval_result=eval_result,
-        raw_spans=raw_spans,
-        viewer_url=None,
-    )
+        raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
 
-    _put_cached_explorer(session_id, explorer)
-    return explorer
+        prev_quiet = get_quiet_mode()
+        set_quiet_mode(True)
+        try:
+            sessions = _parse_trace_from_spans(raw_spans)
+            eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
+        finally:
+            set_quiet_mode(prev_quiet)
+
+        explorer = TraceExplorer(
+            sessions=sessions,
+            trace_file=f"viewer://{session_id}",
+            eval_result=eval_result,
+            raw_spans=raw_spans,
+            viewer_url=None,
+        )
+
+        _put_cached_explorer(session_id, explorer)
+        return explorer
 
 
 # ---------------------------------------------------------------------------
@@ -259,16 +277,18 @@ async def get_overview_fast(
         status_code = span.get("status", {}).get("code", 1)
         status = "ERROR" if status_code == 2 else "OK"
 
-        sessions.append({
-            "span_id": span.get("spanId", ""),
-            "session_id": span.get("spanId", "")[:6],
-            "parent_span_id": span.get("parentSpanId"),
-            "agent_name": attr_dict.get("agent.name", span.get("name", "").split(".")[0]),
-            "method_name": attr_dict.get("agent.method", span.get("name", "").split(".")[-1]),
-            "duration_ms": round(duration_ms, 1),
-            "status": status,
-            "status_message": span.get("status", {}).get("message"),
-        })
+        sessions.append(
+            {
+                "span_id": span.get("spanId", ""),
+                "session_id": span.get("spanId", "")[:6],
+                "parent_span_id": span.get("parentSpanId"),
+                "agent_name": attr_dict.get("agent.name", span.get("name", "").split(".")[0]),
+                "method_name": attr_dict.get("agent.method", span.get("name", "").split(".")[-1]),
+                "duration_ms": round(duration_ms, 1),
+                "status": status,
+                "status_message": span.get("status", {}).get("message"),
+            }
+        )
 
     return {"sessions": sessions, "session_id": session_id}
 
@@ -336,7 +356,9 @@ async def get_session_list(
     """Return structured session list."""
     explorer = await asyncio.to_thread(_build_explorer, session_id)
     summaries = await explorer.get_session_list()
-    return {"sessions": [s.model_dump() if hasattr(s, "model_dump") else vars(s) for s in summaries]}
+    return {
+        "sessions": [s.model_dump() if hasattr(s, "model_dump") else vars(s) for s in summaries]
+    }
 
 
 @router.get("/turn")

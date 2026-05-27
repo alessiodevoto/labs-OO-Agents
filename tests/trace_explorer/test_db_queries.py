@@ -24,44 +24,54 @@ def temp_db(tmp_path):
 def _make_sample_trace():
     """Create a sample OTLP trace with multiple spans."""
     return {
-        "resourceSpans": [{
-            "resource": {"attributes": []},
-            "scopeSpans": [{
-                "spans": [
+        "resourceSpans": [
+            {
+                "resource": {"attributes": []},
+                "scopeSpans": [
                     {
-                        "traceId": "aaaa",
-                        "spanId": "span001",
-                        "name": "RootAgent.handle",
-                        "kind": 1,
-                        "startTimeUnixNano": "1000000000",
-                        "endTimeUnixNano": "5000000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                            {"key": "agent.name", "value": {"stringValue": "RootAgent"}},
-                            {"key": "agent.method", "value": {"stringValue": "handle"}},
-                            {"key": "session.id", "value": {"stringValue": "test-session"}},
+                        "spans": [
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "span001",
+                                "name": "RootAgent.handle",
+                                "kind": 1,
+                                "startTimeUnixNano": "1000000000",
+                                "endTimeUnixNano": "5000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "AGENT"},
+                                    },
+                                    {"key": "agent.name", "value": {"stringValue": "RootAgent"}},
+                                    {"key": "agent.method", "value": {"stringValue": "handle"}},
+                                    {"key": "session.id", "value": {"stringValue": "test-session"}},
+                                ],
+                                "status": {"code": 1},
+                            },
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "span002",
+                                "parentSpanId": "span001",
+                                "name": "ChildAgent.run",
+                                "kind": 1,
+                                "startTimeUnixNano": "2000000000",
+                                "endTimeUnixNano": "4000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "AGENT"},
+                                    },
+                                    {"key": "agent.name", "value": {"stringValue": "ChildAgent"}},
+                                    {"key": "agent.method", "value": {"stringValue": "run"}},
+                                    {"key": "session.id", "value": {"stringValue": "test-session"}},
+                                ],
+                                "status": {"code": 2, "message": "Something failed"},
+                            },
                         ],
-                        "status": {"code": 1},
-                    },
-                    {
-                        "traceId": "aaaa",
-                        "spanId": "span002",
-                        "parentSpanId": "span001",
-                        "name": "ChildAgent.run",
-                        "kind": 1,
-                        "startTimeUnixNano": "2000000000",
-                        "endTimeUnixNano": "4000000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                            {"key": "agent.name", "value": {"stringValue": "ChildAgent"}},
-                            {"key": "agent.method", "value": {"stringValue": "run"}},
-                            {"key": "session.id", "value": {"stringValue": "test-session"}},
-                        ],
-                        "status": {"code": 2, "message": "Something failed"},
-                    },
+                    }
                 ],
-            }],
-        }],
+            }
+        ],
     }
 
 
@@ -122,28 +132,38 @@ class TestErrorSpansQuery:
         """Should return empty when no error spans exist."""
         # Ingest a trace with no errors
         with patch.object(otlp_store, "DB_PATH", temp_db):
-            otlp_store.ingest({
-                "resourceSpans": [{
-                    "resource": {"attributes": []},
-                    "scopeSpans": [{
-                        "spans": [{
-                            "traceId": "bbbb",
-                            "spanId": "span_ok",
-                            "name": "OkAgent.run",
-                            "kind": 1,
-                            "startTimeUnixNano": "1000000000",
-                            "endTimeUnixNano": "2000000000",
-                            "attributes": [
-                                {"key": "session.id", "value": {"stringValue": "ok-session"}},
+            otlp_store.ingest(
+                {
+                    "resourceSpans": [
+                        {
+                            "resource": {"attributes": []},
+                            "scopeSpans": [
+                                {
+                                    "spans": [
+                                        {
+                                            "traceId": "bbbb",
+                                            "spanId": "span_ok",
+                                            "name": "OkAgent.run",
+                                            "kind": 1,
+                                            "startTimeUnixNano": "1000000000",
+                                            "endTimeUnixNano": "2000000000",
+                                            "attributes": [
+                                                {
+                                                    "key": "session.id",
+                                                    "value": {"stringValue": "ok-session"},
+                                                },
+                                            ],
+                                            "status": {"code": 1},
+                                        }
+                                    ],
+                                }
                             ],
-                            "status": {"code": 1},
-                        }],
-                    }],
-                }],
-            })
+                        }
+                    ],
+                }
+            )
             errors = otlp_store.get_error_spans("ok-session")
         assert errors == []
-
 
 
 class TestFTSSearch:
@@ -155,7 +175,9 @@ class TestFTSSearch:
             results = otlp_store.search_spans_fts("test-session", "RootAgent")
         # Should find the span with agent.name = "RootAgent"
         assert len(results) >= 1
-        assert any("RootAgent" in r.get("snippet", "") or "RootAgent" in r.get("name", "") for r in results)
+        assert any(
+            "RootAgent" in r.get("snippet", "") or "RootAgent" in r.get("name", "") for r in results
+        )
 
     def test_search_spans_fts_no_results(self, temp_db):
         """FTS should return empty for non-matching queries."""

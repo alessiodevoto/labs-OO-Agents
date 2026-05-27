@@ -72,6 +72,7 @@ def app():
     from fastapi import FastAPI
 
     from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache, router
+
     clear_explorer_cache()
     test_app = FastAPI()
     test_app.include_router(router)
@@ -85,19 +86,47 @@ def mock_store():
         m.get_session_spans.return_value = _make_multi_agent_otlp_spans()
         # For the fast path: get_agent_spans returns just AGENT spans
         m.get_agent_spans.return_value = [
-            {"spanId": "root_agent_01", "name": "Router.handle", "parentSpanId": None,
-             "attributes": [{"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}],
-             "status": {"code": 1}, "startTimeUnixNano": "1000000000", "endTimeUnixNano": "9000000000",
-             "traceId": "t1", "kind": 1},
-            {"spanId": "child_agent_a", "name": "Worker.run", "parentSpanId": "root_agent_01",
-             "attributes": [{"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}],
-             "status": {"code": 1}, "startTimeUnixNano": "2000000000", "endTimeUnixNano": "4000000000",
-             "traceId": "t1", "kind": 1},
-            {"spanId": "child_agent_b", "name": "Analyzer.analyze", "parentSpanId": "root_agent_01",
-             "attributes": [{"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}],
-             "status": {"code": 1}, "startTimeUnixNano": "5000000000", "endTimeUnixNano": "8000000000",
-             "traceId": "t1", "kind": 1},
+            {
+                "spanId": "root_agent_01",
+                "name": "Router.handle",
+                "parentSpanId": None,
+                "attributes": [
+                    {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}
+                ],
+                "status": {"code": 1},
+                "startTimeUnixNano": "1000000000",
+                "endTimeUnixNano": "9000000000",
+                "traceId": "t1",
+                "kind": 1,
+            },
+            {
+                "spanId": "child_agent_a",
+                "name": "Worker.run",
+                "parentSpanId": "root_agent_01",
+                "attributes": [
+                    {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}
+                ],
+                "status": {"code": 1},
+                "startTimeUnixNano": "2000000000",
+                "endTimeUnixNano": "4000000000",
+                "traceId": "t1",
+                "kind": 1,
+            },
+            {
+                "spanId": "child_agent_b",
+                "name": "Analyzer.analyze",
+                "parentSpanId": "root_agent_01",
+                "attributes": [
+                    {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}}
+                ],
+                "status": {"code": 1},
+                "startTimeUnixNano": "5000000000",
+                "endTimeUnixNano": "8000000000",
+                "traceId": "t1",
+                "kind": 1,
+            },
         ]
+
         # get_descendant_spans returns spans for a specific subtree
         def _descendant_spans(session_id, span_id):
             all_spans = _make_multi_agent_otlp_spans()
@@ -108,6 +137,7 @@ def mock_store():
             elif span_id == "root_agent_01":
                 return all_spans
             return []
+
         m.get_descendant_spans.side_effect = _descendant_spans
         yield m
 
@@ -118,9 +148,7 @@ class TestIncrementalSessionLoading:
     @pytest.mark.asyncio
     async def test_session_fast_loads_only_subtree(self, app, mock_store):
         """Fast session endpoint should use get_descendant_spans, not get_session_spans."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(
                 "/api/explorer/session-fast",
                 params={
@@ -141,9 +169,7 @@ class TestIncrementalSessionLoading:
         """Should 404 if span_id not found."""
         mock_store.get_descendant_spans.side_effect = None
         mock_store.get_descendant_spans.return_value = []
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(
                 "/api/explorer/session-fast",
                 params={
@@ -161,9 +187,7 @@ class TestIncrementalTurnLoading:
     @pytest.mark.asyncio
     async def test_turn_fast_loads_only_subtree(self, app, mock_store):
         """Fast turn endpoint should use get_descendant_spans."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(
                 "/api/explorer/turn-fast",
                 params={

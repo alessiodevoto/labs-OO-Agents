@@ -22,86 +22,105 @@ def temp_db(tmp_path):
 def _make_multi_session_trace():
     """Create a trace with a parent AGENT and two child AGENT spans plus LLM spans."""
     return {
-        "resourceSpans": [{
-            "resource": {"attributes": []},
-            "scopeSpans": [{
-                "spans": [
+        "resourceSpans": [
+            {
+                "resource": {"attributes": []},
+                "scopeSpans": [
                     {
-                        "traceId": "aaaa",
-                        "spanId": "root_span_01",
-                        "name": "RootAgent.handle",
-                        "kind": 1,
-                        "startTimeUnixNano": "1000000000",
-                        "endTimeUnixNano": "9000000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                            {"key": "agent.name", "value": {"stringValue": "RootAgent"}},
-                            {"key": "agent.method", "value": {"stringValue": "handle"}},
-                            {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                        "spans": [
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "root_span_01",
+                                "name": "RootAgent.handle",
+                                "kind": 1,
+                                "startTimeUnixNano": "1000000000",
+                                "endTimeUnixNano": "9000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "AGENT"},
+                                    },
+                                    {"key": "agent.name", "value": {"stringValue": "RootAgent"}},
+                                    {"key": "agent.method", "value": {"stringValue": "handle"}},
+                                    {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                                ],
+                                "status": {"code": 1},
+                            },
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "child_span_1",
+                                "parentSpanId": "root_span_01",
+                                "name": "ChildA.run",
+                                "kind": 1,
+                                "startTimeUnixNano": "2000000000",
+                                "endTimeUnixNano": "4000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "AGENT"},
+                                    },
+                                    {"key": "agent.name", "value": {"stringValue": "ChildA"}},
+                                    {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                                ],
+                                "status": {"code": 1},
+                            },
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "llm_span_001",
+                                "parentSpanId": "child_span_1",
+                                "name": "acompletion",
+                                "kind": 3,
+                                "startTimeUnixNano": "2500000000",
+                                "endTimeUnixNano": "3500000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "LLM"},
+                                    },
+                                    {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                                ],
+                                "status": {"code": 1},
+                            },
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "child_span_2",
+                                "parentSpanId": "root_span_01",
+                                "name": "ChildB.run",
+                                "kind": 1,
+                                "startTimeUnixNano": "5000000000",
+                                "endTimeUnixNano": "8000000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "AGENT"},
+                                    },
+                                    {"key": "agent.name", "value": {"stringValue": "ChildB"}},
+                                    {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                                ],
+                                "status": {"code": 1},
+                            },
+                            {
+                                "traceId": "aaaa",
+                                "spanId": "llm_span_002",
+                                "parentSpanId": "child_span_2",
+                                "name": "acompletion",
+                                "kind": 3,
+                                "startTimeUnixNano": "5500000000",
+                                "endTimeUnixNano": "7500000000",
+                                "attributes": [
+                                    {
+                                        "key": "openinference.span.kind",
+                                        "value": {"stringValue": "LLM"},
+                                    },
+                                    {"key": "session.id", "value": {"stringValue": "multi-sess"}},
+                                ],
+                                "status": {"code": 1},
+                            },
                         ],
-                        "status": {"code": 1},
-                    },
-                    {
-                        "traceId": "aaaa",
-                        "spanId": "child_span_1",
-                        "parentSpanId": "root_span_01",
-                        "name": "ChildA.run",
-                        "kind": 1,
-                        "startTimeUnixNano": "2000000000",
-                        "endTimeUnixNano": "4000000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                            {"key": "agent.name", "value": {"stringValue": "ChildA"}},
-                            {"key": "session.id", "value": {"stringValue": "multi-sess"}},
-                        ],
-                        "status": {"code": 1},
-                    },
-                    {
-                        "traceId": "aaaa",
-                        "spanId": "llm_span_001",
-                        "parentSpanId": "child_span_1",
-                        "name": "acompletion",
-                        "kind": 3,
-                        "startTimeUnixNano": "2500000000",
-                        "endTimeUnixNano": "3500000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
-                            {"key": "session.id", "value": {"stringValue": "multi-sess"}},
-                        ],
-                        "status": {"code": 1},
-                    },
-                    {
-                        "traceId": "aaaa",
-                        "spanId": "child_span_2",
-                        "parentSpanId": "root_span_01",
-                        "name": "ChildB.run",
-                        "kind": 1,
-                        "startTimeUnixNano": "5000000000",
-                        "endTimeUnixNano": "8000000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-                            {"key": "agent.name", "value": {"stringValue": "ChildB"}},
-                            {"key": "session.id", "value": {"stringValue": "multi-sess"}},
-                        ],
-                        "status": {"code": 1},
-                    },
-                    {
-                        "traceId": "aaaa",
-                        "spanId": "llm_span_002",
-                        "parentSpanId": "child_span_2",
-                        "name": "acompletion",
-                        "kind": 3,
-                        "startTimeUnixNano": "5500000000",
-                        "endTimeUnixNano": "7500000000",
-                        "attributes": [
-                            {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
-                            {"key": "session.id", "value": {"stringValue": "multi-sess"}},
-                        ],
-                        "status": {"code": 1},
-                    },
+                    }
                 ],
-            }],
-        }],
+            }
+        ],
     }
 
 

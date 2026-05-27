@@ -65,9 +65,7 @@ def mock_otlp_store():
 @pytest.mark.asyncio
 async def test_overview_endpoint(app, mock_otlp_store):
     """Test /api/explorer/overview returns a text result."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/overview",
             params={"session_id": "test-session"},
@@ -83,9 +81,7 @@ async def test_overview_endpoint(app, mock_otlp_store):
 async def test_overview_endpoint_session_not_found(app, mock_otlp_store):
     """Test 404 when session doesn't exist."""
     mock_otlp_store.session_exists.return_value = False
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/overview",
             params={"session_id": "nonexistent"},
@@ -96,9 +92,7 @@ async def test_overview_endpoint_session_not_found(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_errors_endpoint(app, mock_otlp_store):
     """Test /api/explorer/errors endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/errors",
             params={"session_id": "test-session"},
@@ -111,9 +105,7 @@ async def test_errors_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_search_endpoint(app, mock_otlp_store):
     """Test /api/explorer/search endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/search",
             params={"session_id": "test-session", "pattern": "TestAgent"},
@@ -126,9 +118,7 @@ async def test_search_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_session_list_endpoint(app, mock_otlp_store):
     """Test /api/explorer/session-list endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/session-list",
             params={"session_id": "test-session"},
@@ -142,9 +132,7 @@ async def test_session_list_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_turn_endpoint(app, mock_otlp_store):
     """Test /api/explorer/turn endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/turn",
             params={
@@ -161,9 +149,7 @@ async def test_turn_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_timeline_endpoint(app, mock_otlp_store):
     """Test /api/explorer/timeline endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/timeline",
             params={"session_id": "test-session"},
@@ -176,9 +162,7 @@ async def test_timeline_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_first_error_endpoint(app, mock_otlp_store):
     """Test /api/explorer/first-error endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/first-error",
             params={"session_id": "test-session"},
@@ -191,9 +175,7 @@ async def test_first_error_endpoint(app, mock_otlp_store):
 @pytest.mark.asyncio
 async def test_eval_context_endpoint(app, mock_otlp_store):
     """Test /api/explorer/eval-context endpoint."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/explorer/eval-context",
             params={"session_id": "test-session"},

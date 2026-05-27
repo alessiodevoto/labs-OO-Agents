@@ -303,6 +303,7 @@ def init_db() -> int:
         );
 
         CREATE INDEX IF NOT EXISTS idx_spans_session ON spans(session_id);
+        CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(session_id, parent_span_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_experiment ON sessions(experiment);
 
         CREATE TABLE IF NOT EXISTS annotations (
@@ -693,8 +694,11 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
                 fts_rows,
             )
         except Exception:
-            # FTS insert failures are non-fatal — search just falls back to LIKE
-            pass
+            log.debug(
+                "FTS insert failed for %d spans (search falls back to LIKE)",
+                len(fts_rows),
+                exc_info=True,
+            )
 
     return {"session_id": session_id, "experiment": experiment, "span_count": span_count}
 
@@ -1712,7 +1716,6 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
     return result
 
 
-
 # ---------------------------------------------------------------------------
 # Incremental queries for trace explorer thin-client
 # ---------------------------------------------------------------------------
@@ -1725,9 +1728,7 @@ def get_session_summary(session_id: str) -> dict[str, Any] | None:
     or None if the session doesn't exist.
     """
     db = _get_db()
-    row = db.execute(
-        "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-    ).fetchone()
+    row = db.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
     if not row:
         return None
 
@@ -1766,9 +1767,7 @@ def get_agent_spans(session_id: str) -> list[dict[str, Any]]:
     """
     db = _get_db()
     # Check session exists
-    exists = db.execute(
-        "SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)
-    ).fetchone()
+    exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
     if not exists:
         return []
 
@@ -1779,7 +1778,7 @@ def get_agent_spans(session_id: str) -> list[dict[str, Any]]:
         "AND attributes LIKE ? "
         "AND attributes LIKE ? "
         "ORDER BY start_time_ns",
-        (session_id, '%openinference.span.kind%', '%AGENT%'),
+        (session_id, "%openinference.span.kind%", "%AGENT%"),
     ).fetchall()
 
     spans = []
@@ -1804,13 +1803,11 @@ def get_error_spans(session_id: str) -> list[dict[str, Any]]:
     """
     db = _get_db()
     rows = db.execute(
-        "SELECT * FROM spans WHERE session_id = ? AND status_code = 2 "
-        "ORDER BY start_time_ns",
+        "SELECT * FROM spans WHERE session_id = ? AND status_code = 2 ORDER BY start_time_ns",
         (session_id,),
     ).fetchall()
 
     return [_row_to_span(r) for r in rows]
-
 
 
 def get_descendant_spans(session_id: str, root_span_id: str) -> list[dict[str, Any]]:
@@ -1849,7 +1846,6 @@ def get_descendant_spans(session_id: str, root_span_id: str) -> list[dict[str, A
     return [_row_to_span(r) for r in collected_rows]
 
 
-
 def search_spans_fts(session_id: str, query: str, limit: int = 100) -> list[dict[str, Any]]:
     """Search span content using FTS5 full-text search.
 
@@ -1879,7 +1875,6 @@ def search_spans_fts(session_id: str, query: str, limit: int = 100) -> list[dict
         return []
 
 
-
 def backfill_fts(session_id: str | None = None) -> int:
     """Backfill the FTS index for existing spans.
 
@@ -1901,39 +1896,46 @@ def backfill_fts(session_id: str | None = None) -> int:
     else:
         db.execute("DELETE FROM spans_fts")
 
-    # Select spans to index
+    # Process in batches to avoid OOM on large databases
+    batch_size = 5000
+    total = 0
+
     if session_id:
-        rows = db.execute(
+        cursor = db.execute(
             "SELECT session_id, span_id, name, attributes FROM spans WHERE session_id = ?",
             (session_id,),
-        ).fetchall()
+        )
     else:
-        rows = db.execute(
-            "SELECT session_id, span_id, name, attributes FROM spans"
-        ).fetchall()
+        cursor = db.execute("SELECT session_id, span_id, name, attributes FROM spans")
 
-    if not rows:
-        return 0
+    while True:
+        rows = cursor.fetchmany(batch_size)
+        if not rows:
+            break
 
-    fts_rows = []
-    for r in rows:
-        attrs_json = r["attributes"]
-        content_parts = []
-        try:
-            attrs = json.loads(attrs_json) if attrs_json else []
-            for attr in attrs:
-                val = attr.get("value", {})
-                sv = val.get("stringValue")
-                if sv:
-                    content_parts.append(sv)
-        except (json.JSONDecodeError, TypeError):
-            if attrs_json:
-                content_parts.append(attrs_json)
-        fts_rows.append((r["session_id"], r["span_id"], r["name"] or "", " ".join(content_parts)))
+        fts_rows = []
+        for r in rows:
+            attrs_json = r["attributes"]
+            content_parts = []
+            try:
+                attrs = json.loads(attrs_json) if attrs_json else []
+                for attr in attrs:
+                    val = attr.get("value", {})
+                    sv = val.get("stringValue")
+                    if sv:
+                        content_parts.append(sv)
+            except (json.JSONDecodeError, TypeError):
+                if attrs_json:
+                    content_parts.append(attrs_json)
+            fts_rows.append(
+                (r["session_id"], r["span_id"], r["name"] or "", " ".join(content_parts))
+            )
 
-    db.executemany(
-        "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
-        fts_rows,
-    )
+        db.executemany(
+            "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
+            fts_rows,
+        )
+        total += len(fts_rows)
+
     db.commit()
-    return len(fts_rows)
+    return total

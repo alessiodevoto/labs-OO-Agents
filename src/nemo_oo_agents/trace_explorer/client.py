@@ -70,13 +70,10 @@ class TraceExplorerClient:
                 resp.raise_for_status()
                 return resp.json()
             except httpx.ConnectError as e:
-                raise ConnectionError(
-                    f"Cannot reach viewer at {self._base_url}: {e}"
-                ) from e
+                raise ConnectionError(f"Cannot reach viewer at {self._base_url}: {e}") from e
             except httpx.HTTPStatusError as e:
                 raise ValueError(
-                    f"Explorer API returned HTTP {e.response.status_code}: "
-                    f"{e.response.text[:200]}"
+                    f"Explorer API returned HTTP {e.response.status_code}: {e.response.text[:200]}"
                 ) from e
 
     async def _get_text(self, endpoint: str, params: dict[str, Any] | None = None) -> str:
@@ -103,10 +100,13 @@ class TraceExplorerClient:
             session_id: The 6-character session ID to inspect.
             concise: If True, truncate long content.
         """
-        return await self._get_text("session", {
-            "target_session_id": session_id,
-            "concise": concise,
-        })
+        return await self._get_text(
+            "session",
+            {
+                "target_session_id": session_id,
+                "concise": concise,
+            },
+        )
 
     async def get_session_list(self) -> list[dict[str, Any]]:
         """Return structured session list."""
@@ -120,10 +120,13 @@ class TraceExplorerClient:
             session_id: The 6-character session ID.
             turn_index: Turn index (0-based).
         """
-        return await self._get_text("turn", {
-            "target_session_id": session_id,
-            "turn_index": turn_index,
-        })
+        return await self._get_text(
+            "turn",
+            {
+                "target_session_id": session_id,
+                "turn_index": turn_index,
+            },
+        )
 
     async def get_errors(self) -> str:
         """List all errors in the trace with context."""
@@ -197,7 +200,9 @@ class TraceExplorerClient:
         """Get only error spans for the session (direct DB query)."""
         return await self._get("error-spans")
 
-    async def get_session_fast(self, session_id: str, span_id: str, *, concise: bool = False) -> str:
+    async def get_session_fast(
+        self, session_id: str, span_id: str, *, concise: bool = False
+    ) -> str:
         """Get session details using only the subtree under span_id.
 
         Much faster than get_session() for large traces — only loads the
@@ -208,11 +213,14 @@ class TraceExplorerClient:
             span_id: The full span_id of the target agent session.
             concise: If True, truncate long content.
         """
-        return await self._get_text("session-fast", {
-            "target_session_id": session_id,
-            "span_id": span_id,
-            "concise": concise,
-        })
+        return await self._get_text(
+            "session-fast",
+            {
+                "target_session_id": session_id,
+                "span_id": span_id,
+                "concise": concise,
+            },
+        )
 
     async def get_turn_fast(self, session_id: str, span_id: str, turn_index: int) -> str:
         """Get turn details using only the subtree under span_id.
@@ -224,11 +232,14 @@ class TraceExplorerClient:
             span_id: The full span_id of the target agent session.
             turn_index: Turn index (0-based).
         """
-        return await self._get_text("turn-fast", {
-            "target_session_id": session_id,
-            "span_id": span_id,
-            "turn_index": turn_index,
-        })
+        return await self._get_text(
+            "turn-fast",
+            {
+                "target_session_id": session_id,
+                "span_id": span_id,
+                "turn_index": turn_index,
+            },
+        )
 
     async def get_descendant_spans(self, span_id: str) -> dict[str, Any]:
         """Get a span and all its descendants (targeted subtree loading).

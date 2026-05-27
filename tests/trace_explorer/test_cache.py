@@ -10,23 +10,25 @@ from httpx import ASGITransport, AsyncClient
 
 def _make_otlp_spans():
     """Minimal OTLP spans fixture."""
-    return [{
-        "traceId": "trace001",
-        "spanId": "aabbccdd11223344",
-        "name": "TestAgent.handle",
-        "kind": 1,
-        "startTimeUnixNano": "1000000000",
-        "endTimeUnixNano": "2000000000",
-        "attributes": [
-            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
-            {"key": "agent.name", "value": {"stringValue": "TestAgent"}},
-            {"key": "agent.method", "value": {"stringValue": "handle"}},
-            {"key": "agent.call_id", "value": {"stringValue": "call_001"}},
-        ],
-        "status": {"code": 1},
-        "events": [],
-        "_resource": {},
-    }]
+    return [
+        {
+            "traceId": "trace001",
+            "spanId": "aabbccdd11223344",
+            "name": "TestAgent.handle",
+            "kind": 1,
+            "startTimeUnixNano": "1000000000",
+            "endTimeUnixNano": "2000000000",
+            "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+                {"key": "agent.name", "value": {"stringValue": "TestAgent"}},
+                {"key": "agent.method", "value": {"stringValue": "handle"}},
+                {"key": "agent.call_id", "value": {"stringValue": "call_001"}},
+            ],
+            "status": {"code": 1},
+            "events": [],
+            "_resource": {},
+        }
+    ]
 
 
 @pytest.fixture
@@ -34,6 +36,7 @@ def app():
     from fastapi import FastAPI
 
     from nemo_oo_agents.viewer.explorer_routes import router
+
     test_app = FastAPI()
     test_app.include_router(router)
     return test_app
@@ -43,6 +46,7 @@ def app():
 def clear_cache():
     """Clear the explorer cache before each test."""
     from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache
+
     clear_explorer_cache()
     yield
     clear_explorer_cache()
@@ -62,9 +66,7 @@ class TestExplorerCache:
     @pytest.mark.asyncio
     async def test_repeated_calls_reuse_cached_explorer(self, app, mock_store):
         """Same session_id should only build TraceExplorer once."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.get("/api/explorer/overview", params={"session_id": "sess-1"})
             await client.get("/api/explorer/errors", params={"session_id": "sess-1"})
 
@@ -74,9 +76,7 @@ class TestExplorerCache:
     @pytest.mark.asyncio
     async def test_different_sessions_build_separate_explorers(self, app, mock_store):
         """Different session_ids should each build their own explorer."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.get("/api/explorer/overview", params={"session_id": "sess-1"})
             await client.get("/api/explorer/overview", params={"session_id": "sess-2"})
 
@@ -88,9 +88,7 @@ class TestExplorerCache:
         from nemo_oo_agents.viewer.explorer_routes import _explorer_cache
 
         # Fill cache beyond max size, verify it doesn't grow unbounded
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for i in range(20):
                 await client.get("/api/explorer/overview", params={"session_id": f"sess-{i}"})
 
@@ -101,12 +99,11 @@ class TestExplorerCache:
         """Cache should be clearable."""
         from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.get("/api/explorer/overview", params={"session_id": "sess-1"})
 
         clear_explorer_cache()
 
         from nemo_oo_agents.viewer.explorer_routes import _explorer_cache
+
         assert len(_explorer_cache) == 0
