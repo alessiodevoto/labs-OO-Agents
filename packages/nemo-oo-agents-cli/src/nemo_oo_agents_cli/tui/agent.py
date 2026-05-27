@@ -701,8 +701,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
 
-
-
         # Show context-window usage to the LLM every turn (lets the agent
         # decide when to call /compact). Value is from the PREVIOUS turn's
         # render, so the very first respond() call sees an empty string.

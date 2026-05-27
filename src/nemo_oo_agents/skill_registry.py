@@ -589,9 +589,15 @@ class SkillRegistry(Skill):
 
             for obj in vars(mod).values():
                 if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
+                    # Unregister old context block before replacing
+                    if name in self._activated:
+                        self._unregister_context_block(name)
                     new_skill = obj()
                     setattr(self._agent, attr, new_skill)
                     new_skill.attach(self._agent)
+                    # Register new context block
+                    if name in self._activated:
+                        self._register_context_block(name)
                     # Refresh slash commands so CommandRegistry picks up new methods
                     cmd_reg = getattr(self._agent, "_command_registry", None)
                     if cmd_reg is not None and hasattr(cmd_reg, "refresh_skill_commands"):
@@ -666,7 +672,10 @@ class SkillRegistry(Skill):
             active_tools.append((name, attr, one_liner))
 
         if active_tools:
-            lines.append("Active Skills (use via self.<attr>, docs with doc(self.<attr>), deactivate with self.skills.deactivate(['name'])):")
+            lines.append(
+                "Active Skills (use via self.<attr>, docs via doc(self.<attr>),"
+                " deactivate via self.skills.deactivate(['name'])):"
+            )
             for _name, attr, desc in active_tools:
                 lines.append(f"  self.{attr:18s} {desc}")
 
