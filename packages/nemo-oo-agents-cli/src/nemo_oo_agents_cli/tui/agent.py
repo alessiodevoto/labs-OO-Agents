@@ -277,9 +277,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     # Producer-side Channel (full put / pop_last / snapshot / etc.)
     # — hidden, since the LLM has no business calling those.
     _user_messages_in: Annotated[Channel, hidden, nosnapshot]
+    # Slash command results — posted by Session when a @slash_command returns.
+    _slash_commands_in: Annotated[Channel, hidden, nosnapshot]
     # Read-only facade (just .get() / .status() / .name) is what the
     # LLM sees as ``self.user_messages``.
     user_messages: Annotated[_ChannelReader, nosnapshot]
+    # Slash command results — the agent receives SlashCommandResult objects here.
+    slash_commands: Annotated[_ChannelReader, nosnapshot]
     # Persistent variables for the LLM — survives across turns AND
     # across sessions (snapshot-backed). Accessed via the ``self.v``
     # proxy for dot-attribute reads/writes (``self.v.spec = "..."``).
@@ -292,6 +296,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
+        self._slash_commands_in = self.queue_manager.queue("slash_commands")
+        self.slash_commands = self._slash_commands_in.reader
         self.producers = ProducersSkill()
         self.pyp = Pyp()
         # Surface pending-queue counts (and a short preview of each item)
@@ -426,6 +432,9 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         Recognized ``queue_name`` values:
 
         - ``"user_messages"`` — text from the human; ``item`` is a str.
+        - ``"slash_commands"`` — results from slash commands; ``item`` is a
+          ``SlashCommandResult(command, args, value, text)``. Access the
+          raw return value via ``item.value``; ``str(item)`` gives the text.
 
         Subclasses may add more (e.g. ``"job_outputs"``); the
         ``<queue_status>`` context block lists the pending count per
