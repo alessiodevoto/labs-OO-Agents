@@ -89,6 +89,8 @@ class CommandResult:
     compact_done: bool = False
     # When set, Session.run() passes this as the user message for an agent turn.
     agent_message: str | None = None
+    # Structured slash command result — passed to the agent on a queue.
+    slash_result: "Any | None" = None
 
     # Convenience constructors -------------------------------------------
 
@@ -2551,10 +2553,32 @@ class CommandHandler:
             if skill._method is not None:
                 import inspect
 
-                result_str = skill._method(" ".join(args))
-                if inspect.isawaitable(result_str):
-                    result_str = await result_str
-                return CommandResult(success=True, agent_message=str(result_str))
+                from nemo_oo_agents.slash_dispatch import (
+                    CoercionError,
+                    SlashCommandResult,
+                    parse_typed_args,
+                )
+
+                raw_args = " ".join(args)
+                try:
+                    kwargs = parse_typed_args(skill._method, raw_args)
+                except CoercionError as e:
+                    msg = f"/{cmd_name}: {e.message}"
+                    if e.hint:
+                        msg += f"\nUsage: /{cmd_name} {e.hint}"
+                    return CommandResult.err(msg)
+
+                result_val = skill._method(**kwargs)
+                if inspect.isawaitable(result_val):
+                    result_val = await result_val
+
+                slash_result = SlashCommandResult(
+                    command=cmd_name,
+                    args=raw_args,
+                    value=result_val,
+                    text=str(result_val) if result_val is not None else None,
+                )
+                return CommandResult(success=True, slash_result=slash_result)
             return CommandResult(success=True, agent_message=skill.make_agent_message(args))
 
         command = self.registry.get_command(cmd_name)

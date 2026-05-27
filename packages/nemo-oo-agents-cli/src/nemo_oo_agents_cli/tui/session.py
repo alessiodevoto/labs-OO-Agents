@@ -702,7 +702,14 @@ class Session:
         if result.exit:
             self._app.exit()
             return
-        if result.agent_message is not None:
+        if result.slash_result is not None:
+            # Structured slash command result — post to the agent's
+            # user_messages queue with the text representation so the
+            # agent receives it as a message it can act on. The full
+            # SlashCommandResult (with .value) is available on the event.
+            text = str(result.slash_result)
+            self._app.submit_message(text)
+        elif result.agent_message is not None:
             # Slash-command-generated agent turn — feed through the same
             # path as a typed message so the user bar, session bookkeeping,
             # and agent dispatch stay consistent.

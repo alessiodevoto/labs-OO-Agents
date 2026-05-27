@@ -5,7 +5,7 @@
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from nemo_oo_agents.skill import Skill, slash_command
 
@@ -81,10 +81,15 @@ class TuiConfigurationSkill(Skill):
 
     @slash_command(
         "config",
-        argument_hint="[show | set <key> <value> | libs | skills | path]",
+        argument_hint="<action> [key] [value]",
         completions=("show", "set", "libs", "skills", "path"),
     )
-    async def config_command(self, args: str) -> str:
+    async def config_command(
+        self,
+        action: Literal["show", "set", "libs", "skills", "path"] = "show",
+        key: str = "",
+        value: str = "",
+    ) -> str:
         """Show or modify TUI configuration.
 
         /config          — show current effective configuration
@@ -93,25 +98,17 @@ class TuiConfigurationSkill(Skill):
         /config set <k> <v> — update a key in config.toml
         /config path     — show config file path
         """
-        parts = args.strip().split(None, 1)
-        subcmd = parts[0] if parts else "show"
-        rest = parts[1] if len(parts) > 1 else ""
-
-        if subcmd in ("show", ""):
+        if action == "show":
             return self._show_config()
-        elif subcmd == "libs":
+        elif action == "libs":
             return self._show_libs()
-        elif subcmd == "skills":
+        elif action == "skills":
             return self._show_skills()
-        elif subcmd == "set":
-            return self._set_config(rest)
-        elif subcmd == "path":
+        elif action == "set":
+            return self._set_config(f"{key} {value}".strip())
+        elif action == "path":
             return f"Config file: {self._config_path()}"
-        else:
-            return (
-                "Unknown subcommand. Usage:\n"
-                "/config [show | set <key> <value> | libs | skills | path]"
-            )
+        return "Unreachable"
 
     def _config_path(self) -> Path:
         """Return the path to the project config.toml."""
