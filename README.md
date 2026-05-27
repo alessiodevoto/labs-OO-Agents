@@ -19,45 +19,55 @@
 
 ## Installation
 
-The recommended way to install NeMo OO Agents is using uv.
+### Just want the OO CLI/TUI?
 
 ```bash
-# Install uv (if needed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/raw/main/scripts/install.sh | sh
+exec $SHELL          # pick up PATH + the API key the script wrote
+nemo oo tui          # launch the interactive agent REPL
+```
 
+The script installs `uv`, a managed Python, the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), and prompts for your `NVIDIA_INTERNAL_API_KEY`. Upgrade later with `uv tool upgrade nemo-oo-agents-cli`.
 
+### Use as a library
+
+Add to a Python project (typical workflow when *building* agents, not just running the TUI):
+
+```bash
 # Create a new project (if needed)
 uv init my-agent-project
 cd my-agent-project
 
-# Core framework (most users only need this)
-uv add "nemo-oo-agents[viewer,tracing] @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
+# Core framework + NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
+# gpt-5.2, …). External users who don't want the NVIDIA aliases drop the second `uv add`.
+uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
+uv add "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-nvidia"
 
 # Optional: CLI + TUI (`nemo` command, web terminal, agent REPL)
 uv add "nemo-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-cli"
-
-# Optional: CLI + numpy/pandas/plotly/scipy/sklearn pre-loaded into the LLM REPL
-uv add "nemo-oo-agents-cli[datascience] @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-cli"
 
 # Optional: benchmark harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep)
 uv add "nemo-oo-agents-benchmarks @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-benchmarks"
 ```
 
-NeMo OO Agents ships as three lockstep packages from this repo:
+NeMo OO Agents ships as four lockstep packages from this repo:
 
-- **`nemo-oo-agents`** — the core framework. Includes `nemo_oo_agents` (the agent runtime), `nemo_oo_agents.context_blocks` (rendering), and `nemo_oo_agents.unifiedllm` (LLM client).
-- **`nemo-oo-agents-cli`** — the `nemo` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nemo oo term` web frontend (uvicorn/ptyprocess/fastapi, transitively pulls `[datascience]`).
-- **`nemo-oo-agents-benchmarks`** — eval harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) and the `nemo-harbor` runner. Heavy eval-only deps live in `[bigcodebench]`.
+- **`nemo-oo-agents`** — the core framework. Includes the agent runtime, context blocks, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
+- **`nemo-oo-agents-cli`** — the `nemo` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nemo oo term` web frontend.
+- **`nemo-oo-agents-benchmarks`** — eval harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) and the `nemo-harbor` runner.
+- **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases. Registers via the `nemo_oo_agents.bundled_configs` entry-point group; install to add the aliases, omit for an OSS-only registry.
 
 ### API Keys
 
-Create a `.env` file in your project directory with your API key:
+For library use, drop a `.env` in your project directory:
 
 ```bash
 echo 'NVIDIA_INTERNAL_API_KEY=your-api-key-here' > .env
 ```
-Best internal provider:
-- **NVIDIA Inference HUB**: All the quickstart examples use models from inference.nvidia.com. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INTERNAL_API_KEY`.
+
+For `uv tool`-installed CLIs, export in your shell rc instead (`.env` is only loaded by scripts and the viewer, not by the TUI).
+
+- **NVIDIA Inference HUB**: All the quickstart examples and bundled aliases route through inference.nvidia.com. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INTERNAL_API_KEY`.
 
 ### Development Setup (Advanced Use)
 
@@ -91,9 +101,11 @@ Methods with `...` bodies are called **generation methods** - they're implemente
 from nemo_oo_agents.util.quickstart import *
 from nemo_oo_agents.unifiedllm import get_llm_client
 
-# Any litellm-supported model name works out of the box
-# Set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY in your environment
-llm = get_llm_client("gpt-4o-mini")
+# Pick whichever you have credentials for. The NVIDIA aliases below require
+# `nemo-oo-agents-nvidia` (installed by default per the Installation section)
+# and NVIDIA_INTERNAL_API_KEY.
+llm = get_llm_client("claude-haiku")     # → NVIDIA-gateway Claude Haiku
+# llm = get_llm_client("gpt-4o-mini")    # → OpenAI direct; needs OPENAI_API_KEY
 
 
 class FeedbackAgent(Agent, llm=llm):
@@ -113,21 +125,19 @@ async def main():
 `get_llm_client()` is a thin wrapper on top of [litellm](https://docs.litellm.ai/), so any litellm-supported model name works directly:
 
 ```python
-llm = get_llm_client("gpt-4o-mini")                # OpenAI
-llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (direct API)
-llm = get_llm_client("gemini/gemini-2.5-flash")    # Google
+llm = get_llm_client("gpt-4o-mini")                # OpenAI (needs OPENAI_API_KEY)
+llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (needs ANTHROPIC_API_KEY)
+llm = get_llm_client("gemini/gemini-2.5-flash")    # Google (needs GEMINI_API_KEY)
 ```
 
-For custom endpoints, proxy gateways, or team aliases, drop a `llm_config.yaml` in your working directory (or point `UNIFIEDLLM_CONFIG` at one or more YAML files). NVIDIA employees can use the shipped `configs/llm_config_nvidia.yaml`:
-
-```bash
-export UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml
-```
+If you installed `nemo-oo-agents-nvidia` (the Installation section above includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nemo_oo_agents.bundled_configs` entry-point group:
 
 ```python
 llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
+
+Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nemo oo config eject` (writes to `~/.config/nat/oo/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nemo_oo_agents/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nemo oo config show` to inspect which files are loading.
 
 See [`src/nemo_oo_agents/unifiedllm/registry.py`](src/nemo_oo_agents/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 

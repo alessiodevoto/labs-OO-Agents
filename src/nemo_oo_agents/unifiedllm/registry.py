@@ -9,11 +9,22 @@ directly to ``get_llm_client()`` and litellm handles the rest.
 
 The registry is useful for *custom* models — models behind a proxy/gateway,
 models with non-standard API keys, or convenience aliases for a team.
-Define them in YAML and point the framework at them:
+Define them in YAML and point the framework at them.
 
-Config layering (last wins):
-1. ``UNIFIEDLLM_CONFIG`` env var — comma-separated list of YAML paths
-2. ``./llm_config.yaml`` in the working directory
+Discovery is *not* done here. ``unifiedllm`` is intentionally ignorant of
+project filesystem conventions; the framework helper
+:func:`nemo_oo_agents.llm_config.llm_config_chain` returns the YAML files
+to load — including any bundled defaults registered by external
+packages via the ``nemo_oo_agents.bundled_configs`` entry-point group
+(install ``nemo-oo-agents-nvidia`` for the NVIDIA-gateway aliases).
+The registry exposes:
+
+- :func:`reload_registry` — load the registry from explicit paths.
+- :func:`ensure_loaded` — idempotently auto-load via the framework helper.
+  Called automatically on the first :func:`get_llm_client` call.
+- :func:`resolve_api_key_from_config` — public helper for resolving
+  ``api_key_env`` → env var value, with a WARN when the named env var
+  is unset. Used by callers outside the registry (NAT plugin, viewer).
 
 YAML schema::
 
@@ -35,6 +46,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -45,33 +58,55 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Environment variable for extra config file paths (comma-separated)
-_CONFIG_ENV_VAR = "UNIFIEDLLM_CONFIG"
+# Serializes the (_loaded, MODELS) check-and-mutate so concurrent
+# ensure_loaded() / reload_registry() calls — possible when async agent
+# tool calls fire in parallel before bootstrap finishes — cannot
+# observe MODELS in a half-cleared state or both run the discovery.
+# Reentrant because reload_registry() is called from inside
+# ensure_loaded() while the lock is held.
+_registry_lock = threading.RLock()
 
 
-def _config_file_chain() -> list[Path]:
-    """Return the ordered list of config files to load (first = lowest priority)."""
-    files: list[Path] = []
+def resolve_api_key_from_config(
+    model_name: str,
+    config: Mapping[str, Any],
+) -> str | None:
+    """Read the api_key_env-named env var declared by a registry config.
 
-    # 1. Extra configs from UNIFIEDLLM_CONFIG env var
-    extra = os.environ.get(_CONFIG_ENV_VAR, "").strip()
-    if extra:
-        for raw_path in extra.split(","):
-            raw_path = raw_path.strip()
-            if not raw_path:
-                continue
-            p = Path(raw_path).expanduser().resolve()
-            if p.exists():
-                files.append(p)
-            else:
-                logger.warning("UNIFIEDLLM_CONFIG path does not exist: %s", p)
+    Returns the env var's value on success, or ``None`` if ``api_key_env``
+    isn't set in ``config``. **Logs a WARN if ``api_key_env`` is set but
+    the named env var is unset or empty** — callers should propagate the
+    ``None`` so litellm can fall back to its own defaults, but the user
+    sees a visible signal that their config promised an env var that
+    doesn't exist.
 
-    # 2. CWD override (highest priority)
-    cwd_config = Path.cwd() / "llm_config.yaml"
-    if cwd_config.exists():
-        files.append(cwd_config)
-
-    return files
+    Shared helper for callers outside the registry (NAT plugin, viewer
+    routes) that need the same resolution + diagnostic semantics.
+    """
+    api_key_env = config.get("api_key_env")
+    if not api_key_env:
+        return None
+    # Defend against malformed YAML where api_key_env was written as a
+    # number, list, etc. — os.getenv would raise TypeError.
+    if not isinstance(api_key_env, str):
+        logger.warning(
+            "Model %r has invalid api_key_env %r: expected a string env var name, got %s.",
+            model_name,
+            api_key_env,
+            type(api_key_env).__name__,
+        )
+        return None
+    api_key = os.getenv(api_key_env)
+    if api_key:
+        return api_key
+    logger.warning(
+        "Model %r is configured to read its API key from env var %r, but "
+        "that variable is unset or empty. Falling back to litellm defaults "
+        "(which may use OPENAI_API_KEY).",
+        model_name,
+        api_key_env,
+    )
+    return None
 
 
 def _load_models_from_yaml(path: Path) -> dict[str, dict[str, Any] | None]:
@@ -95,43 +130,108 @@ def _load_models_from_yaml(path: Path) -> dict[str, dict[str, Any] | None]:
     return models
 
 
-def _load_registry() -> dict[str, dict[str, Any]]:
-    """Load and merge all config layers into the model registry."""
-    merged: dict[str, dict[str, Any]] = {}
-
-    for path in _config_file_chain():
-        logger.debug("Loading LLM registry config from: %s", path)
-        for name, cfg in _load_models_from_yaml(path).items():
-            if cfg is None:
-                merged.pop(name, None)
-            else:
-                merged[name] = cfg
-
-    return merged
-
-
-# MODELS is the merged view of all YAML config layers (UNIFIEDLLM_CONFIG +
-# ./llm_config.yaml). Consumers:
+# MODELS is the merged view of all YAML config layers configured by the
+# framework (see :func:`reload_registry` / :func:`ensure_loaded`).
+# Consumers:
 #   - get_llm_client() — looks up config when you pass a registered alias
 #   - TUI /model and /models commands — list and autocomplete aliases
 #   - External tools (eval_pipeline, nat plugin) — resolve alias → endpoint/key
 #
-# Loaded once at import. Use reload_registry() to refresh after editing
-# config files at runtime; it updates this dict in-place so existing
+# Starts empty. The first get_llm_client() call triggers ensure_loaded(),
+# which auto-discovers via nemo_oo_agents.llm_config.llm_config_chain. The
+# framework (TUI bootstrap) can call reload_registry() explicitly during
+# startup. reload_registry() updates this dict in-place so existing
 # references stay live.
-MODELS: dict[str, dict[str, Any]] = _load_registry()
+MODELS: dict[str, dict[str, Any]] = {}
+
+# Set to True once reload_registry has run (with or without paths) so
+# subsequent ensure_loaded() calls are no-ops.
+_loaded = False
 
 
-def reload_registry() -> dict[str, dict[str, Any]]:
-    """Reload the model registry from all config files, in-place.
+def reload_registry(*paths: Path) -> dict[str, dict[str, Any]]:
+    """Reload ``MODELS`` from YAML files, last-wins.
 
-    Useful for tests or after changing config files at runtime. Existing
-    ``MODELS`` references see the new contents without re-importing.
+    With explicit ``paths``: load only those files. This is the
+    framework-driven path (e.g. TUI bootstrap does
+    ``reload_registry(*llm_config_chain())``).
+
+    With no arguments: **re-discover via**
+    :func:`nemo_oo_agents.llm_config.llm_config_chain` and load.
+    Matches the pre-refactor behavior — callers can edit
+    ``llm_config.yaml`` or change ``NEMO_OO_LLM_CONFIG`` and call
+    ``reload_registry()`` to pick the changes up. To truly clear the
+    registry, use ``MODELS.clear()`` directly or pass paths that
+    don't exist.
+
+    Marks the registry as explicitly loaded — subsequent
+    :func:`get_llm_client` calls will *not* trigger auto-discovery.
+    ``MODELS`` is updated in place so existing references stay live.
+
+    Thread-safe: the ``MODELS.clear()`` / ``MODELS.update()`` mutation
+    is serialized with :func:`ensure_loaded` so concurrent callers
+    cannot observe an empty registry between the two steps.
     """
-    fresh = _load_registry()
-    MODELS.clear()
-    MODELS.update(fresh)
+    global _loaded
+
+    if not paths:
+        # Imported lazily so the unifiedllm package doesn't pull in
+        # nemo_oo_agents.paths (and transitively platformdirs) at
+        # module-load time.
+        from nemo_oo_agents.llm_config import llm_config_chain
+
+        paths = tuple(llm_config_chain())
+
+    fresh: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        logger.debug("Loading LLM registry config from: %s", path)
+        for name, cfg in _load_models_from_yaml(path).items():
+            if cfg is None:
+                fresh.pop(name, None)
+            elif isinstance(cfg, dict):
+                fresh[name] = cfg
+            else:
+                logger.warning(
+                    "Ignoring model %r in %s: expected mapping or null, got %s",
+                    name,
+                    path,
+                    type(cfg).__name__,
+                )
+                fresh.pop(name, None)
+
+    with _registry_lock:
+        MODELS.clear()
+        MODELS.update(fresh)
+        _loaded = True
     return MODELS
+
+
+def ensure_loaded() -> None:
+    """Idempotently populate ``MODELS`` via the framework's config chain.
+
+    Called automatically from :func:`get_llm_client` so standalone
+    scripts and benchmark runners (no TUI bootstrap) populate the
+    registry without ceremony. Call explicitly from other entry points
+    that read ``MODELS`` directly before any :func:`get_llm_client`
+    call (e.g. the ``nat`` plugin).
+
+    Once :func:`reload_registry` has been called (with or without
+    paths), this is a no-op — explicit reloads win over
+    auto-discovery. To force a refresh use ``reload_registry()``
+    directly.
+
+    Thread-safe: the check-and-load is serialized so two concurrent
+    callers cannot both trigger discovery (and clobber each other's
+    in-place mutation of ``MODELS``).
+    """
+    # The check + load must be atomic w.r.t. other callers; otherwise a
+    # second thread can pass the ``if _loaded`` guard while the first is
+    # still inside reload_registry(). RLock allows reload_registry() to
+    # re-acquire the lock from within the same thread.
+    with _registry_lock:
+        if _loaded:
+            return
+        reload_registry()
 
 
 def get_llm_client(name: str, *, client_type: str | None = None, **overrides) -> UnifiedLLM:
@@ -140,6 +240,11 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
     If ``name`` is a registry key, its config (model_name, endpoint, API key,
     defaults) is applied. Otherwise ``name`` is passed directly to litellm,
     which handles routing for every common public provider.
+
+    Triggers :func:`ensure_loaded` on the first call so the registry
+    auto-populates from
+    :func:`nemo_oo_agents.llm_config.llm_config_chain` if the framework
+    hasn't already called :func:`reload_registry`.
 
     Client class selection (first wins):
     1. Explicit ``client_type`` parameter
@@ -171,7 +276,15 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
     """
     from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
 
-    config = MODELS.get(name, {})
+    ensure_loaded()
+
+    # Snapshot the alias's config under the lock so a concurrent
+    # reload_registry() — which does MODELS.clear() then update() —
+    # can't make us observe an empty dict mid-mutation. The lock is
+    # held only for the lookup; CompletionClient construction
+    # happens after release.
+    with _registry_lock:
+        config = dict(MODELS.get(name, {}))
 
     if config:
         model = config.get("model_name", name)
@@ -190,7 +303,14 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
     if api_base := config.get("api_base"):
         params["api_base"] = api_base
 
-    if (api_key_env := config.get("api_key_env")) and (api_key := os.getenv(api_key_env)):
+    # Only resolve the registry's api_key_env when the caller hasn't
+    # supplied an explicit api_key — otherwise resolve_api_key_from_config
+    # would emit a misleading "env var unset" warning for credentials
+    # the user is already passing in directly.
+    if (
+        "api_key" not in overrides
+        and (api_key := resolve_api_key_from_config(name, config)) is not None
+    ):
         params["api_key"] = api_key
 
     # Copy model-specific defaults from config (overrides win)

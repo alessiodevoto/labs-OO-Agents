@@ -75,8 +75,20 @@ from nemo_oo_agents.strategies import (  # noqa: E402
 from nemo_oo_agents.token_counter import char_approximate_token_counter  # noqa: E402
 from nemo_oo_agents.unifiedllm import LLMResponse  # noqa: E402
 
+
+# Lazy re-export of llm_config_chain — defer the platformdirs import
+# inside paths.py until the helper is actually called.
+def __getattr__(name):
+    if name == "llm_config_chain":
+        from nemo_oo_agents.llm_config import llm_config_chain
+
+        return llm_config_chain
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "__version__",
+    "llm_config_chain",  # Lazy re-export (see __getattr__)
     # Types
     "ContextWindowStats",  # Re-exported from context_blocks
     "DynamicContext",  # Re-exported from context_blocks

@@ -62,9 +62,10 @@ target_files:
 # =============================================================================
 # MODELS — resolved from the unifiedllm registry.
 #
-# Set `export UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml` so that the
 # NVIDIA-internal aliases (claude-haiku, nemotron3-nano-30b, gpt-5.2, etc.)
-# are available. No local `models:` section is needed here.
+# ship in the nemo-oo-agents-nvidia package; install it (or the [nvidia]
+# extra) and the aliases resolve automatically. Run
+# `nemo oo config show` to inspect which YAML files are loading.
 #
 # Any model name supported by litellm also works as-is.
 # =============================================================================

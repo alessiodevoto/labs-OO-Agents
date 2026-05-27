@@ -2,29 +2,89 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for YAML-based model registry."""
 
+from __future__ import annotations
+
 import textwrap
+from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import MODELS, CompletionClient, get_llm_client, reload_registry
+from nemo_oo_agents.unifiedllm import (
+    MODELS,
+    CompletionClient,
+    ensure_loaded,
+    get_llm_client,
+    reload_registry,
+)
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry():
-    """Reset the registry cache before and after each test."""
+def _isolate_registry(tmp_path, monkeypatch):
+    """Reset registry + redirect user/project dirs to a clean temp dir.
+
+    Without this, tests inherit whatever the real user has in
+    ``~/.config/nat/oo/llm_config.yaml`` (or in the project's
+    ``.nemo_oo_agents/`` directory) and become flaky.
+
+    Bundled-default entry-points are stubbed empty so the test suite
+    is insensitive to whether ``nemo-oo-agents-nvidia`` (or other
+    bundled-config providers) is installed alongside.
+    """
+    user = tmp_path / "user"
+    project = tmp_path / "project"
+    user.mkdir()
+    project.mkdir()
+    monkeypatch.setenv("NEMO_OO_USER_DIR", str(user))
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(project))
+    monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
+    monkeypatch.delenv("NEMO_OO_LLM_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    # Force a known starting state.
     reload_registry()
     yield
     reload_registry()
 
 
+def _write_project_config(project_dir: Path, body: str) -> Path:
+    path = project_dir / "llm_config.yaml"
+    path.write_text(textwrap.dedent(body))
+    return path
+
+
+def _write_user_config(user_dir: Path, body: str) -> Path:
+    path = user_dir / "llm_config.yaml"
+    path.write_text(textwrap.dedent(body))
+    return path
+
+
+def _project_dir(tmp_path: Path) -> Path:
+    return tmp_path / "project"
+
+
+def _user_dir(tmp_path: Path) -> Path:
+    return tmp_path / "user"
+
+
 class TestEmptyDefaultRegistry:
     """The registry ships empty; public models rely on litellm's built-in routing."""
 
-    def test_registry_empty_by_default(self, monkeypatch, tmp_path):
-        """Without UNIFIEDLLM_CONFIG or CWD config, the registry is empty."""
-        monkeypatch.delenv("UNIFIEDLLM_CONFIG", raising=False)
-        monkeypatch.chdir(tmp_path)
+    def test_registry_empty_after_clear(self):
+        """``reload_registry()`` with no args clears MODELS."""
+        # Populate first so the post-clear assertion is actually
+        # checking that reload_registry() *clears*, not just the
+        # fixture's starting state.
+        MODELS["pre-existing"] = {"model_name": "x"}
         reload_registry()
+        assert MODELS == {}
+
+    def test_registry_empty_when_no_files(self, tmp_path):
+        """No user/project/env files → registry stays empty after ensure_loaded()."""
+        from nemo_oo_agents.unifiedllm import registry as _registry
+
+        # Reset _loaded so ensure_loaded actually runs.
+        _registry._loaded = False
+        ensure_loaded()
         assert MODELS == {}
 
 
@@ -32,7 +92,6 @@ class TestGetLlmClient:
     """Tests for get_llm_client() function."""
 
     def test_returns_completion_client(self):
-        """get_llm_client should return a CompletionClient."""
         llm = get_llm_client("gpt-4o-mini")
         assert isinstance(llm, CompletionClient)
 
@@ -41,17 +100,17 @@ class TestGetLlmClient:
         llm = get_llm_client("some-unknown-model-xyz")
         assert llm.model == "some-unknown-model-xyz"
 
-    def test_registry_model_uses_model_name(self, tmp_path, monkeypatch):
+    def test_registry_model_uses_model_name(self, tmp_path):
         """Registry model should use the model_name from config."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               my-alias:
                 model_name: openai/my-org/my-model
-        """)
+            """,
         )
-        reload_registry()
+        reload_registry(path)
         llm = get_llm_client("my-alias")
         assert llm.model == "openai/my-org/my-model"
 
@@ -62,22 +121,21 @@ class TestGetLlmClient:
         assert llm.config.get("max_tokens") == 100
 
     def test_drop_params_default_true(self):
-        """drop_params should default to True."""
         llm = get_llm_client("gpt-4o-mini")
         assert llm.config.get("drop_params") is True
 
-    def test_registry_hit_logs_info(self, tmp_path, monkeypatch, caplog):
+    def test_registry_hit_logs_info(self, tmp_path, caplog):
         """Registry hits should be logged at INFO level for user visibility."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               my-alias:
                 model_name: openai/my-org/my-model
                 api_base: https://example.com/v1
-        """)
+            """,
         )
-        reload_registry()
+        reload_registry(path)
 
         import logging
 
@@ -85,208 +143,334 @@ class TestGetLlmClient:
             get_llm_client("my-alias")
         assert "registry hit" in caplog.text.lower()
 
+    def test_first_call_triggers_auto_load(self, tmp_path):
+        """When ``reload_registry`` has not been called, the first
+        ``get_llm_client`` triggers auto-discovery via the standard chain.
+        """
+        from nemo_oo_agents.unifiedllm import registry as _registry
+
+        _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              auto-loaded:
+                model_name: auto/loaded
+            """,
+        )
+        # Pretend the registry was never explicitly loaded.
+        MODELS.clear()
+        _registry._loaded = False
+
+        llm = get_llm_client("auto-loaded")
+        assert llm.model == "auto/loaded"
+        assert "auto-loaded" in MODELS
+
 
 class TestApiKeyHandling:
     """Tests for API key environment variable handling."""
 
     def test_api_key_from_env(self, tmp_path, monkeypatch):
-        """API key should be read from the env var specified in config."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               test-keyed-model:
                 model_name: test-model
                 api_key_env: MY_TEST_KEY
-        """)
+            """,
         )
         monkeypatch.setenv("MY_TEST_KEY", "test-key-abc")
-        reload_registry()
+        reload_registry(path)
         llm = get_llm_client("test-keyed-model")
         assert llm.config.get("api_key") == "test-key-abc"
 
     def test_missing_api_key_handled_gracefully(self, tmp_path, monkeypatch):
-        """Missing API key should not crash get_llm_client."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               test-keyed-model:
                 model_name: test-model
                 api_key_env: NONEXISTENT_KEY
-        """)
+            """,
         )
         monkeypatch.delenv("NONEXISTENT_KEY", raising=False)
-        reload_registry()
+        reload_registry(path)
         llm = get_llm_client("test-keyed-model")
         assert llm.config.get("api_key") is None
 
     def test_unknown_model_no_api_key_env(self):
-        """Unknown models should not attempt to read an env var."""
         llm = get_llm_client("totally-made-up-model")
         assert llm.config.get("api_key") is None
 
+    def test_non_string_api_key_env_logged_and_dropped(self, tmp_path, caplog):
+        """A malformed ``api_key_env`` (e.g. a number) must not crash ``os.getenv``.
+
+        ``resolve_api_key_from_config`` logs a warning naming the
+        offending type and returns ``None``; ``get_llm_client`` then
+        proceeds without an API key.
+        """
+        path = tmp_path / "bad.yaml"
+        path.write_text(
+            textwrap.dedent("""\
+                models:
+                  numeric-env:
+                    model_name: m
+                    api_key_env: 12345
+            """)
+        )
+        reload_registry(path)
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.unifiedllm.registry"):
+            llm = get_llm_client("numeric-env")
+
+        assert llm.config.get("api_key") is None
+        assert "invalid api_key_env" in caplog.text
+        assert "int" in caplog.text  # type name surfaced
+
+    def test_explicit_api_key_override_skips_env_warning(self, tmp_path, monkeypatch, caplog):
+        """An explicit ``api_key=`` override must not emit a missing-env-var WARN.
+
+        The registry's ``api_key_env`` is irrelevant when the caller is
+        already passing credentials directly — surfacing a warning here
+        would look like a real misconfiguration even though the request
+        succeeds.
+        """
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              test-keyed-model:
+                model_name: test-model
+                api_key_env: ABSENT_ON_PURPOSE
+            """,
+        )
+        monkeypatch.delenv("ABSENT_ON_PURPOSE", raising=False)
+        reload_registry(path)
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.unifiedllm.registry"):
+            llm = get_llm_client("test-keyed-model", api_key="explicit-key")
+
+        assert llm.config.get("api_key") == "explicit-key"
+        assert "ABSENT_ON_PURPOSE" not in caplog.text
+
 
 class TestConfigLayering:
-    """Tests for YAML config file layering."""
+    """Tests for YAML config file layering via the chain helper."""
 
-    def test_cwd_override(self, tmp_path, monkeypatch):
-        """llm_config.yaml in CWD should populate the registry."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+    def test_project_config_loaded(self, tmp_path):
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               my-custom-model:
                 model_name: openai/my-custom-model
                 api_base: https://my-endpoint.example.com/v1
                 api_key_env: MY_API_KEY
                 context_window: 128000
-        """)
+            """,
         )
-
-        registry = reload_registry()
+        registry = reload_registry(path)
         assert "my-custom-model" in registry
         assert registry["my-custom-model"]["api_base"] == "https://my-endpoint.example.com/v1"
 
-    def test_null_removes_model(self, tmp_path, monkeypatch):
+    def test_null_removes_model(self, tmp_path):
         """Setting a model to null in a later layer should remove it."""
         env_config = tmp_path / "env.yaml"
         env_config.write_text(
             textwrap.dedent("""\
-            models:
-              removable:
-                model_name: removable
-        """)
+                models:
+                  removable:
+                    model_name: removable
+            """)
         )
-        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(env_config))
-
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        project_config = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               removable: null
-        """)
+            """,
         )
-
-        registry = reload_registry()
+        # Pass paths in the order the chain helper would: env first, project last.
+        registry = reload_registry(env_config, project_config)
         assert "removable" not in registry
 
-    def test_env_var_config(self, tmp_path, monkeypatch):
-        """UNIFIEDLLM_CONFIG env var should add extra config files."""
-        extra_config = tmp_path / "extra.yaml"
-        extra_config.write_text(
-            textwrap.dedent("""\
+    def test_chain_user_project_env_priority(self, tmp_path, monkeypatch):
+        """End-to-end: user < project < NEMO_OO_LLM_CONFIG, last wins.
+
+        The env var is the **global override** — anything set in a
+        shell session beats files on disk.
+        """
+        _write_user_config(
+            _user_dir(tmp_path),
+            """\
             models:
-              extra-model:
-                model_name: openai/extra-model
-                api_base: https://extra.example.com/v1
-                context_window: 64000
-        """)
+              who-wins:
+                model_name: from-user
+            """,
         )
-        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(extra_config))
-
-        registry = reload_registry()
-        assert "extra-model" in registry
-        assert registry["extra-model"]["context_window"] == 64000
-
-    def test_cwd_wins_over_env(self, tmp_path, monkeypatch):
-        """CWD config should take precedence over UNIFIEDLLM_CONFIG."""
-        monkeypatch.chdir(tmp_path)
-
+        _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              who-wins:
+                model_name: from-project
+            """,
+        )
         env_config = tmp_path / "env_config.yaml"
         env_config.write_text(
             textwrap.dedent("""\
-            models:
-              test-model:
-                model_name: from-env
-                context_window: 1000
-        """)
+                models:
+                  who-wins:
+                    model_name: from-env
+            """)
         )
-        monkeypatch.setenv("UNIFIEDLLM_CONFIG", str(env_config))
+        monkeypatch.setenv("NEMO_OO_LLM_CONFIG", str(env_config))
 
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
-            models:
-              test-model:
-                model_name: from-cwd
-                context_window: 2000
-        """)
-        )
+        from nemo_oo_agents.llm_config import llm_config_chain
 
-        registry = reload_registry()
-        assert registry["test-model"]["model_name"] == "from-cwd"
-        assert registry["test-model"]["context_window"] == 2000
+        registry = reload_registry(*llm_config_chain())
+        assert registry["who-wins"]["model_name"] == "from-env"
 
-    def test_multiple_env_configs(self, tmp_path, monkeypatch):
-        """UNIFIEDLLM_CONFIG should support comma-separated paths."""
-        config1 = tmp_path / "config1.yaml"
-        config1.write_text(
-            textwrap.dedent("""\
-            models:
-              model-a:
-                model_name: model-a
-        """)
-        )
+    def test_explicit_paths_last_wins(self, tmp_path):
+        """``reload_registry(a, b, c)`` merges last-wins."""
+        a = tmp_path / "a.yaml"
+        b = tmp_path / "b.yaml"
+        c = tmp_path / "c.yaml"
+        a.write_text("models:\n  k:\n    model_name: from-a\n")
+        b.write_text("models:\n  k:\n    model_name: from-b\n")
+        c.write_text("models:\n  k:\n    model_name: from-c\n")
 
-        config2 = tmp_path / "config2.yaml"
-        config2.write_text(
-            textwrap.dedent("""\
-            models:
-              model-b:
-                model_name: model-b
-        """)
-        )
-
-        monkeypatch.setenv("UNIFIEDLLM_CONFIG", f"{config1},{config2}")
-        registry = reload_registry()
-        assert "model-a" in registry
-        assert "model-b" in registry
-
-    def test_missing_env_config_warned(self, monkeypatch, caplog):
-        """Non-existent paths in UNIFIEDLLM_CONFIG should log a warning."""
-        monkeypatch.setenv("UNIFIEDLLM_CONFIG", "/nonexistent/path.yaml")
-        import logging
-
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.unifiedllm.registry"):
-            reload_registry()
-        assert "does not exist" in caplog.text
+        registry = reload_registry(a, b, c)
+        assert registry["k"]["model_name"] == "from-c"
 
 
 class TestReloadRegistry:
     """Tests for reload_registry() function."""
 
-    def test_reload_picks_up_changes(self, tmp_path, monkeypatch):
-        """reload_registry() should pick up newly created config files."""
-        monkeypatch.chdir(tmp_path)
+    def test_no_args_rediscovers_via_chain(self, tmp_path):
+        """``reload_registry()`` with no args re-reads the discovered chain.
 
-        registry1 = reload_registry()
-        assert "dynamic-model" not in registry1
+        Matches the pre-refactor behavior: edit ``llm_config.yaml`` or
+        change ``NEMO_OO_LLM_CONFIG`` and call ``reload_registry()`` to
+        pick the new contents up.
+        """
+        # Initial state: empty (no files, no env var, bundled disabled).
+        reload_registry()
+        assert MODELS == {}
 
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        # Drop a file into the project layer — chain helper will find it.
+        _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
-              dynamic-model:
-                model_name: dynamic-model
-        """)
+              one:
+                model_name: one
+            """,
         )
+        reload_registry()
+        assert "one" in MODELS
 
-        registry2 = reload_registry()
-        assert "dynamic-model" in registry2
+    def test_no_args_marks_loaded(self, tmp_path):
+        """``reload_registry()`` sets ``_loaded`` so ensure_loaded() is a no-op afterward."""
+        from nemo_oo_agents.unifiedllm import registry as _registry
 
-    def test_reload_updates_in_place(self, tmp_path, monkeypatch):
+        reload_registry()
+        assert _registry._loaded is True
+
+        # After explicit reload, ensure_loaded() is idempotent — it
+        # shouldn't re-run discovery. Drop a file the chain would find
+        # and verify it does NOT appear via ensure_loaded.
+        _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              should-not-appear:
+                model_name: x
+            """,
+        )
+        ensure_loaded()  # no-op
+        assert "should-not-appear" not in MODELS
+
+    def test_reload_updates_in_place(self, tmp_path):
         """Callers holding a reference to MODELS should see reloaded contents."""
-        monkeypatch.chdir(tmp_path)
         original_ref = MODELS
 
-        (tmp_path / "llm_config.yaml").write_text(
-            textwrap.dedent("""\
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
             models:
               new-model:
                 model_name: new-model
-        """)
+            """,
         )
-        reload_registry()
+        reload_registry(path)
 
-        # Same dict object, new contents
         assert MODELS is original_ref
         assert "new-model" in original_ref
+
+    def test_concurrent_get_llm_client_during_reload_is_safe(self, tmp_path):
+        """A reader hitting ``get_llm_client()`` while another thread
+        runs ``reload_registry()`` must never observe a half-cleared
+        registry. The reader either sees the pre-reload value (registry
+        miss → litellm passthrough) or the post-reload value
+        (registry hit), never a transient empty state that loses the
+        alias mid-mutation.
+        """
+        import threading
+        import time
+
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              raceable:
+                model_name: openai/raceable-model
+            """,
+        )
+        # Seed MODELS so the alias is present before the race starts.
+        reload_registry(path)
+        assert "raceable" in MODELS
+
+        stop = threading.Event()
+        reader_errors: list[BaseException] = []
+        bad_observations: list[str] = []
+
+        def reader() -> None:
+            try:
+                while not stop.is_set():
+                    llm = get_llm_client("raceable")
+                    # Either we see the registry hit (model_name from
+                    # YAML) or the registry miss (alias passes through
+                    # to litellm as-is). The bad case the lock
+                    # prevents is: ``llm.model == "raceable"`` *and*
+                    # MODELS containing "raceable" — i.e. a transient
+                    # empty-dict observation. We can't directly observe
+                    # that, but we can record whether reads returned
+                    # consistent shapes.
+                    if llm.model not in {"raceable", "openai/raceable-model"}:
+                        bad_observations.append(f"unexpected model: {llm.model!r}")
+            except BaseException as exc:  # noqa: BLE001 — surface in test
+                reader_errors.append(exc)
+
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
+
+        # Hammer reload_registry from the main thread while the reader
+        # is running. With write-side-only locking, MODELS.clear() +
+        # update() leaves a window where the reader sees an empty
+        # registry; the read-side lock added in this MR closes it.
+        deadline = time.monotonic() + 0.5
+        while time.monotonic() < deadline:
+            reload_registry(path)
+        stop.set()
+        t.join(timeout=2.0)
+
+        assert not reader_errors, reader_errors
+        assert not bad_observations, bad_observations
+        # End state: registry holds the alias.
+        assert "raceable" in MODELS

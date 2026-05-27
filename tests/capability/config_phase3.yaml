@@ -17,7 +17,7 @@ description: "Phase 3 advanced capability tests — helper reuse, iterative refi
 
 # =============================================================================
 # MODELS — resolved from the unifiedllm registry.
-# Set UNIFIEDLLM_CONFIG=configs/llm_config_nvidia.yaml for NVIDIA aliases.
+# NVIDIA aliases ship in the nemo-oo-agents-nvidia package — install it (or the [nvidia] extra). No env var needed.
 # =============================================================================
 
 agent_models:

@@ -1,0 +1,29 @@
+[project]
+name = "nemo-oo-agents-nvidia"
+version = "0.1.0"
+description = "NVIDIA-gateway model aliases for NeMo OO Agents — bundled LLM-registry defaults discovered via entry-point"
+license = {text = "Apache-2.0"}
+readme = "README.md"
+authors = [
+    {name = "NVIDIA NeMo Team"},
+]
+requires-python = ">=3.12"
+dependencies = [
+    # No runtime dependency on nemo-oo-agents at install time — the core
+    # package discovers bundled-config providers via entry-points. We
+    # depend on the core only for documentation / type-check coverage.
+]
+
+[project.entry-points."nemo_oo_agents.bundled_configs"]
+# Core's llm_config_chain() iterates this entry-point group and loads
+# every registered YAML as a low-priority chain layer. Adding more
+# providers is purely additive — drop a new package that registers
+# under the same group and it gets picked up automatically.
+nvidia = "nemo_oo_agents_nvidia:get_default_config_path"
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nemo_oo_agents_nvidia"

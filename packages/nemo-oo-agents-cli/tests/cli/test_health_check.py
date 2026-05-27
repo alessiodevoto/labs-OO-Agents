@@ -167,16 +167,75 @@ class TestClassifyError:
 
 
 class TestHasLlmConfigYaml:
-    """Test llm_config.yaml detection."""
+    """Test llm_config.yaml detection.
 
-    def test_returns_false_when_no_file(self, tmp_path, monkeypatch):
+    Mirrors :func:`nemo_oo_agents.llm_config.llm_config_chain` — see
+    that helper's tests for full chain coverage.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_paths(self, tmp_path, monkeypatch):
+        """Redirect user/project dirs so the host's real config is invisible.
+
+        Bundled-default entry-points are stubbed empty so the chain
+        check sees only what the test sets up.
+        """
+        user = tmp_path / "user"
+        project = tmp_path / "project"
+        user.mkdir()
+        project.mkdir()
+        monkeypatch.setenv("NEMO_OO_USER_DIR", str(user))
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(project))
+        monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
+        monkeypatch.delenv("NEMO_OO_LLM_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("UNIFIEDLLM_CONFIG", raising=False)
+        return user, project
+
+    def test_returns_false_when_no_file(self):
         assert _has_llm_config_yaml() is False
 
-    def test_returns_true_when_cwd_has_file(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "llm_config.yaml").write_text("models: {}")
+    def test_returns_true_when_project_has_file(self, _isolate_paths):
+        _, project = _isolate_paths
+        (project / "llm_config.yaml").write_text("models: {}")
+        assert _has_llm_config_yaml() is True
+
+    def test_returns_true_when_user_has_file(self, _isolate_paths):
+        user, _ = _isolate_paths
+        (user / "llm_config.yaml").write_text("models: {}")
+        assert _has_llm_config_yaml() is True
+
+    def test_returns_true_when_env_var_set(self, tmp_path, monkeypatch):
+        extra = tmp_path / "extra.yaml"
+        extra.write_text("models: {}")
+        monkeypatch.setenv("NEMO_OO_LLM_CONFIG", str(extra))
+        assert _has_llm_config_yaml() is True
+
+    def test_bundled_only_returns_false(self, tmp_path, monkeypatch):
+        """Bundled defaults alone must not register as a user-supplied config.
+
+        Otherwise every install would steer ``_classify_error`` toward
+        "check your llm_config.yaml" hints even for users who haven't
+        created one.
+        """
+        # Stub the entry-point lookup with a synthetic bundled YAML.
+        synthetic = tmp_path / "synthetic_bundled.yaml"
+        synthetic.write_text("models: {}")
+        monkeypatch.setattr(
+            "nemo_oo_agents.llm_config.bundled_config_paths",
+            lambda: [synthetic],
+        )
+        assert _has_llm_config_yaml() is False
+
+    def test_bundled_plus_user_returns_true(self, _isolate_paths, tmp_path, monkeypatch):
+        """Bundled + a user-supplied file → True (it's the *user* file that matters)."""
+        synthetic = tmp_path / "synthetic_bundled.yaml"
+        synthetic.write_text("models: {}")
+        monkeypatch.setattr(
+            "nemo_oo_agents.llm_config.bundled_config_paths",
+            lambda: [synthetic],
+        )
+        user, _ = _isolate_paths
+        (user / "llm_config.yaml").write_text("models: {}")
         assert _has_llm_config_yaml() is True
 
 

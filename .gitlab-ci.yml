@@ -436,8 +436,9 @@ capability-test:
   script:
     - rm -rf results/ci/ capability-results.zip
     # NVIDIA model aliases (claude-haiku, nemotron3-nano-30b, etc.) resolve
-    # via the unifiedllm registry loaded from UNIFIEDLLM_CONFIG.
-    - export UNIFIEDLLM_CONFIG="$(pwd)/configs/llm_config_nvidia.yaml"
+    # via the unifiedllm registry. The `[nvidia]` extra (pulled in by
+    # --all-extras above) installs nemo-oo-agents-nvidia, which registers
+    # the bundled defaults via entry-point — no env var needed.
     - echo "Running capability tests with NVIDIA models..."
     - |
       uv run python -m eval_pipeline \

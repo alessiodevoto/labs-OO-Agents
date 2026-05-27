@@ -147,11 +147,21 @@ def _resolve_registry_model(registry_name: str, overrides: dict | None = None) -
     Raises:
         ValueError: If the registry name is not found.
     """
-    from nemo_oo_agents.unifiedllm.registry import MODELS
+    # eval_pipeline is launched as a standalone CLI without the TUI
+    # bootstrap, so the registry would otherwise be empty. Trigger the
+    # lazy auto-load before reading MODELS.
+    from nemo_oo_agents.unifiedllm.registry import MODELS, _registry_lock, ensure_loaded
 
-    config = MODELS.get(registry_name)
+    ensure_loaded()
+
+    # Snapshot under the lock so a concurrent reload_registry() can't
+    # make us observe a half-cleared MODELS dict.
+    with _registry_lock:
+        config = dict(MODELS.get(registry_name)) if registry_name in MODELS else None
+        available_keys = sorted(MODELS.keys())[:10]
+
     if config is None:
-        available = ", ".join(sorted(MODELS.keys())[:10])
+        available = ", ".join(available_keys)
         raise ValueError(
             f"Model '{registry_name}' not found in unifiedllm registry. "
             f"Available (first 10): {available}"

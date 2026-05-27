@@ -978,19 +978,34 @@ class UnifiedLLM(ABC):
                 return cw
             # Registry entry exists but lacks context_window — fall through
 
-        # Try registry lookup by model string
-        from nemo_oo_agents.unifiedllm.registry import MODELS
+        # Try registry lookup by model string. The property is reachable
+        # from any UnifiedLLM instance — including ones constructed
+        # directly via CompletionClient(...) — so trigger the lazy
+        # auto-load to match what users got from the pre-refactor
+        # import-time side effect.
+        from nemo_oo_agents.unifiedllm.registry import (
+            MODELS,
+            _registry_lock,
+            ensure_loaded,
+        )
+
+        ensure_loaded()
 
         model_str = self.model
 
+        # Snapshot under the lock so a concurrent reload_registry()
+        # can't make us observe a half-cleared MODELS dict mid-lookup.
+        with _registry_lock:
+            models_snapshot = dict(MODELS)
+
         # Direct key match
-        if model_str in MODELS:
-            cw = MODELS[model_str].get("context_window")
+        if model_str in models_snapshot:
+            cw = models_snapshot[model_str].get("context_window")
             if cw is not None:
                 return cw
 
         # Reverse lookup: check if any registry entry's model_name matches
-        for _key, cfg in MODELS.items():
+        for _key, cfg in models_snapshot.items():
             if cfg.get("model_name") == model_str:
                 cw = cfg.get("context_window")
                 if cw is not None:

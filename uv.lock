@@ -22,6 +22,7 @@ members = [
     "nemo-oo-agents",
     "nemo-oo-agents-benchmarks",
     "nemo-oo-agents-cli",
+    "nemo-oo-agents-nvidia",
 ]
 
 [[package]]
@@ -2658,6 +2659,9 @@ mcp = [
 nemo-flow = [
     { name = "nemo-flow", marker = "python_full_version < '3.14'" },
 ]
+nvidia = [
+    { name = "nemo-oo-agents-nvidia", marker = "python_full_version < '3.14'" },
+]
 sandbox = [
     { name = "openshell", marker = "python_full_version < '3.14'" },
 ]
@@ -2716,6 +2720,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.83.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0" },
     { name = "nemo-flow", marker = "extra == 'nemo-flow'", specifier = ">=0.1.0" },
+    { name = "nemo-oo-agents-nvidia", marker = "extra == 'nvidia'", editable = "packages/nemo-oo-agents-nvidia" },
     { name = "openinference-instrumentation", marker = "extra == 'tracing'", specifier = ">=0.1.42" },
     { name = "openinference-instrumentation-litellm", specifier = ">=0.1.30" },
     { name = "openinference-instrumentation-litellm", marker = "extra == 'tracing'", specifier = ">=0.1.28" },
@@ -2732,7 +2737,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'viewer'", specifier = ">=6.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'viewer'", specifier = ">=0.20.0" },
 ]
-provides-extras = ["mcp", "nemo-flow", "sandbox", "tracing", "viewer"]
+provides-extras = ["mcp", "nemo-flow", "nvidia", "sandbox", "tracing", "viewer"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2981,6 +2986,11 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.34.0" },
 ]
 provides-extras = ["ast", "datascience", "web"]
+
+[[package]]
+name = "nemo-oo-agents-nvidia"
+version = "0.1.0"
+source = { editable = "packages/nemo-oo-agents-nvidia" }
 
 [[package]]
 name = "networkx"

@@ -2,7 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 from nemo_oo_agents.unifiedllm.fake import FakeLLMClient
 from nemo_oo_agents.unifiedllm.http_config import HttpConfig
-from nemo_oo_agents.unifiedllm.registry import MODELS, get_llm_client, reload_registry
+from nemo_oo_agents.unifiedllm.registry import (
+    MODELS,
+    ensure_loaded,
+    get_llm_client,
+    reload_registry,
+    resolve_api_key_from_config,
+)
 from nemo_oo_agents.unifiedllm.retry import (
     EmptyContentError,
     RetryingWrapper,
@@ -31,6 +37,8 @@ __all__ = [
     # Model registry
     "get_llm_client",
     "reload_registry",
+    "ensure_loaded",
+    "resolve_api_key_from_config",
     "MODELS",
     # Tools
     "Tool",
