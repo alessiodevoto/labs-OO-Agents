@@ -1497,6 +1497,7 @@ class _UserSkill:
     body: str
     description: str
     argument_hint: str | None = None
+    completions: tuple[str, ...] = ()
     _method: Any = field(default=None, repr=False)
 
     def help_entry(self) -> tuple[str, str]:
@@ -2432,6 +2433,7 @@ class CommandRegistry:
                     body="",
                     description=description,
                     argument_hint=meta.argument_hint,
+                    completions=getattr(meta, "completions", ()),
                     _method=method,
                 )
         return skills

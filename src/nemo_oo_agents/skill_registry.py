@@ -412,6 +412,15 @@ class SkillRegistry(Skill):
             self._activated.add(name)
             self._unhide_skill(name)
 
+        # Refresh slash commands so the TUI picks up @slash_command methods
+        if matched:
+            cmd_reg = getattr(self._agent, "_command_registry", None)
+            if cmd_reg is not None and hasattr(cmd_reg, "refresh_skill_commands"):
+                try:
+                    cmd_reg.refresh_skill_commands()
+                except Exception:
+                    pass
+
     def _resolve_deps(self, name: str, _visited: set[str] | None = None) -> None:
         """Load dependencies declared by the skill (transitive, with cycle detection)."""
         if _visited is None:

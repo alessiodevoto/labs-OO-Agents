@@ -80,6 +80,43 @@ class SkillWriting(Skill):
     The SkillRegistry auto-attaches the Skill as ``self.<lib_name>``.
     Without a Skill subclass, the module is wrapped via ``Skill(module)``.
 
+    ## Slash commands
+
+    Skills can expose slash commands — user-typed ``/name`` actions that
+    inject a prompt into the conversation. Slash commands serve two purposes:
+
+    1. **Do work** — run code, query APIs, modify files, then return a
+       result summary.
+    2. **Prompt the agent** — the return value becomes a user message in the
+       conversation. Use it to tell the agent what happened and what it can
+       do next. Think of the return value as instructions for yourself.
+
+    Declare them with ``@slash_command``::
+
+        from nemo_oo_agents.skill import Skill, slash_command
+
+        class MySkill(Skill):
+            @slash_command("check", argument_hint="<target>", completions=("deps", "lint", "tests"))
+            async def check_command(self, args: str) -> str:
+                '''Run checks on the project.'''
+                # Do work...
+                return (
+                    f"Ran {args} checks. Found 3 issues.\n\n"
+                    "Fix them with `await self.shell.run(...)` or ask the user for guidance."
+                )
+
+    Key points:
+
+    - **Return value = agent prompt.** Don't just dump data — frame it.
+      Tell the agent what the data means and what actions are available.
+    - **``completions``** — tuple of subcommand names for tab-completion.
+      The TUI autocompletes ``/check <tab>`` → ``deps``, ``lint``, ``tests``.
+    - **``argument_hint``** — shown in ``/help`` and tab-completion display.
+    - **``user_only=True``** — prevents the LLM from invoking the command
+      (useful for destructive operations).
+    - Slash commands are discovered automatically when a skill is activated
+      or hot-reloaded. No manual registration needed.
+
     ## Lifecycle
 
         # 1. Scaffold the package
@@ -110,6 +147,8 @@ class SkillWriting(Skill):
     - Always run run_tests() after creating or editing before claiming done
     - Use a library for logic worth naming and reusing; use inline code for one-offs
     - Always write a ``Skill`` subclass in ``__init__.py``
+    - Slash command return values are prompts — tell the agent what happened
+      and what it can do next, don't just dump raw output
     """
 
     requires = ("shell",)

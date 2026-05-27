@@ -20,12 +20,13 @@ _SLASH_COMMAND_ATTR = "_slash_command_meta"
 class SlashCommandMeta:
     """Metadata attached to a method by @slash_command."""
 
-    __slots__ = ("name", "argument_hint", "user_only")
+    __slots__ = ("name", "argument_hint", "user_only", "completions")
 
-    def __init__(self, name: str, argument_hint: str | None, user_only: bool):
+    def __init__(self, name: str, argument_hint: str | None, user_only: bool, completions: tuple[str, ...] = ()):
         self.name = name
         self.argument_hint = argument_hint
         self.user_only = user_only
+        self.completions = completions
 
 
 def slash_command(
@@ -33,6 +34,7 @@ def slash_command(
     *,
     argument_hint: str | None = None,
     user_only: bool = False,
+    completions: tuple[str, ...] | list[str] = (),
 ):
     """Mark a Skill method as a user-invocable slash command.
 
@@ -43,6 +45,7 @@ def slash_command(
         name: Command name (without leading /). E.g. "gl-ci" -> /gl-ci.
         argument_hint: Shown in help. E.g. "<pipeline-id>".
         user_only: If True, only the user can invoke (not the LLM).
+        completions: Subcommand names offered by tab-completion.
 
     Usage::
 
@@ -54,7 +57,7 @@ def slash_command(
     """
 
     def decorator(fn):
-        setattr(fn, _SLASH_COMMAND_ATTR, SlashCommandMeta(name, argument_hint, user_only))
+        setattr(fn, _SLASH_COMMAND_ATTR, SlashCommandMeta(name, argument_hint, user_only, tuple(completions)))
         return fn
 
     return decorator
