@@ -324,7 +324,7 @@ class Session:
         self._naming_futures: set = set()  # concurrent.futures.Future from agent-loop dispatch
 
         # Populated at the start of ``run()``; referenced by the handler
-        # methods (``_on_command``, ``_on_user_message``, ``_loud_handler``,
+        # methods (``_on_command``, ``_on_user_message_ui``, ``_loud_handler``,
         # etc.) so they can live as real methods instead of 240 lines of
         # nested closures inside ``run()``.
         self._app: TUIApplication | None = None
@@ -432,7 +432,7 @@ class Session:
         the first keystroke between turns.
 
         The handler logic lives in instance methods (``_on_command``,
-        ``_on_user_message``, ``_emit_text``, ``_loud_handler``, …);
+        ``_on_user_message_ui``, ``_emit_text``, ``_loud_handler``, …);
         ``run`` is just the wiring.
         """
         from .agent_event_renderer import AgentEventRenderer
@@ -484,22 +484,27 @@ class Session:
         queue = getattr(self.agent, "_user_messages_in", None)
         if queue is not None:
 
-            def _on_user_message_ui_thread(text: str) -> None:
+            def _on_user_message_hook(text: str) -> None:
+                # DB writes run here on the agent loop thread (the on_get
+                # caller), keeping all sqlite access on one thread.
+                if self._session_manager is not None:
+                    self._session_manager.record_user(text)
+                # UI rendering must happen on the UI loop.
                 app = self._app
                 loop = getattr(app, "_loop", None) if app is not None else None
                 if loop is None:
-                    self._on_user_message(text)
+                    self._on_user_message_ui(text)
                     return
                 try:
                     on_ui_loop = asyncio.get_running_loop() is loop
                 except RuntimeError:
                     on_ui_loop = False
                 if on_ui_loop:
-                    self._on_user_message(text)
+                    self._on_user_message_ui(text)
                 else:
-                    loop.call_soon_threadsafe(self._on_user_message, text)
+                    loop.call_soon_threadsafe(self._on_user_message_ui, text)
 
-            queue.set_on_get(_on_user_message_ui_thread)
+            queue.set_on_get(_on_user_message_hook)
 
         # Swap the frontend's Rich Console for one that writes through
         # our block queue, so slash-command output (e.g. /help tables)
@@ -784,17 +789,15 @@ class Session:
             logger.debug("toolbar snippet failed: %s", snippet, exc_info=True)
             return ""
 
-    def _on_user_message(self, text: str) -> None:
+    def _on_user_message_ui(self, text: str) -> None:
         """Render the user's submitted text as a full-width grey bar and
         reset per-turn renderer state.
 
-        Also triggers first-message auto-naming and the session
-        manager's user-record bookkeeping.
+        DB bookkeeping (record_user) is handled by the on_get hook on
+        the agent loop thread; this method only does UI work.
         """
         assert self._renderer is not None and self._app is not None
 
-        if self._session_manager is not None:
-            self._session_manager.record_user(text)
         if self._first_message is None:
             self._first_message = text
             if (
