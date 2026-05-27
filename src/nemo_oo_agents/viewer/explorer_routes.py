@@ -193,6 +193,71 @@ async def get_descendant_spans(
     return {"spans": spans, "count": len(spans)}
 
 
+@router.get("/search-fast")
+async def search_fast(
+    session_id: str = Query(..., description="Viewer session ID"),
+    query: str = Query(..., description="FTS5 search query"),
+    limit: int = Query(100, description="Max results"),
+) -> dict[str, Any]:
+    """Fast full-text search using FTS5 index (no TraceExplorer build).
+
+    Supports FTS5 query syntax: simple words, "quoted phrases", AND/OR/NOT.
+    Returns matching spans with snippets showing context around matches.
+    """
+    results = await asyncio.to_thread(otlp_store.search_spans_fts, session_id, query, limit)
+    return {"matches": results, "count": len(results), "query": query}
+
+
+@router.get("/overview-fast")
+async def get_overview_fast(
+    session_id: str = Query(..., description="Viewer session ID"),
+) -> dict[str, Any]:
+    """Lightweight overview using only AGENT spans (no full tree build).
+
+    Returns the call graph structure with agent names, methods, durations,
+    and error status — but no turn content or message details. Much faster
+    than get_overview() for large traces.
+    """
+    from nemo_oo_agents.trace_explorer.explorer import _normalize_otlp_span, _otlp_attrs_to_dict
+
+    otlp_spans = await asyncio.to_thread(otlp_store.get_agent_spans, session_id)
+    if not otlp_spans:
+        # Fall back to checking if session exists
+        exists = await asyncio.to_thread(otlp_store.session_exists, session_id)
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+        return {"sessions": [], "session_id": session_id}
+
+    # Build lightweight call graph from AGENT spans
+    sessions = []
+    for span in otlp_spans:
+        attrs = span.get("attributes", [])
+        if isinstance(attrs, list):
+            attr_dict = {a["key"]: a.get("value", {}).get("stringValue", "") for a in attrs}
+        else:
+            attr_dict = attrs
+
+        start_ns = int(span.get("startTimeUnixNano", 0))
+        end_ns = int(span.get("endTimeUnixNano", 0))
+        duration_ms = (end_ns - start_ns) / 1_000_000 if end_ns > start_ns else 0.0
+
+        status_code = span.get("status", {}).get("code", 1)
+        status = "ERROR" if status_code == 2 else "OK"
+
+        sessions.append({
+            "span_id": span.get("spanId", ""),
+            "session_id": span.get("spanId", "")[:6],
+            "parent_span_id": span.get("parentSpanId"),
+            "agent_name": attr_dict.get("agent.name", span.get("name", "").split(".")[0]),
+            "method_name": attr_dict.get("agent.method", span.get("name", "").split(".")[-1]),
+            "duration_ms": round(duration_ms, 1),
+            "status": status,
+            "status_message": span.get("status", {}).get("message"),
+        })
+
+    return {"sessions": sessions, "session_id": session_id}
+
+
 @router.get("/session-fast")
 async def get_session_fast(
     session_id: str = Query(..., description="Viewer session ID"),

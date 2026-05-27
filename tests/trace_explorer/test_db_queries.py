@@ -147,3 +147,28 @@ class TestErrorSpansQuery:
             })
             errors = otlp_store.get_error_spans("ok-session")
         assert errors == []
+
+
+
+class TestFTSSearch:
+    """Test FTS5 full-text search on spans."""
+
+    def test_search_spans_fts_finds_matching_content(self, temp_db):
+        """FTS should find spans by attribute content."""
+        with patch.object(otlp_store, "DB_PATH", temp_db):
+            results = otlp_store.search_spans_fts("test-session", "RootAgent")
+        # Should find the span with agent.name = "RootAgent"
+        assert len(results) >= 1
+        assert any("RootAgent" in r.get("snippet", "") or "RootAgent" in r.get("name", "") for r in results)
+
+    def test_search_spans_fts_no_results(self, temp_db):
+        """FTS should return empty for non-matching queries."""
+        with patch.object(otlp_store, "DB_PATH", temp_db):
+            results = otlp_store.search_spans_fts("test-session", "nonexistent_xyz_pattern")
+        assert results == []
+
+    def test_search_spans_fts_wrong_session(self, temp_db):
+        """FTS should scope results to the given session."""
+        with patch.object(otlp_store, "DB_PATH", temp_db):
+            results = otlp_store.search_spans_fts("wrong-session", "RootAgent")
+        assert results == []

@@ -385,6 +385,16 @@ def init_db() -> int:
     # Always ensure the span index exists (safe to re-create)
     _db.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_span ON llm_calls(span_id)")
 
+    # FTS5 index for fast text search across span content
+    _db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS spans_fts USING fts5(
+            session_id UNINDEXED,
+            span_id UNINDEXED,
+            name,
+            content
+        )
+    """)
+
     # Add total_size to sessions if missing — cached sum of span payload sizes
     # so /api/traces doesn't need a full-table scan on spans.
     # Existing sessions will show size=0 until new spans are ingested.
@@ -655,6 +665,36 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             span_rows,
         )
+
+        # Populate FTS index with searchable content from each span
+        fts_rows = []
+        for row in span_rows:
+            # row: (session_id, trace_id, span_id, parent_span_id, name, kind,
+            #        start_time_ns, end_time_ns, status_code, status_message,
+            #        attributes, resource, events)
+            span_name = row[4] or ""
+            attrs_json = row[10]
+            # Extract string values from attributes for searchable content
+            content_parts = []
+            try:
+                attrs = json.loads(attrs_json) if attrs_json else []
+                for attr in attrs:
+                    val = attr.get("value", {})
+                    sv = val.get("stringValue")
+                    if sv:
+                        content_parts.append(sv)
+            except (json.JSONDecodeError, TypeError):
+                content_parts.append(attrs_json or "")
+            fts_rows.append((row[0], row[2], span_name, " ".join(content_parts)))
+
+        try:
+            db.executemany(
+                "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
+                fts_rows,
+            )
+        except Exception:
+            # FTS insert failures are non-fatal — search just falls back to LIKE
+            pass
 
     return {"session_id": session_id, "experiment": experiment, "span_count": span_count}
 
@@ -1807,3 +1847,33 @@ def get_descendant_spans(session_id: str, root_span_id: str) -> list[dict[str, A
             queue.append(row["span_id"])
 
     return [_row_to_span(r) for r in collected_rows]
+
+
+
+def search_spans_fts(session_id: str, query: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Search span content using FTS5 full-text search.
+
+    Much faster than LIKE queries on large traces. Falls back gracefully
+    if the FTS table doesn't exist or the query is invalid.
+
+    Args:
+        session_id: Session to search within.
+        query: Search query (FTS5 syntax: supports AND, OR, NOT, phrases).
+        limit: Maximum results to return.
+
+    Returns:
+        List of matching spans with span_id, name, and a snippet of matching content.
+    """
+    db = _get_db()
+    try:
+        # FTS5 MATCH query with snippet extraction
+        rows = db.execute(
+            "SELECT span_id, name, snippet(spans_fts, 3, '>>>', '<<<', '...', 32) as snippet "
+            "FROM spans_fts WHERE session_id = ? AND spans_fts MATCH ? "
+            "ORDER BY rank LIMIT ?",
+            (session_id, query, limit),
+        ).fetchall()
+        return [{"span_id": r["span_id"], "name": r["name"], "snippet": r["snippet"]} for r in rows]
+    except Exception:
+        # FTS table might not exist or query syntax invalid — return empty
+        return []

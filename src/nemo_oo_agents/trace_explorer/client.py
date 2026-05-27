@@ -158,6 +158,27 @@ class TraceExplorerClient:
     # Lightweight endpoints (no full TraceExplorer build needed)
     # =========================================================================
 
+    async def search_fast(self, query: str, limit: int = 100) -> dict[str, Any]:
+        """Fast full-text search using FTS5 index (no TraceExplorer build).
+
+        Supports FTS5 query syntax: words, "quoted phrases", AND/OR/NOT.
+        Much faster than search() for large traces.
+
+        Args:
+            query: Search query text.
+            limit: Maximum results.
+        """
+        return await self._get("search-fast", {"query": query, "limit": limit})
+
+    async def get_overview_fast(self) -> dict[str, Any]:
+        """Get lightweight call graph using only AGENT spans (no full tree build).
+
+        Returns session tree structure with agent names, methods, durations,
+        and error status. Much faster than get_overview() for large traces
+        but without turn content or I/O details.
+        """
+        return await self._get("overview-fast")
+
     async def get_summary(self) -> dict[str, Any]:
         """Get lightweight session summary (span count, duration, error count).
 
