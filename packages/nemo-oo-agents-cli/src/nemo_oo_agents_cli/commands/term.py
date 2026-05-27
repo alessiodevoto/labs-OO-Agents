@@ -53,9 +53,11 @@ import click
 @click.option(
     "--continue",
     "-c",
-    "continue_last",
-    is_flag=True,
-    help="Resume the most recent session on first connection",
+    "continue_session",
+    is_flag=False,
+    flag_value="__last__",
+    default=None,
+    help="Resume a session: -c (last session) or -c <short-hash>",
 )
 @click.option(
     "--host",
@@ -75,7 +77,7 @@ def command(
     no_trace: bool,
     vi: bool,
     python: bool,
-    continue_last: bool,
+    continue_session: str | None,
     host: str,
     port: int,
 ):
@@ -123,7 +125,7 @@ def command(
         no_trace=no_trace,
         vi=vi,
         python=python,
-        continue_last=continue_last,
+        continue_session=continue_session,
     )
 
     # Rich content endpoint URL that the agent will POST to
@@ -229,7 +231,7 @@ def _build_tui_argv(
     no_trace: bool,
     vi: bool,
     python: bool,
-    continue_last: bool,
+    continue_session: str | None,
 ) -> list[str]:
     """Build the argv list for spawning ``nemo oo tui`` in the PTY."""
     import shutil
@@ -264,7 +266,10 @@ def _build_tui_argv(
         argv.append("--vi")
     if python:
         argv.append("--python")
-    if continue_last:
-        argv.append("--continue")
+    if continue_session:
+        if continue_session == "__last__":
+            argv.append("--continue")
+        else:
+            argv += ["--continue", continue_session]
 
     return argv
