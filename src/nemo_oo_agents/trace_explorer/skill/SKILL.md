@@ -104,6 +104,9 @@ errors = await client.get_errors()
 search_results = await client.search("pattern")
 ```
 
+> Note: These examples use `await` and are meant to run inside an agent's
+> `execute_python` cell or an `async def` function.
+
 Prefer the thin-client when:
 - The trace is very large (>100k spans)
 - You're exploring interactively (cache makes repeat calls instant)

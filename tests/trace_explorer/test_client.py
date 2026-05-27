@@ -194,7 +194,7 @@ async def test_eval_context_endpoint(app, mock_otlp_store):
 async def test_client_connection_error():
     """Test that client raises ConnectionError when server is unreachable."""
     client = TraceExplorerClient("http://localhost:19999", "test-session", timeout=2.0)
-    with pytest.raises((ConnectionError, ValueError)):
+    with pytest.raises(ConnectionError):
         await client.get_overview()
 
 
