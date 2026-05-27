@@ -1,14 +1,19 @@
-# NVIDIA-internal model registry.
+# Bundled default model registry — ships inside the nemo-oo-agents-nvidia
+# wheel and is discovered by core via the `nemo_oo_agents.bundled_configs`
+# entry-point group.
 #
-# These models route through NVIDIA's internal inference gateway
-# (OpenAI-compatible endpoint). Requires NVIDIA_INTERNAL_API_KEY
-# (or NVIDIA_API_KEY for the public NIM endpoint).
+# Loaded automatically as the lowest-priority layer of the config chain
+# when the package is installed. To customize, run `nemo oo config eject`
+# (writes a copy to ~/.config/nat/oo/llm_config.yaml), point
+# NEMO_OO_LLM_CONFIG at a different file, or drop an llm_config.yaml in
+# your project's .nemo_oo_agents/ directory.
 #
-# Usage:
-#   1. Copy this file to a shared location, e.g. ~/.nemo/llm_config_nvidia.yaml
-#   2. Set: export UNIFIEDLLM_CONFIG=~/.nemo/llm_config_nvidia.yaml
-#   3. Models below become available via get_llm_client() and
-#      as agent/scorer models in eval_pipeline configs.
+# External users who don't want these NVIDIA aliases simply don't install
+# nemo-oo-agents-nvidia.
+#
+# Most aliases below route through NVIDIA's internal inference gateway
+# (OpenAI-compatible endpoint). Set NVIDIA_INTERNAL_API_KEY (or
+# NVIDIA_API_KEY for the public NIM endpoint) to use them.
 
 models:
   # ===========================================================================

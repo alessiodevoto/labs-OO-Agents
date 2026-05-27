@@ -117,6 +117,28 @@ async def bootstrap(
     _scaffold_project_dir(config)
 
     # ------------------------------------------------------------------
+    # LLM registry — populate from project + user + NEMO_OO_LLM_CONFIG.
+    # Eagerly explicit (rather than relying on the lazy auto-load in
+    # get_llm_client) so the registry is hot before the health check
+    # runs and so MODELS readers (TUI /model commands, completer) see
+    # populated state immediately.
+    #
+    # Wrapped: a malformed YAML or unreadable file shouldn't prevent
+    # startup. The existing LLM-init fallback further down already
+    # handles "no registry config" by passing the model string straight
+    # to litellm.
+    # ------------------------------------------------------------------
+    try:
+        from nemo_oo_agents.llm_config import llm_config_chain
+        from nemo_oo_agents.unifiedllm import reload_registry
+
+        reload_registry(*llm_config_chain())
+    except Exception as e:
+        from .output import TextOutput
+
+        messages.append(TextOutput(f"Failed to load LLM registry config: {e}", "warning"))
+
+    # ------------------------------------------------------------------
     # Tracing
     # ------------------------------------------------------------------
     _set_trace_session = None  # deferred: called once _session_id is known

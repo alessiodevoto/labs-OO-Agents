@@ -77,15 +77,35 @@ def _get_expected_env_var(llm: UnifiedLLM) -> str | None:
 
 
 def _has_llm_config_yaml() -> bool:
-    """Check if llm_config.yaml exists in CWD or UNIFIEDLLM_CONFIG paths."""
-    if (Path.cwd() / "llm_config.yaml").exists():
-        return True
-    extra = os.environ.get("UNIFIEDLLM_CONFIG", "").strip()
-    if extra:
-        for raw in extra.split(","):
-            if Path(raw.strip()).expanduser().exists():
-                return True
-    return False
+    """Check if a **user-supplied** llm_config.yaml is discoverable.
+
+    Returns ``True`` only when the user has added a config file via
+    one of the user-controlled layers (user dir, ``NEMO_OO_LLM_CONFIG``,
+    project dir). The bundled defaults that ship in the wheel are
+    deliberately excluded — they're always present on every install,
+    so including them here would steer every connection / auth /
+    model-not-found failure toward "check your llm_config.yaml" hints
+    even for users who haven't created one.
+    """
+    try:
+        from nemo_oo_agents.llm_config import (
+            bundled_config_paths,
+            llm_config_chain,
+        )
+
+        bundled_set = {p.resolve() for p in bundled_config_paths()}
+        return any(p not in bundled_set for p in llm_config_chain())
+    except ImportError:
+        # Helper not installed (e.g. running against a stripped-down
+        # wheel). Treat as "no config" — caller will fall through to
+        # generic hints.
+        return False
+    except Exception:
+        # Unexpected failure inside discovery (broken paths.py
+        # dependency, OSError walking dirs, etc.). Don't crash the
+        # health-check; log it so the real error is recoverable.
+        logger.debug("llm_config_chain() raised unexpectedly", exc_info=True)
+        return False
 
 
 def _has_project_config() -> bool:

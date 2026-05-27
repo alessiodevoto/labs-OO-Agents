@@ -20,6 +20,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from nemo_oo_agents.unifiedllm.registry import resolve_api_key_from_config
+
 from . import otlp_store
 from .trace_models import TraceGroup
 
@@ -614,8 +616,8 @@ async def run_inference(request: InferenceRequest):
             kwargs["api_base"] = model_config["endpoint"]
             kwargs["custom_llm_provider"] = "openai"
 
-        if model_config and model_config.get("api_key_env"):
-            api_key = os.environ.get(model_config["api_key_env"])
+        if model_config:
+            api_key = resolve_api_key_from_config(request.model, model_config)
             if api_key:
                 kwargs["api_key"] = api_key
 

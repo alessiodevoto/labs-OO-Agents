@@ -34,6 +34,7 @@ trace-explorer = "nemo_oo_agents.trace_explorer:main"
 eval_pipeline = { workspace = true }
 nemo-oo-agents-benchmarks = { workspace = true }
 nemo-oo-agents-cli = { workspace = true }
+nemo-oo-agents-nvidia = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -50,6 +51,7 @@ members = [
     "util/eval_pipeline",
     "packages/nemo-oo-agents-benchmarks",
     "packages/nemo-oo-agents-cli",
+    "packages/nemo-oo-agents-nvidia",
 ]
 
 
@@ -83,6 +85,13 @@ mcp = [
 # src/nemo_oo_agents/nemo_flow_middleware.py.
 nemo-flow = [
     "nemo-flow>=0.1.0",
+]
+# Bundled NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
+# gpt-5.2, …). Registers via the nemo_oo_agents.bundled_configs
+# entry-point group; install to get the aliases, omit for an
+# OSS-only registry.
+nvidia = [
+    "nemo-oo-agents-nvidia",
 ]
 
 # CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.

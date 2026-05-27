@@ -33,27 +33,45 @@ def _build_llm(
 
     Priority: NAT config > registry defaults > nothing.
     """
-    import os
+    from nemo_oo_agents.unifiedllm import (
+        CompletionClient,
+        ensure_loaded,
+        resolve_api_key_from_config,
+    )
 
-    from nemo_oo_agents.unifiedllm import CompletionClient
-
-    # Check the registry for defaults
+    # Check the registry for defaults. The nat plugin reads MODELS
+    # directly without going through get_llm_client, so we must
+    # explicitly trigger the lazy auto-load — otherwise an
+    # un-bootstrapped nat process would see an empty registry and
+    # silently lose its fallback values.
+    #
+    # Catch broadly: a broken llm_config.yaml or any other
+    # registry-load failure must not abort NAT client construction —
+    # NAT config alone is sufficient to build the client.
     try:
-        from nemo_oo_agents.unifiedllm.registry import MODELS
+        from nemo_oo_agents.unifiedllm.registry import MODELS, _registry_lock
 
-        registry_config = MODELS.get(model_name, {})
-    except ImportError:
+        ensure_loaded()
+        # Snapshot under the lock so a concurrent reload_registry()
+        # can't make us observe an empty dict mid-mutation.
+        with _registry_lock:
+            registry_config = dict(MODELS.get(model_name, {}))
+    except Exception as exc:
+        logger.debug(
+            "Registry defaults unavailable; proceeding with NAT config only: %s",
+            exc,
+        )
         registry_config = {}
 
     # Resolve api_base: NAT config wins, then registry, then nothing
     resolved_base = base_url or registry_config.get("api_base")
 
-    # Resolve API key: NAT config wins, then registry env var
+    # Resolve API key: NAT config wins, then registry env var (helper
+    # logs a WARN if api_key_env is set in registry but the env var is
+    # unset).
     resolved_key = api_key
     if not resolved_key:
-        key_env = registry_config.get("api_key_env")
-        if key_env:
-            resolved_key = os.getenv(key_env)
+        resolved_key = resolve_api_key_from_config(model_name, registry_config)
 
     # Build params
     params: dict = {"drop_params": True}
