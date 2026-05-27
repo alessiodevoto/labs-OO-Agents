@@ -702,18 +702,26 @@ class Session:
         if result.exit:
             self._app.exit()
             return
+        # Render any outputs (errors, status messages) from the command
+        if result.outputs:
+            for output in result.outputs:
+                if hasattr(output, "content"):
+                    self._app.emit_block(output.content + "\n")
+                else:
+                    self._app.emit_block(str(output) + "\n")
         if result.slash_result is not None:
-            # Post the full SlashCommandResult to the slash_commands queue.
-            # The agent receives it in notification["slash_commands"] with
-            # the actual Python value preserved (not stringified).
+            # Show the text output to the user immediately in the TUI
+            text = str(result.slash_result)
+            if text:
+                self._app.emit_block(text + "\n")
+            # Post the full SlashCommandResult to the slash_commands queue
+            # (agent can access .value for the raw Python object) and also
+            # submit as a user message to trigger the agent turn.
             slash_ch = getattr(self.agent, "_slash_commands_in", None)
             if slash_ch is not None:
                 slash_ch.put(result.slash_result)
-                # Ensure the dispatcher wakes up to process the queued result
-                self._app._ensure_dispatcher_task()
-            else:
-                # Fallback: submit as text if queue not available
-                self._app.submit_message(str(result.slash_result))
+            # Always submit as user message to trigger the agent dispatcher
+            self._app.submit_message(text)
         elif result.agent_message is not None:
             # Slash-command-generated agent turn — feed through the same
             # path as a typed message so the user bar, session bookkeeping,
