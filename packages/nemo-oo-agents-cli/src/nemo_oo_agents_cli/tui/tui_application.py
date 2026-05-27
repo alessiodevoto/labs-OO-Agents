@@ -893,6 +893,46 @@ class TUIApplication:
             if q is not None and q.qsize() > 0:
                 self._ensure_dispatcher_task()
 
+    # ── agent_run: dispatch to agent thread ----------------------------
+
+    def agent_run(self, fn):
+        """Run *fn* on the agent-loop thread, blocking the caller until done.
+
+        Use for any operation that mutates agent state from outside the
+        dispatcher loop (slash commands, shutdown, renderer attach/detach).
+        If no agent loop is running (unit tests, pre-startup), executes
+        inline on the caller's thread.
+
+        *fn* is a zero-arg callable. If it returns a coroutine, the
+        coroutine is awaited on the agent loop. Otherwise the callable
+        itself is scheduled on the agent loop via ``call_soon_threadsafe``.
+
+        Returns whatever *fn* (or the coroutine) returns. Propagates
+        exceptions. Times out after 30 seconds.
+        """
+        import concurrent.futures
+
+        loop = self._agent_loop
+        if loop is None or not loop.is_running():
+            # No agent loop (tests or pre-startup) — run inline.
+            result = fn()
+            if asyncio.iscoroutine(result):
+                raise TypeError(
+                    "agent_run() with a coroutine requires a running agent loop"
+                )
+            return result
+
+        # Schedule on agent loop. Use an async wrapper so both sync and
+        # async callables go through run_coroutine_threadsafe uniformly.
+        async def _wrapper():
+            result = fn()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        future = asyncio.run_coroutine_threadsafe(_wrapper(), loop)
+        return future.result(timeout=30)
+
     # ── output pipeline -----------------------------------------------
 
     def emit_block(self, text: str) -> None:

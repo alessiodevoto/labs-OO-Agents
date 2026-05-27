@@ -459,6 +459,10 @@ class Session:
             session_label=self._session_label,
             config=self.config,
         )
+        # Wire agent_run into all commands so they can dispatch mutations
+        # to the agent thread via self.agent_run(fn).
+        for cmd in self.registry.commands():
+            cmd._agent_run = self._app.agent_run
         # Wire the user-bar render + TUIUserInput log on the channel's
         # on_get hook so the echo fires when the dispatcher (or agent
         # code mid-turn) actually dequeues the message — symmetric across
@@ -553,9 +557,14 @@ class Session:
                 storage = getattr(self.agent, "_storage", None)
                 if storage is not None and hasattr(storage, "save_snapshot"):
                     try:
-                        storage.save_snapshot(self.agent)
+                        self._app.agent_run(lambda: storage.save_snapshot(self.agent))
                     except Exception:
-                        pass
+                        # Agent loop may already be stopped — fall back to inline
+                        # (still safe: the RLock protects the connection).
+                        try:
+                            storage.save_snapshot(self.agent)
+                        except Exception:
+                            pass
                 self._session_manager.close()
             # Restore the previous exception handler so we don't pin
             # this Session or route unrelated failures through a torn-down TUI.
@@ -937,9 +946,12 @@ class Session:
             storage = getattr(self.agent, "_storage", None)
             if storage is not None and hasattr(storage, "save_snapshot"):
                 try:
-                    storage.save_snapshot(self.agent)
+                    self._app.agent_run(lambda: storage.save_snapshot(self.agent))
                 except Exception:
-                    pass
+                    try:
+                        storage.save_snapshot(self.agent)
+                    except Exception:
+                        pass
             self._session_manager.close()
         self._session_manager = new_sm
         # Point the agent at the new storage AND repoint the agent's
@@ -947,8 +959,8 @@ class Session:
         # is what keeps subscribers (e.g. AgentEventRenderer) alive
         # across the swap.
         if hasattr(self.agent, "_storage"):
-            self.agent._storage = new_sm._storage
-            self.agent.event_manager.set_backend(new_sm._storage.event_backend)
+            self._app.agent_run(lambda: setattr(self.agent, "_storage", new_sm._storage))
+            self._app.agent_run(lambda: self.agent.event_manager.set_backend(new_sm._storage.event_backend))
         # Propagate to registry and all command instances so /session export etc. use new ID.
         self.registry.session_manager = new_sm
         for cmd in self.registry.commands():
