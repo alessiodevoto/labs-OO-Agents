@@ -178,11 +178,15 @@ class SkillRegistry(Skill):
         return sorted(self._discovered.keys())
 
     def discover_libs(self, libs_path: "Path") -> None:
-        """Scan a libs directory and register each package as local.<lib_name>.
+        """Scan a libs directory and register each skill package.
 
         Each subdirectory containing a pyproject.toml is imported and
         registered. The Skill subclass from __init__.py is used if found;
         otherwise a Skill(module) fallback wraps the module.
+
+        The registry name is read from the pyproject.toml entry_points
+        (``[project.entry-points."nemo_oo_agents.skills"]``). If no
+        entry_point is declared, falls back to ``local.<lib_name>``.
 
         Args:
             libs_path: Directory containing library packages.
@@ -196,7 +200,7 @@ class SkillRegistry(Skill):
             if not (lib_dir.is_dir() and (lib_dir / "pyproject.toml").exists()):
                 continue
             lib_name = lib_dir.name
-            reg_name = f"local.{lib_name}"
+            reg_name = self._read_skill_name(lib_dir, lib_name)
             if reg_name in self._loaded:
                 continue
             try:
@@ -205,6 +209,26 @@ class SkillRegistry(Skill):
                     self.register(reg_name, skill)
             except Exception:
                 logger.warning("Library %s skipped", lib_name, exc_info=True)
+
+    @staticmethod
+    def _read_skill_name(lib_dir: "Path", lib_name: str) -> str:
+        """Read the skill registry name from pyproject.toml entry_points.
+
+        Falls back to ``local.<lib_name>`` if no entry_point is declared.
+        """
+        import tomllib
+
+        pyproject = lib_dir / "pyproject.toml"
+        try:
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+            eps = data.get("project", {}).get("entry-points", {}).get(ENTRY_POINT_GROUP, {})
+            if eps:
+                # Use the first declared entry_point name
+                return next(iter(eps))
+        except Exception:
+            pass
+        return f"local.{lib_name}"
 
     def _import_lib(self, lib_dir: "Path", lib_name: str) -> "Skill | None":
         """Import a library package and extract its Skill instance."""

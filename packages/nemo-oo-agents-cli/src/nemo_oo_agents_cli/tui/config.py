@@ -86,6 +86,10 @@ class TUIConfig:
         ]
     )
 
+    # Extra directories containing library skill packages (each subdir is a skill).
+    # Added via config.toml or --libs-dir CLI flag.
+    libs_dirs: list[Path] = field(default_factory=list)
+
     # Default LLM model (from unifiedllm registry)
     default_model: str = DEFAULT_MODEL
 
@@ -141,6 +145,7 @@ class Config:
         "vi": "tui.vi_mode",
         "agent": "tui.agent_spec",
         "python": "tui.show_python",
+        "libs_dirs": ("tui.libs_dirs", lambda v: [Path(p) for p in (v if isinstance(v, list) else [v])]),
     }
 
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)

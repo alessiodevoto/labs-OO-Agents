@@ -2466,6 +2466,16 @@ class CommandRegistry:
     def get_user_skill(self, name: str) -> "_UserSkill | None":
         return self._user_skills.get(name.lower())
 
+    def refresh_skill_commands(self) -> None:
+        """Re-discover @slash_command methods from agent skills (hot-reload support).
+
+        Called by LibraryManager after reloading a library so newly-added
+        slash commands become available without TUI restart.
+        """
+        fresh = self._discover_skill_commands()
+        for name, skill in fresh.items():
+            self._user_skills[name] = skill
+
     @classmethod
     def get_all_command_classes(cls) -> dict[str, type[Command]]:
         return cls._command_classes.copy()

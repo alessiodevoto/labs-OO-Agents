@@ -246,6 +246,61 @@ def _build_script_command(
     return cmd.strip()
 
 
+# ---------------------------------------------------------------------------
+# @slash_command decorator
+# ---------------------------------------------------------------------------
+
+
+class _SlashCommandMeta:
+    """Metadata attached by @slash_command to a method."""
+
+    __slots__ = ("name", "argument_hint")
+
+    def __init__(self, name: str, argument_hint: str | None = None):
+        self.name = name
+        self.argument_hint = argument_hint
+
+
+def slash_command(name: str, *, argument_hint: str | None = None):
+    """Mark a Skill method as a TUI slash command.
+
+    The method becomes available as ``/<name>`` in the TUI. The method
+    receives any text after the command name as a single string argument.
+
+    Example::
+
+        class GitLabCISkill(Skill):
+            @slash_command("monitor", argument_hint="<mr>")
+            def monitor(self, mr_ref: str | int, ...) -> str:
+                ...
+
+    After ``self.libs.reload("gitlab_ci")``, the command is immediately
+    available in the TUI without restart.
+    """
+
+    def decorator(method):
+        method._slash_command = _SlashCommandMeta(name, argument_hint=argument_hint)
+        return method
+
+    return decorator
+
+
+def get_slash_commands(skill) -> list[tuple[_SlashCommandMeta, Any]]:
+    """Return all @slash_command-decorated methods on a Skill instance."""
+    results = []
+    for attr_name in dir(type(skill)):
+        if attr_name.startswith("_"):
+            continue
+        try:
+            method = getattr(type(skill), attr_name)
+        except Exception:
+            continue
+        meta = getattr(method, "_slash_command", None)
+        if isinstance(meta, _SlashCommandMeta):
+            results.append((meta, getattr(skill, attr_name)))
+    return results
+
+
 class Skill:
     """Base class for agent skills.
 
