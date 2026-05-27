@@ -40,13 +40,12 @@ def _reader_loop(backend, iterations=200):
 class TestCrossThreadSqliteRace:
     """Demonstrate that concurrent reads from two threads on one connection crash."""
 
-    def test_concurrent_reads_are_unsafe(self, tmp_path):
-        """Demonstrate that concurrent reads from two threads are NOT safe.
+    def test_concurrent_reads_are_safe_with_lock(self, tmp_path):
+        """Concurrent reads from two threads are safe thanks to the RLock.
 
-        This proves the need for the fix: without dispatching name_session to
-        the agent loop, concurrent build_context calls from different threads
-        race on the same sqlite3.Connection and cause InterfaceError (or
-        segfault on macOS with pydantic model_validate in the call chain).
+        Previously this test asserted concurrent access would FAIL (proving
+        the need for the fix). Now the RLock on SQLiteEventBackend serializes
+        access, so concurrent reads from multiple threads succeed without error.
         """
         db_path = tmp_path / f"{uuid.uuid4()}.db"
         storage = SQLiteStorageManager(db_path, check_same_thread=False)
@@ -71,11 +70,9 @@ class TestCrossThreadSqliteRace:
 
         storage.close()
 
-        # On Linux this raises InterfaceError; on macOS it often segfaults.
-        # Either way, concurrent access is unsafe — proving the fix is needed.
-        assert len(errors) > 0, (
-            "Expected concurrent reads to fail — if this passes, the race "
-            "window may have been missed. The test is still valid as a smoke check."
+        # With the RLock, concurrent access is safe — no errors.
+        assert len(errors) == 0, (
+            f"Concurrent reads should be safe with the RLock, but got: {errors}"
         )
 
     def test_name_session_dispatched_to_agent_loop(self):

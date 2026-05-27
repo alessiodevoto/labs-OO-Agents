@@ -135,6 +135,15 @@ class Command(abc.ABC):
         self.agent: Any = agent
         self.session_manager = session_manager
         self._registry: Any = kwargs.get("registry")
+        # Dispatch operations to the agent thread. Set by CommandRegistry
+        # after construction. Falls back to inline execution if not wired.
+        self._agent_run = kwargs.get("agent_run")
+
+    def agent_run(self, fn):
+        """Run *fn* on the agent thread. Falls back to inline if not wired."""
+        if self._agent_run is not None:
+            return self._agent_run(fn)
+        return fn()
 
     @abc.abstractmethod
     async def execute(self, args: list[str]) -> "CommandResult":
@@ -345,16 +354,15 @@ class ModelCommand(Command):
         selected = args[0]
         self.config.default_model = selected
         try:
-            self.agent._llm = get_llm_client(selected)
+            from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+            def _switch():
+                self.agent._llm = get_llm_client(selected)
+                apply_model_limits(self.agent)
+
+            self.agent_run(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
-        # Summarizer trigger and event-truncation cap both scale with the
-        # model's context window. Swapping the LLM without also swapping
-        # these budgets leaves a large-context session stranded on a
-        # smaller model — e.g. 420K events on a 200K Sonnet window.
-        from nemo_oo_agents_cli.tui.agent import apply_model_limits
-
-        apply_model_limits(self.agent)
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -407,16 +415,15 @@ class SwitchCommand(Command):
         selected = args[0]
         self.config.default_model = selected
         try:
-            self.agent._llm = get_llm_client(selected)
+            from nemo_oo_agents_cli.tui.agent import apply_model_limits
+
+            def _switch():
+                self.agent._llm = get_llm_client(selected)
+                apply_model_limits(self.agent)
+
+            self.agent_run(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
-
-        # Re-resolve summarizer trigger + truncation cap against the new
-        # context window — see apply_model_limits for the math.
-        from nemo_oo_agents_cli.tui.agent import apply_model_limits
-
-        apply_model_limits(self.agent)
-
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -1008,7 +1015,9 @@ class CompactCommand(Command):
                 history_md = summarizer._render_range_to_markdown(start_tag, end_tag)
                 target_chars = getattr(getattr(summarizer, "config", None), "target_chars", 2000)
                 summary_text = await summarizer.summarize(history_md, target_chars)
-                self.agent.event_manager.collapse(start_tag, end_tag, summary_text)
+                self.agent_run(
+                    lambda: self.agent.event_manager.collapse(start_tag, end_tag, summary_text)
+                )
                 events_after = len(self.agent.event_manager.keys())
                 tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
                 result = CommandResult.ok(
@@ -1029,7 +1038,7 @@ class CompactCommand(Command):
             finally:
                 await self.frontend.stop_thinking()
 
-        self.agent.event_manager.clear()
+        self.agent_run(lambda: self.agent.event_manager.clear())
         tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
         result = CommandResult.ok(
             TextOutput(f"Cleared {events_before} history events{tok_sfx}.", "success")

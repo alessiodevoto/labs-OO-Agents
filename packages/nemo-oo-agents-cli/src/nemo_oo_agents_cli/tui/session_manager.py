@@ -15,9 +15,7 @@ exposes the same public API as before (``record_user``,
 
 import json
 import logging
-import queue
 import sqlite3
-import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -130,37 +128,6 @@ class SessionManager:
                 )
             )
 
-        # Start the writer thread only when cross-thread access is allowed.
-        # In tests with check_same_thread=True, writes go inline.
-        self._threaded = not getattr(self._storage, "_check_same_thread", True)
-        if self._threaded:
-            self._start_writer()
-
-    def _start_writer(self) -> None:
-        """Start the background writer thread that serializes all DB writes."""
-        self._write_queue: queue.Queue = queue.Queue()
-
-        def _writer():
-            while True:
-                item = self._write_queue.get()
-                if item is None:
-                    break
-                fn, args = item
-                try:
-                    fn(*args)
-                except Exception:
-                    logger.exception("SessionManager: write %s failed", fn.__name__)
-
-        self._writer_thread = threading.Thread(target=_writer, name="session-writer", daemon=True)
-        self._writer_thread.start()
-
-    def _enqueue_write(self, fn, *args) -> None:
-        """Enqueue a write for the writer thread, or execute inline if not threaded."""
-        if self._threaded:
-            self._write_queue.put((fn, args))
-        else:
-            fn(*args)
-
     @property
     def agent_db_path(self) -> Path:
         """Path for the per-session agent state DB."""
@@ -179,7 +146,7 @@ class SessionManager:
         self._name = name
         if user_named:
             self._user_named = True
-        self._enqueue_write(self._do_rename, name, user_named)
+        self._do_rename(name, user_named)
 
     def _do_rename(self, name: str, user_named: bool) -> None:
         from .tui_events import TUISessionRename
@@ -197,7 +164,7 @@ class SessionManager:
 
     def record_user(self, text: str) -> None:
         """Store the user's raw input as a TUIUserInput metadata event."""
-        self._enqueue_write(self._do_record_user, text)
+        self._do_record_user(text)
 
     def _do_record_user(self, text: str) -> None:
         from .tui_events import TUIUserInput
@@ -208,10 +175,6 @@ class SessionManager:
         if getattr(self, "_closed", False):
             return
         self._closed = True
-        # Drain the writer queue: send sentinel and wait for thread to finish
-        if self._threaded and hasattr(self, "_write_queue"):
-            self._write_queue.put(None)
-            self._writer_thread.join(timeout=2.0)
         try:
             self._storage.close()
         except Exception:
