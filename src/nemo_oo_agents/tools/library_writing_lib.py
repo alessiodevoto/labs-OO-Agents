@@ -345,3 +345,6 @@ class SkillWriting(Skill):
                 if dep_name:
                     deps.append(dep_name)
         return deps
+
+
+LibraryWriting = SkillWriting

@@ -89,7 +89,7 @@ class LibraryManager:
         so the agent accesses it via ``self.<lib_name>``.
         """
         from nemo_oo_agents.skill import Skill
-        from nemo_oo_agents.skill_manager import skill_from_module
+        from nemo_oo_agents.skill_registry import skill_from_module
 
         module = self._import_module(lib_dir)
 
@@ -103,6 +103,7 @@ class LibraryManager:
             logger.info("Library %s: no Skill export, using Skill(module) fallback", lib_name)
 
         setattr(self._agent, lib_name, attached)
+        attached.attach(self._agent)
         # Hot-reload slash commands: if the TUI's CommandRegistry is reachable,
         # re-discover @slash_command methods so new commands are immediately available.
         registry = getattr(self._agent, "_command_registry", None)
