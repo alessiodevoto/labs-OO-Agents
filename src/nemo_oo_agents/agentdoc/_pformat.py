@@ -430,6 +430,14 @@ def _is_structured_instance(obj: Any) -> bool:
     if obj_type.__module__ == "builtins":
         return False
 
+    # If the class defines its own __repr__ (not inherited from object),
+    # trust the library author's representation over field extraction.
+    for klass in obj_type.__mro__:
+        if klass is object:
+            break
+        if "__repr__" in klass.__dict__:
+            return False
+
     # __slots__-only classes have no __dict__ but do have public slots
     if not hasattr(obj, "__dict__"):
         return any(

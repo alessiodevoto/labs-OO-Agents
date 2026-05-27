@@ -831,25 +831,113 @@ class TestLargeValueTruncation:
         assert len(result) < 2000
 
     def test_doc_on_object_with_huge_repr(self):
-        """Test doc() on object whose __repr__ returns huge string."""
+        """Test doc() on object with huge data doesn't blow up context.
 
-        class HugeRepr:
+        Classes without __repr__ go through field extraction which shows
+        AST expressions (compact). Classes WITH __repr__ get repr() —
+        we trust the author's intent.
+        """
+
+        class HugeData:
             def __init__(self):
                 # Use public attribute so it shows in variables
                 self.data = "z" * 100_000
 
-            def __repr__(self):
-                return f"HugeRepr(data={self.data})"
-
-        obj = HugeRepr()
+        obj = HugeData()
         result = doc(obj)
 
-        # Should be compact - the huge data should not blow up context
-        # Now that we extract non-annotated instance attributes from __init__,
-        # we show the AST expression (e.g., "'z' * 100000") not the evaluated value
-        assert len(result) < 1000, f"doc() on huge repr too large: {len(result)}"
-        # Verify the field is extracted and shown as an AST expression
+        # Should be compact - field extraction truncates the huge string
+        # using the str(len=N, ...) marker, not the raw 100k-char value
+        assert len(result) < 1000, f"doc() on huge data too large: {len(result)}"
+        # Verify the field is extracted with truncation marker
         assert "data:" in result
+        assert "str(len=100000," in result
+
+    def test_doc_on_class_with_repr_uses_repr(self):
+        """Classes with custom __repr__ should use repr(), not field extraction."""
+
+        class WithRepr:
+            def __init__(self):
+                self.hidden = "not extracted"
+
+            def __repr__(self):
+                return "custom_repr_sentinel"
+
+        result = doc(WithRepr())
+        assert "custom_repr_sentinel" in result
+        assert "hidden" not in result
+
+    def test_slots_class_with_repr_uses_repr(self):
+        """__slots__-only classes with __repr__ should also trust repr()."""
+
+        class SlotsWithRepr:
+            __slots__ = ("x", "y")
+
+            def __init__(self):
+                self.x = 1
+                self.y = 2
+
+            def __repr__(self):
+                return "SlotsWithRepr(custom)"
+
+        result = doc(SlotsWithRepr())
+        assert "SlotsWithRepr(custom)" in result
+
+    def test_pydantic_still_uses_field_extraction_despite_repr(self):
+        """Pydantic models define __repr__ but should still use field extraction."""
+        from pydantic import BaseModel
+
+        class MyModel(BaseModel):
+            name: str = "hello"
+            count: int = 42
+
+            def __repr__(self):
+                return "PYDANTIC_REPR_SENTINEL"
+
+        result = pformat(MyModel())
+        # Field extraction produces ClassName(field=value) style
+        assert "name=" in result
+        assert "hello" in result
+        assert "count=" in result
+        # Must NOT fall through to __repr__
+        assert "PYDANTIC_REPR_SENTINEL" not in result
+
+    def test_dataclass_still_uses_field_extraction_despite_repr(self):
+        """Dataclasses define __repr__ but should still use field extraction."""
+        import dataclasses
+
+        @dataclasses.dataclass
+        class DC:
+            x: int = 1
+            y: str = "hi"
+
+            def __repr__(self):
+                return "DC_REPR_SENTINEL"
+
+        result = pformat(DC())
+        assert "x=" in result
+        assert "y=" in result
+        assert "hi" in result
+        # Must NOT fall through to __repr__
+        assert "DC_REPR_SENTINEL" not in result
+
+    def test_plain_class_with_repr_uses_repr_not_fields(self):
+        """Plain class with __repr__ should use repr, not extract fields."""
+        from nemo_oo_agents.agentdoc import pformat
+
+        class ToolLike:
+            def __init__(self):
+                self.cwd = "/tmp/project"
+                self._internal = "secret"
+
+            def __repr__(self):
+                return f"ToolLike(cwd={self.cwd!r})"
+
+        result = pformat(ToolLike())
+        # Should use __repr__, not field extraction
+        assert result == "ToolLike(cwd='/tmp/project')"
+        # Should NOT show _internal (repr doesn't include it)
+        assert "_internal" not in result
 
 
 class TestDocTruncationHeader:
