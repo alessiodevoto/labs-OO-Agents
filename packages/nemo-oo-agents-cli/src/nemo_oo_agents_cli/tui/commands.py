@@ -89,6 +89,8 @@ class CommandResult:
     compact_done: bool = False
     # When set, Session.run() passes this as the user message for an agent turn.
     agent_message: str | None = None
+    # Structured slash command result — passed to the agent on a queue.
+    slash_result: "Any | None" = None
 
     # Convenience constructors -------------------------------------------
 
@@ -683,10 +685,13 @@ class SkillsCommand(Command):
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        try:
-            from nemo_oo_agents import SkillManager
-        except ImportError:
-            return CommandResult.err("Skills not enabled. Run `uv sync --extra skills`.")
+        from nemo_oo_agents.skill_registry import SkillRegistry
+
+        registry = getattr(self.agent, "skills", None)
+        if not isinstance(registry, SkillRegistry):
+            return CommandResult.err(
+                "Agent has no SkillRegistry. Skills require self.skills = SkillRegistry(self)."
+            )
 
         subcmd = args[0].lower()
         subargs = args[1:]
@@ -828,47 +833,33 @@ class SkillsCommand(Command):
             )
 
         if subcmd == "list":
-            if not self.skills_dirs:
-                return CommandResult.ok(TextOutput("No skills directories configured", "info"))
-            skills_dict = SkillManager.discover(self.skills_dirs)
-            if not skills_dict:
+            all_names = registry.discovered()
+            activated = set(registry.activated())
+            if not all_names:
                 return CommandResult.ok(TextOutput("No skills found", "info"))
-            rows = [
-                [
-                    sid,
-                    "\u2713" if sid in self._active_skills else "",
-                    getattr(skill, "description", ""),
-                ]
-                for sid, skill in sorted(skills_dict.items())
-            ]
+            rows = [[name, "\u2713" if name in activated else "", ""] for name in all_names]
             return CommandResult.ok(
                 TableOutput(columns=["ID", "Active", "Description"], rows=rows, title="Skills"),
-                TextOutput(f"Dirs: {self.skills_dirs}", "status"),
             )
 
         if subcmd == "activate":
             skill_id = subargs[0]
-            if not self.skills_dirs:
-                return CommandResult.err("No skills directories configured")
-            available = SkillManager.discover(self.skills_dirs)
-            if skill_id not in available:
-                return CommandResult.err(f"Skill `{skill_id}` not found. Use /skills list.")
-            if skill_id in self._active_skills:
+            if skill_id in registry.activated():
                 return CommandResult.err(f"Skill `{skill_id}` already active")
+            if skill_id not in registry.discovered():
+                return CommandResult.err(f"Skill `{skill_id}` not found. Use /skills list.")
             try:
-                setattr(self.agent, _to_attr_name(skill_id), available[skill_id])
-                self._active_skills.add(skill_id)
+                registry.activate([skill_id])
                 return CommandResult.ok(TextOutput(f"Skill `{skill_id}` activated", "success"))
             except Exception as e:
                 return CommandResult.err(f"Failed to activate `{skill_id}`: {e}")
 
         # deactivate
         skill_id = subargs[0]
-        if skill_id not in self._active_skills:
+        if skill_id not in registry.activated():
             return CommandResult.err(f"`{skill_id}` not active. Use /skills list.")
         try:
-            delattr(self.agent, _to_attr_name(skill_id))
-            self._active_skills.discard(skill_id)
+            registry.deactivate([skill_id])
             return CommandResult.ok(TextOutput(f"Skill `{skill_id}` deactivated", "success"))
         except Exception as e:
             return CommandResult.err(f"Failed to deactivate `{skill_id}`: {e}")
@@ -1516,6 +1507,8 @@ class _UserSkill:
     body: str
     description: str
     argument_hint: str | None = None
+    completions: tuple[str, ...] = ()
+    _method: Any = field(default=None, repr=False)
 
     def help_entry(self) -> tuple[str, str]:
         hint = self.argument_hint or ""
@@ -2343,7 +2336,7 @@ class CommandRegistry:
     def _discover_user_skills(self) -> "dict[str, _UserSkill]":
         """Scan skills dirs for install-as:command skills and register them as slash commands.
 
-        Uses rglob to match SkillManager.discover() — finds skills at any depth.
+        Uses rglob to match SkillRegistry.discover_skills_dirs() — finds skills at any depth.
         Parses SKILL.md frontmatter inline to avoid depending on private nemo_oo_agents
         internals that may not be present in older installed versions.
         """
@@ -2397,8 +2390,9 @@ class CommandRegistry:
                     # install-as: command is honored for backward compat.
                     if meta.get("user-invocable") is False:
                         continue
-                    name = str(meta.get("name", "")).strip()
-                    if not name or name in self._commands or name in skills:
+                    raw_name = str(meta.get("name") or "").strip()
+                    cmd_name = raw_name.lower()
+                    if not cmd_name or cmd_name in self._commands or cmd_name in skills:
                         continue
                     description = str(meta.get("description", "")).strip()
                     body = parts[2].strip()
@@ -2408,14 +2402,50 @@ class CommandRegistry:
                         hint = "[" + ", ".join(str(x) for x in hint) + "]"
                     elif hint is not None:
                         hint = str(hint)
-                    skills[name] = _UserSkill(
-                        name=name,
+                    skills[cmd_name] = _UserSkill(
+                        name=cmd_name,
                         body=body,
                         description=description,
                         argument_hint=hint,
                     )
                 except Exception as e:
                     logger.warning("Failed to load skill from %s: %s", entry, e)
+        # Also discover @slash_command methods from loaded Skills
+        skills.update(self._discover_skill_commands())
+        return skills
+
+    def _discover_skill_commands(self) -> "dict[str, _UserSkill]":
+        """Discover @slash_command methods from loaded Skill instances on the agent."""
+        skills: dict[str, _UserSkill] = {}
+        try:
+            from nemo_oo_agents.skill import get_slash_commands
+        except ImportError:
+            return skills
+
+        from nemo_oo_agents.skill import Skill
+
+        for attr_name in dir(self.agent):
+            if attr_name.startswith("_"):
+                continue
+            try:
+                obj = getattr(self.agent, attr_name)
+            except Exception:
+                continue
+            if not isinstance(obj, Skill):
+                continue
+            for meta, method in get_slash_commands(obj):
+                cmd_name = meta.name.lower()
+                if cmd_name in self._commands or cmd_name in skills:
+                    continue
+                description = (method.__doc__ or "").strip().split("\n")[0]
+                skills[cmd_name] = _UserSkill(
+                    name=cmd_name,
+                    body="",
+                    description=description,
+                    argument_hint=meta.argument_hint,
+                    completions=getattr(meta, "completions", ()),
+                    _method=method,
+                )
         return skills
 
     def _auto_install_skills(self) -> None:
@@ -2423,9 +2453,12 @@ class CommandRegistry:
         if not self.skills_dirs:
             return
         try:
-            from nemo_oo_agents import SkillManager
+            from nemo_oo_agents.skill_registry import SkillRegistry
 
-            SkillManager.install(self.agent, skills_dir=self.skills_dirs)
+            registry = getattr(self.agent, "skills", None)
+            if isinstance(registry, SkillRegistry):
+                registry.discover_skills_dirs(self.skills_dirs)
+                registry.activate(["cmd.*", "ext.*"])
         except ImportError:
             pass
         except Exception as e:
@@ -2444,6 +2477,16 @@ class CommandRegistry:
 
     def get_user_skill(self, name: str) -> "_UserSkill | None":
         return self._user_skills.get(name.lower())
+
+    def refresh_skill_commands(self) -> None:
+        """Re-discover @slash_command methods from agent skills (hot-reload support).
+
+        Called by LibraryManager after reloading a library so newly-added
+        slash commands become available without TUI restart.
+        """
+        fresh = self._discover_skill_commands()
+        for name, skill in fresh.items():
+            self._user_skills[name] = skill
 
     @classmethod
     def get_all_command_classes(cls) -> dict[str, type[Command]]:
@@ -2515,6 +2558,38 @@ class CommandHandler:
         # Check user-invocable skills before falling through to unknown-command error
         skill = self.registry.get_user_skill(cmd_name)
         if skill is not None:
+            if skill._method is not None:
+                import inspect
+
+                from nemo_oo_agents.slash_dispatch import (
+                    CoercionError,
+                    SlashCommandResult,
+                    parse_typed_args,
+                )
+
+                raw_args = " ".join(args)
+                try:
+                    kwargs = parse_typed_args(skill._method, raw_args)
+                except CoercionError as e:
+                    msg = f"/{cmd_name}: {e.message}"
+                    if e.hint:
+                        msg += f"\nUsage: /{cmd_name} {e.hint}"
+                    result = CommandResult.err(msg)
+                    for output in result.outputs:
+                        await self.frontend.render(output)
+                    return result
+
+                result_val = skill._method(**kwargs)
+                if inspect.isawaitable(result_val):
+                    result_val = await result_val
+
+                slash_result = SlashCommandResult(
+                    command=cmd_name,
+                    args=raw_args,
+                    value=result_val,
+                    text=str(result_val) if result_val is not None else None,
+                )
+                return CommandResult(success=True, slash_result=slash_result)
             return CommandResult(success=True, agent_message=skill.make_agent_message(args))
 
         command = self.registry.get_command(cmd_name)

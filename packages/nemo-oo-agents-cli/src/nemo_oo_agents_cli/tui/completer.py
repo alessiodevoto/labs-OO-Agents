@@ -96,6 +96,11 @@ class Completer:
                 CompletionItem(text=text, display=text, description="(no matching tags)")
             ]
 
+        # Subcommand completion for @slash_command(completions=[...])
+        items = self._skill_subcommand_completions(text)
+        if items:
+            return items
+
         # Top-level slash commands + subcommands.
         # get_active_help() keys may include argument hints ("/wtf-status [label]").
         # We strip the hint for text (insertion) but keep it for display.
@@ -110,6 +115,34 @@ class Completer:
                 seen.add(clean)
                 items.append(CompletionItem(text=clean, display=display_cmd, description=desc))
         return items
+
+    # ------------------------------------------------------------------
+    # Skill subcommand completion
+    # ------------------------------------------------------------------
+
+    def _skill_subcommand_completions(self, text: str) -> list[CompletionItem]:
+        """Complete subcommands for @slash_command methods that declare completions."""
+        lower = text.lower()
+        # Check each user skill for a matching prefix with completions
+        for name, skill in self._registry._user_skills.items():
+            cmd_prefix = f"/{name} "
+            if not lower.startswith(cmd_prefix):
+                continue
+            if not skill.completions:
+                return []
+            partial = text[len(cmd_prefix) :]
+            items = []
+            for sub in skill.completions:
+                if sub.lower().startswith(partial.lower()):
+                    items.append(
+                        CompletionItem(
+                            text=cmd_prefix + sub,
+                            display=cmd_prefix + sub,
+                            description="",
+                        )
+                    )
+            return items
+        return []
 
     # ------------------------------------------------------------------
     # Theme completion
@@ -163,33 +196,30 @@ class Completer:
     # ------------------------------------------------------------------
 
     def _skill_id_completions(self, text: str, prefix: str) -> list[CompletionItem]:
-        try:
-            from nemo_oo_agents import SkillManager
-        except ImportError:
+        agent = getattr(self._registry, "agent", None)
+        if agent is None:
             return []
-
-        skills_dirs = getattr(self._registry, "skills_dirs", None)
-        if not skills_dirs:
+        skills_reg = getattr(agent, "skills", None)
+        if skills_reg is None:
             return []
 
         partial = text[len(prefix) :]
+        items = []
         try:
-            skills = SkillManager.discover(skills_dirs)
+            for sid in sorted(skills_reg.discovered()):
+                if partial and not sid.startswith(partial):
+                    continue
+                entry = skills_reg._discovered.get(sid)
+                desc = getattr(entry, "category", "") if entry else ""
+                items.append(
+                    CompletionItem(
+                        text=prefix + sid,
+                        display=prefix + sid,
+                        description=desc,
+                    )
+                )
         except Exception:
             return []
-
-        items = []
-        for sid, skill in sorted(skills.items()):
-            if partial and not sid.startswith(partial):
-                continue
-            desc = getattr(skill, "description", "")
-            items.append(
-                CompletionItem(
-                    text=prefix + sid,
-                    display=prefix + sid,
-                    description=desc,
-                )
-            )
         return items
 
     # ------------------------------------------------------------------

@@ -30,8 +30,6 @@ override a no-op. These tests will fail with the old call.
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from nemo_oo_agents import Agent
@@ -136,81 +134,37 @@ async def _render_execution_context(agent: Agent) -> str:
 
 
 class TestSkillsSectionVisibility:
-    """Skills section appears only when the agent has at least one visible Skill."""
+    """Execution context no longer renders a Skills section."""
 
     @pytest.mark.asyncio
     async def test_base_agent_has_no_skills_section(self):
         ec = await _render_execution_context(_BaseAgent())
         assert "## Skills" not in ec
-        # Neither the Context nor Events API should appear in the block.
-        assert "`self.context`" not in ec
-        assert "`self.events`" not in ec
+        assert "| Skill | Description |" not in ec
 
     @pytest.mark.asyncio
-    async def test_unhiding_context_surfaces_it_in_skills_section(self):
-        """spec(self, 'context', hidden=False) → self.context appears in Skills table."""
+    async def test_unhiding_context_still_has_no_skills_section(self):
         ec = await _render_execution_context(_ContextOnlyAgent())
-        assert "## Skills" in ec, "Skills section missing after spec(hidden=False)"
-        assert "`self.context`" in ec, "self.context row missing from Skills table"
-        # self.events should remain hidden.
-        assert "`self.events`" not in ec
-
-    @pytest.mark.asyncio
-    async def test_unhiding_context_emits_pin_instructions(self):
-        """The pin/unpin lines only show when context is visible."""
-        ec = await _render_execution_context(_ContextOnlyAgent())
-        assert "Pin to context" in ec
-        assert "Unpin" in ec
-
-    @pytest.mark.asyncio
-    async def test_unhiding_events_surfaces_it_in_skills_section(self):
-        """spec(self, 'events', hidden=False) → self.events appears in Skills table."""
-        ec = await _render_execution_context(_EventsOnlyAgent())
-        assert "## Skills" in ec
-        assert "`self.events`" in ec
-        # context should remain hidden.
+        assert "## Skills" not in ec
         assert "`self.context`" not in ec
-
-    @pytest.mark.asyncio
-    async def test_events_only_has_no_pin_instructions(self):
-        """Pin/unpin instructions are context-specific — shouldn't appear with events alone."""
-        ec = await _render_execution_context(_EventsOnlyAgent())
         assert "Pin to context" not in ec
-        assert "Unpin" not in ec
 
     @pytest.mark.asyncio
-    async def test_unhiding_both_surfaces_both(self):
+    async def test_unhiding_events_still_has_no_skills_section(self):
+        ec = await _render_execution_context(_EventsOnlyAgent())
+        assert "## Skills" not in ec
+        assert "`self.events`" not in ec
+
+    @pytest.mark.asyncio
+    async def test_unhiding_both_still_has_no_skills_section(self):
         ec = await _render_execution_context(_BothUnhiddenAgent())
-        assert "`self.context`" in ec
-        assert "`self.events`" in ec
-        # pin/unpin included because context is visible
-        assert "Pin to context" in ec
-        assert "Unpin" in ec
+        assert "## Skills" not in ec
+        assert "`self.context`" not in ec
+        assert "`self.events`" not in ec
 
     @pytest.mark.asyncio
-    async def test_user_skill_and_context_render_together(self):
-        """A user-defined Skill and the Context API both show up in the table."""
+    async def test_user_skill_and_context_still_have_no_skills_section(self):
         ec = await _render_execution_context(_UserSkillPlusContextAgent())
-        assert "## Skills" in ec
-        assert "`self.context`" in ec
-        assert "`self.tool`" in ec
-        assert "Pin to context" in ec
-
-
-class TestSkillsTableFormat:
-    """Structural assertions on the rendered Skills table."""
-
-    @pytest.mark.asyncio
-    async def test_skills_table_has_header_row(self):
-        ec = await _render_execution_context(_ContextOnlyAgent())
-        assert "| Skill | Description |" in ec
-        assert "|-------|-------------|" in ec
-
-    @pytest.mark.asyncio
-    async def test_context_row_carries_docstring_oneliner(self):
-        """ContextApi's row description should come from its class docstring."""
-        ec = await _render_execution_context(_ContextOnlyAgent())
-        row_match = re.search(r"\| `self\.context` \| (.+?) \|", ec)
-        assert row_match, "self.context row not found or not in | name | desc | form"
-        description = row_match.group(1)
-        assert len(description) > 0
+        assert "## Skills" not in ec
+        assert "`self.context`" not in ec
+        assert "`self.tool`" not in ec

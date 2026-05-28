@@ -5,10 +5,91 @@
 import re
 import shlex
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import yaml
 from pydantic import BaseModel
+
+from nemo_oo_agents.agentdoc import hidden
+
+# ---------------------------------------------------------------------------
+# @slash_command decorator
+# ---------------------------------------------------------------------------
+
+_SLASH_COMMAND_ATTR = "_slash_command_meta"
+
+
+class SlashCommandMeta:
+    """Metadata attached to a method by @slash_command."""
+
+    __slots__ = ("name", "argument_hint", "user_only", "completions")
+
+    def __init__(
+        self,
+        name: str,
+        argument_hint: str | None,
+        user_only: bool,
+        completions: tuple[str, ...] = (),
+    ):
+        self.name = name
+        self.argument_hint = argument_hint
+        self.user_only = user_only
+        self.completions = completions
+
+
+def slash_command(
+    name: str,
+    *,
+    argument_hint: str | None = None,
+    user_only: bool = False,
+    completions: tuple[str, ...] | list[str] = (),
+):
+    """Mark a Skill method as a user-invocable slash command.
+
+    The decorated method receives the raw argument string and returns a
+    prompt string that is injected as a user message.
+
+    Args:
+        name: Command name (without leading /). E.g. "gl-ci" -> /gl-ci.
+        argument_hint: Shown in help. E.g. "<pipeline-id>".
+        user_only: If True, only the user can invoke (not the LLM).
+        completions: Subcommand names offered by tab-completion.
+
+    Usage::
+
+        class GitLabSkill(Skill):
+            @slash_command("gl-ci", argument_hint="<pipeline-id>")
+            async def monitor_ci(self, args: str) -> str:
+                '''Monitor a CI pipeline.'''
+                return f"Monitor CI pipeline {args}."
+    """
+
+    def decorator(fn):
+        setattr(
+            fn,
+            _SLASH_COMMAND_ATTR,
+            SlashCommandMeta(name, argument_hint, user_only, tuple(completions)),
+        )
+        return fn
+
+    return decorator
+
+
+def get_slash_commands(skill) -> list[tuple[SlashCommandMeta, Any]]:
+    """Extract all @slash_command methods from a Skill instance.
+
+    Returns list of (meta, bound_method) pairs.
+    """
+    results = []
+    for attr_name in dir(type(skill)):
+        try:
+            obj = getattr(type(skill), attr_name)
+        except AttributeError:
+            continue
+        meta = getattr(obj, _SLASH_COMMAND_ATTR, None)
+        if meta is not None:
+            results.append((meta, getattr(skill, attr_name)))
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +284,17 @@ class Skill:
     # They shouldn't be serialized in snapshots — mark them as nosnapshot.
     __nosnapshot__ = True
 
+    # Skill dependencies — list of skill names (category/name) that must be
+    # loaded before this skill can function. SkillRegistry resolves these
+    # transitively when activate() is called.
+    requires: Annotated[tuple[str, ...], hidden] = ()
+
+    # If set, SkillRegistry.activate() registers a dynamic context block
+    # with this (key, expr) pair. deactivate() removes it.
+    context_block: Annotated[tuple[str, str] | None, hidden] = None
+
+    _agent: Any = None
+
     def __init__(self, obj: Any = None, *, content: str | None = None, name: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
         if n_given > 1:
@@ -217,6 +309,17 @@ class Skill:
         elif content is not None:
             cls_name = name or "Skill"
             self.__class__ = type(cls_name, (Skill,), {"__doc__": content})  # pyright: ignore[reportAttributeAccessIssue]
+
+    def attach(self, agent: Any) -> None:
+        """Called when this skill is installed on an agent.
+
+        Subclasses can override to perform setup that requires the agent reference.
+        """
+        self._agent = agent
+
+    def detach(self) -> None:
+        """Called when this skill is removed from an agent."""
+        self._agent = None
 
     def __dir__(self) -> list[str]:
         # Forward dir() to wrapped object so the LLM can discover its attributes.

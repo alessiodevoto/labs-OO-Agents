@@ -903,89 +903,87 @@ class TestSkillsCommandValidation:
 
 
 class TestSkillsCommandExecute:
-    async def test_no_skill_manager(self, mock_console, mock_config, mock_agent):
-        cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch.dict("sys.modules", {"nemo_oo_agents": None}):
-            # Can't easily remove SkillManager, use importlib approach
-            # Skip this test if nemo_oo_agents has SkillManager - we test the ImportError path differently
-            await cmd.execute(["list"])
-            # No assertion needed — just checks it doesn't crash
+    @pytest.fixture(autouse=True)
+    def _setup_registry(self, mock_agent):
+        """Attach a SkillRegistry to mock_agent for skills command tests."""
+        from nemo_oo_agents.skill_registry import SkillRegistry
 
-    async def test_list_no_skills_dirs(self, mock_console, mock_config, mock_agent):
-        cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=None)
-        with patch("nemo_oo_agents.SkillManager"):
-            result = await cmd.execute(["list"])
-        assert result.success is True
+        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+            mock_agent.skills = SkillRegistry(mock_agent)
+
+    async def test_no_registry(self, mock_console, mock_config):
+        """Agent without SkillRegistry gets an error."""
+        agent = MagicMock(spec=[])  # no .skills attribute
+        cmd = SkillsCommand(mock_console, mock_config, agent, skills_dirs=[Path(".")])
+        result = await cmd.execute(["list"])
+        assert result.success is False
         assert any(
-            "No skills directories" in o.content
-            for o in result.outputs
-            if isinstance(o, TextOutput)
+            "SkillRegistry" in o.content for o in result.outputs if isinstance(o, TextOutput)
         )
-
-    async def test_list_with_skills(self, mock_console, mock_config, mock_agent):
-        skill_mock = MagicMock()
-        skill_mock.description = "Test skill"
-        cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {"test-skill": skill_mock}
-            result = await cmd.execute(["list"])
-        assert result.success is True
-        assert any(isinstance(o, TableOutput) for o in result.outputs)
 
     async def test_list_empty_skills(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {}
-            result = await cmd.execute(["list"])
+        result = await cmd.execute(["list"])
         assert result.success is True
         assert any(
             "No skills found" in o.content for o in result.outputs if isinstance(o, TextOutput)
         )
 
-    async def test_activate_no_dirs(self, mock_console, mock_config, mock_agent):
-        cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=None)
-        with patch("nemo_oo_agents.SkillManager"):
-            result = await cmd.execute(["activate", "myskill"])
-        assert result.success is False
-        assert any(
-            "No skills directories" in o.content
-            for o in result.outputs
-            if isinstance(o, TextOutput)
-        )
+    async def test_list_with_skills(self, mock_console, mock_config, mock_agent):
+        from nemo_oo_agents.skill import Skill
+
+        class _S(Skill):
+            pass
+
+        mock_agent.skills.register("test.skill", _S())
+        cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
+        result = await cmd.execute(["list"])
+        assert result.success is True
+        assert any(isinstance(o, TableOutput) for o in result.outputs)
 
     async def test_activate_not_found(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {}
-            result = await cmd.execute(["activate", "missing"])
+        result = await cmd.execute(["activate", "missing"])
         assert result.success is False
         assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_activate_already_active(self, mock_console, mock_config, mock_agent):
+        from nemo_oo_agents.skill import Skill
+
+        class _S(Skill):
+            pass
+
+        mock_agent.skills.register("test.myskill", _S())
+        mock_agent.skills.activate(["test.myskill"])
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        cmd._active_skills.add("myskill")
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {"myskill": MagicMock()}
-            result = await cmd.execute(["activate", "myskill"])
+        result = await cmd.execute(["activate", "test.myskill"])
         assert result.success is False
         assert any("already" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_activate_success(self, mock_console, mock_config, mock_agent):
-        skill_obj = MagicMock()
+        from nemo_oo_agents.skill import Skill
+
+        class _S(Skill):
+            pass
+
+        mock_agent.skills.register("test.myskill", _S())
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {"myskill": skill_obj}
-            result = await cmd.execute(["activate", "myskill"])
+        result = await cmd.execute(["activate", "test.myskill"])
         assert result.success is True
-        assert "myskill" in cmd._active_skills
-        assert hasattr(mock_agent, "myskill")
+        assert "test.myskill" in mock_agent.skills.activated()
 
     async def test_activate_exception(self, mock_console, mock_config, mock_agent):
+        """Activate with an error during registry.activate raises."""
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager") as MockSM:
-            MockSM.discover.return_value = {"myskill": MagicMock()}
-            with patch("nemo_oo_agents_cli.tui.commands.setattr", side_effect=Exception("bad")):
-                result = await cmd.execute(["activate", "myskill"])
+        with patch.object(mock_agent.skills, "activate", side_effect=Exception("bad")):
+            # Register a skill so it's discovered
+            from nemo_oo_agents.skill import Skill
+
+            class _S(Skill):
+                pass
+
+            mock_agent.skills.register("test.fail", _S())
+            result = await cmd.execute(["activate", "test.fail"])
         assert result.success is False
         assert any(
             "Failed to activate" in o.content for o in result.outputs if isinstance(o, TextOutput)
@@ -993,27 +991,34 @@ class TestSkillsCommandExecute:
 
     async def test_deactivate_not_active(self, mock_console, mock_config, mock_agent):
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        with patch("nemo_oo_agents.SkillManager"):
-            result = await cmd.execute(["deactivate", "notactive"])
+        result = await cmd.execute(["deactivate", "notactive"])
         assert result.success is False
         assert any("not active" in o.content for o in result.outputs if isinstance(o, TextOutput))
 
     async def test_deactivate_success(self, mock_console, mock_config, mock_agent):
+        from nemo_oo_agents.skill import Skill
+
+        class _S(Skill):
+            pass
+
+        mock_agent.skills.register("test.myskill", _S())
+        mock_agent.skills.activate(["test.myskill"])
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        cmd._active_skills.add("myskill")
-        mock_agent.myskill = MagicMock()
-        with patch("nemo_oo_agents.SkillManager"):
-            result = await cmd.execute(["deactivate", "myskill"])
+        result = await cmd.execute(["deactivate", "test.myskill"])
         assert result.success is True
-        assert "myskill" not in cmd._active_skills
+        assert "test.myskill" not in mock_agent.skills.activated()
 
     async def test_deactivate_exception(self, mock_console, mock_config, mock_agent):
+        from nemo_oo_agents.skill import Skill
+
+        class _S(Skill):
+            pass
+
+        mock_agent.skills.register("test.myskill", _S())
+        mock_agent.skills.activate(["test.myskill"])
         cmd = SkillsCommand(mock_console, mock_config, mock_agent, skills_dirs=[Path(".")])
-        cmd._active_skills.add("myskill")
-        mock_agent.myskill = MagicMock()
-        with patch("nemo_oo_agents.SkillManager"):
-            with patch("nemo_oo_agents_cli.tui.commands.delattr", side_effect=Exception("err")):
-                result = await cmd.execute(["deactivate", "myskill"])
+        with patch.object(mock_agent.skills, "deactivate", side_effect=Exception("err")):
+            result = await cmd.execute(["deactivate", "test.myskill"])
         assert result.success is False
 
 
@@ -1503,7 +1508,7 @@ class TestTUIAgentInit:
     def test_init_with_defaults(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         assert agent._phase == "idle"
@@ -1514,7 +1519,7 @@ class TestTUIAgentInit:
         config.summarization = SummarizationConfig(policy="none")
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
                         TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_not_called()
@@ -1524,7 +1529,7 @@ class TestTUIAgentInit:
         config.summarization = SummarizationConfig(policy="token_budget")
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer") as mock_install:
                         TUIAgent(llm=MagicMock(), config=config)
                         mock_install.assert_called_once()
@@ -1532,7 +1537,7 @@ class TestTUIAgentInit:
     def test_get_summarization_status_no_summarizers(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         agent._summarizers = []
@@ -1547,7 +1552,7 @@ class TestTUIAgentInit:
     def test_get_summarization_status_with_summarizer(self):
         with patch("nemo_oo_agents_cli.tui.agent.ShellTools"):
             with patch("nemo_oo_agents_cli.tui.agent.RepoTools"):
-                with patch("nemo_oo_agents_cli.tui.agent.LibraryWriting"):
+                with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
         mock_summarizer = MagicMock()

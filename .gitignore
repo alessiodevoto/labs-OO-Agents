@@ -384,3 +384,6 @@ util/harbor/tasks/terminal_bench/
 .claude/skills/wtf*
 tests/integration/fixtures/*.db
 tests/integration/fixtures/*.lock
+
+# Worktree directories
+.wt-*

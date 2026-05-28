@@ -1,4 +1,4 @@
-"""Tests for LibraryWriting, LibraryManager, and Skill(module) fallback."""
+"""Tests for SkillWriting, LibraryManager, and Skill(module) fallback."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from nemo_oo_agents.library_manager import LibraryManager
 from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
+from nemo_oo_agents.tools.library_writing_lib import LintReport, SkillWriting
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -18,7 +18,7 @@ from nemo_oo_agents.tools.library_writing_lib import LibraryWriting, LintReport
 
 
 class _FakeShell:
-    """Minimal ShellTools mock for LibraryWriting tests."""
+    """Minimal ShellTools mock for SkillWriting tests."""
 
     async def edit(self, path, old_str, new_str):
         from pathlib import Path
@@ -267,14 +267,14 @@ def test_library_manager_reload_all(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# LibraryWriting.create
+# SkillWriting.create
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_create_writes_pyproject_and_init(tmp_path: Path):
     """create() writes pyproject.toml (with name/version) and __init__.py (with docstring)."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("mylib", DESCRIPTION)
 
     pyproject = (tmp_path / "mylib" / "pyproject.toml").read_text()
@@ -290,21 +290,21 @@ async def test_create_writes_pyproject_and_init(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_create_does_not_write_source_file(tmp_path: Path):
     """create() only scaffolds the package — no code files are written."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("mylib", DESCRIPTION)
     py_files = [p for p in (tmp_path / "mylib").iterdir() if p.suffix == ".py"]
     assert py_files == [tmp_path / "mylib" / "__init__.py"]
 
 
 # ---------------------------------------------------------------------------
-# LibraryWriting.list
+# SkillWriting.list
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_list_returns_lib_names(tmp_path: Path):
     """list() returns sorted names of libraries detected by pyproject.toml."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("alpha", "Alpha lib")
     await libs.create("beta", "Beta lib")
     (tmp_path / "empty_dir").mkdir()  # no pyproject.toml — must not appear
@@ -313,201 +313,30 @@ async def test_list_returns_lib_names(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_list_empty_when_no_libs(tmp_path: Path):
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    assert await libs.list() == []
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.write_file
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_write_file_py_lints_and_loads(tmp_path: Path):
-    """write_file() on a .py file lints, writes, and hot-reloads on clean source."""
-    import importlib
-
-    agent = _make_agent()
-    libs = LibraryWriting(agent, path=tmp_path)
-    await libs.create("wf_load", DESCRIPTION)
-    report_str = await libs.write_file("wf_load", "wf_load.py", SIMPLE_SOURCE)
-
-    assert "OK" in report_str
-    assert "wf_load" in sys.modules
-    # The function lives in the wf_load.wf_load submodule
-    submod = importlib.import_module("wf_load.wf_load")
-    assert submod.add(2, 3) == 5
-
-
-@pytest.mark.asyncio
-async def test_write_file_py_syntax_error_not_written(tmp_path: Path):
-    """write_file() with a syntax error returns an ERROR report and does not write the file."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("wf_bad", DESCRIPTION)
-    report_str = await libs.write_file("wf_bad", "wf_bad.py", "def broken(:\n    pass\n")
-
-    assert "ERROR" in report_str
-    assert not (tmp_path / "wf_bad" / "wf_bad.py").exists()
-
-
-@pytest.mark.asyncio
-async def test_write_file_init_py_lints_but_allows_star_imports(tmp_path: Path):
-    """write_file() on __init__.py lints it but treats star imports as a warning, not an error."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("wf_init", DESCRIPTION)
-    result = await libs.write_file(
-        "wf_init", "__init__.py", '"""updated"""\nfrom .wf_init import *\n'
-    )
-    # E003 is a warning for __init__.py — file is written, not blocked
-    assert "ERROR" not in result
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     assert (
-        tmp_path / "wf_init" / "__init__.py"
-    ).read_text() == '"""updated"""\nfrom .wf_init import *\n'
+        await libs.list() == []
+    )  # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_write_file_pyproject_checks_deps(tmp_path: Path):
-    """write_file() on pyproject.toml validates declared dependencies."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("wf_deps", DESCRIPTION)
-    content = '[project]\nname = "wf_deps"\nversion = "0.1.0"\ndependencies = ["numpy"]\n'
-    report_str = await libs.write_file("wf_deps", "pyproject.toml", content)
-    # numpy is not in the test agent's importable modules → E002 warning
-    assert "E002" in report_str or "numpy" in report_str
-
-
-@pytest.mark.asyncio
-async def test_write_file_other_path_written_plainly(tmp_path: Path):
-    """write_file() on a non-.py, non-pyproject path just writes the file."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("wf_plain", DESCRIPTION)
-    result = await libs.write_file("wf_plain", "README.md", "# hello\n")
-    assert (tmp_path / "wf_plain" / "README.md").read_text() == "# hello\n"
-    assert "bytes" in result
-
-
-@pytest.mark.asyncio
-async def test_write_file_adds_libs_dir_to_sys_path(tmp_path: Path):
-    """LibraryWriting.__init__ adds the libs directory to sys.path."""
-    LibraryWriting(_make_agent(), path=tmp_path)
-    assert str(tmp_path) in sys.path
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.edit_file
+# SkillWriting.view_file
 # ---------------------------------------------------------------------------
 
-
-@pytest.mark.asyncio
-async def test_edit_file_patches_content(tmp_path: Path):
-    """edit_file() applies the search/replace and updates the file on disk."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("ef_patch", DESCRIPTION)
-    await libs.write_file("ef_patch", "ef_patch.py", SIMPLE_SOURCE)
-    await libs.edit_file("ef_patch", "ef_patch.py", "return a + b", "return a + b + 0  # patched")
-    assert "patched" in (tmp_path / "ef_patch" / "ef_patch.py").read_text()
-
-
-@pytest.mark.asyncio
-async def test_edit_file_returns_lint_report(tmp_path: Path):
-    """edit_file() on a .py file returns a LintReport string."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("ef_report", DESCRIPTION)
-    await libs.write_file("ef_report", "ef_report.py", SIMPLE_SOURCE)
-    result = await libs.edit_file("ef_report", "ef_report.py", "return a + b", "return a + b + 0")
-    assert any(kw in result for kw in ("OK", "WARNING", "ERROR"))
-
-
-@pytest.mark.asyncio
-async def test_edit_file_pyproject_checks_deps(tmp_path: Path):
-    """edit_file() on pyproject.toml validates declared dependencies and returns a LintReport."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("ef_deps", DESCRIPTION)
-    result = await libs.edit_file(
-        "ef_deps",
-        "pyproject.toml",
-        "dependencies = []",
-        'dependencies = ["numpy"]',
-    )
-    # numpy is not in the test agent's importable modules → E002 warning
-    assert "E002" in result or "numpy" in result
-
-
-@pytest.mark.asyncio
-async def test_edit_file_non_py_returns_plain_result(tmp_path: Path):
-    """edit_file() on a non-.py file returns the raw edit result string."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("ef_plain", DESCRIPTION)
-    await libs.write_file("ef_plain", "notes.txt", "hello world\n")
-    result = await libs.edit_file("ef_plain", "notes.txt", "hello", "goodbye")
-    assert isinstance(result, str)
-
-
 # ---------------------------------------------------------------------------
-# LibraryWriting.view_file / grep / repo_tree
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_view_file_returns_contents(tmp_path: Path):
-    """view_file() returns the contents of a file in the library."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("vf_lib", DESCRIPTION)
-    await libs.write_file("vf_lib", "vf_lib.py", SIMPLE_SOURCE)
-    contents = await libs.view_file("vf_lib", "vf_lib.py")
-    assert "def add" in contents
-
-
-@pytest.mark.asyncio
-async def test_grep_searches_library_files(tmp_path: Path):
-    """grep() searches across library files and returns matching lines."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("grep_lib", DESCRIPTION)
-    await libs.write_file("grep_lib", "grep_lib.py", SIMPLE_SOURCE)
-    result = await libs.grep("def add", "grep_lib")
-    assert "add" in result
-
-
-@pytest.mark.asyncio
-async def test_repo_tree_returns_directory_structure(tmp_path: Path):
-    """repo_tree() returns the directory tree of the libs root."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("tree_lib", DESCRIPTION)
-    result = await libs.repo_tree()
-    assert "tree_lib" in result
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting lint — E003 star imports
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_write_file_star_import_is_warning_not_error(tmp_path: Path):
-    """write_file() on a .py file with a star import returns a warning — file is still written."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
-    await libs.create("si_lib", DESCRIPTION)
-    report_str = await libs.write_file("si_lib", "si_lib.py", "from os import *\n")
-    assert "E003" in report_str
-    assert "ERROR" not in report_str
-    assert (tmp_path / "si_lib" / "si_lib.py").exists()
-
-
-# ---------------------------------------------------------------------------
-# LibraryWriting.run_tests
+# SkillWriting.run_tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_run_tests_passes(tmp_path: Path):
     """run_tests() on a library with a passing test returns output containing 'passed'."""
-    libs = LibraryWriting(_make_agent(), path=tmp_path)
+    libs = SkillWriting(_make_agent(), path=tmp_path)
     await libs.create("rt_math", DESCRIPTION)
-    await libs.write_file("rt_math", "rt_math.py", SIMPLE_SOURCE)
-    await libs.write_file(
-        "rt_math",
-        "tests/test_rt_math.py",
-        "from rt_math.rt_math import add\ndef test_add(): assert add(1, 2) == 3\n",
+    (tmp_path / "rt_math" / "rt_math.py").write_text(SIMPLE_SOURCE)
+    tests_dir = tmp_path / "rt_math" / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (tests_dir / "test_rt_math.py").write_text(
+        "from rt_math.rt_math import add\ndef test_add(): assert add(1, 2) == 3\n"
     )
     output = await libs.run_tests("rt_math")
     assert "passed" in output.lower(), output

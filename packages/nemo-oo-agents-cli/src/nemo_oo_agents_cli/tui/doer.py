@@ -27,7 +27,7 @@ from nemo_oo_agents import hidden
 with hidden:
     from typing import Annotated
 
-    from nemo_oo_agents import Agent, SkillManager, strategy
+    from nemo_oo_agents import Agent, strategy
     from nemo_oo_agents.config import CodeActConfig
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
@@ -63,7 +63,7 @@ class DoerAgent(Agent):
     - self.shell — persistent shell + file ops: bash(), view(), edit(), write(), grep(), find(), ls()
     - self.repo — repo intelligence: filemap(), repo_map(), search_symbol()
     - self.todo — view and update the todo list (self.todo.status(), self.todo.done(), etc.)
-    Plus any skills discovered via SkillManager (use doc(self) to see all).
+    Plus any skills discovered via SkillRegistry (use doc(self) to see all).
     """
 
     shell: Annotated[ShellTools, nosnapshot]
@@ -84,10 +84,21 @@ class DoerAgent(Agent):
         self.repo = repo
         self.todo = todo
 
+        # Skill registry: register passed-in skills + discover plugins
+        from nemo_oo_agents.skill_registry import SkillRegistry
+
+        self.skills = SkillRegistry(self)
+        self.skills.register("nemo.shell", self.shell)
+        self.skills.register("nemo.repo", self.repo)
+        self.skills.register("nemo.todo", self.todo)
+
         # Install plugin skills (WTF, etc.) discovered via entry points
         dirs = skills_dirs if skills_dirs is not None else _discover_skills_dirs()
         if dirs:
-            SkillManager.install(self, skills_dir=dirs)
+            self.skills.discover_skills_dirs(dirs)
+
+        # Activate all for doer (it's a full-power executor)
+        self.skills.activate(["nemo.*", "superpowers.*"])
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def execute(self, todo: "Todo") -> str:

@@ -21,8 +21,9 @@ with hidden:
     from nemo_oo_agents.config import CodeActConfig, PredictConfig
     from nemo_oo_agents.runtime.channels import Channel, QueueManager, _ChannelReader
     from nemo_oo_agents.runtime.producers_skill import ProducersSkill
+    from nemo_oo_agents.skill_registry import SkillRegistry
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-    from nemo_oo_agents.tools import LibraryWriting, TodoManager
+    from nemo_oo_agents.tools import SkillWriting, TodoManager
     from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
@@ -39,6 +40,9 @@ import re  # noqa: F401
 
 from nemo_oo_agents.runtime import producers  # noqa: F401
 from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
+
+# Backward-compatible symbol used by tests/patching.
+LibraryWriting = SkillWriting
 
 # os is used by this module (NEMO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
@@ -273,9 +277,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     # Producer-side Channel (full put / pop_last / snapshot / etc.)
     # — hidden, since the LLM has no business calling those.
     _user_messages_in: Annotated[Channel, hidden, nosnapshot]
+    # Slash command results — posted by Session when a @slash_command returns.
+    _slash_commands_in: Annotated[Channel, hidden, nosnapshot]
     # Read-only facade (just .get() / .status() / .name) is what the
     # LLM sees as ``self.user_messages``.
     user_messages: Annotated[_ChannelReader, nosnapshot]
+    # Slash command results — the agent receives SlashCommandResult objects here.
+    slash_commands: Annotated[_ChannelReader, nosnapshot]
     # Persistent variables for the LLM — survives across turns AND
     # across sessions (snapshot-backed). Accessed via the ``self.v``
     # proxy for dot-attribute reads/writes (``self.v.spec = "..."``).
@@ -288,6 +296,8 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
+        self._slash_commands_in = self.queue_manager.queue("slash_commands")
+        self.slash_commands = self._slash_commands_in.reader
         self.producers = ProducersSkill()
         self.pyp = Pyp()
         # Surface pending-queue counts (and a short preview of each item)
@@ -422,6 +432,9 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         Recognized ``queue_name`` values:
 
         - ``"user_messages"`` — text from the human; ``item`` is a str.
+        - ``"slash_commands"`` — results from slash commands; ``item`` is a
+          ``SlashCommandResult(command, args, value, text)``. Access the
+          raw return value via ``item.value``; ``str(item)`` gives the text.
 
         Subclasses may add more (e.g. ``"job_outputs"``); the
         ``<queue_status>`` context block lists the pending count per
@@ -482,7 +495,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       attaches it as ``agent.<lib_name>`` automatically next session.
     - **Existing skill needs an update** — if the task surfaced a
       missing method, a clearer docstring, a better default, edit the
-      skill's library (``self.libs.edit_file(lib_name, path, old, new)``).
+      skill's library (edit with ``self.shell.edit()`` then ``self.libs.reload(lib_name)``).
 
     Don't over-do it. A task that was just "run these tests and report"
     doesn't need a new skill. But if you just invented a non-obvious way
@@ -635,8 +648,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     _workflow_state: Annotated[dict, hidden]
     shell: Annotated[ShellTools, nosnapshot]
     repo: Annotated[RepoTools, nosnapshot]
-    libs: Annotated[LibraryWriting, nosnapshot]
+    libs: Annotated[SkillWriting, nosnapshot]
     todo: TodoManager
+    skills: Annotated[SkillRegistry, nosnapshot]
     _skills_dirs: Annotated[list, hidden, nosnapshot]
     _summarizers: Annotated[list, hidden, nosnapshot]
 
@@ -670,15 +684,22 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         _project_dir = get_project_dir()
         self.shell = ShellTools(cwd=config.working_dir)
         self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
-        self.libs = LibraryWriting(self, path=_project_dir / "libs")
+        self.libs = SkillWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
+
+        # Skill registry: register + activate skills
+        self.skills = SkillRegistry(self)
+        self.skills.register("nemo.shell", self.shell)
+        self.skills.register("nemo.repo", self.repo)
+        self.skills.register("nemo.todo", self.todo)
+        self.skills.register("superpowers.libwriting", self.libs)
+        self.skills.activate(["nemo.*", "superpowers.*"])
+
+        # Skills register their own context blocks via context_block class attr
 
         # Expose context and events to the LLM
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
-
-        # Show todo progress to the LLM every turn
-        self.context.set_dynamic("todo_status", "self.todo.status()")
 
         # Show context-window usage to the LLM every turn (lets the agent
         # decide when to call /compact). Value is from the PREVIOUS turn's

@@ -409,7 +409,19 @@ def build_registry(
     # Propagate skills_dirs to the agent so Doer subagents can discover them
     result.agent._skills_dirs = result.config.tui.skills_dirs  # type: ignore[attr-defined]
 
-    return CommandRegistry(
+    # Discover library skill packages from configured libs_dirs
+    for libs_dir in result.config.tui.libs_dirs:
+        if libs_dir.exists():
+            result.agent.skills.discover_libs(libs_dir)
+    # Activate all discovered library skills (local.* from project libs, plus any prefixed ones)
+    discovered = result.agent.skills.discovered()
+    lib_patterns = {
+        n.split(".")[0] + ".*" for n in discovered if n not in result.agent.skills.loaded()
+    }
+    if lib_patterns:
+        result.agent.skills.activate(list(lib_patterns))
+
+    registry = CommandRegistry(
         config=result.config.tui,
         agent=result.agent,
         frontend=frontend,
@@ -417,6 +429,9 @@ def build_registry(
         mcp_file=result.config.tui.mcp_file,
         session_manager=result.session_manager,
     )
+    # Expose to agent so LibraryManager can trigger slash-command hot-reload.
+    result.agent._command_registry = registry  # type: ignore[attr-defined]
+    return registry
 
 
 def build_session(

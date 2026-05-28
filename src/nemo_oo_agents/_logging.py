@@ -35,7 +35,7 @@ Logger hierarchy (all children of ``nemo_oo_agents``)::
     nemo_oo_agents.tools.*             Individual tool modules
     nemo_oo_agents.storage.*           Storage backends
     nemo_oo_agents.library_manager     Library/skill loading
-    nemo_oo_agents.skill_manager       Skill discovery
+    nemo_oo_agents.skill_registry      Skill discovery
 """
 
 import logging

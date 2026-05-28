@@ -702,7 +702,22 @@ class Session:
         if result.exit:
             self._app.exit()
             return
-        if result.agent_message is not None:
+        # NOTE: outputs are already rendered by CommandHandler.handle() — do not
+        # re-render here to avoid double output.
+        if result.slash_result is not None:
+            # Show the text output to the user immediately in the TUI
+            text = str(result.slash_result)
+            if text:
+                self._app.emit_block(text + "\n")
+            # Post the full SlashCommandResult to the slash_commands queue
+            # (agent can access .value for the raw Python object) and also
+            # submit as a user message to trigger the agent turn.
+            slash_ch = getattr(self.agent, "_slash_commands_in", None)
+            if slash_ch is not None:
+                slash_ch.put(result.slash_result)
+            # Always submit as user message to trigger the agent dispatcher
+            self._app.submit_message(text)
+        elif result.agent_message is not None:
             # Slash-command-generated agent turn — feed through the same
             # path as a typed message so the user bar, session bookkeeping,
             # and agent dispatch stay consistent.

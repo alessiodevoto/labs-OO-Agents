@@ -133,9 +133,26 @@ def _is_virtiofs(db_path: str) -> bool:
     """Detect if *db_path* resides on a virtiofs mount (Docker Desktop file sharing)."""
     if db_path == ":memory:":
         return False
+
+    import platform
+
+    if platform.system() == "Linux":
+        try:
+            result = subprocess.run(
+                ["df", "-T", "--", db_path],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("virtiofs detection failed for %s: %s", db_path, type(e).__name__)
+            return False
+        return "virtiofs" in result.stdout
+
+    # macOS / other: parse mount output for virtiofs
     try:
         result = subprocess.run(
-            ["df", "-T", "--", db_path],
+            ["mount"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -143,7 +160,18 @@ def _is_virtiofs(db_path: str) -> bool:
     except (OSError, subprocess.SubprocessError) as e:
         logger.debug("virtiofs detection failed for %s: %s", db_path, type(e).__name__)
         return False
-    return "virtiofs" in result.stdout
+
+    import os
+
+    resolved = os.path.realpath(db_path)
+    for line in result.stdout.splitlines():
+        if "virtiofs" in line:
+            parts = line.split(" on ")
+            if len(parts) >= 2:
+                mount_point = parts[1].split(" (")[0].strip()
+                if resolved.startswith(mount_point):
+                    return True
+    return False
 
 
 def _is_corruption_error(exc: sqlite3.Error) -> bool:
@@ -379,7 +407,15 @@ class SQLiteEventBackend:
 
     def remove(self, tag: str) -> bool:
         def _do_remove() -> bool:
-            row = self._conn.execute("SELECT tag FROM events WHERE tag = ?", (tag,)).fetchone()
+            try:
+                row = self._conn.execute("SELECT tag FROM events WHERE tag = ?", (tag,)).fetchone()
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                if not _is_corruption_error(e):
+                    raise
+                logger.warning(
+                    "remove(%s): corrupt/unreadable DB, skipping (%s)", tag, type(e).__name__
+                )
+                return False
             if row is None:
                 return False
             with self._conn:

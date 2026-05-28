@@ -443,57 +443,6 @@ Standard Python builtins and agent instance (`self`) are available."""
             "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
         )
 
-        # Members section — Skill attrs on the agent.
-        # Includes both instance attrs and class-level Skill attrs, so that
-        # `frontend_design = Skill(path=...)` at class level is visible here.
-        # The Context and Events APIs (ContextApi, EventsApi) are also Skills;
-        # they are hidden on the base Agent class by default, but an agent
-        # can surface them by calling `spec(self, "context", hidden=False)`
-        # in its __init__ — which is why `is_hidden_field` is called with the
-        # instance (not the class) so the instance-level override is honored.
-        # Framework Skills (_-prefixed) are excluded.
-        from nemo_oo_agents.agentdoc.visibility import is_hidden_field
-        from nemo_oo_agents.skill import Skill as _Skill
-
-        skill_attrs_dict = {
-            name: val
-            for name in dir(runtime.agent)
-            if not name.startswith("_")
-            and not is_hidden_field(runtime.agent, name)
-            and isinstance(val := getattr(runtime.agent, name, None), _Skill)
-        }
-        skill_attrs = list(skill_attrs_dict.items())
-        if skill_attrs:
-            rows = []
-            for name, val in sorted(skill_attrs):
-                one_liner = (val.__class__.__doc__ or "").strip().split("\n")[0]
-                rows.append(f"| `self.{name}` | {one_liner} |")
-
-            parts.append("")
-            parts.append("## Skills")
-            parts.append("")
-            parts.append(
-                "BEFORE starting any task, check if any of these skills applies. "
-                "You MUST call `doc(self.<skill>)` before using it — do not assume you know the API."
-            )
-            parts.append("")
-            parts.append("| Skill | Description |")
-            parts.append("|-------|-------------|")
-            parts.extend(rows)
-
-            # Usage instructions
-            parts.append("")
-            parts.append("**Usage:**")
-            parts.append("- Inspect in REPL: `print(doc(self.<skill>))`")
-
-            # Pin/unpin instructions only when context is visible on the agent
-            has_context = not is_hidden_field(runtime.agent, "context") and hasattr(
-                runtime.agent, "context"
-            )
-            if has_context:
-                parts.append('- Pin to context: `self.context["<key>"] = <value>`')
-                parts.append('- Unpin: `del self.context["<key>"]`')
-
         return "\n".join(parts)
 
     @strategy(TemplateStrategy())
