@@ -14,6 +14,8 @@ from pathlib import Path
 
 import click
 
+_RESUME_LAST = "__last__"
+
 
 @click.command()
 @click.option(
@@ -85,9 +87,11 @@ import click
 @click.option(
     "--continue",
     "-c",
-    "continue_last",
-    is_flag=True,
-    help="Resume the most recent session",
+    "continue_session",
+    is_flag=False,
+    flag_value=_RESUME_LAST,
+    default=None,
+    help="Resume a session: -c (last session) or -c <short-hash>",
 )
 def command(
     model: str | None,
@@ -101,7 +105,7 @@ def command(
     no_trace: bool,
     vi: bool,
     python: bool,
-    continue_last: bool,
+    continue_session: str | None,
 ):
     """Launch the NeMo OO Agents TUI (Text User Interface).
 
@@ -133,7 +137,16 @@ def command(
         python=python,
     )
 
+    continue_last = continue_session == _RESUME_LAST
+    resume_session_id = (
+        continue_session if continue_session and continue_session != _RESUME_LAST else None
+    )
+
     try:
-        asyncio.run(tui_main(config=config, continue_last=continue_last))
+        asyncio.run(
+            tui_main(
+                config=config, continue_last=continue_last, resume_session_id=resume_session_id
+            )
+        )
     except KeyboardInterrupt:
         sys.exit(0)

@@ -118,6 +118,7 @@ async def main(
     config: "Config | None" = None,
     agent: "Agent | None" = None,
     continue_last: bool = False,
+    resume_session_id: str | None = None,
 ) -> None:
     """Main entry point for the TUI.
 
@@ -126,6 +127,7 @@ async def main(
         agent: Optional NeMo OO Agents agent.  If None, a TUIAgent (or custom class
                from ``config.tui.agent_spec``) is created from ``config``.
                Any NeMo OO Agents subclass with a ``respond(message)`` method works.
+        resume_session_id: Explicit session ID (or prefix) to resume.
     """
     from .bootstrap import bootstrap, build_registry, build_session, build_startup_info
     from .config import Config
@@ -146,6 +148,7 @@ async def main(
     result = await bootstrap(
         config,
         continue_last=continue_last,
+        resume_session_id=resume_session_id,
         agent=agent,
     )
 
