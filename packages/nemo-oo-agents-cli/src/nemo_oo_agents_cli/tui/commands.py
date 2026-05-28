@@ -1398,13 +1398,15 @@ class SessionCommand(Command):
             except SessionAlreadyActiveError as e:
                 return CommandResult.err(str(e))
 
-            outputs = build_resume_outputs(_session_db_path, full_id, in_nemo_term=_in_nemo_term)
-            if not outputs:
-                old_storage.close()
-                return CommandResult.err(f"Session '{session_id}' is empty.")
-
-            # Restore agent state, swap session manager
             try:
+                outputs = build_resume_outputs(
+                    _session_db_path, full_id, in_nemo_term=_in_nemo_term
+                )
+                if not outputs:
+                    old_storage.close()
+                    return CommandResult.err(f"Session '{session_id}' is empty.")
+
+                # Restore agent state, swap session manager
                 restored = old_storage.restore_latest_snapshot(self.agent)
                 if restored:
                     outputs.append(
@@ -1423,9 +1425,7 @@ class SessionCommand(Command):
                 return result
             except Exception as e:
                 old_storage.close()
-                outputs.append(TextOutput(f"Could not restore session: {e}", "warning"))
-
-            return CommandResult.ok(*outputs)
+                return CommandResult.err(f"Could not restore session: {e}")
 
         if subcmd == "delete":
             session_id = args[1]
