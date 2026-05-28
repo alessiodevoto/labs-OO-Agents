@@ -303,6 +303,7 @@ def init_db() -> int:
         );
 
         CREATE INDEX IF NOT EXISTS idx_spans_session ON spans(session_id);
+        CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(session_id, parent_span_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_experiment ON sessions(experiment);
 
         CREATE TABLE IF NOT EXISTS annotations (
@@ -384,6 +385,16 @@ def init_db() -> int:
         _db.execute("ALTER TABLE llm_calls ADD COLUMN span_id TEXT")
     # Always ensure the span index exists (safe to re-create)
     _db.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_span ON llm_calls(span_id)")
+
+    # FTS5 index for fast text search across span content
+    _db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS spans_fts USING fts5(
+            session_id UNINDEXED,
+            span_id UNINDEXED,
+            name,
+            content
+        )
+    """)
 
     # Add total_size to sessions if missing — cached sum of span payload sizes
     # so /api/traces doesn't need a full-table scan on spans.
@@ -655,6 +666,39 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             span_rows,
         )
+
+        # Populate FTS index with searchable content from each span
+        fts_rows = []
+        for row in span_rows:
+            # row: (session_id, trace_id, span_id, parent_span_id, name, kind,
+            #        start_time_ns, end_time_ns, status_code, status_message,
+            #        attributes, resource, events)
+            span_name = row[4] or ""
+            attrs_json = row[10]
+            # Extract string values from attributes for searchable content
+            content_parts = []
+            try:
+                attrs = json.loads(attrs_json) if attrs_json else []
+                for attr in attrs:
+                    val = attr.get("value", {})
+                    sv = val.get("stringValue")
+                    if sv:
+                        content_parts.append(sv)
+            except (json.JSONDecodeError, TypeError):
+                content_parts.append(attrs_json or "")
+            fts_rows.append((row[0], row[2], span_name, " ".join(content_parts)))
+
+        try:
+            db.executemany(
+                "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
+                fts_rows,
+            )
+        except Exception:
+            log.debug(
+                "FTS insert failed for %d spans (search falls back to LIKE)",
+                len(fts_rows),
+                exc_info=True,
+            )
 
     return {"session_id": session_id, "experiment": experiment, "span_count": span_count}
 
@@ -1670,3 +1714,228 @@ def get_session_calls(session_id: str) -> list[dict[str, Any]]:
             rec["span_id"] = row["span_id"]
         result.append(rec)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Incremental queries for trace explorer thin-client
+# ---------------------------------------------------------------------------
+
+
+def get_session_summary(session_id: str) -> dict[str, Any] | None:
+    """Return lightweight session summary from DB without loading all spans.
+
+    Returns a dict with session_id, span_count, duration_ms, has_errors,
+    or None if the session doesn't exist.
+    """
+    db = _get_db()
+    row = db.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if not row:
+        return None
+
+    # Get duration from min/max span timestamps
+    time_row = db.execute(
+        "SELECT MIN(start_time_ns) as t_start, MAX(end_time_ns) as t_end, COUNT(*) as cnt "
+        "FROM spans WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+
+    t_start = time_row["t_start"] or 0
+    t_end = time_row["t_end"] or 0
+    duration_ms = (t_end - t_start) / 1_000_000 if t_end > t_start else 0.0
+
+    # Check for errors
+    error_count = db.execute(
+        "SELECT COUNT(*) as cnt FROM spans WHERE session_id = ? AND status_code = 2",
+        (session_id,),
+    ).fetchone()["cnt"]
+
+    return {
+        "session_id": session_id,
+        "span_count": time_row["cnt"],
+        "duration_ms": duration_ms,
+        "has_errors": error_count > 0,
+        "error_count": error_count,
+        "experiment": row["experiment"],
+    }
+
+
+def get_agent_spans(session_id: str) -> list[dict[str, Any]]:
+    """Return only AGENT-kind spans for a session.
+
+    Filters by the openinference.span.kind attribute being AGENT
+    at the SQL level using JSON extraction, avoiding full span loading.
+    """
+    db = _get_db()
+    # Check session exists
+    exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if not exists:
+        return []
+
+    # Filter by attributes containing AGENT kind
+    # SQLite JSON: attributes is stored as a JSON array of {key, value} objects
+    rows = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? "
+        "AND attributes LIKE ? "
+        "AND attributes LIKE ? "
+        "ORDER BY start_time_ns",
+        (session_id, "%openinference.span.kind%", "%AGENT%"),
+    ).fetchall()
+
+    spans = []
+    for r in rows:
+        span = _row_to_span(r)
+        # Verify it's actually an AGENT span (the LIKE is a coarse filter)
+        attrs = json.loads(r["attributes"]) if r["attributes"] else []
+        is_agent = any(
+            a.get("key") == "openinference.span.kind"
+            and a.get("value", {}).get("stringValue") == "AGENT"
+            for a in attrs
+        )
+        if is_agent:
+            spans.append(span)
+    return spans
+
+
+def get_error_spans(session_id: str) -> list[dict[str, Any]]:
+    """Return spans with error status (status_code=2) for a session.
+
+    Uses SQL filtering on the status_code column - no need to load all spans.
+    """
+    db = _get_db()
+    rows = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? AND status_code = 2 ORDER BY start_time_ns",
+        (session_id,),
+    ).fetchall()
+
+    return [_row_to_span(r) for r in rows]
+
+
+def get_descendant_spans(session_id: str, root_span_id: str) -> list[dict[str, Any]]:
+    """Return a span and all its descendants within a session.
+
+    Walks the parent_span_id tree starting from root_span_id,
+    loading only the relevant subtree rather than all session spans.
+    Returns OTLP-format span dicts (via _row_to_span).
+
+    Returns empty list if root_span_id is not found in the session.
+    """
+    db = _get_db()
+
+    # Verify the root span exists in this session
+    root_row = db.execute(
+        "SELECT * FROM spans WHERE session_id = ? AND span_id = ?",
+        (session_id, root_span_id),
+    ).fetchone()
+    if not root_row:
+        return []
+
+    # BFS to collect all descendant span_ids
+    collected_rows = [root_row]
+    queue = [root_span_id]
+
+    while queue:
+        parent_id = queue.pop(0)
+        child_rows = db.execute(
+            "SELECT * FROM spans WHERE session_id = ? AND parent_span_id = ?",
+            (session_id, parent_id),
+        ).fetchall()
+        for row in child_rows:
+            collected_rows.append(row)
+            queue.append(row["span_id"])
+
+    return [_row_to_span(r) for r in collected_rows]
+
+
+def search_spans_fts(session_id: str, query: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Search span content using FTS5 full-text search.
+
+    Much faster than LIKE queries on large traces. Falls back gracefully
+    if the FTS table doesn't exist or the query is invalid.
+
+    Args:
+        session_id: Session to search within.
+        query: Search query (FTS5 syntax: supports AND, OR, NOT, phrases).
+        limit: Maximum results to return.
+
+    Returns:
+        List of matching spans with span_id, name, and a snippet of matching content.
+    """
+    db = _get_db()
+    try:
+        # FTS5 MATCH query with snippet extraction
+        rows = db.execute(
+            "SELECT span_id, name, snippet(spans_fts, 3, '>>>', '<<<', '...', 32) as snippet "
+            "FROM spans_fts WHERE session_id = ? AND spans_fts MATCH ? "
+            "ORDER BY rank LIMIT ?",
+            (session_id, query, limit),
+        ).fetchall()
+        return [{"span_id": r["span_id"], "name": r["name"], "snippet": r["snippet"]} for r in rows]
+    except Exception:
+        # FTS table might not exist or query syntax invalid — return empty
+        return []
+
+
+def backfill_fts(session_id: str | None = None) -> int:
+    """Backfill the FTS index for existing spans.
+
+    Populates spans_fts from all spans in the given session (or all sessions
+    if session_id is None). Idempotent — clears existing FTS entries for the
+    session before re-inserting.
+
+    Args:
+        session_id: If provided, backfill only this session. Otherwise backfill all.
+
+    Returns:
+        Number of spans indexed.
+    """
+    db = _get_db()
+
+    # Clear existing FTS entries for the scope
+    if session_id:
+        db.execute("DELETE FROM spans_fts WHERE session_id = ?", (session_id,))
+    else:
+        db.execute("DELETE FROM spans_fts")
+
+    # Process in batches to avoid OOM on large databases
+    batch_size = 5000
+    total = 0
+
+    if session_id:
+        cursor = db.execute(
+            "SELECT session_id, span_id, name, attributes FROM spans WHERE session_id = ?",
+            (session_id,),
+        )
+    else:
+        cursor = db.execute("SELECT session_id, span_id, name, attributes FROM spans")
+
+    while True:
+        rows = cursor.fetchmany(batch_size)
+        if not rows:
+            break
+
+        fts_rows = []
+        for r in rows:
+            attrs_json = r["attributes"]
+            content_parts = []
+            try:
+                attrs = json.loads(attrs_json) if attrs_json else []
+                for attr in attrs:
+                    val = attr.get("value", {})
+                    sv = val.get("stringValue")
+                    if sv:
+                        content_parts.append(sv)
+            except (json.JSONDecodeError, TypeError):
+                if attrs_json:
+                    content_parts.append(attrs_json)
+            fts_rows.append(
+                (r["session_id"], r["span_id"], r["name"] or "", " ".join(content_parts))
+            )
+
+        db.executemany(
+            "INSERT INTO spans_fts (session_id, span_id, name, content) VALUES (?, ?, ?, ?)",
+            fts_rows,
+        )
+        total += len(fts_rows)
+
+    db.commit()
+    return total

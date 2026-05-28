@@ -78,6 +78,40 @@ trace-explorer --viewer <URL> --session-id <session_id> --errors
 Use `--json` output in step 1 to get a machine-readable list of all tests (passed and failed)
 with their `session_id` fields, then iterate to summarize patterns across the experiment.
 
+## Thin-Client Path (for large traces)
+
+For traces with millions of spans (~3GB+), use the thin-client API instead of the CLI.
+This delegates analysis to the viewer server, avoiding large data transfers:
+
+```python
+from nemo_oo_agents.trace_explorer import TraceExplorerClient
+
+client = TraceExplorerClient("http://localhost:5001", "session-id")
+
+# Instant — direct DB query, no parsing
+summary = await client.get_summary()
+
+# Fast — only AGENT spans (tree skeleton)
+tree = await client.get_agent_spans()
+
+# Fast — loads only the subtree for one agent session
+detail = await client.get_session_fast("abc123", span_id="full_span_id")
+turn = await client.get_turn_fast("abc123", span_id="full_span_id", turn_index=0)
+
+# Cached full analysis — first call builds tree, subsequent calls instant
+overview = await client.get_overview()
+errors = await client.get_errors()
+search_results = await client.search("pattern")
+```
+
+> Note: These examples use `await` and are meant to run inside an agent's
+> `execute_python` cell or an `async def` function.
+
+Prefer the thin-client when:
+- The trace is very large (>100k spans)
+- You're exploring interactively (cache makes repeat calls instant)
+- You only need a specific session's details (use `get_session_fast`)
+
 ## Tips
 
 - Session IDs can be abbreviated to 6 characters (e.g., `e15ed8` instead of the full ID)

@@ -12,6 +12,7 @@ Usage:
     print(await trace.get_overview())
 """
 
+from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
 from nemo_oo_agents.trace_explorer.explorer import (
     AgentSession,
     EvalContextData,
@@ -38,6 +39,7 @@ from nemo_oo_agents.trace_explorer.explorer import (
 )
 
 __all__ = [
+    "TraceExplorerClient",
     "TraceExplorer",
     "AgentSession",
     "LLMTurn",
