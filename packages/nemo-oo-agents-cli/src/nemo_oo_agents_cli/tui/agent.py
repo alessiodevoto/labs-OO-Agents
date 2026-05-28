@@ -692,8 +692,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.shell", self.shell)
         self.skills.register("nemo.repo", self.repo)
         self.skills.register("nemo.todo", self.todo)
-        self.skills.register("superpowers.libwriting", self.libs)
-        self.skills.activate(["nemo.*", "superpowers.*"])
+        self.skills.register("nemo.libwriting", self.libs)
+        self.skills.activate(["nemo.*"])
 
         # Skills register their own context blocks via context_block class attr
 

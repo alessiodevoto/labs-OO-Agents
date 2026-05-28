@@ -35,8 +35,8 @@ Skills are discovered from entry points:
 "nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"
 "nemo.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
 "nemo.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
-"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
-"superpowers.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
+"nemo.libwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
+"nemo.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
 ```
 
 Names use `category.skill_name` notation (dot-separated).
@@ -67,7 +67,7 @@ self.skills.register('custom.deploy', DeploySkill, env='prod')
 ### 3. Activation (LLM visibility)
 
 ```python
-self.skills.activate(['nemo.*', 'superpowers.*'])
+self.skills.activate(['nemo.*'])
 ```
 
 - Activates matching skills (makes visible via `doc(self)`)
@@ -102,8 +102,7 @@ a namespace proxy. No bracket access, no leaf shortcuts on `self.skills`.
 
 | Category | Skills |
 |----------|--------|
-| `nemo` | shell, repo, todo, context, events, producers, web |
-| `superpowers` | libwriting, methodwriting |
+| `nemo` | shell, repo, todo, context, events, producers, web, libwriting, methodwriting |
 
 ## Skill Authoring
 

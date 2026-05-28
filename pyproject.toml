@@ -38,8 +38,8 @@ trace-explorer = "nemo_oo_agents.trace_explorer:main"
 "nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"
 "nemo.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
 "nemo.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
-"superpowers.libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
-"superpowers.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
+"nemo.libwriting" = "nemo_oo_agents.tools.library_writing_lib:LibraryWriting"
+"nemo.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
 
 [tool.uv.sources]
 eval_pipeline = { workspace = true }

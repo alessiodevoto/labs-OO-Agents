@@ -98,7 +98,7 @@ class DoerAgent(Agent):
             self.skills.discover_skills_dirs(dirs)
 
         # Activate all for doer (it's a full-power executor)
-        self.skills.activate(["nemo.*", "superpowers.*"])
+        self.skills.activate(["nemo.*"])
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def execute(self, todo: "Todo") -> str:
