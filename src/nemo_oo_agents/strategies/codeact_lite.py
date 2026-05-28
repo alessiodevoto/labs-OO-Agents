@@ -95,8 +95,6 @@ def plain_event_content(
             fc_kwargs = event_format.model_dump() if event_format is not None else {}
             value_str = truncating_pformat(event.value, **fc_kwargs)
             parts.append(f"Out[{event.execution_count}]: {value_str}")
-        if event.captured_locals:
-            parts.append(event.captured_locals)
         return "\n".join(parts) if parts else "(no output)"
 
     # Error, Message, Reasoning, LLMOutput, Feedback — use content directly
