@@ -213,6 +213,7 @@ class SkillRegistry(Skill):
             try:
                 skill = self._import_lib(lib_dir, lib_name)
                 if skill is not None:
+                    skill._source_dir = lib_dir
                     self.register(reg_name, skill)
             except Exception:
                 logger.warning("Library %s skipped", lib_name, exc_info=True)
@@ -308,6 +309,7 @@ class SkillRegistry(Skill):
         try:
             skill = _load_python_skill(entry)
             if skill is not None:
+                skill._source_dir = entry.parent
                 name = entry.stem.replace("-", "_").replace(" ", "_")
                 reg_name = f"ext.{name}"
                 if reg_name not in self._loaded:
