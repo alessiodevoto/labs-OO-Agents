@@ -446,6 +446,7 @@ class Session:
         self._saved_termios = None
         try:
             import termios
+
             if sys.stdin.isatty():
                 self._saved_termios = termios.tcgetattr(sys.stdin.fileno())
         except (ImportError, OSError):
@@ -593,6 +594,7 @@ class Session:
         """
         try:
             import termios
+
             if self._saved_termios is not None and sys.stdin.isatty():
                 termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, self._saved_termios)
                 return
@@ -601,6 +603,7 @@ class Session:
         # Fallback: if termios isn't available or failed, shell out to stty
         try:
             import subprocess
+
             if sys.stdin.isatty():
                 subprocess.run(["stty", "sane"], stdin=sys.stdin, check=False)
         except Exception:
