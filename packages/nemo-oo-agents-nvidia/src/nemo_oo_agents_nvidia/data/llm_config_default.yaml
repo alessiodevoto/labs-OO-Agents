@@ -123,6 +123,14 @@ models:
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 131072
 
+  minimax-m2.7:
+    model_name: openai/nvidia/minimaxai/minimax-m2.7
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 1000000
+    temperature: 0.7
+    max_tokens: 64000
+
   # ===========================================================================
   # Azure OpenAI (via NVIDIA gateway)
   # ===========================================================================
@@ -212,6 +220,21 @@ models:
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 1000000
+
+  claude-opus-4-7:
+    model_name: openai/aws/anthropic/bedrock-claude-opus-4-7
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 1000000
+    max_tokens: 64000
+
+  # Azure-routed Anthropic (distinct from AWS bedrock route above)
+  claude-opus-4-8:
+    model_name: openai/azure/anthropic/claude-opus-4-8
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 1000000
+    max_tokens: 64000
 
   claude-haiku:
     model_name: openai/aws/anthropic/claude-haiku-4-5-v1
