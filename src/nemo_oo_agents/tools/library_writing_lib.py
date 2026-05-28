@@ -386,4 +386,4 @@ class SkillWriting(Skill):
         return deps
 
 
-LibraryWriting = SkillWriting
+
