@@ -581,8 +581,8 @@ class Session:
             # this Session or route unrelated failures through a torn-down TUI.
             if self._startup_loop is not None:
                 self._startup_loop.set_exception_handler(self._prev_exception_handler)
-            self._print_exit_message()
             self._restore_terminal()
+            self._print_exit_message()
 
     def _restore_terminal(self) -> None:
         """Best-effort restoration of terminal state on exit.
