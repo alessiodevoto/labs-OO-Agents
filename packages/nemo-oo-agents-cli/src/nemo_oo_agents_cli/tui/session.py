@@ -441,6 +441,17 @@ class Session:
         from .theme import CATPPUCCIN_THEME
         from .tui_application import TUIApplication
 
+        # Save terminal attributes so we can restore them on exit, even
+        # if prompt_toolkit crashes without resetting the terminal.
+        self._saved_termios = None
+        try:
+            import termios
+
+            if sys.stdin.isatty():
+                self._saved_termios = termios.tcgetattr(sys.stdin.fileno())
+        except (ImportError, OSError):
+            pass
+
         # The block-rendering Rich Console: re-used across ``_emit_text``
         # calls with width reset per-call to track live terminal width.
         self._emit_console = RichConsole(
@@ -570,7 +581,33 @@ class Session:
             # this Session or route unrelated failures through a torn-down TUI.
             if self._startup_loop is not None:
                 self._startup_loop.set_exception_handler(self._prev_exception_handler)
+            self._restore_terminal()
             self._print_exit_message()
+
+    def _restore_terminal(self) -> None:
+        """Best-effort restoration of terminal state on exit.
+
+        prompt_toolkit normally restores the terminal, but on crashes,
+        signals, or unhandled exceptions the terminal can be left in raw
+        mode with echo disabled. We saved termios attrs at startup and
+        restore them here as a safety net.
+        """
+        try:
+            import termios
+
+            if self._saved_termios is not None and sys.stdin.isatty():
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, self._saved_termios)
+                return
+        except (ImportError, OSError):
+            pass
+        # Fallback: if termios isn't available or failed, shell out to stty
+        try:
+            import subprocess
+
+            if sys.stdin.isatty():
+                subprocess.run(["stty", "sane"], stdin=sys.stdin, check=False)
+        except Exception:
+            pass
 
     def _print_exit_message(self) -> None:
         """Print the parting line to stderr with session id + name.
