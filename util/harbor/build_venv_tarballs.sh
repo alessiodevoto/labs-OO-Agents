@@ -199,6 +199,41 @@ print('pydantic_core', pydantic_core.__version__)
 print('litellm', litellm.__version__)
 "
 
+echo "=== Creating .pth files (eliminates need for pip install -e at runtime) ==="
+SITE_PKGS="$VENV_DIR/lib/python3.12/site-packages"
+# These .pth files make all first-party packages importable by adding their
+# source directories to sys.path.  This eliminates the runtime pip install -e
+# step entirely — the tarball is self-sufficient.
+cat > "$SITE_PKGS/nemo_oo_agents.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/src
+PTH
+cat > "$SITE_PKGS/nemo_oo_agents_benchmarks.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/nemo-oo-agents-benchmarks/src
+PTH
+cat > "$SITE_PKGS/unifiedllm.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/unifiedllm/src
+PTH
+cat > "$SITE_PKGS/agentdoc.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/agentdoc/src
+PTH
+cat > "$SITE_PKGS/nat_oo_agents.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/nat_oo_agents/src
+PTH
+cat > "$SITE_PKGS/evaluation.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/evaluation/src
+PTH
+cat > "$SITE_PKGS/openinference_nemo.pth" << 'PTH'
+/installed-agent/nemo_oo_agents/packages/openinference-instrumentation-nemo-oo-agents/src
+PTH
+
+echo "=== Creating nemo-harbor entry point ==="
+cat > "$VENV_DIR/bin/nemo-harbor" << 'ENTRY'
+#!/opt/nemo-oo-agents-venv/bin/python3
+from nemo_oo_agents_benchmarks.runner import main
+if __name__ == "__main__": main()
+ENTRY
+chmod +x "$VENV_DIR/bin/nemo-harbor"
+
 echo "=== Creating tarball ==="
 TARBALL="/opt/harbor/nemo-venv-base-${PYVER}-x86_64.tar.gz"
 # Rename to the expected dir name before tarring, restore after

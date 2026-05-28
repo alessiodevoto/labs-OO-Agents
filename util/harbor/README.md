@@ -509,3 +509,37 @@ produce no reward on aarch64/QEMU hosts until either:
 - The tasks are run on a native x86_64 machine.
 
 **Affected platforms:** aarch64 hosts running x86_64 containers via QEMU only.
+
+
+## Multi-model benchmark configs
+
+The `util/harbor/` directory includes configs for running benchmarks across
+multiple models. Naming convention: `<benchmark>_<mode>_<model>.yaml`.
+
+| Config | Benchmark | Model | Mode |
+|--------|-----------|-------|------|
+| `terminal_bench_local_docker.yaml` | TB1 | sonnet-4-5 | Docker |
+| `terminal_bench_local_docker_ultra.yaml` | TB1 | nemotron-3-ultra | Docker |
+| `terminal_bench_local_docker_specialized.yaml` | TB1 | sonnet-4-5 (specialized agent) | Docker |
+| `terminal_bench_local_docker_react.yaml` | TB1 | sonnet-4-5 (react agent) | Docker |
+| `terminal_bench_2_local_docker.yaml` | TB2 | sonnet-4-5 | Docker |
+| `terminal_bench_2_local_docker_opus.yaml` | TB2 | opus-4-6 | Docker |
+| `swebench_todo.yaml` | SWEBench | sonnet-4-5 | Apptainer |
+| `swebench_todo_docker_sonnet.yaml` | SWEBench | sonnet-4-5 | Docker |
+| `swebench_todo_docker_opus.yaml` | SWEBench | opus-4-6 | Docker |
+
+## Venv tarball and .pth approach
+
+The venv tarball (`nemo-venv-base-cp312-x86_64.tar.gz`) is self-sufficient:
+
+1. **Third-party deps** — all wheels pre-installed (pydantic, litellm, etc.)
+2. **`.pth` files** — make first-party packages importable via path manipulation
+   (points to `/installed-agent/nemo_oo_agents/src/` etc.)
+3. **`nemo-harbor` entry point** — correct shebang + import
+
+This eliminates the need for `pip install -e` at runtime. Harbor's install code
+detects `.pth` files and skips the editable install step entirely (see the
+`feat/skip-editable-installs-with-pth` patch in the harbor repo).
+
+Rebuild with: `bash util/harbor/build_venv_tarballs.sh`
+

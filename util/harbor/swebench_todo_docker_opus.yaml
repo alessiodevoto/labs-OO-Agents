@@ -1,0 +1,35 @@
+# Harbor config for SWE-bench Verified — Docker mode, swebench/todo agent, opus.
+jobs_dir: /localhome/local-rcabral/harbor_jobs/swebench_todo_docker_opus
+n_attempts: 1
+timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0
+agent_setup_timeout_multiplier: 5.0
+verifier_timeout_multiplier: 2.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: docker
+  env:
+    NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
+  mounts_json:
+    - type: bind
+      source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor
+      target: /opt/harbor
+      read_only: true
+    - type: bind
+      source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/installed-agent
+      target: /installed-agent
+
+agents:
+  - name: nemo-oo-agents
+    model_name: aws/anthropic/bedrock-claude-opus-4-6
+    kwargs:
+      agent_type: swebench/todo
+      tools: swebench
+
+datasets:
+  - path: util/harbor/tasks/swebench_all
