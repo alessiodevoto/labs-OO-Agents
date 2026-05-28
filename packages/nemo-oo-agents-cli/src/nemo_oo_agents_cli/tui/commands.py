@@ -1389,15 +1389,22 @@ class SessionCommand(Command):
             _session_db_path = _SESSIONS_DIR / f"{full_id}.db"
             _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
 
-            outputs = build_resume_outputs(_session_db_path, full_id, in_nemo_term=_in_nemo_term)
-            if not outputs:
-                return CommandResult.err(f"Session '{session_id}' is empty.")
-
-            # Open the old session's DB, restore agent state, swap session manager
+            # Acquire the session lock FIRST — fail fast if another process owns it.
             from nemo_oo_agents.storage import SQLiteStorageManager
+            from nemo_oo_agents.storage.sqlite import SessionAlreadyActiveError
 
             try:
                 old_storage = SQLiteStorageManager(_session_db_path, check_same_thread=False)
+            except SessionAlreadyActiveError as e:
+                return CommandResult.err(str(e))
+
+            outputs = build_resume_outputs(_session_db_path, full_id, in_nemo_term=_in_nemo_term)
+            if not outputs:
+                old_storage.close()
+                return CommandResult.err(f"Session '{session_id}' is empty.")
+
+            # Restore agent state, swap session manager
+            try:
                 restored = old_storage.restore_latest_snapshot(self.agent)
                 if restored:
                     outputs.append(
@@ -1415,6 +1422,7 @@ class SessionCommand(Command):
                 result.new_session_manager = new_sm
                 return result
             except Exception as e:
+                old_storage.close()
                 outputs.append(TextOutput(f"Could not restore session: {e}", "warning"))
 
             return CommandResult.ok(*outputs)
