@@ -4,6 +4,7 @@
 
 import inspect
 import shlex
+import types
 from dataclasses import dataclass
 from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
@@ -135,7 +136,7 @@ def derive_completions(method: Any) -> tuple[str, ...]:
         return tuple(str(a) for a in get_args(ann))
 
     # Handle Optional[Literal[...]] = Union[Literal[...], None]
-    if get_origin(ann) is Union:
+    if get_origin(ann) in (Union, types.UnionType):
         for arg in get_args(ann):
             if get_origin(arg) is Literal:
                 return tuple(str(a) for a in get_args(arg))
@@ -157,8 +158,8 @@ def _coerce(value: str, annotation: Any) -> Any:
             return allowed[idx]
         raise ValueError(f"must be one of: {', '.join(str_allowed)}")
 
-    # Optional[X] = Union[X, None]
-    if get_origin(annotation) is Union:
+    # Optional[X] = Union[X, None], or PEP 604 `X | Y`
+    if get_origin(annotation) in (Union, types.UnionType):
         args = [a for a in get_args(annotation) if a is not type(None)]
         if args:
             return _coerce(value, args[0])
@@ -184,10 +185,10 @@ def _describe_type(annotation: Any) -> str:
     if get_origin(annotation) is Literal:
         allowed = get_args(annotation)
         return f"one of ({', '.join(repr(a) for a in allowed)})"
-    if get_origin(annotation) is Union:
+    if get_origin(annotation) in (Union, types.UnionType):
         args = [a for a in get_args(annotation) if a is not type(None)]
         if args:
-            return _describe_type(args[0])
+            return " | ".join(_describe_type(a) for a in args)
     if isinstance(annotation, type):
         return annotation.__name__
     return str(annotation)
