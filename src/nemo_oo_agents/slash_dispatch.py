@@ -162,7 +162,14 @@ def _coerce(value: str, annotation: Any) -> Any:
     if get_origin(annotation) in (Union, types.UnionType):
         args = [a for a in get_args(annotation) if a is not type(None)]
         if args:
-            return _coerce(value, args[0])
+            last_exc: Exception | None = None
+            for arg in args:
+                try:
+                    return _coerce(value, arg)
+                except (ValueError, TypeError) as e:
+                    last_exc = e
+            if last_exc is not None:
+                raise last_exc
 
     # Basic types
     if annotation is int:
