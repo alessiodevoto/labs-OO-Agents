@@ -177,7 +177,7 @@ def test_print_exit_message_no_session_manager(capsys) -> None:
 async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
     """Regression guard for the original bug: the user-bar echo wiring
     used to assign to ``self._app.on_user_message``, an attribute that
-    nothing reads. The fix installs ``Session._on_user_message`` on
+    nothing reads. The fix installs a hook on
     the channel's ``on_get`` hook, so the echo fires when the
     dispatcher dequeues the message.
     """
@@ -197,8 +197,13 @@ async def test_session_on_user_message_fires_when_dispatcher_dequeues() -> None:
     # _colors is a read-only property that reads the global theme; no setup needed.
 
     queue: Channel[str] = Channel("user_messages", "queue")
-    # The exact wiring Session.run() performs.
-    queue.set_on_get(session._on_user_message)
+
+    # The real hook does record_user (DB) then routes to _on_user_message_ui (UI).
+    def _combined_hook(text: str) -> None:
+        session._session_manager.record_user(text)
+        session._on_user_message_ui(text)
+
+    queue.set_on_get(_combined_hook)
 
     queue.put("hi from dispatcher")
     with patch("nemo_oo_agents_cli.tui.session._build_user_bar", return_value="BAR"):
@@ -233,7 +238,13 @@ async def test_session_on_user_message_fires_for_mid_turn_dequeue() -> None:
     # _colors is a read-only property that reads the global theme; no setup needed.
 
     inq: Channel[str] = Channel("user_messages", "queue")
-    inq.set_on_get(session._on_user_message)
+
+    # The real hook does record_user (DB) then routes to _on_user_message_ui (UI).
+    def _combined_hook(text: str) -> None:
+        session._session_manager.record_user(text)
+        session._on_user_message_ui(text)
+
+    inq.set_on_get(_combined_hook)
     # Mid-turn drain goes through the read facade, the same surface
     # the LLM uses.
     reader = inq.reader
