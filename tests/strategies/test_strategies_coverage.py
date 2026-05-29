@@ -545,16 +545,6 @@ class TestPlainEventContent:
         assert "Out[2]" in result
         assert "42" in result
 
-    def test_python_output_captured_locals(self):
-        po = PythonOutput(
-            tool_call_id="tc1",
-            execution_status=ResultStatus.COMPLETE,
-            execution_count=1,
-            captured_locals="x = 5",
-        )
-        result = plain_event_content(po)
-        assert "x = 5" in result
-
     def test_python_output_empty(self):
         po = PythonOutput(
             tool_call_id="tc1",

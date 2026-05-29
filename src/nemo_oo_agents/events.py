@@ -158,11 +158,6 @@ class PythonOutput(EventBase):  # type: ignore[misc]
         repr=False,
         description="True if value from explicit `return x`, False if implicit",
     )
-    captured_locals: str = Field(
-        default="",
-        repr=False,
-        description="Summary of variables captured from execution (available in subsequent executions)",
-    )
     images: list[dict[str, Any]] = Field(
         default_factory=list,
         repr=False,

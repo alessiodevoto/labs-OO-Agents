@@ -1424,17 +1424,6 @@ Standard Python builtins and agent instance (`self`) are available."""
             else:
                 error_text = self._format_error(result.error, line_offset=line_offset)
 
-        # Format captured locals summary for LLM visibility
-        captured_summary = ""
-        if result.captured_locals:
-            items = [
-                f"{k} ({type(v).__name__})"
-                for k, v in result.captured_locals.items()
-                if not k.startswith("_") and k not in ("Out",)
-            ]
-            if items:
-                captured_summary = f"Variables now in scope: {', '.join(items)}"
-
         # Add PythonOutput with actual output and value
         runtime.event_manager.add(
             PythonOutput(
@@ -1446,7 +1435,6 @@ Standard Python builtins and agent instance (`self`) are available."""
                 value=result.returned_value if result.has_return and not result.error else None,
                 explicit_return=result.explicit_return if result.has_return else False,
                 execution_status=final_status,
-                captured_locals=captured_summary,
                 images=result.images,
             )
         )
@@ -2011,18 +1999,6 @@ Standard Python builtins and agent instance (`self`) are available."""
             line_offset = getattr(result, "wrapper_line_offset", 0)
             error_text = self._format_error(result.error, line_offset=line_offset)
 
-        # Format captured locals summary for LLM visibility
-        captured_summary = ""
-        if result.captured_locals:
-            # Filter out private/internal variables, format as "name (type)"
-            items = [
-                f"{k} ({type(v).__name__})"
-                for k, v in result.captured_locals.items()
-                if not k.startswith("_") and k not in ("Out",)
-            ]
-            if items:
-                captured_summary = f"Variables now in scope: {', '.join(items)}"
-
         # Add execution output as user message (execution_count=0 since before main loop)
         runtime.event_manager.add(
             PythonOutput(
@@ -2034,7 +2010,6 @@ Standard Python builtins and agent instance (`self`) are available."""
                 value=result.returned_value if result.has_return else None,
                 explicit_return=result.explicit_return if result.has_return else False,
                 execution_status=final_status,
-                captured_locals=captured_summary,
                 images=result.images,
                 metadata={"prefill": True, "prefill_type": prefill_type},
             )
