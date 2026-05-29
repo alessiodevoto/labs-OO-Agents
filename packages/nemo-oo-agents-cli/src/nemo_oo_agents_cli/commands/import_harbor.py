@@ -22,7 +22,7 @@ import click
 from ._otlp_helpers import (
     check_endpoint_reachable,
     inject_resource_attrs,
-    post_trace,
+    post_traces_batch,
     session_exists,
     validate_endpoint,
 )
@@ -49,6 +49,49 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
+def _coerce_float(value: object) -> float | None:
+    """Coerce a value to float, returning None if it cannot be coerced."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _read_score(trial_dir: Path, trial_result: dict) -> float | None:
+    """Read the trial reward score, trying current Harbor result shapes in order.
+
+    Different Harbor/BinPool versions write the scalar reward in different places.
+    Fallback order (first coercible float wins):
+
+    1. ``verifier/reward.json["score"]``
+    2. ``verifier/reward.json["reward"]``
+    3. ``result.json["verifier_result"]["rewards"]["score"]``
+    4. ``result.json["verifier_result"]["rewards"]["reward"]``
+    5. ``verifier/reward.txt`` (plain float string)
+
+    Explicit ``None`` checks (not truthiness) ensure a valid ``0.0`` is returned.
+    """
+    reward_json = _read_json(trial_dir / "verifier" / "reward.json")
+    for key in ("score", "reward"):
+        score = _coerce_float(reward_json.get(key))
+        if score is not None:
+            return score
+
+    verifier_result = trial_result.get("verifier_result")
+    rewards = verifier_result.get("rewards") if isinstance(verifier_result, dict) else None
+    if isinstance(rewards, dict):
+        for key in ("score", "reward"):
+            score = _coerce_float(rewards.get(key))
+            if score is not None:
+                return score
+
+    reward_txt = trial_dir / "verifier" / "reward.txt"
+    if reward_txt.exists():
+        return _coerce_float(reward_txt.read_text().strip())
+
+    return None
+
+
 def _trial_meta(jsonl_path: Path) -> dict:
     """Extract Harbor metadata for a trace file from its surrounding directory structure.
 
@@ -59,7 +102,7 @@ def _trial_meta(jsonl_path: Path) -> dict:
             <trial_name>/
                 result.json          ← trial_name, task_name, agent_info
                 verifier/
-                    reward.json      ← {"score": <float>}  (or reward.txt)
+                    reward.json      ← {"reward"|"score": <float>}  (or reward.txt)
                 artifacts/           ← copy of /logs/artifacts/ from container
                     [traces/]        ← agent-defined layout; traces can be here
                         <file>.jsonl ← this file
@@ -80,17 +123,8 @@ def _trial_meta(jsonl_path: Path) -> dict:
     task_name = trial_result.get("task_name", "")
     agent_name = (trial_result.get("agent_info") or {}).get("name", "")
 
-    # reward.json → {"score": <float>}  OR  reward.txt → plain float string
-    score: float | None = None
-    reward_json = trial_dir / "verifier" / "reward.json"
-    reward_txt = trial_dir / "verifier" / "reward.txt"
-    if reward_json.exists():
-        score = _read_json(reward_json).get("score")
-    elif reward_txt.exists():
-        try:
-            score = float(reward_txt.read_text().strip())
-        except ValueError:
-            pass
+    # Reward scalar lives in different places across Harbor versions; see _read_score.
+    score = _read_score(trial_dir, trial_result)
 
     # Use the eval key from the job-level result as the experiment name.
     # There is normally exactly one key (e.g. "WheelAgent__eval_service_train_…").
@@ -107,6 +141,66 @@ def _trial_meta(jsonl_path: Path) -> dict:
         "experiment": experiment or "harbor",
         "job_name": job_dir.name,
     }
+
+
+def _import_trace_file(
+    endpoint: str,
+    jsonl_path: Path,
+    resource_attrs: dict[str, str | bool | int],
+    batch_lines: int,
+    batch_bytes: int,
+) -> tuple[bool, list[str]]:
+    """Import one OTLP JSONL file, posting its lines in batches.
+
+    Accumulates OTLP bodies and flushes them in batches: many ``resourceSpans``
+    envelopes are merged into one POST, avoiding one HTTP request per line. A flush
+    is triggered when the batch reaches ``batch_lines`` envelopes or ``batch_bytes``
+    of raw input (an approximation of the eventual POST size). Returns
+    ``(file_imported, errors)`` where ``file_imported`` is True if any flush
+    succeeded (preserving the previous any-success semantics).
+    """
+    file_imported = False
+    errors: list[str] = []
+    batch: list[dict] = []
+    batch_input_bytes = 0
+    flush_count = 0
+
+    def flush() -> None:
+        nonlocal file_imported, batch, batch_input_bytes, flush_count
+        if not batch:
+            return
+        flush_count += 1
+        if post_traces_batch(endpoint, batch):
+            file_imported = True
+        else:
+            errors.append(f"{jsonl_path.name}: batch #{flush_count} failed to post")
+        batch = []
+        batch_input_bytes = 0
+
+    with open(jsonl_path) as f:
+        for raw_line in f:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                body = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if "resourceSpans" not in body:
+                continue
+
+            inject_resource_attrs(body, resource_attrs)
+            batch.append(body)
+            # Approximation: raw line length before injection; the re-serialized
+            # POST body (with injected resource attrs) is slightly larger.
+            batch_input_bytes += len(raw_line)
+
+            if len(batch) >= batch_lines or batch_input_bytes >= batch_bytes:
+                flush()
+
+        flush()
+
+    return file_imported, errors
 
 
 @click.command()
@@ -127,7 +221,26 @@ def _trial_meta(jsonl_path: Path) -> dict:
     default=None,
     help="Batch ID for this import (default: job directory name).",
 )
-def command(path: str, endpoint: str, experiment: str | None, batch_id: str | None):
+@click.option(
+    "--batch-lines",
+    default=1000,
+    show_default=True,
+    help="Max OTLP lines combined into a single POST (per trace file).",
+)
+@click.option(
+    "--batch-bytes",
+    default=4_000_000,
+    show_default=True,
+    help="Max raw input bytes accumulated before flushing a POST (per trace file).",
+)
+def command(
+    path: str,
+    endpoint: str,
+    experiment: str | None,
+    batch_id: str | None,
+    batch_lines: int,
+    batch_bytes: int,
+):
     """Import NeMo OO Agents OTLP traces from a Harbor job directory.
 
     \b
@@ -140,6 +253,10 @@ def command(path: str, endpoint: str, experiment: str | None, batch_id: str | No
         nemo_oo_agents import-harbor ./jobs/my-job/
         nemo_oo_agents import-harbor ./workspaces/ --endpoint http://host:5001
         nemo_oo_agents import-harbor ./jobs/ --experiment my-eval
+        nemo_oo_agents import-harbor ./jobs/ --batch-lines 2000 --batch-bytes 8000000
+
+    OTLP lines are posted in batches (combining many resourceSpans into one
+    request) to keep large imports fast; tune with --batch-lines/--batch-bytes.
     """
     root = Path(path)
     files = _find_harbor_traces(root)
@@ -189,26 +306,10 @@ def command(path: str, endpoint: str, experiment: str | None, batch_id: str | No
             resource_attrs["eval.score"] = str(meta["score"])
             resource_attrs["eval.passed"] = meta["score"] >= 1.0
 
-        file_imported = False
-
-        with open(jsonl_path) as f:
-            for line_num, raw_line in enumerate(f, 1):
-                raw_line = raw_line.strip()
-                if not raw_line:
-                    continue
-                try:
-                    body = json.loads(raw_line)
-                except json.JSONDecodeError:
-                    continue
-                if "resourceSpans" not in body:
-                    continue
-
-                inject_resource_attrs(body, resource_attrs)
-
-                if post_trace(endpoint, body):
-                    file_imported = True
-                else:
-                    errors.append(f"{jsonl_path.name}:{line_num}: failed to post")
+        file_imported, file_errors = _import_trace_file(
+            endpoint, jsonl_path, resource_attrs, batch_lines, batch_bytes
+        )
+        errors.extend(file_errors)
 
         if file_imported:
             imported += 1

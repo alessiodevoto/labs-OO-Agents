@@ -296,14 +296,19 @@ _HARBOR_HELPERS_PATH = "nemo_oo_agents_cli.commands.import_harbor"
 def _mock_harbor_helpers(
     endpoint_reachable=True,
     session_exists_val=False,
-    post_trace_val=True,
+    post_traces_batch_val=True,
+    post_traces_batch_mock=None,
 ):
     return patch.multiple(
         _HARBOR_HELPERS_PATH,
         validate_endpoint=MagicMock(),
         check_endpoint_reachable=MagicMock(return_value=endpoint_reachable),
         session_exists=MagicMock(return_value=session_exists_val),
-        post_trace=MagicMock(return_value=post_trace_val),
+        post_traces_batch=(
+            post_traces_batch_mock
+            if post_traces_batch_mock is not None
+            else MagicMock(return_value=post_traces_batch_val)
+        ),
         inject_resource_attrs=MagicMock(side_effect=lambda body, attrs: body),
     )
 
@@ -452,6 +457,94 @@ class TestTrialMeta:
         assert meta["score"] is None
 
 
+class TestReadScore:
+    """Score fallback across current Harbor result shapes (issue #224)."""
+
+    def _trial(self, tmp_path):
+        trial_dir = tmp_path / "trial"
+        (trial_dir / "verifier").mkdir(parents=True)
+        return trial_dir
+
+    def test_reward_json_score_key(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"score": 0.9}))
+        assert _read_score(trial, {}) == 0.9
+
+    def test_reward_json_reward_key(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"reward": 0.5}))
+        assert _read_score(trial, {}) == 0.5
+
+    def test_score_key_takes_precedence_over_reward(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"score": 1.0, "reward": 0.0}))
+        assert _read_score(trial, {}) == 1.0
+
+    def test_result_json_rewards_reward_fallback(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        # No reward.json — fall through to result.json verifier_result.rewards
+        trial_result = {"verifier_result": {"rewards": {"reward": 0.25}}}
+        assert _read_score(trial, trial_result) == 0.25
+
+    def test_result_json_rewards_score_preferred(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        trial_result = {"verifier_result": {"rewards": {"score": 0.7, "reward": 0.1}}}
+        assert _read_score(trial, trial_result) == 0.7
+
+    def test_rewards_non_dict_does_not_crash(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        # rewards as a list (unexpected shape) → skipped, falls through to None
+        trial_result = {"verifier_result": {"rewards": [{"reward": 0.5}]}}
+        assert _read_score(trial, trial_result) is None
+
+    def test_zero_score_preserved(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"reward": 0.0}))
+        assert _read_score(trial, {}) == 0.0
+
+    def test_reward_txt_last_resort(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.txt").write_text("0.42\n")
+        assert _read_score(trial, {}) == 0.42
+
+    def test_nothing_found_returns_none(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        assert _read_score(trial, {}) is None
+
+    def test_string_reward_coerced(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"reward": "0.6"}))
+        assert _read_score(trial, {}) == 0.6
+
+    def test_overflowing_integer_reward_does_not_crash(self, tmp_path):
+        from nemo_oo_agents_cli.commands.import_harbor import _read_score
+
+        trial = self._trial(tmp_path)
+        # An astronomically large integer overflows float(); must fall through.
+        (trial / "verifier" / "reward.json").write_text(json.dumps({"reward": 10**400}))
+        assert _read_score(trial, {}) is None
+
+
 class TestImportHarborCommand:
     def _get_command(self):
         from nemo_oo_agents_cli.commands.import_harbor import command
@@ -511,7 +604,7 @@ class TestImportHarborCommand:
         job_dir, _ = _make_harbor_job(tmp_path)
 
         runner = CliRunner()
-        with _mock_harbor_helpers(post_trace_val=False):
+        with _mock_harbor_helpers(post_traces_batch_val=False):
             result = runner.invoke(self._get_command(), [str(job_dir)])
         assert result.exit_code == 0
         assert "0 imported" in result.output or "failed" in result.output
@@ -585,3 +678,100 @@ class TestImportHarborCommand:
             result = runner.invoke(self._get_command(), [str(job_dir)])
         assert result.exit_code == 0
         assert "n/a" in result.output
+
+    def test_batching_reduces_post_count(self, tmp_path):
+        # 5 OTLP lines in one file with --batch-lines 5 → a single batched POST.
+        job_dir, trace_file = _make_harbor_job(tmp_path)
+        trace_file.write_text("\n".join([_OTLP_TRACE] * 5))
+
+        batch_mock = MagicMock(return_value=True)
+        runner = CliRunner()
+        with _mock_harbor_helpers(post_traces_batch_mock=batch_mock):
+            result = runner.invoke(self._get_command(), [str(job_dir), "--batch-lines", "5"])
+        assert result.exit_code == 0
+        assert "1 imported" in result.output
+        # One flush for the whole file, far fewer than 5 line-by-line posts.
+        assert batch_mock.call_count == 1
+        # The batch carried all 5 envelopes.
+        bodies = batch_mock.call_args.args[1]
+        assert len(bodies) == 5
+
+    def test_batch_lines_one_flushes_per_line(self, tmp_path):
+        job_dir, trace_file = _make_harbor_job(tmp_path)
+        trace_file.write_text("\n".join([_OTLP_TRACE] * 3))
+
+        batch_mock = MagicMock(return_value=True)
+        runner = CliRunner()
+        with _mock_harbor_helpers(post_traces_batch_mock=batch_mock):
+            result = runner.invoke(self._get_command(), [str(job_dir), "--batch-lines", "1"])
+        assert result.exit_code == 0
+        assert batch_mock.call_count == 3
+
+    def test_batch_bytes_triggers_flush(self, tmp_path):
+        job_dir, trace_file = _make_harbor_job(tmp_path)
+        trace_file.write_text("\n".join([_OTLP_TRACE] * 4))
+
+        batch_mock = MagicMock(return_value=True)
+        runner = CliRunner()
+        # Tiny byte budget forces a flush after each line regardless of batch-lines.
+        with _mock_harbor_helpers(post_traces_batch_mock=batch_mock):
+            result = runner.invoke(
+                self._get_command(),
+                [str(job_dir), "--batch-lines", "100", "--batch-bytes", "1"],
+            )
+        assert result.exit_code == 0
+        assert batch_mock.call_count == 4
+
+
+# ---------------------------------------------------------------------------
+# post_traces_batch unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestPostTracesBatch:
+    def test_merges_resource_spans(self):
+        from nemo_oo_agents_cli.commands import _otlp_helpers
+
+        bodies = [
+            {"resourceSpans": [{"a": 1}]},
+            {"resourceSpans": [{"b": 2}, {"c": 3}]},
+        ]
+        with patch.object(_otlp_helpers, "post_trace", return_value=True) as pt:
+            assert _otlp_helpers.post_traces_batch("http://x", bodies) is True
+        pt.assert_called_once()
+        merged = pt.call_args.args[1]
+        assert merged["resourceSpans"] == [{"a": 1}, {"b": 2}, {"c": 3}]
+
+    def test_empty_input_no_post(self):
+        from nemo_oo_agents_cli.commands import _otlp_helpers
+
+        with patch.object(_otlp_helpers, "post_trace", return_value=True) as pt:
+            assert _otlp_helpers.post_traces_batch("http://x", []) is True
+        pt.assert_not_called()
+
+    def test_bodies_without_spans_no_post(self):
+        from nemo_oo_agents_cli.commands import _otlp_helpers
+
+        with patch.object(_otlp_helpers, "post_trace", return_value=True) as pt:
+            assert _otlp_helpers.post_traces_batch("http://x", [{}, {}]) is True
+        pt.assert_not_called()
+
+    def test_non_list_resource_spans_skipped(self):
+        from nemo_oo_agents_cli.commands import _otlp_helpers
+
+        # Malformed bodies: resourceSpans is None / a dict → skipped, not raised.
+        bodies = [
+            {"resourceSpans": None},
+            {"resourceSpans": {"bad": "shape"}},
+            {"resourceSpans": [{"ok": 1}]},
+        ]
+        with patch.object(_otlp_helpers, "post_trace", return_value=True) as pt:
+            assert _otlp_helpers.post_traces_batch("http://x", bodies) is True
+        pt.assert_called_once()
+        assert pt.call_args.args[1]["resourceSpans"] == [{"ok": 1}]
+
+    def test_propagates_failure(self):
+        from nemo_oo_agents_cli.commands import _otlp_helpers
+
+        with patch.object(_otlp_helpers, "post_trace", return_value=False):
+            assert _otlp_helpers.post_traces_batch("http://x", [{"resourceSpans": [{}]}]) is False
