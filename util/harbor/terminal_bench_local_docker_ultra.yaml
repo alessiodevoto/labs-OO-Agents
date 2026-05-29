@@ -28,7 +28,7 @@ environment:
 
 agents:
   - name: nemo-oo-agents
-    model_name: openai/nvidia/nvidia/nemotron-3-ultra-preview
+    model_name: nvidia/nvidia/nemotron-3-ultra-preview
     kwargs:
       agent_type: baseline
 
