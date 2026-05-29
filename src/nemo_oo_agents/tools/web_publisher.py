@@ -30,7 +30,7 @@ class RichOutput(Metadata):  # type: ignore[misc]
 
 
 class WebPublisher(Skill):
-    """Push rich content inline into the terminal: self.web.plot(fig) | .html(s) | .image(src) | .markdown(s) | .json(data) | .clear().
+    """Inline rich output — interactive charts, images, HTML, and formatted data rendered in the web panel.
 
     Available when the agent runs inside ``nemo oo term``.  Call methods on
     ``self.web`` to render content inline at the current position in the
@@ -142,6 +142,12 @@ class WebPublisher(Skill):
 
         self.web.clear()
     """
+
+    def attach(self, agent: Any) -> None:
+        """Wire event_manager from the agent so RichOutput events persist for session replay."""
+        super().attach(agent)
+        if self._event_manager is None and hasattr(agent, "event_manager"):
+            self._event_manager = agent.event_manager
 
     def __init__(self, event_manager: "EventManager | None" = None) -> None:
         super().__init__()
