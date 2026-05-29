@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Default model — direct litellm-supported name. Override via config or --model.
-DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MODEL = "claude-opus-4-8"
 
 
 @dataclass
@@ -41,7 +41,7 @@ class SummarizationConfig:
     ``max_tokens`` defaults to ``None`` meaning "80% of the LLM's context
     window, resolved at install time." The old 100K absolute was fine when
     models had ~200K context but fired at ~10% usage on 1M-context models
-    like Opus 4.6, making summarization feel constant. Set an explicit
+    like Opus 4.8, making summarization feel constant. Set an explicit
     integer to pin a specific threshold.
     """
 
