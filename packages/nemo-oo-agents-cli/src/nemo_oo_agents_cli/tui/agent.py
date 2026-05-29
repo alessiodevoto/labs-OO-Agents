@@ -41,9 +41,6 @@ import re  # noqa: F401
 from nemo_oo_agents.runtime import producers  # noqa: F401
 from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
 
-# Backward-compatible symbol used by tests/patching.
-LibraryWriting = SkillWriting
-
 # os is used by this module (NEMO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
 with hidden:
@@ -692,8 +689,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.shell", self.shell)
         self.skills.register("nemo.repo", self.repo)
         self.skills.register("nemo.todo", self.todo)
-        self.skills.register("superpowers.libwriting", self.libs)
-        self.skills.activate(["nemo.*", "superpowers.*"])
+        self.skills.register("nemo.libwriting", self.libs)
+        self.skills.activate(["nemo.*"])
 
         # Skills register their own context blocks via context_block class attr
 

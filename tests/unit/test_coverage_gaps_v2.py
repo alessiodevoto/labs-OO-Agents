@@ -2198,15 +2198,15 @@ class TestInspectInputsPrefillMedia:
 # =============================================================================
 
 
-class TestLibraryWritingLintAndDeps:
-    """LibraryWriting covers missing lines in lint/deps methods (328, 358, 365)."""
+class TestSkillWritingLintAndDeps:
+    """SkillWriting covers missing lines in lint/deps methods (328, 358, 365)."""
 
     def _make_lw(self, tmp_path):
         from unittest.mock import MagicMock
 
-        from nemo_oo_agents.tools.library_writing_lib import LibraryWriting
+        from nemo_oo_agents.tools.library_writing_lib import SkillWriting
 
-        lw = LibraryWriting.__new__(LibraryWriting)
+        lw = SkillWriting.__new__(SkillWriting)
         lw._agent = MagicMock()
         lw._agent.__class__ = object
         lw._path = tmp_path

@@ -151,7 +151,7 @@ class SkillWriting(Skill):
       and what it can do next, don't just dump raw output
     """
 
-    requires = ("shell",)
+    requires = ("nemo.shell",)
 
     def __init__(self, agent: Any, path: Path) -> None:
         self._agent = agent
@@ -384,6 +384,3 @@ class SkillWriting(Skill):
                 if dep_name:
                     deps.append(dep_name)
         return deps
-
-
-LibraryWriting = SkillWriting
