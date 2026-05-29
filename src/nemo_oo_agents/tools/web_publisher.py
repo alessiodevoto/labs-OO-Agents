@@ -146,7 +146,7 @@ class WebPublisher(Skill):
     def attach(self, agent: Any) -> None:
         """Wire event_manager from the agent so RichOutput events persist for session replay."""
         super().attach(agent)
-        if hasattr(agent, "event_manager"):
+        if self._event_manager is None and hasattr(agent, "event_manager"):
             self._event_manager = agent.event_manager
 
     def __init__(self, event_manager: "EventManager | None" = None) -> None:
