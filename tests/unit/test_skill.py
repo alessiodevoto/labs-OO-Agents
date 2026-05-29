@@ -1,6 +1,7 @@
 """Tests for nemo_oo_agents.Skill — path-based loading."""
 
 import math
+from pathlib import Path
 
 import pytest
 
@@ -163,3 +164,41 @@ def test_read_file_raises_when_path_is_directory(skill_dir):
     (skill_dir / "subdir").mkdir()
     with pytest.raises(ValueError, match="is not a file"):
         TextSkill(path=skill_dir).read_file("subdir")
+
+
+# ── source_dir ────────────────────────────────────────────────────────────────
+
+
+def test_text_skill_source_dir(skill_dir):
+    skill = TextSkill(path=skill_dir)
+    assert skill.source_dir == skill_dir
+
+
+def test_skill_subclass_source_dir():
+    class MySkill(Skill):
+        """A custom skill."""
+
+        pass
+
+    skill = MySkill()
+    # source_dir should point to this test file's directory
+    assert skill.source_dir == Path(__file__).resolve().parent
+
+
+def test_skill_source_dir_explicit_override(skill_dir):
+    class MySkill(Skill):
+        """A custom skill."""
+
+        pass
+
+    skill = MySkill()
+    skill._source_dir = skill_dir
+    assert skill.source_dir == skill_dir
+
+
+def test_skill_obj_wrapper_source_dir():
+    skill = Skill(math)
+    # Skill(obj) creates a dynamic class — inspect.getfile may fail on it
+    # source_dir should gracefully return None or a valid path
+    result = skill.source_dir
+    assert result is None or result.is_dir()

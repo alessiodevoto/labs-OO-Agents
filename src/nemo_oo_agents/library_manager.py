@@ -102,6 +102,7 @@ class LibraryManager:
             attached = Skill(module, name=lib_name)
             logger.info("Library %s: no Skill export, using Skill(module) fallback", lib_name)
 
+        attached._source_dir = lib_dir
         setattr(self._agent, lib_name, attached)
         attached.attach(self._agent)
         # Hot-reload slash commands: if the TUI's CommandRegistry is reachable,

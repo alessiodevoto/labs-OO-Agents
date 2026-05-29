@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Skill — base class and wrapper for agent-loadable capabilities."""
 
+import inspect
 import re
 import shlex
 from pathlib import Path
@@ -330,6 +331,30 @@ class Skill:
         except AttributeError:
             return base
 
+    @property
+    def source_dir(self) -> Path | None:
+        """Directory containing this skill's source code, or None if unknown.
+
+        Allows an agent to locate and edit the skill's implementation::
+
+            path = self.my_skill.source_dir
+            if path:
+                await self.shell.view(str(path / "__init__.py"))
+        """
+        # Explicit override (set during library/skill loading)
+        try:
+            return object.__getattribute__(self, "_source_dir")
+        except AttributeError:
+            pass
+        # Derive from the module that defines the concrete class
+        cls = type(self)
+        try:
+            source_file = inspect.getfile(cls)
+        except (TypeError, OSError):
+            return None
+        source_path = Path(source_file).resolve().parent
+        return source_path
+
 
 class TextSkill(Skill):
     """Skill loaded from a SKILL.md directory. Has id, description, run_script, read_file."""
@@ -346,6 +371,10 @@ class TextSkill(Skill):
     @property
     def id(self) -> str:
         return str(type(self)._id)  # pyright: ignore[reportAttributeAccessIssue]  # _id set dynamically in __init__
+
+    @property
+    def source_dir(self) -> Path | None:
+        return self._skill_path.resolve()
 
     @property
     def description(self) -> str:
