@@ -145,6 +145,185 @@ agents:
 container produces `AuthenticationError: Invalid proxy server token`. The
 AWS Bedrock path via `NVIDIA_INTERNAL_API_KEY` is what actually works.
 
+
+## Setting up a new Colossus machine for benchmarks
+
+This section documents the complete setup process for running Harbor benchmarks
+(TB1, TB2, SWEBench) on a new Colossus machine. Follow these steps to get a
+reproducible environment.
+
+### 1. Request a Colossus lease
+
+```bash
+# Via CLI (requires colossus package)
+colossus lease create \
+  --os ubuntu-24.04-x86_64-standard-uefi \
+  --type Z590-A \
+  --duration 7d \
+  --justification "SWEBench and TB benchmark evaluation"
+
+# Or via the Colossus web UI: https://colossus.nvidia.com
+```
+
+Recommended machine types:
+- **Z590-A** (Intel i9-11900K, 128GB RAM, 1TB NVMe) — good for SWEBench
+- **4090** (RTX 4090, 64GB RAM) — not needed for agent benchmarks (CPU-bound)
+
+### 2. Initial machine setup
+
+```bash
+# SSH to the machine (use FQDN from Colossus lease output)
+ssh local-$USER@<fqdn>
+
+# Clone the repo
+git clone https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git
+cd nemo_oo_agents
+
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+
+# Install the project
+uv sync
+
+# Create harbor jobs directory
+mkdir -p ~/harbor_jobs ~/3p/sif_cache
+```
+
+### 3. Install Docker
+
+```bash
+# Add Docker's official GPG key
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Add user to docker group (logout/login required)
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verify
+docker run hello-world
+```
+
+### 4. Install Apptainer (for SWEBench)
+
+```bash
+# Add Apptainer repo
+sudo add-apt-repository -y ppa:apptainer/ppa
+sudo apt-get update
+sudo apt-get install -y apptainer
+
+# Verify fakeroot support (required for Terminal Bench, SWEBench)
+apptainer exec --fakeroot docker://alpine echo "fakeroot works"
+```
+
+### 5. Rsync SIF cache from DFW (for SWEBench)
+
+```bash
+# From the Colossus machine:
+DFW=rcabral@cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com
+LUSTRE_CACHE=/lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache
+
+# Rsync all SIFs (535 files, ~567GB, takes ~3 hours at 46 MB/s)
+rsync -av --progress "$DFW:$LUSTRE_CACHE/" ~/3p/sif_cache/
+
+# IMPORTANT: Symlink ~/.apptainer to avoid duplicate cache
+mkdir -p ~/3p/sif_cache/.apptainer_cache
+ln -sfn ~/3p/sif_cache/.apptainer_cache ~/.apptainer
+```
+
+The symlink prevents Apptainer from creating a duplicate cache in `~/.apptainer/`
+which wastes ~165GB of disk space.
+
+### 6. Set environment variables
+
+```bash
+# Create .env file in the repo root
+cat > ~/nemo_oo_agents/.env << 'EOF'
+# NVIDIA Inference API (routes to Bedrock for Anthropic models)
+NVIDIA_INTERNAL_API_KEY=sk-<your-key>
+
+# Apptainer settings (prevent /tmp from filling up)
+export TMPDIR=/localhome/$USER/apptainer_tmp
+mkdir -p "$TMPDIR"
+EOF
+
+# Source it
+source ~/nemo_oo_agents/.env
+```
+
+### 7. Clone Harbor (for adapters)
+
+```bash
+cd ~/nemo_oo_agents
+git clone https://gitlab-master.nvidia.com/interactive-agents/harbor.git 3p/harbor-nemo
+
+# Also need the upstream harbor for registry
+git clone https://github.com/codeacme17/harbor.git ~/3p/harbor
+```
+
+### 8. Run a benchmark
+
+```bash
+cd ~/nemo_oo_agents
+
+# Terminal Bench 1 (baseline agent, ~2 hours for all 241 tasks)
+harbor run --config util/harbor/terminal_bench_local_docker.yaml
+
+# Terminal Bench 2 (89 tasks)
+harbor run --config util/harbor/terminal_bench_2_local_docker.yaml
+
+# SWEBench Verified (500 tasks, ~8 hours)
+harbor run --config util/harbor/swebench_todo.yaml
+```
+
+### 9. Monitor progress
+
+```bash
+# Count completed tasks
+cd ~/harbor_jobs/<benchmark_name>/<run_dir>/
+find . -name reward.txt | wc -l
+
+# Check scores
+find . -name reward.txt -exec cat {} \; | sort | uniq -c
+```
+
+### Disk space requirements
+
+| Benchmark | SIF Cache | Working Space | Total Recommended |
+|-----------|-----------|---------------|-------------------|
+| Terminal Bench 1 | 38 GB | 50 GB | 100 GB |
+| Terminal Bench 2 | 0 (Docker) | 50 GB | 100 GB |
+| SWEBench Verified | 300 GB | 100 GB | 450 GB |
+| All benchmarks | 567 GB | 200 GB | 800 GB |
+
+### Troubleshooting
+
+**"no space left on device" during Apptainer builds:**
+- Check `df -h /tmp` — Apptainer builds to `/tmp` by default
+- Set `export TMPDIR=/localhome/$USER/apptainer_tmp` before running
+- If `/tmp` is full: `sudo rm -rf /tmp/apptainer_staging_*/`
+
+**"LLM Provider NOT provided" error:**
+- Harbor writes `llm_config.yaml` to `/installed-agent/nemo_oo_agents/`
+- Ensure `NEMO_OO_LLM_CONFIG` env var is in `env_passthrough` in your YAML config
+
+**SSH authentication failures:**
+- Use FQDN from Colossus, not IP
+- Run `kinit` if using Kerberos auth
+
+
 ## Writing a debug script for a new benchmark
 
 Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:
@@ -542,4 +721,3 @@ detects `.pth` files and skips the editable install step entirely (see the
 `feat/skip-editable-installs-with-pth` patch in the harbor repo).
 
 Rebuild with: `bash util/harbor/build_venv_tarballs.sh`
-
