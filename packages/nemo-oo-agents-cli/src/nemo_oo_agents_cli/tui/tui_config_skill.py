@@ -23,7 +23,7 @@ class TuiConfigurationSkill(Skill):
 
     ```toml
     [tui]
-    model = "claude-opus-4-6"        # LLM model (litellm or unifiedllm alias)
+    model = "claude-opus-4-8"        # LLM model (litellm or unifiedllm alias)
     python = false                    # Show Python execution panels
     vi = false                        # Vi keybindings
     libs_dirs = ["/path/to/skills"]   # External library skill directories
@@ -132,7 +132,7 @@ class TuiConfigurationSkill(Skill):
                 f"No config file exists yet at `{path}`. The TUI is running on defaults.\n\n"
                 "To create one, edit the file directly or use `/config set <key> <value>`.\n"
                 "Available keys: `model`, `python`, `vi`, `libs_dirs`, `trace`.\n\n"
-                "Example: `/config set model claude-opus-4-6`"
+                "Example: `/config set model claude-opus-4-8`"
             )
         content = path.read_text().rstrip()
         return (
@@ -242,7 +242,7 @@ class TuiConfigurationSkill(Skill):
         """Set a config key by rewriting config.toml."""
         parts = args.strip().split(None, 1)
         if len(parts) < 2:
-            return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-6"
+            return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-8"
 
         key, value = parts
         path = self._config_path()
