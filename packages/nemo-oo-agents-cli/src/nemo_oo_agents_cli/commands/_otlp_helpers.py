@@ -40,8 +40,12 @@ def inject_resource_attrs(body: dict, attrs: dict[str, str | bool | int]) -> dic
     return body
 
 
-def post_trace(endpoint: str, body: dict) -> bool:
-    """POST a single OTLP trace body to the viewer endpoint."""
+def post_trace(endpoint: str, body: dict, timeout: float = 30) -> bool:
+    """POST a single OTLP trace body to the viewer endpoint.
+
+    ``timeout`` defaults to 30s so large batched bodies (see ``post_traces_batch``)
+    don't spuriously time out; per-line callers are unaffected.
+    """
     url = f"{endpoint.rstrip('/')}/v1/traces"
     data = json.dumps(body, separators=(",", ":")).encode("utf-8")
     req = urllib.request.Request(
@@ -51,10 +55,29 @@ def post_trace(endpoint: str, body: dict) -> bool:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status < 300
     except Exception:
         return False
+
+
+def post_traces_batch(endpoint: str, bodies: list[dict]) -> bool:
+    """POST multiple OTLP bodies as one request by merging their ``resourceSpans``.
+
+    Combines the ``resourceSpans`` arrays of every body into a single OTLP envelope
+    and posts it once, drastically reducing HTTP round-trips for large imports.
+    Returns True (a no-op success) when there are no spans to send.
+    """
+    merged: dict = {"resourceSpans": []}
+    for body in bodies:
+        # Guard against malformed bodies whose ``resourceSpans`` is missing or
+        # not a list (e.g. None or a dict); skip rather than raise on extend.
+        spans = body.get("resourceSpans")
+        if isinstance(spans, list):
+            merged["resourceSpans"].extend(spans)
+    if not merged["resourceSpans"]:
+        return True
+    return post_trace(endpoint, merged)
 
 
 def post_annotations(endpoint: str, annotations: list[dict]) -> int:
