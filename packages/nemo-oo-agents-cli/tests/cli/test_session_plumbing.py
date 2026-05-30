@@ -395,3 +395,79 @@ async def test_on_command_clear_without_running_task() -> None:
     # Must not raise
     await session._on_command("/clear")
     assert session._first_message is None
+
+
+async def test_on_command_slash_result_posts_to_queue_without_double_submit() -> None:
+    """A slash command returning a result must be delivered to the agent
+    exactly once. ``_on_command`` posts the ``SlashCommandResult`` to the
+    ``slash_commands`` queue, which already wakes the dispatcher — it must
+    NOT also re-submit the same text as a user message (that delivered the
+    command twice: once on each queue)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.session import Session
+
+    from nemo_oo_agents.slash_dispatch import SlashCommandResult
+
+    session = Session.__new__(Session)
+    session._first_message = None
+    session._session_manager = None
+
+    slash_ch = MagicMock()
+    agent = MagicMock()
+    agent._slash_commands_in = slash_ch
+    session.agent = agent
+
+    app = MagicMock()
+    app._agent_task = None
+    session._app = app
+    session._emit_text = MagicMock()
+
+    sr = SlashCommandResult(command="status", args="", value={"ok": True}, text="status: ok")
+    fake_result = CommandResult(success=True, outputs=[])
+    fake_result.slash_result = sr
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+
+    await session._on_command("/status")
+
+    slash_ch.put.assert_called_once_with(sr)
+    app.submit_message.assert_not_called()
+
+
+async def test_on_command_slash_result_falls_back_to_submit_when_no_queue() -> None:
+    """If the agent has no ``_slash_commands_in`` queue (older agent), the
+    slash result must still trigger a turn — fall back to ``submit_message``."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.session import Session
+
+    from nemo_oo_agents.slash_dispatch import SlashCommandResult
+
+    session = Session.__new__(Session)
+    session._first_message = None
+    session._session_manager = None
+
+    agent = MagicMock(spec=[])  # no _slash_commands_in attribute
+    session.agent = agent
+
+    app = MagicMock()
+    app._agent_task = None
+    session._app = app
+    session._emit_text = MagicMock()
+
+    sr = SlashCommandResult(command="status", args="", value=None, text="status: ok")
+    fake_result = CommandResult(success=True, outputs=[])
+    fake_result.slash_result = sr
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+
+    await session._on_command("/status")
+
+    app.submit_message.assert_called_once_with("status: ok")
