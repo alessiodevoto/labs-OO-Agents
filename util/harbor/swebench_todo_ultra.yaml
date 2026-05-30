@@ -1,0 +1,50 @@
+# Harbor config for SWE-bench Verified — Docker mode, swebench/todo agent.
+#
+# Uses Docker mode (not Apptainer) for full network access inside containers.
+# Pre-built bootstrap overlay with .pth files for fast agent setup.
+#
+# Prerequisites:
+#   1. Docker installed and user in docker group
+#   2. Bootstrap overlay built: ./util/harbor/build_venv_tarballs.sh
+#   3. SWE-bench tasks generated via the Harbor adapter
+#   4. Environment variables: NVIDIA_INTERNAL_API_KEY, NEMO_OO_AGENTS_GIT_URL
+#
+# Run:
+#   source .env && harbor run --config util/harbor/swebench_todo.yaml
+
+jobs_dir: ~/harbor_jobs/swebench_todo_ultra
+n_attempts: 1
+timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0
+agent_setup_timeout_multiplier: 5.0
+verifier_timeout_multiplier: 2.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 4
+  quiet: false
+
+environment:
+  type: docker
+  env:
+    NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
+    NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
+    PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  mounts_json:
+    - type: bind
+      source: ~/3p/harbor_bootstrap_overlay/opt/harbor
+      target: /opt/harbor
+      read_only: true
+    - type: bind
+      source: ~/3p/harbor_bootstrap_overlay/installed-agent
+      target: /installed-agent
+
+agents:
+  - name: nemo-oo-agents
+    model_name: nvidia/nvidia/nemotron-3-ultra-preview
+    kwargs:
+      agent_type: swebench/todo
+      tools: swebench
+
+datasets:
+  - path: util/harbor/tasks/swebench_all
