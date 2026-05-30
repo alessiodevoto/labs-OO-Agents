@@ -24,7 +24,7 @@ with hidden:
     from nemo_oo_agents.skill_registry import SkillRegistry
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import SkillWriting, TodoManager
-    from nemo_oo_agents.tools.shell_tools import ShellTools
+    from nemo_oo_agents.tools.shell_tools3 import ShellTools3 as ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
     from nemo_oo_agents_cli.tools.pyp import (
@@ -492,7 +492,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
       attaches it as ``agent.<lib_name>`` automatically next session.
     - **Existing skill needs an update** — if the task surfaced a
       missing method, a clearer docstring, a better default, edit the
-      skill's library (edit with ``self.shell.edit()`` then ``self.libs.reload(lib_name)``).
+      skill's library (edit with ``self.shell.replace(...)`` then ``self.libs.reload(lib_name)``).
 
     Don't over-do it. A task that was just "run these tests and report"
     doesn't need a new skill. But if you just invented a non-obvious way
@@ -757,6 +757,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             repo=self.repo,
             todo=self.todo,
             skills_dirs=self._skills_dirs,
+            shell_cls=type(
+                self.shell
+            ),  # propagate the parent's current shell variant (/swap-shell)
         )
 
     @strategy(CodeActStrategy())
