@@ -294,3 +294,34 @@ echo ""
 echo "To deploy to galaxy:"
 echo "  rsync -av $OUTPUT_DIR/nemo-venv-base-cp312-x86_64.tar.gz \\"
 echo "    $GALAXY:$GALAXY_OVERLAY/"
+# --- Ensure uv is bundled in the overlay's portable python bin --------------
+# SWEBench verifier test.sh runs `uv run parser.py` to compute the reward. The
+# container PATH includes /opt/harbor/cpython312/bin (see swebench configs), so
+# uv must live there or the verifier fails with `uv: command not found` → reward 0.
+ensure_uv_in_overlay() {
+    local cpy_bin="${OUTPUT_DIR:-$HOME/3p/harbor_bootstrap_overlay}/opt/harbor/cpython312/bin"
+    if [ -d "$cpy_bin" ] && [ ! -x "$cpy_bin/uv" ]; then
+        local src_uv
+        src_uv=$(command -v uv || echo "$HOME/.local/bin/uv")
+        if [ -x "$src_uv" ]; then
+            cp "$src_uv" "$cpy_bin/uv" && chmod +x "$cpy_bin/uv"
+            echo "Bundled uv into overlay: $cpy_bin/uv"
+        else
+            echo "WARNING: uv not found to bundle into overlay (SWEBench verifier needs it)"
+        fi
+    fi
+}
+ensure_uv_in_overlay
+# --- IMPORTANT: keep installed-agent in sync with the repo ------------------
+# The overlay's installed-agent/nemo_oo_agents must mirror the CURRENT repo, or
+# the .pth-imported agent will be stale and the runner errors
+# `Unknown agent_type: ...` for agents added after the overlay was built (e.g.
+# swebench/todo from MR !320). On a fresh machine, populate it from git:
+#
+#   rm -rf ~/3p/harbor_bootstrap_overlay/installed-agent/nemo_oo_agents
+#   git clone https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git \
+#       ~/3p/harbor_bootstrap_overlay/installed-agent/nemo_oo_agents
+#
+# (Agent CODE is also git-cloned fresh inside each container at run time via
+# NEMO_OO_AGENTS_GIT_URL, but the overlay copy is the .pth import target used by
+# the fast-path, so it must be current too.)
