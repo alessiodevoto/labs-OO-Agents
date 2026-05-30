@@ -565,28 +565,47 @@ class SkillRegistry(Skill):
             results.append(self._reload_one(n))
         return "\n".join(results)
 
+    # Top packages whose sys.modules entries must never be purged wholesale:
+    # clearing them would strand the live framework (Agent, runtime, every type
+    # the running objects were built from). Skills under these packages instead
+    # take the narrow single-module reload path in ``_reload_one``.
+    _NO_RELOAD = frozenset({"tests", "__main__", "nemo_oo_agents", "nemo_oo_agents_cli"})
+
     def _reload_one(self, name: str) -> str:
-        """Reload a single skill by re-importing its module."""
+        """Reload a single skill by re-importing its module.
+
+        Two strategies, chosen by the skill's top-level package:
+
+        * **Package purge** (user/lib skills) — delete every ``sys.modules``
+          entry under the top package and re-import it. Safe for self-contained
+          packages; catastrophic for the framework, hence ``_NO_RELOAD``.
+        * **Single-module reload** (builtin tool skills under ``_NO_RELOAD``) —
+          ``importlib.reload`` only the skill's own leaf module and re-resolve
+          the skill class by name. Never touches sibling framework modules, so
+          the package-purge footgun stays impossible (issue 225).
+        """
         attr = self._attr_map.get(name)
         if attr is None:
             return f"Skill {name!r} is not loaded"
         skill = getattr(self._agent, attr, None)
         if skill is None:
             return f"Skill {name!r} has no instance on agent"
-        import importlib
-        import sys as _sys
 
         mod_name = type(skill).__module__
         # For package modules (e.g. "excalidraw.__init__"), use the top-level package
         top_pkg = mod_name.split(".")[0]
-        # Refuse to reload skills from non-reloadable locations (test modules,
-        # __main__, framework internals) — clearing their sys.modules entries
-        # would corrupt the process.
-        _NO_RELOAD = {"tests", "__main__", "nemo_oo_agents", "nemo_oo_agents_cli"}
-        if top_pkg in _NO_RELOAD or top_pkg.startswith("_"):
-            return f"Skill {name!r} (module {mod_name}) is not reloadable"
+
+        if top_pkg in self._NO_RELOAD or top_pkg.startswith("_"):
+            return self._reload_single_module(name, attr, skill, mod_name)
+        return self._reload_package(name, attr, top_pkg)
+
+    def _reload_package(self, name: str, attr: str, top_pkg: str) -> str:
+        """Purge and re-import an entire top-level package (user/lib skills)."""
+        import importlib
+        import sys as _sys
+
         if top_pkg not in _sys.modules:
-            return f"Module {mod_name} not in sys.modules — cannot reload"
+            return f"Package {top_pkg} not in sys.modules — cannot reload"
         try:
             # Clear all submodules so reimport gets fresh code from disk
             prefix = top_pkg + "."
@@ -598,26 +617,82 @@ class SkillRegistry(Skill):
 
             for obj in vars(mod).values():
                 if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
-                    # Unregister old context block before replacing
-                    if name in self._activated:
-                        self._unregister_context_block(name)
-                    new_skill = obj()
-                    setattr(self._agent, attr, new_skill)
-                    new_skill.attach(self._agent)
-                    # Register new context block
-                    if name in self._activated:
-                        self._register_context_block(name)
-                    # Refresh slash commands so CommandRegistry picks up new methods
-                    cmd_reg = getattr(self._agent, "_command_registry", None)
-                    if cmd_reg is not None and hasattr(cmd_reg, "refresh_skill_commands"):
-                        try:
-                            cmd_reg.refresh_skill_commands()
-                        except Exception:
-                            pass
-                    return f"Reloaded {name} (self.{attr})"
+                    return self._install_reloaded(name, attr, obj)
             return f"Reloaded module {top_pkg} but no Skill subclass found"
         except Exception as e:
             return f"Reload failed for {name}: {e}"
+
+    def _reload_single_module(self, name: str, attr: str, skill: Any, mod_name: str) -> str:
+        """Reload only the skill's own leaf module via ``importlib.reload``.
+
+        Used for builtin tool skills (e.g. ``ShellTools3``) whose top package is
+        in ``_NO_RELOAD``. Re-execs just that module file and re-resolves the
+        skill class *by name* — tool skills are duck-typed and may not subclass
+        ``Skill``, so a Skill-subclass scan would miss them.
+
+        Caveat: this re-instantiates and re-attaches the skill itself but cannot
+        retroactively update instances of the module's classes held elsewhere.
+        For the stateless tool skills this targets, that is a non-issue.
+        """
+        import importlib
+        import sys as _sys
+
+        mod = _sys.modules.get(mod_name)
+        if mod is None:
+            return f"Module {mod_name} not in sys.modules — cannot reload"
+        cls_name = type(skill).__name__
+        try:
+            mod = importlib.reload(mod)
+        except Exception as e:
+            return f"Reload failed for {name}: {e}"
+        new_cls = getattr(mod, cls_name, None)
+        if not isinstance(new_cls, type):
+            return f"Reloaded {mod_name} but class {cls_name} not found in it"
+        # Reload the class *defined in* this module, not a same-named re-export.
+        if getattr(new_cls, "__module__", None) != mod_name:
+            return (
+                f"Reloaded {mod_name} but {cls_name} is defined elsewhere "
+                f"({getattr(new_cls, '__module__', '?')}) — not reloadable"
+            )
+        try:
+            return self._install_reloaded(name, attr, new_cls)
+        except Exception as e:
+            return f"Reload failed for {name}: {e}"
+
+    def _install_reloaded(self, name: str, attr: str, new_cls: type) -> str:
+        """Construct a fresh skill from ``new_cls`` and swap it onto the agent.
+
+        Shared bookkeeping for both reload paths: construct, attach, re-register
+        the context block, and refresh slash commands.
+
+        Construction and ``attach`` run *before* the agent is mutated, so if
+        either raises the agent is left untouched (the caller surfaces the
+        error). Only once the new skill is built and attached do we swap it in,
+        keeping context-block (un)registration paired with the swap so a failure
+        can never leave a half-reloaded skill or an orphaned context block.
+        """
+        try:
+            new_skill = new_cls()
+        except TypeError as e:
+            return (
+                f"Skill {name!r} ({new_cls.__name__}) is not reloadable: "
+                f"constructor raised TypeError ({e})"
+            )
+        if hasattr(new_skill, "attach"):
+            new_skill.attach(self._agent)
+        if name in self._activated:
+            self._unregister_context_block(name)
+        setattr(self._agent, attr, new_skill)
+        if name in self._activated:
+            self._register_context_block(name)
+        # Refresh slash commands so CommandRegistry picks up new methods
+        cmd_reg = getattr(self._agent, "_command_registry", None)
+        if cmd_reg is not None and hasattr(cmd_reg, "refresh_skill_commands"):
+            try:
+                cmd_reg.refresh_skill_commands()
+            except Exception:
+                pass
+        return f"Reloaded {name} (self.{attr})"
 
     # ------------------------------------------------------------------
     # Access
