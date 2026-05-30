@@ -32,7 +32,7 @@ with hidden:
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
     from nemo_oo_agents.tools import TodoManager
-    from nemo_oo_agents.tools.shell_tools import ShellTools
+    from nemo_oo_agents.tools.shell_tools3 import ShellTools3 as ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents_cli.tools.repo_tools import RepoTools
 
@@ -60,7 +60,8 @@ class DoerAgent(Agent):
     """One-shot executor for a single todo item.
 
     You have these tools:
-    - self.shell — persistent shell + file ops: bash(), view(), edit(), write(), grep(), find(), ls()
+    - self.shell — ShellTools3: run(cmd, stdin=), read(path, lines=), write_file(path, content),
+      replace(match/region/path, ...), rg(pat, path), cat(), find(), run_pipe(), lines(path, s, e)
     - self.repo — repo intelligence: filemap(), repo_map(), search_symbol()
     - self.todo — view and update the todo list (self.todo.status(), self.todo.done(), etc.)
     Plus any skills discovered via SkillRegistry (use doc(self) to see all).
@@ -77,10 +78,13 @@ class DoerAgent(Agent):
         repo: RepoTools,
         todo: TodoManager,
         skills_dirs: list[Path] | None = None,
+        shell_cls: type | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.shell = ShellTools(cwd=cwd)
+        # Use the shell variant the parent is currently running (so /swap-shell
+        # propagates to doers); default to the module's ShellTools (ShellTools3).
+        self.shell = (shell_cls or ShellTools)(cwd=cwd)
         self.repo = repo
         self.todo = todo
 
@@ -109,7 +113,7 @@ class DoerAgent(Agent):
 
         Instructions:
         1. Read the todo title and notes carefully.
-        2. Execute the work described using self.shell (bash, view, edit, write, grep, find, ls).
+        2. Execute the work described using self.shell (run, read, write_file, replace, rg, cat, find).
         3. When done, update the todo with what you learned:
            self.todo.update("{todo.id}", notes="what you did and found")
         4. Mark it complete: self.todo.done("{todo.id}")

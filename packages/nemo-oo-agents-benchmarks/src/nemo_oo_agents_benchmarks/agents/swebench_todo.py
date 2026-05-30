@@ -16,15 +16,48 @@ Key differences from swebench_basic:
 from __future__ import annotations
 
 import logging
+import os
 import textwrap
 from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents.agentdoc import hidden
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.tools.shell_tools import ShellTools
+from nemo_oo_agents.tools.shell_tools2 import ShellTools2
+from nemo_oo_agents.tools.shell_tools3 import ShellTools3
 from nemo_oo_agents.tools.todo import TodoManager
 from nemo_oo_agents.unifiedllm import FakeLLMClient
+
+
+@hidden
+def _make_shell(cwd: str = "/testbed"):
+    """Construct the shell variant selected by the SHELL_VARIANT env var.
+
+    SHELL_VARIANT=2 -> ShellTools2 (simple), 3 -> ShellTools3 (python-native),
+    anything else (default) -> the original ShellTools. This is the bake-off
+    switch: point each swebench experiment arm at a different value.
+    """
+    raw = os.environ.get("SHELL_VARIANT", "").strip()
+    # Normalize unknown/empty to "1" BEFORE tagging, so the metric matches what
+    # actually runs (an unsupported value must not be tagged as itself while
+    # execution silently falls back to variant 1 — that corrupts bake-off data).
+    variant = raw if raw in ("1", "2", "3") else "1"
+    if raw and raw != variant:
+        logger.warning("Unknown SHELL_VARIANT=%r; falling back to variant 1", raw)
+    try:
+        from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+        get_harness_metrics().set_shell_variant(variant)
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to tag shell_variant in harness metrics", exc_info=True)
+    if variant == "2":
+        return ShellTools2(cwd=cwd)
+    if variant == "3":
+        return ShellTools3(cwd=cwd)
+    return ShellTools(cwd=cwd)
+
 
 if TYPE_CHECKING:
     from nemo_oo_agents.unifiedllm import UnifiedLLM
@@ -92,18 +125,18 @@ class SWEBenchTodoAgent(
 
     ### Phase 1: Understand (spend at least 5-10 turns here)
 
-    1a. **Explore**: Use `self.shell.ls(".", depth=3)` and
-        `self.shell.run("find . -name '*.py' -not -path './.git/*' | head -50")`
-        to understand project structure. Identify where source and tests live.
+    1a. **Explore**: List the tree and find source/test files (see the
+        `shell_tools` block for your shell's exact API). Identify where
+        source and tests live.
 
     1b. **Reproduce**: Run the specific failing test(s) to see the actual error.
         Use `await self.shell.run("pytest tests/test_foo.py -x -v")`.
 
-    1c. **Read test code**: Use `await self.shell.view("tests/test_foo.py")` on
-        the failing test. Understand WHAT behaviour the test expects.
+    1c. **Read test code**: Read the failing test file. Understand WHAT
+        behaviour the test expects.
 
-    1d. **Trace root cause**: Use `await self.shell.grep("def function_name", "src/")`
-        and `await self.shell.grep("ClassName", ".")` to find the buggy code.
+    1d. **Trace root cause**: Search the source for the buggy symbols to find
+        the buggy code.
         Read the source. Don't just look at the error location — trace backwards
         to find WHERE the bug originates.
 
@@ -113,7 +146,7 @@ class SWEBenchTodoAgent(
     ### Phase 2: Implement
 
     Fix ALL affected files. Don't just fix one file. Check imports, exports,
-    related methods. Use `await self.shell.edit(path, old, new)` for targeted changes.
+    related methods. Use your shell's targeted-edit method (see the `shell_tools` block) for changes.
     Validate after EACH edit — run the failing test immediately.
 
     ### Phase 3: Verify (DO NOT SKIP)
@@ -126,14 +159,16 @@ class SWEBenchTodoAgent(
     ## Tool examples
 
     ```python
-    # Shell operations (persistent session — cd/env survive)
+    # Shell operations (persistent session — cd/env survive). The exact method
+    # surface depends on the active shell variant — see the `shell_tools` block
+    # (doc(type(self.shell))). For ShellTools3 (default):
     r = await self.shell.run("pytest tests/test_foo.py -x")
-    r = await self.shell.view("src/module.py", offset=10, limit=50)
-    r = await self.shell.edit("src/module.py", old_code, new_code)
-    r = await self.shell.write("src/new.py", content)
-    r = await self.shell.grep("pattern", "src/")
-    r = await self.shell.find("*.py", "src/")
-    r = await self.shell.ls("src/", depth=2)
+    r = await self.shell.read("src/module.py", lines=(10, 60))      # numbered window
+    region = await self.shell.lines("src/module.py", 10, 12)        # locate a line range
+    r = await self.shell.replace(region, new_code)                  # edit the anchor (no ambiguity)
+    r = await self.shell.write_file("src/new.py", content)          # create/overwrite (no quoting)
+    ms = await self.shell.rg("pattern", "src/").matches()           # structured matches
+    r = await self.shell.find("src", name="*.py").collect()         # find files
     ```
 
     ```python
@@ -164,7 +199,7 @@ class SWEBenchTodoAgent(
 
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
-        self.shell = ShellTools(cwd="/testbed")
+        self.shell = _make_shell("/testbed")
         self.todo = TodoManager()
         self.problem_statement = ""
 
@@ -186,7 +221,7 @@ class SWEBenchTodoAgent(
             self.response_format = task_input.get("response_format", "")
 
         # Reset stateful tools so each evaluation starts clean.
-        self.shell = ShellTools(cwd="/testbed")
+        self.shell = _make_shell("/testbed")
         self.todo.clear()
 
         # Set context blocks unconditionally (clear stale values from prior runs).
@@ -229,9 +264,9 @@ class SWEBenchTodoAgent(
         Only return when tests pass and diff is clean.
         """
         # Start with Phase 1a: explore the repo structure
-        r = await self.shell.ls(".", depth=3)
+        r = await self.shell.run("ls -la")
         print("=== Repo Structure ===")
-        print(r.text)
+        print(r)
         print("\n=== Todo Status ===")
         print(self.todo.status())
         ...

@@ -374,6 +374,25 @@ class Stream:
 
     # ─── Terminal operations (sinks) — all async ───────────────────────
 
+    def __await__(self):
+        """Awaiting a Stream collects it — ``await find(...)`` ≡ ``await find(...).collect()``.
+
+        Lets a Stream be the awaitable terminal directly when you just want the
+        list, without remembering which sink verb to call.
+        """
+        return self.collect().__await__()
+
+    async def paths(self) -> list[Path]:
+        """Terminal: collect the stream as ``Path`` objects.
+
+        Symmetric with ``rg(...).matches()`` — the natural sink for ``find(...)``
+        when you want real paths rather than strings::
+
+            for p in await shell.find("src", name="*.py").paths():
+                ...
+        """
+        return [Path(line) for line in await self.collect()]
+
     async def collect(self) -> list[str]:
         """Consume the stream and return all items as a list."""
         result = []

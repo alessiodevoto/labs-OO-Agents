@@ -163,6 +163,7 @@ class HarnessMetrics(BaseModel):
     exec_errors: list[ErrorRecord] = Field(default_factory=list)
 
     # ── Tool Usage (shell/repo) ──
+    shell_variant: str = ""  # which self.shell implementation is active (bake-off tag)
     shell_failures: list[ErrorRecord] = Field(default_factory=list)
     shell_deaths: list[ErrorRecord] = Field(default_factory=list)
     repo_failures: list[ErrorRecord] = Field(default_factory=list)
@@ -340,6 +341,10 @@ class HarnessMetrics(BaseModel):
         )
 
     # Tool Usage (shell/repo)
+    def set_shell_variant(self, variant: str) -> None:
+        """Tag which shell implementation is active (for the shell bake-off)."""
+        self.shell_variant = _truncate(variant)
+
     def shell_failure(self, tool_method: str, message: str, code_preview: str = "") -> None:
         """Record a shell tool failure (non-zero exit, timeout, file not found, etc.)."""
         self._append_error(
@@ -807,6 +812,12 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         True,
     ),
     # Tool Usage (shell/repo)
+    SchemaEntry(
+        "harness.shell_variant",
+        "Active shell implementation",
+        "Tool Usage",
+        lambda m: m.shell_variant,
+    ),
     SchemaEntry(
         "harness.shell_failure.count",
         "Shell failures",
