@@ -721,3 +721,42 @@ detects `.pth` files and skips the editable install step entirely (see the
 `feat/skip-editable-installs-with-pth` patch in the harbor repo).
 
 Rebuild with: `bash util/harbor/build_venv_tarballs.sh`
+
+## SWEBench Docker mode — three critical overlay gotchas
+
+Running SWEBench Verified with the `swebench/todo` agent in Docker mode hit
+three separate silent failures (all produced reward 0 for every task). If a
+SWEBench run scores 0% across the board, check these:
+
+1. **Container python is 3.11, not 3.12.** SWEBench eval images ship conda
+   python3.11. Harbor's agent-setup resolves `PYBIN` via
+   `which python3.13||3.12||3.11`, picks 3.11 → `PYVER=cp311` → looks for a
+   `nemo-venv-base-cp311` tarball (absent) → falls back to pip editable install
+   → fails with `Cannot import 'hatchling.build'` (exit 2). **Fix:** prepend
+   the overlay's bundled python to the container `PATH` in the YAML `env:` block:
+   ```yaml
+   env:
+     PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+   ```
+
+2. **The verifier needs `uv`.** SWEBench `tests/test.sh` runs
+   `uv run parser.py` to compute the reward. `uv` isn't on the container PATH
+   by default → `uv: command not found` → reward 0 even when the agent solved
+   the task. **Fix:** copy `uv` into the overlay's `opt/harbor/cpython312/bin/`
+   (which is on PATH via fix #1):
+   ```bash
+   cp ~/3p/harbor_bootstrap_overlay/usr/local/bin/uv \
+      ~/3p/harbor_bootstrap_overlay/opt/harbor/cpython312/bin/uv
+   ```
+
+3. **The overlay's `installed-agent` can be stale.** The `.pth` files point at
+   `/installed-agent/nemo_oo_agents/packages/nemo-oo-agents-benchmarks/src`. If
+   that tree predates the agent you're using (e.g. `swebench/todo` from MR !320),
+   the runner errors `Unknown agent_type: 'swebench/todo'` and writes no patch.
+   **Fix:** refresh the agent source in the overlay's `installed-agent` to match
+   the repo (at minimum, copy the new agent file + the updated
+   `agents/__init__.py`).
+
+Symptom triage: `find <run>/ -path '*/verifier/reward.txt' -exec cat {} \; | sort | uniq -c`
+all-zero → check `<task>/agent/nemo_oo_agents_benchmarks.log` (agent_type error)
+and `<task>/verifier/test-stdout.txt` (uv error / hatchling error).
