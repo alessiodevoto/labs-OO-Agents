@@ -120,3 +120,49 @@ class FileWrite:
 
     def __str__(self) -> str:
         return self.text
+
+
+class _AwaitableResult:
+    """Wraps the coroutine returned by ``run()`` so a forgotten ``await`` fails loudly.
+
+    ``run()`` is async. If you write ``r = shell.run("...")`` (no await) and then
+    touch ``r.stdout`` / ``r.returncode`` / slice it / test ``in`` it, you are
+    operating on the *coroutine*, not the result — a confusing ``AttributeError``.
+    This wrapper turns that into an explicit "did you forget `await`?" message.
+
+    ``await shell.run(...)`` works exactly as before and yields a ``ShellResult``.
+    """
+
+    __slots__ = ("_coro",)
+
+    def __init__(self, coro):
+        self._coro = coro
+
+    def __await__(self):
+        return self._coro.__await__()
+
+    def _forgot_await(self, what: str):
+        raise TypeError(
+            f"did you forget `await`? run() is async — you accessed {what} on an "
+            f"un-awaited run() call. Write `result = await shell.run(...)` first, "
+            f"then use result.{what.lstrip('.')}."
+        )
+
+    def __getattr__(self, name):
+        # ShellResult/str attributes accessed without awaiting -> helpful error.
+        self._forgot_await(f".{name}")
+
+    def __getitem__(self, item):
+        self._forgot_await("[...] (slicing)")
+
+    def __contains__(self, item):
+        self._forgot_await("`in`")
+
+    def __iter__(self):
+        self._forgot_await("iteration")
+
+    def __str__(self):
+        return "<un-awaited run() — did you forget `await`? Use `await shell.run(...)`.>"
+
+    def __repr__(self):
+        return self.__str__()
