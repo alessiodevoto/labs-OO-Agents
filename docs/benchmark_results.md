@@ -37,11 +37,12 @@ scored 0 before). TB2's high infra counts come from heavy QEMU/build tasks.
 |-------|-----------|--------|-------|-------------------|
 | **opus** | **75.4% (376/499)** | 499/500 | 1 | 470M / 3.9M |
 | sonnet | 67.9% (169/249)* | 251/500 | 2 | 395M / 2.7M |
-| ultra | 60.4% (246/407)* | 411/500 | 4 | 1.65B / 11.2M |
+| ultra | 60.2% (301/500) | 500/500 | 0 | 1.65B+ / 11.2M+ |
 
-\*sonnet/ultra are partials — ipp2-2047 hung mid-run; recovered via SNMP reboot,
-then resumed the unscored tasks via `DatasetConfig.task_names` filtering. Pass
-rates over the scored subset are statistically robust.
+\*sonnet is partial (251/500) — ipp2-2047 hung mid-run. **ultra was completed to
+500/500** by resuming the 93 unscored tasks via `DatasetConfig.task_names`
+filtering after recovering the machine with a Colossus SNMP reboot. (sonnet's
+remaining ~249 can be finished the same way if needed.)
 
 **opus is the standout at 75.4%** — a strong result for the todo-driven agent.
 ultra is competitive (60%) but burns **~3.5× opus's input tokens** (1.65B vs 470M);
