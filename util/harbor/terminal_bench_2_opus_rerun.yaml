@@ -1,5 +1,5 @@
 # Harbor config for Terminal Bench 2.0 — Docker mode, opus model.
-jobs_dir: /localhome/local-rcabral/harbor_jobs/terminal_bench_2_opus
+jobs_dir: /localhome/local-rcabral/harbor_jobs/terminal_bench_2_opus_rerun
 n_attempts: 1
 timeout_multiplier: 1.5
 environment_build_timeout_multiplier: 5.0
@@ -8,7 +8,7 @@ verifier_timeout_multiplier: 6.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 2
   quiet: false
 
 environment:
@@ -16,6 +16,7 @@ environment:
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
     PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
   mounts_json:
     - type: bind
       source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor

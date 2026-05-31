@@ -391,3 +391,4 @@ tests/integration/fixtures/*.lock
 # Throwaway benchmark smoke-test configs
 util/harbor/tb1_opus_smoke.yaml
 util/harbor/tb1_ultra_smoke.yaml
+.claude/scheduled_tasks.lock
