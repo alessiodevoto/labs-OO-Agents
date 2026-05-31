@@ -134,3 +134,53 @@ class TestShiftEnter:
             f"Expected 'hi\\nthere', got {result!r} — "
             "iTerm2 Shift+Enter (ControlJ) submitted instead of inserting newline"
         )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: @ inline mention triggers completion and substitutes on submit
+# ---------------------------------------------------------------------------
+
+
+class TestMentionKeyBindings:
+    def test_at_binding_exists(self):
+        """The '@' key must be bound so typing it can trigger completion."""
+        bindings = create_key_bindings()
+        bound = [b.keys for b in bindings.bindings]
+        assert any(keys == ("@",) for keys in bound), "'@' is not bound"
+
+    @pytest.mark.asyncio
+    async def test_at_completion_fires_on_mention(self, tmp_path):
+        """Typing '@<dir>/' populates the completion menu from the filesystem.
+
+        Drives the real prompt_toolkit Buffer through the same
+        ``_set_completions_sync`` path the '@' keybinding uses, so this proves
+        the keybinding's logic wires into the shared Completer — without
+        racing prompt_toolkit's async render loop (which clears completion
+        state on submit).
+        """
+        from nemo_oo_agents_cli.tui.input_handler import (
+            _MENTION_RE,
+            SlashCommandCompleter,
+            _set_completions_sync,
+        )
+        from prompt_toolkit.buffer import Buffer
+        from prompt_toolkit.document import Document
+
+        (tmp_path / "alpha.md").touch()
+        (tmp_path / "beta.md").touch()
+
+        registry = MagicMock()
+        registry.get_active_help.return_value = {}
+
+        text = f"see @{tmp_path}/"
+        # The '@' keybinding gates on this regex before triggering completion.
+        assert _MENTION_RE.search(text) is not None
+
+        buf = Buffer(completer=SlashCommandCompleter(registry))
+        buf.set_document(Document(text, len(text)), bypass_readonly=True)
+        _set_completions_sync(buf)
+
+        assert buf.complete_state is not None, "@ mention did not open a completion menu"
+        displays = [c.display_text for c in buf.complete_state.completions]
+        assert any("alpha.md" in d for d in displays), displays
+        assert any("beta.md" in d for d in displays), displays

@@ -21,6 +21,13 @@ if TYPE_CHECKING:
 # Built-in ! commands
 _BANG_BUILTINS: dict[str, str] = {}
 
+# An inline @ file/dir mention: an "@" at start-of-string or after whitespace,
+# followed by a no-whitespace path fragment. Anchored with \Z by _active_mention
+# (token being typed at the cursor) and used unanchored by expand_mentions (all
+# mentions in a submitted line). input_handler imports _MENTION_PATTERN to gate
+# its keybindings on the same definition.
+_MENTION_PATTERN = r"(?:^|(?<=\s))@(\S+?)"
+
 
 @dataclass(frozen=True)
 class CompletionItem:
@@ -50,7 +57,31 @@ class Completer:
             return self._slash_completions(text)
         if text.startswith("!"):
             return self._bang_completions(text)
+        # Inline @ file/dir mention — may appear anywhere in the buffer,
+        # so this is checked for non-slash/bang input too.
+        mention = self._active_mention(text)
+        if mention is not None:
+            return self._mention_completions(text, mention)
         return []
+
+    # ------------------------------------------------------------------
+    # Inline @ file/dir mentions
+    # ------------------------------------------------------------------
+
+    # The token being *typed* at the cursor: anchor the shared pattern at the
+    # end of the buffer and allow an empty fragment ("@" alone opens the menu).
+    _ACTIVE_MENTION_RE = re.compile(r"(?:^|(?<=\s))@(\S*)\Z")
+
+    @classmethod
+    def _active_mention(cls, text: str) -> "re.Match | None":
+        """Return the @-mention token being typed at the end of *text*, or None."""
+        return cls._ACTIVE_MENTION_RE.search(text)
+
+    def _mention_completions(self, text: str, match: "re.Match") -> list[CompletionItem]:
+        """Path completions for an inline ``@path`` token (prefix = buffer up to the @)."""
+        partial = match.group(1)
+        prefix = text[: match.start()] + "@"
+        return self._path_completions(partial, prefix=prefix)
 
     # ------------------------------------------------------------------
     # Slash commands
@@ -392,13 +423,44 @@ class Completer:
             if cmd.lower().startswith(text.lower()):
                 items.append(CompletionItem(text=cmd, display=cmd, description=desc))
 
-        # Path completions after "!<cmd> "
         rest = text[1:]  # strip leading !
-        if " " in rest or (
-            rest and not any(rest.lstrip().startswith(b[1:]) for b in _BANG_BUILTINS)
-        ):
-            items.extend(self._path_completions(rest, prefix="!"))
+        if " " not in rest:
+            # Still typing the command name (single unterminated token, no
+            # space yet). Bare "!" offers nothing; "!gi" completes $PATH
+            # executables (git, gibo, …) rather than files named gi*.
+            # A space ends the command token and switches to path completion.
+            return items + self._command_completions(rest)
 
+        # An argument is being typed (command token is followed by a space) →
+        # complete filesystem paths on the last token, keeping the command +
+        # earlier args as the prefix.
+        head, _, last = rest.rpartition(" ")
+        prefix = "!" + head + " "
+        items.extend(self._path_completions(last, prefix=prefix))
+        return items
+
+    @staticmethod
+    def _command_completions(partial: str) -> list[CompletionItem]:
+        """Complete executable names from $PATH for the command token of !cmd."""
+        if not partial:
+            return []
+        seen: set[str] = set()
+        items: list[CompletionItem] = []
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if not d:
+                continue
+            try:
+                entries = sorted(os.listdir(d))
+            except OSError:
+                continue
+            for name in entries:
+                if name in seen or not name.startswith(partial):
+                    continue
+                full = os.path.join(d, name)
+                if not (os.path.isfile(full) and os.access(full, os.X_OK)):
+                    continue
+                seen.add(name)
+                items.append(CompletionItem(text="!" + name + " ", display=name, description=""))
         return items
 
     # ------------------------------------------------------------------
@@ -463,3 +525,44 @@ class Completer:
             pass
 
         return items
+
+
+# ---------------------------------------------------------------------------
+# Mention expansion (used at submit time, shared by all frontends)
+# ---------------------------------------------------------------------------
+
+# Submit-time form of the mention: greedy so it grabs the whole path token.
+# Trailing sentence punctuation is peeled back off the captured token below so
+# "see @docs/file.md." still resolves to docs/file.md.
+_MENTION_TOKEN = re.compile(r"(?:^|(?<=\s))@(\S+)")
+
+# Punctuation that is almost always sentence-trailing rather than part of a
+# real filename, stripped from the right of a captured mention before resolving.
+_TRAILING_PUNCT = ".,;:!?)]}\"'"
+
+
+def expand_mentions(text: str) -> str:
+    """Expand inline ``@path`` mentions into Markdown links before sending.
+
+    ``@docs/blah.md`` becomes ``[docs/blah.md](</abs/docs/blah.md>)`` so the
+    agent receives an unambiguous absolute path while the user keeps the short
+    form they typed. Only mentions resolving to an existing file/dir expand;
+    emails (``a@b``), nonexistent paths, etc. are left untouched. Trailing
+    sentence punctuation is peeled off before resolving. The link target is
+    angle-bracketed so a path containing ``)`` can't break out of the link.
+    """
+
+    def _sub(m: "re.Match") -> str:
+        raw = m.group(1)
+        # Peel trailing punctuation, but try the full token first so a real
+        # filename that legitimately ends in such a char still resolves.
+        stripped = raw.rstrip(_TRAILING_PUNCT)
+        for candidate in (raw, stripped):
+            p = Path(os.path.expanduser(candidate))
+            if p.exists():
+                trailer = raw[len(candidate) :]
+                label = candidate.rstrip("/")
+                return f"[{label}](<{p.resolve()}>){trailer}"
+        return m.group(0)
+
+    return _MENTION_TOKEN.sub(_sub, text)
