@@ -38,6 +38,7 @@ from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput
 
+from .completer import expand_mentions
 from .queue_state import QueueState
 
 logger = logging.getLogger(__name__)
@@ -482,7 +483,7 @@ class TUIApplication:
             self._run_callback(self._on_bang, body)
             return False
 
-        self.submit_message(text)
+        self.submit_message(expand_mentions(text))
         return False
 
     def _run_callback(

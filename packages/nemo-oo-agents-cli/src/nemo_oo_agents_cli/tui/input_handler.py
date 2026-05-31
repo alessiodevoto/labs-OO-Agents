@@ -7,6 +7,7 @@ The actual completion logic lives in ``completer.py`` (shared with the web
 frontend); this module is just the prompt_toolkit adapter.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 from prompt_toolkit import PromptSession
@@ -16,11 +17,15 @@ from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
-from .completer import Completer
+from .completer import _MENTION_PATTERN, Completer
 from .theme import COLORS
 
 if TYPE_CHECKING:
     from .commands import CommandRegistry
+
+# The keybindings trigger completion when an @ mention is being typed at the
+# cursor — same pattern the engine uses (anchored at end-of-buffer here).
+_MENTION_RE = re.compile(_MENTION_PATTERN + r"?\Z")
 
 
 class SlashCommandCompleter(PtCompleter):
@@ -31,7 +36,11 @@ class SlashCommandCompleter(PtCompleter):
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
-        if not text.startswith("/") and not text.startswith("!"):
+        if (
+            not text.startswith("/")
+            and not text.startswith("!")
+            and _MENTION_RE.search(text) is None
+        ):
             return
 
         for item in self._completer.complete(text):
@@ -129,12 +138,13 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
         buffer = event.current_buffer
         buffer.insert_text(char)
 
-        # Check if we're typing a slash or bang command
+        # Check if we're typing a slash or bang command, or an inline @ mention.
         text = buffer.text[: buffer.cursor_position]
         if (
             text.startswith("/")
             or text.startswith("!")
             or (("\n/" in text) and text.rsplit("\n", 1)[-1].startswith("/"))
+            or _MENTION_RE.search(text) is not None
         ):
             # Generate completions synchronously and set them directly.
             # buffer.start_completion() creates an empty CompletionState before
@@ -174,7 +184,7 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
             buffer.delete_before_cursor(1)
 
             text = buffer.text[: buffer.cursor_position]
-            if text.startswith("/") or text.startswith("!"):
+            if text.startswith("/") or text.startswith("!") or _MENTION_RE.search(text) is not None:
                 try:
                     _set_completions_sync(buffer)
                 except (IndexError, ValueError):
@@ -201,6 +211,19 @@ def create_key_bindings(vi_mode: bool = False) -> KeyBindings:
         text = buffer.text[: buffer.cursor_position]
         if text == "!" or text.startswith("!"):
             _set_completions_sync(buffer)
+
+    # "@" starts an inline file/dir mention; trigger completion immediately
+    # whenever it lands at start-of-line or after whitespace.
+    @bindings.add("@")
+    def _(event):
+        buffer = event.current_buffer
+        buffer.insert_text("@")
+        text = buffer.text[: buffer.cursor_position]
+        if _MENTION_RE.search(text) is not None:
+            try:
+                _set_completions_sync(buffer)
+            except (IndexError, ValueError):
+                pass
 
     return bindings
 

@@ -338,3 +338,185 @@ def test_angle_hint_shown_in_display(tmp_path):
     assert "<action>" in item.display, (
         f"Hint should be visible in the dropdown; got display={item.display!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Inline @ file/dir mentions
+# ---------------------------------------------------------------------------
+
+
+def test_mention_completion_at_start(completer):
+    """An @ at the start of the buffer completes files/dirs under the typed path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "notes.md").touch()
+        Path(tmpdir, "sub").mkdir()
+
+        items = completer.complete(f"@{tmpdir}/")
+        displays = [i.display for i in items]
+        assert any("notes.md" in d for d in displays)
+        assert any("sub/" in d for d in displays)
+
+        # Every replacement keeps everything up to and including the @.
+        for item in items:
+            assert item.text.startswith(f"@{tmpdir}/"), item.text
+
+
+def test_mention_completion_inline(completer):
+    """An @ typed mid-sentence completes against the path after it."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "alpha.py").touch()
+        Path(tmpdir, "beta.py").touch()
+
+        text = f"please read @{tmpdir}/al"
+        items = completer.complete(text)
+        assert len(items) == 1
+        # Replacement preserves the leading sentence and the @.
+        assert items[0].text == f"please read @{tmpdir}/alpha.py"
+
+
+def test_mention_only_last_token(completer):
+    """An earlier @ in the buffer must not hijack completion."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "x.py").touch()
+        # Cursor is right after the trailing space — no active mention.
+        items = completer.complete(f"@{tmpdir}/x.py ")
+        assert items == []
+
+
+def test_mention_requires_boundary(completer):
+    """An @ not at a word boundary (e.g. an email) is not a mention."""
+    assert completer.complete("user@example") == []
+
+
+# ---------------------------------------------------------------------------
+# Mention expansion (submit-time markdown substitution)
+# ---------------------------------------------------------------------------
+
+
+def test_expand_mentions_file():
+    """A submitted @file mention becomes a Markdown link to its absolute path."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        f = Path(tmpdir, "blah.md")
+        f.touch()
+        rel = str(f)
+        out = expand_mentions(f"see @{rel} for details")
+        assert out == f"see [{rel}](<{f.resolve()}>) for details"
+
+
+def test_expand_mentions_directory_strips_trailing_slash():
+    """A directory mention drops its trailing slash in the link label."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        d = Path(tmpdir, "docs")
+        d.mkdir()
+        out = expand_mentions(f"@{d}/")
+        assert out == f"[{d}](<{d.resolve()}>)"
+
+
+def test_expand_mentions_nonexistent_untouched():
+    """A mention that resolves to no file/dir is left verbatim."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    text = "ping @nope/does/not/exist now"
+    assert expand_mentions(text) == text
+
+
+def test_expand_mentions_email_untouched():
+    """An email address (@ not at a word boundary) is not treated as a mention."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    text = "contact user@example.com please"
+    assert expand_mentions(text) == text
+
+
+def test_expand_mentions_multiple():
+    """Every resolvable @ mention in a line is expanded independently."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        a = Path(tmpdir, "a.txt")
+        b = Path(tmpdir, "b.txt")
+        a.touch()
+        b.touch()
+        out = expand_mentions(f"@{a} and @{b}")
+        assert f"[{a}](<{a.resolve()}>)" in out
+        assert f"[{b}](<{b.resolve()}>)" in out
+
+
+# ---------------------------------------------------------------------------
+# Bang command-name completion
+# ---------------------------------------------------------------------------
+
+
+def test_bang_command_completes_executables(completer, monkeypatch, tmp_path):
+    """The first token of !cmd completes $PATH executables, not files."""
+    import stat
+
+    exe = tmp_path / "mytool"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    # A non-executable file with the same prefix must be excluded.
+    (tmp_path / "mytool.txt").write_text("x")
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    items = completer.complete("!myto")
+    displays = [i.display for i in items]
+    assert "mytool" in displays
+    assert "mytool.txt" not in displays
+    # Selecting inserts the command plus a trailing space, ready for args.
+    item = next(i for i in items if i.display == "mytool")
+    assert item.text == "!mytool "
+
+
+def test_bang_argument_completes_paths(completer):
+    """After the command + a space, completion switches to filesystem paths."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "data.csv").touch()
+        items = completer.complete(f"!cat {tmpdir}/")
+        displays = [i.display for i in items]
+        assert any("data.csv" in d for d in displays)
+
+
+# ---------------------------------------------------------------------------
+# Regression: empty-arg bang completion + trailing-punctuation mentions
+# ---------------------------------------------------------------------------
+
+
+def test_bang_empty_arg_completes_cwd_paths(completer, tmp_path, monkeypatch):
+    """'!ls ' (command + trailing space, no arg yet) completes cwd paths.
+
+    Regression for the branch that sent any space-free command token to
+    $PATH completion: a trailing space ends the command token, so the next
+    Tab must offer filesystem paths, not nothing.
+    """
+    (tmp_path / "data.csv").touch()
+    monkeypatch.chdir(tmp_path)
+    items = completer.complete("!ls ")
+    displays = [i.display for i in items]
+    assert any("data.csv" in d for d in displays), displays
+
+
+def test_expand_mentions_trailing_punctuation():
+    """A mention followed by sentence punctuation still resolves."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        f = Path(tmpdir, "file.md")
+        f.touch()
+        out = expand_mentions(f"see @{f}. thanks")
+        # The path resolves; the trailing '.' stays outside the link.
+        assert f"[{f}](<{f.resolve()}>)." in out, out
+
+
+def test_expand_mentions_angle_brackets_target():
+    """The link target is angle-bracketed so a ')' in a path can't break out."""
+    from nemo_oo_agents_cli.tui.completer import expand_mentions
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        f = Path(tmpdir, "weird(name).md")
+        f.touch()
+        out = expand_mentions(f"@{f}")
+        assert f"(<{f.resolve()}>)" in out, out
