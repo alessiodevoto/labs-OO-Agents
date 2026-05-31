@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(repr=False)
 class Match:
     """A single search hit anchored to an exact location in a file.
 
@@ -39,6 +39,16 @@ class Match:
     byte_end: int  # absolute byte offset just past the matched token
     matched: str  # the exact matched token text
     _file_lines: tuple[str, ...]  # all lines of the file (no trailing newline), for rendering
+
+    def __repr__(self) -> str:
+        # Summarize _file_lines so print(match)/print(matches) doesn't dump the
+        # whole file (a single Match can otherwise repr to tens of KB). The full
+        # text stays reachable via .text / .numbered.
+        return (
+            f"Match(path={self.path!r}, line={self.line}, end_line={self.end_line}, "
+            f"col={self.col}, byte_start={self.byte_start}, byte_end={self.byte_end}, "
+            f"matched={self.matched!r}, _file_lines=<{len(self._file_lines)} lines>)"
+        )
 
     @property
     def line_no(self) -> int:
@@ -91,16 +101,40 @@ class Match:
 
     def context(self, before: int = 3, after: int = 3) -> Match:
         """Return a new Match widened by `before`/`after` lines (clamped to file)."""
-        new_start = max(1, self.line - before)
-        new_end = min(len(self._file_lines), self.end_line + after)
+        return self._subregion(self.line - before, self.end_line + after)
+
+    @property
+    def lines(self) -> _LineSlicer:
+        """Navigate to a narrower sub-region by **1-indexed line number**.
+
+        ``match.lines[680:684]`` returns a new ``Match`` spanning lines 680-683
+        (Python slice semantics on line numbers), ready to ``replace()`` directly
+        — no hand-built snippet::
+
+            region = await shell.lines("big.py", 1, 999)   # a Match over a range
+            await shell.replace(region.lines[680:684], new_text)
+
+        ``match.lines[690]`` returns a single-line sub-Match.
+        """
+        return _LineSlicer(self)
+
+    def _subregion(self, start: int, end: int) -> Match:
+        """Build a Match over lines [start, end] (1-indexed inclusive), same file."""
+        n = len(self._file_lines)
+        # Clamp both bounds to the file so an out-of-range region (start past EOF)
+        # yields an empty Match instead of an IndexError in the byte-offset loop.
+        start = max(1, min(start, n + 1))
+        end = min(n, end)
+        byte_start = sum(len(self._file_lines[i].encode()) + 1 for i in range(start - 1))
+        region_text = "\n".join(self._file_lines[start - 1 : end])
         return Match(
             path=self.path,
-            line=new_start,
-            end_line=new_end,
-            col=self.col,
-            byte_start=self.byte_start,
-            byte_end=self.byte_end,
-            matched=self.matched,
+            line=start,
+            end_line=end,
+            col=1,
+            byte_start=byte_start,
+            byte_end=byte_start + len(region_text.encode()),
+            matched=region_text,
             _file_lines=self._file_lines,
         )
 
@@ -119,3 +153,32 @@ class Span:
 
     def __str__(self) -> str:
         return f"{self.path}[{self.byte_start}:{self.byte_end}]"
+
+
+class _LineSlicer:
+    """1-indexed line-slicing accessor for ``Match.lines`` -> sub-``Match``."""
+
+    __slots__ = ("_match",)
+
+    def __init__(self, match: Match):
+        self._match = match
+
+    def __getitem__(self, key) -> Match:
+        n = len(self._match._file_lines)
+        if isinstance(key, slice):
+            if key.step is not None:
+                raise ValueError("Match.lines[...] does not support a slice step")
+            start = 1 if key.start is None else key.start
+            end = n if key.stop is None else key.stop - 1  # slice stop is exclusive
+            if start < 1 or end < 0:
+                raise ValueError(
+                    "Match.lines[...] uses positive 1-indexed line numbers (no negatives)"
+                )
+            return self._match._subregion(start, end)
+        if isinstance(key, int):
+            if key < 1:
+                raise ValueError(
+                    "Match.lines[i] uses positive 1-indexed line numbers (no negatives)"
+                )
+            return self._match._subregion(key, key)
+        raise TypeError(f"Match.lines[...] expects an int or slice, got {type(key).__name__}")

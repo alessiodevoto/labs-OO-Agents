@@ -29,17 +29,26 @@ from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents.tools._match import Match, Span
-from nemo_oo_agents.tools._results2 import FileWrite, ShellResult
+from nemo_oo_agents.tools._results2 import FileWrite, ShellResult, _AwaitableResult
 from nemo_oo_agents.tools.shell_tools import _strip_line_number_prefixes, _unified_diff
 
 
 class ShellTools3(Skill):
     """Persistent shell + Python-native search/edit. The "lean in" bake-off variant.
 
+    METHOD INDEX (await every call; rg/cat/find/run_pipe are sync builders):
+        run(cmd, stdin=, timeout=)   -> ShellResult (str-like; forgetting await errors loudly)
+        write_file(path, content)    -> FileWrite
+        read(path, lines=, numbers=) -> str  (numbers=False = raw text, no gutter — safe for replace)
+        lines(path, start, end)      -> Match  (line-range locator; feed to replace/pipe)
+        replace(target, old, new)    -> FileWrite  (target = Match | Match.span | path)
+        rg(pattern, path, **filters) -> Stream  (.matches() -> list[Match])
+        cat(*paths) / find(root,**kw)/ run_pipe(cmd) -> Stream  (awaitable -> list)
+
     Run/file:
         run(command, stdin=, timeout=)  — run a shell command (str-like result)
         write_file(path, content)        — create/overwrite a file (no quoting)
-        read(path, lines=)               — VIEW a line window (numbered str)
+        read(path, lines=, numbers=)     — VIEW a window (numbers=False = raw text)
         lines(path, s, e)                — LOCATE a line range -> Match (edit/pipe it)
 
     Search (pyp streams, chainable: .grep/.head/.tail/.map/.filter/.cut/...):
@@ -73,8 +82,12 @@ class ShellTools3(Skill):
 
     __nosnapshot__ = True
 
-    def __init__(self, cwd: str | Path = ".") -> None:
+    def __init__(self, cwd: str | Path = ".", *, max_anchor_mb: float = 10.0) -> None:
         self._session = BashSession(cwd=cwd)
+        # Files larger than this are not loaded whole into a Match (memory + repr
+        # blow-up). Default 10 MB ≈ 200k lines of source — trips only on
+        # data/log/generated files. Raise it for workloads that edit big files.
+        self._max_anchor_bytes = int(max_anchor_mb * 1_000_000)
 
     @property
     def cwd(self) -> Path:
@@ -85,7 +98,7 @@ class ShellTools3(Skill):
         return f"ShellTools3(cwd={str(self._session.cwd)!r})"
 
     # ------------------------------------------------------------------ run/file
-    async def run(
+    def run(
         self,
         command: Annotated[str, spec(description="Shell command to execute")],
         *,
@@ -97,10 +110,15 @@ class ShellTools3(Skill):
     ) -> ShellResult:
         """Run a shell command in the persistent bash session (state persists).
 
-        Pass a script/payload as ``stdin=`` instead of a heredoc. Result is a
-        ``str`` subclass with ``.stdout`` / ``.stderr`` / ``.returncode`` /
-        ``.success``. For search/inspection prefer ``rg``/``cat``/``find``.
+        Pass a script/payload as ``stdin=`` instead of a heredoc. ``await`` it —
+        the result is a ``str`` subclass with ``.stdout`` / ``.stderr`` /
+        ``.returncode`` / ``.success``. (Forgetting ``await`` and then touching
+        ``.stdout`` raises a clear "did you forget await?" error.) For
+        search/inspection prefer ``rg``/``cat``/``find``.
         """
+        return _AwaitableResult(self._run_impl(command, stdin=stdin, timeout=timeout))
+
+    async def _run_impl(self, command, *, stdin=None, timeout=30.0) -> ShellResult:
         if stdin is not None:
             b64 = base64.b64encode(stdin.encode()).decode()
             command = (
@@ -139,29 +157,66 @@ class ShellTools3(Skill):
             tuple[int, int] | None,
             spec(description="(start, end) line range, 1-indexed inclusive. None = whole file."),
         ] = None,
+        *,
+        numbers: Annotated[
+            bool,
+            spec(
+                description="Include the ``N| `` line-number gutter + header (True, default), "
+                "or return the raw file text with no gutter (False)."
+            ),
+        ] = True,
     ) -> str:
-        """Read a file (or a line window) with a ``N| `` line-number gutter.
+        """Read a file (or a line window).
 
-        This is the tool for "show me lines X-Y" — pass ``lines=(start, end)``
-        (1-indexed, inclusive) and you get exactly that window, already numbered::
+        ``numbers=True`` (default) returns a ``N| `` line-number gutter for
+        *viewing*::
 
             await shell.read("big.py", lines=(555, 640))
 
-        Do NOT reconstruct this from ``cat()`` + indexing — ``cat()`` yields a
-        0-indexed list (``cat()[554]`` is line 555), which invites off-by-one
-        errors and makes you rebuild the line numbers by hand. ``read(lines=)``
-        does it correctly. Use ``cat()`` only when you want to *stream/transform*
-        lines (``.grep``/``.map``/...), not to view them.
+        ``numbers=False`` returns the **raw text** of that window, with NO gutter
+        and NO header — safe to copy into ``replace(path, old, new)`` or compare
+        against file content (the gutter would otherwise corrupt the match)::
+
+            snippet = await shell.read("big.py", lines=(555, 560), numbers=False)
+            await shell.replace("big.py", snippet, new_snippet)
+
+        For *editing* a line range, prefer ``lines(path, s, e)`` → a ``Match``
+        you can ``replace()`` directly (no copy-paste, no off-by-one). Use
+        ``cat()`` only to *stream/transform* lines, not to view them.
         """
         resolved = self._resolve(path)
         if not resolved.is_file():
             raise FileNotFoundError(f"File not found: {path}")
-        all_lines = resolved.read_text(errors="replace").splitlines()
+        if lines is not None:
+            # Windowed read — stream only the requested lines (cheap on huge files,
+            # no whole-file load, no size guard needed).
+            import itertools
+
+            start = max(1, lines[0])
+            with resolved.open("r", errors="replace") as fh:
+                # splitlines()-consistent: strip \r\n / \n / \r like the whole-file
+                # path and lines()/Match.text, so a windowed snippet matches what
+                # replace() sees.
+                window = [
+                    ln.splitlines()[0] if ln.splitlines() else ""
+                    for ln in itertools.islice(fh, start - 1, lines[1])
+                ]
+            end = start + len(window) - 1
+            if not numbers:
+                return "\n".join(window)
+            width = len(str(end))
+            out = [f"[{path}] lines {start}-{end}"]
+            for off, ln in enumerate(window):
+                out.append(f"{start + off:>{width}}| {ln}")
+            return "\n".join(out)
+        # Whole-file read — guarded against giant files.
+        all_lines = self._read_file_lines(resolved)
         total = len(all_lines)
-        start, end = (1, total) if lines is None else (max(1, lines[0]), min(total, lines[1]))
-        width = len(str(end))
-        out = [f"[{path}] lines {start}-{end} of {total}"]
-        for i in range(start, end + 1):
+        if not numbers:
+            return "\n".join(all_lines)
+        width = len(str(total))
+        out = [f"[{path}] lines 1-{total} of {total}"]
+        for i in range(1, total + 1):
             out.append(f"{i:>{width}}| {all_lines[i - 1]}")
         return "\n".join(out)
 
@@ -192,14 +247,12 @@ class ShellTools3(Skill):
         resolved = self._resolve(path)
         if not resolved.is_file():
             raise FileNotFoundError(f"File not found: {path}")
-        file_lines = tuple(resolved.read_text(errors="replace").splitlines())
+        file_lines = self._read_file_lines(resolved)
         total = len(file_lines)
         s = max(1, start)
         e = min(total, end)
         # Byte span of the region (start of line s .. end of line e), for replace(region.span, ...).
-        raw = resolved.read_bytes()
-        text = raw.decode(errors="replace")
-        byte_start = sum(len(line) + 1 for line in text.split("\n")[: s - 1])
+        byte_start = sum(len(line.encode()) + 1 for line in file_lines[: s - 1])
         region_text = "\n".join(file_lines[s - 1 : e])
         return Match(
             path=path,
@@ -410,6 +463,24 @@ class ShellTools3(Skill):
         p = Path(path)
         return p if p.is_absolute() else (self._session.cwd / p)
 
+    def _read_file_lines(self, resolved: Path) -> tuple[str, ...]:
+        """Load a whole file as lines for anchoring — with a large-file guard.
+
+        Files over ``_MAX_ANCHOR_BYTES`` are refused (loading them whole into a
+        Match would blow up memory). The error names the streaming escape hatch.
+        """
+        size = resolved.stat().st_size
+        if size > self._max_anchor_bytes:
+            mb = size // 1_000_000
+            limit = self._max_anchor_bytes // 1_000_000
+            raise ValueError(
+                f"{resolved.name} is ~{mb} MB — too large to anchor as a Match "
+                f"(limit {limit} MB). For big files: search with rg(...).collect() "
+                f"(streams, no whole-file load), or read a bounded window with "
+                f"read(path, lines=(a, b))."
+            )
+        return tuple(resolved.read_text(errors="replace").splitlines())
+
 
 class _MatchStream:
     """Wraps a pyp rg Stream. Delegates transforms/sinks, adds ``.matches()``."""
@@ -502,7 +573,7 @@ class _MatchStream:
             abs_off = data["absolute_offset"]
             if mpath not in file_cache:
                 resolved = self._shell._resolve(mpath)
-                file_cache[mpath] = tuple(resolved.read_text(errors="replace").splitlines())
+                file_cache[mpath] = self._shell._read_file_lines(resolved)
             for sm in data.get("submatches", []):
                 col = sm["start"] + 1
                 out.append(
