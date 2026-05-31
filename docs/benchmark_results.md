@@ -67,3 +67,18 @@ the real bug was the `openai/` model-name prefix (HTTP 401 vs 200).
 
 Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_colossus.sh`
 + `build_venv_tarballs.sh`. See `util/harbor/README.md`.
+
+
+## Complete results matrix (final)
+
+| Benchmark | Agent | sonnet | opus | ultra |
+|-----------|-------|--------|------|-------|
+| TB1 (241) | baseline | 45.7% | **63.4%** | 46.2% |
+| TB1 (241) | specialized | 48.9% | 61.2% | 38.5% |
+| TB1 (241) | react | 40.5% | 27.4% | 38.9% |
+| TB2 (89)  | baseline | 13.9% | 75.9%* | 50.9%* |
+| SWEBench (500) | swebench/todo | 67.9%* | **75.4%** | 60.2% |
+
+\* TB2 over the scored subset (heavy QEMU/build tasks inflate infra counts);
+SWEBench sonnet partial (251/500). All other cells are full runs. opus is the
+strongest model across all three benchmarks.
