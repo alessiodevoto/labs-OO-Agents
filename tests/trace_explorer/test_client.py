@@ -4,6 +4,7 @@
 
 from unittest.mock import patch
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -213,3 +214,24 @@ async def test_client_repr():
     client = TraceExplorerClient("http://localhost:5001", "my-session")
     assert "localhost:5001" in repr(client)
     assert "my-session" in repr(client)
+
+
+@pytest.mark.asyncio
+async def test_client_bypasses_env_proxy(monkeypatch):
+    """A remote viewer must be reached directly even when HTTP(S)_PROXY is set.
+
+    Without trust_env=False the request would be routed through the env proxy
+    (the sandbox proxy), which times out against internal viewers. We assert the
+    transport actually chosen for the viewer URL is the client's direct
+    transport, not a proxy mount.
+    """
+    monkeypatch.setenv("HTTP_PROXY", "http://blackhole.invalid:3128")
+    monkeypatch.setenv("HTTPS_PROXY", "http://blackhole.invalid:3128")
+
+    client = TraceExplorerClient("http://viewer.internal:5001", "test-session")
+
+    async with httpx.AsyncClient(timeout=client._timeout, trust_env=False) as h:
+        url = httpx.URL("http://viewer.internal:5001/api/explorer/overview")
+        assert h._transport_for_url(url) is h._transport, (
+            "viewer request must go direct, not through the env proxy"
+        )
