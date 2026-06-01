@@ -52,6 +52,33 @@ appends a `Signed-off-by` line to your commit message:
 Signed-off-by: Jane Smith <jane.smith@example.com>
 ```
 
+## How to contribute
+
+This repository is the public, open-source home of NeMo OO Agents. Development is
+maintained by the NVIDIA team, and external contributions are welcomed through the
+standard pull-request flow.
+
+**1.** **Fork** this repository and create a topic branch for your change.
+
+**2.** **Make your change** with tests where applicable. Keep the change focused.
+
+**3.** **Sign off every commit** with `git commit -s` (see the DCO section above) — PRs
+without a `Signed-off-by` line on each commit cannot be merged.
+
+**4.** **Open a pull request** against the default branch. Describe the motivation and
+what you changed.
+
+**5.** **Automated checks run on your PR**: DCO sign-off verification, license/notice
+checks, linting, and the test suite. Please get these green.
+
+**6.** **A maintainer reviews and lands your change.** Maintainers reconcile incoming
+contributions with NVIDIA's internal development and IP review before merging; once
+merged, your change is published here and your authorship and sign-off are preserved
+in the history.
+
+For substantial features, open an issue first to discuss the design before investing
+in a large PR.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the
