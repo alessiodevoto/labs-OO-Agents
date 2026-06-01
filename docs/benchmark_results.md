@@ -68,10 +68,10 @@ over all 89 tasks are lower.
 | Model | Pass rate | Scored | Infra | Tokens (in / out) |
 |-------|-----------|--------|-------|-------------------|
 | **opus** | **75.4% (376/499)** | 499/500 | 1 | 470M / 3.9M |
-| sonnet | 67.9% (169/249)* | 251/500 | 2 | 395M / 2.7M |
+| sonnet | 66.5% (330/496) | 496/500 | 4 | 303M / 2.2M |
 | ultra | 60.2% (301/500) | 500/500 | 0 | 1.65B+ / 11.2M+ |
 
-\*sonnet is partial (251/500) — ipp2-2047 hung mid-run. **ultra was completed to
+sonnet was completed to **496/500** by resuming the 245 unscored tasks via the same `DatasetConfig.task_names` recipe. **ultra was completed to
 500/500** by resuming the 93 unscored tasks via `DatasetConfig.task_names`
 filtering after recovering the machine with a Colossus SNMP reboot. (sonnet's
 remaining ~249 can be finished the same way if needed.)
@@ -120,7 +120,7 @@ Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_col
 | TB1 (241) | specialized | 48.9% | 61.5% | 38.5% |
 | TB1 (241) | react | 40.5% | 27.4% | 38.9% |
 | TB2 (89)  | baseline | 40.4% | **64.4%** | 34.8% |
-| SWEBench (500) | swebench/todo | 67.9%* | **75.4%** | 60.2% |
+| SWEBench (500) | swebench/todo | 66.5% | **75.4%** | 60.2% |
 
 \* SWEBench sonnet partial (251/500); TB2 numbers are honest full-89 runs (cp312 fix);
 SWEBench sonnet partial (251/500). All other cells are full runs. opus is the
