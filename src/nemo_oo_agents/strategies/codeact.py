@@ -390,6 +390,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         # Separate into categories
         modules = []
         types_defined = []
+        functions_defined = []
         imported_items = []
 
         for name, obj in context.items():
@@ -408,7 +409,11 @@ Standard Python builtins and agent instance (`self`) are available."""
                 else:
                     imported_items.append(name)
             elif callable(obj):
-                imported_items.append(name)
+                obj_module = getattr(obj, "__module__", None)
+                if obj_module == agent_module.__name__:
+                    functions_defined.append(name)
+                else:
+                    imported_items.append(name)
 
         # Build documentation. The module / types / imports lists come
         # first, immediately under the heading — the single most useful
@@ -426,6 +431,12 @@ Standard Python builtins and agent instance (`self`) are available."""
             )
             parts.append(
                 f"  Tip: Use `doc({types_defined[0]})` to inspect fields before constructing"
+            )
+
+        if functions_defined:
+            parts.append(
+                "**Available functions** (defined in agent module): "
+                f"{', '.join(sorted(functions_defined))}"
             )
 
         if imported_items:
@@ -2148,13 +2159,19 @@ Standard Python builtins and agent instance (`self`) are available."""
                     context[name] = obj
                     continue
 
-        # 2. Module-level type definitions (Pydantic models, dataclasses, etc.)
+        # 2. Module-level definitions: classes AND functions (incl. standalone
+        #    @strategy wrappers) defined in the agent's own module. Visible by
+        #    default — filter_module_globals has already dropped names hidden
+        #    via @hidden, Annotated[..., hidden], or `with hidden:`. Functions
+        #    were previously excluded here (only `type` instances were kept),
+        #    so a module-level helper or standalone generation function was
+        #    invisible to the agent and absent from exec_globals.
         for name, obj in filtered.items():
-            # Include classes defined in this module
-            if isinstance(obj, type):
-                obj_module = getattr(obj, "__module__", None)
-                if obj_module == agent_module.__name__:
-                    context[name] = obj
+            if name in context:
+                continue
+            obj_module = getattr(obj, "__module__", None)
+            if obj_module == agent_module.__name__ and callable(obj):
+                context[name] = obj
 
         # 3. Auto-import classes for skill/tool instances found on the agent
         if agent is not None:
