@@ -8,22 +8,46 @@ Models: `sonnet` = bedrock-claude-sonnet-4-5-v1, `opus` = bedrock-claude-opus-4-
 
 ## Terminal Bench 1.0 (241 tasks, full 3×3 matrix)
 
-Pass rate (passed / scored; ~30–60 infra exceptions per run from py3.6-base tasks
-that fail agent setup — the same set across agents):
+Pass rate (passed / scored). **react is the baseline-to-beat**; the Δ column shows
+how each agent compares to react on the same model:
 
-| Agent | sonnet | opus | ultra |
-|-------|--------|------|-------|
-| baseline (CodeAct) | 45.7% (85/186) | **63.4% (135/213)** | 46.2% (96/208) |
-| specialized (terminal-bench-1) | 48.9% (88/180) | 61.5% (131/213) | 38.5% (80/208) |
-| react | 40.5% (83/205) | 27.4% (58/212) | 38.9% (81/208) |
+| Agent | sonnet | Δ vs react | opus | Δ vs react | ultra | Δ vs react | infra |
+|-------|--------|-----------:|------|-----------:|-------|-----------:|------:|
+| baseline (CodeAct) | 45.7% (85/186) | +5.2 | **63.4% (135/213)** | **+36.0** | 46.2% (96/208) | +7.3 | 28–56 |
+| specialized (terminal-bench-1) | 48.9% (88/180) | +8.4 | 61.5% (131/213) | +34.1 | 38.5% (80/208) | −0.4 | 28–61 |
+| react (baseline-to-beat) | 40.5% (83/205) | — | 27.4% (58/212) | — | 38.9% (81/208) | — | 29–36 |
 
-**Best: baseline × opus = 63.4%.** opus dominates; ultra mid-pack; the specialized
-agent helps sonnet (+3pp) but the baseline CodeAct agent is strongest with opus.
+**Best: baseline × opus = 63.4% (+36.0pp over react).** Both the baseline CodeAct
+and the specialized agent beat react on sonnet and opus by a wide margin; on opus
+the gap is huge (react collapses to 27.4%). On ultra the picture is mixed — baseline
+beats react (+7.3) but the specialized agent is flat (−0.4).
 
-
-> **Infra exceptions (TB1):** 28-61 per run, consistent across all three models. These are **task timeouts** on heavy build/install tasks (kernel/initramfs builds, install-windows-xp, leelachess0-pytorch-conversion, mteb-eval, magsac-install) that exceed harbor's per-task wall-clock limit. This is a *different* failure mode from TB2's infra (the cp312 `python3: command not found` / exit-127 bug, since fixed): verified `python3-127=0` across all TB1 runs -- the agent runs fine, the task is just slow.
+> **Infra exceptions (TB1) — root cause (corrected):** 28–61 per run. The dominant
+> cause (~70–85%) is **agent-setup failures**, *not* task timeouts. TB1 task
+> containers ship varied Python versions (`cp36`, `cp310`, `cp311`, `cp312`,
+> `cp313`). The agent-setup fast-path only had a venv tarball for `cp312` (with a
+> `cp313`→`cp312` symlink), so `cp311`/`cp310`/`cp36` containers fell to a slow path
+> that pip-installs `cp312`-only wheels → ABI mismatch → `exit 1/2/127` during setup.
+> This is the **same family** as the TB2 cp312 bug, just broader. Only **~1 task per
+> run** is a genuine agent solve-timeout; ~5 are task-container exit-2; ~2–6 are
+> verifier timeouts. **Doubling the per-task timeout would not fix the bulk** — the
+> setup failures fail in seconds. **Fix** (harbor `a61ddaa4`): on x86_64, use the
+> `/opt/harbor/cpython312` overlay interpreter for PYVER (mirroring the existing
+> aarch64 path) so *every* container resolves to `cp312` and the fast-path always
+> wins. Validated: PYVER → `cp312` on x86_64 with the overlay present. The ~20–50
+> setup-failure tasks per run were re-run with this fix to confirm recovery.
+>
+> **Validation (baseline-opus, the 28 infra tasks):** before the fix all 28 were
+> infra (0 scored); after the fix **17 scored / 6 passed** and **0 cp311-wheel-mismatch
+> setup failures remained** (was 13). The residual ~11 failures are a *different* class —
+> ~5 task-container-exit-2 (the task's own image fails to start, unrelated to agent
+> setup), ~1 agent solve-timeout, ~1 verifier-timeout, and a few exit-1 inside the agent
+> *solve* (not setup). So the fix recovers the bulk of TB1 infra; the remainder is not the
+> Python-version bug and would not be fixed by a longer timeout either.
 
 ## Terminal Bench 2.0 (89 tasks, baseline agent)
+
+> react/specialized were not run on TB2 — only the baseline agent. The react-vs-baseline comparison is TB1-only.
 
 | Model | Pass rate | Scored | Infra |
 |-------|-----------|--------|-------|
@@ -38,6 +62,8 @@ failing tasks were disproportionately the harder ones, so the honest pass rates
 over all 89 tasks are lower.
 
 ## SWE-bench Verified (500 tasks, swebench/todo agent, Docker)
+
+> SWE-bench uses the dedicated `swebench/todo` agent for all models — there is no react/baseline split here, so no Δ-vs-react column.
 
 | Model | Pass rate | Scored | Infra | Tokens (in / out) |
 |-------|-----------|--------|-------|-------------------|
@@ -70,6 +96,17 @@ Three silent SWE-bench-Docker bugs (each produced reward 0 for every task):
 The same cp312-PATH bug caused TB2's `python3: command not found` (exit 127)
 infra exceptions. The ultra runs were initially misdiagnosed as "no key access";
 the real bug was the `openai/` model-name prefix (HTTP 401 vs 200).
+
+4. **TB1 agent-setup Python-version mismatch** (harbor `a61ddaa4`) — TB1 task
+   containers ship varied Python (`cp36`/`cp310`/`cp311`/`cp312`/`cp313`); the
+   x86_64 agent-setup path used the *container* python for `PYVER`, so non-cp312
+   containers found no matching venv tarball and fell to a slow path that
+   pip-installs cp312-only wheels → ABI mismatch → `exit 1/2/127` during setup
+   (~20–50 tasks/run, ~70–85% of TB1 infra). Fix: on x86_64 use the
+   `/opt/harbor/cpython312` overlay interpreter for `PYVER` (mirroring the
+   aarch64 path), so every container resolves to `cp312` and the fast-path tarball
+   always applies. This is *not* a timeout — doubling the per-task timeout would
+   not recover these (they fail in seconds).
 
 Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_colossus.sh`
 + `build_venv_tarballs.sh`. See `util/harbor/README.md`.
