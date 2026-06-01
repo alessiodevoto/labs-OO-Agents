@@ -225,6 +225,54 @@ class AfterTurn(EventBase):  # type: ignore[misc]
     )
 
 
+class LLMCallStart(EventBase):  # type: ignore[misc]
+    """Emitted immediately before the LLM round-trip (``acall()``) in
+    ``runtime.generate()``.
+
+    Observable via ``event_manager.on("LLMCallStart", fn)`` — fire-and-forget,
+    for telemetry / activity surfacing (e.g. the TUI status line showing
+    "waiting on model"). Pairs 1:1 with a later ``LLMCallEnd`` carrying the
+    same ``generation_id`` + ``turn_number``.
+
+    Uses Role.RUNTIME_EVENT — never recorded in conversation events, never
+    shown to the model.
+    """
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    method_name: Annotated[str, Field(description="Name of the method being generated")]
+    strategy: Annotated[str, Field(description="Strategy name")]
+    generation_id: Annotated[str, Field(description="Generation session ID")]
+    turn_number: Annotated[
+        int, Field(description="Turn number within this generation session (1, 2, 3, ...)")
+    ]
+
+
+class LLMCallEnd(EventBase):  # type: ignore[misc]
+    """Emitted immediately after the LLM round-trip returns (or fails) in
+    ``runtime.generate()``. Symmetric with ``LLMCallStart``.
+
+    Observable via ``event_manager.on("LLMCallEnd", fn)``. ``success`` is
+    False (and ``exception_type`` set) when ``acall()`` raised — the event
+    still fires so observers can clear their "waiting on model" state.
+
+    Uses Role.RUNTIME_EVENT — never recorded in conversation events.
+    """
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    method_name: Annotated[str, Field(description="Name of the method being generated")]
+    strategy: Annotated[str, Field(description="Strategy name")]
+    generation_id: Annotated[str, Field(description="Generation session ID")]
+    turn_number: Annotated[
+        int, Field(description="Turn number within this generation session (1, 2, 3, ...)")
+    ]
+    success: Annotated[bool, Field(description="True if the LLM call returned normally")] = True
+    exception_type: str | None = Field(
+        default=None, description="Exception type name if the call raised"
+    )
+
+
 class Notification(EventBase):  # type: ignore[misc]
     """Generic "something happened" signal rendered into the LLM context.
 

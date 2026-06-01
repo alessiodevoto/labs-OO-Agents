@@ -35,6 +35,8 @@ def _reset_module_state():
 
     dh._pending_llm_calls.clear()
     dh._llm_call_counter = 0
+    dh._pending_code_execs.clear()
+    dh._code_exec_counter = 0
     dh._handler_installed = False
     dh._dump_dir = Path(".")
 
@@ -663,3 +665,177 @@ class TestDumpDebugInfo:
         out = io.StringIO()
         dump_debug_info(out)
         assert "REGISTERED CELL CODE" in out.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Code-exec phase tracking + get_activity (/activity slash command)
+# ---------------------------------------------------------------------------
+
+
+class TestCodeExecTracking:
+    def setup_method(self):
+        _reset_module_state()
+
+    def teardown_method(self):
+        _reset_module_state()
+
+    def test_register_unregister_code_exec(self):
+        """register/unregister add and remove a code-exec entry with a preview."""
+        from nemo_oo_agents.runtime.debug_handler import (
+            get_pending_code_execs,
+            register_code_exec,
+            unregister_code_exec,
+        )
+
+        assert get_pending_code_execs() == []
+        exec_id = register_code_exec("x = 1\nprint(x)")
+        pending = get_pending_code_execs()
+        assert len(pending) == 1
+        assert pending[0]["exec_id"] == exec_id
+        assert pending[0]["preview"] == "x = 1"
+        assert pending[0]["elapsed"] >= 0
+        unregister_code_exec(exec_id)
+        assert get_pending_code_execs() == []
+
+    def test_code_exec_context_clears_on_exit(self):
+        """code_exec_context registers on enter and clears on normal exit."""
+        from nemo_oo_agents.runtime.debug_handler import (
+            code_exec_context,
+            get_pending_code_execs,
+        )
+
+        with code_exec_context("a = 2"):
+            assert len(get_pending_code_execs()) == 1
+        assert get_pending_code_execs() == []
+
+    def test_code_exec_context_clears_on_exception(self):
+        """code_exec_context clears the entry even if the body raises."""
+        from nemo_oo_agents.runtime.debug_handler import (
+            code_exec_context,
+            get_pending_code_execs,
+        )
+
+        with pytest.raises(ValueError):
+            with code_exec_context("boom"):
+                assert len(get_pending_code_execs()) == 1
+                raise ValueError("boom")
+        assert get_pending_code_execs() == []
+
+    def test_preview_blank_for_empty_code(self):
+        """Empty or None code yields a blank preview, never an index error."""
+        from nemo_oo_agents.runtime.debug_handler import (
+            get_pending_code_execs,
+            register_code_exec,
+        )
+
+        register_code_exec("")
+        assert get_pending_code_execs()[0]["preview"] == ""
+        register_code_exec(None)
+        assert get_pending_code_execs()[1]["preview"] == ""
+
+
+class TestGetActivity:
+    def setup_method(self):
+        _reset_module_state()
+
+    def teardown_method(self):
+        _reset_module_state()
+
+    def test_idle_when_nothing_in_flight(self):
+        """get_activity reports idle with empty lists when nothing runs."""
+        from nemo_oo_agents.runtime.debug_handler import get_activity
+
+        activity = get_activity()
+        assert activity["phase"] == "idle"
+        assert activity["code_execs"] == []
+        assert activity["llm_calls"] == []
+
+    def test_executing_python_phase(self):
+        """An open code-exec context makes get_activity report executing_python."""
+        from nemo_oo_agents.runtime.debug_handler import code_exec_context, get_activity
+
+        with code_exec_context("y = 3"):
+            activity = get_activity()
+            assert activity["phase"] == "executing_python"
+            assert len(activity["code_execs"]) == 1
+
+    def test_waiting_llm_phase(self):
+        """An in-flight LLM call makes get_activity report waiting_llm."""
+        from nemo_oo_agents.runtime.debug_handler import get_activity, llm_call_context
+
+        with llm_call_context(model="gpt-test"):
+            activity = get_activity()
+            assert activity["phase"] == "waiting_llm"
+            assert activity["llm_calls"][0]["model"] == "gpt-test"
+
+    def test_python_wins_when_llm_call_made_from_cell(self):
+        """A cell that is itself blocked on an LLM call still reports executing_python."""
+        from nemo_oo_agents.runtime.debug_handler import (
+            code_exec_context,
+            get_activity,
+            llm_call_context,
+        )
+
+        with code_exec_context("z = 4"):
+            with llm_call_context(model="gpt-test"):
+                activity = get_activity()
+                # In a code cell that is itself blocked on the model — the cell
+                # is what the agent is "running", so executing_python wins.
+                assert activity["phase"] == "executing_python"
+                assert len(activity["code_execs"]) == 1
+                assert len(activity["llm_calls"]) == 1
+
+
+# --- Event-driven activity tracking via LLMCallStart/LLMCallEnd "on" hooks ---
+
+
+def test_attach_activity_tracking_reflects_llm_calls():
+    from nemo_oo_agents.events import LLMCallEnd, LLMCallStart
+    from nemo_oo_agents.runtime.debug_handler import (
+        attach_activity_tracking,
+        get_activity,
+    )
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
+    em = EventManager()
+    unsub = attach_activity_tracking(em)
+    try:
+        assert get_activity()["phase"] == "idle"
+
+        em.add(
+            LLMCallStart(
+                method_name="handle", strategy="CodeAct", generation_id="g", turn_number=1
+            ),
+            record=False,
+        )
+        act = get_activity()
+        assert act["phase"] == "waiting_llm"
+        assert len(act["llm_calls"]) == 1
+
+        em.add(
+            LLMCallEnd(method_name="handle", strategy="CodeAct", generation_id="g", turn_number=1),
+            record=False,
+        )
+        assert get_activity()["phase"] == "idle"
+    finally:
+        unsub()
+
+
+def test_attach_activity_tracking_clears_on_unsubscribe():
+    from nemo_oo_agents.events import LLMCallStart
+    from nemo_oo_agents.runtime.debug_handler import (
+        attach_activity_tracking,
+        get_activity,
+    )
+    from nemo_oo_agents.runtime.event_manager import EventManager
+
+    em = EventManager()
+    unsub = attach_activity_tracking(em)
+    em.add(
+        LLMCallStart(method_name="m", strategy="s", generation_id="g2", turn_number=1),
+        record=False,
+    )
+    assert get_activity()["phase"] == "waiting_llm"
+    # Unsubscribing must clear this tracker's still-pending registrations.
+    unsub()
+    assert get_activity()["phase"] == "idle"

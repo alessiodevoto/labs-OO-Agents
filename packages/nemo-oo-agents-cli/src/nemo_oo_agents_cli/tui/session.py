@@ -329,6 +329,7 @@ class Session:
         # nested closures inside ``run()``.
         self._app: TUIApplication | None = None
         self._renderer: AgentEventRenderer | None = None
+        self._unsub_activity: Callable[[], None] | None = None
         self._emit_console: RichConsole | None = None
         self._loud_handler_reentrant: bool = False
         # Own ShellTools for bang (!) commands — avoids cross-loop issues
@@ -543,6 +544,17 @@ class Session:
         # in the finally.
         try:
             self._renderer.attach()
+            # Event-driven activity tracking: LLMCallStart/LLMCallEnd "on"
+            # hooks feed get_activity() (and /activity) without inferring
+            # model-wait state from cell boundaries.
+            try:
+                from nemo_oo_agents.runtime.debug_handler import attach_activity_tracking
+
+                em = getattr(self.agent, "event_manager", None)
+                if em is not None:
+                    self._unsub_activity = attach_activity_tracking(em)
+            except Exception:
+                logger.debug("attach_activity_tracking failed", exc_info=True)
             await self._app.run_async()
         except (KeyboardInterrupt, EOFError):
             await self.frontend.render(
@@ -558,6 +570,12 @@ class Session:
             #    when the loop closes.
             # 3. Diagnostics, frontend close, snapshot, session close.
             self._renderer.detach()
+            if self._unsub_activity is not None:
+                try:
+                    self._unsub_activity()
+                except Exception:
+                    logger.debug("detach activity tracking failed", exc_info=True)
+                self._unsub_activity = None
             # Shut down spawned jobs before cancelling background tasks
             # so generator finally blocks run cleanly.
             qm = getattr(self.agent, "queue_manager", None)

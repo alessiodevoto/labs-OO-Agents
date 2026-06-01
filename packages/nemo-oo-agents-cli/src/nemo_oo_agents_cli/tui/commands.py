@@ -2268,6 +2268,63 @@ class TimeTravelCommand(Command):
         return result
 
 
+class ActivityCommand(Command):
+    """Report what the agent is doing right now: executing Python, waiting on
+    an LLM call, or idle."""
+
+    @property
+    def name(self) -> str:
+        return "activity"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/activity": "Show what the agent is doing right now (python / LLM / idle)"}
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        try:
+            from nemo_oo_agents.runtime.debug_handler import get_activity
+        except ImportError:
+            return CommandResult.err("Activity tracking not available in this build.")
+
+        activity = get_activity()
+        phase = activity["phase"]
+        code_execs = activity["code_execs"]
+        llm_calls = activity["llm_calls"]
+
+        labels = {
+            "executing_python": "Executing Python",
+            "waiting_llm": "Waiting on LLM call",
+            "idle": "Idle",
+        }
+        headline = labels.get(phase, phase)
+
+        rows: list[list[str]] = [["Phase", headline]]
+        for ex in code_execs:
+            detail = ex.get("preview") or "(code cell)"
+            rows.append([f"  python ({ex['elapsed']:.1f}s)", detail])
+        for call in llm_calls:
+            model = call.get("model", "unknown")
+            rows.append([f"  llm ({call['elapsed']:.1f}s)", model])
+
+        if phase == "executing_python" and llm_calls:
+            footer = "Running a code cell that is itself blocked on an LLM call."
+        elif phase == "executing_python":
+            footer = "In a code cell — not waiting on the model."
+        elif phase == "waiting_llm":
+            footer = "Blocked waiting for the model to respond."
+        else:
+            footer = "Nothing in flight."
+
+        return CommandResult.ok(
+            TableOutput(
+                title="Agent Activity",
+                columns=["", ""],
+                rows=rows,
+                footer=footer,
+            )
+        )
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -2297,6 +2354,7 @@ class CommandRegistry:
         "time-travel": TimeTravelCommand,
         "trace-url": TraceUrlCommand,
         "toolbar": ToolbarCommand,
+        "activity": ActivityCommand,
     }
 
     def __init__(
