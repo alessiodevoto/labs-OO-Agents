@@ -29,7 +29,7 @@ environment:
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
     NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
-    OTLP_ENDPOINT: "http://z590-0252.ipp3a1.colossus.nvidia.com:5008/v1/traces"
+    OTLP_ENDPOINT: "${OTLP_ENDPOINT:-}"
     PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   mounts_json:
     - type: bind
