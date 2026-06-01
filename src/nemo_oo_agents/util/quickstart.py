@@ -12,7 +12,7 @@ from typing import Any
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents import Agent, strategy
+from nemo_oo_agents import Agent, hidden, strategy
 from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
 from nemo_oo_agents.unifiedllm.registry import get_llm_client
 
@@ -29,6 +29,10 @@ llm = get_llm_client(MODEL)
 
 # Decorator for running example entry points
 def autorun(func: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Coroutine[Any, Any, Any]]:
+    # Mark the entry point hidden BEFORE running so it never leaks into any
+    # agent's execution context as a callable tool (module-level functions are
+    # visible-by-default; the example `main()` is harness glue, not a tool).
+    hidden(func)
     print("\n\nEXAMPLE OUTPUT:")
     asyncio.run(func())
     return func

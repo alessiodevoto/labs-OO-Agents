@@ -178,3 +178,78 @@ class TestExecutionContextRendering:
             pytest.fail("No <execution_context> block found in system prompt")
         end = system_prompt.find("</execution_context>", start)
         return system_prompt[start : end + len("</execution_context>")]
+
+
+# ---------------------------------------------------------------------------
+# 4. Module-level functions defined in the agent's module are visible by
+#    default (regression: previously only `type` instances survived the
+#    extraction, so standalone @strategy functions and plain helpers were
+#    invisible to the agent and absent from exec_globals).
+# ---------------------------------------------------------------------------
+
+_MODULE_WITH_FUNCS = """\
+from typing import Literal
+from nemo_oo_agents import Agent, hidden, strategy
+from nemo_oo_agents.strategies import PredictStrategy
+
+Label = Literal["a", "b"]
+
+
+@strategy(PredictStrategy())
+async def classify_item(text: str) -> Label:
+    '''Classify the item.'''
+    ...
+
+
+def plain_helper(x: int) -> int:
+    return x + 1
+
+
+@hidden
+def secret_helper() -> int:
+    return 0
+
+
+class FuncAgent(Agent, llm=_llm):
+    async def run(self) -> str:
+        '''Run.'''
+        ...
+"""
+
+
+def _make_func_agent_in_fresh_module():
+    mod = types.ModuleType("_test_func_agent_module")
+    mod.__file__ = "<test>"
+    sys.modules[mod.__name__] = mod
+    mod.__dict__["_llm"] = _LLM
+    exec(compile(_MODULE_WITH_FUNCS, "<test>", "exec"), mod.__dict__)
+    agent = mod.FuncAgent()  # type: ignore[attr-defined]
+    return agent, mod
+
+
+class TestModuleLevelFunctionsVisible:
+    """Standalone @strategy functions and plain module-level helpers must be
+    surfaced to the agent (in exec_globals and the execution_context block),
+    while @hidden functions stay excluded."""
+
+    def test_local_functions_in_extracted_context(self):
+        agent, mod = _make_func_agent_in_fresh_module()
+        ctx = CodeActStrategy()._extract_module_context(mod, agent=agent)
+        assert "classify_item" in ctx, "standalone @strategy function not in exec context"
+        assert "plain_helper" in ctx, "plain module-level function not in exec context"
+        assert callable(ctx["classify_item"]) and callable(ctx["plain_helper"])
+
+    def test_hidden_function_excluded_from_context(self):
+        agent, mod = _make_func_agent_in_fresh_module()
+        ctx = CodeActStrategy()._extract_module_context(mod, agent=agent)
+        assert "secret_helper" not in ctx, "@hidden function leaked into exec context"
+
+    @pytest.mark.asyncio
+    async def test_local_functions_rendered_in_prompt(self):
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        assert "Available functions" in ec
+        assert "classify_item" in ec
+        assert "plain_helper" in ec
+        assert "secret_helper" not in ec
