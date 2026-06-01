@@ -1197,12 +1197,27 @@ def _extract_init_fields_from_method(init_method: Any, context_class: type) -> l
         List of FieldInfo for instance attributes found in this __init__
     """
     import ast
+    import linecache
+    import os.path
     import textwrap
+
+    # Guard: skip methods without retrievable Python source (C extensions,
+    # builtins, or methods with stale code objects from deleted modules).
+    # inspect.getsource can segfault on such methods in CPython 3.12.
+    if not callable(init_method):
+        return []
+    code = getattr(init_method, "__code__", None)
+    if code is None:
+        return []
+    if not code.co_filename or (
+        not os.path.isfile(code.co_filename) and not linecache.getlines(code.co_filename)
+    ):
+        return []
 
     # Get source code
     try:
         source = inspect.getsource(init_method)
-    except (OSError, TypeError):
+    except (OSError, TypeError, SyntaxError):
         return []
 
     # Dedent to handle indented class definitions (preserves relative indentation)
