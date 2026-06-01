@@ -324,6 +324,96 @@ find . -name reward.txt -exec cat {} \; | sort | uniq -c
 - Run `kinit` if using Kerberos auth
 
 
+## Benchmark campaign fixes (replication-critical)
+
+The TB1/TB2/SWEBench × sonnet/opus/ultra campaign surfaced a chain of stacked
+infra bugs. **Every one of these is now fixed in the committed code/configs** —
+this section documents them so a fresh machine reproduces the results without
+re-discovering them. If a from-scratch run shows reward 0 everywhere or a high
+infra-exception count, check these first.
+
+### 1. ultra model-name prefix: `nvidia/`, not `openai/`
+The nemotron ultra model is `nvidia/nvidia/nemotron-3-ultra-preview`. An
+`openai/` provider prefix (`openai/nvidia/nvidia/nemotron-3-ultra-preview`)
+is **rejected HTTP 401** by the inference gateway (fails the model-access
+check) — which looks identical to "key has no access". The correct name
+returns HTTP 200. Fixed in `llm_config_default.yaml`. Verify with:
+```bash
+. .env
+curl -s -X POST https://inference-api.nvidia.com/v1/chat/completions \
+  -H "Authorization: Bearer $NVIDIA_INTERNAL_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"aws/anthropic/bedrock-claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":3}'
+# 200 + echoed "model" = good. 401 "key not allowed" = wrong prefix/model.
+```
+Model versions used in the report: `opus` = `aws/anthropic/bedrock-claude-opus-4-6`
+(confirmed distinct from 4-5: 4-5 is rejected by this key), `sonnet` =
+`aws/anthropic/bedrock-claude-sonnet-4-5-v1`, `ultra` =
+`nvidia/nvidia/nemotron-3-ultra-preview`.
+
+### 2. SWEBench: run in Docker mode, not Apptainer
+SWEBench Verified is x86_64-only (496/500 instances in `USE_X86_PY`), and the
+Docker-mode harness avoids the Apptainer fakeroot/QEMU edge cases. Use the
+`*_docker.yaml` / `swebench_todo*.yaml` configs (`environment: {type: docker}`).
+
+### 3. cp312 PATH — `python3: command not found` / `Cannot import hatchling.build`
+Eval containers (SWEBench, TB2) ship conda **python3.11**; the agent-setup probe
+picked it (`PYVER=cp311`), found no matching venv tarball, and fell back to a
+pip editable install that fails. Symptom: reward 0 on *every* SWEBench task,
+or exit-127 `python3: command not found` infra exceptions on TB2 (~28/run).
+**Fix:** prepend `/opt/harbor/cpython312/bin` to the container `PATH` (env in
+the Docker configs). Verify the fix eliminated TB2's exit-127 failures by
+checking `python3-127` count is 0 in a run's exception files.
+
+### 4. `uv` must be in the overlay
+The SWEBench verifier's `tests/test.sh` runs `uv run parser.py`; if `uv` isn't
+on PATH the test fails (`uv: command not found`) → reward 0 even on solved
+tasks. Bundle `uv` into the overlay's `cpython312/bin`.
+
+### 5. Refresh the `installed-agent` overlay after agent-code changes
+The overlay's `.pth`-imported agent source is a *snapshot*. After pulling new
+agent code (e.g. a new `agent_type`), refresh `installed-agent` from the repo,
+or you get `Unknown agent_type: swebench/todo`.
+
+### 6. TB1 agent-setup Python-version mismatch (harbor `a61ddaa4`)
+**This is the dominant TB1 infra cause (~70–85%), not task timeouts.** TB1 task
+containers ship varied Python (`cp36`/`cp310`/`cp311`/`cp312`/`cp313`). The
+x86_64 agent-setup path used the *container* python for `PYVER`, so non-cp312
+containers found no venv tarball and pip-installed cp312-only wheels → ABI
+mismatch → `exit 1/2/127` during setup (~20–50 tasks/run). **Fix:** on x86_64,
+use the `/opt/harbor/cpython312` overlay interpreter for `PYVER` (mirroring the
+aarch64 path), so every container resolves to `cp312` and the fast-path tarball
+always applies. **Validation:** the 28 baseline-opus infra tasks (0 scored
+before) → 17 scored / 6 passed / 0 cp311-wheel failures after. Residual TB1
+failures are a *different* class (task-container exit-2, a few solve/verifier
+timeouts) and are **not** helped by a longer per-task timeout.
+
+### 7. LLM-provider config path
+`Unknown LLM provider` / `LLM Provider NOT provided`: harbor writes
+`llm_config.yaml` to `/installed-agent/nemo_oo_agents/`; set
+`NEMO_OO_LLM_CONFIG=/installed-agent/nemo_oo_agents/llm_config.yaml` in the
+config's `env`/`env_passthrough`, and make sure the model is listed in harbor's
+LLM-config string.
+
+### 8. Resuming a partial run (machine hung mid-benchmark)
+Harbor's `--job-name` resume goes idle (won't re-run unscored tasks). The
+working recipe is to **filter by task id**: compute the unscored task ids
+(all task ids minus those with a `verifier/reward.txt`), write a fresh config
+with `datasets[].task_names: [<unscored ids>]` into a *new* `jobs_dir`, and
+launch. Combine the two run dirs when scoring. This recipe was validated 3×
+(ultra, sonnet SWEBench resumes). For a hung Colossus machine, recover it with
+`colossus bm reboot --lease-id <id>` (SNMP power cycle) before resuming.
+
+### Machine-setup gotchas seen this campaign
+- **Docker group** — after `usermod -aG docker $USER`, the *current* shell
+  isn't in the group until re-login. Use `sg docker -c '<cmd>'` or `newgrp
+  docker` to run harbor in the same session, or the daemon socket gives
+  `permission denied`.
+- **dockerd not auto-started** — `sudo systemctl start docker` (and
+  `enable`) if a fresh machine has it inactive.
+- **harbor binary location** — harbor is installed in the run venv
+  (`<venv>/bin/harbor`); make sure it's on PATH or call it by full path.
+
+
 ## Writing a debug script for a new benchmark
 
 Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:

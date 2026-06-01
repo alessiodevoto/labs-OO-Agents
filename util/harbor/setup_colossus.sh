@@ -55,6 +55,17 @@ else
     echo "Docker already installed"
 fi
 
+# 5b. Ensure dockerd is running and enabled (fresh machines may have it inactive)
+if ! sudo systemctl is-active --quiet docker; then
+    echo "Starting docker daemon..."
+    sudo systemctl enable --now docker
+fi
+# If this shell isn't yet in the docker group, harbor must run under `sg docker`.
+if ! id -nG "$USER" | grep -qw docker; then
+    echo "NOTE: '$USER' is not yet in the docker group in THIS shell."
+    echo "      Run harbor under:  sg docker -c '<harbor command>'   (or re-login)."
+fi
+
 # 6. Install Apptainer if not present  
 if ! command -v apptainer &> /dev/null; then
     echo "Installing Apptainer..."
@@ -99,6 +110,45 @@ fi
 
 # 10. Source environment
 source .env 2>/dev/null || true
+
+
+# 11. Verify the benchmark campaign fixes are in place (see README "Benchmark campaign
+#     fixes (replication-critical)"). A from-scratch run that scores 0 everywhere or shows
+#     a high infra-exception count almost always means one of these regressed.
+echo ""
+echo "=== Verifying campaign fixes ==="
+
+# (a) ultra model-name prefix must be nvidia/, not openai/
+if grep -rq "openai/nvidia/nvidia/nemotron" packages/ util/harbor/ 2>/dev/null; then
+    echo "  [FAIL] found 'openai/nvidia/...' ultra prefix — should be 'nvidia/nvidia/...'"
+else
+    echo "  [ok] ultra model-name prefix"
+fi
+
+# (b) harbor x86_64 cp312-overlay setup fix (TB1 Python-version mismatch)
+HARBOR_SETUP=$(find ~/3p/harbor -path "*agents/installed/nemo_oo_agents.py" 2>/dev/null | head -1)
+if [ -n "$HARBOR_SETUP" ] && grep -q "elif \[ -x /opt/harbor/cpython312/bin/python3.12 \]" "$HARBOR_SETUP"; then
+    echo "  [ok] harbor x86_64 cp312-overlay setup fix present"
+else
+    echo "  [FAIL] harbor x86_64 cp312-overlay fix missing (TB1 will show ~20-50 agent-setup infra/run)"
+    echo "         Pull harbor branch feat/skip-editable-installs-with-pth (commit a61ddaa4+)."
+fi
+
+# (c) overlay ships the cp312 interpreter + venv tarball
+if [ -x ~/3p/harbor_bootstrap_overlay/opt/harbor/cpython312/bin/python3.12 ] \
+   && [ -f ~/3p/harbor_bootstrap_overlay/opt/harbor/nemo-venv-base-cp312-x86_64.tar.gz ]; then
+    echo "  [ok] overlay cpython312 + cp312 venv tarball"
+else
+    echo "  [WARN] overlay cpython312/venv-tarball not found — run build_bootstrap_overlay.sh + build_venv_tarballs.sh"
+fi
+
+# (d) uv bundled in overlay (SWEBench verifier needs it)
+if [ -x ~/3p/harbor_bootstrap_overlay/opt/harbor/cpython312/bin/uv ] \
+   || [ -f ~/3p/harbor_bootstrap_overlay/opt/harbor/uv ]; then
+    echo "  [ok] uv in overlay"
+else
+    echo "  [WARN] uv not found in overlay — SWEBench verifier 'uv run parser.py' will fail (reward 0)"
+fi
 
 echo ""
 echo "=== Setup Complete ==="
