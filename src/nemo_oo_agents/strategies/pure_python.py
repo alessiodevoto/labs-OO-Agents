@@ -775,14 +775,19 @@ class PurePythonStrategy(CompositeStrategy):
         # 4) Execute with session locals (includes pre-compiled helpers)
         execution_builtins = {**builtins, **session.session_locals}
 
+        # Track this execution so the /activity slash command can report that
+        # the agent is currently running a code cell (vs blocked on an LLM call).
+        from nemo_oo_agents.runtime.debug_handler import code_exec_context
+
         # Use iteration+1 for 1-indexed execution count (matches event emission after record_iteration)
-        return await runtime.execute_code(
-            code,
-            builtins=execution_builtins,
-            validate=True,
-            wrap_in_function=True,
-            execution_count=session.iteration + 1,
-        )
+        with code_exec_context(code):
+            return await runtime.execute_code(
+                code,
+                builtins=execution_builtins,
+                validate=True,
+                wrap_in_function=True,
+                execution_count=session.iteration + 1,
+            )
 
     def _is_task_complete(self, result: Any, runtime: RuntimeServices, call: "CurrentCall") -> bool:
         if result.has_return:

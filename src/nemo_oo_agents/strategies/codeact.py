@@ -2085,16 +2085,21 @@ Standard Python builtins and agent instance (`self`) are available."""
         # Execute with session locals
         execution_builtins = {**builtins, **session.session_locals}
 
-        return await runtime.execute_code(
-            code,
-            builtins=execution_builtins,
-            validate=True,
-            wrap_in_function=True,
-            timeout=self.config.cell_timeout,
-            tool_call_id=tool_call_id,
-            execution_count=session.iteration,
-            restrictions=self.config.restrictions,
-        )
+        # Track this execution so the /activity slash command can report that
+        # the agent is currently running a code cell (vs blocked on an LLM call).
+        from nemo_oo_agents.runtime.debug_handler import code_exec_context
+
+        with code_exec_context(code):
+            return await runtime.execute_code(
+                code,
+                builtins=execution_builtins,
+                validate=True,
+                wrap_in_function=True,
+                timeout=self.config.cell_timeout,
+                tool_call_id=tool_call_id,
+                execution_count=session.iteration,
+                restrictions=self.config.restrictions,
+            )
 
     def _format_error(
         self, error: Exception, code: str | None = None, *, line_offset: int = 0
