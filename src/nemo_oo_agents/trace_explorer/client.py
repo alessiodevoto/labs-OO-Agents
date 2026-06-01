@@ -58,7 +58,7 @@ class TraceExplorerClient:
         if params:
             all_params.update(params)
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with httpx.AsyncClient(timeout=self._timeout, trust_env=False) as client:
             try:
                 resp = await client.get(url, params=all_params)
                 if resp.status_code == 404:
