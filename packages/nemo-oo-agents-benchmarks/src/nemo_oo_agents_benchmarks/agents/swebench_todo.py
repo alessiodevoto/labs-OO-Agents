@@ -21,7 +21,7 @@ import textwrap
 from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agentdoc import hidden
+from nemo_oo_agents.agentdoc import doc, hidden
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.tools.shell_tools import ShellTools
@@ -108,7 +108,6 @@ class SWEBenchTodoAgent(
     Agent,
     llm=FakeLLMClient(),
     context={
-        "shell_tools": DynamicContext(expr="doc(type(self.shell))"),
         "todo_status": DynamicContext(expr="self.todo.status()"),
         "task": DynamicContext(expr="self.problem_statement"),
     },
@@ -126,7 +125,7 @@ class SWEBenchTodoAgent(
     ### Phase 1: Understand (spend at least 5-10 turns here)
 
     1a. **Explore**: List the tree and find source/test files (see the
-        `shell_tools` block for your shell's exact API). Identify where
+        `self.shell` block for your shell's exact API). Identify where
         source and tests live.
 
     1b. **Reproduce**: Run the specific failing test(s) to see the actual error.
@@ -146,7 +145,7 @@ class SWEBenchTodoAgent(
     ### Phase 2: Implement
 
     Fix ALL affected files. Don't just fix one file. Check imports, exports,
-    related methods. Use your shell's targeted-edit method (see the `shell_tools` block) for changes.
+    related methods. Use your shell's targeted-edit method (see the `self.shell` block) for changes.
     Validate after EACH edit — run the failing test immediately.
 
     ### Phase 3: Verify (DO NOT SKIP)
@@ -160,7 +159,7 @@ class SWEBenchTodoAgent(
 
     ```python
     # Shell operations (persistent session — cd/env survive). The exact method
-    # surface depends on the active shell variant — see the `shell_tools` block
+    # surface depends on the active shell variant — see the `self.shell` block
     # (doc(type(self.shell))). For ShellTools3 (default):
     r = await self.shell.run("pytest tests/test_foo.py -x")
     r = await self.shell.read("src/module.py", lines=(10, 60))      # numbered window
@@ -202,6 +201,7 @@ class SWEBenchTodoAgent(
         self.shell = _make_shell("/testbed")
         self.todo = TodoManager()
         self.problem_statement = ""
+        self.context_manager.set_static("self.shell", doc(type(self.shell)))
 
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner.
@@ -222,6 +222,7 @@ class SWEBenchTodoAgent(
 
         # Reset stateful tools so each evaluation starts clean.
         self.shell = _make_shell("/testbed")
+        self.context_manager.set_static("self.shell", doc(type(self.shell)))
         self.todo.clear()
 
         # Set context blocks unconditionally (clear stale values from prior runs).

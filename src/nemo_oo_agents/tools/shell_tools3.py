@@ -556,6 +556,15 @@ class _MatchStream:
         cmd = " ".join(_shlex.quote(a) for a in args)
 
         result = await self._shell.run(cmd)
+        # rg exits 0 (matches) or 1 (no matches) — both fine. Anything else (127 rg
+        # not installed, 2 usage/regex error) must surface, NOT be swallowed into an
+        # empty match list — a silent "[]" makes a missing binary look like "no
+        # matches" and sends the agent down a fruitless path (it did, in the bake-off).
+        if result.returncode not in (0, 1):
+            raise RuntimeError(
+                f"rg failed (exit {result.returncode}): {cmd}\n"
+                f"{(result.stderr or '').strip() or 'is ripgrep installed and on PATH?'}"
+            )
         out: list[Match] = []
         file_cache: dict[str, tuple[str, ...]] = {}
         for raw_line in result.stdout.splitlines():
