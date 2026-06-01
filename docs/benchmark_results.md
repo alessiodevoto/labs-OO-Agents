@@ -14,11 +14,14 @@ that fail agent setup — the same set across agents):
 | Agent | sonnet | opus | ultra |
 |-------|--------|------|-------|
 | baseline (CodeAct) | 45.7% (85/186) | **63.4% (135/213)** | 46.2% (96/208) |
-| specialized (terminal-bench-1) | 48.9% (88/180) | 61.2% (109/178) | 38.5% (80/208) |
+| specialized (terminal-bench-1) | 48.9% (88/180) | 61.5% (131/213) | 38.5% (80/208) |
 | react | 40.5% (83/205) | 27.4% (58/212) | 38.9% (81/208) |
 
 **Best: baseline × opus = 63.4%.** opus dominates; ultra mid-pack; the specialized
 agent helps sonnet (+3pp) but the baseline CodeAct agent is strongest with opus.
+
+
+> **Infra exceptions (TB1):** 28-61 per run, consistent across all three models. These are **task timeouts** on heavy build/install tasks (kernel/initramfs builds, install-windows-xp, leelachess0-pytorch-conversion, mteb-eval, magsac-install) that exceed harbor's per-task wall-clock limit. This is a *different* failure mode from TB2's infra (the cp312 `python3: command not found` / exit-127 bug, since fixed): verified `python3-127=0` across all TB1 runs -- the agent runs fine, the task is just slow.
 
 ## Terminal Bench 2.0 (89 tasks, baseline agent)
 
@@ -77,7 +80,7 @@ Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_col
 | Benchmark | Agent | sonnet | opus | ultra |
 |-----------|-------|--------|------|-------|
 | TB1 (241) | baseline | 45.7% | **63.4%** | 46.2% |
-| TB1 (241) | specialized | 48.9% | 61.2% | 38.5% |
+| TB1 (241) | specialized | 48.9% | 61.5% | 38.5% |
 | TB1 (241) | react | 40.5% | 27.4% | 38.9% |
 | TB2 (89)  | baseline | 40.4% | **64.4%** | 34.8% |
 | SWEBench (500) | swebench/todo | 67.9%* | **75.4%** | 60.2% |
