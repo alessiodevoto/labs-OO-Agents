@@ -40,7 +40,10 @@ from opentelemetry.sdk.trace.export import (
 )
 
 from nemo_oo_agents.tracing import exporters as exporters_mod
-from nemo_oo_agents.tracing._atif_exporter import AtifTrajectoryExporter
+
+# NOTE: The old OTel-based ``AtifTrajectoryExporter`` was removed when ATIF
+# export became event-subscriber-based; see
+# ``nemo_oo_agents.atif.install_atif`` / ``atif_scope``.
 from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks, end_active_spans
 from nemo_oo_agents.tracing._metadata import get_all_metadata
 from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
@@ -123,7 +126,6 @@ class NemoOOAgentsInstrumentor:
 _LOCAL_EXPORTER_TYPES: tuple[type, ...] = (
     OtlpJsonFileExporter,
     ConsoleSpanExporter,
-    AtifTrajectoryExporter,
 )
 
 
@@ -456,7 +458,6 @@ def shutdown_traces() -> None:
 # ---------------------------------------------------------------------------
 
 __all__ = [
-    "AtifTrajectoryExporter",
     "NemoOOAgentsInstrumentor",
     "OtlpJsonFileExporter",
     "OtlpJsonHttpExporter",

@@ -22,12 +22,25 @@ Design constraints:
   module so ``filter_module_globals`` exposes the caller's types to generated code.
 """
 
+import contextvars
 import inspect
 import types
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
 from uuid import uuid4
+
+# Set by ``install_atif`` to allow the standalone wrapper to cascade an active
+# ATIF exporter onto the fresh child agent's EventManager. Without this hook,
+# events fired inside a ``@strategy(...)`` function called from an instrumented
+# agent would silently bypass the parent's trajectory.
+#
+# Type-annotated as ``Any`` to avoid an import cycle: ``nemo_oo_agents.atif``
+# would import this module via ``standalone`` users, and adding a reverse
+# import here would create a cycle.
+_atif_exporter_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "_atif_exporter_var", default=None
+)
 
 # Cache of per-module _StandaloneAgent subclasses, keyed by module __name__.
 # Each subclass has __module__ set to the function's module so that
@@ -190,7 +203,29 @@ def create_standalone_wrapper(
         agent_cls = _get_agent_cls(func.__module__)
         agent = agent_cls(llm=resolved_llm, agent_id=_standalone_agent_id)
 
-        return await agent.runtime._execute_with_generation(_adapted, args, kwargs, func.__name__)
+        # ATIF exporter cascade: if an exporter is active in the surrounding
+        # context, attach it to this child agent's
+        # EventManager so the child's events flow into the parent's
+        # trajectory as a subagent_trajectories[] entry. Detach on exit.
+        _attached_exporter: Any = None
+        _candidate = _atif_exporter_var.get()
+        if _candidate is not None and hasattr(_candidate, "_attach_child"):
+            try:
+                _candidate._attach_child(agent.event_manager, child_agent_name=func.__name__)
+                _attached_exporter = _candidate
+            except Exception:  # noqa: BLE001
+                # Cascade is best-effort; never break the wrapped call.
+                _attached_exporter = None
+        try:
+            return await agent.runtime._execute_with_generation(
+                _adapted, args, kwargs, func.__name__
+            )
+        finally:
+            if _attached_exporter is not None:
+                try:
+                    _attached_exporter._detach_child(agent.event_manager)
+                except Exception:  # noqa: BLE001
+                    pass
 
     wrapper._standalone = True  # type: ignore[attr-defined]
     wrapper._needs_generation = True  # type: ignore[attr-defined]
