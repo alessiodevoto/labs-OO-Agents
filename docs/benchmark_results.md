@@ -122,6 +122,4 @@ Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_col
 | TB2 (89)  | baseline | 40.4% | **64.4%** | 34.8% |
 | SWEBench (500) | swebench/todo | 66.5% | **75.4%** | 60.2% |
 
-\* SWEBench sonnet partial (251/500); TB2 numbers are honest full-89 runs (cp312 fix);
-SWEBench sonnet partial (251/500). All other cells are full runs. opus is the
-strongest model across all three benchmarks.
+\* All SWEBench cells are full 500-task runs (sonnet completed via task-id resume: 330/496 = 66.5%, 4 infra). TB2 numbers are honest full-89 runs (cp312 fix). opus is the strongest model across all three benchmarks.
