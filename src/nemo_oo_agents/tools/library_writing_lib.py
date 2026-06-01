@@ -263,17 +263,22 @@ class SkillWriting(Skill):
             return str(combined)
 
         combined.written = True
-        self._do_reload(lib_name)
-        combined.loaded = True
+        status = await self._do_reload(lib_name)
+        combined.loaded = status.startswith("Reloaded")
+        if not combined.loaded:
+            combined.errors.append(status)
         return str(combined)
 
-    def _do_reload(self, lib_name: str) -> None:
-        """Hot-reload a library, using SkillRegistry if available."""
+    async def _do_reload(self, lib_name: str) -> str:
+        """Hot-reload a library, using SkillRegistry if available.
+
+        Returns the registry's status string (starts with "Reloaded" on success).
+        """
         if hasattr(self._agent, "skills"):
-            self._agent.skills.reload(f"local.{lib_name}")
-        else:
-            mgr = LibraryManager(self._agent, self._path)
-            mgr._reload(lib_name)
+            return await self._agent.skills.reload(f"local.{lib_name}")
+        mgr = LibraryManager(self._agent, self._path)
+        mgr._reload(lib_name)
+        return f"Reloaded local.{lib_name}"
 
     async def repo_tree(self, directory: str = ".") -> str:
         """Show the directory tree of the libraries root (or a subdirectory).

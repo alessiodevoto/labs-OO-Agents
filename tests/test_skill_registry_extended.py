@@ -204,15 +204,17 @@ class TestResolveDeps:
 
 
 class TestReload:
-    def test_reload_not_loaded_returns_error(self, registry):
+    @pytest.mark.asyncio
+    async def test_reload_not_loaded_returns_error(self, registry):
         """Reloading an unknown skill returns an error message."""
-        result = registry.reload("nemo.nonexistent")
+        result = await registry.reload("nemo.nonexistent")
         assert "not loaded" in result.lower() or "not in" in result.lower()
 
-    def test_reload_all_loaded(self, registry, agent):
+    @pytest.mark.asyncio
+    async def test_reload_all_loaded(self, registry, agent):
         """reload() without args reloads all loaded skills."""
         registry.register("nemo.a", FakeSkill())
         registry.register("nemo.b", FakeSkill())
-        result = registry.reload()
+        result = await registry.reload()
         # Should attempt to reload both — result is a string summary
         assert isinstance(result, str)

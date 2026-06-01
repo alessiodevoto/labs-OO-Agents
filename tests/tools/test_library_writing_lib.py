@@ -340,3 +340,60 @@ async def test_run_tests_passes(tmp_path: Path):
     )
     output = await libs.run_tests("rt_math")
     assert "passed" in output.lower(), output
+
+
+# ---------------------------------------------------------------------------
+# SkillWriting.reload — failure reporting
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reload_reports_registry_failure(tmp_path: Path):
+    """A reload that the registry rejects must NOT be reported as loaded."""
+
+    class _FailingSkills:
+        def discover_libs(self, path):
+            pass
+
+        def activate(self, patterns):
+            pass
+
+        async def reload(self, name: str) -> str:
+            return f"Reload failed for {name}: boom"
+
+    agent = _make_agent()
+    agent.skills = _FailingSkills()
+    libs = SkillWriting(agent, path=tmp_path)
+    await libs.create("rl_fail", DESCRIPTION)
+    (tmp_path / "rl_fail" / "rl_fail.py").write_text(SIMPLE_SOURCE)
+
+    result = await libs.reload("rl_fail")
+
+    assert "OK — written and loaded" not in result
+    assert "not loaded" in result.lower()
+    assert "boom" in result
+
+
+@pytest.mark.asyncio
+async def test_reload_reports_success(tmp_path: Path):
+    """A reload the registry accepts is reported as loaded."""
+
+    class _OkSkills:
+        def discover_libs(self, path):
+            pass
+
+        def activate(self, patterns):
+            pass
+
+        async def reload(self, name: str) -> str:
+            return f"Reloaded {name} (self.rl_ok)"
+
+    agent = _make_agent()
+    agent.skills = _OkSkills()
+    libs = SkillWriting(agent, path=tmp_path)
+    await libs.create("rl_ok", DESCRIPTION)
+    (tmp_path / "rl_ok" / "rl_ok.py").write_text(SIMPLE_SOURCE)
+
+    result = await libs.reload("rl_ok")
+
+    assert "OK — written and loaded" in result

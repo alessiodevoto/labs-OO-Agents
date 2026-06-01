@@ -4,6 +4,8 @@ import sys
 import types
 from unittest.mock import patch
 
+import pytest
+
 from nemo_oo_agents.skill import Skill, slash_command
 from nemo_oo_agents.skill_registry import SkillRegistry
 
@@ -71,7 +73,8 @@ def test_stale_slash_command_without_refresh():
     assert fresh_result == "v2: world"
 
 
-def test_skill_registry_reload_one_calls_refresh():
+@pytest.mark.asyncio
+async def test_skill_registry_reload_one_calls_refresh():
     """_reload_one should trigger refresh_skill_commands on the CommandRegistry.
 
     This test verifies the fix: after _reload_one replaces the skill instance,
@@ -116,7 +119,7 @@ def test_skill_registry_reload_one_calls_refresh():
         return mod_v2
 
     with patch("importlib.import_module", side_effect=fake_import):
-        result = registry._reload_one("local.test_hot_skill")
+        result = await registry._reload_one("local.test_hot_skill")
 
     # Cleanup
     sys.modules.pop("test_hot_skill", None)
