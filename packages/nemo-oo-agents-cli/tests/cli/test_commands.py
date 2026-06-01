@@ -1185,3 +1185,69 @@ async def test_user_skill_slash_command_case_insensitive(handler_with_skills):
     assert result.success is True
     assert result.agent_message is not None
     assert "Arguments: status" in result.agent_message
+
+
+# ============================================================================
+# refresh_skill_commands() — stale @slash_command deregistration
+# ============================================================================
+
+
+def test_refresh_skill_commands_removes_stale_entry(registry):
+    """A removed @slash_command no longer appears after refresh.
+
+    Reproduces the bug where reloading a skill that dropped a
+    @slash_command left the old command dispatching to a dead method.
+    """
+    from nemo_oo_agents_cli.tui.commands import _UserSkill
+
+    # Simulate a skill-method command registered from a previous load.
+    registry._user_skills["foo"] = _UserSkill(
+        name="foo",
+        body="",
+        description="legacy command",
+        _method=lambda: None,
+    )
+    assert registry.get_user_skill("foo") is not None
+
+    # Reloaded skill no longer exposes /foo.
+    registry._discover_skill_commands = lambda: {}
+    registry.refresh_skill_commands()
+
+    assert registry.get_user_skill("foo") is None
+
+
+def test_refresh_skill_commands_preserves_text_skill(registry):
+    """SKILL.md entries (_method=None) survive a refresh."""
+    from nemo_oo_agents_cli.tui.commands import _UserSkill
+
+    registry._user_skills["bar"] = _UserSkill(
+        name="bar",
+        body="text-skill body",
+        description="from SKILL.md",
+        _method=None,
+    )
+
+    registry._discover_skill_commands = lambda: {}
+    registry.refresh_skill_commands()
+
+    skill = registry.get_user_skill("bar")
+    assert skill is not None
+    assert skill.body == "text-skill body"
+
+
+def test_refresh_skill_commands_updates_to_fresh_set(registry):
+    """Refresh replaces stale skill-method commands with the freshly discovered set."""
+    from nemo_oo_agents_cli.tui.commands import _UserSkill
+
+    # Old command that should be dropped.
+    registry._user_skills["old"] = _UserSkill(
+        name="old", body="", description="", _method=lambda: None
+    )
+
+    # Discovery now returns a different command.
+    new_cmd = _UserSkill(name="new", body="", description="fresh", _method=lambda: None)
+    registry._discover_skill_commands = lambda: {"new": new_cmd}
+    registry.refresh_skill_commands()
+
+    assert registry.get_user_skill("old") is None
+    assert registry.get_user_skill("new") is not None

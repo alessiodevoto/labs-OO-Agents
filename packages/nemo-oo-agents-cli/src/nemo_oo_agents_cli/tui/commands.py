@@ -2482,11 +2482,14 @@ class CommandRegistry:
         """Re-discover @slash_command methods from agent skills (hot-reload support).
 
         Called by LibraryManager after reloading a library so newly-added
-        slash commands become available without TUI restart.
+        slash commands become available and removed ones are deregistered
+        without TUI restart.
         """
         fresh = self._discover_skill_commands()
-        for name, skill in fresh.items():
-            self._user_skills[name] = skill
+        # Remove stale @slash_command entries (those with _method set);
+        # preserve text-skill entries (SKILL.md, _method is None).
+        self._user_skills = {k: v for k, v in self._user_skills.items() if v._method is None}
+        self._user_skills.update(fresh)
 
     @classmethod
     def get_all_command_classes(cls) -> dict[str, type[Command]]:
