@@ -1,5 +1,5 @@
 # Harbor config for SWE-bench Verified — Docker mode, swebench/todo agent.
-# SMOKE A/B arm: SHELL_VARIANT=2 (10-task smoke) (shell-tools bake-off). Traces -> http://z590-0252.ipp3a1.colossus.nvidia.com:5008/traces
+# SMOKE A/B arm: SHELL_VARIANT=2 (10-task smoke) (shell-tools bake-off). Traces -> $OTLP_ENDPOINT
 #
 # Uses Docker mode (not Apptainer) for full network access inside containers.
 # Pre-built bootstrap overlay with .pth files for fast agent setup.
@@ -11,7 +11,7 @@
 #   4. Environment variables: NVIDIA_INTERNAL_API_KEY, NEMO_OO_AGENTS_GIT_URL
 #
 # Run:
-#   source .env && harbor run --config util/harbor/swebench_todo.yaml
+#   source .env && harbor run --config util/harbor/swebench_smoke_v2.yaml
 
 jobs_dir: ~/harbor_jobs/swebench_smoke_v2
 n_attempts: 1
@@ -31,7 +31,7 @@ environment:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
     NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
     SHELL_VARIANT: "2"
-    OTLP_ENDPOINT: "http://z590-0252.ipp3a1.colossus.nvidia.com:5008/traces"
+    OTLP_ENDPOINT: "${OTLP_ENDPOINT:-}"
   mounts_json:
     - type: bind
       source: ~/3p/harbor_bootstrap_overlay/opt/harbor
