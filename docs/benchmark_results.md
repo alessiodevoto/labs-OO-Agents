@@ -24,12 +24,15 @@ agent helps sonnet (+3pp) but the baseline CodeAct agent is strongest with opus.
 
 | Model | Pass rate | Scored | Infra |
 |-------|-----------|--------|-------|
-| sonnet | 13.9% (11/79) | 79 | 100 (pre-fix run) |
-| **opus** | **75.9% (44/58)** | 58 | 31 |
-| ultra | 50.9% (29/57) | 57 | 32 |
+| **opus** | **64.4% (56/87)** | 87/89 | 2 |
+| sonnet | 40.4% (36/89) | 89/89 | 0 |
+| ultra | 34.8% (31/89) | 89/89 | 0 |
 
-opus/ultra were re-run after fixing the LLM-provider + ultra-prefix bugs (both
-scored 0 before). TB2's high infra counts come from heavy QEMU/build tasks.
+These are clean full-89-task runs after the cp312-PATH fix (which eliminated the
+~28 `python3: command not found` infra failures). The earlier scored-subset rates
+(opus 75.9%, ultra 50.9%, sonnet 13.9%) were inflated by survivorship — the ~28
+failing tasks were disproportionately the harder ones, so the honest pass rates
+over all 89 tasks are lower.
 
 ## SWE-bench Verified (500 tasks, swebench/todo agent, Docker)
 
@@ -76,9 +79,9 @@ Reproducible on a fresh Colossus machine via `git pull` + `util/harbor/setup_col
 | TB1 (241) | baseline | 45.7% | **63.4%** | 46.2% |
 | TB1 (241) | specialized | 48.9% | 61.2% | 38.5% |
 | TB1 (241) | react | 40.5% | 27.4% | 38.9% |
-| TB2 (89)  | baseline | 13.9% | 75.9%* | 50.9%* |
+| TB2 (89)  | baseline | 40.4% | **64.4%** | 34.8% |
 | SWEBench (500) | swebench/todo | 67.9%* | **75.4%** | 60.2% |
 
-\* TB2 over the scored subset (heavy QEMU/build tasks inflate infra counts);
+\* SWEBench sonnet partial (251/500); TB2 numbers are honest full-89 runs (cp312 fix);
 SWEBench sonnet partial (251/500). All other cells are full runs. opus is the
 strongest model across all three benchmarks.
