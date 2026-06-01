@@ -7,15 +7,15 @@ A minimal viable runtime for agent orchestration with event sourcing,
 serialized execution, and complete transparency.
 """
 
-__version__ = "0.2.0"
+import logging as _logging
+
+from nemo_oo_agents._version import __version__
 
 # ---------------------------------------------------------------------------
 # Library logging: add NullHandler so applications that don't configure
 # logging never see "No handlers could be found for logger 'nemo_oo_agents'".
 # This is the only handler a library should ever add (see Python docs).
 # ---------------------------------------------------------------------------
-import logging as _logging
-
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
 # Export core types

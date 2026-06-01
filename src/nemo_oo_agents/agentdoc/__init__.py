@@ -25,6 +25,7 @@ import io
 import sys
 from typing import Annotated, Any
 
+from nemo_oo_agents._version import __version__ as __version__
 from nemo_oo_agents.agentdoc._docs import spec
 from nemo_oo_agents.agentdoc._pformat import _pformat
 from nemo_oo_agents.agentdoc._truncating_stream import (
@@ -34,8 +35,6 @@ from nemo_oo_agents.agentdoc._truncating_stream import (
 from nemo_oo_agents.agentdoc._visibility import hidden
 from nemo_oo_agents.agentdoc.core import doc
 from nemo_oo_agents.agentdoc.doc_config import DocConfig
-
-__version__ = "0.2.0"
 
 __submodules__ = ["ext", "introspect", "visibility", "adapters"]
 
