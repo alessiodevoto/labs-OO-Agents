@@ -43,7 +43,9 @@ from nemo_oo_agents.events import (
     ExecutionSignal,
     LLMCallEnd,
     LLMCallStart,
+    LLMComplete,
     LLMOutput,
+    SystemPrompt,
 )
 from nemo_oo_agents.runtime.context_vars import (
     _in_exec_middleware,
@@ -135,6 +137,58 @@ warnings.filterwarnings(
     message=r"invalid escape sequence",
     category=SyntaxWarning,
 )
+
+
+_TRAILING_CONTEXT_RE = _re.compile(r"^(.*?)(<context>.*?</context>)\s*\Z", _re.DOTALL)
+
+
+def _extract_trailing_context_envelope(messages: list[dict[str, Any]]) -> str:
+    """Pull the trailing ``<context>…</context>`` envelope from messages.
+
+    ``CachedBlockFormatter`` emits dynamic SYSTEM-role blocks as a
+    trailing ``role: "user"`` message that wraps them in a ``<context>``
+    envelope (see ``context_blocks/renderers/cached.py``). This helper
+    extracts that envelope so observability consumers can record
+    per-turn dynamic-block state on the corresponding agent step.
+
+    Returns the envelope (including the ``<context>…</context>`` tags)
+    when the last message is a user message whose content ends in such
+    an envelope; ``""`` otherwise. Idempotent if the envelope is missing
+    (e.g. agents without dynamic blocks).
+    """
+    if not messages:
+        return ""
+    last = messages[-1]
+    if not isinstance(last, dict) or last.get("role") != "user":
+        return ""
+    content = last.get("content", "")
+    if not isinstance(content, str):
+        return ""
+    m = _TRAILING_CONTEXT_RE.match(content)
+    return m.group(2) if m is not None else ""
+
+
+def _snapshot_llm_request(
+    event_manager: Any, messages: list[dict[str, Any]], generation_id: str
+) -> str:
+    """Snapshot the rendered request for observability consumers (e.g. ATIF).
+
+    Emits a :class:`SystemPrompt` event carrying ``messages[0].content``
+    and returns the trailing ``<context>…</context>`` envelope from the
+    same list. Called right after ``_build_messages`` so both reflect the
+    exact bytes about to be sent to the LLM; the returned envelope is
+    stamped onto the matching :class:`LLMComplete`. ``record=False`` keeps
+    the snapshot out of the LLM-visible event timeline.
+    """
+    if messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
+        content = messages[0].get("content", "")
+        if not isinstance(content, str):
+            content = str(content)
+        event_manager.add(
+            SystemPrompt(content=content, generation_id=generation_id),
+            record=False,
+        )
+    return _extract_trailing_context_envelope(messages)
 
 
 def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
@@ -744,6 +798,12 @@ class ActorRuntime:
 
         current_generation_id = self._generation_id_stack[-1] if self._generation_id_stack else None
 
+        # Snapshot system prompt + dynamic context from the rendered messages
+        # (consumed by the ATIF exporter). Captured here, at render time.
+        _dynamic_context = _snapshot_llm_request(
+            self.event_manager, messages, current_generation_id or ""
+        )
+
         # --- Middleware: llm_call -------------------------------------------
         # record_turn() first so turn_count reflects THIS turn (1-indexed) —
         # both the lifecycle events below and the metric read the same value.
@@ -847,6 +907,9 @@ class ActorRuntime:
                             tools=ctx.params.get("tools"),
                             max_output_tokens=_reduced,
                         )
+                        _dynamic_context = _snapshot_llm_request(
+                            self.event_manager, ctx.messages, current_generation_id or ""
+                        )
                         ctx.params["max_tokens"] = _reduced
                         ctx = await em.run_middleware("llm_call", ctx, _core_llm)
                 except Exception as _exc:
@@ -931,6 +994,9 @@ class ActorRuntime:
                             tools=tools,
                             max_output_tokens=_reduced,
                         )
+                        _dynamic_context = _snapshot_llm_request(
+                            self.event_manager, messages, current_generation_id or ""
+                        )
                         # Reuse _kwargs (already has the per-(agent, strategy) key set)
                         # so recovery lands on the same shard as the original attempt.
                         _recovery_kw = {**_kwargs, "max_tokens": _reduced}
@@ -958,6 +1024,94 @@ class ActorRuntime:
                 )
             if actual_input and self._last_context_stats.total_tokens > 0:
                 self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
+
+        # Emit LLMComplete BEFORE LLMOutput so subscribers that build per-turn
+        # records (e.g. the ATIF exporter) populate metrics/tool_calls before
+        # the assistant-message content arrives. record=False keeps this off
+        # the LLM-visible event timeline (Role.RUNTIME_EVENT) but on()
+        # subscribers still receive it.
+        _model_name = getattr(llm_client, "model", "") or ""
+        # Normalize usage to a dict regardless of whether the provider returned
+        # a dict, a Pydantic model with attributes, or nothing at all. The
+        # token-calibration logic above already grovels through both shapes;
+        # mirror that here so LLMComplete metrics don't silently zero out.
+        _usage_raw = usage if usage is not None else getattr(response, "usage", None)
+        _usage_dict: dict[str, Any] = {}
+        if isinstance(_usage_raw, dict):
+            _usage_dict = _usage_raw
+        elif _usage_raw is not None:
+            for _key in (
+                "prompt_tokens",
+                "input_tokens",
+                "completion_tokens",
+                "output_tokens",
+                "cached_tokens",
+                "cache_read_input_tokens",
+                "reasoning_tokens",
+                "cost",
+                "cost_usd",
+            ):
+                _val = getattr(_usage_raw, _key, None)
+                if _val is not None:
+                    _usage_dict[_key] = _val
+            _prompt_details = getattr(_usage_raw, "prompt_tokens_details", None)
+            if _prompt_details is not None:
+                _usage_dict["prompt_tokens_details"] = (
+                    _prompt_details
+                    if isinstance(_prompt_details, dict)
+                    else {
+                        "cached_tokens": getattr(_prompt_details, "cached_tokens", None),
+                    }
+                )
+            _completion_details = getattr(_usage_raw, "completion_tokens_details", None)
+            if _completion_details is not None:
+                _usage_dict["completion_tokens_details"] = (
+                    _completion_details
+                    if isinstance(_completion_details, dict)
+                    else {
+                        "reasoning_tokens": getattr(_completion_details, "reasoning_tokens", None),
+                    }
+                )
+        _prompt_tokens = int(
+            _usage_dict.get("prompt_tokens") or _usage_dict.get("input_tokens") or 0
+        )
+        _completion_tokens = int(
+            _usage_dict.get("completion_tokens") or _usage_dict.get("output_tokens") or 0
+        )
+        _cached_tokens = int(
+            _usage_dict.get("cached_tokens")
+            or _usage_dict.get("cache_read_input_tokens")
+            or (_usage_dict.get("prompt_tokens_details") or {}).get("cached_tokens")
+            or 0
+        )
+        _reasoning_tokens = int(
+            (_usage_dict.get("completion_tokens_details") or {}).get("reasoning_tokens")
+            or _usage_dict.get("reasoning_tokens")
+            or 0
+        )
+        _cost_usd = float(_usage_dict.get("cost") or _usage_dict.get("cost_usd") or 0.0)
+        _tool_calls_payload = [
+            {"tool_call_id": tc.id, "function_name": tc.name, "arguments": tc.arguments}
+            for tc in (getattr(response, "tool_calls", None) or [])
+        ]
+        # _dynamic_context was captured at render time alongside the
+        # SystemPrompt snapshot (see _snapshot_llm_request), so it reflects
+        # the exact messages sent to the LLM even across context-window retry.
+        self.event_manager.add(
+            LLMComplete(
+                model_name=_model_name,
+                prompt_tokens=_prompt_tokens,
+                completion_tokens=_completion_tokens,
+                cached_tokens=_cached_tokens,
+                reasoning_tokens=_reasoning_tokens,
+                cost_usd=_cost_usd,
+                tool_calls=_tool_calls_payload,
+                reasoning_content=getattr(response, "reasoning", None) or "",
+                generation_id=current_generation_id or "",
+                dynamic_context=_dynamic_context,
+            ),
+            record=False,
+        )
 
         # Create and record LLMOutput
         # Serialize Pydantic models to JSON for proper event storage

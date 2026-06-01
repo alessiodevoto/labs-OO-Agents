@@ -1374,7 +1374,12 @@ Standard Python builtins and agent instance (`self`) are available."""
             )
 
             if validation_error is None:
-                # Success! Return special tuple to signal completion
+                # Success! Return special tuple to signal completion.
+                # Emit a synthetic return_result ToolCallEvent so the final
+                # answer appears in the trajectory (otherwise the inline
+                # path leaves no trace of the value).  Mirrors PredictStrategy's
+                # _replace_with_tool_call pattern in predict.py.
+                self._emit_synthetic_inline_return(runtime, validated)
                 logger.info("[CODEACT] Task completed successfully via inline return_result()")
                 return ("TASK_COMPLETE", validated)
 
@@ -1409,6 +1414,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                         )
                     )
                     get_harness_metrics().explicit_return_completed()
+                    # Emit a synthetic return_result ToolCallEvent so the
+                    # final answer is visible in the trajectory; see the
+                    # inline-return_result path above.
+                    self._emit_synthetic_inline_return(runtime, validated)
                     logger.info("[CODEACT] Auto-completed task from explicit return statement")
                     return ("TASK_COMPLETE", validated)
                 # Validation failed - continue with normal flow
@@ -1621,6 +1630,89 @@ Standard Python builtins and agent instance (`self`) are available."""
                 exception=exception,
                 execution_id=execution_id,
             )
+
+    def _emit_synthetic_inline_return(self, runtime: RuntimeServices, value: Any) -> None:
+        """Emit a synthetic ``return_result`` :class:`ToolCallEvent` for the
+        inline-completion path.
+
+        CodeAct supports two completion patterns:
+
+        - **Explicit tool_call**: the LLM emits ``return_result(...)`` as
+          a separate tool_call alongside ``execute_python``. CodeAct's
+          dispatch loop handles this and emits its own
+          :class:`ToolCallEvent` (see ``_handle_return_result``).
+        - **Inline**: the LLM emits only ``execute_python(...)`` and the
+          generated code itself calls ``return_result(...)`` (which
+          raises :class:`TaskCompleteSignal`), OR the code uses an
+          explicit ``return X`` statement that auto-completes.
+
+        In the inline path, the LLM never issued a ``return_result``
+        tool_call from its perspective, so the final answer would
+        otherwise be invisible in any trajectory built from the
+        framework's event stream (e.g. the ATIF exporter). To preserve
+        observability, we emit a synthetic ``ToolCallEvent`` with the
+        captured value.
+
+        Mirrors :meth:`PredictStrategy._replace_with_tool_call` in
+        ``predict.py``. The event carries
+        ``metadata.synthetic = True`` and
+        ``metadata.synthetic_type = "codeact_inline_return"`` so
+        downstream consumers can distinguish framework-emitted markers
+        from genuine LLM tool_calls if desired.
+        """
+        tool_call_id = f"codeact_inline_{uuid4().hex[:8]}"
+        # _jsonable() recurses unguarded — a self-referential dict/list
+        # or any other serialization failure here would turn a valid
+        # completion into a failed run. The synthetic event is purely
+        # observability metadata, so fail-open: fall back to a str()
+        # repr on any exception (including RecursionError).
+        try:
+            serialized_value: Any = self._jsonable(value)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "[CODEACT] Failed to JSON-coerce inline return value; falling back to str() repr",
+                exc_info=True,
+            )
+            serialized_value = str(value)
+        runtime.event_manager.add(
+            ToolCallEvent(
+                tool_call_id=tool_call_id,
+                name="return_result",
+                arguments={"result": serialized_value},
+                result=ToolResult(
+                    tool_call_id=tool_call_id,
+                    content="Result accepted (inline).",
+                    result_status=ResultStatus.COMPLETE,
+                ),
+                metadata={
+                    "synthetic": True,
+                    "synthetic_type": "codeact_inline_return",
+                },
+            )
+        )
+
+    def _jsonable(self, value: Any) -> Any:
+        """JSON-coerce a Python value for the synthetic-return ``arguments``.
+
+        Mirrors :meth:`PredictStrategy._jsonable`. Handles Pydantic
+        models, dicts, sets, lists/tuples, then falls back to
+        ``json.dumps`` round-trip; non-serialisable values become their
+        ``str()`` repr so the synthetic event never raises.
+        """
+        if isinstance(value, BaseModel):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return {str(k): self._jsonable(v) for k, v in value.items()}
+        if isinstance(value, set):
+            converted = [self._jsonable(v) for v in value]
+            return sorted(converted, key=lambda item: json.dumps(item, sort_keys=True))
+        if isinstance(value, (list, tuple)):
+            return [self._jsonable(v) for v in value]
+        try:
+            json.dumps(value)
+            return value
+        except TypeError:
+            return str(value)
 
     def _maybe_parse_json_string(self, value: Any) -> Any:
         """Parse a JSON or Python literal string, otherwise return as-is.

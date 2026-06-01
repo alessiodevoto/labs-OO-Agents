@@ -28,7 +28,7 @@ from nemo_oo_agents.agentdoc.visibility import is_hidden_field
 from nemo_oo_agents.context_blocks import DynamicContext, ResultStatus, ToolCallEvent, ToolResult
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.events import Error, Task
+from nemo_oo_agents.events import AfterTurn, BeforeTurn, Error, Task
 from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
 from nemo_oo_agents.strategies.template import TemplateStrategy
@@ -153,6 +153,48 @@ class PredictStrategy(GenerationStrategy):
         Raises:
             GenerationError: If no return type or validation fails after max retries.
         """
+        # Emit BeforeTurn/AfterTurn so observability consumers (e.g. the ATIF
+        # exporter) can detect this single-shot generation turn.
+        # PredictStrategy is always one inference; turn_number=1 and
+        # AfterTurn(is_final=True).
+        _gen_id = runtime.get_generation_id() or ""
+        _parent_gen_id = runtime.get_parent_generation_id()
+        runtime.event_manager.add(
+            BeforeTurn(
+                method_name=call.method_name,
+                strategy=self.name,
+                generation_id=_gen_id,
+                parent_generation_id=_parent_gen_id,
+                turn_number=1,
+            ),
+            record=False,
+        )
+        _turn_success = False
+        _turn_exception_type: str | None = None
+        try:
+            result = await self._execute_inner(runtime, call)
+            _turn_success = True
+            return result
+        except BaseException as exc:
+            _turn_exception_type = type(exc).__name__
+            raise
+        finally:
+            runtime.event_manager.add(
+                AfterTurn(
+                    method_name=call.method_name,
+                    strategy=self.name,
+                    generation_id=_gen_id,
+                    parent_generation_id=_parent_gen_id,
+                    turn_number=1,
+                    is_final=True,
+                    success=_turn_success,
+                    exception_type=_turn_exception_type,
+                ),
+                record=False,
+            )
+
+    async def _execute_inner(self, runtime: RuntimeServices, call: "CurrentCall") -> Any:
+        """Actual PREDICT body — wrapped by :meth:`execute` for BeforeTurn/AfterTurn."""
         # Return type is pre-resolved by _execute_with_generation (handles PEP 563).
         return_type = call.return_type
         if return_type is None:
