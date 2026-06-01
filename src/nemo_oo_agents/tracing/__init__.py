@@ -39,6 +39,7 @@ from opentelemetry.sdk.trace.export import (
     SpanExporter,
 )
 
+from nemo_oo_agents._version import __version__
 from nemo_oo_agents.tracing import exporters as exporters_mod
 from nemo_oo_agents.tracing._atif_exporter import AtifTrajectoryExporter
 from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks, end_active_spans
@@ -47,8 +48,6 @@ from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
 from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
 from nemo_oo_agents.tracing._session import get_session, set_session
 from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
-
-__version__ = "0.1.0"
 
 # ---------------------------------------------------------------------------
 # Module-level state
