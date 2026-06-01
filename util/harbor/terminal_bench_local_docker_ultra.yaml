@@ -15,6 +15,7 @@ environment:
   type: docker
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
+    NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
     OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"
     OPENAI_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
   mounts_json:
