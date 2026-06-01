@@ -9,6 +9,8 @@ the skill's own module via ``importlib.reload`` and re-resolves the class by nam
 import sys
 import types
 
+import pytest
+
 from nemo_oo_agents.skill_registry import SkillRegistry
 
 
@@ -41,7 +43,8 @@ class {cls_name}:
     return mod, cls
 
 
-def test_framework_tool_skill_reloads_in_place(monkeypatch):
+@pytest.mark.asyncio
+async def test_framework_tool_skill_reloads_in_place(monkeypatch):
     """A skill in a _NO_RELOAD top package reloads via single-module path.
 
     Reproduces issue 225: previously this returned
@@ -87,7 +90,7 @@ class FakeShell:
 
     monkeypatch.setattr(importlib, "reload", fake_reload)
 
-    result = registry.reload("nemo.fake_shell")
+    result = await registry.reload("nemo.fake_shell")
 
     sys.modules.pop(mod_name, None)
 
@@ -100,7 +103,8 @@ class FakeShell:
     assert agent.fake_shell.agent is agent
 
 
-def test_framework_skill_needing_ctor_args_returns_clear_message(monkeypatch):
+@pytest.mark.asyncio
+async def test_framework_skill_needing_ctor_args_returns_clear_message(monkeypatch):
     """If the reloaded class can't be built zero-arg, return a clear message, not a crash."""
     mod_name = "nemo_oo_agents.tools._fake_needs_args_for_test"
     mod = types.ModuleType(mod_name)
@@ -132,7 +136,7 @@ class NeedsArgs:
 
     monkeypatch.setattr(importlib, "reload", lambda m: m)
 
-    result = registry.reload("nemo.needs_args")
+    result = await registry.reload("nemo.needs_args")
     sys.modules.pop(mod_name, None)
 
     # No crash; the agent still has its original instance; message is informative.
@@ -144,7 +148,8 @@ class NeedsArgs:
     ), result
 
 
-def test_user_skill_reload_path_unchanged(monkeypatch):
+@pytest.mark.asyncio
+async def test_user_skill_reload_path_unchanged(monkeypatch):
     """No regression: a skill in a non-framework top package still uses the package-purge path."""
     import sys as _sys
 
@@ -193,14 +198,15 @@ class LibSkill(Skill):
 
     monkeypatch.setattr(importlib, "import_module", fake_import)
 
-    result = registry.reload("local.mylib")
+    result = await registry.reload("local.mylib")
     _sys.modules.pop("mylib", None)
 
     assert "Reloaded" in result, result
     assert agent.mylib.version == "v2"
 
 
-def test_underscore_top_package_uses_single_module_path(monkeypatch):
+@pytest.mark.asyncio
+async def test_underscore_top_package_uses_single_module_path(monkeypatch):
     """A skill whose top package starts with '_' takes the single-module reload path.
 
     Pins the deliberate routing of `top_pkg.startswith("_")` to the in-place
@@ -258,14 +264,15 @@ class FakeUnderscore:
         return m
 
     monkeypatch.setattr(importlib, "reload", fake_reload)
-    result = registry.reload("ext.fake_u")
+    result = await registry.reload("ext.fake_u")
     sys.modules.pop(mod_name, None)
 
     assert "Reloaded" in result, result
     assert agent.fake_u.version == "v2"
 
 
-def test_attach_failure_leaves_agent_untouched(monkeypatch):
+@pytest.mark.asyncio
+async def test_attach_failure_leaves_agent_untouched(monkeypatch):
     """If the reloaded skill's attach() raises, the agent keeps its old skill.
 
     Mutation (setattr + context-block re-registration) must happen only after a
@@ -321,7 +328,7 @@ class Boom:
         return m
 
     monkeypatch.setattr(importlib, "reload", fake_reload)
-    result = registry.reload("nemo.boom")
+    result = await registry.reload("nemo.boom")
     sys.modules.pop(mod_name, None)
 
     assert "Reload failed" in result, result

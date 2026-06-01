@@ -547,7 +547,7 @@ class SkillRegistry(Skill):
     # Reload
     # ------------------------------------------------------------------
 
-    def reload(self, name: str | None = None) -> str:
+    async def reload(self, name: str | None = None) -> str:
         """Hot-reload one or all loaded skills.
 
         Re-imports the skill's module and re-attaches the updated instance.
@@ -559,10 +559,10 @@ class SkillRegistry(Skill):
             Status message.
         """
         if name is not None:
-            return self._reload_one(name)
+            return await self._reload_one(name)
         results = []
         for n in list(self._loaded):
-            results.append(self._reload_one(n))
+            results.append(await self._reload_one(n))
         return "\n".join(results)
 
     # Top packages whose sys.modules entries must never be purged wholesale:
@@ -571,7 +571,7 @@ class SkillRegistry(Skill):
     # take the narrow single-module reload path in ``_reload_one``.
     _NO_RELOAD = frozenset({"tests", "__main__", "nemo_oo_agents", "nemo_oo_agents_cli"})
 
-    def _reload_one(self, name: str) -> str:
+    async def _reload_one(self, name: str) -> str:
         """Reload a single skill by re-importing its module.
 
         Two strategies, chosen by the skill's top-level package:
@@ -596,11 +596,12 @@ class SkillRegistry(Skill):
         top_pkg = mod_name.split(".")[0]
 
         if top_pkg in self._NO_RELOAD or top_pkg.startswith("_"):
-            return self._reload_single_module(name, attr, skill, mod_name)
-        return self._reload_package(name, attr, top_pkg)
+            return await self._reload_single_module(name, attr, skill, mod_name)
+        return await self._reload_package(name, attr, top_pkg)
 
-    def _reload_package(self, name: str, attr: str, top_pkg: str) -> str:
+    async def _reload_package(self, name: str, attr: str, top_pkg: str) -> str:
         """Purge and re-import an entire top-level package (user/lib skills)."""
+        import asyncio
         import importlib
         import sys as _sys
 
@@ -611,18 +612,18 @@ class SkillRegistry(Skill):
             prefix = top_pkg + "."
             for key in [k for k in _sys.modules if k == top_pkg or k.startswith(prefix)]:
                 del _sys.modules[key]
-            mod = importlib.import_module(top_pkg)
+            mod = await asyncio.to_thread(importlib.import_module, top_pkg)
             # Find the Skill subclass in the reloaded module
             from nemo_oo_agents.skill import Skill as _Skill
 
             for obj in vars(mod).values():
                 if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
-                    return self._install_reloaded(name, attr, obj)
+                    return await self._install_reloaded(name, attr, obj)
             return f"Reloaded module {top_pkg} but no Skill subclass found"
         except Exception as e:
             return f"Reload failed for {name}: {e}"
 
-    def _reload_single_module(self, name: str, attr: str, skill: Any, mod_name: str) -> str:
+    async def _reload_single_module(self, name: str, attr: str, skill: Any, mod_name: str) -> str:
         """Reload only the skill's own leaf module via ``importlib.reload``.
 
         Used for builtin tool skills (e.g. ``ShellTools3``) whose top package is
@@ -634,6 +635,7 @@ class SkillRegistry(Skill):
         retroactively update instances of the module's classes held elsewhere.
         For the stateless tool skills this targets, that is a non-issue.
         """
+        import asyncio
         import importlib
         import sys as _sys
 
@@ -642,7 +644,7 @@ class SkillRegistry(Skill):
             return f"Module {mod_name} not in sys.modules — cannot reload"
         cls_name = type(skill).__name__
         try:
-            mod = importlib.reload(mod)
+            mod = await asyncio.to_thread(importlib.reload, mod)
         except Exception as e:
             return f"Reload failed for {name}: {e}"
         new_cls = getattr(mod, cls_name, None)
@@ -655,11 +657,11 @@ class SkillRegistry(Skill):
                 f"({getattr(new_cls, '__module__', '?')}) — not reloadable"
             )
         try:
-            return self._install_reloaded(name, attr, new_cls)
+            return await self._install_reloaded(name, attr, new_cls)
         except Exception as e:
             return f"Reload failed for {name}: {e}"
 
-    def _install_reloaded(self, name: str, attr: str, new_cls: type) -> str:
+    async def _install_reloaded(self, name: str, attr: str, new_cls: type) -> str:
         """Construct a fresh skill from ``new_cls`` and swap it onto the agent.
 
         Shared bookkeeping for both reload paths: construct, attach, re-register
@@ -679,7 +681,9 @@ class SkillRegistry(Skill):
                 f"constructor raised TypeError ({e})"
             )
         if hasattr(new_skill, "attach"):
-            new_skill.attach(self._agent)
+            result = new_skill.attach(self._agent)
+            if inspect.isawaitable(result):
+                await result
         if name in self._activated:
             self._unregister_context_block(name)
         setattr(self._agent, attr, new_skill)
