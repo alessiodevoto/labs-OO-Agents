@@ -19,6 +19,7 @@ import shlex
 import sys
 import traceback
 from collections.abc import Callable
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from rich.console import Console as RichConsole
@@ -109,17 +110,25 @@ def _build_user_bar(text: str, app: "TUIApplication", colors: dict) -> str:
 
 class _EmitStream:
     """A ``Console.file`` target that batches writes into one ``emit_block``
-    per ``flush()``.
+    per ``flush()`` — or one per ``hold()`` span.
 
     Rich's ``Console.print`` flushes at the end; without buffering each
     stylised chunk (many per print call) would enqueue a separate block
     and pay the ``run_in_terminal`` hop. Batching collapses them into
     one atomic scrollback block.
+
+    A multi-output command (e.g. ``/activity`` → table + code block) calls
+    ``frontend.render()`` once per output, each ending in a ``flush()``. That
+    is several ``emit_block``s → several ``run_in_terminal`` hops, and the
+    thinking-spinner's ``invalidate()`` (~12/s) repaints the prompt region
+    between them — visible flicker. ``hold()`` defers flushing so the whole
+    command renders as ONE block / ONE hop.
     """
 
     def __init__(self, emit: Callable[[str], None]) -> None:
         self._emit = emit
         self._buf: list[str] = []
+        self._held = 0
 
     def write(self, text: str) -> int:
         if text:
@@ -127,12 +136,30 @@ class _EmitStream:
         return len(text)
 
     def flush(self) -> None:
+        if self._held:
+            # Defer until the hold span releases — keep the buffer intact so
+            # subsequent renders append to the same block.
+            return
         if not self._buf:
             return
         chunk = "".join(self._buf)
         self._buf.clear()
         if chunk:
             self._emit(chunk)
+
+    @contextmanager
+    def hold(self):
+        """Defer ``flush()`` for the duration of the span, emitting once on exit.
+
+        Re-entrant: nested holds only release on the outermost exit.
+        """
+        self._held += 1
+        try:
+            yield
+        finally:
+            self._held -= 1
+            if self._held == 0:
+                self.flush()
 
     def isatty(self) -> bool:
         return True

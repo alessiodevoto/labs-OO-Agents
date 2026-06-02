@@ -9,6 +9,7 @@ interactive I/O that must happen *during* execution (spinners, prompts).
 """
 
 import abc
+import asyncio
 import datetime
 import logging
 import os
@@ -43,6 +44,29 @@ if TYPE_CHECKING:
 def _to_attr_name(name: str) -> str:
     """Convert a hyphenated server/skill name to a valid Python attribute name."""
     return name.replace("-", "_")
+
+
+def _batch_render_ctx(frontend: "Frontend"):
+    """Return a context manager that batches a command's outputs into one block.
+
+    Tolerant of frontends without ``batch_render`` and of test doubles whose
+    ``batch_render()`` returns a Mock/coroutine instead of a real context
+    manager — in either case we fall back to a no-op context. The real
+    ``TerminalFrontend.batch_render()`` holds the ``_EmitStream`` flush so a
+    multi-output command renders as a single ``run_in_terminal`` hop.
+    """
+    from contextlib import nullcontext
+
+    factory = getattr(frontend, "batch_render", None)
+    if not callable(factory):
+        return nullcontext()
+    ctx = factory()
+    if hasattr(ctx, "__enter__") and hasattr(ctx, "__exit__"):
+        return ctx
+    # Mock / coroutine / anything non-context — don't try to enter it.
+    if asyncio.iscoroutine(ctx):
+        ctx.close()
+    return nullcontext()
 
 
 def _detect_language(suffix: str) -> str:
@@ -2337,11 +2361,13 @@ class ActivityCommand(Command):
             footer = "Nothing in flight."
 
         outputs: list[Output] = [
+            # Unlabelled key/value table: no title, no header row (Rich would
+            # otherwise draw an empty header band above the first row).
             TableOutput(
-                title="Agent Activity",
                 columns=["", ""],
                 rows=rows,
                 footer=footer,
+                show_header=False,
             )
         ]
 
@@ -2756,19 +2782,27 @@ class CommandHandler:
             if any(isinstance(o, _RichReplayPayload) for o in result.outputs)
             else None
         )
-        for output in result.outputs:
-            if isinstance(output, _RichReplayPayload):
-                if _rich_url:
-                    try:
-                        import httpx as _httpx
+        # Coalesce all outputs of one command into a single scrollback block so
+        # the live prompt/spinner doesn't repaint between them (flicker).
+        with _batch_render_ctx(self.frontend):
+            for output in result.outputs:
+                if isinstance(output, _RichReplayPayload):
+                    if _rich_url:
+                        try:
+                            import httpx as _httpx
 
-                        # _replay=True tells the browser to skip blank-line
-                        # reservation so replayed plots don't push down the prompt.
-                        _httpx.post(
-                            _rich_url, json={**output.payload, "_replay": True}, timeout=5.0
-                        )
-                    except Exception:
-                        pass
-            else:
-                await self.frontend.render(output)
+                            # _replay=True tells the browser to skip blank-line
+                            # reservation so replayed plots don't push down the
+                            # prompt. Offloaded to a thread so the blocking POST
+                            # doesn't stall the UI event loop.
+                            await asyncio.to_thread(
+                                _httpx.post,
+                                _rich_url,
+                                json={**output.payload, "_replay": True},
+                                timeout=5.0,
+                            )
+                        except Exception as exc:
+                            logger.debug("replay POST to %s failed: %s", _rich_url, exc)
+                else:
+                    await self.frontend.render(output)
         return result

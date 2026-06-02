@@ -113,13 +113,26 @@ class TUIConsole:
         """Print an info message."""
         self.console.print(f"[info]\u2139[/info] {message}")
 
-    def print_table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
-        """Print a formatted table with Catppuccin styling."""
+    def print_table(
+        self,
+        title: str,
+        columns: list[str],
+        rows: list[list[str]],
+        *,
+        show_header: bool = True,
+    ) -> None:
+        """Print a formatted table with Catppuccin styling.
+
+        ``show_header=False`` drops the column-header row — use it for
+        key/value tables whose columns are unlabelled (otherwise Rich draws
+        an empty header band above the first row).
+        """
         table = Table(
-            title=title,
+            title=title or None,
             title_style=f"bold {COLORS['lavender']}",
             border_style=COLORS["surface2"],
             header_style=f"bold {COLORS['lavender']}",
+            show_header=show_header,
         )
         for col in columns:
             table.add_column(col, style=COLORS["text"])

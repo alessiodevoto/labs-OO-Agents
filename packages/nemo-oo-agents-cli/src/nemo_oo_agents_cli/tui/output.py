@@ -40,6 +40,7 @@ class TableOutput:
     rows: list[list[str]]
     title: str = ""
     footer: str = ""
+    show_header: bool = True
 
     def to_json(self) -> dict:
         return {
@@ -48,6 +49,7 @@ class TableOutput:
             "columns": self.columns,
             "rows": self.rows,
             "footer": self.footer,
+            "show_header": self.show_header,
         }
 
 
