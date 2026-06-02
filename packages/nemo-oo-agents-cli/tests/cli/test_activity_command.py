@@ -28,13 +28,14 @@ def command():
 
 @pytest.mark.asyncio
 async def test_idle(command):
-    """With nothing in flight, /activity reports the Idle phase."""
+    """With nothing in flight, /activity is a single status one-liner."""
     result = await command.execute([])
     assert result.success
-    table = result.outputs[0]
-    assert isinstance(table, TableOutput)
-    assert table.rows[0] == ["Phase", "Idle"]
-    assert table.footer == "Nothing in flight."
+    assert len(result.outputs) == 1
+    out = result.outputs[0]
+    assert isinstance(out, TextOutput)
+    assert not isinstance(out, TableOutput)
+    assert "idle" in out.content.lower()
 
 
 @pytest.mark.asyncio
