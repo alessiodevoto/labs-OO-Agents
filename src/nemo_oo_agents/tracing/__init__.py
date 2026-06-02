@@ -320,18 +320,22 @@ def _add_exporters(provider: TracerProvider, exporters: list[SpanExporter]) -> N
     Exporters that are known-local (file, console) or that set
     ``synchronous = True`` use SimpleSpanProcessor (immediate, no queue).
     All others use BatchSpanProcessor (async background thread).
+
+    All processors are wrapped with ``SecretScrubSpanProcessor`` to redact
+    API keys, tokens, and other secrets from span attributes before export.
     """
+    from nemo_oo_agents.tracing._secret_scrubber import SecretScrubSpanProcessor
+
     for exp in exporters:
         if isinstance(exp, _LOCAL_EXPORTER_TYPES) or getattr(exp, "synchronous", False):
-            provider.add_span_processor(SimpleSpanProcessor(exp))
+            inner = SimpleSpanProcessor(exp)
         else:
-            provider.add_span_processor(
-                BatchSpanProcessor(
-                    exp,
-                    schedule_delay_millis=1000,
-                    max_queue_size=8192,
-                )
+            inner = BatchSpanProcessor(
+                exp,
+                schedule_delay_millis=1000,
+                max_queue_size=8192,
             )
+        provider.add_span_processor(SecretScrubSpanProcessor(inner))
 
 
 def _replace_exporters(provider: TracerProvider, exporters: list[SpanExporter]) -> None:
