@@ -460,13 +460,20 @@ class TerminalFrontend:
         elements: list = []
 
         if execution.code:
+            highlight = {execution.highlight_line} if execution.highlight_line is not None else None
+            # A snippet (start_line > 1) is numbered from its real file offset, so
+            # leading whitespace lines must be preserved or the gutter numbers and
+            # highlighted line drift. Only full-cell blocks get the cosmetic strip.
+            code = execution.code.rstrip() if execution.start_line > 1 else execution.code.strip()
             elements.append(
                 Syntax(
-                    execution.code.strip(),
+                    code,
                     "python",
                     theme="monokai",
                     line_numbers=True,
                     word_wrap=True,
+                    start_line=execution.start_line,
+                    highlight_lines=highlight,
                 )
             )
 

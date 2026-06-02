@@ -85,7 +85,14 @@ class AgentMessage:
 
 @dataclass
 class CodeExecution:
-    """One Python execution turn: code + outputs."""
+    """One Python execution turn: code + outputs.
+
+    ``start_line`` / ``highlight_line`` let a *snippet* (e.g. the ±N lines
+    around an agent suspend point shown by ``/activity``) number from its real
+    file offset and tint the one line that matters. ``start_line`` defaults to
+    1 (whole-cell rendering); ``highlight_line`` is absolute (file line number),
+    not relative to the snippet.
+    """
 
     tool_call_id: str
     code: str | None = None
@@ -93,6 +100,8 @@ class CodeExecution:
     stderr: str | None = None
     error: str | None = None
     value: str | None = None
+    start_line: int = 1
+    highlight_line: int | None = None
 
     def to_json(self) -> dict:
         v = self.value
@@ -106,6 +115,8 @@ class CodeExecution:
             "stderr": self.stderr,
             "error": self.error,
             "value": v,
+            "start_line": self.start_line,
+            "highlight_line": self.highlight_line,
         }
 
 

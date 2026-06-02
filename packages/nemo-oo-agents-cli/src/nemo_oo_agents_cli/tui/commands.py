@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 from .output import (  # noqa: E402
     ClearScreen,
+    CodeExecution,
     DiffOutput,
     HelpOutput,
     Output,
@@ -2294,9 +2295,20 @@ class ActivityCommand(Command):
         labels = {
             "executing_python": "Executing Python",
             "waiting_llm": "Waiting on LLM call",
+            # "idle" only reaches the table in the rare idle-with-live-turn case;
+            # idle-with-nothing-in-flight early-returns a one-liner below.
             "idle": "Idle",
         }
         headline = labels.get(phase, phase)
+
+        # Where in the code is the agent suspended? Walk the agent turn task's
+        # await stack. This runs on the agent loop (asyncio.Task is not safe to
+        # introspect cross-thread), so dispatch via agent_run().
+        location = self._locate_agent()
+
+        # Idle with nothing in flight: a one-liner, not a table.
+        if phase == "idle" and (location is None or not location.stack):
+            return CommandResult.ok(TextOutput("Agent idle — nothing in flight.", "status"))
 
         rows: list[list[str]] = [["Phase", headline]]
         for ex in code_execs:
@@ -2306,23 +2318,75 @@ class ActivityCommand(Command):
             model = call.get("model", "unknown")
             rows.append([f"  llm ({call['elapsed']:.1f}s)", model])
 
+        if location is not None and location.stack:
+            rows.append(["", ""])
+            rows.append(["Suspended at", location.task_name or "agent turn"])
+            for frame in location.stack:
+                marker = "→ " if frame is location.innermost else "  "
+                rows.append(["", f"{marker}{frame.short()}"])
+
         if phase == "executing_python" and llm_calls:
             footer = "Running a code cell that is itself blocked on an LLM call."
         elif phase == "executing_python":
             footer = "In a code cell — not waiting on the model."
         elif phase == "waiting_llm":
             footer = "Blocked waiting for the model to respond."
+        elif location is not None and location.innermost is not None:
+            footer = f"Awaiting at {location.innermost.short()}."
         else:
             footer = "Nothing in flight."
 
-        return CommandResult.ok(
+        outputs: list[Output] = [
             TableOutput(
                 title="Agent Activity",
                 columns=["", ""],
                 rows=rows,
                 footer=footer,
             )
+        ]
+
+        # Render the suspend-point source as a syntax-highlighted code block
+        # (the frontend lexes/colours CodeExecution.code). For a CodeAct/REPL
+        # cell this is the cell text; the suspend line is the last context line.
+        code_output = self._suspend_code_output(location)
+        if code_output is not None:
+            outputs.append(code_output)
+
+        return CommandResult.ok(*outputs)
+
+    @staticmethod
+    def _suspend_code_output(location) -> "CodeExecution | None":
+        """Build a highlighted code block for the suspend-point source, or None.
+
+        The snippet is numbered from its real file offset (``start_line``) and
+        the suspend line is tinted via ``highlight_line``, so the parked line
+        stands out and the line numbers match the await stack.
+        """
+        if location is None or location.innermost is None:
+            return None
+        frame = location.innermost
+        if not frame.context:
+            return None
+        code = "\n".join(src.text for src in frame.context)
+        return CodeExecution(
+            tool_call_id=f"activity:{frame.filename}:{frame.lineno}",
+            code=code,
+            start_line=frame.context[0].lineno,
+            highlight_line=frame.lineno,
         )
+
+    def _locate_agent(self):
+        """Snapshot where the agent coroutine is suspended (or None if idle).
+
+        Runs the probe on the agent loop via ``agent_run`` — ``asyncio.Task``
+        is not safe to walk from the command (UI) thread.
+        """
+        from .agent_location import locate_agent_on_loop
+
+        try:
+            return self.agent_run(locate_agent_on_loop)
+        except Exception:
+            return None
 
 
 class CommandRegistry:
