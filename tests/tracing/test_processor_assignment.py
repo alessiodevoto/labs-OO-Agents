@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for span processor assignment in _add_exporters().
 
-Pins the contract that:
-  - OtlpJsonHttpExporter  → BatchSpanProcessor  (non-blocking, batched)
-  - OtlpJsonFileExporter  → SimpleSpanProcessor (in-process I/O, synchronous)
-  - ConsoleSpanExporter   → SimpleSpanProcessor (in-process I/O, synchronous)
+Every exporter is wrapped in a ``SecretScrubSpanProcessor`` (to redact secrets
+before export); ``_processors`` unwraps it to assert the underlying contract:
+  - OtlpJsonHttpExporter  -> BatchSpanProcessor  (non-blocking, batched)
+  - OtlpJsonFileExporter  -> SimpleSpanProcessor (in-process I/O, synchronous)
+  - ConsoleSpanExporter   -> SimpleSpanProcessor (in-process I/O, synchronous)
 """
 
 from opentelemetry.sdk.trace import TracerProvider
@@ -18,11 +19,24 @@ from opentelemetry.sdk.trace.export import (
 from nemo_oo_agents.tracing import _add_exporters
 from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
 from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
+from nemo_oo_agents.tracing._secret_scrubber import SecretScrubSpanProcessor
 
 
 def _processors(provider: TracerProvider):
-    """Return the list of span processors attached to *provider*."""
-    return list(provider._active_span_processor._span_processors)
+    """Return the inner span processors, unwrapping the secret scrubber.
+
+    Every attached processor must be a ``SecretScrubSpanProcessor``; this
+    asserts that invariant and returns the wrapped (inner) processors so the
+    exporter -> processor-type contract can be checked.
+    """
+    attached = list(provider._active_span_processor._span_processors)
+    inner = []
+    for p in attached:
+        assert isinstance(p, SecretScrubSpanProcessor), (
+            f"every processor must be wrapped in SecretScrubSpanProcessor, got {type(p).__name__}"
+        )
+        inner.append(p.inner)
+    return inner
 
 
 class TestProcessorAssignment:
