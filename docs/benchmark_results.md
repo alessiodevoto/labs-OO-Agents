@@ -45,6 +45,29 @@ beats react (+7.3) but the specialized agent is flat (−0.4).
 > *solve* (not setup). So the fix recovers the bulk of TB1 infra; the remainder is not the
 > Python-version bug and would not be fixed by a longer timeout either.
 
+## Terminal Bench 1.0 (241 tasks) — CONVERGED (post-cp312-fix reruns folded in)
+
+After the cp312 agent-setup fix (harbor `a61ddaa4`), each run's unscored tasks were
+re-run and folded in, so every cell now evaluates a near-identical ~224–230-task set
+(residual infra = the deterministic task-image container-exit-2 set + a few solve/verifier
+timeouts, consistent across runs). Pass rate over scored:
+
+| Agent | sonnet | opus | ultra |
+|-------|--------|------|-------|
+| baseline (CodeAct) | 45.4% (103/227) | **62.2% (143/230)** | 44.6% (100/224) |
+| specialized (tb-1) | 51.5% (117/227) | 60.9% (140/230) | 38.5% (80/208)* |
+| react | 39.8% (90/226) | 27.5% (63/229) | 38.9% (81/208)* |
+
+\*specialized-ultra and react-ultra were not re-run (they live on z590-0140, busy with
+the react×TB2 runs) — shown at their original pre-fix values.
+
+**vs the original (pre-fix, survivorship-inflated) numbers:** the converged rates are
+slightly *lower* over a *larger* scored set (e.g. baseline-opus 63.4%→62.2% but over
+230 vs 213 tasks; specialized-sonnet 48.9%→51.5% — sonnet recovered the most). Infra
+dropped from 28–61/run to **11–17/run** (the residual deterministic task-image failures).
+The ordering is unchanged: **opus > sonnet ≈ ultra for baseline; helper agents beat react.**
+
+
 ## Terminal Bench 2.0 (89 tasks, baseline agent)
 
 > react/specialized were not run on TB2 — only the baseline agent. The react-vs-baseline comparison is TB1-only.
