@@ -34,6 +34,8 @@ from .output import (
 from .theme import COLORS
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from .config import Config
 
 
@@ -56,6 +58,16 @@ class Frontend(Protocol):
 
     async def render(self, output: Output) -> None:
         """Render one structured output object."""
+        ...
+
+    def batch_render(self) -> "AbstractContextManager[None]":
+        """Context manager grouping multiple ``render()`` calls into one block.
+
+        Terminal frontends coalesce the enclosed output into a single
+        scrollback write (one ``run_in_terminal`` hop) so the live prompt /
+        spinner doesn't repaint between a command's outputs. Non-batching
+        frontends may return a no-op context (e.g. ``contextlib.nullcontext``).
+        """
         ...
 
     async def get_input(
@@ -151,6 +163,20 @@ class TerminalFrontend:
         if handler is not None:
             handler(output)
 
+    def batch_render(self):
+        """Coalesce the enclosed ``render()`` calls into one scrollback block.
+
+        When the Rich console writes through a ``_EmitStream`` (the live TUI),
+        this holds its flush so a multi-output command renders as a single
+        ``emit_block`` / ``run_in_terminal`` hop — no prompt repaint between
+        outputs. Falls back to a no-op context for plain consoles (tests).
+        """
+        from contextlib import nullcontext
+
+        stream = getattr(self._console.console, "file", None)
+        hold = getattr(stream, "hold", None)
+        return hold() if callable(hold) else nullcontext()
+
     def _build_renderer_map(self) -> "dict[type, Callable[[Any], None]]":
         """Build the {Output subclass → handler} dispatch table once at
         construction time. Cheaper and clearer than an isinstance ladder;
@@ -245,7 +271,9 @@ class TerminalFrontend:
             self._console.print_info(output.content)
 
     def _render_table(self, output: TableOutput) -> None:
-        self._console.print_table(output.title, output.columns, output.rows)
+        self._console.print_table(
+            output.title, output.columns, output.rows, show_header=output.show_header
+        )
         if output.footer:
             self._console.print_status(output.footer)
 
