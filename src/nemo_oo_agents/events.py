@@ -21,7 +21,8 @@ Type names follow "Type Names are Prompts" - no redundant "Event" suffix.
 from collections.abc import Callable
 from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+from pydantic_core import PydanticSerializationError, to_json
 
 from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.context_blocks import EventBase as EventBase
@@ -165,6 +166,30 @@ class PythonOutput(EventBase):  # type: ignore[misc]
     )
 
     model_config = {"arbitrary_types_allowed": True}
+
+    @field_serializer("value")
+    def _serialize_value(self, value: Any, _info: Any) -> Any:
+        """Render values pydantic-core can't JSON-encode as a bounded ``pformat`` string.
+
+        ``value`` is ``Any`` + ``arbitrary_types_allowed``, so a cell can return an
+        object with no pydantic-core JSON serializer (e.g. a ``CancelledError`` from
+        an awaited Task, a coroutine, a lock). ``model_dump_json()`` (the SQLite
+        event store) would then raise ``PydanticSerializationError`` and wedge the
+        turn. We probe with ``to_json`` so pydantic-native types (datetime, UUID,
+        Decimal, set, ...) still round-trip structurally, and only fall back to
+        ``pformat`` — bounded by ``FormatConfig`` defaults, since this hook can't
+        reach the live ``TruncationConfig`` — for genuinely un-encodable objects.
+        """
+        if value is None:
+            return value
+        try:
+            to_json(value)
+        except (PydanticSerializationError, TypeError, ValueError):
+            from nemo_oo_agents.agentdoc import pformat
+            from nemo_oo_agents.config.truncation_config import FormatConfig
+
+            return pformat(value, **FormatConfig().model_dump())
+        return value
 
 
 class BeforeTurn(EventBase):  # type: ignore[misc]

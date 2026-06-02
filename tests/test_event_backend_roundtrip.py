@@ -272,3 +272,99 @@ def test_all_registered_types_have_unique_event_type_keys():
                     f"event_type {et!r} is shared by {existing.__name__} and {expected_type.__name__}"
                 )
         event_type_to_cls[et] = expected_type
+
+
+def test_python_output_value_falls_back_to_pformat_when_unserializable(backend):
+    """A cell that returns a value pydantic can't JSON-encode must not crash the store.
+
+    Regression: code such as ``await <cancelled_task>`` or
+    ``asyncio.gather(..., return_exceptions=True)`` can leave a ``CancelledError``
+    (or a coroutine, lock, socket, ...) as the cell's return value. ``PythonOutput.value``
+    is ``Any`` with ``arbitrary_types_allowed``, so it is accepted at construction, but
+    ``model_dump_json()`` (the SQLite serialize path) would raise
+    ``PydanticSerializationError: Unable to serialize unknown type: ...`` and wedge the turn.
+    The field serializer falls back to ``pformat(value)``.
+    """
+    import asyncio
+
+    event = PythonOutput(
+        tool_call_id="",
+        execution_status="complete",
+        execution_count=1,
+        value=asyncio.CancelledError(),
+    )
+
+    # model_dump_json() is the SQLite serialize path; it must not raise.
+    dumped = event.model_dump_json()
+    assert "CancelledError" in dumped
+
+    # Must not crash the store on either backend.
+    backend.store("nonserial", event)
+    retrieved = backend.get("nonserial")
+    assert retrieved is not None
+    assert type(retrieved) is PythonOutput
+    # The SQLite backend serializes via JSON, so it persists the pformat string.
+    # The in-memory backend keeps the live object (no serialization round-trip).
+    if isinstance(backend, SQLiteEventBackend):
+        assert isinstance(retrieved.value, str)
+        assert "CancelledError" in retrieved.value
+    else:
+        assert isinstance(retrieved.value, asyncio.CancelledError)
+
+
+def test_python_output_jsonable_value_passes_through(backend):
+    """JSON-encodable return values are preserved verbatim (no pformat stringification)."""
+    event = PythonOutput(
+        tool_call_id="",
+        execution_status="complete",
+        execution_count=1,
+        value={"a": [1, 2, 3]},
+    )
+    backend.store("jsonable", event)
+    retrieved = backend.get("jsonable")
+
+    assert retrieved is not None
+    assert retrieved.value == {"a": [1, 2, 3]}
+
+
+def test_python_output_pydantic_native_value_round_trips_structurally(backend):
+    """pydantic-native types (datetime, UUID, ...) must serialize structurally, not via pformat.
+
+    ``json.dumps`` rejects these, but pydantic-core ``to_json`` handles them. The
+    serializer probes with ``to_json`` so they round-trip to their canonical JSON
+    form (ISO string, UUID string) rather than a lossy ``pformat`` rendering.
+    """
+    import datetime
+
+    dt = datetime.datetime(2020, 1, 2, 3, 4, 5)
+    event = PythonOutput(
+        tool_call_id="",
+        execution_status="complete",
+        execution_count=1,
+        value=dt,
+    )
+    dumped = event.model_dump_json()
+    # Canonical ISO form, not a pformat repr.
+    assert "2020-01-02T03:04:05" in dumped
+
+    backend.store("dtval", event)
+    retrieved = backend.get("dtval")
+    assert retrieved is not None
+    if isinstance(backend, SQLiteEventBackend):
+        assert retrieved.value == "2020-01-02T03:04:05"
+    else:
+        assert retrieved.value == dt
+
+
+def test_python_output_none_value_is_preserved(backend):
+    """value=None (the no-return default) round-trips as None, not the string 'None'."""
+    event = PythonOutput(
+        tool_call_id="",
+        execution_status="complete",
+        execution_count=1,
+        value=None,
+    )
+    backend.store("noneval", event)
+    retrieved = backend.get("noneval")
+    assert retrieved is not None
+    assert retrieved.value is None
