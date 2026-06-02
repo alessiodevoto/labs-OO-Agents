@@ -38,6 +38,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
 )
+from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 
 from nemo_oo_agents._version import __version__
 from nemo_oo_agents.tracing import exporters as exporters_mod
@@ -59,6 +60,43 @@ from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
 _enabled: bool = False
 _provider: TracerProvider | None = None
 _hooks: OpenInferenceHooks | None = None  # retained so we can re-register per-Task
+
+
+class _IsolatedIdGenerator(RandomIdGenerator):
+    """Span/trace id generator backed by its own ``random.Random`` instance.
+
+    OpenTelemetry's default ``RandomIdGenerator`` draws ids from the
+    process-global ``random`` module. User code run via ``execute_python``
+    routinely calls ``random.seed(...)`` (simulations, reproducible demos),
+    which makes the global RNG deterministic — so two executions that reseed
+    to the same state get handed *identical* span ids. The trace explorer then
+    warns "Found N duplicate span_id(s) in trace" and may mis-attribute spans.
+
+    Using a private RNG instance fully decouples id generation from whatever
+    user code does to the global module.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        import secrets
+
+        # SystemRandom (os.urandom-backed) is both cryptographically strong
+        # and immune to global ``random.seed()`` — satisfies Ruff S311 for
+        # security-sensitive trace ids while keeping the isolation guarantee.
+        self._rng = secrets.SystemRandom()
+
+    def generate_span_id(self) -> int:
+        span_id = self._rng.getrandbits(64)
+        while span_id == trace.INVALID_SPAN_ID:
+            span_id = self._rng.getrandbits(64)
+        return span_id
+
+    def generate_trace_id(self) -> int:
+        trace_id = self._rng.getrandbits(128)
+        while trace_id == trace.INVALID_TRACE_ID:
+            trace_id = self._rng.getrandbits(128)
+        return trace_id
+
 
 # True after a probe found the viewer unreachable (prevents repeated warnings)
 _probe_failed: bool = False
@@ -247,6 +285,10 @@ def enable_tracing(
     else:
         tracer_provider = TracerProvider(
             resource=resource,
+            # User code run via execute_python may call random.seed(); OTel's
+            # default id generator draws from the global random module, so a
+            # private-RNG generator keeps span ids unique regardless.
+            id_generator=_IsolatedIdGenerator(),
             # No attribute cap. LiteLLM's instrumentor emits one attribute
             # per message in the conversation history
             # (``llm.input_messages.N.message.role`` / ``.content`` /
