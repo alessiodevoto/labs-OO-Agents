@@ -107,6 +107,33 @@ loud *before* a 500-task run burns hours producing reward=0.
   rely on a monolithic job-name resume. Also: **checkpoint scoring incrementally**
   (we lost no scored work because reward.txt is per-task, written as we go).
 
+### 9. Config drift across near-identical per-arm files (re-broke #3 + #4, and silently ran the WRONG agent)
+
+- **Symptom:** a fresh 3-model run (opus/sonnet/ultra) where **every task scored
+  reward=0** — *and*, separately, the run wasn't even exercising the agent variant
+  it was supposed to be measuring.
+- **Root cause:** the per-arm configs (`swebench_mr359_{opus,sonnet,ultra}.yaml`)
+  were hand-written as a "lean" copy of the working config and **silently dropped
+  the entire `environment.env` block** that the proven config had. That single
+  omission re-triggered **two** already-solved failures at once:
+    - missing `PATH=/opt/harbor/cpython312/bin` → verifier's `uv run` not found →
+      reward=0 for all 500 tasks (regression of #3 + #4); and
+    - missing `SHELL_VARIANT=3` → the agent's shell-selector **fell back to its
+      default variant (v1)** instead of the v3 under test. The harness *tagged*
+      the run as the intended experiment while *executing* a different code path.
+- **Fix:** restore the full `env` block; **generate** the per-arm configs from one
+  source of truth instead of hand-copying (a ~80-line generator that emits all
+  arms with a `# GENERATED — DO NOT EDIT` header and a comment on *why* each shared
+  key exists). Verified with a 1-task smoke (reward flips 0→1, and the trial config
+  shows `SHELL_VARIANT=3`) before committing the 1500-task relaunch.
+- **Design lesson:** **never hand-maintain N near-identical configs.** Differences
+  that matter (an interpreter PATH, a behavior-selecting env var) hide in the diff
+  noise between 200-line YAMLs. Emit them from a single source, or use a base+matrix
+  sweep. And **assert the run is what it claims to be**: the experiment label
+  (`SHELL_VARIANT=3`) must be *checked against actual runtime behavior*, not just
+  set — a silent fallback that still tags the intended variant corrupts the data
+  worse than a crash would, because the numbers look plausible.
+
 ---
 
 ## Cross-cutting recommendations for a scale system
@@ -140,6 +167,43 @@ loud *before* a 500-task run burns hours producing reward=0.
 ## Appendix: the numbers these fixes unlocked
 - TB1 (241): baseline opus **63.4%**, ultra 46.2%, sonnet 45.7%.
 - TB2 (89, clean): opus **64.4%**, sonnet 40.4%, ultra 34.8%.
-- SWEBench Verified (500): opus **75.4%**, sonnet 66.5%, ultra 60.2%.
+- SWEBench Verified (500), baseline ShellTools-v1 agent: opus **75.4%**, sonnet 66.5%, ultra 60.2%.
+- SWEBench Verified (500), ShellTools3 agent (after fixing #9): opus **76.2%**,
+  sonnet 66.6%, ultra 60.0% — a **wash** vs the v1 baseline (all deltas within
+  ~0.2%/task noise). Worth noting because the *mid-run partial* looked like a win
+  (+1–1.4pp) and only converged to flat at completion: **never call a tooling
+  result off a partial run** — early scored tasks aren't a random sample.
 - ultra burns ~3.3× opus's input tokens on SWEBench (1.65B vs 494M) — a cost flag
   for reasoning models that a scale system should budget/track explicitly.
+
+## Appendix B: harbor patches + oo-agents-side config (what to build for independence)
+
+**Patches we made to harbor (the eval harness):**
+- `adapters/swebench/template/tests/test.sh`: prepend `/opt/harbor/cpython312/bin`
+  to the **verifier-phase** PATH so `uv` resolves regardless of the run config
+  (defense-in-depth for #4/#9). Commit `d4a45ac3`.
+- harbor `a61ddaa4`: on x86_64, use the `/opt/harbor/cpython312` overlay interpreter
+  for agent setup so every container's Python resolves to cp312 (#3/#6).
+- `.pth`-based agent install (no `pip install -e` at task time) to avoid ABI/race
+  failures under concurrency (#6).
+
+**oo-agents-side configuration required to run on a fresh Colossus box:**
+- A **bootstrap overlay** mounted into every container at `/opt/harbor` +
+  `/installed-agent`, containing: pinned `cpython312` interpreter, a prebuilt venv
+  tarball with `.pth` files, `uv`, and the agent source snapshot at the intended SHA.
+- Per-run config `environment.env` MUST set (this is the block whose omission caused
+  #9): `PATH` (with cpython312/bin first), `NEMO_OO_LLM_CONFIG`
+  (=`/installed-agent/nemo_oo_agents/llm_config.yaml`), `NEMO_OO_AGENTS_GIT_URL`,
+  `OTLP_ENDPOINT`, the API key, and any agent-behavior selector (e.g. `SHELL_VARIANT`).
+- Configs are **generated from one source of truth**, never hand-copied per arm.
+- Model names carry **no `openai/` prefix** for the ultra endpoint (#1).
+- SWEBench runs in **Docker mode on x86_64** only (#2); SIF/image cache pre-pulled.
+
+**Minimum preflight before any 500-task launch** (each < 1 min, fail loud):
+1. `(model, key)` 1-token live call → assert 200 + echoed model id.
+2. In a sample container: agent interpreter resolves to cp312; `uv` + `python3`
+   on PATH; `import nemo_oo_agents` succeeds.
+3. Deployed agent SHA == intended SHA.
+4. **Behavior assertion:** the agent's runtime self-report (e.g. the active shell
+   class in its system prompt) matches the experiment label — catches silent
+   fallbacks like #9 before they corrupt a run.
