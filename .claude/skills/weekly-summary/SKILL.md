@@ -68,6 +68,17 @@ glab mr view <MR_IID>
 glab issue view <ISSUE_IID>
 ```
 
+**Read the body of substantial MRs — do not judge from the subject line alone.** A one-line commit subject systematically *undersells* large work: "redesign X export" can hide a from-scratch, multi-phase rebuild that is the single biggest thing that shipped. Before deciding what to feature or cut, rank merged work by diff size and open the largest handful — plus any whose subject is opaque jargon (acronyms, "redesign…", "refactor…") — and read what they actually did:
+
+```bash
+# Rank merged commits by churn to find the heavy hitters:
+git log main --since="7 days ago" --no-merges --stat --format="%h %s" | less
+# Or read the MR description (often a design doc + phase list) for any opaque/large item:
+glab mr view <MR_IID>
+```
+
+`git ... --stat` shows *which files* changed, not *why it matters* — for significance, read the MR description, not just the stat.
+
 ### Step 2: Gather open work for "What's next"
 
 Open MRs (work currently in flight) — note `--opened` is deprecated; bare `glab mr list` returns open by default:
@@ -114,12 +125,13 @@ Each related repo gets **at most one bullet** in "What we achieved" (compressed 
 **For "What we achieved":**
 - Group completed work from the **primary repo** into 3-5 logical themes that map to *capabilities the project now has* — not categories of activity (features/fixes/refactors). Bad theme: "Bug Fixes". Good theme: "Agents can now reliably edit large codebases".
 - Order by significance, most impactful first. If a theme would only land for an internal reader, drop it or merge it.
-- If a commit is unclear, inspect via `git show <sha> --stat`.
+- If a commit is unclear, inspect via `git show <sha> --stat`. If it is large or opaquely named, read its MR description (see Step 1) — significance is rarely visible in the subject line.
 - For each **related repo**, add exactly one bullet at the end summarizing the week's activity at a high level.
 
 **For "What's next":**
 - Look at open issues + open MRs together — they represent the active workstream.
 - Categorize into **1-2 high-level themes** named by user-visible direction, not internal labels. Examples: "Making agents easier to author", "Hardening reliability for long-running agent tasks".
+- **One bullet = one coherent theme.** If a bullet joins two unrelated efforts with "and" (e.g. user onboarding *and* an internal runtime fix), split them or drop the weaker one — a conflated bullet reads as two half-thoughts.
 - Do **not** cite issue counts. The audience cannot calibrate "10 open issues" against the project's normal volume, so the number reads as either alarming or pointless. Describe the *shape* of the work instead.
 - If a theme has a clearly named in-flight effort worth surfacing, describe what it does in plain terms (no MR number, no branch name).
 
@@ -138,6 +150,27 @@ Each related repo gets **at most one bullet** in "What we achieved" (compressed 
 - **High-level direction.** Plain-language description of the focus area and the most notable in-flight effort, named by what it does.
 - **Second direction.** Same shape — keep it to 1-2 themes total.
 ```
+
+**Length budget.** Target ≤ ~250 words total, fitting on one screen. Then do an explicit **tightening pass** before presenting:
+- Delete any phrase that sounds good but states no fact ("at scale", "far less of a black box", "correct by construction", "robust and scalable").
+- Cut clauses that merely restate the bullet's bold title in other words.
+- If a bullet runs past two sentences, the third is almost always compressible into the first two.
+
+### Step 5: Emit a sources appendix (for the author, not the reader)
+
+The reader-facing summary carries no MR/issue numbers — but the person *running* this skill needs traceability to trust and edit it. After the summary, append a collapsed block mapping each bullet to its sources, so "where did this come from?" and "give me the links" are answered up front:
+
+```markdown
+<details>
+<summary>Sources (for the author — not part of the summary)</summary>
+
+- **<bullet title>** — !312 (ATIF exporter redesign), !349 (shell bake-off)
+- **<bullet title>** — #228, !360 (trace-explorer thin client)
+…
+</details>
+```
+
+Use full GitLab URLs if the summary will be shared somewhere clickable (`<base>/-/merge_requests/<IID>`, `<base>/-/issues/<NN>`); get `<base>` from `git remote get-url origin`.
 
 ## Format Rules
 
