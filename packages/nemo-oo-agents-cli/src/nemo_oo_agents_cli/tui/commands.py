@@ -46,6 +46,24 @@ def _to_attr_name(name: str) -> str:
     return name.replace("-", "_")
 
 
+def _mcp_servers_config(value: object) -> dict[str, dict[str, Any]]:
+    """Return a validated inline MCP server mapping from config/test doubles."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: server_config
+        for name, server_config in value.items()
+        if isinstance(name, str) and isinstance(server_config, dict)
+    }
+
+
+def _mcp_auto_connect_names(value: object) -> list[str]:
+    """Return validated MCP auto-connect names from config/test doubles."""
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, str)]
+    return []
+
+
 def _batch_render_ctx(frontend: "Frontend"):
     """Return a context manager that batches a command's outputs into one block.
 
@@ -599,6 +617,7 @@ class MCPCommand(Command):
     def __init__(self, frontend, config, agent, **kwargs):
         super().__init__(frontend, config, agent, **kwargs)
         self.mcp_file = kwargs.get("mcp_file")
+        self.mcp_servers = _mcp_servers_config(kwargs.get("mcp_servers"))
         self._mcp_connections: set[str] = set()
 
     @property
@@ -631,7 +650,7 @@ class MCPCommand(Command):
         subcmd = args[0].lower()
         subargs = args[1:]
         try:
-            servers = MCPManager.list_servers(self.mcp_file)
+            servers = MCPManager.list_servers(self.mcp_file, servers=self.mcp_servers)
         except Exception as exc:
             return CommandResult.err(f"Failed to read MCP config: {exc}")
 
@@ -639,7 +658,10 @@ class MCPCommand(Command):
             rows = [[s, "\u2713" if s in self._mcp_connections else ""] for s in servers]
             return CommandResult.ok(
                 TableOutput(columns=["Server", "Connected"], rows=rows, title="MCP Servers"),
-                TextOutput(f"MCP file: {self.mcp_file}", "status"),
+                TextOutput(
+                    f"MCP file: {self.mcp_file}; inline servers: {len(self.mcp_servers)}",
+                    "status",
+                ),
             )
 
         if subcmd == "connect":
@@ -648,7 +670,11 @@ class MCPCommand(Command):
                 return CommandResult.err(f"Server `{server_name}` not found. Use /mcp list.")
             try:
                 await self.frontend.start_thinking(f"Connecting to `{server_name}`\u2026")
-                tool = MCPManager.create_from_server(server_name, mcp_file=self.mcp_file)
+                tool = MCPManager.create_from_server(
+                    server_name,
+                    mcp_file=self.mcp_file,
+                    servers=self.mcp_servers,
+                )
                 setattr(self.agent, _to_attr_name(server_name), tool)
                 self._mcp_connections.add(server_name)
                 return CommandResult.ok(
@@ -2464,6 +2490,7 @@ class CommandRegistry:
         self.session_manager = session_manager
         self.startup_info: Output | None = None  # set by main after bootstrap
         self._commands: dict[str, Command] = self._register()
+        self._auto_connect_mcp()
         self._user_skills: dict[str, _UserSkill] = self._discover_user_skills()
         self._auto_install_skills()
 
@@ -2472,6 +2499,7 @@ class CommandRegistry:
         kwargs: dict[str, Any] = {
             "skills_dirs": self.skills_dirs,
             "mcp_file": self.mcp_file,
+            "mcp_servers": _mcp_servers_config(getattr(self.config, "mcp_servers", None)),
             "registry": self,
             "session_manager": self.session_manager,
         }
@@ -2480,6 +2508,43 @@ class CommandRegistry:
                 continue
             commands[name] = cls(self.frontend, self.config, self.agent, **kwargs)
         return commands
+
+    def _auto_connect_mcp(self) -> None:
+        """Attach configured MCP servers to the agent at startup."""
+        names = _mcp_auto_connect_names(getattr(self.config, "mcp_auto_connect", None))
+        if not names:
+            return
+        command = self._commands.get("mcp")
+        if not isinstance(command, MCPCommand):
+            return
+        try:
+            from nemo_oo_agents.mcp import MCPManager
+        except ImportError:
+            logger.warning("MCP auto-connect requested but MCP extra is not installed")
+            return
+
+        inline_servers = _mcp_servers_config(getattr(self.config, "mcp_servers", None))
+        try:
+            configured = set(MCPManager.list_servers(self.mcp_file, servers=inline_servers))
+        except Exception as exc:
+            logger.warning("MCP auto-connect skipped: failed to read config: %s", exc)
+            return
+
+        for server_name in names:
+            if server_name not in configured:
+                logger.warning("MCP auto-connect skipped unknown server %r", server_name)
+                continue
+            try:
+                tool = MCPManager.create_from_server(
+                    server_name,
+                    mcp_file=self.mcp_file,
+                    servers=inline_servers,
+                )
+                setattr(self.agent, _to_attr_name(server_name), tool)
+                command._mcp_connections.add(server_name)
+                logger.info("MCP server %r auto-connected", server_name)
+            except Exception as exc:
+                logger.warning("Failed to auto-connect MCP server %r: %s", server_name, exc)
 
     def _discover_user_skills(self) -> "dict[str, _UserSkill]":
         """Scan skills dirs for install-as:command skills and register them as slash commands.

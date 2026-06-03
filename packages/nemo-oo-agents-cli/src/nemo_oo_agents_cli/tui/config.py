@@ -23,7 +23,7 @@ Usage:
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
     from nemo_oo_agents.unifiedllm import CompletionClient
@@ -70,8 +70,12 @@ class AgentConfig:
 class TUIConfig:
     """Configuration for the TUI presentation layer."""
 
-    # MCP servers from .mcp.json
+    # MCP servers.  Inline ``mcp_servers`` in config.toml is the preferred single-file
+    # configuration; ``mcp_file`` remains as a compatibility bridge for VS Code / Claude
+    # style .mcp.json files.
     mcp_file: Path = Path(".mcp.json")
+    mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    mcp_auto_connect: list[str] = field(default_factory=list)
 
     # Directories to search for skills and user-invocable commands.
     # Includes both project-local and user-global Claude/Cursor conventions.
@@ -136,6 +140,11 @@ class Config:
     _OVERRIDES: ClassVar[dict] = {
         "model": "tui.default_model",
         "mcp_file": ("tui.mcp_file", Path),
+        "mcp_servers": "tui.mcp_servers",
+        "mcp_auto_connect": (
+            "tui.mcp_auto_connect",
+            lambda v: [str(item) for item in v] if isinstance(v, (list, tuple, set)) else [str(v)],
+        ),
         "trace": ("tui.trace_dir", Path),
         "context_limit": "agent.summarization.max_tokens",
         "orchestrator": "agent.orchestrator",

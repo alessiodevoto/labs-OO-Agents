@@ -144,6 +144,22 @@ class TestConfigOverrides:
         cfg = Config.load(mcp_file=str(mcp))
         assert cfg.tui.mcp_file == mcp
 
+    def test_mcp_inline_config_override(self):
+        servers = {
+            "maas": {
+                "url": "https://maas.example.nvidia.com/mcp",
+                "transport": "streamable-http",
+                "headers": {"Authorization": "Bearer ${MAAS_API_KEY}"},
+            }
+        }
+        cfg = Config.load(mcp_servers=servers, mcp_auto_connect=["maas"])
+        assert cfg.tui.mcp_servers == servers
+        assert cfg.tui.mcp_auto_connect == ["maas"]
+
+    def test_mcp_auto_connect_tuple_override(self):
+        cfg = Config.load(mcp_auto_connect=("maas", "jira"))
+        assert cfg.tui.mcp_auto_connect == ["maas", "jira"]
+
     def test_trace_override(self, tmp_path):
         cfg = Config.load(trace=str(tmp_path))
         assert cfg.tui.trace_dir == tmp_path

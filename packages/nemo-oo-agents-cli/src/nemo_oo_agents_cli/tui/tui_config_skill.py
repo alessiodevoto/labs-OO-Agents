@@ -28,6 +28,17 @@ class TuiConfigurationSkill(Skill):
     vi = false                        # Vi keybindings
     libs_dirs = ["/path/to/skills"]   # External library skill directories
     trace = ".nemo_oo_agents/traces"  # Trace output directory
+
+    # MCP servers can be configured inline in this same file. Use env vars for
+    # secrets so tokens are not committed.
+    mcp_auto_connect = ["maas"]
+
+    [tui.mcp_servers.maas]
+    url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
+    transport = "streamable-http"
+
+    [tui.mcp_servers.maas.headers]
+    Authorization = "Bearer ${MAAS_API_KEY}"
     ```
 
     ## External skills libraries (libs_dirs)
@@ -54,6 +65,20 @@ class TuiConfigurationSkill(Skill):
     After adding ``libs_dirs``, restart the TUI. Skills appear as
     ``self.<lib_name>`` automatically. Use ``/skills`` to verify.
 
+    ## MCP servers (mcp_servers)
+
+    ``mcp_servers`` is the preferred single-file TUI MCP configuration. It uses
+    the same per-server fields as ``.mcp.json``: ``command``/``args``/``env`` for
+    stdio servers, or ``url``/``headers`` for HTTP servers. Set
+    ``mcp_auto_connect = ["server-name"]`` to attach servers to the agent at TUI
+    startup as ``self.<server_name>`` (hyphens become underscores). Environment
+    variables in string values are expanded at connect time, e.g.
+    ``Authorization = "Bearer ${MAAS_API_KEY}"``.
+
+    ``mcp_file`` remains available for compatibility with VS Code / Claude-style
+    ``.mcp.json`` files; inline ``mcp_servers`` override servers with the same
+    name from the file.
+
     ## SKILL.md-based slash commands (skills_dirs)
 
     Separate from libs, the TUI scans these directories for Markdown-based
@@ -64,8 +89,8 @@ class TuiConfigurationSkill(Skill):
 
     ## CLI flags (override config.toml)
 
-    ``--model``, ``--libs-dir``, ``--skills-dir``, ``--trace``, ``--no-trace``,
-    ``--vi``, ``--python``, ``--agent <module:Class>``
+    ``--model``, ``--mcp-file``, ``--libs-dir``, ``--skills-dir``, ``--trace``,
+    ``--no-trace``, ``--vi``, ``--python``, ``--agent <module:Class>``
 
     ## Environment variables
 

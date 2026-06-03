@@ -58,6 +58,18 @@ _CONFIG_TOML_TEMPLATE = """\
 
 # Vi keybindings in the prompt input
 # vi = false
+
+# MCP servers can be declared inline here (preferred) instead of a separate
+# .mcp.json. Use env vars for secrets; string values are expanded when the
+# server is connected.
+# mcp_auto_connect = ["maas"]
+#
+# [tui.mcp_servers.maas]
+# url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
+# transport = "streamable-http"
+#
+# [tui.mcp_servers.maas.headers]
+# Authorization = "Bearer ${MAAS_API_KEY}"
 """
 
 

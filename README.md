@@ -689,21 +689,34 @@ uv run python examples/quickstart/10_skills.py
 
 MCP (Model Context Protocol) tools let your agent call external services through a standard interface. MCP support ships as an optional extra — install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
 
-Declare your MCP servers in a `.mcp.json` file at your project root:
+For the TUI, declare MCP servers in the same project config file used for
+models, skills, and other TUI settings: `.nemo_oo_agents/config.toml`. Use
+environment variables for secrets; string values are expanded when the server is
+connected.
 
-```json
-{
-  "mcpServers": {
-    "maas-confluence-stg": {
-      "url": "https://maas.stg.astra.nvidia.com/maas/confluence/mcp",
-      "transport": "streamable-http",
-      "headers": {}
-    }
-  }
-}
+```toml
+[tui]
+mcp_auto_connect = ["maas-confluence-stg"]
+
+[tui.mcp_servers.maas-confluence-stg]
+url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
+transport = "streamable-http"
+
+[tui.mcp_servers.maas-confluence-stg.headers]
+Authorization = "Bearer ${MAAS_API_KEY}"
 ```
 
-Then reference the server by name in your agent:
+At startup the TUI attaches auto-connected servers to the agent using a valid
+Python attribute name, so `maas-confluence-stg` becomes
+`self.maas_confluence_stg`. You can also connect manually with
+`/mcp connect maas-confluence-stg` and inspect configured servers with
+`/mcp list`.
+
+A VS Code / Claude-style `.mcp.json` file is still supported via `mcp_file` or
+`--mcp-file`; inline `mcp_servers` in `config.toml` override file entries with
+the same name.
+
+For non-TUI agents, reference the server by name in your agent:
 
 ```python
 from nemo_oo_agents.mcp import MCPManager

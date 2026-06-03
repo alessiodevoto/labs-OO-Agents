@@ -308,6 +308,82 @@ async def test_mcp_list_output(handler):
 
 
 @pytest.mark.asyncio
+async def test_mcp_list_passes_inline_servers(mock_frontend, mock_config, mock_agent):
+    """Inline MCP servers from config.toml are passed through to /mcp list."""
+    servers = {"maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"}}
+    mock_config.mcp_servers = servers
+    registry = CommandRegistry(
+        frontend=mock_frontend,
+        config=mock_config,
+        agent=mock_agent,
+        skills_dirs=[Path("/nonexistent/skills")],
+        mcp_file=Path(".mcp.json"),
+    )
+    handler = CommandHandler(registry=registry, frontend=mock_frontend)
+
+    mock_mcp_module = MagicMock()
+    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
+        result = await handler.handle("/mcp list")
+
+    assert result.success is True
+    mock_mcp_module.MCPManager.list_servers.assert_called_with(Path(".mcp.json"), servers=servers)
+
+
+def test_command_registry_auto_connects_configured_mcp(mock_frontend, mock_config, mock_agent):
+    """Configured MCP servers can attach to the agent at startup."""
+    servers = {"maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"}}
+    tool = MagicMock()
+    mock_config.mcp_servers = servers
+    mock_config.mcp_auto_connect = ["maas"]
+
+    mock_mcp_module = MagicMock()
+    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
+    mock_mcp_module.MCPManager.create_from_server.return_value = tool
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
+        registry = CommandRegistry(
+            frontend=mock_frontend,
+            config=mock_config,
+            agent=mock_agent,
+            skills_dirs=[Path("/nonexistent/skills")],
+            mcp_file=Path(".mcp.json"),
+        )
+
+    assert mock_agent.maas is tool
+    assert "maas" in registry.get_command("mcp")._mcp_connections
+    mock_mcp_module.MCPManager.create_from_server.assert_called_with(
+        "maas", mcp_file=Path(".mcp.json"), servers=servers
+    )
+
+
+def test_command_registry_filters_invalid_inline_mcp_servers(
+    mock_frontend, mock_config, mock_agent
+):
+    """Inline MCP config ignores invalid server entries before reaching MCPManager."""
+    servers = {
+        "maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"},
+        "bad": "not-a-dict",
+        42: {"url": "https://ignored.example/mcp"},
+    }
+    mock_config.mcp_servers = servers
+    mock_config.mcp_auto_connect = []
+
+    mock_mcp_module = MagicMock()
+    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
+    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
+        registry = CommandRegistry(
+            frontend=mock_frontend,
+            config=mock_config,
+            agent=mock_agent,
+            skills_dirs=[Path("/nonexistent/skills")],
+            mcp_file=Path(".mcp.json"),
+        )
+        command = registry.get_command("mcp")
+
+    assert command.mcp_servers == {"maas": servers["maas"]}
+
+
+@pytest.mark.asyncio
 async def test_mcp_connect_no_server_output(handler):
     """Test /mcp connect with no server - shows error."""
     mock_mcp_module = MagicMock()
