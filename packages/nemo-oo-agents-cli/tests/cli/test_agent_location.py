@@ -3,12 +3,17 @@
 """Tests for the agent-location probe and its use in /activity."""
 
 import asyncio
+import linecache
 
 import pytest
 from nemo_oo_agents_cli.tui.agent_location import (
     AgentLocation,
+    FrameInfo,
+    _source_context,
     locate_agent_on_loop,
 )
+from nemo_oo_agents_cli.tui.commands import ActivityCommand
+from nemo_oo_agents_cli.tui.output import CodeExecution, TableOutput
 
 
 @pytest.mark.asyncio
@@ -167,12 +172,6 @@ async def test_activity_command_emits_highlighted_code(monkeypatch):
     the frame's co_filename and pointing the probe's innermost frame at it. The
     code block is a separate output so the frontend can syntax-highlight it.
     """
-    import linecache
-
-    from nemo_oo_agents_cli.tui import agent_location
-    from nemo_oo_agents_cli.tui.commands import ActivityCommand
-    from nemo_oo_agents_cli.tui.output import CodeExecution, TableOutput
-
     cell_name = "Cell In[42]"
     cell_src = "a = 1\nb = 2\nc = await tool()\nd = 4\ne = 5\n"
     linecache.cache[cell_name] = (
@@ -182,16 +181,20 @@ async def test_activity_command_emits_highlighted_code(monkeypatch):
         cell_name,
     )
 
-    fake = agent_location.AgentLocation(
+    fake = AgentLocation(
         task_name="TUIAgent.handle",
-        stack=[agent_location.FrameInfo("handle", 3, cell_name)],
+        stack=[FrameInfo("handle", 3, cell_name)],
     )
-    fake.stack[-1].context = agent_location._source_context(cell_name, 3)
+    fake.stack[-1].context = _source_context(cell_name, 3)
 
     from unittest.mock import AsyncMock, MagicMock
 
     cmd = ActivityCommand(frontend=AsyncMock(), config=MagicMock(), agent=MagicMock())
-    monkeypatch.setattr(cmd, "_locate_agent", lambda: fake)
+
+    async def _fake_locate():
+        return fake
+
+    monkeypatch.setattr(cmd, "_locate_agent", _fake_locate)
 
     try:
         result = await cmd.execute([])
@@ -218,8 +221,11 @@ async def test_activity_idle_is_one_liner():
     from nemo_oo_agents_cli.tui.output import TableOutput, TextOutput
 
     cmd = ActivityCommand(frontend=AsyncMock(), config=MagicMock(), agent=MagicMock())
-    monkeypatch_loc = lambda: None  # noqa: E731 - probe returns None when idle
-    cmd._locate_agent = monkeypatch_loc  # type: ignore[method-assign]
+
+    async def _idle_locate():  # probe returns None when idle
+        return None
+
+    cmd._locate_agent = _idle_locate  # type: ignore[method-assign]
 
     result = await cmd.execute([])
     assert result.success

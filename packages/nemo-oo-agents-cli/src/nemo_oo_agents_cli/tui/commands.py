@@ -183,12 +183,26 @@ class Command(abc.ABC):
         # Dispatch operations to the agent thread. Set by CommandRegistry
         # after construction. Falls back to inline execution if not wired.
         self._agent_run = kwargs.get("agent_run")
+        # Awaitable variant — set alongside _agent_run. Commands that run on
+        # the UI loop must use this so they never block it (see
+        # TUIApplication.agent_run_async).
+        self._agent_run_async = kwargs.get("agent_run_async")
 
     def agent_run(self, fn):
         """Run *fn* on the agent thread. Falls back to inline if not wired."""
         if self._agent_run is not None:
             return self._agent_run(fn)
         return fn()
+
+    async def agent_run_async(self, fn):
+        """Awaitable ``agent_run`` — never blocks the calling loop.
+
+        Falls back to the blocking ``agent_run`` only when no async dispatcher
+        is wired (tests / pre-startup), where there is no UI loop to protect.
+        """
+        if self._agent_run_async is not None:
+            return await self._agent_run_async(fn)
+        return self.agent_run(fn)
 
     @abc.abstractmethod
     async def execute(self, args: list[str]) -> "CommandResult":
@@ -2353,8 +2367,8 @@ class ActivityCommand(Command):
 
         # Where in the code is the agent suspended? Walk the agent turn task's
         # await stack. This runs on the agent loop (asyncio.Task is not safe to
-        # introspect cross-thread), so dispatch via agent_run().
-        location = self._locate_agent()
+        # introspect cross-thread), so dispatch via agent_run_async().
+        location = await self._locate_agent()
 
         # Idle with nothing in flight: a one-liner, not a table.
         if phase == "idle" and (location is None or not location.stack):
@@ -2427,16 +2441,19 @@ class ActivityCommand(Command):
             highlight_line=frame.lineno,
         )
 
-    def _locate_agent(self):
+    async def _locate_agent(self):
         """Snapshot where the agent coroutine is suspended (or None if idle).
 
-        Runs the probe on the agent loop via ``agent_run`` — ``asyncio.Task``
-        is not safe to walk from the command (UI) thread.
+        Runs the probe on the agent loop via ``agent_run_async`` —
+        ``asyncio.Task`` is not safe to walk from the command (UI) thread, and
+        the blocking ``agent_run`` would freeze the UI loop while the agent is
+        busy (causing status-bar flicker and stalling ``self.message()``
+        output). Awaiting yields control so the UI keeps painting.
         """
         from .agent_location import locate_agent_on_loop
 
         try:
-            return self.agent_run(locate_agent_on_loop)
+            return await self.agent_run_async(locate_agent_on_loop)
         except Exception:
             return None
 
