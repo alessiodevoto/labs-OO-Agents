@@ -12,6 +12,8 @@ import ast
 import asyncio
 import concurrent.futures
 import json
+import os
+import re
 import types
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -481,6 +483,33 @@ def _load_mcp_config(mcp_file: Path | None = None) -> dict[str, dict]:
     return {}
 
 
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _expand_env(value: Any) -> Any:
+    """Expand ${VAR} references in MCP config strings."""
+    if isinstance(value, str):
+        missing: list[str] = []
+
+        def replace_var(match: re.Match[str]) -> str:
+            name = match.group(1)
+            if name not in os.environ:
+                missing.append(name)
+                return match.group(0)
+            return os.environ[name]
+
+        expanded = _ENV_VAR_PATTERN.sub(replace_var, value)
+        if missing:
+            names = ", ".join(sorted(set(missing)))
+            raise ValueError(f"Unset environment variable(s) in MCP config: {names}")
+        return expanded
+    if isinstance(value, list):
+        return [_expand_env(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _expand_env(item) for key, item in value.items()}
+    return value
+
+
 class MCPTool:
     """Abstract base class for per-server MCP tool instances.
 
@@ -558,20 +587,25 @@ class MCPManager:
     """
 
     @staticmethod
-    def list_servers(mcp_file: Path | None = None) -> list[str]:
-        """List all available MCP servers from .mcp.json configuration.
+    def list_servers(
+        mcp_file: Path | None = None,
+        servers: dict[str, dict[str, Any]] | None = None,
+    ) -> list[str]:
+        """List all available MCP servers from config.
 
         Args:
-            mcp_file: Path to .mcp.json file (default: .mcp.json in cwd)
+            mcp_file: Optional path to a VS Code / Claude-style .mcp.json file.
+            servers: Optional inline server config from the TUI config.toml.
 
         Returns:
-            List of server names configured in .mcp.json
+            List of configured server names.
 
         Example:
             >>> servers = MCPManager.list_servers()
             >>> print(servers)  # ["maas-confluence-stg", "langfuse"]
         """
         config = _load_mcp_config(mcp_file)
+        config.update(servers or {})
         return list(config.keys())
 
     @staticmethod
@@ -588,6 +622,7 @@ class MCPManager:
         oauth_scope: str | None = None,
         oauth_open_browser: bool = True,
         mcp_file: Path | None = None,
+        servers: dict[str, dict[str, Any]] | None = None,
     ) -> MCPTool:
         """Create a per-server tool instance; connects to the MCP server.
 
@@ -606,6 +641,7 @@ class MCPManager:
             oauth_scope: OAuth scopes (optional)
             oauth_open_browser: Whether to automatically open browser for OAuth (default: True)
             mcp_file: Path to .mcp.json file (default: .mcp.json in cwd)
+            servers: Optional inline server config from the TUI config.toml.
 
         Returns:
             An MCPTool instance (dynamically generated class with methods for each tool).
@@ -623,14 +659,18 @@ class MCPManager:
 
         # Load config from .mcp.json
         configured_servers = _load_mcp_config(mcp_file)
-        config_server = configured_servers.get(server_name, {}).copy()
+        configured_servers.update(servers or {})
+        config_server = _expand_env(configured_servers.get(server_name, {}).copy())
 
         # Merge provided args with config (provided args take precedence)
         headers = (headers or {}).copy()
         if config_server.get("headers"):
             headers.update(config_server.get("headers", {}))
         url = url or config_server.get("url")
-        transport = transport or config_server.get("transport", "stdio")
+        raw_transport = transport or config_server.get("transport") or "stdio"
+        if raw_transport not in ("stdio", "sse", "streamable-http"):
+            raise ValueError(f"Unsupported MCP transport {raw_transport!r}")
+        transport = raw_transport
         command = command or config_server.get("command")
         args = args or config_server.get("args")
         env = env or config_server.get("env")
