@@ -15,11 +15,13 @@ import contextlib
 import hashlib
 import html
 import logging
+import re
 import secrets
 import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -419,6 +421,116 @@ def _get_redirect_uri(redirect_uri: str) -> str:
     return redirect_uri
 
 
+async def _discover_authorization_servers(client: httpx.AsyncClient, server_url: str) -> list[str]:
+    """Discover OAuth authorization servers for an MCP resource.
+
+    Follows the RFC 9728 protected-resource-metadata flow:
+      1. Make an unauthenticated request and read the ``resource_metadata``
+         pointer from the ``WWW-Authenticate`` header (the canonical source —
+         the metadata path is *not* a fixed suffix of the server URL).
+      2. Fall back to probing well-known paths relative to the server URL for
+         servers that don't emit the header.
+
+    Returns the ``authorization_servers`` list, or ``[]`` if none were found.
+    """
+    metadata_urls: list[str] = []
+
+    pointer = await _resource_metadata_pointer(client, server_url)
+    if pointer:
+        metadata_urls.append(pointer)
+
+    # RFC 9728 §2.2: the well-known segment is inserted *before* the resource
+    # path, not appended after it — e.g. https://host/.well-known/
+    # oauth-protected-resource/mcp for a resource at https://host/mcp.
+    parsed = urlparse(server_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    resource_path = parsed.path.rstrip("/")
+    metadata_urls.extend(
+        [
+            f"{origin}/.well-known/oauth-protected-resource{resource_path}",
+            f"{origin}/.well-known/oauth-authorization-server{resource_path}",
+        ]
+    )
+
+    for url in metadata_urls:
+        try:
+            response = await client.get(url, timeout=5.0)
+        except Exception:
+            continue
+        if response.status_code != 200:
+            continue
+        try:
+            data = response.json()
+        except Exception:
+            continue
+        servers = data.get("authorization_servers") or []
+        if servers:
+            return servers
+        # Some servers return authorization-server metadata directly here.
+        if data.get("authorization_endpoint") and data.get("token_endpoint"):
+            issuer = data.get("issuer")
+            if issuer:
+                return [issuer]
+
+    return []
+
+
+async def _resource_metadata_pointer(client: httpx.AsyncClient, server_url: str) -> str | None:
+    """Read the RFC 9728 ``resource_metadata`` URL from a 401 challenge.
+
+    MCP servers behind an OAuth gateway answer an unauthenticated request with
+    ``401`` and a ``WWW-Authenticate: Bearer ... resource_metadata="<url>"``
+    header. That URL is the only reliable way to locate the metadata document.
+    """
+    try:
+        response = await client.post(
+            server_url,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "nemo-oo-agents", "version": "0"},
+                },
+            },
+            headers={"Accept": "application/json, text/event-stream"},
+            timeout=5.0,
+        )
+    except Exception:
+        return None
+
+    # Only trust the pointer from a genuine auth challenge; a 200 with a stray
+    # WWW-Authenticate header (e.g. from a validating proxy) must not redirect
+    # discovery to the wrong metadata document.
+    if response.status_code != 401:
+        return None
+    header = response.headers.get("www-authenticate", "")
+    match = re.search(r'resource_metadata="([^"]+)"', header)
+    return match.group(1) if match else None
+
+
+async def _fetch_authorization_server_metadata(
+    client: httpx.AsyncClient, auth_server: str
+) -> dict[str, Any]:
+    """Fetch RFC 8414 authorization-server metadata for ``auth_server``."""
+    for suffix in (
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/openid-configuration",
+    ):
+        try:
+            response = await client.get(auth_server + suffix, timeout=5.0)
+        except Exception:
+            continue
+        if response.status_code == 200:
+            try:
+                return response.json()
+            except Exception:
+                continue
+    return {}
+
+
 async def handle_mcp_oauth(
     server_url: str,
     redirect_uri: str = "http://127.0.0.1:0/callback",
@@ -442,35 +554,22 @@ async def handle_mcp_oauth(
         RuntimeError: If OAuth flow fails or endpoints cannot be discovered
     """
 
-    well_known_paths = [
-        ".well-known/oauth-authorization-server",
-        ".well-known/oauth-protected-resource",  # MCP spec
-    ]
     auth_endpoint = None
     token_endpoint = None
     registration_endpoint = None
     discovered_client_id = client_id
 
-    async with httpx.AsyncClient() as client:
-        # First, try discovery from the MCP server URL
-        for path in well_known_paths:
-            try:
-                url = f"{server_url}/{path}"
-                response = await client.get(url, timeout=5.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    authorization_servers = data.get("authorization_servers") or []
-                    if authorization_servers:
-                        auth_server = authorization_servers[0]
-                        auth_endpoint = auth_server + "/authorize" if auth_server else None
-                        token_endpoint = auth_server + "/token" if auth_server else None
-                        registration_endpoint = auth_server + "/register" if auth_server else None
-                    discovered_client_id = (
-                        discovered_client_id or data.get("client_id") or data.get("clientId")
-                    )
-                    break
-            except Exception:
-                continue
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        authorization_servers = await _discover_authorization_servers(client, server_url)
+
+        if authorization_servers:
+            auth_server = authorization_servers[0].rstrip("/")
+            metadata = await _fetch_authorization_server_metadata(client, auth_server)
+            auth_endpoint = metadata.get("authorization_endpoint") or auth_server + "/authorize"
+            token_endpoint = metadata.get("token_endpoint") or auth_server + "/token"
+            registration_endpoint = (
+                metadata.get("registration_endpoint") or auth_server + "/register"
+            )
 
     client_secret = None
     if not discovered_client_id and registration_endpoint:

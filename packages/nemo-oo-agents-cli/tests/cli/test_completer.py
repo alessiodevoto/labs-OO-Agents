@@ -520,3 +520,62 @@ def test_expand_mentions_angle_brackets_target():
         f.touch()
         out = expand_mentions(f"@{f}")
         assert f"(<{f.resolve()}>)" in out, out
+
+
+# ---------------------------------------------------------------------------
+# MCP server-name completion (/mcp connect | /mcp disconnect)
+# ---------------------------------------------------------------------------
+
+
+def _mcp_registry(servers, connected=()):
+    """A registry whose get_command('mcp') returns a stub MCPCommand."""
+    from unittest.mock import MagicMock
+
+    reg = MagicMock()
+    command = MagicMock()
+    command.mcp_file = None
+    command.mcp_servers = {name: {} for name in servers}
+    command._mcp_connections = set(connected)
+    reg.get_command.side_effect = lambda n: command if n == "mcp" else None
+    return reg
+
+
+def test_mcp_connect_lists_configured_servers():
+    reg = _mcp_registry(["maas-jira", "maas-confluence"])
+    completer = Completer(registry=reg)
+    items = completer.complete("/mcp connect ")
+    texts = [i.text for i in items]
+    assert "/mcp connect maas-jira" in texts
+    assert "/mcp connect maas-confluence" in texts
+
+
+def test_mcp_connect_partial_filters():
+    reg = _mcp_registry(["maas-jira", "maas-confluence", "langfuse"])
+    completer = Completer(registry=reg)
+    items = completer.complete("/mcp connect maas-c")
+    texts = [i.text for i in items]
+    assert texts == ["/mcp connect maas-confluence"]
+
+
+def test_mcp_connect_marks_connected_status():
+    reg = _mcp_registry(["maas-jira", "langfuse"], connected=["langfuse"])
+    completer = Completer(registry=reg)
+    by_text = {i.text: i.description for i in completer.complete("/mcp connect ")}
+    assert by_text["/mcp connect langfuse"] == "connected"
+    assert by_text["/mcp connect maas-jira"] == "configured"
+
+
+def test_mcp_disconnect_only_offers_connected():
+    reg = _mcp_registry(["maas-jira", "langfuse"], connected=["langfuse"])
+    completer = Completer(registry=reg)
+    texts = [i.text for i in completer.complete("/mcp disconnect ")]
+    assert texts == ["/mcp disconnect langfuse"]
+
+
+def test_mcp_completion_missing_command_is_safe():
+    from unittest.mock import MagicMock
+
+    reg = MagicMock()
+    reg.get_command.return_value = None
+    completer = Completer(registry=reg)
+    assert completer.complete("/mcp connect ") == []

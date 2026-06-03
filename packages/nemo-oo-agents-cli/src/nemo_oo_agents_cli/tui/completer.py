@@ -8,6 +8,7 @@ the web frontend (WebSocket round-trip) use this same engine, so completion
 behavior is identical everywhere.
 """
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .commands import CommandRegistry
+
+logger = logging.getLogger(__name__)
 
 
 # Built-in ! commands
@@ -118,6 +121,11 @@ class Completer:
         # Todo ID completion
         if lower.startswith("/todo "):
             return self._todo_id_completions(text)
+
+        # MCP server-name completion for /mcp connect and /mcp disconnect
+        for prefix in ("/mcp connect ", "/mcp disconnect "):
+            if lower.startswith(prefix.lower()):
+                return self._mcp_server_completions(text, prefix)
 
         # Event tag completion — always return a non-empty list to
         # prevent prompt_toolkit's CompletionsMenu from crashing on
@@ -304,6 +312,49 @@ class Completer:
                     text=prefix + t.id,
                     display=prefix + t.id,
                     description=f"{icon} {t.title}",
+                )
+            )
+        return items
+
+    def _mcp_server_completions(self, text: str, prefix: str) -> list[CompletionItem]:
+        """Complete configured MCP server names for /mcp connect|disconnect.
+
+        Pulls the live ``MCPCommand`` instance from the registry so the
+        candidates reflect both ``.mcp.json`` and inline ``config.toml`` servers,
+        and annotates which are currently connected. ``disconnect`` only offers
+        connected servers; ``connect`` offers all configured servers.
+        """
+        partial = text[len(prefix) :]
+        registry = self._registry
+        command = registry.get_command("mcp") if registry else None
+        if command is None:
+            return []
+
+        try:
+            from nemo_oo_agents.mcp import MCPManager
+
+            servers = MCPManager.list_servers(
+                getattr(command, "mcp_file", None),
+                servers=getattr(command, "mcp_servers", None),
+            )
+        except Exception:
+            logger.debug("MCP server completion failed", exc_info=True)
+            return []
+
+        connected = getattr(command, "_mcp_connections", set())
+        is_disconnect = prefix.strip().endswith("disconnect")
+        names = sorted(connected) if is_disconnect else sorted(servers)
+
+        items: list[CompletionItem] = []
+        for name in names:
+            if partial and not name.lower().startswith(partial.lower()):
+                continue
+            status = "connected" if name in connected else "configured"
+            items.append(
+                CompletionItem(
+                    text=prefix + name,
+                    display=prefix + name,
+                    description=status,
                 )
             )
         return items
