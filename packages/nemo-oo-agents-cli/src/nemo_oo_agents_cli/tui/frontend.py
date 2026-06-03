@@ -532,8 +532,6 @@ class TerminalFrontend:
             sys.stdout.flush()
             sys.stderr.flush()
 
-        self._console.start_spinner()
-
     # ------------------------------------------------------------------
     # Pass-through accessors (used by Session)
     # ------------------------------------------------------------------

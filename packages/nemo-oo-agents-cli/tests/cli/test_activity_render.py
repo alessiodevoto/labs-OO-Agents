@@ -70,7 +70,11 @@ async def test_activity_idle_is_one_liner():
     from nemo_oo_agents_cli.tui.output import TableOutput, TextOutput
 
     cmd = ActivityCommand(frontend=AsyncMock(), config=MagicMock(), agent=MagicMock())
-    cmd._locate_agent = lambda: None  # type: ignore[method-assign]
+
+    async def _idle_locate():
+        return None
+
+    cmd._locate_agent = _idle_locate  # type: ignore[method-assign]
 
     result = await cmd.execute([])
     assert len(result.outputs) == 1

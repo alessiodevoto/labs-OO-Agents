@@ -499,9 +499,12 @@ class Session:
             config=self.config,
         )
         # Wire agent_run into all commands so they can dispatch mutations
-        # to the agent thread via self.agent_run(fn).
+        # to the agent thread via self.agent_run(fn). agent_run_async is the
+        # awaitable variant — commands running on the UI loop use it so they
+        # never block the loop (and stall message() output / spin the prompt).
         for cmd in self.registry.commands():
             cmd._agent_run = self._app.agent_run
+            cmd._agent_run_async = self._app.agent_run_async
         # Wire the user-bar render + TUIUserInput log on the channel's
         # on_get hook so the echo fires when the dispatcher (or agent
         # code mid-turn) actually dequeues the message — symmetric across

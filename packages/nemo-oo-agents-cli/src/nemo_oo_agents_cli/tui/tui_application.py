@@ -950,6 +950,47 @@ class TUIApplication:
             future.cancel()
             raise
 
+    async def agent_run_async(self, fn):
+        """Like ``agent_run``, but awaitable — never blocks the calling loop.
+
+        Slash commands run as tasks on the prompt_toolkit UI loop. Calling the
+        blocking ``agent_run`` from there freezes the UI loop (``future.result``)
+        while the agent loop is busy — starving the block-queue consumer
+        (``self.message()`` output stops appearing) and wedging prompt_toolkit's
+        redraw (status-bar / input flicker). Awaiting the cross-loop future
+        instead yields control so the UI keeps painting and draining output.
+
+        Falls back to inline execution when there is no separate agent loop
+        (tests / pre-startup) or when already on the agent loop.
+        """
+        loop = self._agent_loop
+        if loop is None or not loop.is_running():
+            result = fn()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        import threading
+
+        if getattr(loop, "_thread_id", None) == threading.current_thread().ident:
+            result = fn()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        async def _wrapper():
+            result = fn()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        future = asyncio.run_coroutine_threadsafe(_wrapper(), loop)
+        try:
+            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=30)
+        except TimeoutError:
+            future.cancel()
+            raise
+
     # ── output pipeline -----------------------------------------------
 
     def emit_block(self, text: str) -> None:
