@@ -384,3 +384,73 @@ async def test_handle_mcp_oauth_defaults_scope_from_resource_metadata(monkeypatc
     await oauth.handle_mcp_oauth("https://maas.example/mcp", client_id="client-id")
 
     assert seen_scopes == ["READ WRITE"]
+
+
+@pytest.mark.asyncio
+async def test_authorize_falls_back_to_manual_when_no_browser(monkeypatch):
+    """Headless sessions auto-use manual OOB when a code prompt is available."""
+    monkeypatch.setattr(oauth, "_system_browser_available", lambda: False)
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/auth/authorize",
+        token_endpoint="https://maas.example/auth/token",
+        client_id="client-id",
+        redirect_uri="http://127.0.0.1:0/callback",
+    )
+
+    seen: list[str] = []
+
+    async def code_prompt(auth_url: str) -> str:
+        seen.append(auth_url)
+        return "pasted-code"
+
+    handler = oauth.OAuthHandler(config, code_prompt=code_prompt)
+
+    async def fail_local(open_browser):
+        raise AssertionError("loopback callback flow must not run headless")
+
+    monkeypatch.setattr(handler, "_capture_code_via_local_server", fail_local)
+
+    code = await handler.authorize(open_browser=True)
+
+    assert code == "pasted-code"
+    assert seen and seen[0].startswith("https://maas.example/auth/authorize")
+    assert handler._actual_redirect_uri == "urn:ietf:wg:oauth:2.0:oob"
+
+
+@pytest.mark.asyncio
+async def test_authorize_headless_without_prompt_raises_actionable_error(monkeypatch):
+    """Headless with no code prompt fails fast with config instructions, not a hang."""
+    monkeypatch.setattr(oauth, "_system_browser_available", lambda: False)
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/auth/authorize",
+        token_endpoint="https://maas.example/auth/token",
+        client_id="client-id",
+        redirect_uri="http://127.0.0.1:0/callback",
+    )
+    handler = oauth.OAuthHandler(config)
+
+    async def fail_local(open_browser):
+        raise AssertionError("loopback callback flow must not run headless")
+
+    monkeypatch.setattr(handler, "_capture_code_via_local_server", fail_local)
+
+    with pytest.raises(RuntimeError, match="oauth_manual = true"):
+        await handler.authorize(open_browser=True)
+
+
+def test_system_browser_available_false_when_no_browser(monkeypatch):
+    """Returns False when webbrowser.get() raises webbrowser.Error."""
+
+    def raise_error():
+        raise oauth.webbrowser.Error("no browser")
+
+    monkeypatch.setattr(oauth.webbrowser, "get", raise_error)
+    assert oauth._system_browser_available() is False
+
+
+def test_system_browser_available_true_when_browser_present(monkeypatch):
+    """Returns True when webbrowser.get() succeeds without raising."""
+    monkeypatch.setattr(oauth.webbrowser, "get", lambda *a, **k: object())
+    assert oauth._system_browser_available() is True
