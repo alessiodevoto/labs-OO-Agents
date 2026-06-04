@@ -454,3 +454,100 @@ def test_system_browser_available_true_when_browser_present(monkeypatch):
     """Returns True when webbrowser.get() succeeds without raising."""
     monkeypatch.setattr(oauth.webbrowser, "get", lambda *a, **k: object())
     assert oauth._system_browser_available() is True
+
+
+@pytest.mark.asyncio
+async def test_authorize_uses_browser_open_hook_when_no_system_browser(monkeypatch):
+    """With no in-process browser, a browser_open hook drives the loopback flow (not OOB)."""
+    monkeypatch.setattr(oauth, "_system_browser_available", lambda: False)
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        redirect_uri="http://localhost:0/callback",
+    )
+
+    opened: list[str] = []
+
+    async def browser_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    handler = oauth.OAuthHandler(config, browser_open=browser_open)
+
+    captured = {}
+
+    async def fake_capture(open_browser):
+        captured["open_browser"] = open_browser
+        return "the-code"
+
+    monkeypatch.setattr(handler, "_capture_code_via_local_server", fake_capture)
+
+    code = await handler.authorize(open_browser=True)
+
+    # Loopback flow runs (not OOB); the hook is available for it to use.
+    assert code == "the-code"
+    assert captured["open_browser"] is True
+
+
+@pytest.mark.asyncio
+async def test_capture_routes_through_browser_open_hook(monkeypatch):
+    """_capture_code_via_local_server opens the auth URL via the hook, skipping webbrowser."""
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        redirect_uri="http://localhost:0/callback",
+        timeout=0.05,
+    )
+
+    opened: list[str] = []
+
+    async def browser_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    async def no_register(redirect_uri):
+        return None
+
+    def boom(*a, **k):
+        raise AssertionError("webbrowser.open must not be called when the hook succeeds")
+
+    handler = oauth.OAuthHandler(config, browser_open=browser_open)
+    monkeypatch.setattr(handler, "_register_dynamic_client", no_register)
+    monkeypatch.setattr(oauth.webbrowser, "open", boom)
+
+    # Times out waiting for a callback (no real browser), but the hook must have fired first.
+    with pytest.raises(RuntimeError, match="timed out"):
+        await handler._capture_code_via_local_server(open_browser=True)
+
+    assert opened and opened[0].startswith("https://maas.example/authorize")
+
+
+@pytest.mark.asyncio
+async def test_authorize_prefers_browser_open_over_manual_oob(monkeypatch):
+    """When both a hook and a code prompt exist headless, the hook (loopback) wins over OOB."""
+    monkeypatch.setattr(oauth, "_system_browser_available", lambda: False)
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        redirect_uri="http://localhost:0/callback",
+    )
+
+    async def browser_open(url: str) -> bool:
+        return True
+
+    async def code_prompt(url: str) -> str:
+        raise AssertionError("manual OOB must not run when a browser_open hook is available")
+
+    handler = oauth.OAuthHandler(config, code_prompt=code_prompt, browser_open=browser_open)
+
+    async def fake_capture(open_browser):
+        return "loopback-code"
+
+    monkeypatch.setattr(handler, "_capture_code_via_local_server", fake_capture)
+
+    assert await handler.authorize(open_browser=True) == "loopback-code"
