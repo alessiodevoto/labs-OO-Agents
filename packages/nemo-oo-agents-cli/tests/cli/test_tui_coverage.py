@@ -858,7 +858,7 @@ class TestMCPCommandExecute:
         assert any(
             "Failed to connect" in o.content for o in result.outputs if isinstance(o, TextOutput)
         )
-        mock_console.stop_thinking.assert_called()
+        mock_console.stop_thinking.assert_not_called()
 
     async def test_disconnect_not_connected(self, mock_console, mock_config, mock_agent):
         cmd = MCPCommand(mock_console, mock_config, mock_agent)

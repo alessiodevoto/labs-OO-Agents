@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for mcp_nemo_oo_agents module."""
 
+import httpx
 import pytest
 
 pytest.importorskip("mcp")
@@ -10,6 +11,7 @@ from datetime import timedelta  # noqa: E402
 from typing import Literal  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
+from nemo_oo_agents.mcp import oauth  # noqa: E402
 from nemo_oo_agents.mcp.client import (  # noqa: E402
     MCPBaseClient,
     MCPSSEClient,
@@ -17,6 +19,7 @@ from nemo_oo_agents.mcp.client import (  # noqa: E402
     MCPStreamableHTTPClient,
     create_mcp_client,
 )
+from nemo_oo_agents.mcp.tool import MCPTool, MCPToolSpec, _make_dynamic_class  # noqa: E402
 
 
 # Fixtures
@@ -394,3 +397,71 @@ async def test_streamable_http_headers_passed_to_httpx_client(
 
                 # Verify httpx.AsyncClient was created with expected headers
                 mock_httpx_client.assert_called_once_with(headers=expected_headers)
+
+
+def test_dynamic_method_supports_json_container_defaults():
+    """MCP JSON schemas may use array/object defaults; they must compile to AST literals."""
+    spec = MCPToolSpec(
+        name="search",
+        description="Search things",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "labels": {"type": "array", "default": []},
+                "filters": {"type": "object", "default": {"state": "open"}},
+            },
+        },
+        required=set(),
+    )
+
+    dynamic_class = _make_dynamic_class("jira", [spec], MCPTool)
+
+    assert dynamic_class.search.__defaults__ == ([], {"state": "open"})
+
+
+def test_create_from_server_honors_configured_oauth_mode():
+    """OAuth browser/manual settings come from server config unless explicitly overridden."""
+
+    class UnauthorizedClient:
+        def __init__(self, *args, **kwargs):
+            self.headers = kwargs.get("headers") or {}
+
+        def connect_to_server(self):
+            client = self
+
+            class Context:
+                async def __aenter__(self):
+                    if "Authorization" not in client.headers:
+                        response = MagicMock(status_code=401)
+                        raise httpx.HTTPStatusError(
+                            "unauthorized", request=MagicMock(), response=response
+                        )
+                    session = AsyncMock()
+                    session.list_tools.return_value.tools = []
+                    return session
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return False
+
+            return Context()
+
+    servers = {
+        "jira": {
+            "url": "https://maas.example/mcp",
+            "transport": "streamable-http",
+            "oauth_manual": True,
+            "oauth_open_browser": False,
+        }
+    }
+
+    with (
+        patch("nemo_oo_agents.mcp.tool.create_mcp_client", side_effect=UnauthorizedClient),
+        patch("nemo_oo_agents.mcp.tool.handle_mcp_oauth") as mock_oauth,
+    ):
+        mock_oauth.return_value = oauth.OAuthToken(access_token="token")
+        from nemo_oo_agents.mcp.tool import MCPManager
+
+        MCPManager.create_from_server("jira", servers=servers)
+
+    assert mock_oauth.call_args.kwargs["manual"] is True
+    assert mock_oauth.call_args.kwargs["open_browser"] is False

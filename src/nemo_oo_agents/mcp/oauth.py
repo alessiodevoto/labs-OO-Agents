@@ -14,12 +14,18 @@ import base64
 import contextlib
 import hashlib
 import html
+import json
 import logging
+import os
 import re
 import secrets
+import stat
+import time
 import webbrowser
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from threading import Thread
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -36,18 +42,20 @@ class OAuthConfig:
     Attributes:
         authorization_endpoint: OAuth authorization URL
         token_endpoint: OAuth token exchange URL
-        client_id: OAuth client ID
+        client_id: OAuth client ID, or None until dynamic registration completes
         redirect_uri: Redirect URI for OAuth callback
         scope: Optional OAuth scopes
         client_secret: Optional client secret (for dynamic registration)
+        registration_endpoint: Optional OAuth dynamic client registration endpoint
     """
 
     authorization_endpoint: str
     token_endpoint: str
-    client_id: str
+    client_id: str | None
     redirect_uri: str
     scope: str | None = None
     client_secret: str | None = None
+    registration_endpoint: str | None = None
     timeout: float = 300.0  # 5 minutes
 
 
@@ -66,6 +74,41 @@ class OAuthToken:
     token_type: str = "Bearer"
     expires_in: int | None = None
     refresh_token: str | None = None
+    obtained_at: float = 0.0
+    client_id: str | None = None
+    client_secret: str | None = None
+
+    def is_expired(self, leeway: float = 60.0) -> bool:
+        """True if the access token is at/near expiry (with a safety leeway)."""
+        if not self.expires_in:
+            return False
+        return time.time() >= (self.obtained_at + self.expires_in - leeway)
+
+
+def _extract_authorization_code(pasted: str) -> str:
+    """Extract an OAuth code from either a raw code or a pasted callback URL.
+
+    Docker Sandbox/MaaS shows an OOB callback URI such as
+    ``urn:ietf:wg:oauth:2.0:oob?code=...&state=...``. Users naturally paste
+    that whole URI, so accept it instead of sending the full URI as the code.
+    """
+    value = pasted.strip()
+    if not value:
+        return ""
+
+    # The MaaS helper page also offers ``curl '<callback-url>'``; accept that too.
+    curl_match = re.search(r"curl\s+['\"]([^'\"]+)['\"]", value)
+    if curl_match:
+        value = curl_match.group(1)
+
+    parsed = urlparse(value)
+    if parsed.query:
+        params = parse_qs(parsed.query)
+        code_values = params.get("code")
+        if code_values and code_values[0]:
+            return code_values[0]
+
+    return value
 
 
 def _html_page(title: str, body: str) -> str:
@@ -101,13 +144,26 @@ def _html_page(title: str, body: str) -> str:
 class OAuthHandler:
     """Handles OAuth 2.0 PKCE flow for MCP authentication."""
 
-    def __init__(self, config: OAuthConfig):
+    def __init__(
+        self,
+        config: OAuthConfig,
+        manual: bool = False,
+        code_prompt: "Callable[[str], Awaitable[str]] | None" = None,
+    ):
         """Initialize OAuth handler.
 
         Args:
             config: OAuth configuration
+            manual: Use the out-of-band flow (show link, paste code) instead of
+                binding a local callback server. Required for headless/remote
+                sessions (e.g. a docker sandbox with no browser/localhost loop).
+            code_prompt: Async callback that takes the authorization URL and
+                returns the pasted code. Used in manual mode so the host
+                application (TUI) controls input instead of blocking ``input()``.
         """
         self.config = config
+        self.manual = manual
+        self._code_prompt = code_prompt
         self._code_verifier: str | None = None
         self._code_challenge: str | None = None
         # Set by _capture_code_via_local_server after dynamic port assignment;
@@ -146,6 +202,10 @@ class OAuthHandler:
             Authorization URL
         """
         self._code_verifier, self._code_challenge = self._generate_pkce_pair()
+        if not self.config.client_id:
+            raise RuntimeError(
+                "OAuth client_id is missing and dynamic client registration did not complete"
+            )
 
         params = {
             "response_type": "code",
@@ -161,13 +221,60 @@ class OAuthHandler:
         query_string = urlencode(params)
         return f"{self.config.authorization_endpoint}?{query_string}"
 
+    async def _authorize_manual(self, open_browser: bool = True) -> str:
+        """Out-of-band authorization: show the URL, collect a pasted code.
+
+        No local callback server is bound, so this works in headless/remote
+        environments (e.g. a docker sandbox). Uses the OOB redirect URI and the
+        host-provided ``code_prompt`` callback to read the code, never blocking
+        ``input()``.
+        """
+        oob_redirect = "urn:ietf:wg:oauth:2.0:oob"
+        self._actual_redirect_uri = oob_redirect
+        await self._register_dynamic_client(oob_redirect)
+        auth_url = self._build_authorization_url(redirect_uri=oob_redirect)
+
+        if open_browser:
+            with contextlib.suppress(Exception):
+                webbrowser.open(auth_url)
+        logger.info(f"Please authorize at: {auth_url}")
+
+        if self._code_prompt is None:
+            raise RuntimeError("Manual OAuth requires a code prompt callback but none was provided")
+        code = _extract_authorization_code(await self._code_prompt(auth_url))
+        if not code:
+            raise RuntimeError("Authorization code not provided")
+        return code
+
+    async def _register_dynamic_client(self, redirect_uri: str) -> None:
+        """Register an OAuth client for the already-bound callback URI."""
+        if self.config.client_id or not self.config.registration_endpoint:
+            return
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                self.config.registration_endpoint,
+                json={"redirect_uris": [redirect_uri]},
+                timeout=10.0,
+            )
+            if response.status_code not in (200, 201):
+                raise RuntimeError(
+                    f"Client registration failed: {response.status_code} {response.text}"
+                )
+            data = response.json()
+            self.config.client_id = data.get("client_id")
+            self.config.client_secret = data.get("client_secret")
+            if not self.config.client_id:
+                raise RuntimeError("Client registration response did not include client_id")
+            logger.info(f"Successfully registered OAuth client: {self.config.client_id}")
+
     async def authorize(self, open_browser: bool = True) -> str:
         """Perform OAuth authorization flow.
 
         Implements RFC 8252 §7.3: binds a temporary local HTTP server on an
         OS-assigned port (port 0) so the callback is captured automatically
-        without any copy-paste.  Falls back to terminal input if the local
-        server cannot be started.
+        without any copy-paste.  Fails fast if the local callback server
+        cannot be started; blocking stdin prompts are unsafe inside the TUI.
 
         Args:
             open_browser: Whether to automatically open browser
@@ -178,15 +285,16 @@ class OAuthHandler:
         Raises:
             RuntimeError: If authorization fails
         """
+        if self.manual:
+            return await self._authorize_manual(open_browser)
         try:
             code = await self._capture_code_via_local_server(open_browser)
         except Exception as e:
-            logger.warning(f"Local callback server failed ({e}), falling back to manual input")
-            # Fall back: build auth URL with the static config redirect_uri
-            auth_url = self._build_authorization_url()
-            logger.info(f"Please visit: {auth_url}")
-            logger.info("After authorizing, copy the 'code' parameter from the redirect URL.")
-            code = (await asyncio.to_thread(input, "Enter authorization code: ")).strip()
+            raise RuntimeError(
+                "OAuth browser callback failed before an authorization code was received. "
+                "Retry the connection; if this persists, check that the browser can open "
+                "localhost callback URLs from this TUI session."
+            ) from e
 
         if not code:
             raise RuntimeError("Authorization code not provided")
@@ -262,10 +370,17 @@ class OAuthHandler:
         actual_port = server.server_address[1]
         server.timeout = 1.0  # Wake up every second to check for cancellation
 
-        # Build the redirect URI and auth URL now that we know the real port
+        # Build the redirect URI now that HTTPServer has bound the actual port.
+        # Dynamic registration happens while this server still owns the port, so
+        # no other process can claim it between port selection and callback bind.
         actual_redirect_uri = f"{scheme}://{host}:{actual_port}{callback_path}"
         self._actual_redirect_uri = actual_redirect_uri
-        auth_url = self._build_authorization_url(redirect_uri=actual_redirect_uri)
+        try:
+            await self._register_dynamic_client(actual_redirect_uri)
+            auth_url = self._build_authorization_url(redirect_uri=actual_redirect_uri)
+        except Exception:
+            server.server_close()
+            raise
 
         logger.info(f"OAuth callback server listening on {actual_redirect_uri}")
 
@@ -349,6 +464,9 @@ class OAuthHandler:
                     token_type=token_data.get("token_type", "Bearer"),
                     expires_in=token_data.get("expires_in"),
                     refresh_token=token_data.get("refresh_token"),
+                    obtained_at=time.time(),
+                    client_id=self.config.client_id,
+                    client_secret=self.config.client_secret,
                 )
             except httpx.HTTPStatusError as e:
                 error_detail = e.response.text if e.response else str(e)
@@ -403,24 +521,6 @@ class OAuthHandler:
             raise
 
 
-def _get_redirect_uri(redirect_uri: str) -> str:
-    """Get redirect URI, handling port 0 by returning it as-is.
-
-    Args:
-        redirect_uri: Redirect URI (may have port 0 for dynamic assignment)
-
-    Returns:
-        Redirect URI unchanged (port 0 is handled by the actual server binding)
-    """
-    # If port is specified and not 0, use it as-is
-    parsed = urlparse(redirect_uri)
-    if parsed.port is not None and parsed.port != 0:
-        return redirect_uri
-    # For port 0, return as-is - the actual server will bind and use that port
-    # Registration should happen after server binding or be skipped for port 0
-    return redirect_uri
-
-
 async def _discover_authorization_servers(client: httpx.AsyncClient, server_url: str) -> list[str]:
     """Discover OAuth authorization servers for an MCP resource.
 
@@ -473,6 +573,40 @@ async def _discover_authorization_servers(client: httpx.AsyncClient, server_url:
                 return [issuer]
 
     return []
+
+
+async def _fetch_protected_resource_metadata(
+    client: httpx.AsyncClient, server_url: str
+) -> dict[str, Any]:
+    """Fetch RFC 9728 protected-resource metadata for ``server_url`` if available."""
+    metadata_urls: list[str] = []
+    pointer = await _resource_metadata_pointer(client, server_url)
+    if pointer:
+        metadata_urls.append(pointer)
+
+    parsed = urlparse(server_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    resource_path = parsed.path.rstrip("/")
+    metadata_urls.append(f"{origin}/.well-known/oauth-protected-resource{resource_path}")
+
+    seen: set[str] = set()
+    for url in metadata_urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            response = await client.get(url, timeout=5.0)
+        except Exception:
+            continue
+        if response.status_code != 200:
+            continue
+        try:
+            data = response.json()
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
 
 
 async def _resource_metadata_pointer(client: httpx.AsyncClient, server_url: str) -> str | None:
@@ -531,21 +665,122 @@ async def _fetch_authorization_server_metadata(
     return {}
 
 
+def _token_cache_path() -> Path:
+    """Return the per-project token cache path (.nemo_oo_agents/mcp_tokens.json)."""
+    base = os.environ.get("NEMO_OO_PROJECT_DIR") or os.getcwd()
+    return Path(base) / ".nemo_oo_agents" / "mcp_tokens.json"
+
+
+def _load_cached_token(server_url: str) -> OAuthToken | None:
+    """Load a cached OAuth token for ``server_url`` if present and well-formed."""
+    path = _token_cache_path()
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    entry = data.get(server_url)
+    if not isinstance(entry, dict) or "access_token" not in entry:
+        return None
+    return OAuthToken(
+        access_token=entry["access_token"],
+        token_type=entry.get("token_type", "Bearer"),
+        expires_in=entry.get("expires_in"),
+        refresh_token=entry.get("refresh_token"),
+        obtained_at=entry.get("obtained_at", 0.0),
+        client_id=entry.get("client_id"),
+        client_secret=entry.get("client_secret"),
+    )
+
+
+def _save_cached_token(server_url: str, token: OAuthToken) -> None:
+    """Persist ``token`` for ``server_url`` to the project token cache (chmod 600)."""
+    path = _token_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        data[server_url] = {
+            "access_token": token.access_token,
+            "token_type": token.token_type,
+            "expires_in": token.expires_in,
+            "refresh_token": token.refresh_token,
+            "obtained_at": token.obtained_at,
+            "client_id": token.client_id,
+            "client_secret": token.client_secret,
+        }
+        path.write_text(json.dumps(data, indent=2))
+        with contextlib.suppress(OSError):
+            path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except OSError as e:
+        logger.warning(f"Could not persist MCP OAuth token cache: {e}")
+
+
+async def _refresh_access_token(
+    token_endpoint: str,
+    client_id: str,
+    refresh_token: str,
+    client_secret: str | None = None,
+) -> OAuthToken | None:
+    """Exchange a refresh token for a fresh access token, or None on failure."""
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(token_endpoint, data=data, timeout=10.0)
+            response.raise_for_status()
+            td = response.json()
+        return OAuthToken(
+            access_token=td["access_token"],
+            token_type=td.get("token_type", "Bearer"),
+            expires_in=td.get("expires_in"),
+            # Some servers omit a rotated refresh token; keep the existing one.
+            refresh_token=td.get("refresh_token", refresh_token),
+            obtained_at=time.time(),
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+    except Exception as e:
+        logger.info(f"Refresh token exchange failed ({e}); falling back to full auth")
+        return None
+
+
 async def handle_mcp_oauth(
     server_url: str,
     redirect_uri: str = "http://127.0.0.1:0/callback",
     client_id: str | None = None,
     scope: str | None = None,
     open_browser: bool = True,
+    manual: bool = False,
+    code_prompt: "Callable[[str], Awaitable[str]] | None" = None,
+    use_cache: bool = True,
 ) -> OAuthToken:
-    """Handle OAuth flow for MCP server.
+    """Handle OAuth flow for MCP server, reusing a cached token when possible.
+
+    Resolution order:
+      1. A non-expired cached access token for ``server_url`` is returned as-is.
+      2. A cached refresh token is exchanged for a fresh access token.
+      3. A full authorization flow runs — either the local-callback browser flow
+         or, when ``manual=True``, the out-of-band (link + pasted code) flow for
+         headless/remote sessions.
 
     Args:
         server_url: MCP server URL
-        redirect_uri: OAuth redirect URI
-        client_id: OAuth client ID (if not provided, may be discovered from server)
+        redirect_uri: OAuth redirect URI for the local-callback flow
+        client_id: OAuth client ID (if not provided, may be discovered/registered)
         scope: OAuth scopes
-        open_browser: Whether to automatically open browser
+        open_browser: Whether to automatically open the browser
+        manual: Use the out-of-band (link + paste code) flow
+        code_prompt: Async callback returning the pasted code (manual mode)
+        use_cache: Read/write the per-project token cache
 
     Returns:
         OAuthToken object containing the access token and metadata
@@ -560,7 +795,15 @@ async def handle_mcp_oauth(
     discovered_client_id = client_id
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        authorization_servers = await _discover_authorization_servers(client, server_url)
+        resource_metadata = await _fetch_protected_resource_metadata(client, server_url)
+        if scope is None:
+            scopes = resource_metadata.get("scopes_supported") or []
+            if all(isinstance(s, str) for s in scopes):
+                scope = " ".join(scopes) or None
+
+        authorization_servers = resource_metadata.get("authorization_servers") or []
+        if not authorization_servers:
+            authorization_servers = await _discover_authorization_servers(client, server_url)
 
         if authorization_servers:
             auth_server = authorization_servers[0].rstrip("/")
@@ -571,48 +814,29 @@ async def handle_mcp_oauth(
                 metadata.get("registration_endpoint") or auth_server + "/register"
             )
 
-    client_secret = None
-    if not discovered_client_id and registration_endpoint:
-        # For dynamic registration with port 0, we need to bind the server first
-        # to get the actual port. However, to avoid TOCTOU race, we'll skip
-        # registration if port is 0 and let the server handle it, or register
-        # after the server is bound in _capture_code_via_local_server.
-        # For now, skip registration if port is 0 to avoid the race condition.
-        parsed = urlparse(redirect_uri)
-        if parsed.port == 0:
-            logger.warning(
-                "Skipping dynamic client registration: port 0 requires server binding first. "
-                "The server will bind to a dynamic port during authorization."
+    # 1/2. Reuse a cached token (or refresh it) before prompting for auth again.
+    if use_cache:
+        cached = _load_cached_token(server_url)
+        if cached and not cached.is_expired():
+            logger.info("Using cached MCP OAuth token")
+            return cached
+        refresh_client_id = discovered_client_id or cached.client_id if cached else None
+        if cached and cached.refresh_token and token_endpoint and refresh_client_id:
+            refreshed = await _refresh_access_token(
+                token_endpoint, refresh_client_id, cached.refresh_token, cached.client_secret
             )
-        else:
-            registration_redirect_uri = _get_redirect_uri(redirect_uri)
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        registration_endpoint,
-                        json={"redirect_uris": [registration_redirect_uri]},
-                        timeout=10.0,
-                    )
-                    if response.status_code == 201 or response.status_code == 200:
-                        data = response.json()
-                        discovered_client_id = data.get("client_id")
-                        client_secret = data.get("client_secret")
-                        logger.info(f"Successfully registered OAuth client: {discovered_client_id}")
-                        # Update redirect_uri to the one used for registration
-                        redirect_uri = registration_redirect_uri
-                    else:
-                        logger.warning(
-                            f"Client registration failed: {response.status_code} {response.text}"
-                        )
-            except Exception as e:
-                logger.warning(f"Dynamic client registration failed: {e}")
+            if refreshed:
+                logger.info("Refreshed MCP OAuth token from cache")
+                _save_cached_token(server_url, refreshed)
+                return refreshed
 
     final_client_id = discovered_client_id or client_id
 
-    if not final_client_id:
+    if not final_client_id and not registration_endpoint:
         raise RuntimeError(
-            "client_id is required but could not be discovered. "
-            "Please provide oauth_client_id in .mcp.json or contact the MCP server administrator."
+            "client_id is required but could not be discovered, and the OAuth server "
+            "did not advertise a dynamic client registration endpoint. Please provide "
+            "oauth_client_id in .mcp.json or contact the MCP server administrator."
         )
 
     if auth_endpoint is None or token_endpoint is None:
@@ -627,8 +851,11 @@ async def handle_mcp_oauth(
         client_id=final_client_id,
         redirect_uri=redirect_uri,
         scope=scope,
-        client_secret=client_secret,
+        registration_endpoint=registration_endpoint,
     )
 
-    handler = OAuthHandler(config)
-    return await handler.complete_flow(open_browser=open_browser)
+    handler = OAuthHandler(config, manual=manual, code_prompt=code_prompt)
+    token = await handler.complete_flow(open_browser=open_browser)
+    if use_cache:
+        _save_cached_token(server_url, token)
+    return token

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 logger = logging.getLogger(__name__)
 
 from .output import (  # noqa: E402
+    AgentMessage,
     ClearScreen,
     CodeExecution,
     DiffOutput,
@@ -656,15 +657,26 @@ class MCPCommand(Command):
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        try:
-            from nemo_oo_agents.mcp import MCPManager
-        except ImportError:
-            return CommandResult.err("MCP not enabled. Run `uv sync --extra mcp` and restart.")
+        def _mcp_manager():
+            try:
+                from nemo_oo_agents.mcp import MCPManager
+            except ImportError:
+                return None
+            return MCPManager
 
         subcmd = args[0].lower()
         subargs = args[1:]
+        # Importing MCP may touch optional packages/disk; keep it off the UI loop.
+        MCPManager = await asyncio.to_thread(_mcp_manager)
+        if MCPManager is None:
+            return CommandResult.err("MCP not enabled. Run `uv sync --extra mcp` and restart.")
+
         try:
-            servers = MCPManager.list_servers(self.mcp_file, servers=self.mcp_servers)
+            # list_servers reads .mcp.json/config from disk; run it off the UI
+            # loop so the prompt_toolkit event loop keeps painting (no freeze).
+            servers = await asyncio.to_thread(
+                MCPManager.list_servers, self.mcp_file, servers=self.mcp_servers
+            )
         except Exception as exc:
             return CommandResult.err(f"Failed to read MCP config: {exc}")
 
@@ -682,12 +694,36 @@ class MCPCommand(Command):
             server_name = subargs[0]
             if server_name not in servers:
                 return CommandResult.err(f"Server `{server_name}` not found. Use /mcp list.")
+
+            # Keep /mcp connect spinner-free. OAuth may need user input (manual
+            # OOB link + pasted code), and Rich Live spinners in the TUI are the
+            # same flicker class fixed for /activity in !373.
+            loop = asyncio.get_running_loop()
+
+            async def _prompt_for_code(auth_url: str) -> str:
+                await self.frontend.render(
+                    AgentMessage(
+                        f"[Open authorization URL]({auth_url})\n\n"
+                        "After approving, paste either the authorization code or "
+                        "the full callback URL below.",
+                        show_rule=False,
+                    )
+                )
+                return await self.frontend.get_input("Authorization code or callback URL: ")
+
+            async def _prompt_from_worker(auth_url: str) -> str:
+                future = asyncio.run_coroutine_threadsafe(_prompt_for_code(auth_url), loop)
+                # This callback runs in the worker-thread OAuth event loop. Wait
+                # for TUI input without blocking the prompt_toolkit UI loop.
+                return await asyncio.to_thread(future.result)
+
             try:
-                await self.frontend.start_thinking(f"Connecting to `{server_name}`\u2026")
-                tool = MCPManager.create_from_server(
+                tool = await asyncio.to_thread(
+                    MCPManager.create_from_server,
                     server_name,
                     mcp_file=self.mcp_file,
                     servers=self.mcp_servers,
+                    oauth_code_prompt=_prompt_from_worker,
                 )
                 setattr(self.agent, _to_attr_name(server_name), tool)
                 self._mcp_connections.add(server_name)
@@ -696,8 +732,6 @@ class MCPCommand(Command):
                 )
             except Exception as e:
                 return CommandResult.err(f"Failed to connect to `{server_name}`: {e}")
-            finally:
-                await self.frontend.stop_thinking()
 
         # disconnect
         server_name = subargs[0]

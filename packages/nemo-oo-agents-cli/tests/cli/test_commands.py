@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nemo_oo_agents_cli.tui.commands import CommandHandler, CommandRegistry
 from nemo_oo_agents_cli.tui.output import (
+    AgentMessage,
     ClearScreen,
     HelpOutput,
     TableOutput,
@@ -409,17 +410,39 @@ async def test_mcp_connect_not_found_output(handler):
 
 
 @pytest.mark.asyncio
-async def test_mcp_connect_success_output(handler, mock_agent):
-    """Test /mcp connect with valid server - connects."""
+async def test_mcp_connect_success_output(handler, mock_agent, mock_frontend):
+    """Test /mcp connect with valid server - connects without using TUI spinners."""
     mock_mcp_module = MagicMock()
+    tool = MagicMock()
     mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    mock_mcp_module.MCPManager.create_from_server.return_value = MagicMock()
+    mock_mcp_module.MCPManager.create_from_server.return_value = tool
     with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
         result = await handler.handle("/mcp connect server1")
 
-        assert result.success is True
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("server1" in o.content and "connected" in o.content for o in text_outputs)
+    assert result.success is True
+    assert mock_agent.server1 is tool
+    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
+    assert any("server1" in o.content and "connected" in o.content for o in text_outputs)
+    mock_frontend.start_thinking.assert_not_awaited()
+    mock_frontend.stop_thinking.assert_not_awaited()
+
+    args, kwargs = mock_mcp_module.MCPManager.create_from_server.call_args
+    assert args == ("server1",)
+    assert "oauth_manual" not in kwargs
+    assert "oauth_open_browser" not in kwargs
+    assert callable(kwargs["oauth_code_prompt"])
+
+    mock_frontend.get_input.return_value = "code-from-user"
+    auth_url = "https://auth.example/authorize?x=1"
+    pasted = await kwargs["oauth_code_prompt"](auth_url)
+
+    assert pasted == "code-from-user"
+    rendered = mock_frontend.render.await_args.args[0]
+    assert isinstance(rendered, AgentMessage)
+    assert "[Open authorization URL]" in rendered.content
+    assert auth_url in rendered.content
+    assert "callback URL" in rendered.content
+    assert rendered.show_rule is False
 
 
 @pytest.mark.asyncio
