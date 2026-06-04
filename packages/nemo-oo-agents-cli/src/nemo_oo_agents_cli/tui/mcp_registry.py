@@ -149,6 +149,57 @@ class MCPRegistry(Skill):
             return f"Failed to disconnect '{server}': {exc}"
         return f"Disconnected '{server}'.\n\n{self.status()}"
 
+    @slash_command(
+        "mcp-add",
+        argument_hint="<server info: name, URL, transport, auth notes>",
+        output_to_agent=True,
+    )
+    async def mcp_add_command(self, args: str) -> str:
+        """Add a new MCP server: hand the details to the agent to wire it up.
+
+        The user pastes whatever they have about a server — a name and URL, a
+        ``claude mcp add ...`` line, a docs snippet, an OAuth client id, etc.
+        This does NOT edit anything itself; it returns a task for the agent,
+        which reads the details, writes the ``[tui.mcp_servers.<name>]`` block in
+        ``.nemo_oo_agents/config.toml``, and guides the user through connecting
+        (OAuth/host-browser handoff as needed).
+        """
+        details = args.strip()
+        if not details:
+            return (
+                "Usage: /mcp-add <server info>\n"
+                "Paste a name + URL (and transport/auth notes), or a "
+                "`claude mcp add ...` line, e.g.:\n"
+                "  /mcp-add maas-gdrive https://maas.prd.astra.nvidia.com/maas/gdrive/mcp "
+                "streamable-http"
+            )
+        config_path = self._config_path()
+        configured = ", ".join(self.discovered()) or "(none)"
+        return (
+            "The user wants to add a new MCP server. Here are the details they provided:\n\n"
+            f"{details}\n\n"
+            "Do the following:\n"
+            "1. Parse the server name, URL, transport (default `streamable-http` for HTTP "
+            "URLs), and any auth info (OAuth client_id, static API key/headers).\n"
+            f"2. Add a `[tui.mcp_servers.<name>]` block to the TUI config at `{config_path}` "
+            "(create the file/section if missing; do NOT clobber existing servers). Use "
+            "`headers` for a static API key, or `oauth_client_id` for a pre-provisioned "
+            "OAuth client. Don't set `oauth_manual` unless the server requires OOB.\n"
+            "3. Tell the user to connect it with `/mcp connect <name>` (or do it via "
+            "`self.mcp.register(...)` + `self.mcp.connect(['<name>'])` if testing now), and "
+            "explain the OAuth step if the server needs it (browser consent / host-browser "
+            "handoff for headless).\n"
+            "4. Confirm what you wrote and show the resulting config block.\n\n"
+            f"Currently configured servers: {configured}.\n"
+            f"Config file: {config_path}."
+        )
+
+    def _config_path(self) -> Path:
+        """Return the TUI config.toml path (project dir)."""
+        from nemo_oo_agents.paths import get_project_dir
+
+        return get_project_dir("config.toml")
+
     def __init__(
         self,
         mcp_file: Path | None = None,
