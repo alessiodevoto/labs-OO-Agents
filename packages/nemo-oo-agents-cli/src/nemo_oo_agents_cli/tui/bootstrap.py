@@ -82,7 +82,11 @@ def _scaffold_project_dir(config: "Config") -> None:
 
     config_path = project_dir / "config.toml"
     if not config_path.exists():
-        config_path.write_text(_CONFIG_TOML_TEMPLATE.format(default_model=config.tui.default_model))
+        # NB: plain .replace(), not .format() — the template contains literal
+        # braces (e.g. ${MAAS_API_KEY}) that str.format() would treat as fields.
+        config_path.write_text(
+            _CONFIG_TOML_TEMPLATE.replace("{default_model}", config.tui.default_model)
+        )
 
 
 async def bootstrap(
