@@ -357,3 +357,33 @@ async def test_mcp_slash_command_connect(monkeypatch):
     out = await reg.mcp_command("connect", "maas")
     assert "Connected 'maas'" in out
     assert reg.connected() == ["maas"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_add_slash_command_returns_agent_task(monkeypatch, tmp_path):
+    """/mcp-add hands the server details to the agent (output_to_agent=True)."""
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+    reg, _ = _make(servers={"maas": {"url": "x"}})
+    out = await reg.mcp_add_command(
+        "maas-gdrive https://maas.prd.astra.nvidia.com/maas/gdrive/mcp streamable-http"
+    )
+    assert "maas-gdrive" in out
+    assert "tui.mcp_servers" in out
+    assert "config.toml" in out
+    # Includes the currently-configured servers for context.
+    assert "maas" in out
+
+
+@pytest.mark.asyncio
+async def test_mcp_add_slash_command_empty_shows_usage():
+    reg, _ = _make(servers={})
+    out = await reg.mcp_add_command("")
+    assert "Usage: /mcp-add" in out
+
+
+def test_mcp_add_slash_command_outputs_to_agent():
+    from nemo_oo_agents.skill import get_slash_commands
+
+    reg, _ = _make(servers={})
+    meta = next(m for m, _ in get_slash_commands(reg) if m.name == "mcp-add")
+    assert meta.output_to_agent is True
