@@ -234,7 +234,7 @@ def is_pure_search_command(cmd: str) -> bool:
     # Detect "find ... | xargs grep ..." — extract the grep portion
     if _XARGS_GREP.search(c_no_tail):
         xargs_idx = c_no_tail.find("xargs grep")
-        grep_part = "grep" + c_no_tail[xargs_idx + len("xargs grep"):]
+        grep_part = "grep" + c_no_tail[xargs_idx + len("xargs grep") :]
         # Strip any trailing | head/tail from the grep part
         grep_part = _SAFE_TAIL_PIPE.sub("", grep_part).strip()
         # Check for anchor-breaking flags on the grep portion
@@ -392,10 +392,10 @@ class ShellTools5(Skill):
         # For "find ... | xargs grep ...", extract the grep portion
         if _XARGS_GREP.search(cmd):
             xargs_idx = cmd.find("xargs grep")
-            cmd = "grep" + cmd[xargs_idx + len("xargs grep"):]
+            cmd = "grep" + cmd[xargs_idx + len("xargs grep") :]
         try:
             pattern, paths, ignore_case, fixed = self._parse_search(cmd)
-        except Exception as e:
+        except Exception:
             return None
         if pattern is None:
             return None
@@ -408,16 +408,14 @@ class ShellTools5(Skill):
         args += ["--", pattern, *(paths or ["."])]
         rg_cmd = " ".join(shlex.quote(a) for a in args)
         # Find rg: try PATH, then common overlay/venv locations
-        rg_cmd = (
-            "PATH=/opt/harbor/cpython312/bin:/opt/harbor/bin:$PATH " + rg_cmd
-        )
+        rg_cmd = "PATH=/opt/harbor/cpython312/bin:/opt/harbor/bin:$PATH " + rg_cmd
 
         session = await self._get_session()
         try:
             rg_out, _rg_err, rg_code, _timed = await session.run_with_timeout_flag(
                 rg_cmd, timeout=30.0
             )
-        except Exception as e:
+        except Exception:
             return None
         # rg: 0 = matches, 1 = no matches. Anything else (bad regex, no rg) -> bail.
         if rg_code not in (0, 1):
