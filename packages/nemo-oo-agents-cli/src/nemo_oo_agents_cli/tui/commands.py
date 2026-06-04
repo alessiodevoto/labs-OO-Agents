@@ -2403,6 +2403,8 @@ class ActivityCommand(Command):
         # await stack. This runs on the agent loop (asyncio.Task is not safe to
         # introspect cross-thread), so dispatch via agent_run_async().
         location = await self._locate_agent()
+        cell = location.innermost_cell if location is not None else None
+        highlight = location.highlight if location is not None else None
 
         # Idle with nothing in flight: a one-liner, not a table.
         if phase == "idle" and (location is None or not location.stack):
@@ -2420,11 +2422,18 @@ class ActivityCommand(Command):
             rows.append(["", ""])
             rows.append(["Suspended at", location.task_name or "agent turn"])
             for frame in location.stack:
-                marker = "→ " if frame is location.innermost else "  "
+                if frame is highlight:
+                    marker = "→ "  # the frame /activity points its source block at
+                elif frame is location.innermost:
+                    marker = "↳ "  # deepest plumbing the highlighted frame is blocked in
+                else:
+                    marker = "  "
                 rows.append(["", f"{marker}{frame.short()}"])
 
         if phase == "executing_python" and llm_calls:
             footer = "Running a code cell that is itself blocked on an LLM call."
+        elif phase == "executing_python" and cell is not None:
+            footer = f"In a code cell — parked at {cell.short()}."
         elif phase == "executing_python":
             footer = "In a code cell — not waiting on the model."
         elif phase == "waiting_llm":
@@ -2462,10 +2471,10 @@ class ActivityCommand(Command):
         the suspend line is tinted via ``highlight_line``, so the parked line
         stands out and the line numbers match the await stack.
         """
-        if location is None or location.innermost is None:
+        if location is None:
             return None
-        frame = location.innermost
-        if not frame.context:
+        frame = location.highlight
+        if frame is None or not frame.context:
             return None
         code = "\n".join(src.text for src in frame.context)
         return CodeExecution(
