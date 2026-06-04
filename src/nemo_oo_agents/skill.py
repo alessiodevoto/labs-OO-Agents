@@ -23,7 +23,7 @@ _SLASH_COMMAND_ATTR = "_slash_command_meta"
 class SlashCommandMeta:
     """Metadata attached to a method by @slash_command."""
 
-    __slots__ = ("name", "argument_hint", "user_only", "completions")
+    __slots__ = ("name", "argument_hint", "user_only", "completions", "output_to_agent")
 
     def __init__(
         self,
@@ -31,11 +31,13 @@ class SlashCommandMeta:
         argument_hint: str | None,
         user_only: bool,
         completions: tuple[str, ...] = (),
+        output_to_agent: bool = True,
     ):
         self.name = name
         self.argument_hint = argument_hint
         self.user_only = user_only
         self.completions = completions
+        self.output_to_agent = output_to_agent
 
 
 def slash_command(
@@ -44,6 +46,7 @@ def slash_command(
     argument_hint: str | None = None,
     user_only: bool = False,
     completions: tuple[str, ...] | list[str] = (),
+    output_to_agent: bool = True,
 ):
     """Mark a Skill method as a user-invocable slash command.
 
@@ -55,6 +58,11 @@ def slash_command(
         argument_hint: Shown in help. E.g. "<pipeline-id>".
         user_only: If True, only the user can invoke (not the LLM).
         completions: Subcommand names offered by tab-completion.
+        output_to_agent: If True (default), the command's return value is fed to the
+            agent as a turn (via the ``slash_commands`` queue). If False, the
+            output is shown to the user in the TUI only — no agent turn is
+            spent. Use ``output_to_agent=False`` for read-only commands (list/status)
+            whose result the human wants to see without invoking the LLM.
 
     Usage::
 
@@ -63,13 +71,18 @@ def slash_command(
             async def monitor_ci(self, args: str) -> str:
                 '''Monitor a CI pipeline.'''
                 return f"Monitor CI pipeline {args}."
+
+            @slash_command("gl-status", output_to_agent=False)
+            async def status(self, args: str) -> str:
+                '''Show CI status to the user without spending an agent turn.'''
+                return self._render_status()
     """
 
     def decorator(fn):
         setattr(
             fn,
             _SLASH_COMMAND_ATTR,
-            SlashCommandMeta(name, argument_hint, user_only, tuple(completions)),
+            SlashCommandMeta(name, argument_hint, user_only, tuple(completions), output_to_agent),
         )
         return fn
 

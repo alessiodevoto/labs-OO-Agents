@@ -433,6 +433,20 @@ def build_registry(
     if lib_patterns:
         result.agent.skills.activate(list(lib_patterns))
 
+    # Agent-facing MCP registry (self.mcp). Holds connection/activation state and
+    # wraps the stateless MCPManager factory. Registered through the agent's
+    # SkillRegistry so doc(self.mcp) and the <mcp> context block are visible.
+    from .mcp_registry import MCPRegistry
+
+    result.agent.skills.register(
+        "nemo.mcp",
+        MCPRegistry(
+            mcp_file=result.config.tui.mcp_file,
+            servers=result.config.tui.mcp_servers,
+        ),
+    )
+    result.agent.skills.activate(["nemo.mcp"])
+
     registry = CommandRegistry(
         config=result.config.tui,
         agent=result.agent,

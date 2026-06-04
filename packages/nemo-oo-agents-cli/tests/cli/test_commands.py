@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nemo_oo_agents_cli.tui.commands import CommandHandler, CommandRegistry
 from nemo_oo_agents_cli.tui.output import (
-    AgentMessage,
     ClearScreen,
     HelpOutput,
     TableOutput,
@@ -27,6 +26,19 @@ def _attach_registry(agent):
     with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
         agent.skills = SkillRegistry(agent)
     return agent.skills
+
+
+def _attach_mcp_registry(agent, config):
+    """Attach a real MCPRegistry to a fake agent, mirroring bootstrap wiring."""
+    from nemo_oo_agents_cli.tui.mcp_registry import MCPRegistry
+
+    servers = getattr(config, "mcp_servers", None)
+    if not isinstance(servers, dict):
+        servers = {}
+    registry = MCPRegistry(mcp_file=Path(".mcp.json"), servers=dict(servers))
+    registry.attach(agent)
+    agent.mcp = registry
+    return registry
 
 
 @pytest.fixture
@@ -74,6 +86,7 @@ def mock_agent(mock_config):
     agent.bash.run = AsyncMock(
         return_value=MagicMock(stdout="test output", stderr="", return_code=0, sandboxed=True)
     )
+    _attach_mcp_registry(agent, mock_config)
     return agent
 
 
@@ -268,81 +281,93 @@ async def test_history_tags_output(handler):
 
 
 # ============================================================================
-# MCP Command Tests - Input/Output
+# MCP slash command (skill-owned) + CommandRegistry auto-connect
 # ============================================================================
 
 
-@pytest.mark.asyncio
-async def test_mcp_command_no_args_output(handler):
-    """Test /mcp with no args - shows error."""
-    mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp")
+def _mcp_registry_skill(servers=None):
+    """A real MCPRegistry attached to a throwaway agent for slash-command tests."""
+    from nemo_oo_agents_cli.tui.mcp_registry import MCPRegistry
 
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("Usage: /mcp <list|connect|disconnect>" in o.content for o in text_outputs)
+    from nemo_oo_agents.runtime.context_manager import ContextManager
 
+    class _Agent:
+        def __init__(self):
+            self.context_manager = ContextManager()
 
-@pytest.mark.asyncio
-async def test_mcp_command_invalid_subcommand_output(handler):
-    """Test /mcp with invalid subcommand - shows error."""
-    mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp invalid")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("invalid" in o.content for o in text_outputs)
+    reg = MCPRegistry(servers=dict(servers or {}))
+    reg.attach(_Agent())
+    return reg
 
 
 @pytest.mark.asyncio
-async def test_mcp_list_output(handler):
-    """Test /mcp list - lists servers."""
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["server1", "server2"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp list")
+async def test_mcp_slash_list_returns_status():
+    """/mcp list returns the status text; the command is flagged output_to_agent=False."""
+    from nemo_oo_agents.skill import get_slash_commands
 
-        assert result.success is True
-        assert any(isinstance(o, TableOutput) for o in result.outputs)
+    reg = _mcp_registry_skill({"maas": {"url": "https://x/mcp"}})
+    out = await reg.mcp_command("list")
+    assert isinstance(out, str)
+    assert "maas" in out
+    meta = next(m for m, _ in get_slash_commands(reg) if m.name == "mcp")
+    assert meta.output_to_agent is False
 
 
 @pytest.mark.asyncio
-async def test_mcp_list_passes_inline_servers(mock_frontend, mock_config, mock_agent):
-    """Inline MCP servers from config.toml are passed through to /mcp list."""
-    servers = {"maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"}}
-    mock_config.mcp_servers = servers
-    registry = CommandRegistry(
-        frontend=mock_frontend,
-        config=mock_config,
-        agent=mock_agent,
-        skills_dirs=[Path("/nonexistent/skills")],
-        mcp_file=Path(".mcp.json"),
-    )
-    handler = CommandHandler(registry=registry, frontend=mock_frontend)
+async def test_mcp_slash_connect_unknown_server():
+    reg = _mcp_registry_skill({"maas": {"url": "https://x/mcp"}})
+    out = await reg.mcp_command("connect", "missing")
+    assert "not found" in out
 
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp list")
 
-    assert result.success is True
-    mock_mcp_module.MCPManager.list_servers.assert_called_with(Path(".mcp.json"), servers=servers)
+@pytest.mark.asyncio
+async def test_mcp_slash_connect_delegates(monkeypatch):
+    reg = _mcp_registry_skill({"maas": {"url": "https://x/mcp"}})
+
+    async def _connect(patterns, **kwargs):
+        reg._connected["maas"] = object()
+        reg._activated.add("maas")
+        return list(patterns)
+
+    monkeypatch.setattr(reg, "connect", _connect)
+    out = await reg.mcp_command("connect", "maas")
+    assert "Connected 'maas'" in out
+
+
+@pytest.mark.asyncio
+async def test_mcp_slash_disconnect_not_connected():
+    reg = _mcp_registry_skill({"maas": {"url": "https://x/mcp"}})
+    out = await reg.mcp_command("disconnect", "maas")
+    assert "not connected" in out
+
+
+@pytest.mark.asyncio
+async def test_mcp_slash_command_is_registered_on_skill():
+    from nemo_oo_agents.skill import get_slash_commands
+
+    reg = _mcp_registry_skill()
+    names = [meta.name for meta, _ in get_slash_commands(reg)]
+    assert "mcp" in names
 
 
 def test_command_registry_auto_connects_configured_mcp(mock_frontend, mock_config, mock_agent):
-    """Configured MCP servers can attach to the agent at startup."""
+    """Configured MCP servers auto-connect via self.mcp.connect() at startup."""
     servers = {"maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"}}
-    tool = MagicMock()
     mock_config.mcp_servers = servers
     mock_config.mcp_auto_connect = ["maas"]
+    _attach_mcp_registry(mock_agent, mock_config)
 
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
-    mock_mcp_module.MCPManager.create_from_server.return_value = tool
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        registry = CommandRegistry(
+    connected: list[str] = []
+
+    async def _fake_connect(patterns, **kwargs):
+        connected.extend(patterns)
+        return list(patterns)
+
+    with (
+        patch.object(mock_agent.mcp, "discovered", return_value=["maas"]),
+        patch.object(mock_agent.mcp, "connect", side_effect=_fake_connect) as conn,
+    ):
+        CommandRegistry(
             frontend=mock_frontend,
             config=mock_config,
             agent=mock_agent,
@@ -350,131 +375,8 @@ def test_command_registry_auto_connects_configured_mcp(mock_frontend, mock_confi
             mcp_file=Path(".mcp.json"),
         )
 
-    assert mock_agent.maas is tool
-    assert "maas" in registry.get_command("mcp")._mcp_connections
-    mock_mcp_module.MCPManager.create_from_server.assert_called_with(
-        "maas", mcp_file=Path(".mcp.json"), servers=servers
-    )
-
-
-def test_command_registry_filters_invalid_inline_mcp_servers(
-    mock_frontend, mock_config, mock_agent
-):
-    """Inline MCP config ignores invalid server entries before reaching MCPManager."""
-    servers = {
-        "maas": {"url": "https://maas.example/mcp", "transport": "streamable-http"},
-        "bad": "not-a-dict",
-        42: {"url": "https://ignored.example/mcp"},
-    }
-    mock_config.mcp_servers = servers
-    mock_config.mcp_auto_connect = []
-
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["maas"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        registry = CommandRegistry(
-            frontend=mock_frontend,
-            config=mock_config,
-            agent=mock_agent,
-            skills_dirs=[Path("/nonexistent/skills")],
-            mcp_file=Path(".mcp.json"),
-        )
-        command = registry.get_command("mcp")
-
-    assert command.mcp_servers == {"maas": servers["maas"]}
-
-
-@pytest.mark.asyncio
-async def test_mcp_connect_no_server_output(handler):
-    """Test /mcp connect with no server - shows error."""
-    mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp connect")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("mcp connect" in o.content.lower() for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_mcp_connect_not_found_output(handler):
-    """Test /mcp connect with non-existent server - shows error."""
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp connect nonexistent")
-
-        assert result.success is False
-        text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-        assert any("nonexistent" in o.content for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_mcp_connect_success_output(handler, mock_agent, mock_frontend):
-    """Test /mcp connect with valid server - connects without using TUI spinners."""
-    mock_mcp_module = MagicMock()
-    tool = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    mock_mcp_module.MCPManager.create_from_server.return_value = tool
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp connect server1")
-
-    assert result.success is True
-    assert mock_agent.server1 is tool
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("server1" in o.content and "connected" in o.content for o in text_outputs)
-    mock_frontend.start_thinking.assert_not_awaited()
-    mock_frontend.stop_thinking.assert_not_awaited()
-
-    args, kwargs = mock_mcp_module.MCPManager.create_from_server.call_args
-    assert args == ("server1",)
-    assert "oauth_manual" not in kwargs
-    assert "oauth_open_browser" not in kwargs
-    assert callable(kwargs["oauth_code_prompt"])
-
-    mock_frontend.get_input.return_value = "code-from-user"
-    auth_url = "https://auth.example/authorize?x=1"
-    pasted = await kwargs["oauth_code_prompt"](auth_url)
-
-    assert pasted == "code-from-user"
-    rendered = mock_frontend.render.await_args.args[0]
-    assert isinstance(rendered, AgentMessage)
-    assert "[Open authorization URL]" in rendered.content
-    assert auth_url in rendered.content
-    assert "callback URL" in rendered.content
-    assert rendered.show_rule is False
-
-
-@pytest.mark.asyncio
-async def test_mcp_disconnect_not_connected_output(handler, mock_agent):
-    """Test /mcp disconnect with non-connected server - shows error."""
-    if hasattr(mock_agent, "server1"):
-        delattr(mock_agent, "server1")
-
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["server1"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp disconnect server1")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("not connected" in o.content for o in text_outputs)
-
-
-@pytest.mark.asyncio
-async def test_mcp_disconnect_success_output(handler, mock_agent):
-    """Test /mcp disconnect with connected server - disconnects."""
-    mock_agent.server1 = MagicMock()
-    mcp_cmd = handler.registry.get_command("mcp")
-    mcp_cmd._mcp_connections.add("server1")
-
-    mock_mcp_module = MagicMock()
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp disconnect server1")
-
-    assert result.success is True
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any("server1" in o.content and "disconnected" in o.content for o in text_outputs)
+    assert connected == ["maas"]
+    conn.assert_called_once_with(["maas"])
 
 
 # ============================================================================
@@ -688,27 +590,8 @@ async def test_handler_command_exception_returns_error_not_raise(registry, mock_
 
 
 # ============================================================================
-# TableOutput field ordering — MCPCommand, SkillsCommand, SandboxCommand
+# TableOutput field ordering — SkillsCommand, SandboxCommand
 # ============================================================================
-
-
-@pytest.mark.asyncio
-async def test_mcp_list_tableoutput_fields(handler):
-    """/mcp list produces a TableOutput with correct title, columns, and rows."""
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.return_value = ["srv-a", "srv-b"]
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp list")
-
-    tables = [o for o in result.outputs if isinstance(o, TableOutput)]
-    assert tables, "Expected a TableOutput from /mcp list"
-    t = tables[0]
-    assert isinstance(t.columns, list), "columns must be a list"
-    assert isinstance(t.rows, list), "rows must be a list"
-    assert t.title == "MCP Servers"
-    assert t.columns == ["Server", "Connected"]
-    assert len(t.rows) == 2
-    assert t.rows[0][0] in ("srv-a", "srv-b")
 
 
 @pytest.mark.asyncio
@@ -1188,26 +1071,6 @@ def test_skills_not_attached_when_no_dirs(mock_frontend, mock_config, mock_agent
 
 
 # ============================================================================
-# MCPCommand list_servers exception handling
-# ============================================================================
-
-
-@pytest.mark.asyncio
-async def test_mcp_list_servers_exception_returns_error(handler):
-    """/mcp list returns an error if MCPManager.list_servers raises, not a crash."""
-    mock_mcp_module = MagicMock()
-    mock_mcp_module.MCPManager.list_servers.side_effect = OSError("config file unreadable")
-    with patch.dict("sys.modules", {"nemo_oo_agents.mcp": mock_mcp_module}):
-        result = await handler.handle("/mcp list")
-
-    assert result.success is False
-    text_outputs = [o for o in result.outputs if isinstance(o, TextOutput)]
-    assert any(
-        "config file unreadable" in o.content or "Failed to read MCP" in o.content
-        for o in text_outputs
-    )
-
-
 # ============================================================================
 # Session Command Tests
 # ============================================================================

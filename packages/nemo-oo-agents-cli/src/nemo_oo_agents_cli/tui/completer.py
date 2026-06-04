@@ -319,29 +319,24 @@ class Completer:
     def _mcp_server_completions(self, text: str, prefix: str) -> list[CompletionItem]:
         """Complete configured MCP server names for /mcp connect|disconnect.
 
-        Pulls the live ``MCPCommand`` instance from the registry so the
-        candidates reflect both ``.mcp.json`` and inline ``config.toml`` servers,
+        Reads the live ``self.mcp`` ``MCPRegistry`` so the candidates reflect both
+        ``.mcp.json`` and inline ``config.toml`` servers,
         and annotates which are currently connected. ``disconnect`` only offers
         connected servers; ``connect`` offers all configured servers.
         """
         partial = text[len(prefix) :]
         registry = self._registry
-        command = registry.get_command("mcp") if registry else None
-        if command is None:
+        mcp = getattr(getattr(registry, "agent", None), "mcp", None)
+        if mcp is None:
             return []
 
         try:
-            from nemo_oo_agents.mcp import MCPManager
-
-            servers = MCPManager.list_servers(
-                getattr(command, "mcp_file", None),
-                servers=getattr(command, "mcp_servers", None),
-            )
+            servers = mcp.discovered()
+            connected = set(mcp.connected())
         except Exception:
             logger.debug("MCP server completion failed", exc_info=True)
             return []
 
-        connected = getattr(command, "_mcp_connections", set())
         is_disconnect = prefix.strip().endswith("disconnect")
         names = sorted(connected) if is_disconnect else sorted(servers)
 

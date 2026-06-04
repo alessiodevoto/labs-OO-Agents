@@ -492,10 +492,23 @@ def _make_dynamic_class(
         class_name = "DynamicMCPServerTools"
 
     class_doc = f"MCP server '{server_name}'."
+    reserved = {"__doc__", "_tool_method_names"}
+    collisions = reserved.intersection(methods)
+    if collisions:
+        names = ", ".join(sorted(collisions))
+        raise ValueError(
+            f"MCP server {server_name!r} exposes tool(s) with reserved method name(s): {names}"
+        )
     dynamic_class = type(
         class_name,
         (mcp_tool_class,),
-        {**methods, "__doc__": class_doc},
+        # ``_tool_method_names`` records exactly the methods this factory
+        # generated from the server's tool schemas, so consumers (e.g. an
+        # agent-facing registry rendering tools as free functions) can
+        # enumerate them without name-heuristic guessing against base-class
+        # members. This is the factory's own knowledge — it does not couple
+        # MCPManager to any Skill/registry.
+        {**methods, "__doc__": class_doc, "_tool_method_names": frozenset(methods)},
     )
 
     return dynamic_class

@@ -622,132 +622,6 @@ class HistoryCommand(Command):
 
 
 # ---------------------------------------------------------------------------
-# MCP commands
-# ---------------------------------------------------------------------------
-
-
-class MCPCommand(Command):
-    required_capabilities: ClassVar[frozenset[str]] = frozenset()
-
-    def __init__(self, frontend, config, agent, **kwargs):
-        super().__init__(frontend, config, agent, **kwargs)
-        self.mcp_file = kwargs.get("mcp_file")
-        self.mcp_servers = _mcp_servers_config(kwargs.get("mcp_servers"))
-        self._mcp_connections: set[str] = set()
-
-    @property
-    def name(self) -> str:
-        return "mcp"
-
-    @classmethod
-    def help_text(cls) -> dict[str, str]:
-        return {
-            "/mcp list": "List configured MCP servers",
-            "/mcp connect <server>": "Connect to an MCP server",
-            "/mcp disconnect <server>": "Disconnect from an MCP server",
-        }
-
-    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if not args:
-            return False, "Usage: /mcp <list|connect|disconnect>"
-        if args[0].lower() not in ("list", "connect", "disconnect"):
-            return False, f"Unknown subcommand `{args[0]}`"
-        if args[0].lower() in ("connect", "disconnect") and len(args) < 2:
-            return False, f"Usage: /mcp {args[0]} <server_name>"
-        return True, None
-
-    async def execute(self, args: list[str]) -> "CommandResult":
-        def _mcp_manager():
-            try:
-                from nemo_oo_agents.mcp import MCPManager
-            except ImportError:
-                return None
-            return MCPManager
-
-        subcmd = args[0].lower()
-        subargs = args[1:]
-        # Importing MCP may touch optional packages/disk; keep it off the UI loop.
-        MCPManager = await asyncio.to_thread(_mcp_manager)
-        if MCPManager is None:
-            return CommandResult.err("MCP not enabled. Run `uv sync --extra mcp` and restart.")
-
-        try:
-            # list_servers reads .mcp.json/config from disk; run it off the UI
-            # loop so the prompt_toolkit event loop keeps painting (no freeze).
-            servers = await asyncio.to_thread(
-                MCPManager.list_servers, self.mcp_file, servers=self.mcp_servers
-            )
-        except Exception as exc:
-            return CommandResult.err(f"Failed to read MCP config: {exc}")
-
-        if subcmd == "list":
-            rows = [[s, "\u2713" if s in self._mcp_connections else ""] for s in servers]
-            return CommandResult.ok(
-                TableOutput(columns=["Server", "Connected"], rows=rows, title="MCP Servers"),
-                TextOutput(
-                    f"MCP file: {self.mcp_file}; inline servers: {len(self.mcp_servers)}",
-                    "status",
-                ),
-            )
-
-        if subcmd == "connect":
-            server_name = subargs[0]
-            if server_name not in servers:
-                return CommandResult.err(f"Server `{server_name}` not found. Use /mcp list.")
-
-            # Keep /mcp connect spinner-free. OAuth may need user input (manual
-            # OOB link + pasted code), and Rich Live spinners in the TUI are the
-            # same flicker class fixed for /activity in !373.
-            loop = asyncio.get_running_loop()
-
-            async def _prompt_for_code(auth_url: str) -> str:
-                await self.frontend.render(
-                    AgentMessage(
-                        f"[Open authorization URL]({auth_url})\n\n"
-                        "After approving, paste either the authorization code or "
-                        "the full callback URL below.",
-                        show_rule=False,
-                    )
-                )
-                return await self.frontend.get_input("Authorization code or callback URL: ")
-
-            async def _prompt_from_worker(auth_url: str) -> str:
-                future = asyncio.run_coroutine_threadsafe(_prompt_for_code(auth_url), loop)
-                # This callback runs in the worker-thread OAuth event loop. Wait
-                # for TUI input without blocking the prompt_toolkit UI loop.
-                return await asyncio.to_thread(future.result)
-
-            try:
-                tool = await asyncio.to_thread(
-                    MCPManager.create_from_server,
-                    server_name,
-                    mcp_file=self.mcp_file,
-                    servers=self.mcp_servers,
-                    oauth_code_prompt=_prompt_from_worker,
-                )
-                setattr(self.agent, _to_attr_name(server_name), tool)
-                self._mcp_connections.add(server_name)
-                return CommandResult.ok(
-                    TextOutput(f"MCP server `{server_name}` connected", "success")
-                )
-            except Exception as e:
-                return CommandResult.err(f"Failed to connect to `{server_name}`: {e}")
-
-        # disconnect
-        server_name = subargs[0]
-        if server_name not in self._mcp_connections:
-            return CommandResult.err(f"`{server_name}` not connected. Use /mcp list.")
-        try:
-            self._mcp_connections.discard(server_name)
-            delattr(self.agent, _to_attr_name(server_name))
-            return CommandResult.ok(
-                TextOutput(f"MCP server `{server_name}` disconnected", "success")
-            )
-        except Exception as e:
-            return CommandResult.err(f"Failed to disconnect `{server_name}`: {e}")
-
-
-# ---------------------------------------------------------------------------
 # Skills commands
 # ---------------------------------------------------------------------------
 
@@ -1607,6 +1481,7 @@ class _UserSkill:
     description: str
     argument_hint: str | None = None
     completions: tuple[str, ...] = ()
+    output_to_agent: bool = True
     _method: Any = field(default=None, repr=False)
 
     def help_entry(self) -> tuple[str, str]:
@@ -1785,8 +1660,6 @@ class ShowLastPythonCommand(Command):
 
         if not code:
             return CommandResult.err("No execute_python block found in history.")
-
-        from .output import AgentMessage
 
         return CommandResult.ok(
             AgentMessage(
@@ -1984,8 +1857,6 @@ class EventsCommand(Command):
             )
         )
 
-        from .output import AgentMessage
-
         if name == "execute_python" and isinstance(args, dict) and "code" in args:
             outputs.append(
                 AgentMessage(content=f"```python\n{args['code'].rstrip()}\n```", show_rule=False)
@@ -2035,8 +1906,6 @@ class EventsCommand(Command):
                 rows=header_rows,
             )
         )
-
-        from .output import AgentMessage
 
         stdout = getattr(event, "stdout", "") or ""
         if stdout.strip():
@@ -2509,7 +2378,6 @@ class CommandRegistry:
         "switch": SwitchCommand,
         "theme": ThemeCommand,
         "history": HistoryCommand,
-        "mcp": MCPCommand,
         "skills": SkillsCommand,
         "todo": TodoCommand,
         "python": PythonCommand,
@@ -2561,41 +2429,44 @@ class CommandRegistry:
         return commands
 
     def _auto_connect_mcp(self) -> None:
-        """Attach configured MCP servers to the agent at startup."""
+        """Attach configured MCP servers to the agent at startup via self.mcp."""
         names = _mcp_auto_connect_names(getattr(self.config, "mcp_auto_connect", None))
         if not names:
             return
-        command = self._commands.get("mcp")
-        if not isinstance(command, MCPCommand):
-            return
-        try:
-            from nemo_oo_agents.mcp import MCPManager
-        except ImportError:
-            logger.warning("MCP auto-connect requested but MCP extra is not installed")
+        registry = getattr(self.agent, "mcp", None)
+        if registry is None:
+            logger.warning("MCP auto-connect requested but self.mcp is not available")
             return
 
-        inline_servers = _mcp_servers_config(getattr(self.config, "mcp_servers", None))
         try:
-            configured = set(MCPManager.list_servers(self.mcp_file, servers=inline_servers))
+            configured = set(registry.discovered())
         except Exception as exc:
             logger.warning("MCP auto-connect skipped: failed to read config: %s", exc)
             return
 
-        for server_name in names:
-            if server_name not in configured:
-                logger.warning("MCP auto-connect skipped unknown server %r", server_name)
-                continue
-            try:
-                tool = MCPManager.create_from_server(
-                    server_name,
-                    mcp_file=self.mcp_file,
-                    servers=inline_servers,
-                )
-                setattr(self.agent, _to_attr_name(server_name), tool)
-                command._mcp_connections.add(server_name)
-                logger.info("MCP server %r auto-connected", server_name)
-            except Exception as exc:
-                logger.warning("Failed to auto-connect MCP server %r: %s", server_name, exc)
+        unknown = [n for n in names if n not in configured]
+        for name in unknown:
+            logger.warning("MCP auto-connect skipped unknown server %r", name)
+        wanted = [n for n in names if n in configured]
+        if not wanted:
+            return
+
+        async def _connect_all() -> None:
+            for server_name in wanted:
+                try:
+                    await registry.connect([server_name])
+                    logger.info("MCP server %r auto-connected", server_name)
+                except Exception as exc:
+                    logger.warning("Failed to auto-connect MCP server %r: %s", server_name, exc)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_connect_all())
+        else:
+            # Retain a reference so the task isn't GC'd while pending. Fire-and-
+            # forget on the running TUI loop; per-server errors are logged inside.
+            self._mcp_autoconnect_task = loop.create_task(_connect_all())
 
     def _discover_user_skills(self) -> "dict[str, _UserSkill]":
         """Scan skills dirs for install-as:command skills and register them as slash commands.
@@ -2708,6 +2579,7 @@ class CommandRegistry:
                     description=description,
                     argument_hint=meta.argument_hint,
                     completions=getattr(meta, "completions", ()),
+                    output_to_agent=getattr(meta, "output_to_agent", True),
                     _method=method,
                 )
         return skills
@@ -2855,6 +2727,7 @@ class CommandHandler:
                     args=raw_args,
                     value=result_val,
                     text=str(result_val) if result_val is not None else None,
+                    output_to_agent=skill.output_to_agent,
                 )
                 return CommandResult(success=True, slash_result=slash_result)
             return CommandResult(success=True, agent_message=skill.make_agent_message(args))
