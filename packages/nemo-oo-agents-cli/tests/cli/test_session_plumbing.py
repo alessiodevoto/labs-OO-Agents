@@ -423,6 +423,9 @@ async def test_on_command_slash_result_posts_to_queue_without_double_submit() ->
     app._agent_task = None
     session._app = app
     session._emit_text = MagicMock()
+    frontend = MagicMock()
+    frontend.render = AsyncMock()
+    session.frontend = frontend
 
     sr = SlashCommandResult(command="status", args="", value={"ok": True}, text="status: ok")
     fake_result = CommandResult(success=True, outputs=[])
@@ -436,6 +439,56 @@ async def test_on_command_slash_result_posts_to_queue_without_double_submit() ->
 
     slash_ch.put.assert_called_once_with(sr)
     app.submit_message.assert_not_called()
+
+
+async def test_on_command_slash_result_renders_via_frontend_markdown() -> None:
+    """Slash results should render through the frontend, not raw emit_block text.
+
+    This lets Markdown tables from commands like /mesh-list render properly.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.output import AgentMessage
+    from nemo_oo_agents_cli.tui.session import Session
+
+    from nemo_oo_agents.slash_dispatch import SlashCommandResult
+
+    session = Session.__new__(Session)
+    session._first_message = None
+    session._session_manager = None
+
+    slash_ch = MagicMock()
+    agent = MagicMock()
+    agent._slash_commands_in = slash_ch
+    session.agent = agent
+
+    app = MagicMock()
+    app._agent_task = None
+    session._app = app
+    session._emit_text = MagicMock()
+
+    frontend = MagicMock()
+    frontend.render = AsyncMock()
+    session.frontend = frontend
+
+    text = "| handle | status |\n|---|---|\n| `alice` | online |"
+    sr = SlashCommandResult(command="mesh-list", args="", value=text, text=text)
+    fake_result = CommandResult(success=True, outputs=[])
+    fake_result.slash_result = sr
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+
+    await session._on_command("/mesh-list")
+
+    rendered = frontend.render.call_args.args[0]
+    assert isinstance(rendered, AgentMessage)
+    assert rendered.content == text
+    assert rendered.show_rule is False
+    app.emit_block.assert_not_called()
+    slash_ch.put.assert_called_once_with(sr)
 
 
 async def test_on_command_slash_result_falls_back_to_submit_when_no_queue() -> None:
@@ -459,6 +512,9 @@ async def test_on_command_slash_result_falls_back_to_submit_when_no_queue() -> N
     app._agent_task = None
     session._app = app
     session._emit_text = MagicMock()
+    frontend = MagicMock()
+    frontend.render = AsyncMock()
+    session.frontend = frontend
 
     sr = SlashCommandResult(command="status", args="", value=None, text="status: ok")
     fake_result = CommandResult(success=True, outputs=[])

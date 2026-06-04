@@ -758,10 +758,14 @@ class Session:
         # NOTE: outputs are already rendered by CommandHandler.handle() — do not
         # re-render here to avoid double output.
         if result.slash_result is not None:
-            # Show the text output to the user immediately in the TUI
+            # Show slash-command output to the user immediately. Skill slash
+            # commands often return Markdown (tables, lists), so render via the
+            # frontend instead of dumping raw text through emit_block.
             text = str(result.slash_result)
             if text:
-                self._app.emit_block(text + "\n")
+                from .output import AgentMessage
+
+                await self.frontend.render(AgentMessage(text, show_rule=False))
             if not result.slash_result.output_to_agent:
                 # User-only command (e.g. a read-only /mcp list): the human sees
                 # the output above, but it is NOT fed to the agent — no queue
