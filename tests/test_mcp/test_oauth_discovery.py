@@ -153,7 +153,7 @@ async def test_dynamic_registration_uses_already_bound_callback_uri(monkeypatch)
         authorization_endpoint="https://example.com/authorize",
         token_endpoint="https://example.com/token",
         client_id=None,
-        redirect_uri="http://127.0.0.1:0/callback",
+        redirect_uri="http://localhost:0/callback",
         registration_endpoint="https://example.com/register",
         timeout=0.01,
     )
@@ -167,7 +167,7 @@ async def test_dynamic_registration_uses_already_bound_callback_uri(monkeypatch)
     actual_uri = handler_obj._actual_redirect_uri
     assert registered_uri == actual_uri
     parsed = oauth.urlparse(registered_uri)
-    assert parsed.hostname == "127.0.0.1"
+    assert parsed.hostname == "localhost"
     assert parsed.port not in (None, 0)
     assert parsed.path == "/callback"
 
@@ -551,3 +551,122 @@ async def test_authorize_prefers_browser_open_over_manual_oob(monkeypatch):
     monkeypatch.setattr(handler, "_capture_code_via_local_server", fake_capture)
 
     assert await handler.authorize(open_browser=True) == "loopback-code"
+
+
+def test_default_redirect_uri_uses_localhost():
+    """Default loopback redirect must use localhost; some MaaS gateways reject 127.0.0.1."""
+    import inspect
+
+    sig = inspect.signature(oauth.handle_mcp_oauth)
+    default = sig.parameters["redirect_uri"].default
+    assert default == "http://localhost:0/callback"
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_token_success(monkeypatch):
+    """client_credentials_token posts the grant and returns the access token."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["data"] = dict(httpx.QueryParams(request.content.decode()))
+        return httpx.Response(200, json={"access_token": "cc-token", "expires_in": 3600})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        oauth.httpx,
+        "AsyncClient",
+        lambda *a, **k: original(transport=httpx.MockTransport(handler)),
+    )
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        client_secret="secret",
+        redirect_uri="http://localhost:0/callback",
+        scope="a b",
+    )
+    token = await oauth.OAuthHandler(config).client_credentials_token()
+
+    assert token.access_token == "cc-token"
+    assert captured["data"]["grant_type"] == "client_credentials"
+    assert captured["data"]["client_id"] == "cid"
+    assert captured["data"]["client_secret"] == "secret"
+    assert captured["data"]["scope"] == "a b"
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_token_requires_secret():
+    """Without a client_secret the grant fails fast with a clear message."""
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        redirect_uri="http://localhost:0/callback",
+    )
+    with pytest.raises(RuntimeError, match="requires a client_id and client_secret"):
+        await oauth.OAuthHandler(config).client_credentials_token()
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_token_missing_access_token(monkeypatch):
+    """A 200 body without access_token raises a descriptive error, not KeyError."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"token_type": "Bearer"})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        oauth.httpx,
+        "AsyncClient",
+        lambda *a, **k: original(transport=httpx.MockTransport(handler)),
+    )
+
+    config = oauth.OAuthConfig(
+        authorization_endpoint="https://maas.example/authorize",
+        token_endpoint="https://maas.example/token",
+        client_id="cid",
+        client_secret="secret",
+        redirect_uri="http://localhost:0/callback",
+    )
+    with pytest.raises(RuntimeError, match="missing 'access_token'"):
+        await oauth.OAuthHandler(config).client_credentials_token()
+
+
+@pytest.mark.asyncio
+async def test_handle_mcp_oauth_prefers_client_credentials(monkeypatch, tmp_path):
+    """When the server advertises client_credentials and a secret exists, use it (no browser)."""
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+    url = "https://maas.example/mcp"
+
+    async def fake_resource_metadata(client, server_url):
+        return {"authorization_servers": ["https://maas.example/auth"]}
+
+    async def fake_metadata(client, auth_server):
+        return {
+            "authorization_endpoint": f"{auth_server}/authorize",
+            "token_endpoint": f"{auth_server}/token",
+            "registration_endpoint": f"{auth_server}/register",
+            "grant_types_supported": ["authorization_code", "client_credentials"],
+        }
+
+    called = {}
+
+    async def fake_cc(self):
+        called["cc"] = True
+        return oauth.OAuthToken(access_token="cc-token", client_id=self.config.client_id)
+
+    async def fail_complete_flow(self, open_browser=True):
+        raise AssertionError("interactive flow must not run when client_credentials is available")
+
+    monkeypatch.setattr(oauth, "_fetch_protected_resource_metadata", fake_resource_metadata)
+    monkeypatch.setattr(oauth, "_fetch_authorization_server_metadata", fake_metadata)
+    monkeypatch.setattr(oauth.OAuthHandler, "client_credentials_token", fake_cc)
+    monkeypatch.setattr(oauth.OAuthHandler, "complete_flow", fail_complete_flow)
+
+    token = await oauth.handle_mcp_oauth(
+        url, client_id="cid", client_secret="secret", use_cache=False
+    )
+
+    assert token.access_token == "cc-token"
+    assert called.get("cc") is True
