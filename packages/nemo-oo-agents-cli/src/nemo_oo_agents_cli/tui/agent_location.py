@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import linecache
+import re
 from dataclasses import dataclass, field
 
 # The agent's turn entrypoint task is named ``<AgentClass>.handle`` by
@@ -72,6 +73,17 @@ def _source_context(filename: str, lineno: int, ctx: int = 3) -> list[SourceLine
     return [SourceLine(n, lines[n - 1].rstrip("\n"), n == lineno) for n in range(lo, hi + 1)]
 
 
+# A REPL/CodeAct cell's ``co_filename`` is a Jupyter-style ``Cell In[N]`` key
+# (see ActorRuntime._execute_code). The agent's own ``execute_python`` code runs
+# under such a frame, so this is how we tell *the agent's code* apart from the
+# framework/stdlib plumbing it is currently awaiting.
+_CELL_FILENAME = re.compile(r"^Cell In\[\d+\]$")
+
+
+def _is_cell_frame(frame: FrameInfo) -> bool:
+    return bool(_CELL_FILENAME.match(frame.filename))
+
+
 @dataclass
 class AgentLocation:
     """Where the agent coroutine is currently suspended."""
@@ -83,6 +95,32 @@ class AgentLocation:
     def innermost(self) -> FrameInfo | None:
         # Outermost-first; the await/suspend point is the last frame.
         return self.stack[-1] if self.stack else None
+
+    @property
+    def innermost_cell(self) -> FrameInfo | None:
+        """The deepest frame that is the agent's own ``execute_python`` cell.
+
+        The true ``innermost`` is usually framework/stdlib plumbing the cell is
+        blocked in (e.g. ``asyncio.to_thread`` → ``run_in_executor``, an HTTP
+        client, ``asyncio.sleep``). That is a faithful suspend point but unhelpful
+        to a user asking "which line of *my* cell is running?". This returns the
+        last ``Cell In[N]`` frame in the await chain — the line of the agent's
+        code that kicked off the pending await — or ``None`` if no cell frame is
+        on the stack (e.g. suspended in ``handle`` plumbing before any cell ran).
+        """
+        for frame in reversed(self.stack):
+            if _is_cell_frame(frame):
+                return frame
+        return None
+
+    @property
+    def highlight(self) -> FrameInfo | None:
+        """Frame to render as the highlighted suspend-point source.
+
+        Prefer the agent's own cell line (``innermost_cell``); fall back to the
+        true suspend point when no cell frame is present.
+        """
+        return self.innermost_cell or self.innermost
 
 
 def _frame_info(frame) -> FrameInfo:
@@ -206,9 +244,13 @@ def locate_agent_on_loop(turn_method: str = _TURN_METHOD) -> AgentLocation | Non
     stack = _await_chain(turn_task)
     if not stack:
         stack = [_frame_info(f) for f in turn_task.get_stack()]
-    # Attach source context to the innermost (suspend-point) frame so callers
-    # can show the code line the agent is parked on with surrounding lines.
-    if stack:
-        innermost = stack[-1]
-        innermost.context = _source_context(innermost.filename, innermost.lineno)
-    return AgentLocation(task_name=turn_task.get_name(), stack=stack)
+    location = AgentLocation(task_name=turn_task.get_name(), stack=stack)
+    # Attach source context to the frame the UI will highlight. That is the
+    # agent's own cell frame when present (``highlight`` prefers ``innermost_cell``),
+    # falling back to the true suspend point — so the rendered code block matches
+    # what /activity points its arrow at. Without this the cell frame carries no
+    # source and the highlighted-code block silently disappears.
+    if location.highlight is not None:
+        frame = location.highlight
+        frame.context = _source_context(frame.filename, frame.lineno)
+    return location
