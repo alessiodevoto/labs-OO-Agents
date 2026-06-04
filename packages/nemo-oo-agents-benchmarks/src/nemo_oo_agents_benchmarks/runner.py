@@ -151,6 +151,7 @@ async def _run(
     agent_type: str,
     tools: frozenset[str],
     api_base: str | None,
+    working_dir: str | None = None,
 ) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
     from nemo_oo_agents.unifiedllm import get_llm_client
@@ -196,7 +197,10 @@ async def _run(
 
     logger.info("Running agent %s (model=%s)...", agent_type, model)
     start_task_tokens()
-    result = await agent._run_evaluation({"user_message": instruction})
+    task_input: dict[str, Any] = {"user_message": instruction}
+    if working_dir:
+        task_input["working_dir"] = working_dir
+    result = await agent._run_evaluation(task_input)
     result.update(get_task_tokens())
     _write_result(result, model, agent_type)
     _write_answer(result)
@@ -213,13 +217,21 @@ async def _run(
 @click.option("--instruction", required=True, help="Task instruction / problem statement")
 @click.option("--model", required=True, help="Model name in litellm format")
 @click.option("--agent-type", default="baseline", show_default=True, help="Agent variant to run")
+@click.option("--working-dir", default=None, help="Working directory for the agent shell session")
 @click.option(
     "--tools",
     default="",
     help="Comma-separated tool sets to inject (e.g. 'swebench')",
 )
 @click.option("--api-base", default=None, help="Override API base URL")
-def main(instruction: str, model: str, agent_type: str, tools: str, api_base: str | None) -> None:
+def main(
+    instruction: str,
+    model: str,
+    agent_type: str,
+    working_dir: str | None,
+    tools: str,
+    api_base: str | None,
+) -> None:
     """Run a nemo-oo-agents agent on a task inside a Harbor container."""
     _setup_logging()
     logger.info("nemo-oo-agents-benchmarks runner starting")
@@ -244,7 +256,9 @@ def main(instruction: str, model: str, agent_type: str, tools: str, api_base: st
     tool_set = frozenset(t.strip() for t in tools.split(",") if t.strip())
 
     try:
-        exit_code = asyncio.run(_run(instruction, model, agent_type, tool_set, api_base))
+        exit_code = asyncio.run(
+            _run(instruction, model, agent_type, tool_set, api_base, working_dir)
+        )
     except Exception as e:
         logger.exception("Runner failed with unhandled exception: %s", e)
         exit_code = 1

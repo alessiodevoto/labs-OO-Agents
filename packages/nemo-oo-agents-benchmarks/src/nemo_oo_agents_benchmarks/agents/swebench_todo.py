@@ -27,8 +27,12 @@ from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.tools.shell_tools import ShellTools
 from nemo_oo_agents.tools.shell_tools2 import ShellTools2
 from nemo_oo_agents.tools.shell_tools3 import ShellTools3
+from nemo_oo_agents.tools.shell_tools4 import ShellTools4
+from nemo_oo_agents.tools.shell_tools5 import ShellTools5
 from nemo_oo_agents.tools.todo import TodoManager
 from nemo_oo_agents.unifiedllm import FakeLLMClient
+
+_CONDA_ACTIVATE = "export PATH=/opt/harbor/cpython312/bin:$PATH; source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed 2>/dev/null || true"
 
 
 @hidden
@@ -43,7 +47,7 @@ def _make_shell(cwd: str = "/testbed"):
     # Normalize unknown/empty to "1" BEFORE tagging, so the metric matches what
     # actually runs (an unsupported value must not be tagged as itself while
     # execution silently falls back to variant 1 — that corrupts bake-off data).
-    variant = raw if raw in ("1", "2", "3") else "1"
+    variant = raw if raw in ("1", "2", "3", "4", "5") else "1"
     if raw and raw != variant:
         logger.warning("Unknown SHELL_VARIANT=%r; falling back to variant 1", raw)
     try:
@@ -53,10 +57,17 @@ def _make_shell(cwd: str = "/testbed"):
     except Exception:  # noqa: BLE001
         logger.warning("Failed to tag shell_variant in harness metrics", exc_info=True)
     if variant == "2":
-        return ShellTools2(cwd=cwd)
-    if variant == "3":
-        return ShellTools3(cwd=cwd)
-    return ShellTools(cwd=cwd)
+        shell = ShellTools2(cwd=cwd)
+    elif variant == "3":
+        shell = ShellTools3(cwd=cwd)
+    elif variant == "4":
+        shell = ShellTools4(cwd=cwd)
+    elif variant == "5":
+        shell = ShellTools5(cwd=cwd)
+    else:
+        shell = ShellTools(cwd=cwd)
+    shell._init_command = _CONDA_ACTIVATE
+    return shell
 
 
 if TYPE_CHECKING:
@@ -64,14 +75,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """You are a software engineer working inside a pre-configured repository \
-container. Your task is to make changes to non-test files in order to fix \
-the issue described in the problem statement in a way that is general and \
-consistent with the codebase.
+_SYSTEM_PROMPT = """You are a software engineer working inside a pre-configured \
+container. Your task is to make changes to fix the issue described in the \
+problem statement in a way that is general and consistent with the codebase.
 
-The repository is checked out at /testbed. A conda environment named \
-"testbed" is pre-activated with all dependencies installed. The current \
-working directory is /testbed.\
+The working directory is pre-set to the project root. A conda environment \
+may be pre-activated with dependencies installed.\
 """
 
 _ENVIRONMENT_INSTRUCTIONS = """## Environment
@@ -79,6 +88,10 @@ _ENVIRONMENT_INSTRUCTIONS = """## Environment
 You are in a Docker container with the repository already cloned and checked \
 out at /testbed. You have a persistent shell session — cd, environment \
 variables, and working directory all survive across calls.
+
+⚠️ **Project imports will NOT work in your code cells.** Your Python sandbox \
+does not have the repository installed. To run project code or tests, always \
+use `await self.shell.run("python -", stdin=script)` or `await self.shell.run("pytest ...")`.
 
 ## Boundaries
 
@@ -114,9 +127,8 @@ class SWEBenchTodoAgent(
 ):
     """SWE-bench agent with todo-driven structured workflow.
 
-    Uses ShellTools for persistent shell + file operations and TodoManager
-    for progress tracking through a proven explore → reproduce → trace →
-    fix → verify workflow.
+    Follow the pre-filled todos in order. Mark each done before starting the next.
+    DO NOT jump straight to editing files — understand the problem first.
 
     ## Workflow — Think Before You Code
 
@@ -180,10 +192,9 @@ class SWEBenchTodoAgent(
 
     ## Rules
 
-    - Mark each todo phase done as you complete it (BEFORE starting the next)
-    - Only `return` / `return_result()` when tests pass and diff is clean
-    - If your first approach fails, try a different angle — don't give up
-    - Pin useful state: `self.context.set_dynamic("key", "expression")`
+    - Mark each todo done as you complete it (BEFORE starting the next)
+    - Only `return_result()` when tests pass and diff is clean
+    - If your first approach fails after 3 attempts, try a different angle
     - Variables persist across REPL turns
     - Output is auto-truncated; use slices or grep to inspect long output
 
@@ -220,10 +231,25 @@ class SWEBenchTodoAgent(
             self.problem_statement = task_input.get("problem_statement", "")
             self.response_format = task_input.get("response_format", "")
 
+        # Determine working directory. Explicit working_dir is strict — a missing
+        # dir is a misconfig, not an intent to create one, and running the whole
+        # task from the wrong cwd silently corrupts results (false zeros).
+        cwd = task_input.get("working_dir")
+        if cwd:
+            if not os.path.isdir(cwd):
+                raise ValueError(f"working_dir does not exist: {cwd!r}")
+        else:
+            # Auto-detect the container layout (SWE-bench: /testbed, TB: /app),
+            # falling back to the current directory for non-container runs.
+            cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
+
         # Reset stateful tools so each evaluation starts clean.
-        self.shell = _make_shell("/testbed")
+        self.shell = _make_shell(cwd)
         self.context_manager.set_static("self.shell", doc(type(self.shell)))
         self.todo.clear()
+
+        # Activate the testbed conda env if available (no-op on non-conda containers).
+        await self.shell.run(_CONDA_ACTIVATE)
 
         # Set context blocks unconditionally (clear stale values from prior runs).
         self.context["initial_observation"] = self.initial_observation or None
@@ -257,7 +283,7 @@ class SWEBenchTodoAgent(
         except Exception as e:
             return {"response": "", "success": False, "error": str(e)}
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=250, max_retries=10)))
+    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=300, max_retries=10)))
     async def _solve_task(self, description: str, response_format: str = "") -> Any:
         """Solve the task using the structured todo-driven workflow.
 
