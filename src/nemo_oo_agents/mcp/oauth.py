@@ -5,7 +5,8 @@
 #
 # Key RFC 8252 practices applied here:
 #   §4   — Use the system browser (webbrowser.open), not an embedded webview
-#   §7.3 — Use loopback redirect URIs (127.0.0.1) with a dynamic OS-assigned
+#   §7.3 — Use loopback redirect URIs (localhost; some gateways reject 127.0.0.1)
+#           with a dynamic OS-assigned
 #           port (bind to port 0) so no fixed port needs to be pre-registered
 #           and port conflicts are impossible
 #   §8   — PKCE (RFC 7636, S256 method) is required for all native clients
@@ -369,7 +370,7 @@ class OAuthHandler:
             RuntimeError: If the server times out or receives an error callback
         """
         parsed = urlparse(self.config.redirect_uri)
-        host = parsed.hostname or "127.0.0.1"
+        host = parsed.hostname or "localhost"
         callback_path = parsed.path or "/callback"
         scheme = parsed.scheme or "http"
         # Use port from redirect_uri if specified, otherwise bind to port 0 for dynamic assignment
@@ -559,6 +560,51 @@ class OAuthHandler:
                     error_msg += f": {error_detail}"
 
                 raise RuntimeError(error_msg) from e
+
+    async def client_credentials_token(self) -> OAuthToken:
+        """Fetch a token via the non-interactive client_credentials grant.
+
+        Machine-to-machine flow (RFC 6749 §4.4): no browser, no redirect, no
+        user consent — just client_id/client_secret exchanged for a token. Used
+        for headless/agent connects against servers that advertise it. Requires
+        a client_secret (from config or dynamic registration).
+        """
+        if not self.config.client_id or not self.config.client_secret:
+            raise RuntimeError(
+                "client_credentials grant requires a client_id and client_secret. "
+                "Provide oauth_client_id/oauth_client_secret in config, or use a server "
+                "that supports dynamic client registration."
+            )
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": self.config.client_id,
+            "client_secret": self.config.client_secret,
+        }
+        if self.config.scope:
+            data["scope"] = self.config.scope
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(self.config.token_endpoint, data=data, timeout=30.0)
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                detail = e.response.text if e.response is not None else str(e)
+                raise RuntimeError(
+                    f"client_credentials token request failed "
+                    f"(HTTP {e.response.status_code}): {detail}"
+                ) from e
+            td = response.json()
+        if "access_token" not in td:
+            raise RuntimeError(f"client_credentials token response missing 'access_token': {td}")
+        return OAuthToken(
+            access_token=td["access_token"],
+            token_type=td.get("token_type", "Bearer"),
+            expires_in=td.get("expires_in"),
+            refresh_token=td.get("refresh_token"),
+            obtained_at=time.time(),
+            client_id=self.config.client_id,
+            client_secret=self.config.client_secret,
+        )
 
     async def complete_flow(self, open_browser: bool = True) -> OAuthToken:
         """Complete full OAuth flow: authorize and exchange code for token.
@@ -819,8 +865,9 @@ async def _refresh_access_token(
 
 async def handle_mcp_oauth(
     server_url: str,
-    redirect_uri: str = "http://127.0.0.1:0/callback",
+    redirect_uri: str = "http://localhost:0/callback",
     client_id: str | None = None,
+    client_secret: str | None = None,
     scope: str | None = None,
     open_browser: bool = True,
     manual: bool = False,
@@ -841,6 +888,7 @@ async def handle_mcp_oauth(
         server_url: MCP server URL
         redirect_uri: OAuth redirect URI for the local-callback flow
         client_id: OAuth client ID (if not provided, may be discovered/registered)
+        client_secret: OAuth client secret (enables the client_credentials grant)
         scope: OAuth scopes
         open_browser: Whether to automatically open the browser
         manual: Use the out-of-band (link + paste code) flow
@@ -859,6 +907,7 @@ async def handle_mcp_oauth(
     token_endpoint = None
     registration_endpoint = None
     discovered_client_id = client_id
+    grant_types: list[str] = []
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         resource_metadata = await _fetch_protected_resource_metadata(client, server_url)
@@ -879,6 +928,7 @@ async def handle_mcp_oauth(
             registration_endpoint = (
                 metadata.get("registration_endpoint") or auth_server + "/register"
             )
+            grant_types = metadata.get("grant_types_supported") or []
 
     # 1/2. Reuse a cached token (or refresh it) before prompting for auth again.
     if use_cache:
@@ -897,6 +947,7 @@ async def handle_mcp_oauth(
                 return refreshed
 
     final_client_id = discovered_client_id or client_id
+    final_client_secret = client_secret
 
     if not final_client_id and not registration_endpoint:
         raise RuntimeError(
@@ -915,6 +966,7 @@ async def handle_mcp_oauth(
         authorization_endpoint=auth_endpoint,
         token_endpoint=token_endpoint,
         client_id=final_client_id,
+        client_secret=final_client_secret,
         redirect_uri=redirect_uri,
         scope=scope,
         registration_endpoint=registration_endpoint,
@@ -923,6 +975,22 @@ async def handle_mcp_oauth(
     handler = OAuthHandler(
         config, manual=manual, code_prompt=code_prompt, browser_open=browser_open
     )
+
+    # Prefer the non-interactive client_credentials grant when the server
+    # advertises it. It needs no browser/redirect/user consent, so it's the
+    # right path for headless/agent connects (and for servers like maas-nvbugs
+    # that reject the OOB redirect used by the manual authorization_code flow).
+    # Dynamic registration (run inside the auth flows) supplies the client_secret.
+    if "client_credentials" in grant_types:
+        if config.client_secret is None and config.registration_endpoint:
+            await handler._register_dynamic_client(redirect_uri)
+        if config.client_id and config.client_secret:
+            logger.info("Using client_credentials grant (non-interactive)")
+            token = await handler.client_credentials_token()
+            if use_cache:
+                _save_cached_token(server_url, token)
+            return token
+
     token = await handler.complete_flow(open_browser=open_browser)
     if use_cache:
         _save_cached_token(server_url, token)

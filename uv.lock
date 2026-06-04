@@ -2922,6 +2922,7 @@ source = { editable = "packages/nemo-oo-agents-cli" }
 dependencies = [
     { name = "click", marker = "python_full_version < '3.14'" },
     { name = "ipython", marker = "python_full_version < '3.14'" },
+    { name = "mcp", marker = "python_full_version < '3.14'" },
     { name = "nemo-oo-agents", marker = "python_full_version < '3.14'" },
     { name = "prompt-toolkit", marker = "python_full_version < '3.14'" },
     { name = "pydantic", marker = "python_full_version < '3.14'" },
@@ -2961,6 +2962,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.123.4" },
     { name = "ipython", specifier = ">=9.12.0" },
+    { name = "mcp", specifier = ">=1.0.0" },
     { name = "nemo-oo-agents", editable = "." },
     { name = "numpy", marker = "extra == 'datascience'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'web'", specifier = ">=1.24.0" },
