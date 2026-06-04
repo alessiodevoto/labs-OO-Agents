@@ -85,6 +85,29 @@ class OAuthToken:
         return time.time() >= (self.obtained_at + self.expires_in - leeway)
 
 
+def _system_browser_available() -> bool:
+    """True if a real system browser can be launched for the OAuth redirect.
+
+    Headless/remote sessions (docker sandbox, SSH without X) have no browser, so
+    the loopback-callback flow can never complete — the user never sees the
+    consent page and the local callback is unreachable. Detect that here so the
+    caller can fall back to the manual out-of-band flow instead of hanging until
+    timeout.
+
+    Best-effort heuristic, tuned for minimal Docker images: ``webbrowser.get()``
+    raises only when *no* browser-like executable is found. On a non-minimal host
+    that has a text browser (``elinks``/``links``/``lynx``) or ``xdg-open`` on
+    PATH it returns True even without a graphical display, so the auto-fallback
+    won't trigger there. Such environments should set ``oauth_manual = true`` in
+    the server config to force the out-of-band flow.
+    """
+    try:
+        webbrowser.get()
+    except webbrowser.Error:
+        return False
+    return True
+
+
 def _extract_authorization_code(pasted: str) -> str:
     """Extract an OAuth code from either a raw code or a pasted callback URL.
 
@@ -287,6 +310,25 @@ class OAuthHandler:
         """
         if self.manual:
             return await self._authorize_manual(open_browser)
+
+        # The loopback-callback flow needs a system browser to reach the consent
+        # page and call back to localhost. In headless/remote sessions there is
+        # no browser, so it would hang until timeout. When a code prompt is
+        # available, fall back to the manual out-of-band flow automatically.
+        if open_browser and not _system_browser_available():
+            if self._code_prompt is not None:
+                logger.info("No system browser detected; using manual OAuth (paste the code/URL).")
+                return await self._authorize_manual(open_browser=False)
+            raise RuntimeError(
+                "OAuth requires a browser to complete the loopback-callback flow, but no "
+                "system browser is available in this session (headless/remote). Configure "
+                "the MCP server for manual OAuth by adding to its block in "
+                ".nemo_oo_agents/config.toml:\n"
+                "    oauth_manual = true\n"
+                "    oauth_open_browser = false\n"
+                "then reconnect and paste the authorization code or callback URL when prompted."
+            )
+
         try:
             code = await self._capture_code_via_local_server(open_browser)
         except Exception as e:
