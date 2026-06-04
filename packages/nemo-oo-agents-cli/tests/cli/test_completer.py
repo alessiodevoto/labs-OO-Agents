@@ -528,15 +528,14 @@ def test_expand_mentions_angle_brackets_target():
 
 
 def _mcp_registry(servers, connected=()):
-    """A registry whose get_command('mcp') returns a stub MCPCommand."""
+    """A registry whose agent.mcp is a stub MCPRegistry (discovered/connected)."""
     from unittest.mock import MagicMock
 
     reg = MagicMock()
-    command = MagicMock()
-    command.mcp_file = None
-    command.mcp_servers = {name: {} for name in servers}
-    command._mcp_connections = set(connected)
-    reg.get_command.side_effect = lambda n: command if n == "mcp" else None
+    mcp = MagicMock()
+    mcp.discovered.return_value = sorted(servers)
+    mcp.connected.return_value = sorted(connected)
+    reg.agent.mcp = mcp
     return reg
 
 
@@ -576,6 +575,6 @@ def test_mcp_completion_missing_command_is_safe():
     from unittest.mock import MagicMock
 
     reg = MagicMock()
-    reg.get_command.return_value = None
+    reg.agent.mcp = None
     completer = Completer(registry=reg)
     assert completer.complete("/mcp connect ") == []

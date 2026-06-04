@@ -762,6 +762,11 @@ class Session:
             text = str(result.slash_result)
             if text:
                 self._app.emit_block(text + "\n")
+            if not result.slash_result.output_to_agent:
+                # User-only command (e.g. a read-only /mcp list): the human sees
+                # the output above, but it is NOT fed to the agent — no queue
+                # put, no submitted message, no agent turn spent.
+                return
             # Post the full SlashCommandResult to the slash_commands queue
             # (agent can access .value for the raw Python object). This put
             # also wakes the dispatcher (qm.race() includes the slash_commands

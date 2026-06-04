@@ -687,7 +687,7 @@ uv run python examples/quickstart/10_skills.py
 
 ### MCP Tools
 
-MCP (Model Context Protocol) tools let your agent call external services through a standard interface. MCP support ships as an optional extra — install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
+MCP (Model Context Protocol) tools let your agent call external services through a standard interface. The TUI (`nemo-oo-agents-cli`) ships MCP support out of the box — it's a hard dependency, so `self.mcp` and the `/mcp` command are always available. In the **core** `nemo-oo-agents` library MCP stays an optional extra (for glibc<2.28 hosts): install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
 
 For the TUI, declare MCP servers in the same project config file used for
 models, skills, and other TUI settings: `.nemo_oo_agents/config.toml`. Use
@@ -716,7 +716,25 @@ A VS Code / Claude-style `.mcp.json` file is still supported via `mcp_file` or
 `--mcp-file`; inline `mcp_servers` in `config.toml` override file entries with
 the same name.
 
-For non-TUI agents, reference the server by name in your agent:
+Inside the TUI, MCP servers are managed through `self.mcp`, an `MCPRegistry`
+skill that mirrors `self.skills`:
+
+- `self.mcp.discovered()` — configured server names (from `config.toml` /
+  `.mcp.json`).
+- `await self.mcp.connect(["name"])` — open a server (and activate it),
+  attaching it as `self.<name>`.
+- `self.mcp.activate([...])` / `self.mcp.deactivate([...])` — control whether a
+  connected server's tools are listed for the agent; a deactivated server keeps
+  its authenticated client alive.
+- An `<mcp>` context block lists every server each turn under **Active**,
+  **Connected but inactive**, or **Configured**.
+
+The same actions are available as a slash command — `/mcp list`,
+`/mcp connect <server>`, `/mcp disconnect <server>` — whose output is shown to
+you without spending an agent turn.
+
+Outside the TUI (library use), there's no `self.mcp` — call the stateless
+`MCPManager` factory directly. Reference the server by name in your agent:
 
 ```python
 from nemo_oo_agents.mcp import MCPManager

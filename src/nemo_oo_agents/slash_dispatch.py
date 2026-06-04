@@ -24,6 +24,7 @@ class SlashCommandResult:
     args: str
     value: Any = None
     text: str | None = None
+    output_to_agent: bool = True
 
     def __str__(self) -> str:
         if self.text is not None:

@@ -72,7 +72,18 @@ def make_mock_agent():
         }
     )
     agent.bash = MagicMock()
+    _wire_mock_mcp(agent)
     return agent
+
+
+def _wire_mock_mcp(agent, servers=None):
+    """Attach a real MCPRegistry to a mock agent, mirroring bootstrap wiring."""
+    from nemo_oo_agents_cli.tui.mcp_registry import MCPRegistry
+
+    registry = MCPRegistry(mcp_file=None, servers=dict(servers or {}))
+    registry.attach(agent)
+    agent.mcp = registry
+    return registry
 
 
 # ===========================================================================
@@ -371,7 +382,6 @@ from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     ExitCommand,
     HelpCommand,
     HistoryCommand,
-    MCPCommand,
     ModelCommand,
     ModelsCommand,
     PythonCommand,
@@ -784,111 +794,6 @@ class TestHistoryCommandExecute:
         cmd = HistoryCommand(mock_console, mock_config, mock_agent)
         result = await cmd.execute(["status"])
         assert result.success is True
-
-
-class TestMCPCommandValidation:
-    def test_no_args_fails(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args([])
-        assert ok is False
-
-    def test_invalid_subcmd(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["bad"])
-        assert ok is False
-        assert "Unknown subcommand" in msg
-
-    def test_connect_without_server_name(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["connect"])
-        assert ok is False
-        assert "server_name" in msg
-
-    def test_disconnect_without_server_name(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["disconnect"])
-        assert ok is False
-
-    def test_list_ok(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        ok, msg = cmd.validate_args(["list"])
-        assert ok is True
-
-
-class TestMCPCommandExecute:
-    async def test_no_mcp_module(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch.dict("sys.modules", {"nemo_oo_agents.mcp": None}):
-            result = await cmd.execute(["list"])
-        assert result.success is False
-        assert any("MCP" in o.content for o in result.outputs if isinstance(o, TextOutput))
-
-    async def test_list(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["s1", "s2"]
-            result = await cmd.execute(["list"])
-        assert result.success is True
-        assert any(isinstance(o, TableOutput) for o in result.outputs)
-
-    async def test_connect_success(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["server1"]
-            mock_mcp.create_from_server.return_value = MagicMock()
-            result = await cmd.execute(["connect", "server1"])
-        assert result.success is True
-        assert "server1" in cmd._mcp_connections
-
-    async def test_connect_server_not_found(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["other"]
-            result = await cmd.execute(["connect", "missing"])
-        assert result.success is False
-        assert any("not found" in o.content for o in result.outputs if isinstance(o, TextOutput))
-
-    async def test_connect_failure_exception(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent, mcp_file=Path(".mcp.json"))
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["server1"]
-            mock_mcp.create_from_server.side_effect = Exception("conn fail")
-            result = await cmd.execute(["connect", "server1"])
-        assert result.success is False
-        assert any(
-            "Failed to connect" in o.content for o in result.outputs if isinstance(o, TextOutput)
-        )
-        mock_console.stop_thinking.assert_not_called()
-
-    async def test_disconnect_not_connected(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["server1"]
-            result = await cmd.execute(["disconnect", "server1"])
-        assert result.success is False
-        assert any(
-            "not connected" in o.content for o in result.outputs if isinstance(o, TextOutput)
-        )
-
-    async def test_disconnect_success(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        cmd._mcp_connections.add("server1")
-        mock_agent.server1 = MagicMock()
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["server1"]
-            result = await cmd.execute(["disconnect", "server1"])
-        assert result.success is True
-        assert "server1" not in cmd._mcp_connections
-
-    async def test_disconnect_exception(self, mock_console, mock_config, mock_agent):
-        cmd = MCPCommand(mock_console, mock_config, mock_agent)
-        cmd._mcp_connections.add("server1")
-        # Make delattr fail
-        with patch("nemo_oo_agents.mcp.MCPManager") as mock_mcp:
-            mock_mcp.list_servers.return_value = ["server1"]
-            with patch("nemo_oo_agents_cli.tui.commands.delattr", side_effect=Exception("err")):
-                result = await cmd.execute(["disconnect", "server1"])
-        assert result.success is False
 
 
 class TestSkillsCommandValidation:
