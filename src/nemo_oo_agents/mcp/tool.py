@@ -15,6 +15,7 @@ import json
 import os
 import re
 import types
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +24,37 @@ import httpx
 
 from .client import create_mcp_client
 from .oauth import handle_mcp_oauth
+
+
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    """Return leaf exceptions so user-facing MCP connection errors are actionable."""
+    if isinstance(exc, ExceptionGroup):
+        leaves: list[BaseException] = []
+        for child in exc.exceptions:
+            leaves.extend(_flatten_exceptions(child))
+        return leaves
+    return [exc]
+
+
+def _describe_exception(exc: BaseException) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        body = response.text.strip()
+        if len(body) > 500:
+            body = body[:500] + "..."
+        suffix = f": {body}" if body else ""
+        return f"HTTP {response.status_code} {response.reason_phrase}{suffix}"
+    message = str(exc)
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+def _describe_exceptions(exceptions: Sequence[BaseException]) -> str:
+    descriptions = []
+    for exc in exceptions:
+        descriptions.extend(_describe_exception(leaf) for leaf in _flatten_exceptions(exc))
+    # Preserve order but avoid duplicating identical nested task-group failures.
+    deduped = list(dict.fromkeys(descriptions))
+    return "; ".join(deduped)
 
 
 @dataclass
@@ -62,6 +94,11 @@ def _json_schema_type_to_python_type(json_type: str) -> type:
         "object": dict,
     }
     return type_map.get(json_type, str)
+
+
+def _value_to_ast_node(value: Any) -> ast.expr:
+    """Convert a JSON-schema default value into an AST expression node."""
+    return ast.parse(repr(value), mode="eval").body
 
 
 def _create_method_from_schema(
@@ -325,7 +362,7 @@ Args:
     func_defaults: list[ast.expr] = []
     for param_name in param_names:
         if param_name in defaults:
-            func_defaults.append(ast.Constant(value=defaults[param_name]))
+            func_defaults.append(_value_to_ast_node(defaults[param_name]))
 
     decorator_list: list[ast.expr] = []
 
@@ -618,9 +655,11 @@ class MCPManager:
         headers: dict[str, str] | None = None,
         transport: Literal["stdio", "sse", "streamable-http"] | None = None,
         oauth_client_id: str | None = None,
-        oauth_redirect_uri: str = "http://localhost:8000/callback",
+        oauth_redirect_uri: str = "http://127.0.0.1:0/callback",
         oauth_scope: str | None = None,
-        oauth_open_browser: bool = True,
+        oauth_open_browser: bool | None = None,
+        oauth_manual: bool | None = None,
+        oauth_code_prompt: Callable[[str], Awaitable[str]] | None = None,
         mcp_file: Path | None = None,
         servers: dict[str, dict[str, Any]] | None = None,
     ) -> MCPTool:
@@ -637,9 +676,10 @@ class MCPManager:
             headers: Optional headers for HTTP requests (for HTTP transports)
             transport: Transport type - "stdio", "sse", or "streamable-http"
             oauth_client_id: OAuth client ID (if OAuth is required)
-            oauth_redirect_uri: OAuth redirect URI (default: http://localhost:8000/callback)
+            oauth_redirect_uri: OAuth redirect URI (default: http://127.0.0.1:0/callback)
             oauth_scope: OAuth scopes (optional)
-            oauth_open_browser: Whether to automatically open browser for OAuth (default: True)
+            oauth_open_browser: Whether to automatically open browser for OAuth. Defaults to config, then True.
+            oauth_manual: Use out-of-band OAuth (link + pasted code). Defaults to config, then False.
             mcp_file: Path to .mcp.json file (default: .mcp.json in cwd)
             servers: Optional inline server config from the TUI config.toml.
 
@@ -676,13 +716,16 @@ class MCPManager:
         env = env or config_server.get("env")
         oauth_client_id = oauth_client_id or config_server.get("oauth_client_id")
         oauth_redirect_uri = oauth_redirect_uri or config_server.get(
-            "oauth_redirect_uri", "http://localhost:8000/callback"
+            "oauth_redirect_uri", "http://127.0.0.1:0/callback"
         )
         oauth_scope = oauth_scope or config_server.get("oauth_scope")
-        oauth_open_browser = (
+        oauth_open_browser = bool(
             oauth_open_browser
             if oauth_open_browser is not None
             else config_server.get("oauth_open_browser", True)
+        )
+        oauth_manual = bool(
+            oauth_manual if oauth_manual is not None else config_server.get("oauth_manual", False)
         )
 
         # Create client and connect
@@ -723,6 +766,8 @@ class MCPManager:
                             client_id=oauth_client_id,
                             scope=oauth_scope,
                             open_browser=oauth_open_browser,
+                            manual=oauth_manual,
+                            code_prompt=oauth_code_prompt,
                         )
                     )
                     headers["Authorization"] = f"{token.token_type} {token.access_token}"
@@ -743,10 +788,10 @@ class MCPManager:
                     tools_result = _run_sync(_connect_and_list_retry())
                 except Exception as retry_error:
                     all_exceptions = auth_exceptions + [retry_error] + non_auth_exceptions
-                    if len(all_exceptions) == 1:
-                        raise all_exceptions[0] from retry_error
-                    raise ExceptionGroup(
-                        "Connection failed after OAuth authentication", all_exceptions
+                    details = _describe_exceptions(all_exceptions)
+                    raise RuntimeError(
+                        "Connection failed after OAuth authentication"
+                        + (f": {details}" if details else "")
                     ) from retry_error
 
             if non_auth_exceptions:
