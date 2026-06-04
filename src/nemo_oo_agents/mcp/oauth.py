@@ -172,6 +172,7 @@ class OAuthHandler:
         config: OAuthConfig,
         manual: bool = False,
         code_prompt: "Callable[[str], Awaitable[str]] | None" = None,
+        browser_open: "Callable[[str], Awaitable[bool]] | None" = None,
     ):
         """Initialize OAuth handler.
 
@@ -183,10 +184,16 @@ class OAuthHandler:
             code_prompt: Async callback that takes the authorization URL and
                 returns the pasted code. Used in manual mode so the host
                 application (TUI) controls input instead of blocking ``input()``.
+            browser_open: Async hook that opens a URL in a *reachable* browser and
+                returns True on success. Lets a headless/sandboxed host open the
+                consent page elsewhere (e.g. on the host machine) while the
+                loopback ``localhost`` callback is forwarded back — preferred over
+                the OOB fallback when the in-process browser is unavailable.
         """
         self.config = config
         self.manual = manual
         self._code_prompt = code_prompt
+        self._browser_open = browser_open
         self._code_verifier: str | None = None
         self._code_challenge: str | None = None
         # Set by _capture_code_via_local_server after dynamic port assignment;
@@ -311,23 +318,29 @@ class OAuthHandler:
         if self.manual:
             return await self._authorize_manual(open_browser)
 
-        # The loopback-callback flow needs a system browser to reach the consent
-        # page and call back to localhost. In headless/remote sessions there is
-        # no browser, so it would hang until timeout. When a code prompt is
-        # available, fall back to the manual out-of-band flow automatically.
+        # The loopback-callback flow needs a browser to reach the consent page and
+        # call back to localhost. In headless/remote sessions there is no in-process
+        # browser. If a browser_open hook is available (e.g. a sandbox that opens the
+        # URL on the host and forwards localhost back), use the loopback flow via that
+        # hook. Otherwise fall back to manual OOB, or fail with config guidance.
         if open_browser and not _system_browser_available():
-            if self._code_prompt is not None:
+            if self._browser_open is not None:
+                logger.info("No in-process browser; using browser_open hook for the loopback flow.")
+                # open_browser stays True: _capture_code_via_local_server will route
+                # the URL through the hook instead of webbrowser.open.
+            elif self._code_prompt is not None:
                 logger.info("No system browser detected; using manual OAuth (paste the code/URL).")
                 return await self._authorize_manual(open_browser=False)
-            raise RuntimeError(
-                "OAuth requires a browser to complete the loopback-callback flow, but no "
-                "system browser is available in this session (headless/remote). Configure "
-                "the MCP server for manual OAuth by adding to its block in "
-                ".nemo_oo_agents/config.toml:\n"
-                "    oauth_manual = true\n"
-                "    oauth_open_browser = false\n"
-                "then reconnect and paste the authorization code or callback URL when prompted."
-            )
+            else:
+                raise RuntimeError(
+                    "OAuth requires a browser to complete the loopback-callback flow, but no "
+                    "system browser is available in this session (headless/remote). Configure "
+                    "the MCP server for manual OAuth by adding to its block in "
+                    ".nemo_oo_agents/config.toml:\n"
+                    "    oauth_manual = true\n"
+                    "    oauth_open_browser = false\n"
+                    "then reconnect and paste the authorization code or callback URL when prompted."
+                )
 
         try:
             code = await self._capture_code_via_local_server(open_browser)
@@ -437,12 +450,21 @@ class OAuthHandler:
         thread.start()
 
         if open_browser:
-            try:
-                webbrowser.open(auth_url)
-                logger.info("Opened browser for authorization")
-            except Exception as e:
-                logger.warning(f"Failed to open browser: {e}")
-                logger.info(f"Please visit: {auth_url}")
+            opened = False
+            if self._browser_open is not None:
+                try:
+                    opened = await self._browser_open(auth_url)
+                except Exception as e:
+                    logger.warning(f"browser_open hook failed: {e}")
+                if opened:
+                    logger.info("Opened authorization URL via browser_open hook")
+            if not opened:
+                try:
+                    webbrowser.open(auth_url)
+                    logger.info("Opened browser for authorization")
+                except Exception as e:
+                    logger.warning(f"Failed to open browser: {e}")
+                    logger.info(f"Please visit: {auth_url}")
         else:
             logger.info(f"Please visit: {auth_url}")
 
@@ -803,6 +825,7 @@ async def handle_mcp_oauth(
     open_browser: bool = True,
     manual: bool = False,
     code_prompt: "Callable[[str], Awaitable[str]] | None" = None,
+    browser_open: "Callable[[str], Awaitable[bool]] | None" = None,
     use_cache: bool = True,
 ) -> OAuthToken:
     """Handle OAuth flow for MCP server, reusing a cached token when possible.
@@ -822,6 +845,7 @@ async def handle_mcp_oauth(
         open_browser: Whether to automatically open the browser
         manual: Use the out-of-band (link + paste code) flow
         code_prompt: Async callback returning the pasted code (manual mode)
+        browser_open: Async hook to open the auth URL in a reachable browser (host handoff)
         use_cache: Read/write the per-project token cache
 
     Returns:
@@ -896,7 +920,9 @@ async def handle_mcp_oauth(
         registration_endpoint=registration_endpoint,
     )
 
-    handler = OAuthHandler(config, manual=manual, code_prompt=code_prompt)
+    handler = OAuthHandler(
+        config, manual=manual, code_prompt=code_prompt, browser_open=browser_open
+    )
     token = await handler.complete_flow(open_browser=open_browser)
     if use_cache:
         _save_cached_token(server_url, token)

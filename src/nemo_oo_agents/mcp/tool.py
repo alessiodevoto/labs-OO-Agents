@@ -673,6 +673,7 @@ class MCPManager:
         oauth_open_browser: bool | None = None,
         oauth_manual: bool | None = None,
         oauth_code_prompt: Callable[[str], Awaitable[str]] | None = None,
+        oauth_browser_open: Callable[[str], Awaitable[bool]] | None = None,
         mcp_file: Path | None = None,
         servers: dict[str, dict[str, Any]] | None = None,
     ) -> MCPTool:
@@ -693,6 +694,7 @@ class MCPManager:
             oauth_scope: OAuth scopes (optional)
             oauth_open_browser: Whether to automatically open browser for OAuth. Defaults to config, then True.
             oauth_manual: Use out-of-band OAuth (link + pasted code). Defaults to config, then False.
+            oauth_browser_open: Async hook to open the auth URL in a reachable browser (host handoff).
             mcp_file: Path to .mcp.json file (default: .mcp.json in cwd)
             servers: Optional inline server config from the TUI config.toml.
 
@@ -781,6 +783,7 @@ class MCPManager:
                             open_browser=oauth_open_browser,
                             manual=oauth_manual,
                             code_prompt=oauth_code_prompt,
+                            browser_open=oauth_browser_open,
                         )
                     )
                     headers["Authorization"] = f"{token.token_type} {token.access_token}"
