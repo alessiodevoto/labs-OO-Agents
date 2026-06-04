@@ -21,8 +21,6 @@ Attach to an agent::
 
 from __future__ import annotations
 
-import os
-import re
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -102,7 +100,7 @@ class Match:
     def __repr__(self) -> str:
         return f"Match({self._path!r}, lines={self._start}-{self._end})"
 
-    def __getitem__(self, key: slice | int) -> "Match":
+    def __getitem__(self, key: slice | int) -> Match:
         """Slice by line number (1-indexed) to narrow the region.
 
         match[10:20] → lines 10-20 (inclusive)
@@ -211,7 +209,9 @@ class ShellTools4(Skill):
         self,
         command: Annotated[str, spec(description="Shell command to execute")],
         *,
-        stdin: Annotated[str | None, spec(description="Text piped to stdin (replaces heredocs)")] = None,
+        stdin: Annotated[
+            str | None, spec(description="Text piped to stdin (replaces heredocs)")
+        ] = None,
         timeout: Annotated[float, spec(description="Max seconds")] = 30.0,
     ) -> ShellResult:
         """
@@ -251,7 +251,10 @@ class ShellTools4(Skill):
     async def read(
         self,
         path: Annotated[str, spec(description="File path (relative to cwd)")],
-        lines: Annotated[tuple[int, int] | None, spec(description="(start, end) 1-indexed inclusive, or None for whole file")] = None,
+        lines: Annotated[
+            tuple[int, int] | None,
+            spec(description="(start, end) 1-indexed inclusive, or None for whole file"),
+        ] = None,
     ) -> Match:
         """
         Read a file (or line range) → Match object.
@@ -284,8 +287,15 @@ class ShellTools4(Skill):
     async def replace(
         self,
         target: Annotated[Any, spec(description="A Match (from read()) or a file path string")],
-        old_or_new: Annotated[str, spec(description="For Match: replacement text. For path: text to find (must be unique)")] = "",
-        new: Annotated[str | None, spec(description="For path: replacement text. Leave None for Match.")] = None,
+        old_or_new: Annotated[
+            str,
+            spec(
+                description="For Match: replacement text. For path: text to find (must be unique)"
+            ),
+        ] = "",
+        new: Annotated[
+            str | None, spec(description="For path: replacement text. Leave None for Match.")
+        ] = None,
     ) -> FileWrite:
         """
         Edit a file — two forms:
