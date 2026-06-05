@@ -175,8 +175,12 @@ class InspectInputsPrefill:
         if call.return_type:
             complex_type = _get_complex_type(call.return_type)
             if complex_type is not None:
+                # inline_depth=1 expands one level of referenced/nested types (e.g. for
+                # `Type2 {t1: Type1}` it also shows Type1's fields). Without it, concise
+                # mode hides nested type structure and the model can't construct the
+                # value from the prefill alone. See KDD-cup feedback.
                 code_lines.append(
-                    'print(f"\\nReturn type: {doc(_call.return_type, concise=True)}")'
+                    'print(f"\\nReturn type: {doc(_call.return_type, concise=True, inline_depth=1)}")'
                 )
 
         return "\n".join(code_lines)

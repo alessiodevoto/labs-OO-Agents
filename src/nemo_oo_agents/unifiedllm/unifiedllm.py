@@ -420,6 +420,17 @@ def _strict_schema_valid(schema: dict[str, Any]) -> bool:
             and set(node.get("required", [])) != set(node["properties"].keys())
         ):
             return False
+        # Array nodes: strict mode requires typed `items`. Strict cleaning drops
+        # prefixItems (tuples) and other non-allowlisted array keywords, which can
+        # leave an array with no usable `items` — the Responses API then rejects
+        # "array schema missing items". Treat such arrays as strict-invalid so the
+        # caller falls back to a Responses-safe non-strict schema. See issue 232.
+        if node.get("type") == "array":
+            items = node.get("items")
+            if not isinstance(items, dict) or not any(
+                k in items for k in ("type", "anyOf", "oneOf", "allOf", "enum", "const")
+            ):
+                return False
         for v in node.get("properties", {}).values():
             if isinstance(v, dict) and not _check(v):
                 return False
@@ -560,8 +571,14 @@ _BEDROCK_STRIP_KEYWORDS = frozenset(
         "exclusiveMinimum",
         "exclusiveMaximum",
         "multipleOf",
-        # Array — maxItems actively rejected
+        # Array — actively rejected (HTTP 400). maxItems, plus prefixItems
+        # (heterogeneous tuples) and uniqueItems (sets): Bedrock's
+        # output_config.format.schema reports these "not supported". Stripping
+        # them degrades the schema to a plain array; PredictStrategy still
+        # validates the exact tuple/set type client-side. See issue 232.
         "maxItems",
+        "prefixItems",
+        "uniqueItems",
         # String — blog says unsupported; currently accepted but stripped
         # defensively to avoid the next silent enforcement tightening.
         "minLength",
@@ -645,20 +662,193 @@ def _strip_unsupported_keys(node: Any) -> None:
         _strip_unsupported_keys(node["not"])
 
 
+# OpenAI structured-output (json_schema) supports only this keyword subset. Anything
+# else (uniqueItems, prefixItems, minItems/maxItems, pattern, format, numeric bounds, …)
+# is rejected outright — even in non-strict mode. We strip to this set when sending a
+# non-strict schema for return types that cannot satisfy strict mode.
+_RESPONSE_SCHEMA_ALLOWED_KEYS = frozenset(
+    {
+        "type",
+        "description",
+        "enum",
+        "const",
+        "properties",
+        "required",
+        "items",
+        "additionalProperties",
+        "anyOf",
+        "oneOf",
+        "allOf",
+    }
+)
+
+
+def _schema_strict_compatible(schema: dict[str, Any]) -> bool:
+    """Return True if *schema* can be expressed under OpenAI strict structured outputs.
+
+    Strict mode cannot represent several JSON Schema shapes that Pydantic emits for
+    perfectly valid Python return types:
+
+    - **free-form objects** (``dict[str, T]`` / bare ``dict``) — strict requires
+      ``additionalProperties: false`` and every key declared in ``properties``;
+    - **untyped arrays** (bare ``list``) — strict requires ``items`` with a type;
+    - **heterogeneous tuples** (``tuple[int, str]``) — emitted as ``prefixItems``;
+    - **unique arrays** (``set[T]``) — emitted with ``uniqueItems``.
+
+    When this returns False the caller falls back to a non-strict json_schema so the
+    request is accepted; PredictStrategy still validates the parsed output against the
+    real Pydantic model (with retries) client-side.
+
+    Note: callers pass the ``_resolve_schema_refs`` output, whose cycle-breaking turns
+    recursive models into a property-less ``{"type": "object"}``. Such models therefore
+    classify as incompatible and take the (safe) non-strict path — the request still
+    succeeds and the value is validated client-side; only the schema hint is loosened.
+    """
+
+    def _has_type(node: Any) -> bool:
+        # A schema node is "typed" (expressible in strict mode) if it declares a type
+        # or a union/enum discriminator. Pydantic emits an empty ``{}`` for untyped
+        # members (bare ``list`` items, ``Any``), which strict mode rejects.
+        return isinstance(node, dict) and any(
+            k in node for k in ("type", "anyOf", "oneOf", "allOf", "enum", "const")
+        )
+
+    def _check(node: Any) -> bool:
+        if not isinstance(node, dict):
+            return True
+        # Untyped node (Pydantic emits ``{}`` for ``Any`` / untyped members). Strict
+        # mode requires a type on every node, so route these to the non-strict path.
+        if not _has_type(node):
+            return False
+        node_type = node.get("type")
+        if node_type == "object":
+            extra = node.get("additionalProperties")
+            if isinstance(extra, dict) or extra is True:
+                return False  # free-form dict
+            if "properties" not in node:
+                return False  # free-form object with no declared keys
+        if node_type == "array":
+            if "prefixItems" in node:
+                return False  # heterogeneous tuple
+            if node.get("uniqueItems"):
+                return False  # set
+            if not _has_type(node.get("items")):
+                return False  # untyped / bare list
+        for value in node.get("properties", {}).values():
+            if not _check(value):
+                return False
+        if isinstance(node.get("items"), dict) and not _check(node["items"]):
+            return False
+        if isinstance(node.get("additionalProperties"), dict) and not _check(
+            node["additionalProperties"]
+        ):
+            return False
+        for key in ("anyOf", "oneOf", "allOf"):
+            for item in node.get(key, []):
+                if isinstance(item, dict) and not _check(item):
+                    return False
+        return True
+
+    return _check(schema)
+
+
+def _loose_response_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Reduce *schema* to the OpenAI-supported keyword subset for a non-strict request.
+
+    Resolves ``$ref``/``$defs`` and recursively drops keywords OpenAI rejects
+    (``uniqueItems``, ``prefixItems``, ``minItems``/``maxItems``, ``pattern``, numeric
+    bounds, Pydantic ``title``/``default`` noise, …). The result is intentionally loose:
+    it guides the model, while PredictStrategy enforces the exact type client-side.
+    """
+    resolved = _resolve_schema_refs(schema)
+
+    def _strip(node: Any) -> Any:
+        if not isinstance(node, dict):
+            return node
+        out = {k: v for k, v in node.items() if k in _RESPONSE_SCHEMA_ALLOWED_KEYS}
+        if "properties" in out and isinstance(out["properties"], dict):
+            out["properties"] = {k: _strip(v) for k, v in out["properties"].items()}
+        if isinstance(out.get("items"), dict):
+            out["items"] = _strip(out["items"])
+        if isinstance(out.get("additionalProperties"), dict):
+            out["additionalProperties"] = _strip(out["additionalProperties"])
+        for key in ("anyOf", "oneOf", "allOf"):
+            if isinstance(out.get(key), list):
+                out[key] = [_strip(i) if isinstance(i, dict) else i for i in out[key]]
+        # The Azure Responses endpoint rejects "object schema missing properties" and
+        # "array schema missing items" even in non-strict mode. Supply empty defaults so
+        # free-form dicts and tuples (which legitimately omit these) are accepted; an
+        # empty schema means "any", matching the loose intent.
+        if out.get("type") == "object" and "properties" not in out:
+            out["properties"] = {}
+        if out.get("type") == "array" and "items" not in out:
+            out["items"] = {}
+        return out
+
+    return _strip(resolved)
+
+
 def _maybe_sanitize_response_format(
     model: str, output_model: type[BaseModel]
 ) -> type[BaseModel] | dict[str, Any]:
-    """Return *output_model* as-is for most providers, or a sanitized dict for Bedrock."""
-    if not _is_bedrock_model(model):
+    """Choose the response_format payload for *output_model* per provider.
+
+    - **Bedrock**: always a sanitized strict json_schema dict (unchanged).
+    - **Other providers** (OpenAI/Azure/NIM chat completions): return the Pydantic model
+      as-is so litellm builds a strict json_schema — UNLESS the schema cannot satisfy
+      strict mode (free-form dict, bare/untyped list, tuple, set), in which case we send
+      a non-strict json_schema so the request is accepted. See issue 232.
+    """
+    if _is_bedrock_model(model):
+        schema = _sanitize_schema_for_bedrock(output_model.model_json_schema())
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": output_model.__name__,
+                "strict": True,
+                "schema": schema,
+            },
+        }
+
+    raw_schema = output_model.model_json_schema()
+    if _schema_strict_compatible(_resolve_schema_refs(raw_schema)):
         return output_model
-    schema = _sanitize_schema_for_bedrock(output_model.model_json_schema())
+
     return {
         "type": "json_schema",
         "json_schema": {
             "name": output_model.__name__,
-            "strict": True,
-            "schema": schema,
+            "strict": False,
+            "schema": _loose_response_schema(raw_schema),
         },
+    }
+
+
+def _responses_output_params(output_model: type[BaseModel]) -> dict[str, Any]:
+    """Structured-output params for the Responses API (``litellm.responses``).
+
+    The Responses API is the strict-mode counterpart of chat completions'
+    ``_maybe_sanitize_response_format``. litellm's ``text_format`` convenience builds a
+    *strict* ``text.format`` json_schema from the Pydantic model, which the API rejects
+    for free-form dicts, bare/untyped lists, tuples, and sets (see issue 232).
+
+    - strict-compatible schema → ``{"text_format": output_model}`` (litellm builds strict);
+    - otherwise → an explicit non-strict ``text.format`` so the request is accepted.
+      litellm passes a provided ``text`` through verbatim (``text_format`` is then ignored).
+      PredictStrategy still validates the parsed output against the real model client-side.
+    """
+    raw_schema = output_model.model_json_schema()
+    if _schema_strict_compatible(_resolve_schema_refs(raw_schema)):
+        return {"text_format": output_model}
+    return {
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": output_model.__name__,
+                "strict": False,
+                "schema": _loose_response_schema(raw_schema),
+            }
+        }
     }
 
 
@@ -1889,10 +2079,10 @@ class ResponsesClient(UnifiedLLM):
                     "Falling back to non-strict mode.",
                     tool.name,
                 )
-                schema = schema_loose
+                schema = _loose_response_schema(schema_loose)
                 use_strict = False
         else:
-            schema = schema_loose
+            schema = _loose_response_schema(schema_loose)
 
         return {
             "type": "function",
@@ -1952,7 +2142,7 @@ class ResponsesClient(UnifiedLLM):
             api_params["parallel_tool_calls"] = False
 
         if output_model is not None:
-            api_params["text_format"] = output_model
+            api_params.update(_responses_output_params(output_model))
 
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning
@@ -2069,7 +2259,7 @@ class ResponsesClient(UnifiedLLM):
             api_params["parallel_tool_calls"] = False
 
         if output_model is not None:
-            api_params["text_format"] = output_model
+            api_params.update(_responses_output_params(output_model))
 
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning

@@ -876,3 +876,30 @@ test_suite:
     method: answer
     data_file: tests/capability/data/realfmt_nested_codeact.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+
+  # ===========================================================================
+  # COMPLEX RETURN-TYPE CONSTRUCTION (CodeAct) — construction guidance for types
+  # with no JSON schema (Any-fallback). DataFrame exercises the curated pandas
+  # define_doc adapter; Widget (novel, no adapter) exercises the auto-doc fallback.
+  # ===========================================================================
+  - name: construction_dataframe
+    description: "CodeAct builds & returns a pd.DataFrame (curated pandas define_doc adapter)"
+    tier: stable
+    agent: {module: tests.capability.agents.construction, class: ConstructionAgent}
+    method: build_table
+    data_file: tests/capability/data/construction_dataframe.jsonl
+    scorers:
+      - name: construction
+        class: tests.capability.agents.construction.ConstructionScorer
+        weight: 1.0
+
+  - name: construction_widget
+    description: "CodeAct builds & returns a novel non-Pydantic Widget via auto-doc fallback (no adapter)"
+    tier: frontier
+    agent: {module: tests.capability.agents.construction, class: ConstructionAgent}
+    method: build_widget
+    data_file: tests/capability/data/construction_widget.jsonl
+    scorers:
+      - name: construction
+        class: tests.capability.agents.construction.ConstructionScorer
+        weight: 1.0

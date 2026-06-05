@@ -44,17 +44,22 @@ class TestCreateResponseModel:
         # Should have 'root' field, not 'value'
         assert "root" in model.model_fields
 
-    def test_basic_list_uses_root_model(self):
-        """Basic list type uses RootModel for direct value (not wrapped in 'value')."""
+    def test_basic_list_wrapped_in_object(self):
+        """Basic list type is wrapped under a 'value' field, not a RootModel.
+
+        A top-level array schema (RootModel[list]) is rejected by the Responses API,
+        so list is wrapped so the root schema stays type: object (issue 232).
+        """
         from pydantic import RootModel
 
         strategy = self._create_strategy()
         model = strategy._create_response_model(list, "test")
 
-        # Should be a RootModel subclass
-        assert issubclass(model, RootModel)
-        # Should have 'root' field, not 'value'
-        assert "root" in model.model_fields
+        # Should NOT be a RootModel subclass (that would yield an array-rooted schema)
+        assert not issubclass(model, RootModel)
+        # Should have 'value' field, and an object-rooted schema
+        assert "value" in model.model_fields
+        assert model.model_json_schema()["type"] == "object"
 
     def test_basic_str_wrapped(self):
         """Basic str type gets wrapped in model with 'value' field."""

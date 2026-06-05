@@ -33,7 +33,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from pydantic import BaseModel, PydanticSchemaGenerationError, PydanticUserError, create_model
+from pydantic import BaseModel, create_model
 from pydantic import ValidationError as PydanticValidationError
 
 from nemo_oo_agents.agentdoc._structured import format_type as _format_type
@@ -1827,19 +1827,28 @@ Standard Python builtins and agent instance (`self`) are available."""
         )
 
     def _is_pydantic_compatible(self, return_type: Any) -> bool:
-        """Check if a type can be used with pydantic.create_model().
+        """Check if a type can be represented in the return_result tool's JSON schema.
 
-        Probes create_model() to test compatibility. No cache — the probe is
+        Probes both create_model() AND model_json_schema(). No cache — the probe is
         microseconds and avoids id() GC reuse bugs and global mutable state.
+
+        The result decides whether the type goes into the tool's JSON schema or falls
+        back to ``Any``. Probing only create_model() is insufficient: a model can accept
+        a field yet be unable to *serialize* it to JSON Schema — e.g. a Pydantic model
+        with a ``pd.DataFrame`` / ``np.ndarray`` field (``arbitrary_types_allowed``).
+        That only fails at model_json_schema() time, so without probing it here the tool
+        schema build crashes at method-invocation. Probing it lets such types fall back
+        to the ``Any`` schema (the model constructs the value in execute_python instead).
 
         Returns True for Pydantic models, dataclasses, basic types, generics, etc.
         Returns False for types like pd.DataFrame, np.ndarray, custom classes without
-        Pydantic support.
+        Pydantic support, and models with non-JSON-serializable fields.
         """
         try:
-            create_model("_PydanticCompatProbe", result=(return_type, ...))
+            probe = create_model("_PydanticCompatProbe", result=(return_type, ...))
+            probe.model_json_schema()
             return True
-        except (PydanticSchemaGenerationError, PydanticUserError, TypeError):
+        except Exception:  # noqa: BLE001 — feasibility probe; any failure → fall back to Any
             return False
 
     def _create_return_model(self, return_type: Any, method_name: str) -> tuple[Any, bool]:
@@ -1896,6 +1905,35 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Not annotated
         return type_hint, None
+
+    def _render_return_type_doc(self, return_type: Any, *, max_chars: int = 1200) -> str | None:
+        """Render ``doc(return_type)`` for an opaque (non-JSON-schemable) return type.
+
+        Used to give the model construction guidance for types that fall back to the
+        ``Any`` tool schema (pd.DataFrame, np.ndarray, custom classes). A
+        ``spec.define_doc(<type>)`` adapter makes this concise; otherwise it's the
+        type's default introspection. Best-effort: returns None if doc() is unavailable
+        or fails — never blocks tool construction. Truncated to keep the prompt lean.
+        """
+        try:
+            from nemo_oo_agents.agentdoc import doc as _doc
+            from nemo_oo_agents.agentdoc.adapters import register_all
+
+            # Activate doc() adapters for installed libs (pandas, plotly, …) so the
+            # rendering is concise rather than the library's full constructor docstring.
+            # Idempotent and installed-gated; only runs on this (opaque-type) path.
+            register_all()
+            rendered = _doc(return_type)
+        except Exception:  # noqa: BLE001 — doc() is advisory; never break tool build
+            return None
+        if not rendered or not isinstance(rendered, str):
+            return None
+        rendered = rendered.strip()
+        if len(rendered) > max_chars:
+            rendered = (
+                rendered[:max_chars].rstrip() + "\n… (call doc(<type>) for the full definition)"
+            )
+        return rendered
 
     def _build_return_result_tool(self, return_type: Any, method_name: str) -> Tool:
         """Build the return_result tool with schema matching the return type.
@@ -1965,6 +2003,14 @@ Standard Python builtins and agent instance (`self`) are available."""
                     f"Construct the object in execute_python() and call "
                     f"return_result(variable) from within the code instead."
                 )
+                # Opaque types (pd.DataFrame, np.ndarray, custom classes) carry no JSON
+                # schema, so the model has nothing structural to go on. Proactively fold in
+                # the type's doc() so it knows how to construct it without spending a turn
+                # calling doc() itself. A `spec.define_doc(<type>)` adapter (e.g. pandas)
+                # makes this concise; otherwise it's the type's default introspection.
+                type_doc = self._render_return_type_doc(base_type)
+                if type_doc:
+                    description += f"\n\nReturn type reference:\n{type_doc}"
             else:
                 description = (
                     f"Return the final result for the task. "

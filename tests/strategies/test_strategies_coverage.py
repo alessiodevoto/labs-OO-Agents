@@ -1062,15 +1062,12 @@ class TestPredictStrategyDictListReturn:
 
     @pytest.mark.asyncio
     async def test_returns_list(self):
-        """For bare list return type, RootModel expects the list directly.
+        """For a bare list return type, the list is wrapped under `value`.
 
-        FakeLLMClient must return a RootModel instance as content so that
-        _parse_llm_response handles it via the BaseModel path.
+        A top-level array schema is rejected by the Responses API (issue 232), so
+        `list` uses the generic `value`-wrapper model. The LLM emits
+        `{"value": [...]}`, and the strategy unwraps it before returning.
         """
-        from pydantic import RootModel
-
-        class ListResponse(RootModel[list]):
-            pass
 
         class ListAgent(Agent, llm=_TEST_LLM):
             @strategy(PredictStrategy(config=PredictConfig(max_retries=2)))
@@ -1078,31 +1075,14 @@ class TestPredictStrategyDictListReturn:
                 """Return list."""
                 ...
 
-        # Provide the list wrapped in a RootModel instance (simulates LLM structured output)
-        fake_llm = FakeLLMClient(
-            scripted_responses=[
-                LLMResponse(
-                    raw_response=None,
-                    content=ListResponse([1, 2, 3]),
-                    tool_calls=[],
-                    finish_reason="stop",
-                    assistant_message={"role": "assistant", "content": ""},
-                    reasoning=None,
-                    usage=None,
-                )
-            ]
-        )
+        fake_llm = FakeLLMClient(scripted_responses=[_llm_resp(json.dumps({"value": [1, 2, 3]}))])
         agent = ListAgent(llm=fake_llm)
         result = await agent.items()
         assert result == [1, 2, 3]
 
     @pytest.mark.asyncio
     async def test_returns_list_str(self):
-        """For list[str] return type, RootModel expects a list of strings directly."""
-        from pydantic import RootModel
-
-        class ListStrResponse(RootModel[list[str]]):
-            pass
+        """For list[str] return type, the list is wrapped under `value` (issue 232)."""
 
         class ListStrAgent(Agent, llm=_TEST_LLM):
             @strategy(PredictStrategy(config=PredictConfig(max_retries=2)))
@@ -1111,17 +1091,7 @@ class TestPredictStrategyDictListReturn:
                 ...
 
         fake_llm = FakeLLMClient(
-            scripted_responses=[
-                LLMResponse(
-                    raw_response=None,
-                    content=ListStrResponse(["alice", "bob"]),
-                    tool_calls=[],
-                    finish_reason="stop",
-                    assistant_message={"role": "assistant", "content": ""},
-                    reasoning=None,
-                    usage=None,
-                )
-            ]
+            scripted_responses=[_llm_resp(json.dumps({"value": ["alice", "bob"]}))]
         )
         agent = ListStrAgent(llm=fake_llm)
         result = await agent.names()
@@ -1398,19 +1368,28 @@ class TestPredictStrategyCreateResponseModel:
         model = s._create_response_model(dict[str, int], "test")
         assert issubclass(model, RootModel)
 
-    def test_list_type_creates_root_model(self):
+    def test_list_type_creates_object_wrapper(self):
+        """Bare `list` must produce an object-rooted `value`-wrapper, not a RootModel.
+
+        A top-level array schema is rejected by the Responses API (issue 232).
+        """
         from pydantic import RootModel
 
         s = PredictStrategy()
         model = s._create_response_model(list, "test")
-        assert issubclass(model, RootModel)
+        assert not issubclass(model, RootModel)
+        assert "value" in model.model_fields
+        assert model.model_json_schema()["type"] == "object"
 
-    def test_list_typed_creates_root_model(self):
+    def test_list_typed_creates_object_wrapper(self):
+        """`list[str]` must produce an object-rooted `value`-wrapper (issue 232)."""
         from pydantic import RootModel
 
         s = PredictStrategy()
         model = s._create_response_model(list[str], "test")
-        assert issubclass(model, RootModel)
+        assert not issubclass(model, RootModel)
+        assert "value" in model.model_fields
+        assert model.model_json_schema()["type"] == "object"
 
     def test_optional_unwraps_inner(self):
         s = PredictStrategy()
@@ -1458,10 +1437,11 @@ class TestPredictStrategyValidateResponse:
         result = s._validate_response({"k": "v"}, model, dict)
         assert result == {"k": "v"}
 
-    def test_root_model_list(self):
+    def test_list_value_wrapper_unwrapped(self):
+        """`list[str]` is wrapped under `value`; _validate_response unwraps it (issue 232)."""
         s = PredictStrategy()
         model = s._create_response_model(list[str], "test")
-        result = s._validate_response(["a", "b"], model, list[str])
+        result = s._validate_response({"value": ["a", "b"]}, model, list[str])
         assert result == ["a", "b"]
 
     def test_pydantic_model_direct(self):

@@ -18,6 +18,16 @@ variables:
   FRONTIER_THRESHOLD: 60  # Frontier tier is informational, no blocking
   HORIZON_THRESHOLD: 0  # Horizon tier is aspirational, no blocking
 
+# Reusable rule fragment: scheduled pipelines run ONLY jobs that explicitly opt in
+# (e.g. integration-return-types). A schedule targeting `main` sets
+# CI_COMMIT_BRANCH=main, so without this guard every branch-based job would fire —
+# including build-docker-images and deploy-staging. Prepend `- *no-schedule` to a
+# job's rules to exclude it from all scheduled pipelines.
+.ci-anchors:
+  - &no-schedule
+    if: $CI_PIPELINE_SOURCE == "schedule"
+    when: never
+
 stages:
   - lint
   - test
@@ -49,6 +59,8 @@ lint:
     - echo "Running ruff format check..."
     - uv run ruff format --check .
     - uv cache prune --ci
+  except:
+    - schedules  # scheduled pipelines run only opt-in jobs (e.g. integration-return-types)
   only:
     - merge_requests
     - main
@@ -71,6 +83,7 @@ check-frontend-build:
         exit 1
       fi
   rules:
+    - *no-schedule
     # Always verify on main (dist/ drift would break CI images)
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
@@ -147,6 +160,7 @@ test-core:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -173,6 +187,7 @@ test-agentdoc:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -196,6 +211,7 @@ test-viewer:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -219,6 +235,7 @@ test-context-blocks:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -243,6 +260,7 @@ test-unifiedllm:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -267,6 +285,7 @@ test-instrumentation:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -290,6 +309,7 @@ test-mcp:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -313,6 +333,7 @@ test-benchmarks:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -336,6 +357,7 @@ test-cli:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -359,6 +381,7 @@ test-trace-explorer:
     expire_in: 1 day
     when: always
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -405,6 +428,8 @@ upload-test-report:
     expire_in: 7 days
     when: always
   allow_failure: true  # Don't block MR if artifact upload fails
+  except:
+    - schedules  # scheduled pipelines run only opt-in jobs (e.g. integration-return-types)
   only:
     - merge_requests
     - main
@@ -522,6 +547,7 @@ capability-test:
     when: always
   allow_failure: false  # Block merge if stable tier fails
   rules:
+    - *no-schedule
     # Always run on main branch commits
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
@@ -537,6 +563,68 @@ capability-test:
         - "uv.lock"
         - "conftest.py"
       when: always
+    - when: never
+
+# Nightly (Tue/Thu) live cross-provider structured-output schema matrix for
+# PredictStrategy + CodeAct return types (#232 / #148). Catches provider-side
+# schema-validator drift (e.g. Azure tightening strict mode) that the no-network
+# unit tests in tests/unifiedllm/ cannot. Makes real gateway calls, so it is NOT
+# run on MRs — it is gated to a scheduled pipeline carrying NIGHTLY_INTEGRATION=true.
+#
+# One-time setup (GitLab UI — cron schedules cannot be declared in this file):
+#   Build → Pipeline schedules → New schedule
+#     Interval pattern (cron):  0 3 * * 2,4   # 03:00 on Tue & Thu (set the schedule's timezone)
+#     Target branch:            main
+#     Variable:                 NIGHTLY_INTEGRATION = true
+#   Reuses the NVIDIA_INFERENCE_API_KEY CI/CD variable (same one capability-test uses).
+#   The tests self-skip if that key is absent, so a misconfigured schedule is a no-op.
+integration-return-types:
+  stage: capability
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+  timeout: 30 minutes
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+  before_script:
+    # [nvidia] extra (via --all-extras) registers the model aliases used by the matrix.
+    - uv sync --all-extras --no-extra sandbox
+  script:
+    # -m integration selects the key-gated live matrix (skipped by the default
+    #  `-m 'not integration'`). Per-test reruns absorb transient gateway
+    #  rate-limits / 5xx without re-running the whole 165-cell job.
+    - |
+      uv run pytest tests/integration/test_predict_return_types_live.py \
+        -m integration -v \
+        --reruns 2 --reruns-delay 15 \
+        --only-rerun "RateLimit|Too Many Requests|InternalServerError" \
+        --junitxml=integration-results.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: integration-results.xml
+    paths:
+      - integration-results.xml
+    expire_in: 7 days
+    when: always
+  rules:
+    # Scheduled pipeline carrying NIGHTLY_INTEGRATION=true (cron set to Tue/Thu in the UI).
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $NIGHTLY_INTEGRATION == "true"
+      when: always
+    # On-demand: allow a manual run from the pipeline UI (e.g. re-verify after a provider change).
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
     - when: never
 
 # Build & publish on (a) `vX.Y.Z` tags and (b) every push to main.
@@ -705,6 +793,7 @@ build-docker-images:
     # Cleanup builder
     - docker buildx rm ci-builder || true
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always  # Auto-deploy on every push to main
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -747,6 +836,7 @@ deploy-staging:
     name: staging
     url: http://$DEPLOY_SERVER:8001
   rules:
+    - *no-schedule
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always  # Auto-deploy on every push to main
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
