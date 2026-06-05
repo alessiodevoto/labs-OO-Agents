@@ -10,10 +10,13 @@ This makes it structurally impossible for a feature to exist in one frontend
 but not the other: if it's in bootstrap, both get it.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .output import Output
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nemo_oo_agents import Agent
@@ -315,13 +318,29 @@ async def bootstrap(
     # ------------------------------------------------------------------
     # Snapshot restore (when resuming)
     # ------------------------------------------------------------------
+    _actually_restored = False
     if _resumed and agent_storage is not None:
         try:
-            restored = agent_storage.restore_latest_snapshot(agent)
-            if not restored:
+            _actually_restored = agent_storage.restore_latest_snapshot(agent)
+            if not _actually_restored:
                 messages.append(TextOutput("No agent snapshot found in session.", "warning"))
         except Exception as e:
             messages.append(TextOutput(f"Could not restore agent state: {e}", "warning"))
+
+    # Notify skills the agent was just reconstituted (post-restore, pre-first-turn)
+    # so they can run setup like reconnecting to external services. Always emitted
+    # on startup; ``restored`` is True only when a snapshot was actually applied
+    # (not merely "-c was passed"), so a subscriber like agent_mesh can trust it.
+    if agent is not None and _session_id is not None:
+        try:
+            from nemo_oo_agents.events import TuiSessionResumed
+
+            agent.event_manager.register_event_type(TuiSessionResumed)
+            agent.event_manager.add(
+                TuiSessionResumed(session_id=_session_id, restored=_actually_restored)
+            )
+        except Exception:
+            logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Rich content replay (nemo oo term, session resume only)

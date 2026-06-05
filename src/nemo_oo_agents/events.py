@@ -250,6 +250,55 @@ class AfterTurn(EventBase):  # type: ignore[misc]
     )
 
 
+class TuiSessionResumed(EventBase):  # type: ignore[misc]
+    """Emitted once after a TUI agent is reconstituted from a snapshot.
+
+    Fired after ``restore_latest_snapshot()`` completes (both the ``-c``
+    startup resume in ``bootstrap`` and the ``/session resume`` command), before
+    the first turn runs — so the agent's snapshot-backed state (``self.v``,
+    todos, ...) is already in place. Skills can subscribe via
+    ``event_manager.on("TuiSessionResumed", handler)`` to run post-restore setup
+    (e.g. ``agent_mesh`` reconnecting and reclaiming its handle).
+
+    Always emitted on session startup/resume; ``restored`` distinguishes an
+    actual snapshot restore (True) from a fresh session with nothing to restore
+    (False), so handlers can no-op when there's nothing to reconstitute.
+
+    Uses Role.RUNTIME_EVENT — never recorded in conversation events, never in
+    LLM context.
+    """
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    session_id: Annotated[str, Field(description="The resumed/started session id")]
+    restored: Annotated[
+        bool,
+        Field(description="True if a snapshot was actually restored into the agent"),
+    ]
+
+
+class TuiSessionCleared(EventBase):  # type: ignore[misc]
+    """Emitted once after a TUI agent's working state is reset by ``/clear``.
+
+    Fired at the end of ``_reset_agent_working_state()`` — after todos, vars,
+    user context blocks, and the shell have been reset, with the agent in its
+    clean post-clear state. The symmetric counterpart to ``TuiSessionResumed``:
+    skills subscribe via ``event_manager.on("TuiSessionCleared", handler)`` to
+    re-initialize session-scoped state (caches, connections, ...) for the fresh
+    session.
+
+    Uses Role.RUNTIME_EVENT — never recorded in conversation events, never in
+    LLM context.
+    """
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    session_id: Annotated[
+        str | None,
+        Field(default=None, description="The new (post-clear) session id, if known"),
+    ]
+
+
 class LLMCallStart(EventBase):  # type: ignore[misc]
     """Emitted immediately before the LLM round-trip (``acall()``) in
     ``runtime.generate()``.
@@ -502,6 +551,8 @@ Event = (
     | Summary
     | BeforeTurn
     | AfterTurn
+    | TuiSessionResumed
+    | TuiSessionCleared
     | LLMComplete
     | SystemPrompt
 )
