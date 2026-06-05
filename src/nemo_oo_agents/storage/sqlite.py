@@ -37,6 +37,8 @@ from nemo_oo_agents.events import (
     Reasoning,
     Summary,
     Task,
+    TuiSessionCleared,
+    TuiSessionResumed,
 )
 from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
@@ -85,6 +87,8 @@ for _cls in (
     Summary,
     BeforeTurn,
     AfterTurn,
+    TuiSessionResumed,
+    TuiSessionCleared,
 ):
     _key: str = _registry_key(_cls)
     if _key in _CORE_TYPES:

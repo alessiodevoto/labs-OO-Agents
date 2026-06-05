@@ -314,6 +314,22 @@ async def _reset_agent_working_state(agent: "Agent") -> None:
     if hasattr(agent, "_workflow_state"):
         agent._workflow_state = {}
 
+    # 6. Notify skills the working state was just reset so they can
+    #    re-initialize session-scoped state (symmetric with TuiSessionResumed).
+    em = getattr(agent, "event_manager", None)
+    if em is not None:
+        try:
+            from nemo_oo_agents.events import TuiSessionCleared
+
+            em.register_event_type(TuiSessionCleared)
+            sid = None
+            sm = getattr(agent, "_session_manager", None)
+            if sm is not None:
+                sid = getattr(sm, "session_id", None)
+            em.add(TuiSessionCleared(session_id=sid))
+        except Exception:
+            logger.debug("Failed to emit TuiSessionCleared", exc_info=True)
+
 
 class ClearCommand(Command):
     @property
@@ -1376,6 +1392,17 @@ class SessionCommand(Command):
                     outputs.append(
                         TextOutput(f"Agent state restored from session {full_id[:8]}.", "status")
                     )
+                # Notify skills the agent was just reconstituted so they can run
+                # post-restore setup (e.g. agent_mesh reconnecting).
+                try:
+                    from nemo_oo_agents.events import TuiSessionResumed
+
+                    self.agent.event_manager.register_event_type(TuiSessionResumed)
+                    self.agent.event_manager.add(
+                        TuiSessionResumed(session_id=full_id, restored=restored)
+                    )
+                except Exception:
+                    logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
                 new_sm = SessionManager(
                     storage=old_storage,
                     session_id=full_id,
