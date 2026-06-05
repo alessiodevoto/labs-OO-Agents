@@ -9,10 +9,7 @@ the class and are never reattached via a snapshot. Tests for the old
 ``snap.methods`` / ``restore()`` method-warning paths have been removed.
 """
 
-import pytest
-
 from nemo_oo_agents import Agent
-from nemo_oo_agents.errors.storage import SerializationError
 from nemo_oo_agents.storage.snapshot import AgentSnapshot
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
@@ -56,13 +53,48 @@ class _UnsupportedThing:
     pass
 
 
-class TestFromAgentAttributeErrorContext:
-    """Test that attribute serialization errors include the attribute name."""
+class TestFromAgentSkipsUnserializableAttributes:
+    """A non-serializable agent attribute must be skipped (and warned), not abort the snapshot."""
 
-    def test_attribute_serialization_error_includes_name(self):
-        """from_agent() wraps attribute serialization errors with the attribute name."""
+    def test_unserializable_attribute_is_skipped_not_raised(self):
+        """from_agent() skips an unserializable attribute and still captures the rest."""
+        agent = _SimpleAgent()
+        agent.bad_attr = _UnsupportedThing()  # type: ignore[attr-defined]
+        agent.value = 11
+
+        snap = AgentSnapshot.from_agent(agent)
+
+        assert "bad_attr" not in snap.attributes
+        assert snap.attributes["value"] == 11
+
+    def test_unserializable_attribute_emits_warning(self, caplog):
+        """Skipping an unserializable attribute logs a warning naming the attribute."""
+        import logging
+
         agent = _SimpleAgent()
         agent.bad_attr = _UnsupportedThing()  # type: ignore[attr-defined]
 
-        with pytest.raises(SerializationError, match="Attribute 'bad_attr'.*not serializable"):
+        with caplog.at_level(logging.WARNING):
             AgentSnapshot.from_agent(agent)
+
+        assert any("bad_attr" in rec.message for rec in caplog.records)
+
+
+class TestSnapshotRoundTripWithUnserializableAttr:
+    """An unserializable attribute must not prevent durable state (vars) from round-tripping."""
+
+    def test_vars_survive_when_sibling_attr_is_unserializable(self):
+        """Snapshot/restore preserves user vars even if another attr can't serialize."""
+        from nemo_oo_agents.storage.json_snapshot import snapshot_from_dict, snapshot_to_dict
+
+        agent = _SimpleAgent()
+        agent.value = 7
+        agent.__dict__["_live_only"] = _UnsupportedThing()
+
+        data = snapshot_to_dict(AgentSnapshot.from_agent(agent))
+        assert "_live_only" not in data["attributes"]
+        assert data["attributes"]["value"] == 7
+
+        restored = _SimpleAgent()
+        snapshot_from_dict(data).restore(restored)
+        assert restored.value == 7

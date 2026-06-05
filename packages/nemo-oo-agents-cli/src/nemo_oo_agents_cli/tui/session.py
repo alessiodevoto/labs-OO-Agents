@@ -628,7 +628,10 @@ class Session:
                             # No agent loop — safe to call inline (single-threaded).
                             storage.save_snapshot(self.agent)
                     except Exception:
-                        logger.debug("save_snapshot on shutdown failed", exc_info=True)
+                        # A failed shutdown snapshot silently loses ALL durable
+                        # state (vars, todos, ...) on the next resume — surface
+                        # it at WARNING, not DEBUG, so it can't hide.
+                        logger.warning("save_snapshot on shutdown failed", exc_info=True)
                 self._session_manager.close()
             # Restore the previous exception handler so we don't pin
             # this Session or route unrelated failures through a torn-down TUI.

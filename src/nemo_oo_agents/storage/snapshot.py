@@ -6,6 +6,7 @@
 Pydantic models provide validation and JSON serialization out of the box.
 """
 
+import logging
 from typing import Any, Final, Literal
 
 from pydantic import BaseModel, field_serializer, field_validator
@@ -16,6 +17,8 @@ from nemo_oo_agents.storage.markers import is_nosnapshot_field, is_nosnapshot_va
 from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
 
 SNAPSHOT_VERSION: Final = 2
+
+logger = logging.getLogger(__name__)
 
 
 class StaticContextBlock(BaseModel):
@@ -104,11 +107,18 @@ class AgentSnapshot(BaseModel):
                 continue
             try:
                 serialized, allowlist = serialize(attr_value)
-                all_allowlist |= allowlist
             except SerializationError as exc:
-                raise SerializationError(
-                    f"Attribute {attr_name!r} is not serializable: {exc}"
-                ) from exc
+                # A single non-serializable attribute must not abort the whole
+                # snapshot — that silently loses ALL durable state (vars, todos,
+                # ...). Skip it and warn so the failure is visible but recoverable.
+                logger.warning(
+                    "Snapshot: skipping non-serializable attribute %r (%s): %s",
+                    attr_name,
+                    type(attr_value).__name__,
+                    exc,
+                )
+                continue
+            all_allowlist |= allowlist
             if serialized is SKIP:
                 continue
             attributes[attr_name] = serialized
