@@ -779,13 +779,27 @@ class Session:
             # also wakes the dispatcher (qm.race() includes the slash_commands
             # queue), so the slash command must NOT also be submitted as a user
             # message — doing both delivers the same command twice (once on
-            # each queue). Only fall back to submit_message when the agent has
-            # no slash_commands queue.
+            # each queue).
+            #
+            # Strict routing: a slash command result ONLY ever travels the
+            # slash_commands channel — never user_messages. Every real TUI
+            # agent (BaseTUIAgent) creates that channel in __init__, so this
+            # is always present in normal use. If self.agent is something else
+            # (a plain Agent, a partially-initialized object, a test double),
+            # there is no slash-capable destination: warn loudly to scrollback
+            # and drop the result rather than smuggling it through the
+            # user-message path (where it would masquerade as something the
+            # human typed).
             slash_ch = getattr(self.agent, "_slash_commands_in", None)
             if slash_ch is not None:
                 slash_ch.put(result.slash_result)
             else:
-                self._app.submit_message(text)
+                self._emit_text(
+                    Text(
+                        f"⚠ agent has no slash_commands channel — dropping /{result.slash_result.command}",
+                        style="yellow",
+                    )
+                )
         elif result.agent_message is not None:
             # Slash-command-generated agent turn — feed through the same
             # path as a typed message so the user bar, session bookkeeping,
