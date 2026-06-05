@@ -100,12 +100,15 @@ class TestSnapshotRoundtrip:
         assert "score" in snap["attributes"]
         assert "cache" not in snap["attributes"]
 
-    def test_non_serializable_attr_raises(self, agent):
-        """Non-serializable user attributes raise SerializationError."""
+    def test_non_serializable_attr_is_skipped(self, agent):
+        """Non-serializable user attributes are skipped, not fatal to the snapshot."""
         agent.bad = object()
+        agent.score = 42
 
-        with pytest.raises(SerializationError, match="Cannot serialize"):
-            snapshot_to_json(agent)
+        snap = snapshot_to_json(agent)
+
+        assert "bad" not in snap["attributes"]
+        assert snap["attributes"]["score"] == 42
 
     def test_non_serializable_context_raises(self, agent):
         """Non-serializable static context values raise SerializationError."""
