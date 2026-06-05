@@ -10,6 +10,9 @@ Two layers of bounds:
    - ``capture`` (head/tail truncation of raw text streams via
      ``TruncatingStringIO`` — used for execute_python's stdout / stderr /
      error fields).
+   - ``media_capture`` (``MediaCaptureConfig``): cap on multimodal content
+     blocks (images, audio, files) captured by ``show()`` per
+     ``execute_python`` cell.
    - ``event_format`` (``FormatConfig``): defaults for event-field rendering at
      trajectory-build time. Renders every turn for the rest of the run, so
      these need to be generous enough that the LLM can read its own outputs
@@ -91,6 +94,43 @@ class CaptureConfig(BaseModel):
         return self
 
 
+class MediaCaptureConfig(BaseModel):
+    """Cap on multimodal content captured by ``show()`` during execution.
+
+    Applies at *capture time*: every ``show(image | audio | file)`` call inside
+    an ``execute_python`` cell appends a content block to a per-cell buffer.
+    Once the cap is reached, further ``show()`` calls in the same cell are
+    dropped and ``[show() limit reached (N), attachment not added]`` is printed
+    to stdout so the LLM can observe the spillover.
+
+    **Scope: per ``execute_python`` cell, not per turn or per agent run.** A
+    fresh buffer is allocated for each cell, so an LLM turn that emits multiple
+    ``execute_python`` tool calls can attach up to
+    ``max_attachments_per_execution`` blocks *each*. This is by design — the
+    cap lives on the runtime (which only sees one cell at a time), and
+    cross-cell aggregation would belong on the strategy. The default (5) is
+    intentionally small so a single-cell ``for`` loop dumping attachments
+    stays bounded.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    max_attachments_per_execution: Annotated[
+        int,
+        Field(description="Max media attachments captured by show() per execute_python cell"),
+    ] = 5
+
+    @model_validator(mode="after")
+    def _check(self) -> "MediaCaptureConfig":
+        if self.max_attachments_per_execution <= 0:
+            raise ValueError(
+                "Invalid MediaCaptureConfig:\n"
+                "  - media_capture.max_attachments_per_execution must be > 0, "
+                f"got {self.max_attachments_per_execution}"
+            )
+        return self
+
+
 class FormatConfig(BaseModel):
     """Recursive bounds for ``pformat``-based rendering.
 
@@ -130,9 +170,10 @@ class FormatConfig(BaseModel):
 class TruncationConfig(BaseModel):
     """Controls output size at render time.
 
-    See module docstring for the layering. The four sub-configs (``capture``,
-    ``event_format``, ``prefill_format``, ``context_block_format``) cover the distinct mechanisms
-    / rendering moments; the top-level fields are cross-cutting (token budgets).
+    See module docstring for the layering. The sub-configs (``capture``,
+    ``media_capture``, ``event_format``, ``prefill_format``,
+    ``context_block_format``) cover the distinct mechanisms / rendering
+    moments; the top-level fields are cross-cutting (token budgets).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -157,6 +198,7 @@ class TruncationConfig(BaseModel):
         Field(description="Tokens reserved for the LLM response when auto-deriving event budget"),
     ] = 4_096
     capture: CaptureConfig = CaptureConfig()
+    media_capture: MediaCaptureConfig = MediaCaptureConfig()
     # Generous: rendered every turn, especially PythonOutput.value (the LLM
     # needs to see what its code returned).
     event_format: FormatConfig = FormatConfig(max_string=10_000, max_length=200, max_depth=5)
@@ -183,10 +225,11 @@ class TruncationConfig(BaseModel):
     def merge_with(self, other: "TruncationConfig | None") -> "TruncationConfig":
         """Merge with another config (other takes precedence for explicitly-set fields).
 
-        Sub-configs (``capture``, ``event_format``, ``prefill_format``, ``context_block_format``)
-        merge field-by-field — supplying ``other.event_format`` with only
-        ``max_string`` set does NOT clobber the base's ``max_length``. Top-level
-        fields use the same explicit-fields semantics.
+        Sub-configs (``capture``, ``media_capture``, ``event_format``,
+        ``prefill_format``, ``context_block_format``) merge field-by-field —
+        supplying ``other.event_format`` with only ``max_string`` set does NOT
+        clobber the base's ``max_length``. Top-level fields use the same
+        explicit-fields semantics.
         """
         if other is None:
             return self
@@ -196,7 +239,13 @@ class TruncationConfig(BaseModel):
                 "Was it constructed from model_dump() or model_validate()? "
                 "Config objects must be freshly constructed: TruncationConfig(field=value)."
             )
-        sub_field_names = ("capture", "event_format", "prefill_format", "context_block_format")
+        sub_field_names = (
+            "capture",
+            "media_capture",
+            "event_format",
+            "prefill_format",
+            "context_block_format",
+        )
         updates: dict = {
             k: getattr(other, k) for k in other.model_fields_set if k not in sub_field_names
         }

@@ -6,6 +6,7 @@ from nemo_oo_agents import Agent
 from nemo_oo_agents.config.truncation_config import (
     CaptureConfig,
     FormatConfig,
+    MediaCaptureConfig,
     TruncationConfig,
 )
 from nemo_oo_agents.unifiedllm import FakeLLMClient
@@ -29,6 +30,7 @@ class TestTruncationConfigResolution:
         assert agent._truncation is not None
         assert agent._truncation.capture.max_stdout == 50_000
         assert agent._truncation.capture.max_stderr == 2_000
+        assert agent._truncation.media_capture.max_attachments_per_execution == 5
         assert agent._truncation.event_format.max_length == 200
 
     def test_class_level_config(self):
@@ -38,7 +40,9 @@ class TestTruncationConfigResolution:
             Agent,
             llm=_TEST_LLM,
             truncation=TruncationConfig(
-                capture=CaptureConfig(max_stdout=100000), event_format=FormatConfig(max_length=100)
+                capture=CaptureConfig(max_stdout=100000),
+                media_capture=MediaCaptureConfig(max_attachments_per_execution=20),
+                event_format=FormatConfig(max_length=100),
             ),
         ):
             pass
@@ -47,6 +51,7 @@ class TestTruncationConfigResolution:
 
         # Should have class-level config
         assert agent._truncation.capture.max_stdout == 100_000
+        assert agent._truncation.media_capture.max_attachments_per_execution == 20
         assert agent._truncation.event_format.max_length == 100
         # Other defaults preserved
         assert agent._truncation.capture.max_stderr == 2_000
@@ -468,6 +473,82 @@ class TestMethodLevelTruncationConfig:
         assert "Output too large" in stdout, (
             f"Expected truncation at 200 chars but got: {stdout[:300]!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_agent_level_media_capture_limit_applied_to_execute_code(self):
+        """execute_code should use the agent-level media attachment limit."""
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(
+                media_capture=MediaCaptureConfig(max_attachments_per_execution=2)
+            ),
+        ):
+            pass
+
+        agent = TestAgent()
+        result = await agent.runtime.execute_code(
+            """
+for i in range(4):
+    show(Image.from_bytes(f"img{i}".encode(), media_type="image/png"))
+"""
+        )
+
+        assert len(result.images) == 2
+        assert "limit reached (2)" in result.stdout
+
+    @pytest.mark.asyncio
+    async def test_method_level_media_capture_limit_applied_to_execute_code(self):
+        """Method-level truncation config should override agent-level media limit."""
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        execution_results = {}
+
+        class CodeRunningStrategy(GenerationStrategy):
+            name = "CODE_RUNNING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                result = await runtime.execute_code(
+                    """
+for i in range(4):
+    show(Image.from_bytes(f"img{i}".encode(), media_type="image/png"))
+"""
+                )
+                execution_results["images"] = result.images
+                execution_results["stdout"] = result.stdout
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(
+                media_capture=MediaCaptureConfig(max_attachments_per_execution=4)
+            ),
+        ):
+            @strategy(
+                CodeRunningStrategy(),
+                truncation=TruncationConfig(
+                    media_capture=MediaCaptureConfig(max_attachments_per_execution=2)
+                ),
+            )
+            async def run_code(self) -> str:
+                """Run code."""
+                ...
+
+        agent = TestAgent()
+        result = await agent.run_code()
+
+        assert result == "done"
+        assert len(execution_results["images"]) == 2
+        assert "limit reached (2)" in execution_results["stdout"]
 
     @pytest.mark.asyncio
     async def test_method_level_truncation_does_not_affect_other_methods(self):

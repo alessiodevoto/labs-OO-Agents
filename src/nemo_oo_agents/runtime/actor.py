@@ -399,7 +399,10 @@ _stderr_buffer_var: contextvars.ContextVar[io.StringIO | TruncatingStringIO | No
 # Re-export image buffer ContextVar so it's set alongside stdout/stderr
 # Agent call stack - defined in context_vars.py to avoid circular imports.
 from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack  # noqa: E402
-from nemo_oo_agents.runtime.media_capture import _media_buffer_var  # noqa: E402
+from nemo_oo_agents.runtime.media_capture import (  # noqa: E402
+    _media_buffer_var,
+    _MediaBuffer,
+)
 from nemo_oo_agents.runtime.stream_wrappers import (  # noqa: E402
     BlockedStdinWrapper,
     ContextVarStream,
@@ -1401,8 +1404,10 @@ class ActorRuntime:
             stderr_token = _stderr_buffer_var.set(stderr_buffer)
             # Block stdin reads for this async task (prevents hangs from input(), etc.)
             stdin_token = _block_stdin_var.set(True)
-            # Media capture buffer for show() calls (images, audio, files)
-            media_buffer: list[dict[str, Any]] = []
+            # Media capture buffer for show() calls; scoped per cell by design.
+            media_buffer = _MediaBuffer(
+                max_attachments=truncation_config.media_capture.max_attachments_per_execution
+            )
             media_token = _media_buffer_var.set(media_buffer)
 
             # Install stream wrappers around the CURRENT sys.stdout/sys.stderr/sys.stdin
@@ -1659,7 +1664,7 @@ class ActorRuntime:
                     explicit_return=has_explicit_return,
                     captured_locals=captured_locals,
                     wrapper_line_offset=wrapper_line_offset,
-                    images=media_buffer,
+                    images=media_buffer.blocks,
                 )
                 return result
 
@@ -1680,7 +1685,7 @@ class ActorRuntime:
                     explicit_return=False,
                     captured_locals=captured_locals,
                     wrapper_line_offset=wrapper_line_offset,
-                    images=media_buffer,
+                    images=media_buffer.blocks,
                 )
                 return result
 
@@ -1700,7 +1705,7 @@ class ActorRuntime:
                     explicit_return=False,
                     captured_locals=captured_locals,
                     wrapper_line_offset=wrapper_line_offset,
-                    images=media_buffer,
+                    images=media_buffer.blocks,
                 )
                 return result
 

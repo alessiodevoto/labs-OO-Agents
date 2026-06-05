@@ -7,6 +7,7 @@ import pytest
 from nemo_oo_agents.config.truncation_config import (
     CaptureConfig,
     FormatConfig,
+    MediaCaptureConfig,
     TruncationConfig,
 )
 
@@ -26,6 +27,10 @@ class TestTruncationConfigValidation:
     def test_rejects_zero_max_error(self) -> None:
         with pytest.raises(ValueError, match="max_error"):
             CaptureConfig(max_error=0)
+
+    def test_rejects_zero_max_media_attachments(self) -> None:
+        with pytest.raises(ValueError, match="max_attachments_per_execution"):
+            MediaCaptureConfig(max_attachments_per_execution=0)
 
     def test_rejects_zero_value_max_length(self) -> None:
         with pytest.raises(ValueError, match="max_length"):

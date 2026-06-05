@@ -11,6 +11,7 @@ from nemo_oo_agents.config.tool_configs import BashConfig
 from nemo_oo_agents.config.truncation_config import (
     CaptureConfig,
     FormatConfig,
+    MediaCaptureConfig,
     TruncationConfig,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     "BashConfig",
     "TruncationConfig",
     "CaptureConfig",
+    "MediaCaptureConfig",
     "FormatConfig",
 ]
