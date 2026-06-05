@@ -224,7 +224,7 @@ class TestPredictCreateResponseModelFailure:
                 pass
 
         ps = PredictStrategy()
-        with pytest.raises(GenerationError, match="Failed to create Pydantic model"):
+        with pytest.raises(GenerationError, match="cannot build a JSON schema"):
             ps._create_response_model(NotAModel, "test_method")
 
 

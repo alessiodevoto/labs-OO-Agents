@@ -17,6 +17,7 @@ Or register all adapters for installed libraries at once:
 
 Available adapters:
     plotly — plotly, plotly.express, plotly.graph_objects
+    pandas — pandas.DataFrame, pandas.Series
 """
 
 
@@ -34,6 +35,13 @@ def register_all():
         import nemo_oo_agents.agentdoc.adapters.plotly as _  # noqa: F401
 
         registered.append("plotly")
+    except ImportError:
+        pass
+
+    try:
+        import nemo_oo_agents.agentdoc.adapters.pandas as _  # noqa: F401
+
+        registered.append("pandas")
     except ImportError:
         pass
 

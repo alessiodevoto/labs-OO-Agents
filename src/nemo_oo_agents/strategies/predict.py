@@ -206,6 +206,23 @@ class PredictStrategy(GenerationStrategy):
         # Convert return type to Pydantic model (wraps basic types if needed)
         response_model = self._create_response_model(return_type, call.method_name)
 
+        # Fail fast with a clear, actionable error if the return type can't be turned
+        # into a JSON schema. This catches Pydantic *model* return types whose fields
+        # are non-serializable (e.g. a model with a pandas.DataFrame field) — those
+        # pass _create_response_model (the model is returned as-is) but blow up later
+        # in the request layer with a cryptic Pydantic error. See KDD-cup feedback.
+        try:
+            response_model.model_json_schema()
+        except Exception as e:  # noqa: BLE001 — surface as a clear GenerationError
+            raise GenerationError(
+                f"PredictStrategy cannot build a JSON schema for return type {return_type}: {e}\n"
+                f"PredictStrategy requires a JSON-serializable return type. Non-serializable "
+                f"types such as pandas.DataFrame or numpy.ndarray — including Pydantic models "
+                f"that contain such a field — are not supported. Use CodeActStrategy (which can "
+                f"build and return the object in code), or return a serializable proxy — e.g. a "
+                f"model with `columns: list[str]` and `rows: list[list]` instead of a DataFrame."
+            ) from e
+
         # Collect Media params as multimodal content blocks for the task
         from nemo_oo_agents.media import Media
         from nemo_oo_agents.runtime.media_capture import media_to_content_block
@@ -704,8 +721,10 @@ class PredictStrategy(GenerationStrategy):
 
         Handles:
         - Existing Pydantic models (use directly)
-        - dict/list types - use RootModel (LLM returns value directly, not wrapped)
-        - Basic types (str, int, bool) - wrap in model with `value` field
+        - dict types - use RootModel (LLM returns the object directly, not wrapped)
+        - list/tuple/set and basic types (str, int, bool) - wrap in model with a
+          `value` field so the root schema stays `type: object` (the Responses API
+          rejects array-rooted schemas; see issue 232)
         - Optional[X] - unwrap to X
         - Nested types - preserve structure
 
@@ -768,34 +787,38 @@ class PredictStrategy(GenerationStrategy):
             public_model._agentdoc_original_model = return_type  # pyright: ignore[reportAttributeAccessIssue]
             return public_model  # type: ignore[no-any-return]
 
-        # For dict and list types, use RootModel so LLM returns value directly
-        # (not wrapped in {"value": ...})
+        # For dict types, use RootModel so the LLM returns the object directly
+        # (not wrapped in {"value": ...}). A dict RootModel's root schema is
+        # `type: object`, which the OpenAI/Azure Responses API accepts.
+        #
+        # Preserve the declared key/value types (e.g. `dict[str, Person]`) so Pydantic
+        # validates and constructs the values — otherwise `dict[str, Person]` returns
+        # plain dicts instead of Person instances. Bare `dict` falls back to dict[str, Any].
         if return_type is dict or origin is dict:
             model_name = f"{method_name.title().replace('_', '')}Response"
+            key_type, value_type = (args[0], args[1]) if len(args) == 2 else (str, Any)
+            dict_type = dict[key_type, value_type]  # type: ignore[valid-type]
 
-            class DictRootModel(RootModel[dict[str, Any]]):
+            class DictRootModel(RootModel[dict_type]):
                 pass
 
             DictRootModel.__name__ = model_name
             DictRootModel.__qualname__ = model_name
+            DictRootModel.model_rebuild(_types_namespace=vars(__import__("typing")))
             return DictRootModel
 
-        if return_type is list or origin is list:
-            model_name = f"{method_name.title().replace('_', '')}Response"
-            # Preserve the inner type if specified (e.g., list[str])
-            inner_type = args[0] if args else Any
+        # NOTE: `list` / `list[T]` are intentionally NOT given a RootModel here.
+        # A `RootModel[list[...]]` produces a top-level `{"type": "array"}` schema,
+        # which the OpenAI/Azure Responses API rejects (`response_format` schemas must
+        # be object-rooted). Instead we let lists fall through to the generic
+        # `value`-wrapper below (the same path used for tuple/set/scalars): the list
+        # lives under a `value` property, keeping the root an object, and
+        # `_validate_response` unwraps `value` before returning the bare list to the
+        # caller. See GitLab issue 232.
 
-            # Create a RootModel for the list type
-            list_type = list[inner_type]  # type: ignore[valid-type]
-
-            class ListRootModel(RootModel[list_type]):
-                pass
-
-            ListRootModel.__name__ = model_name
-            ListRootModel.__qualname__ = model_name
-            return ListRootModel
-
-        # For basic types (str, int, bool, etc.), wrap in a Pydantic model
+        # For basic types (str, int, bool, etc.) and container types without a
+        # dedicated branch (list, tuple, set), wrap in a Pydantic model with a `value`
+        # field so the root schema is an object.
         model_name = f"{method_name.title().replace('_', '')}Response"
 
         try:
@@ -813,7 +836,13 @@ class PredictStrategy(GenerationStrategy):
             return response_model
         except Exception as e:
             raise GenerationError(
-                f"Failed to create Pydantic model for return type {return_type}: {e}"
+                f"PredictStrategy cannot build a JSON schema for return type {return_type}: {e}\n"
+                f"PredictStrategy requires a JSON-serializable return type (Pydantic model, "
+                f"dataclass, or basic/container type). Non-serializable types such as "
+                f"pandas.DataFrame or numpy.ndarray (including models with such fields) are not "
+                f"supported. Use CodeActStrategy (which can build and return the object in code), "
+                f"or return a serializable proxy — e.g. a model with `columns: list[str]` and "
+                f"`rows: list[list]` instead of a DataFrame."
             ) from e
 
     def _validate_response(
