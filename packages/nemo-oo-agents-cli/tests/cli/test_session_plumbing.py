@@ -491,9 +491,14 @@ async def test_on_command_slash_result_renders_via_frontend_markdown() -> None:
     slash_ch.put.assert_called_once_with(sr)
 
 
-async def test_on_command_slash_result_falls_back_to_submit_when_no_queue() -> None:
-    """If the agent has no ``_slash_commands_in`` queue (older agent), the
-    slash result must still trigger a turn — fall back to ``submit_message``."""
+async def test_on_command_slash_result_warns_and_drops_when_no_slash_channel() -> None:
+    """Strict routing: a slash result travels ONLY the slash_commands
+    channel. If ``self.agent`` has no ``_slash_commands_in`` (a non-TUI
+    agent, a partially-initialized object, a test double), there is no
+    slash-capable destination — the result must be dropped with a loud
+    scrollback warning, NEVER funneled through ``submit_message`` /
+    ``user_messages`` where it would masquerade as a typed user message.
+    """
     from unittest.mock import AsyncMock, MagicMock
 
     from nemo_oo_agents_cli.tui.commands import CommandResult
@@ -526,4 +531,8 @@ async def test_on_command_slash_result_falls_back_to_submit_when_no_queue() -> N
 
     await session._on_command("/status")
 
-    app.submit_message.assert_called_once_with("status: ok")
+    # NEVER routed through the user-message path.
+    app.submit_message.assert_not_called()
+    # A loud warning is emitted to scrollback naming the dropped command.
+    warned = " ".join(str(c.args[0]) for c in session._emit_text.call_args_list if c.args)
+    assert "slash_commands" in warned and "status" in warned
