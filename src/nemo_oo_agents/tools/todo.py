@@ -11,10 +11,11 @@ import uuid as _uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nemo_oo_agents import Skill
 from nemo_oo_agents.storage.markers import snapshotable
+from nemo_oo_agents.storage.snapshot_vars import SnapshotVars
 
 
 class TodoComment(BaseModel):
@@ -67,14 +68,27 @@ class TodoVars:
 class Todo(BaseModel):
     """A single todo item."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     id: str = Field(default_factory=lambda: _uuid.uuid4().hex[:8])
     title: str = ""
     status: str = "open"  # open | done | blocked
     deps: list[str] = Field(default_factory=list)
-    vars: dict[str, Any] = Field(default_factory=dict)
+    vars: SnapshotVars = Field(default_factory=SnapshotVars)
     created_at: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
     notes: str = ""
     comments: list[TodoComment] = Field(default_factory=list)
+
+    @field_validator("vars", mode="before")
+    @classmethod
+    def _coerce_vars(cls, value: Any) -> "SnapshotVars":
+        if isinstance(value, SnapshotVars):
+            return value
+        if value is None:
+            return SnapshotVars()
+        if isinstance(value, dict):
+            return SnapshotVars(value)
+        raise TypeError(f"Todo.vars must be a dict or SnapshotVars, got {type(value).__name__}")
 
     @property
     def v(self) -> "TodoVars":

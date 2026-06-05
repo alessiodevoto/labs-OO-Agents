@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.agentdoc import doc, spec
 from nemo_oo_agents.storage.markers import nosnapshot
+from nemo_oo_agents.storage.snapshot_vars import SnapshotVars
 
 with hidden:
     from collections.abc import Callable
@@ -215,6 +216,11 @@ class AgentVars:
     Use for variables that need to survive across turns and across
     sessions but aren't tied to a specific todo. (For per-todo state,
     use ``self.todo.<id>.v`` — same shape, narrower scope.)
+
+    Values are snapshot-backed: assigning something that can't be
+    snapshot-serialized (a live client, socket, callable, ...) logs a
+    warning and is **not stored** — it won't survive ``/exit`` + resume.
+    Store serializable data (dict/str/number/Pydantic model) instead.
     """
 
     def __init__(self, agent: Any):
@@ -284,12 +290,12 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
     # Persistent variables for the LLM — survives across turns AND
     # across sessions (snapshot-backed). Accessed via the ``self.v``
     # proxy for dot-attribute reads/writes (``self.v.spec = "..."``).
-    vars: dict[str, Any]
+    vars: SnapshotVars
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
-        self.vars = {}
+        self.vars = SnapshotVars()
         self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
