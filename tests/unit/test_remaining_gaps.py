@@ -1109,40 +1109,30 @@ class TestMediaCapture:
         assert "outside execution context" in captured.out
 
     def test_show_inside_context_appends_block(self, capsys):
-        from nemo_oo_agents.runtime.media_capture import _media_buffer_var, show
-
-        img = self._make_image()
-        buf: list = []
-        token = _media_buffer_var.set(buf)
-        try:
-            show(img)
-        finally:
-            _media_buffer_var.reset(token)
-        assert len(buf) == 1
-        assert buf[0]["type"] == "image_url"
-
-    def test_show_limit_reached_prints_message(self, capsys):
         from nemo_oo_agents.runtime.media_capture import (
-            MAX_ATTACHMENTS_PER_EXECUTION,
             _media_buffer_var,
+            _MediaBuffer,
             show,
         )
 
         img = self._make_image()
-        buf: list = [MagicMock()] * MAX_ATTACHMENTS_PER_EXECUTION
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             show(img)
         finally:
             _media_buffer_var.reset(token)
-        captured = capsys.readouterr()
-        assert "limit reached" in captured.out
-        assert len(buf) == MAX_ATTACHMENTS_PER_EXECUTION  # nothing added
+        assert len(buf.blocks) == 1
+        assert buf.blocks[0]["type"] == "image_url"
 
     def test_show_unsupported_type_raises(self):
-        from nemo_oo_agents.runtime.media_capture import _media_buffer_var, show
+        from nemo_oo_agents.runtime.media_capture import (
+            _media_buffer_var,
+            _MediaBuffer,
+            show,
+        )
 
-        buf: list = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             with pytest.raises(TypeError, match="show\\(\\) expects"):
@@ -1751,9 +1741,13 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_show_with_auto_convert_failure_raises(self):
         """show() with unsupported type inside buffer context raises TypeError."""
-        from nemo_oo_agents.runtime.media_capture import _media_buffer_var, show
+        from nemo_oo_agents.runtime.media_capture import (
+            _media_buffer_var,
+            _MediaBuffer,
+            show,
+        )
 
-        buf: list = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             with pytest.raises(TypeError):

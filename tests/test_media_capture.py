@@ -6,8 +6,8 @@ import pytest
 
 from nemo_oo_agents.media import Audio, File, Image, Media
 from nemo_oo_agents.runtime.media_capture import (
-    MAX_ATTACHMENTS_PER_EXECUTION,
     _media_buffer_var,
+    _MediaBuffer,
     _try_auto_convert,
     media_to_content_block,
     show,
@@ -132,40 +132,40 @@ class TestMediaToContentBlock:
 
 class TestShow:
     def test_show_collects_image(self, capsys):
-        buf: list[dict] = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             img = Image.from_bytes(b"test", media_type="image/png")
             show(img)
-            assert len(buf) == 1
-            assert buf[0]["type"] == "image_url"
+            assert len(buf.blocks) == 1
+            assert buf.blocks[0]["type"] == "image_url"
         finally:
             _media_buffer_var.reset(token)
 
     def test_show_collects_audio(self, capsys):
-        buf: list[dict] = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             audio = Audio.from_bytes(b"test", media_type="audio/wav")
             show(audio)
-            assert len(buf) == 1
-            assert buf[0]["type"] == "input_audio"
+            assert len(buf.blocks) == 1
+            assert buf.blocks[0]["type"] == "input_audio"
         finally:
             _media_buffer_var.reset(token)
 
     def test_show_collects_file(self, capsys):
-        buf: list[dict] = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             f = File.from_url("https://example.com/doc.pdf")
             show(f)
-            assert len(buf) == 1
-            assert buf[0]["type"] == "file"
+            assert len(buf.blocks) == 1
+            assert buf.blocks[0]["type"] == "file"
         finally:
             _media_buffer_var.reset(token)
 
     def test_show_prints_acknowledgment(self, capsys):
-        buf: list[dict] = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             show(Image.from_bytes(b"test", media_type="image/png"))
@@ -175,7 +175,7 @@ class TestShow:
             _media_buffer_var.reset(token)
 
     def test_show_raises_on_non_media(self):
-        buf: list[dict] = []
+        buf = _MediaBuffer(max_attachments=10)
         token = _media_buffer_var.set(buf)
         try:
             with pytest.raises(TypeError, match="got int"):
@@ -183,15 +183,15 @@ class TestShow:
         finally:
             _media_buffer_var.reset(token)
 
-    def test_show_limit_enforced(self, capsys):
-        buf: list[dict] = []
+    def test_show_limit_enforced_by_buffer(self, capsys):
+        buf = _MediaBuffer(max_attachments=2)
         token = _media_buffer_var.set(buf)
         try:
-            for i in range(MAX_ATTACHMENTS_PER_EXECUTION + 3):
+            for i in range(4):
                 show(Image.from_bytes(f"img{i}".encode(), media_type="image/png"))
-            assert len(buf) == MAX_ATTACHMENTS_PER_EXECUTION
+            assert len(buf.blocks) == 2
             captured = capsys.readouterr()
-            assert "limit reached" in captured.out
+            assert "limit reached (2)" in captured.out
         finally:
             _media_buffer_var.reset(token)
 

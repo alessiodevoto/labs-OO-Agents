@@ -4,6 +4,7 @@ from nemo_oo_agents.config.truncation_config import (
     DEFAULT_TRUNCATION_CONFIG,
     CaptureConfig,
     FormatConfig,
+    MediaCaptureConfig,
     TruncationConfig,
 )
 
@@ -18,6 +19,7 @@ class TestTruncationConfig:
         assert config.capture.max_stdout == 50_000
         assert config.capture.max_stderr == 2_000
         assert config.capture.max_error == 10_000
+        assert config.media_capture.max_attachments_per_execution == 5
         # events: generous (rendered every turn for the rest of the trajectory)
         assert config.event_format.max_length == 200
         assert config.event_format.max_string == 10_000
@@ -35,11 +37,13 @@ class TestTruncationConfig:
         """Custom values should override defaults."""
         config = TruncationConfig(
             capture=CaptureConfig(max_stdout=100_000, max_stderr=30_000),
+            media_capture=MediaCaptureConfig(max_attachments_per_execution=20),
             event_format=FormatConfig(max_length=100, max_string=1000, max_depth=5),
         )
 
         assert config.capture.max_stdout == 100_000
         assert config.capture.max_stderr == 30_000
+        assert config.media_capture.max_attachments_per_execution == 20
         assert config.event_format.max_length == 100
         assert config.event_format.max_string == 1000
         assert config.event_format.max_depth == 5
@@ -106,6 +110,7 @@ class TestTruncationConfig:
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_stdout == 50_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_stderr == 2_000
         assert DEFAULT_TRUNCATION_CONFIG.capture.max_error == 10_000
+        assert DEFAULT_TRUNCATION_CONFIG.media_capture.max_attachments_per_execution == 5
         assert DEFAULT_TRUNCATION_CONFIG.event_format.max_length == 200
         assert DEFAULT_TRUNCATION_CONFIG.prefill_format.max_length == 25
         assert DEFAULT_TRUNCATION_CONFIG.context_block_format.max_length is None
@@ -117,6 +122,7 @@ class TestTruncationConfig:
         assert config.capture.max_stdout > 0
         assert config.capture.max_stderr > 0
         assert config.capture.max_error > 0
+        assert config.media_capture.max_attachments_per_execution > 0
 
     def test_equality(self):
         """Two configs with same values should be equal."""
@@ -217,6 +223,22 @@ class TestMergeSemantics:
         assert merged.event_format.max_string == 10_000
         # prefill untouched
         assert merged.prefill_format.max_string == 2_000
+
+    def test_media_capture_merge_independent_of_text_capture(self):
+        """Overriding media_capture does not affect stdout/stderr capture."""
+        base = TruncationConfig(
+            capture=CaptureConfig(max_stdout=100_000, max_stderr=30_000),
+            media_capture=MediaCaptureConfig(max_attachments_per_execution=5),
+        )
+        override = TruncationConfig(
+            media_capture=MediaCaptureConfig(max_attachments_per_execution=20),
+        )
+
+        merged = base.merge_with(override)
+
+        assert merged.media_capture.max_attachments_per_execution == 20
+        assert merged.capture.max_stdout == 100_000
+        assert merged.capture.max_stderr == 30_000
 
     def test_explicit_none_overrides(self):
         """Explicitly passing None overrides the base value."""

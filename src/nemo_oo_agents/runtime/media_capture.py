@@ -19,13 +19,35 @@ import contextvars
 import io
 from typing import Any
 
-# Task-local media buffer for async-safe capture
-_media_buffer_var: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+
+class _MediaBuffer:
+    """Bounded collector of media content blocks captured by ``show()``.
+
+    Same self-enforcing principle as :class:`TruncatingStringIO` (the cap
+    lives with the buffer), but signals overflow via a ``bool`` return from
+    :meth:`append` rather than by silently truncating the payload —
+    media blocks are atomic and cannot be partially kept.
+
+    ``ActorRuntime`` constructs one per ``execute_python`` cell from
+    ``MediaCaptureConfig.max_attachments_per_execution``.
+    """
+
+    def __init__(self, max_attachments: int):
+        self.blocks: list[dict[str, Any]] = []
+        self.max_attachments = max_attachments
+
+    def append(self, block: dict[str, Any]) -> bool:
+        """Append ``block``. Returns ``False`` if the buffer is full."""
+        if len(self.blocks) >= self.max_attachments:
+            return False
+        self.blocks.append(block)
+        return True
+
+
+# Task-local media buffer for async-safe capture.
+_media_buffer_var: contextvars.ContextVar[_MediaBuffer | None] = contextvars.ContextVar(
     "media_buffer", default=None
 )
-
-# Safety limit — prevent LLMs from flooding context with media
-MAX_ATTACHMENTS_PER_EXECUTION = 5
 
 
 def media_to_content_block(media: Any) -> dict[str, Any]:
@@ -95,10 +117,9 @@ def show(obj: Any) -> None:
 
     buf = _media_buffer_var.get()
     if buf is not None:
-        if len(buf) >= MAX_ATTACHMENTS_PER_EXECUTION:
-            print(f"[show() limit reached ({MAX_ATTACHMENTS_PER_EXECUTION}), attachment not added]")
+        if not buf.append(block):
+            print(f"[show() limit reached ({buf.max_attachments}), attachment not added]")
             return
-        buf.append(block)
         print(f"[shown: {obj}]")
     else:
         print(f"[show() called outside execution context, not captured: {obj}]")
