@@ -66,6 +66,35 @@ def _hex_to_ansi256(hex_color: str) -> int:
     return 16 + 36 * _q(r) + 6 * _q(g) + _q(b)
 
 
+def _effective_slash_output_to_agent(agent: Any, slash_result: Any) -> bool:
+    """Return fresh output routing for a slash result.
+
+    The command registry can be stale across hot reloads or long-lived TUI
+    processes. Prefer the currently attached Skill metadata when it can be
+    found; fall back to the SlashCommandResult flag for built-in/text commands.
+    """
+    command = str(getattr(slash_result, "command", "")).lower()
+    if command:
+        try:
+            from nemo_oo_agents.skill import Skill, get_slash_commands
+
+            for attr_name in dir(agent):
+                if attr_name.startswith("_"):
+                    continue
+                try:
+                    obj = getattr(agent, attr_name)
+                except Exception:
+                    continue
+                if not isinstance(obj, Skill):
+                    continue
+                for meta, _method in get_slash_commands(obj):
+                    if meta.name.lower() == command:
+                        return bool(getattr(meta, "output_to_agent", True))
+        except Exception:
+            logger.debug("Failed to resolve fresh slash command metadata", exc_info=True)
+    return bool(getattr(slash_result, "output_to_agent", True))
+
+
 def _build_user_bar(text: str, app: "TUIApplication", colors: dict) -> str:
     """Build a full-width highlighted user-message bar as raw ANSI.
 
@@ -797,7 +826,7 @@ class Session:
                 from .output import AgentMessage
 
                 await self.frontend.render(AgentMessage(text, show_rule=False))
-            if not result.slash_result.output_to_agent:
+            if not _effective_slash_output_to_agent(self.agent, result.slash_result):
                 # User-only command (e.g. a read-only /mcp list): the human sees
                 # the output above, but it is NOT fed to the agent — no queue
                 # put, no submitted message, no agent turn spent.
