@@ -11,7 +11,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.events import PythonOutput
+from nemo_oo_agents.events import Message, PythonOutput
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
@@ -166,3 +166,67 @@ class TestTokenCalibrationEdgeCases:
         runtime = agent.runtime
         assert runtime._last_context_stats is None
         assert runtime._token_calibration_ratio is None
+
+
+class TestTotalTokensCalibrated:
+    """total_tokens must carry the SAME per-model calibration as events_tokens.
+
+    Root cause of "events_tokens > total_tokens" (session d2a3557e): the message-
+    level overwrite in _build_messages used RAW litellm.token_counter while
+    events_tokens was counted with the calibrated client counter. For a model
+    litellm under-counts (calibration ratio > 1), total_tokens then read smaller
+    than events_tokens — impossible for a documented blocks+events sum — and the
+    TUI ctx%% / TokenBudgetSummarizer trigger saw a number ~ratio x too small.
+    """
+
+    @pytest.mark.asyncio
+    async def test_total_tokens_uses_calibration_ratio(self):
+        from nemo_oo_agents.unifiedllm.unifiedllm import _token_calibration
+
+        model = "anthropic/claude-3-5-sonnet-20240620"
+        # Snapshot the process-global calibration state for this model so the
+        # forced ratio can't leak into later (order-dependent) tests.
+        _prev_ratio = _token_calibration._ratios.get(model)
+        _prev_actual = _token_calibration._last_actual.get(model)
+        # Force a known calibration ratio for this model (API reported ~2x raw).
+        _token_calibration.update(model, estimated=100_000, actual=200_000)
+        try:
+            ratio = _token_calibration.ratio(model)
+            assert ratio > 1.5  # litellm under-counts -> calibration scales up
+
+            llm = _mk_calibrating_llm(1_000_000)
+            llm.model = model
+
+            class A(Agent, llm=llm):
+                async def respond(self, prompt: str) -> str:
+                    """Respond to {prompt}."""
+                    ...
+
+            agent = A()
+            for i in range(40):
+                agent.event_manager.add(Message(content=f"event {i}: " + ("lorem ipsum " * 30)))
+
+            # respond() raises GenerationError (the fake LLM has no scripted
+            # response), but _build_messages has already published the calibrated
+            # _last_context_stats by then. Catch ONLY the expected failure so a
+            # real break (anything else) fails the test instead of passing silently.
+            from nemo_oo_agents.errors import GenerationError
+
+            with pytest.raises(GenerationError):
+                await agent.respond("hi")
+
+            stats = agent.runtime._last_context_stats
+            assert stats is not None
+            # The headline must reflect the calibrated (API-matching) size, so it
+            # can never be smaller than the events component it supposedly contains.
+            assert stats.total_tokens >= stats.events_tokens
+        finally:
+            # Restore the singleton's per-model state.
+            if _prev_ratio is None:
+                _token_calibration._ratios.pop(model, None)
+            else:
+                _token_calibration._ratios[model] = _prev_ratio
+            if _prev_actual is None:
+                _token_calibration._last_actual.pop(model, None)
+            else:
+                _token_calibration._last_actual[model] = _prev_actual

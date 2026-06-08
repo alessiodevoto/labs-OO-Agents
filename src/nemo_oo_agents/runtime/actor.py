@@ -609,10 +609,6 @@ class ActorRuntime:
 
         Only called when the LLM actually rejects the request as too large.
         Uses the last context stats to estimate how many events to shed.
-
-        If ``exc`` is provided, extracts the prompt token count from the error
-        message to bootstrap the calibration ratio (actual_api / litellm_estimate).
-        This handles the cold-start case where no successful call has occurred yet.
         """
         stats = self._last_context_stats
         if not stats or not ctx_window:
@@ -621,35 +617,27 @@ class ActorRuntime:
         n_active = len(active_tags)
         if n_active == 0:
             return
-        # Bootstrap calibration ratio from the error's prompt token count.
-        # On the first call there's no prior successful response to learn from,
-        # so we extract the real token count from the error message itself.
-        if exc and not self._token_calibration_ratio and stats.total_tokens > 0:
-            actual = _parse_prompt_tokens(exc)
-            if actual and actual > 0:
-                self._token_calibration_ratio = actual / stats.total_tokens
-                logger.info(
-                    "bootstrapped calibration ratio from error: %d / %d = %.2f",
-                    actual,
-                    stats.total_tokens,
-                    self._token_calibration_ratio,
-                )
-        # Express the 70% budget in litellm-token terms.  When the
-        # calibration ratio is known (actual_api / litellm_estimate > 1),
-        # litellm undercounts — divide by the ratio so the cap in litellm
-        # tokens maps to the correct fraction of the real context window.
-        ratio = self._token_calibration_ratio or 1.0
-        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        # Shed against the REAL current prompt size vs a REAL 70%% budget.
+        # stats.total_tokens is calibrated to the API's count by _build_messages
+        # (so total_tok and ctx_window are on the same real scale — no ratio
+        # conversion). On a COLD-START context error (the first call IS the
+        # overflow, so no prior response has calibrated the counter), prefer the
+        # authoritative token count the error itself reports — it's ground truth
+        # and beats an uncalibrated estimate.
+        cap = int(ctx_window * 0.70)
         target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
         total_tok = stats.total_tokens
+        if exc is not None:
+            reported = _parse_prompt_tokens(exc)
+            if reported and reported > total_tok:
+                total_tok = reported
         tokens_to_shed = max(0, total_tok - target_tok)
         if tokens_to_shed == 0:
             return
-        # Use litellm-scale for both: estimate per-event tokens as
-        # (total - context_blocks) / n_active so numerator and denominator
-        # are in the same scale.
-        events_litellm_tok = max(0, total_tok - stats.context_blocks_tokens)
-        avg_event_tok = events_litellm_tok / max(1, n_active)
+        # Per-event estimate in the same real-token scale: (total -
+        # context_blocks) / n_active so numerator and denominator match.
+        events_real_tok = max(0, total_tok - stats.context_blocks_tokens)
+        avg_event_tok = events_real_tok / max(1, n_active)
         n_to_archive = min(
             int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
             n_active,
@@ -673,7 +661,7 @@ class ActorRuntime:
             if isinstance(hm, HarnessMetrics):
                 hm.context_limits_events_collapsed += n_to_archive
                 hm.context_limits_tokens_archived += n_to_archive * (
-                    events_litellm_tok // max(1, n_active)
+                    events_real_tok // max(1, n_active)
                 )
 
     @property
@@ -1021,26 +1009,13 @@ class ActorRuntime:
                     raise
                 _emit_llm_end(success=True)
 
-        # Calibrate token ratio from API response usage.
-        # The ground truth comes back as either an object (.prompt_tokens)
-        # or a dict ({"input_tokens": N}) depending on the provider.
-        usage = getattr(response, "usage", None)
-        if usage and self._last_context_stats:
-            if isinstance(usage, dict):
-                actual_input = usage.get("prompt_tokens") or usage.get("input_tokens")
-            else:
-                actual_input = getattr(usage, "prompt_tokens", None) or getattr(
-                    usage, "input_tokens", None
-                )
-            if actual_input and self._last_context_stats.total_tokens > 0:
-                self._token_calibration_ratio = actual_input / self._last_context_stats.total_tokens
-
         # Emit LLMComplete BEFORE LLMOutput so subscribers that build per-turn
         # records (e.g. the ATIF exporter) populate metrics/tool_calls before
         # the assistant-message content arrives. record=False keeps this off
         # the LLM-visible event timeline (Role.RUNTIME_EVENT) but on()
         # subscribers still receive it.
         _model_name = getattr(llm_client, "model", "") or ""
+        usage = getattr(response, "usage", None)
         # Normalize usage to a dict regardless of whether the provider returned
         # a dict, a Pydantic model with attributes, or nothing at all. The
         # token-calibration logic above already grovels through both shapes;
@@ -2848,8 +2823,18 @@ class ActorRuntime:
 
         set_journal_payload_from_messages(result.messages)
 
-        # Count the full structured message list with litellm.token_counter
-        # so the TUI ctx% and TokenBudgetSummarizer see the real payload size.
+        # Count the full structured message list, then apply the SAME
+        # per-model calibration that ``self._llm.count_tokens`` uses for
+        # ``events_tokens`` (render_context counts events with the calibrated
+        # client counter). litellm's raw tokenizer under-counts some gateway
+        # models (e.g. Azure-Anthropic claude-opus ~2.4x); the calibration
+        # ratio = API-reported prompt_tokens / raw estimate corrects it. Using
+        # the RAW count here left total_tokens systematically below
+        # events_tokens (impossible for a documented blocks+events sum) and,
+        # worse, made the TUI ctx%% and the TokenBudgetSummarizer trigger read
+        # a number ~ratio× smaller than what the API actually receives — so
+        # the summarizer fired far too late and its own render overflowed the
+        # model limit. Calibrate so total_tokens reflects the real payload.
         #
         # No proactive clamping — if the context exceeds the model's limit,
         # the API returns ContextWindowExceededError and the recovery path
@@ -2859,7 +2844,10 @@ class ActorRuntime:
         if ctx_window and isinstance(messages, list) and messages:
             import litellm
 
-            total_tok = litellm.token_counter(model=llm_client.model, messages=messages)
+            from nemo_oo_agents.unifiedllm.unifiedllm import _token_calibration
+
+            raw_total = litellm.token_counter(model=llm_client.model, messages=messages)
+            total_tok = _token_calibration.calibrate(llm_client.model, raw_total)
             stats = stats.model_copy(
                 update={
                     "total_tokens": total_tok,

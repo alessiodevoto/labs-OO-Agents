@@ -433,7 +433,7 @@ class SummarizationAgent(Agent):
                 event_format = target_truncation.event_format
         format_kwargs = event_format.model_dump() if event_format is not None else {}
 
-        parts = []
+        rendered: list[str] = []
         for tag, event in events:
             event_role = getattr(event, "_role", Role.USER)
             body = truncating_pformat(event, **format_kwargs)
@@ -443,9 +443,74 @@ class SummarizationAgent(Agent):
                 role=event_role,
                 metadata=BlockMetadata(expr=f'self.events["{tag}"]', tag=str(tag)),
             )
-            parts.append(format_message_content(block, "markdown"))
+            rendered.append(format_message_content(block, "markdown"))
 
-        return "\n\n".join(parts)
+        # Total-input cap. Per-event ``event_format`` bounds each event's fields,
+        # but the SUM across a long range can still exceed the summarizer's own
+        # model context window — the summarize() call then 400s ("prompt is too
+        # long") and compaction can never make progress. Keep the NEWEST events
+        # (most relevant to a resume summary) under a token budget and head-drop
+        # the oldest with an explicit marker, so the single summarize() call
+        # always fits. See _input_token_budget for the budget derivation.
+        budget = self._input_token_budget()
+        if budget is not None:
+            count = self._input_token_counter()
+            kept: list[str] = []
+            used = 0
+            dropped = 0
+            sep = 4  # "\n\n" between parts, counted approximately
+            # Walk newest -> oldest so the most recent survive the cap.
+            for part in reversed(rendered):
+                cost = count(part) + sep
+                if used + cost > budget and kept:
+                    dropped = len(rendered) - len(kept)
+                    break
+                kept.append(part)
+                used += cost
+            if dropped:
+                kept.reverse()
+                marker = (
+                    f"[... {dropped} older event(s) omitted to fit the summarizer's "
+                    f"input budget; summarize what remains ...]"
+                )
+                return "\n\n".join([marker, *kept])
+            # No drop: kept is newest-first; restore chronological order.
+            rendered = list(reversed(kept))
+
+        return "\n\n".join(rendered)
+
+    @hidden
+    @no_trace
+    def _input_token_counter(self) -> "Callable[[str], int]":
+        """Token counter for sizing the summarizer's own input.
+
+        Prefer the summarizer LLM's ``count_tokens``; fall back to the shared
+        char-approximate counter so the cap still applies when no counter is set.
+        """
+        llm = getattr(self, "_llm", None)
+        counter = getattr(llm, "count_tokens", None)
+        if callable(counter):
+            return counter
+        from nemo_oo_agents.token_counter import char_approximate_token_counter
+
+        return char_approximate_token_counter
+
+    @hidden
+    @no_trace
+    def _input_token_budget(self) -> int | None:
+        """Max tokens for the rendered summarization input (history_markdown).
+
+        ~70% of the summarizer model's context window, leaving headroom for the
+        summarize() method's own prompt scaffolding (docstring, instructions,
+        target_chars) and the completion. ``None`` (no cap) when the model
+        window can't be determined — never wipe the input on a misconfig; the
+        API error path is still the backstop."""
+        llm = getattr(self, "_llm", None)
+        for attr in ("context_window", "context_limit"):
+            window = getattr(llm, attr, None)
+            if isinstance(window, int) and window > 0:
+                return int(window * 0.7)
+        return None
 
 
 # =============================================================================
