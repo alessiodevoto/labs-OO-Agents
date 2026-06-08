@@ -345,14 +345,9 @@ def test_format_parameters_as_code_with_signature():
     """With a valid signature, positional args are mapped by name."""
     from nemo_oo_agents.strategies.current_call import CurrentCall
 
-    call = CurrentCall(
-        id="test-id",
-        method_name="my_method",
-        decorator="agent",
-        signature="(self, x: int, y: str)",
-        args=(42,),
-        kwargs={"y": "world"},
-    )
+    def my_method(self, x: int, y: str): ...
+
+    call = CurrentCall.from_method(my_method, args=(42,), kwargs={"y": "world"})
     result = call.format_parameters_as_code()
     assert "x = 42" in result
     assert "y = 'world'" in result

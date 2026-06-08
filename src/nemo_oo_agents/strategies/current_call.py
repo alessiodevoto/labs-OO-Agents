@@ -17,26 +17,6 @@ if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import TruncationConfig
 
 
-def _parse_param_names(signature: str) -> list[str]:
-    """Extract ordered parameter names from a signature string like '(self, a: int, b: str)'.
-
-    Strips 'self', type annotations, and default values.  Returns an empty list
-    if the signature is empty or cannot be parsed.
-    """
-    sig_content = signature.strip("()")
-    if not sig_content:
-        return []
-    names: list[str] = []
-    for param in sig_content.split(","):
-        param = param.strip()
-        if not param or param == "self":
-            continue
-        name = param.split(":")[0].split("=")[0].strip()
-        if name and name != "self":
-            names.append(name)
-    return names
-
-
 @dataclass(frozen=True)
 class CurrentCall:
     """Represents a method call being generated.
@@ -86,6 +66,11 @@ class CurrentCall:
     # "max_string": 500}. Used by format_parameters_as_code to override the
     # default truncation knobs for individual parameters.
     param_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Ordered parameter names (excluding 'self'), captured from the live method's
+    # inspect.signature in from_method(). When present, this is authoritative and
+    # avoids re-parsing the stringified signature (which can't reliably split on
+    # commas inside Annotated[...]/defaults).
+    param_names: list[str] | None = None
 
     def __hash__(self) -> int:
         """Hash by id for use in sets/dicts."""
@@ -173,11 +158,16 @@ class CurrentCall:
             lines += [f"{name} = {fmt_for(name)(value)}" for name, value in self.kwargs.items()]
             return "\n".join(lines)
 
-        # Extract parameter names from signature
+        # Use the authoritative param names captured from the live signature
+        # (set by from_method / actor's CurrentCall construction). When absent
+        # (e.g. a CurrentCall built with neither a live method nor param_names),
+        # fall back to positional arg_i names.
         try:
-            param_names = _parse_param_names(self.signature)
+            param_names = self.param_names or []
             if not param_names and not self.kwargs:
-                return ""
+                lines = [f"arg_{i} = {default_fmt(value)}" for i, value in enumerate(self.args)]
+                lines += [f"{name} = {fmt_for(name)(value)}" for name, value in self.kwargs.items()]
+                return "\n".join(lines)
 
             # Build parameter dict: map positional args to names, then add kwargs
             param_dict: dict[str, Any] = {}
@@ -323,6 +313,9 @@ class CurrentCall:
         # Extract pre-ellipsis code (setup code before ... marker)
         pre_ellipsis_code = get_pre_ellipsis_code(method)
 
+        # Authoritative ordered names from the live signature (excludes 'self').
+        live_param_names = [p for p in sig.parameters if p != "self"] if sig is not None else None
+
         return cls(
             id=call_id,
             method_name=method.__name__,
@@ -336,4 +329,5 @@ class CurrentCall:
             return_type=return_type,
             pre_ellipsis_code=pre_ellipsis_code,
             param_specs=param_specs,
+            param_names=live_param_names,
         )

@@ -1,5 +1,6 @@
 """Tests for TemplateStrategy - string templating without LLM calls."""
 
+import dataclasses
 from unittest.mock import Mock
 
 import pytest
@@ -317,14 +318,12 @@ class TestTemplateTcContext:
         strategy = TemplateStrategy()
         runtime = MockRuntime()
 
-        call = CurrentCall(
+        def test(self, items: list): ...
+
+        call = dataclasses.replace(
+            CurrentCall.from_method(test, args=(list(range(5)),)),
             id="test_tc_2",
-            method_name="test",
-            decorator="plan",
-            signature="(items: list)",
             docstring="Params:\n{call.format_parameters_as_code(tc=tc)}",
-            args=(list(range(5)),),
-            kwargs={},
         )
 
         result = await strategy.execute(runtime, call)
