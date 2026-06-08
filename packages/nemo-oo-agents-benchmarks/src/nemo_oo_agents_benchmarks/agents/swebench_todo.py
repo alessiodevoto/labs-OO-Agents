@@ -18,7 +18,9 @@ from __future__ import annotations
 import logging
 import os
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, model_validator
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.agentdoc import doc, hidden
@@ -115,6 +117,78 @@ _ISSUE_DESCRIPTION_HEADER = "## Issue Description"
 def _format_problem_statement(raw: str) -> str:
     """Wrap a raw Harbor problem statement with context headers."""
     return f"{_ISSUE_DESCRIPTION_HEADER}\n\n{raw.strip()}\n\n{_ENVIRONMENT_INSTRUCTIONS}"
+
+
+def _extract_unified_diff(text: str) -> str:
+    """Extract a raw unified diff from model output, stripping common wrappers."""
+    value = text.strip()
+    if not value:
+        return ""
+
+    if "<diff>" in value and "</diff>" in value:
+        value = value.split("<diff>", 1)[1].split("</diff>", 1)[0].strip()
+
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        value = "\n".join(lines).strip()
+
+    marker = "diff --git "
+    index = value.find(marker)
+    if index >= 0:
+        value = value[index:].strip()
+
+    if value.endswith("```"):
+        value = value[: -len("```")].rstrip()
+    return value
+
+
+def _is_valid_unified_diff(text: str) -> bool:
+    """Return True when text is a raw unified diff suitable for SWE-bench."""
+    value = text.lstrip()
+    return (
+        value.startswith("diff --git ")
+        and "<diff>" not in value
+        and "</diff>" not in value
+        and not value.startswith("##")
+    )
+
+
+class Diff(BaseModel):
+    """Final SWE-bench diff response. Prefer ``Diff.from_worktree()`` after edits."""
+
+    patch: str | None = None
+    source: Literal["patch", "worktree"] = "patch"
+
+    @staticmethod
+    def from_worktree() -> Diff:
+        """Submit the current working-tree diff as the final answer."""
+        return Diff(source="worktree")
+
+    @staticmethod
+    def from_patch(patch: str) -> Diff:
+        """Submit an explicit unified diff as the final answer."""
+        return Diff(patch=patch, source="patch")
+
+    @model_validator(mode="after")
+    @hidden
+    def _validate_diff(self) -> Diff:
+        if self.source == "worktree":
+            if self.patch:
+                raise ValueError("Diff.from_worktree() must not include patch text")
+            return self
+
+        patch = _extract_unified_diff(self.patch or "")
+        if not _is_valid_unified_diff(patch):
+            raise ValueError(
+                "patch must be a raw unified diff starting with 'diff --git'; "
+                "do not include markdown, summaries, code fences, or <diff> tags"
+            )
+        self.patch = patch
+        return self
 
 
 class SWEBenchTodoAgent(
@@ -283,12 +357,20 @@ class SWEBenchTodoAgent(
         except Exception as e:
             return {"response": "", "success": False, "error": str(e)}
 
-    @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=300, max_retries=10)))
-    async def _solve_task(self, description: str, response_format: str = "") -> Any:
+    @strategy(
+        CodeActStrategy(
+            config=CodeActConfig(
+                max_iterations=300, max_retries=10, text_only_stop_behavior="synthetic_reasoning"
+            )
+        )
+    )
+    async def _solve_task(self, description: str, response_format: str = "") -> Diff:
         """Solve the task using the structured todo-driven workflow.
 
         Follow the phases in self.todo. Mark each done as you complete it.
         Only return when tests pass and diff is clean.
+        For SWE-bench diff output, finish with ``return_result(Diff.from_worktree())``
+        after saving edits; the wrapper will submit the raw ``git diff HEAD``.
         """
         # Start with Phase 1a: explore the repo structure
         r = await self.shell.run("ls -la")
@@ -299,18 +381,31 @@ class SWEBenchTodoAgent(
         ...
 
     async def solve_task(self, description: str, response_format: str = "") -> Any:
-        """Public wrapper: calls _solve_task, falls back to git diff HEAD."""
+        """Public wrapper: calls _solve_task and guarantees raw diff output for SWE-bench."""
         try:
             result = await self._solve_task(description, response_format)
-            # If response_format is 'diff' but agent returned prose, use git diff
-            result_str = str(result) if result is not None else ""
-            if response_format == "diff" and result_str and "diff --git" not in result_str:
-                logger.warning("Agent returned prose instead of diff, falling back to git diff")
-                r = await self.shell.run("git diff HEAD")
-                if r.text.strip():
-                    return r.text
-            return result
         except Exception as e:
             logger.error("Error solving task: %s", e)
+            result = None
+
+        if response_format != "diff":
+            return result
+
         r = await self.shell.run("git diff HEAD")
-        return r.text
+        worktree_diff = r.text.strip()
+        if _is_valid_unified_diff(worktree_diff):
+            return worktree_diff
+
+        if isinstance(result, Diff):
+            if result.source == "worktree":
+                logger.warning("Diff.from_worktree() requested but git diff HEAD was empty/invalid")
+                return ""
+            if result.patch and _is_valid_unified_diff(result.patch):
+                return result.patch
+
+        extracted = _extract_unified_diff(str(result) if result is not None else "")
+        if _is_valid_unified_diff(extracted):
+            return extracted
+
+        logger.warning("No valid unified diff produced for SWE-bench response")
+        return ""
