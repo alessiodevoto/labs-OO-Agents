@@ -25,7 +25,7 @@ with hidden:
     from nemo_oo_agents.skill_registry import SkillRegistry
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import SkillWriting, TodoManager
-    from nemo_oo_agents.tools.shell_tools3 import ShellTools3 as ShellTools
+    from nemo_oo_agents.tools.shell_tools5 import ShellTools5 as ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
     from nemo_oo_agents_cli.tools.pyp import (

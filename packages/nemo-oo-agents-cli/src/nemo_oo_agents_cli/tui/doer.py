@@ -32,7 +32,7 @@ with hidden:
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
     from nemo_oo_agents.tools import TodoManager
-    from nemo_oo_agents.tools.shell_tools3 import ShellTools3 as ShellTools
+    from nemo_oo_agents.tools.shell_tools5 import ShellTools5 as ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents_cli.tools.repo_tools import RepoTools
 
