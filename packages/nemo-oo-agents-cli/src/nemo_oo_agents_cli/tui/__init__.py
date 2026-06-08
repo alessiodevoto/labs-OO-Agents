@@ -26,6 +26,17 @@ def _get_sw_skills_dir() -> str:
     return str(_Path(__file__).parent / "skills-sw")
 
 
+def _get_py_libs_dir() -> str:
+    """Entry-point hook — returns the packaged ``skills-py/`` libs path.
+
+    Registered under ``nemo_oo_tui.libs_dirs`` in pyproject.toml so
+    ``Config.load`` picks it up automatically and ``bootstrap`` runs
+    ``discover_libs`` on it. Ships Python skill libraries that should
+    travel with the CLI (e.g. ``inception`` / slash-inception).
+    """
+    return str(_Path(__file__).parent / "skills-py")
+
+
 __all__ = [
     "AgentConfig",
     "BaseTUIAgent",

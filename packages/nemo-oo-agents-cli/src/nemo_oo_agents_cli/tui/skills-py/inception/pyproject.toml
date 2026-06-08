@@ -1,0 +1,5 @@
+[project]
+name = "inception"
+version = "0.1.0"
+description = "slash-inception: spawn a debugging TUI agent that holds the current live agent as self.agent and re-points the running TUI at it."
+dependencies = []

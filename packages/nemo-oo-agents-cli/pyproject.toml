@@ -38,6 +38,9 @@ nemo = "nemo_oo_agents_cli:main"
 [project.entry-points."nemo_oo_tui.skills_dirs"]
 sw_skills = "nemo_oo_agents_cli.tui:_get_sw_skills_dir"
 
+[project.entry-points."nemo_oo_tui.libs_dirs"]
+py_libs = "nemo_oo_agents_cli.tui:_get_py_libs_dir"
+
 [project.optional-dependencies]
 # AST-aware code analysis for RepoTools (tree-sitter grammars).
 # The CLI works without these — RepoTools falls back to regex.

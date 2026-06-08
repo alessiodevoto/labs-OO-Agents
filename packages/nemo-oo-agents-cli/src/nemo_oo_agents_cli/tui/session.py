@@ -761,6 +761,34 @@ class Session:
         # NOTE: outputs are already rendered by CommandHandler.handle() — do not
         # re-render here to avoid double output.
         if result.slash_result is not None:
+            # slash-inception: a SwapAgentRequest asks us to hot-swap the agent
+            # the dispatcher drives. The skill (running on the UI loop, with no
+            # app handle) built the new agent and shared the old agent's live
+            # channels; we hold the app, so we do the actual swap here.
+            # Identify the request structurally (duck typing on its fields)
+            # rather than by class name — the inception skill lives in another
+            # package, and a string __name__ check breaks silently on a rename
+            # or a same-named class from elsewhere.
+            _swap_req = getattr(result.slash_result, "value", None)
+            if (
+                _swap_req is not None
+                and hasattr(_swap_req, "new_agent")
+                and hasattr(_swap_req, "seed_prompt")
+            ):
+                from .output import AgentMessage
+
+                _text = str(result.slash_result)
+                if _text:
+                    await self.frontend.render(AgentMessage(_text, show_rule=False))
+                assert self._app is not None
+                _new = _swap_req.new_agent
+                # Queue the seed prompt on the SHARED user-messages channel, then
+                # swap+restart the dispatcher onto the new agent (on the agent loop).
+                _q = getattr(_new, "_user_messages_in", None)
+                if _q is not None:
+                    _q.put(_swap_req.seed_prompt)
+                self._app.agent_run(lambda: self._app.swap_agent(_new))
+                return
             # Show slash-command output to the user immediately. Skill slash
             # commands often return Markdown (tables, lists), so render via the
             # frontend instead of dumping raw text through emit_block.
