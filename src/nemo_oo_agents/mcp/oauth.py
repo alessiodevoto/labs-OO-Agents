@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import secrets
+import shutil
 import stat
 import time
 import webbrowser
@@ -104,9 +105,24 @@ def _system_browser_available() -> bool:
     """
     try:
         webbrowser.get()
+        return True
     except webbrowser.Error:
-        return False
-    return True
+        pass
+    # webbrowser.get() misses common launchers that DO open a host browser
+    # (e.g. a sandbox's xdg-open that forwards to the host). If one is on PATH,
+    # the loopback-callback flow can still complete — prefer it over OOB paste.
+    for launcher in ("xdg-open", "sensible-browser", "open", "wslview"):
+        if shutil.which(launcher):
+            # Register once — repeated calls must not keep prepending to the
+            # process-global browser registry.
+            try:
+                webbrowser.get(launcher)
+            except webbrowser.Error:
+                webbrowser.register(
+                    launcher, None, webbrowser.GenericBrowser(launcher), preferred=True
+                )
+            return True
+    return False
 
 
 def _extract_authorization_code(pasted: str) -> str:

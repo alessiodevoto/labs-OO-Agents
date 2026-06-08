@@ -39,7 +39,18 @@ def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
 def _describe_exception(exc: BaseException) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         response = exc.response
-        body = response.text.strip()
+        body = ""
+        try:
+            # If the body is already in memory, render it. Otherwise read it
+            # first — a streaming response (streamable-http MCP transports)
+            # raises ResponseNotRead on ``.text`` until read, which would
+            # otherwise mask the real HTTP error (e.g. a 401) behind a confusing
+            # "Attempted to access streaming response content" message.
+            if not response.is_stream_consumed:
+                response.read()
+            body = response.text.strip()
+        except Exception:
+            body = ""
         if len(body) > 500:
             body = body[:500] + "..."
         suffix = f": {body}" if body else ""
