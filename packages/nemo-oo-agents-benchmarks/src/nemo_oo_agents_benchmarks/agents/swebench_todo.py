@@ -18,9 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import textwrap
-from typing import TYPE_CHECKING, Any, Literal
-
-from pydantic import BaseModel, model_validator
+from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.agentdoc import doc, hidden
@@ -102,10 +100,11 @@ use `await self.shell.run("python -", stdin=script)` or `await self.shell.run("p
 
 ## Final Evaluation
 
-Your final changes will be automatically evaluated. The evaluation system will:
-1. Capture the final state of your working directory
-2. Generate a unified diff patch of all changes
-3. Run the test suite to verify your fix
+Your final changes are evaluated **in place**: the harness runs the
+hidden test suite directly against /testbed at the end of your session.
+Your file edits ARE the submission — there is no patch to produce and no
+staging step. Just make sure every change is written to disk before you
+finish.
 
 Make sure all changes are saved to files before finishing. The evaluation \
 tests whatever modifications exist in /testbed at the end of your session.\
@@ -117,78 +116,6 @@ _ISSUE_DESCRIPTION_HEADER = "## Issue Description"
 def _format_problem_statement(raw: str) -> str:
     """Wrap a raw Harbor problem statement with context headers."""
     return f"{_ISSUE_DESCRIPTION_HEADER}\n\n{raw.strip()}\n\n{_ENVIRONMENT_INSTRUCTIONS}"
-
-
-def _extract_unified_diff(text: str) -> str:
-    """Extract a raw unified diff from model output, stripping common wrappers."""
-    value = text.strip()
-    if not value:
-        return ""
-
-    if "<diff>" in value and "</diff>" in value:
-        value = value.split("<diff>", 1)[1].split("</diff>", 1)[0].strip()
-
-    if value.startswith("```"):
-        lines = value.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        value = "\n".join(lines).strip()
-
-    marker = "diff --git "
-    index = value.find(marker)
-    if index >= 0:
-        value = value[index:].strip()
-
-    if value.endswith("```"):
-        value = value[: -len("```")].rstrip()
-    return value
-
-
-def _is_valid_unified_diff(text: str) -> bool:
-    """Return True when text is a raw unified diff suitable for SWE-bench."""
-    value = text.lstrip()
-    return (
-        value.startswith("diff --git ")
-        and "<diff>" not in value
-        and "</diff>" not in value
-        and not value.startswith("##")
-    )
-
-
-class Diff(BaseModel):
-    """Final SWE-bench diff response. Prefer ``Diff.from_worktree()`` after edits."""
-
-    patch: str | None = None
-    source: Literal["patch", "worktree"] = "patch"
-
-    @staticmethod
-    def from_worktree() -> Diff:
-        """Submit the current working-tree diff as the final answer."""
-        return Diff(source="worktree")
-
-    @staticmethod
-    def from_patch(patch: str) -> Diff:
-        """Submit an explicit unified diff as the final answer."""
-        return Diff(patch=patch, source="patch")
-
-    @model_validator(mode="after")
-    @hidden
-    def _validate_diff(self) -> Diff:
-        if self.source == "worktree":
-            if self.patch:
-                raise ValueError("Diff.from_worktree() must not include patch text")
-            return self
-
-        patch = _extract_unified_diff(self.patch or "")
-        if not _is_valid_unified_diff(patch):
-            raise ValueError(
-                "patch must be a raw unified diff starting with 'diff --git'; "
-                "do not include markdown, summaries, code fences, or <diff> tags"
-            )
-        self.patch = patch
-        return self
 
 
 class SWEBenchTodoAgent(
@@ -244,16 +171,17 @@ class SWEBenchTodoAgent(
     ## Tool examples
 
     ```python
-    # Shell operations (persistent session — cd/env survive). The exact method
-    # surface depends on the active shell variant — see the `self.shell` block
-    # (doc(type(self.shell))). For ShellTools3 (default):
-    r = await self.shell.run("pytest tests/test_foo.py -x")
-    r = await self.shell.read("src/module.py", lines=(10, 60))      # numbered window
-    region = await self.shell.lines("src/module.py", 10, 12)        # locate a line range
-    r = await self.shell.replace(region, new_code)                  # edit the anchor (no ambiguity)
-    r = await self.shell.write_file("src/new.py", content)          # create/overwrite (no quoting)
-    ms = await self.shell.rg("pattern", "src/").matches()           # structured matches
-    r = await self.shell.find("src", name="*.py").collect()         # find files
+    # Shell operations (persistent session — cd/env survive). Your shell's
+    # EXACT method surface is in the `self.shell` block (doc(type(self.shell)));
+    # use only what it lists. The core four:
+    r = await self.shell.run("pytest tests/test_foo.py -x")        # any shell command
+    r = await self.shell.read("src/module.py", lines=(10, 60))     # numbered window -> editable anchor
+    await self.shell.replace(r, new_code)                          # edit the read() region (no copy-paste of old text)
+    await self.shell.write_file("src/new.py", content)             # create/overwrite (no quoting)
+    # Search-then-edit: run() a plain grep, then edit the hits directly via .matches —
+    # no re-grep, no string-guessing (which is the usual cause of "old text not found").
+    r = await self.shell.run("grep -rn 'def foo' src/")            # plain search -> r.matches
+    await self.shell.replace(r.matches[0], new_code)               # edit the first hit by anchor
     ```
 
     ```python
@@ -267,7 +195,7 @@ class SWEBenchTodoAgent(
     ## Rules
 
     - Mark each todo done as you complete it (BEFORE starting the next)
-    - Only `return_result()` when tests pass and diff is clean
+    - Only `return_result("done")` when tests pass and the worktree is clean
     - If your first approach fails after 3 attempts, try a different angle
     - Variables persist across REPL turns
     - Output is auto-truncated; use slices or grep to inspect long output
@@ -364,13 +292,17 @@ class SWEBenchTodoAgent(
             )
         )
     )
-    async def _solve_task(self, description: str, response_format: str = "") -> Diff:
+    async def _solve_task(self, description: str, response_format: str = "") -> str:
         """Solve the task using the structured todo-driven workflow.
 
         Follow the phases in self.todo. Mark each done as you complete it.
-        Only return when tests pass and diff is clean.
-        For SWE-bench diff output, finish with ``return_result(Diff.from_worktree())``
-        after saving edits; the wrapper will submit the raw ``git diff HEAD``.
+        Only return when tests pass and the worktree is clean.
+
+        The harness grades the working tree in place — your file edits in
+        /testbed ARE the submission. There is no patch to return and no
+        staging step. When the fix is verified, just
+        ``return_result("done")`` (any short status string). Do NOT paste a
+        diff, do NOT call ``git add``, do NOT construct a result object.
         """
         # Start with Phase 1a: explore the repo structure
         r = await self.shell.run("ls -la")
@@ -380,8 +312,17 @@ class SWEBenchTodoAgent(
         print(self.todo.status())
         ...
 
-    async def solve_task(self, description: str, response_format: str = "") -> Any:
-        """Public wrapper: calls _solve_task and guarantees raw diff output for SWE-bench."""
+    async def solve_task(self, description: str, response_format: str = "") -> str:
+        """Public wrapper: run the workflow, then confirm the worktree carries edits.
+
+        The harbor verifier grades the working tree in place (it runs the
+        task's own test script against /testbed) — it never reads a returned
+        patch. So there is nothing to extract or submit: the agent's job is
+        simply to leave correct edits in the tree. We just sanity-check that
+        edits exist and return a short status; an empty diff is logged as a
+        warning (the run will score 0, but that's a real signal, not a
+        submission-protocol bug).
+        """
         try:
             result = await self._solve_task(description, response_format)
         except Exception as e:
@@ -389,23 +330,9 @@ class SWEBenchTodoAgent(
             result = None
 
         if response_format != "diff":
-            return result
+            return str(result) if result is not None else ""
 
         r = await self.shell.run("git diff HEAD")
-        worktree_diff = r.text.strip()
-        if _is_valid_unified_diff(worktree_diff):
-            return worktree_diff
-
-        if isinstance(result, Diff):
-            if result.source == "worktree":
-                logger.warning("Diff.from_worktree() requested but git diff HEAD was empty/invalid")
-                return ""
-            if result.patch and _is_valid_unified_diff(result.patch):
-                return result.patch
-
-        extracted = _extract_unified_diff(str(result) if result is not None else "")
-        if _is_valid_unified_diff(extracted):
-            return extracted
-
-        logger.warning("No valid unified diff produced for SWE-bench response")
-        return ""
+        if not r.text.strip():
+            logger.warning("git diff HEAD is empty — agent left no edits in the worktree")
+        return str(result) if result is not None else "done"
