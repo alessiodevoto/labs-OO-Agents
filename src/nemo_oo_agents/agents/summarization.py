@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Annotated, Any
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.agentdoc import hidden
 from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.metaclass import no_trace
 from nemo_oo_agents.strategies import PredictStrategy
@@ -256,15 +255,10 @@ class SummarizationAgent(Agent):
     # LLM-generated summarization
     # -------------------------------------------------------------------------
 
-    # ``None`` everywhere = no input-size bounds; the LLM's context window is
-    # the only real limit on what summarize() can ingest.
-    @strategy(
-        PredictStrategy(PredictConfig(max_param_chars=None)),
-        truncation=TruncationConfig(
-            prefill_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
-            event_format=FormatConfig(max_string=None, max_length=None, max_depth=None),
-        ),
-    )
+    # The source document is rendered explicitly by _render_range_to_markdown().
+    # Do not use a method-level unbounded TruncationConfig here: that would also
+    # re-render unrelated context events in this generation with unbounded event_format.
+    @strategy(PredictStrategy(PredictConfig(max_param_chars=None)))
     async def summarize(self, history_markdown: str, target_chars: int) -> str:
         """Summarize the `history_markdown` parameter into approximately {target_chars} characters.
 
@@ -432,10 +426,17 @@ class SummarizationAgent(Agent):
         )
         from nemo_oo_agents.context_blocks.utils import truncating_pformat
 
+        event_format = None
+        if self._target_agent is not None:
+            target_truncation = getattr(self._target_agent, "_truncation", None)
+            if target_truncation is not None:
+                event_format = target_truncation.event_format
+        format_kwargs = event_format.model_dump() if event_format is not None else {}
+
         parts = []
         for tag, event in events:
             event_role = getattr(event, "_role", Role.USER)
-            body = truncating_pformat(event)
+            body = truncating_pformat(event, **format_kwargs)
             block = ResolvedBlock(
                 key=f"event_{tag}",
                 content=body,
