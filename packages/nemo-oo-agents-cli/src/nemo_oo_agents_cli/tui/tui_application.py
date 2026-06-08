@@ -571,6 +571,44 @@ class TUIApplication:
         self.input_buffer.text = self._history[self._history_cursor]
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
+    def swap_agent(self, new_agent: Any) -> None:
+        """Hot-swap the agent the dispatcher drives (slash-inception).
+
+        The dispatcher loop binds ``agent = self.agent`` once per loop and
+        then calls ``agent.handle()`` each turn, so a bare ``self.agent =
+        new`` reassignment does NOT redirect a *running* loop. This method
+        performs the supported swap: re-point ``self.agent``, end the current
+        dispatcher task, and lazy-restart it bound to the new agent.
+
+        The new agent is expected to already share the OLD agent's live
+        channels (``queue_manager`` / ``_user_messages_in`` / readers) and
+        ``_render_message`` callback, so input routing + output rendering are
+        unchanged. Any messages already queued on the shared
+        ``_user_messages_in`` (e.g. an inception seed prompt) are drained by
+        the fresh dispatcher and delivered to ``new_agent.handle``.
+
+        Call via ``app.agent_run(lambda: app.swap_agent(new))`` so it runs on
+        the agent-loop thread.
+        """
+        self.agent = new_agent
+
+        # End the current dispatcher loop; ``_on_agent_done`` (or the explicit
+        # re-arm below) starts a fresh one that re-captures ``self.agent``.
+        # A swap-initiated cancel must be distinguishable from a user Esc-cancel
+        # so _on_agent_done does not flash a false "✗ Interrupted." banner over
+        # the clean inception confirmation.
+        self._swapping = True
+        task = self._agent_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._agent_task = None
+
+        # Re-arm a fresh dispatcher bound to the new agent if there's pending
+        # input (the inception seed prompt is already queued by the caller).
+        q = getattr(new_agent, "_user_messages_in", None)
+        if q is not None and q.qsize() > 0:
+            self._ensure_dispatcher_task()
+
     def submit_message(self, user_message: str) -> None:
         """Treat ``user_message`` as if the user just typed and submitted it.
 
@@ -884,7 +922,12 @@ class TUIApplication:
         message wakes the dispatcher again. STOP exits cleanly.
         """
         if task.cancelled():
-            self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
+            # A swap-initiated cancel (slash-inception) is not a user interrupt;
+            # suppress the banner once so the swap reads as smooth.
+            if getattr(self, "_swapping", False):
+                self._swapping = False
+            else:
+                self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
             q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
             if q is not None and q.qsize() > 0:
                 self._ensure_dispatcher_task()

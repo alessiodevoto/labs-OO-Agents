@@ -241,8 +241,27 @@ class Config:
         defaults = [d for d in cfg.tui.skills_dirs if d not in explicit and d not in entry_point]
         cfg.tui.skills_dirs = explicit + entry_point + defaults
 
-        # Filter skills dirs to existing directories
+        # Python skill-library dirs shipped via entry points (group
+        # "nemo_oo_tui.libs_dirs") — appended to libs_dirs so bootstrap's
+        # discover_libs picks them up. Ships e.g. the inception lib.
+        try:
+            from importlib.metadata import entry_points as _entry_points
+
+            for _ep in _entry_points(group="nemo_oo_tui.libs_dirs"):
+                try:
+                    _ld = Path(str(_ep.load()()))
+                    if _ld not in cfg.tui.libs_dirs:
+                        cfg.tui.libs_dirs.append(_ld)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Filter skills and libs dirs to existing directories so a broken
+        # entry-point path (e.g. an editable install pointing at a missing
+        # dir) can't make discover_libs raise or silently fail.
         cfg.tui.skills_dirs = [d for d in cfg.tui.skills_dirs if d.exists()]
+        cfg.tui.libs_dirs = [d for d in cfg.tui.libs_dirs if d.exists()]
 
         return cfg
 
