@@ -1,0 +1,13 @@
+version = "1.0.0"
+
+# Allowlisted false positives for the Pulse Secret Scanner (Trufflehog).
+# Each entry waives a reviewed non-secret. Format: pstooling/pulse-group/pulse-secret-scanner .nspect-allowlist.toml.
+
+[[pulse-trufflehog.files]]
+# Test fixture verifying that hidden/sensitive fields are redacted by pformat().
+# `password="hunter2"` is a literal in the test, not a real credential.
+file = "tests/agentdoc/test_pprint_respects_hidden.py"
+
+[[pulse-trufflehog.files.secrets]]
+type = "Password"
+values = ["password=\"hunter2\""]

@@ -31,6 +31,7 @@ variables:
 stages:
   - lint
   - test
+  - security  # Pulse secret scanning (nSpect / NEMOOO-7)
   - capability  # Optional LLM capability testing
   - build
   - publish
@@ -842,3 +843,36 @@ deploy-staging:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual  # Allow manual trigger on MRs for testing
   allow_failure: true  # Don't block pipeline if deploy fails
+
+# =============================================================================
+# Pulse Secret Scanning (NVIDIA's Trufflehog) — NEMOOO-7 / nSpect NSPECT-2MWM-IKT9
+# Self-contained: runs the Pulse scanner image directly. We do NOT `include` the
+# pstooling/gitlab-templates recipe because that project is access-restricted to
+# this project (the CI token 404s on it), which hard-fails pipeline config. The
+# scanner image itself IS pullable from the registry, so we invoke it directly.
+# Matches how nSpect runs it: filesystem scan, verified results only, JSON,
+# fail the pipeline on a finding. Wiki:
+# https://nvidia.atlassian.net/wiki/spaces/PRODSEC/pages/2569281281
+# =============================================================================
+pulse-trufflehog-scan:
+  stage: security
+  image: gitlab-master.nvidia.com:5005/pstooling/pulse-group/pulse-secret-scanner:1.79
+  tags:
+    - os/linux
+  # GitLab runs `script` in a shell (it does NOT route through the image
+  # ENTRYPOINT), so call the scanner binary by its absolute path. Per the
+  # image Dockerfile the binary is /usr/bin/pulse-secret-scanner. Args match
+  # nSpect: filesystem scan, verified results only, JSON, non-zero on a finding.
+  script:
+    - /usr/bin/pulse-secret-scanner filesystem . --json --only-verified --fail --allowlist .nspect-allowlist.toml --no-allowlisted-results | tee trufflehog-report.json
+  artifacts:
+    when: always
+    paths:
+      - trufflehog-report.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "merge_train_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
