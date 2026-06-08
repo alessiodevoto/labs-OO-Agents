@@ -130,7 +130,6 @@ async def test_match_anchor_is_editable(repo: Path):
     "cmd",
     [
         "grep -rno 'foo' .",  # -o: no full line anchor
-        "grep -rn 'foo' . | head -1",  # mangling pipe
         "grep -rnA1 'foo' .",  # context lines
         "cat a.py",  # not a search
         "grep -rnP 'fo+' .",  # PCRE
@@ -149,6 +148,39 @@ async def test_grep_without_n_is_unverifiable(repo: Path):
     sh = ShellTools5(cwd=str(repo))
     r = await sh.run("grep -r 'foo' .")
     assert r.matches is None
+
+
+@pytest.mark.asyncio
+async def test_truncated_head_attaches_displayed_subset(repo: Path):
+    """A safe ``| head -N`` truncates the *display* to a prefix; the shown lines
+    are still real matches, so attach exactly those (subset, not the full set).
+    """
+    sh = ShellTools5(cwd=str(repo))
+    full = await sh.run("grep -rn 'foo' .")
+    assert full.matches is not None and len(full.matches) > 1
+
+    r = await sh.run("grep -rn 'foo' . | head -1")
+    assert r.matches is not None, "truncated head should still attach displayed matches"
+    shown = {(m.path, m.start) for m in r.matches}
+    displayed = set()
+    for line in r.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) >= 2 and parts[1].isdigit():
+            p = parts[0][2:] if parts[0].startswith("./") else parts[0]
+            displayed.add((p, int(parts[1])))
+    assert shown == displayed
+    assert shown <= {(m.path, m.start) for m in full.matches}
+
+
+@pytest.mark.asyncio
+async def test_truncated_head_match_is_editable(repo: Path):
+    """A Match from a head-truncated grep edits at the correct anchor."""
+    sh = ShellTools5(cwd=str(repo))
+    r = await sh.run("grep -rn 'fooo = 1' . | head -5")
+    assert r.matches, "should attach the assignment despite the head pipe"
+    m = next(x for x in r.matches if x.path == "a.py")
+    await sh.replace(m, "fooo = 777\n")
+    assert "fooo = 777" in (repo / "a.py").read_text()
 
 
 @pytest.mark.parametrize(

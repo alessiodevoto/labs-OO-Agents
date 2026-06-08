@@ -459,11 +459,31 @@ class ShellTools5(Skill):
             # The command's own output isn't in verifiable file:line: form
             # (e.g. grep without -n). Can't cross-check -> attach nothing.
             return None
-        if {(p, n) for p, n in anchors} != displayed:
+
+        # Reconciliation. Normally the displayed anchors must EQUAL the rg
+        # anchors. But a safe ``| head -N`` / ``| tail -N`` truncates the
+        # *display* to a prefix/suffix of the full result set, so the agent saw
+        # fewer lines than rg reports. When such a tail pipe was present, accept
+        # displayed ⊆ rg-anchors (subset) and attach only the lines the agent
+        # actually saw — every one of which is still a real, verified rg match,
+        # so the anchors are never wrong, only fewer. Without a tail pipe we keep
+        # strict equality (any mismatch means the output was reshaped -> bail).
+        anchor_set = {(p, n) for p, n in anchors}
+        truncated = bool(_SAFE_TAIL_PIPE.search(command.strip()))
+        if truncated:
+            if not displayed <= anchor_set:
+                # Displayed lines that rg didn't report -> output was reshaped,
+                # not merely truncated. Can't trust it -> bail.
+                return None
+            # Attach only what the agent saw, in the order rg reported them.
+            keep = [(p, n) for (p, n) in anchors if (p, n) in displayed]
+        elif anchor_set != displayed:
             return None
+        else:
+            keep = anchors
 
         out: list[Match] = []
-        for mpath, line_no in anchors:
+        for mpath, line_no in keep:
             if mpath not in file_cache:
                 resolved = (self.cwd / mpath).resolve()
                 try:
