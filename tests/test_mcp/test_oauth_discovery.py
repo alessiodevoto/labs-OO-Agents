@@ -441,12 +441,14 @@ async def test_authorize_headless_without_prompt_raises_actionable_error(monkeyp
 
 
 def test_system_browser_available_false_when_no_browser(monkeypatch):
-    """Returns False when webbrowser.get() raises webbrowser.Error."""
+    """Returns False when webbrowser.get() raises AND no launcher executable is on PATH."""
 
     def raise_error():
         raise oauth.webbrowser.Error("no browser")
 
     monkeypatch.setattr(oauth.webbrowser, "get", raise_error)
+    # No xdg-open / sensible-browser / open / wslview launcher available either.
+    monkeypatch.setattr(oauth.shutil, "which", lambda name: None)
     assert oauth._system_browser_available() is False
 
 
