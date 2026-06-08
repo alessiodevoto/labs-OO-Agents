@@ -259,7 +259,10 @@ _MIN_RECOVERY_OUTPUT_TOKENS = 1024
 
 
 _PROMPT_TOKENS_RE = _re.compile(
-    r"(?:prompt|request)[^0-9]*(?:contains?|has)\s+(?:at\s+least\s+)?(\d[\d,]*)\s*(?:input\s+)?tokens",
+    r"(?:prompt|request)[^0-9]*"
+    # "contains/has N tokens" (OpenAI/NVIDIA) OR
+    # "is too long: N tokens" (Anthropic / Azure-Anthropic gateway)
+    r"(?:contains?|has|is\s+too\s+long\s*:?)\s+(?:at\s+least\s+)?(\d[\d,]*)\s*(?:input\s+)?tokens",
     _re.IGNORECASE,
 )
 
@@ -285,6 +288,10 @@ def _is_context_window_error(exc: BaseException) -> bool:
             or "context length" in msg
             or "context_length_exceeded" in msg
             or "context window" in msg
+            # Anthropic / Azure-Anthropic gateway phrasing, surfaced as a
+            # BadRequestError rather than a typed ContextWindowExceededError:
+            #   "prompt is too long: 1017198 tokens > 1000000 maximum"
+            or "prompt is too long" in msg
         ):
             return True
         cur = cur.__cause__ or cur.__context__
