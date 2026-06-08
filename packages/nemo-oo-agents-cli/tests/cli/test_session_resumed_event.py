@@ -76,37 +76,31 @@ async def test_on_handler_receives_event():
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_resume_without_snapshot_emits_restored_false(monkeypatch):
+async def test_resume_without_snapshot_emits_restored_false(monkeypatch):
     """-c on a session with no snapshot must emit restored=False, not True.
 
-    Regression: `restored` was set to `_resumed` ("the user passed -c"), which
-    lied when no snapshot was actually applied. We capture the event bootstrap
-    *itself* emits (by tee-ing EventManager.add) and assert that payload
-    directly — not a re-emitted one.
+    The emit now happens in build_registry() (after skills attach), so we drive
+    that path and capture the event it emits via a real subscriber.
     """
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui.bootstrap import build_registry
+
     from nemo_oo_agents.events import TuiSessionResumed
-    from nemo_oo_agents.runtime.event_manager import EventManager
-
-    captured: list = []
-    real_add = EventManager.add
-
-    def _tee_add(self, event, **kwargs):
-        if isinstance(event, TuiSessionResumed):
-            captured.append(event)
-        return real_add(self, event, **kwargs)
-
-    monkeypatch.setattr(EventManager, "add", _tee_add)
 
     # Fresh session first (resumable id, zero snapshots), then resume it:
-    # bootstrap restores nothing -> must emit restored=False.
+    # bootstrap restores nothing -> build_registry must emit restored=False.
     first = await bootstrap(Config())
     sid = first.session_id
-    captured.clear()  # drop the fresh-session emit; we want the resume one
 
-    await bootstrap(Config(), resume_session_id=sid)
+    resumed = await bootstrap(Config(), resume_session_id=sid)
+    assert resumed.restored is False  # no snapshot was applied
 
-    # The resume bootstrap emits exactly one TuiSessionResumed; whatever its
-    # session_id, it must report restored=False because no snapshot was applied
-    # (the requested session had none). Previously this wrongly emitted True.
+    captured: list = []
+    resumed.agent.event_manager.register_event_type(TuiSessionResumed)
+    resumed.agent.event_manager.on("TuiSessionResumed", lambda e: captured.append(e))
+
+    build_registry(resumed, MagicMock())
+
     assert len(captured) == 1, f"expected one resume emit, got {captured!r}"
     assert captured[0].restored is False
