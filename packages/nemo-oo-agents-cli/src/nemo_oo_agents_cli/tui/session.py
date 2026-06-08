@@ -588,6 +588,10 @@ class Session:
             pending_code=self._pending_code,
             colors=self._colors,
         )
+        # Snapshot the failing turn when a text-only drift happens, so /bug (and
+        # time-travel replay) have a restorable point. The renderer already
+        # printed the "/bug to capture" affordance; we just persist state here.
+        self._renderer.on_text_only_reply = self._on_text_only_reply
 
         # Replace Python's default asyncio exception handler with one
         # that surfaces every swallowed task exception into the TUI.
@@ -862,6 +866,29 @@ class Session:
             # path as a typed message so the user bar, session bookkeeping,
             # and agent dispatch stay consistent.
             self._app.submit_message(result.agent_message)
+
+    def _on_text_only_reply(self, event: Any) -> None:
+        """Snapshot the failing turn when the agent drifts to a text-only reply.
+
+        Snapshots are otherwise only taken at shutdown / session-swap, so a
+        text-only drift (the Opus-4.8 failure mode) would not be durably
+        captured. Persisting here means ``/bug`` and time-travel replay have a
+        restorable point that matches the failing turn. Best-effort: a failed
+        snapshot must not interfere with the live agent loop.
+        """
+        if self._session_manager is None:
+            return
+        storage = getattr(self.agent, "_storage", None)
+        if storage is None or not hasattr(storage, "save_snapshot"):
+            return
+        try:
+            app = self._app
+            if app is not None:
+                app.agent_run(lambda: storage.save_snapshot(self.agent))
+            else:
+                storage.save_snapshot(self.agent)
+        except Exception:
+            logger.debug("text-only-drift snapshot failed", exc_info=True)
 
     async def _on_bang(self, body: str) -> None:
         """Dispatch a ``!shell-command`` body (leading ``!`` already stripped)."""

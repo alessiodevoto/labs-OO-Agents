@@ -2402,6 +2402,175 @@ class ActivityCommand(Command):
             return None
 
 
+class BugCommand(Command):
+    """Capture the current session as a bug report and upload it to GitLab.
+
+    Opt-in: nothing is sent until the user runs ``/bug``. Snapshots the agent
+    so the live turn is restorable, copies the self-contained session ``.db``
+    (events + snapshots) via the SQLite backup API (WAL-safe), uploads it as a
+    GitLab attachment, and appends a comment to a rolling capture issue. The
+    ``.db`` is the complete, replayable artifact — no lossy re-derivation.
+    """
+
+    # Rolling issue all captures are appended to. Linked to the root-cause
+    # issue (#242). Resolved lazily via search so a fresh checkout still finds it.
+    _CAPTURE_ISSUE_TITLE = "Text-only drift captures (auto-collected via /bug)"
+
+    @property
+    def name(self) -> str:
+        return "bug"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/bug [note]": "Upload this session's .db to GitLab as a bug capture"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        # Free-form note allowed.
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        note = " ".join(args).strip()
+        if self.session_manager is None:
+            return CommandResult.err("No active session — nothing to capture.")
+
+        storage = getattr(self.agent, "_storage", None)
+        if storage is None or not hasattr(storage, "save_snapshot"):
+            return CommandResult.err("Session has no SQLite storage — cannot capture.")
+
+        # 1. Snapshot the live turn on the agent loop so the .db is current.
+        try:
+            self.agent_run(lambda: storage.save_snapshot(self.agent))
+        except Exception:
+            logger.debug("bug capture snapshot failed", exc_info=True)
+
+        # 2. Backup-copy the session .db (WAL-safe) to a temp file on disk — glab
+        #    attaches a file by path.
+        db_path = self.session_manager.agent_db_path
+        if not db_path.exists():
+            return CommandResult.err(f"Session DB not found at {db_path}.")
+        try:
+            tmp_db = await asyncio.to_thread(self._backup_db_to_temp, db_path)
+        except Exception as exc:  # noqa: BLE001
+            return CommandResult.err(f"Failed to copy session DB: {exc}")
+
+        # 3. Create a GitLab issue with the DB attached, via the glab CLI.
+        try:
+            issue_url = await asyncio.to_thread(self._upload_and_file, tmp_db, note)
+        except Exception as exc:  # noqa: BLE001
+            return CommandResult.err(f"{exc}")
+        finally:
+            try:
+                Path(tmp_db).unlink()
+            except OSError:
+                logger.debug("bug capture temp cleanup failed", exc_info=True)
+        return CommandResult.ok(TextOutput(f"Bug captured and filed → {issue_url}", "success"))
+
+    @staticmethod
+    def _backup_db_to_temp(db_path: "Path") -> str:
+        """Copy the live SQLite DB to a temp file via the backup API (WAL-safe).
+
+        Returns the temp file path; the caller is responsible for unlinking it.
+        Uses the backup API rather than a raw file copy so an open WAL doesn't
+        produce a half-written copy.
+        """
+        import sqlite3
+        import tempfile
+
+        # Name the temp copy after the session so the attachment is recognizable.
+        with tempfile.NamedTemporaryFile(
+            prefix=f"{db_path.stem}-", suffix=".db", delete=False
+        ) as tf:
+            tmp_path = tf.name
+        src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            dst = sqlite3.connect(tmp_path)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+        return tmp_path
+
+    def _upload_and_file(self, db_path_str: str, note: str) -> str:
+        """Create a GitLab issue with the session DB attached, via the ``glab`` CLI.
+
+        Uses ``glab`` rather than a Python GitLab client because not every host
+        has API credentials wired, but developers typically have ``glab``
+        authenticated. ``glab issue create`` has no file-attach flag, so the DB
+        is uploaded via the ``projects/:id/uploads`` API first (``glab api``),
+        and the returned markdown ref is embedded in the issue description.
+        Errors clearly if ``glab`` is not installed.
+        """
+        import json as _json
+        import shutil
+        import subprocess
+
+        if shutil.which("glab") is None:
+            raise RuntimeError(
+                "glab CLI not found — install it (https://gitlab.com/gitlab-org/cli) "
+                "and run `glab auth login` to use /bug."
+            )
+
+        # glab resolves the project (`:id`) from the git repo at cwd, so run it
+        # from the session's working dir (a real checkout), NOT the temp dir the
+        # .db lives in. Pass the DB by absolute path.
+        import os
+
+        repo_dir = getattr(self.session_manager, "working_dir", None) or os.getcwd()
+        db_abspath = str(Path(db_path_str).resolve())
+
+        # 1. Upload the DB to the project's uploads endpoint; -F file=@path sends
+        #    multipart.
+        up = subprocess.run(
+            ["glab", "api", "projects/:id/uploads", "-F", f"file=@{db_abspath}"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if up.returncode != 0:
+            raise RuntimeError(
+                f"glab upload failed (exit {up.returncode}): {(up.stderr or up.stdout).strip()}"
+            )
+        try:
+            markdown = _json.loads(up.stdout)["markdown"]
+        except (ValueError, KeyError) as exc:
+            raise RuntimeError(f"could not parse glab upload response: {exc}") from exc
+
+        # 2. Create the issue with the attachment markdown in the description.
+        model = getattr(self.session_manager, "model", "") or "unknown"
+        header = note or "(no note)"
+        body = (
+            f"**Capture** — model `{model}`\n\n"
+            f"{header}\n\n"
+            f"Session DB (events + snapshots — replayable): {markdown}\n\n"
+            f"Related: CodeAct text-only reply recovery (#242)."
+        )
+        proc = subprocess.run(
+            [
+                "glab",
+                "issue",
+                "create",
+                "--title",
+                f"{self._CAPTURE_ISSUE_TITLE} — {model}",
+                "--description",
+                body,
+            ],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"glab issue create failed (exit {proc.returncode}): "
+                f"{(proc.stderr or proc.stdout).strip()}"
+            )
+        url = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
+        return url or "(issue created)"
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -2431,6 +2600,7 @@ class CommandRegistry:
         "trace-url": TraceUrlCommand,
         "toolbar": ToolbarCommand,
         "activity": ActivityCommand,
+        "bug": BugCommand,
     }
 
     def __init__(

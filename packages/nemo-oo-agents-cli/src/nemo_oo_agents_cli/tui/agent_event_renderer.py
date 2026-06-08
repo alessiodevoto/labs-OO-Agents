@@ -95,6 +95,10 @@ class AgentEventRenderer:
         self._colors = colors
         self._unsubscribes: list[Callable[[], None]] = []
         self._agent_has_messaged = False
+        # Set by Session.run(): called on each TextOnlyReply so the session can
+        # snapshot the failing turn and offer the /bug capture affordance. The
+        # renderer stays storage-agnostic — it just forwards the event.
+        self.on_text_only_reply: Callable[[Any], None] | None = None
         # Assigned by attach() with whatever was on agent._render_message
         # before; detach() restores to this value. Declaring it here
         # means detach() can read it without a defensive getattr and
@@ -120,6 +124,7 @@ class AgentEventRenderer:
                 em.on("ToolCallEvent", self._on_tool_call),
                 em.on("PythonOutput", self._on_python_output),
                 em.on("Summary", self._on_summary),
+                em.on("TextOnlyReply", self._on_text_only_reply),
             ]
         )
         # Chain onto any prior hook so we don't silently stomp observers.
@@ -296,3 +301,26 @@ class AgentEventRenderer:
             verb = "summarized"
 
         self._emit_text(Text(f"∴ {verb} {tag} · {detail}", style="dim italic"))
+
+    def _on_text_only_reply(self, event: Any) -> None:
+        """Render a drift notice and forward to the session capture hook.
+
+        A text-only drift (model replied with no tool call) is shown live so
+        the user can catch it, then forwarded to ``on_text_only_reply`` (set by
+        Session) which snapshots the failing turn and offers ``/bug`` capture.
+        """
+        recovered = getattr(event, "recovered", False)
+        n = getattr(event, "consecutive_text_only", 0)
+        state = "recovered" if recovered else f"#{n}"
+        self._emit_text(
+            Text(
+                f"⚠ agent replied without a tool call ({state}). "
+                f"Run /bug to capture this for the framework team.",
+                style="yellow",
+            )
+        )
+        if self.on_text_only_reply is not None:
+            try:
+                self.on_text_only_reply(event)
+            except Exception:
+                pass
