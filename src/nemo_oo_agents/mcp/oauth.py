@@ -890,6 +890,7 @@ async def handle_mcp_oauth(
     code_prompt: "Callable[[str], Awaitable[str]] | None" = None,
     browser_open: "Callable[[str], Awaitable[bool]] | None" = None,
     use_cache: bool = True,
+    timeout: float | None = None,
 ) -> OAuthToken:
     """Handle OAuth flow for MCP server, reusing a cached token when possible.
 
@@ -986,6 +987,11 @@ async def handle_mcp_oauth(
         redirect_uri=redirect_uri,
         scope=scope,
         registration_endpoint=registration_endpoint,
+        # Caller-supplied timeout overrides the OAuthConfig default (300s); this
+        # is the single authoritative OAuth wait — the local callback server's
+        # serve loop polls every 1s and exits on it, so there is no orphaned
+        # thread to leak.
+        **({"timeout": timeout} if timeout is not None else {}),
     )
 
     handler = OAuthHandler(

@@ -75,21 +75,45 @@ class MCPRegistry(Skill):
     ``.nemo_oo_agents/config.toml`` (see ``self.tui_config``) or a VS Code /
     Claude-style ``.mcp.json``; ``register`` is in-memory only.
 
-    ## OAuth & headless
+    ## OAuth: what the AGENT can do vs. what the HUMAN must do
 
     HTTP servers that return 401 trigger an OAuth flow (RFC 9728 / dynamic
-    client registration) on first connect. Pass auth knobs to ``register`` or
-    ``connect``:
+    client registration) on first connect. **OAuth consent is inherently a
+    human action** — the agent cannot click "Approve" in a browser. Know which
+    side of the line each step is on:
 
-    - ``oauth_client_id`` / ``oauth_scope`` — explicit client credentials.
-    - ``oauth_manual=True`` — out-of-band flow: print a markdown auth link and
-      read the pasted authorization code or full callback URL. Use this on
-      headless hosts with no system browser.
-    - ``oauth_open_browser`` — auto-open the system browser (default True);
-      falls back to manual when no browser is available.
+    **The agent CAN, unattended:**
+
+    - ``register(...)`` a server and ``connect``/``activate``/``deactivate`` it.
+    - Reconnect a server whose token is already **cached** (a prior successful
+      auth in this environment) — no human needed; the cached token is reused.
+    - Pass auth knobs: ``oauth_client_id``/``oauth_scope`` (pre-provisioned
+      client), ``headers={"Authorization": ...}`` (static API key — no OAuth at
+      all). A static-key or pre-authorized server connects fully unattended.
+
+    **The HUMAN MUST do (agent cannot substitute):**
+
+    - **Grant first-time OAuth consent.** On a 401 with no cached token, a real
+      person has to open the consent URL, approve, and let the callback return.
+      The agent can *surface* the URL (``oauth_manual=True`` prints a markdown
+      link and reads the pasted code/callback) but cannot approve on the user's
+      behalf. Prefer letting the human drive ``/mcp connect <name>`` so a single
+      flow runs start-to-finish — OAuth codes are single-use, and a half-finished
+      agent-driven flow burns the code (causing a confusing 401 on retry).
+    - **Be present for the browser handoff.** ``oauth_open_browser`` (default
+      True) opens the system browser; it falls back to manual when none exists.
+      Either way a human completes consent.
+
+    **Timeout / no-hang guarantee.** ``connect`` bounds the OAuth wait with
+    ``oauth_timeout`` (default 180s) — a never-returning browser callback raises
+    a clear ``TimeoutError`` telling the user to retry, rather than wedging the
+    agent indefinitely. Pass ``on_connecting=cb`` to surface "launching browser
+    for <name>..." feedback *before* the wait begins (the UI must not look
+    frozen while the user is sent to a browser).
 
     Tokens are cached with the dynamically registered client credentials, so
-    later connects in the same environment skip the prompt.
+    later connects in the same environment skip the prompt — the *second* connect
+    is something the agent can do unattended.
 
     ## Developer API
 
@@ -215,6 +239,11 @@ class MCPRegistry(Skill):
         self._servers: dict[str, dict[str, Any]] = dict(servers or {})
         self._connected: dict[str, Any] = {}
         self._activated: set[str] = set()
+        # Servers whose connect() is currently in-flight — guards against a
+        # retry spawning a second concurrent create_from_server (and second
+        # browser window / racing token-cache write) while the first to_thread
+        # is still running after a wait_for timeout (the thread keeps going).
+        self._pending: set[str] = set()
         super().__init__()
 
     # ------------------------------------------------------------------
@@ -286,6 +315,8 @@ class MCPRegistry(Skill):
         patterns: list[str],
         *,
         oauth_code_prompt: Callable[[str], Awaitable[str]] | None = None,
+        oauth_timeout: float = 180.0,
+        on_connecting: Callable[[str], None] | None = None,
         activate: bool = True,
         **kwargs: Any,
     ) -> list[str]:
@@ -308,17 +339,41 @@ class MCPRegistry(Skill):
         for name in sorted(matched):
             if name in self._connected:
                 continue
-            # Outer to_thread keeps the prompt_toolkit UI loop painting during
-            # OAuth waits (see !373); create_from_server itself is sync and may
-            # spawn its own executor when a loop is already running.
-            tool = await asyncio.to_thread(
-                MCPManager.create_from_server,
-                name,
-                mcp_file=self._mcp_file,
-                servers=self._servers,
-                oauth_code_prompt=oauth_code_prompt,
-                **kwargs,
-            )
+            # In-flight guard: prevent a retry from starting a SECOND concurrent
+            # connect for the same server while a prior attempt is still waiting
+            # on OAuth — that would race token-cache writes, duplicate client
+            # registrations, or open two browser windows.
+            if name in self._pending:
+                raise RuntimeError(
+                    f"Connect to {name!r} is already in progress (a prior attempt "
+                    f"may still be waiting on OAuth). Wait for it to finish or time "
+                    f"out before retrying."
+                )
+            # Feedback BEFORE the (possibly long, browser-launching) OAuth wait —
+            # otherwise the UI looks frozen while the user is sent to a browser.
+            if on_connecting is not None:
+                on_connecting(name)
+            self._pending.add(name)
+            try:
+                # Outer to_thread keeps the prompt_toolkit UI loop painting during
+                # OAuth waits (see !373). The OAuth wait itself is bounded by a
+                # SINGLE authoritative timeout owned by the OAuth layer: the local
+                # callback server polls every 1s and exits on it, so there is no
+                # orphaned thread — we pass oauth_timeout straight down rather than
+                # stacking a second wait_for here.
+                create_kwargs = dict(kwargs)
+                if oauth_timeout is not None:
+                    create_kwargs["oauth_timeout"] = oauth_timeout
+                tool = await asyncio.to_thread(
+                    MCPManager.create_from_server,
+                    name,
+                    mcp_file=self._mcp_file,
+                    servers=self._servers,
+                    oauth_code_prompt=oauth_code_prompt,
+                    **create_kwargs,
+                )
+            finally:
+                self._pending.discard(name)
             self._attach(name, tool)
             newly.append(name)
         if activate and newly:

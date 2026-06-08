@@ -685,6 +685,7 @@ class MCPManager:
         oauth_manual: bool | None = None,
         oauth_code_prompt: Callable[[str], Awaitable[str]] | None = None,
         oauth_browser_open: Callable[[str], Awaitable[bool]] | None = None,
+        oauth_timeout: float | None = None,
         mcp_file: Path | None = None,
         servers: dict[str, dict[str, Any]] | None = None,
     ) -> MCPTool:
@@ -795,6 +796,7 @@ class MCPManager:
                             manual=oauth_manual,
                             code_prompt=oauth_code_prompt,
                             browser_open=oauth_browser_open,
+                            timeout=oauth_timeout,
                         )
                     )
                     headers["Authorization"] = f"{token.token_type} {token.access_token}"
