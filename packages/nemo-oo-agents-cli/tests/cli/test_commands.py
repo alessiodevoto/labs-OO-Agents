@@ -1213,3 +1213,33 @@ def test_refresh_skill_commands_updates_to_fresh_set(registry):
 
     assert registry.get_user_skill("old") is None
     assert registry.get_user_skill("new") is not None
+
+
+def test_refresh_skill_commands_updates_output_to_agent_metadata(registry):
+    """Hot reload must replace stale slash metadata, not just method refs."""
+    from nemo_oo_agents_cli.tui.commands import _UserSkill
+
+    registry._user_skills["mesh-list"] = _UserSkill(
+        name="mesh-list",
+        body="",
+        description="stale command",
+        output_to_agent=True,
+        _method=lambda: "old",
+    )
+
+    fresh_cmd = _UserSkill(
+        name="mesh-list",
+        body="",
+        description="fresh command",
+        output_to_agent=False,
+        _method=lambda: "new",
+    )
+    registry._discover_skill_commands = lambda: {"mesh-list": fresh_cmd}
+
+    registry.refresh_skill_commands()
+
+    skill = registry.get_user_skill("mesh-list")
+    assert skill is not None
+    assert skill.description == "fresh command"
+    assert skill.output_to_agent is False
+    assert skill._method() == "new"
