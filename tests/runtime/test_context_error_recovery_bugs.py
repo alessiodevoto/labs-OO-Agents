@@ -254,3 +254,93 @@ class TestContextWindowErrorDetection:
         exc.__cause__ = cause
 
         assert _is_context_window_error(exc)
+
+
+class TestAnthropicPromptTooLongFormat:
+    """Anthropic/Azure gateway 'prompt is too long' overflow must be recognized + parsed.
+
+    Reproduces session d2a3557e: the gateway returned
+        litellm.BadRequestError: ... {"type":"invalid_request_error",
+        "message":"prompt is too long: 1017198 tokens > 1000000 maximum"}
+    which is NOT a typed ContextWindowExceededError and whose wording matched
+    neither _is_context_window_error's substrings nor _PROMPT_TOKENS_RE. The
+    context-too-long fallback therefore never fired.
+    """
+
+    def test_detect_prompt_is_too_long(self):
+        """'prompt is too long' must be recognized as a context-window error."""
+        from nemo_oo_agents.runtime.actor import _is_context_window_error
+
+        exc = Exception(
+            "litellm.BadRequestError: OpenAIException - litellm.BadRequestError: "
+            'Azure_aiException - {"type":"error","error":{"type":"invalid_request_error",'
+            '"message":"prompt is too long: 1017198 tokens > 1000000 maximum"}}'
+        )
+        assert _is_context_window_error(exc)
+
+    def test_parse_prompt_is_too_long(self):
+        """'prompt is too long: N tokens > M maximum' must yield N."""
+        exc = Exception("prompt is too long: 1017198 tokens > 1000000 maximum")
+        assert _parse_prompt_tokens(exc) == 1017198
+
+    def test_parse_prompt_is_too_long_wrapped(self):
+        """Wrapped litellm/azure payload must still yield the prompt token count."""
+        exc = Exception(
+            "litellm.BadRequestError: OpenAIException - litellm.BadRequestError: "
+            'Azure_aiException - {"type":"error","error":{"type":"invalid_request_error",'
+            '"message":"prompt is too long: 1017198 tokens > 1000000 maximum"}}'
+        )
+        assert _parse_prompt_tokens(exc) == 1017198
+
+    @pytest.mark.asyncio
+    async def test_archival_fires_on_anthropic_prompt_too_long(self):
+        """End-to-end: the Anthropic 'prompt is too long' overflow now triggers
+        the context-too-long fallback (archival), instead of re-raising untouched.
+
+        This is the regression from session d2a3557e where the fallback never fired.
+        """
+        from unittest.mock import patch
+
+        from nemo_oo_agents import Agent
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import _current_llm_var, _current_method_var
+
+        llm = _mk_llm(1_000_000)
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for i in range(20):
+            agent.event_manager.add(Message(content=f"message {i} " * 50))
+
+        n_events_before = len(list(agent.event_manager.keys()))
+
+        error = _ContextWindowExceededError(
+            "litellm.BadRequestError: OpenAIException - litellm.BadRequestError: "
+            'Azure_aiException - {"type":"error","error":{"type":"invalid_request_error",'
+            '"message":"prompt is too long: 1017198 tokens > 1000000 maximum"}}'
+        )
+
+        summary_events = []
+        agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=error):
+                with pytest.raises(_ContextWindowExceededError):
+                    await agent.runtime.generate(tools=[], max_tokens=None)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+        n_events_after = len(list(agent.event_manager.keys()))
+        assert n_events_after < n_events_before, (
+            f"Archival should fire for 'prompt is too long': {n_events_after} >= {n_events_before}. "
+            f"Summary events: {len(summary_events)}"
+        )
+        assert len(summary_events) >= 1, "Archival should emit Summary events"
