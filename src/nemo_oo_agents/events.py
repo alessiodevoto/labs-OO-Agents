@@ -115,6 +115,46 @@ class Feedback(EventBase):  # type: ignore[misc]
     content: Annotated[str, Field(description="Execution feedback content")]
 
 
+class TextOnlyReply(EventBase):  # type: ignore[misc]
+    """A turn where the LLM replied with plain text instead of a tool call.
+
+    Recorded (so it lands in the events table and is queryable / replayable)
+    but ``Role.METADATA`` — never rendered to the model, so capturing a
+    text-only reply does not change generation. This is the durable, structured record that
+    powers ``/bug`` capture and time-travel replay; the model-visible
+    correction is a separate ``Error``/``Feedback`` event (``Role.USER``).
+
+    Replaces the lossy ``DebugTrace`` previously written on the CodeAct
+    text-only path, which truncated the content and could not be relied on by
+    downstream consumers.
+    """
+
+    _role: ClassVar[Role] = Role.METADATA
+
+    content: Annotated[
+        str, spec(max_string=None), Field(description="Verbatim text the model emitted")
+    ] = ""
+    finish_reason: Annotated[
+        str, Field(description="LLM finish_reason for the text-only turn (e.g. 'stop')")
+    ] = ""
+    route: Annotated[
+        str,
+        Field(description="Handling route: 'return_result' or 'synthetic_reasoning'"),
+    ] = ""
+    consecutive_text_only: Annotated[
+        int, Field(description="Count of consecutive text-only turns including this one")
+    ] = 0
+    recovered: Annotated[
+        bool,
+        Field(
+            description=(
+                "Set True on a later turn if the model issued a real tool call "
+                "after this text-only reply (i.e. the corrective feedback worked)."
+            )
+        ),
+    ] = False
+
+
 class LLMOutput(EventBase):  # type: ignore[misc]
     """Raw LLM output - code (PURE_PYTHON), JSON (STRUCTURED_OUTPUT), or tool calls (CODEACT)."""
 
@@ -555,6 +595,7 @@ Event = (
     | TuiSessionCleared
     | LLMComplete
     | SystemPrompt
+    | TextOnlyReply
 )
 
 

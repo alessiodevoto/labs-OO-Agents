@@ -50,6 +50,7 @@ from nemo_oo_agents.events import (
     PythonOutput,
     Reasoning,
     Task,
+    TextOnlyReply,
 )
 from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
@@ -519,6 +520,47 @@ Standard Python builtins and agent instance (`self`) are available."""
         """{reason} Use `execute_python(code)` to run code, or `return_result(...)` to submit your answer."""
         ...
 
+    @staticmethod
+    def _add_text_only_correction(runtime: RuntimeServices, call: "CurrentCall") -> None:
+        """Add a model-visible correction after a text-only turn.
+
+        Mirrors PredictStrategy's validation-retry feedback (``Error``,
+        ``Role.USER``): instead of silently dropping the turn, tell the model
+        what it did and what to do, so it self-corrects on the next turn. The
+        consecutive-text-only backstop still aborts after repeated text-only replies.
+        """
+        runtime.event_manager.add(
+            Error(
+                content=(
+                    f"Your last reply was plain text with no tool call, so it was "
+                    f"dropped — a bare message cannot end the turn or run code. "
+                    f"To finish `{call.method_name}`, call `return_result(value)`. "
+                    f"To do more work, call `execute_python(code)`. "
+                    f"Re-issue your response now as one of those tool calls."
+                )
+            )
+        )
+
+    @staticmethod
+    def _mark_text_only_recovered(runtime: RuntimeServices) -> None:
+        """Flip the most recent unrecovered ``TextOnlyReply`` to recovered=True.
+
+        Called when a real tool call lands after one or more text-only replies —
+        the correction worked. Lets capture/replay distinguish benign,
+        self-corrected replies from ones that needed an abort.
+        """
+        # Flip every unrecovered text-only reply since the last real progress,
+        # not just the most recent — multiple consecutive ones can precede a
+        # single tool call, and all were rescued by it. Stop at the first
+        # already-recovered one (older runs are already resolved).
+        for tag in reversed(runtime.event_manager.keys()):
+            event = runtime.event_manager.get(tag)
+            if not isinstance(event, TextOnlyReply):
+                continue
+            if event.recovered:
+                break
+            runtime.event_manager.update(tag, recovered=True)
+
     @strategy(TemplateStrategy())
     async def _build_task_message(
         self, runtime: RuntimeServices, original_call: "CurrentCall"
@@ -719,6 +761,8 @@ Standard Python builtins and agent instance (`self`) are available."""
                     # A real tool call counts as progress: reset the consecutive
                     # text-only guard (issue 185) before executing, so a single
                     # exec mid-stream rescues the run from accidental drift.
+                    if session.consecutive_text_only > 0:
+                        self._mark_text_only_recovered(runtime)
                     session.reset_text_only()
                     result = await self._process_tool_calls(
                         tool_calls,
@@ -757,14 +801,16 @@ Standard Python builtins and agent instance (`self`) are available."""
                     and (_has_text or not _raw_content)
                 ):
                     session.record_iteration()
-                    # Preserve LLM output for trace visibility before removing
-                    runtime.event_manager.add(
-                        DebugTrace(
-                            content=(
-                                f"Removed LLM output (text-only stop, routing to return_result): "
-                                f"finish_reason={response.finish_reason!r}, "
-                                f"content({len(_text)} chars)={_text!r}"
-                            )
+                    # Capture the drift faithfully for /bug + replay (recorded but
+                    # Role.METADATA, so it never reaches the model). Replaces the
+                    # old lossy DebugTrace; preserves the verbatim content (even
+                    # when empty) before the offending event is removed.
+                    drift_tag = runtime.event_manager.add(
+                        TextOnlyReply(
+                            content=_text,
+                            finish_reason=str(response.finish_reason),
+                            route="return_result",
+                            consecutive_text_only=session.consecutive_text_only + 1,
                         )
                     )
                     runtime.event_manager.remove(event_id)
@@ -791,12 +837,20 @@ Standard Python builtins and agent instance (`self`) are available."""
                         event_id or "",
                     )
                     if result.completed:
+                        # Recovered via the synthetic return_result — the drift was
+                        # benign. Mark it so capture/replay can distinguish recovered
+                        # drifts from ones that needed a correction.
+                        runtime.event_manager.update(drift_tag, recovered=True)
                         turn_state.success = True
                         turn_state.is_final = True
                         self._sync_session_locals(call, session)
                         return result.final_value
-                    # Validation failed — track consecutive stops and abort if threshold.
+                    # Validation failed — give the model a visible correction (the
+                    # PredictStrategy pattern: a Role.USER event it sees on the next
+                    # turn) instead of silently dropping the turn, then continue.
+                    # The abort below is only a backstop for repeated non-compliance.
                     session.record_text_only()
+                    self._add_text_only_correction(runtime, call)
                     max_text_only = self.config.max_consecutive_text_only
                     if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
                         get_harness_metrics().text_only_loop_abort()
@@ -810,20 +864,22 @@ Standard Python builtins and agent instance (`self`) are available."""
                             f"it must call `return_result(...)` to finish. "
                             f"Last text: {preview!r}"
                         )
+
                     continue
 
                 # Route B: "synthetic_reasoning" mode — convert text to a no-op
                 # execute_python(reasoning(...)) call that preserves content in traces.
                 elif _has_text:
                     session.record_iteration()
-                    # Preserve LLM output for trace visibility before removing
+                    # Capture the drift faithfully for /bug + replay (recorded but
+                    # Role.METADATA, never shown to the model). Replaces the old
+                    # lossy DebugTrace.
                     runtime.event_manager.add(
-                        DebugTrace(
-                            content=(
-                                f"Removed LLM output (text-only, converting to synthetic reasoning): "
-                                f"finish_reason={response.finish_reason!r}, "
-                                f"content({len(_text)} chars)={_text!r}"
-                            )
+                        TextOnlyReply(
+                            content=_text,
+                            finish_reason=str(response.finish_reason),
+                            route="synthetic_reasoning",
+                            consecutive_text_only=session.consecutive_text_only + 1,
                         )
                     )
                     runtime.event_manager.remove(event_id)
@@ -854,7 +910,12 @@ Standard Python builtins and agent instance (`self`) are available."""
                         f"[CODEACT] Text-only response ({len(_text)} chars) "
                         f"converted to synthetic reasoning() call."
                     )
-                    # Track consecutive text-only and abort if threshold reached.
+                    # No extra Error correction here: Route B already injects a
+                    # synthetic execute_python(reasoning(...)) whose ToolResult tells
+                    # the model the task isn't finished. Adding a "your reply had no
+                    # tool call" Error would contradict that synthetic tool call and
+                    # confuse the model. The backstop below still aborts on repeated
+                    # non-compliance.
                     session.record_text_only()
                     max_text_only = self.config.max_consecutive_text_only
                     if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
