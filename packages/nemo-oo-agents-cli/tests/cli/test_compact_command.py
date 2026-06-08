@@ -159,8 +159,14 @@ async def test_compact_empty_history(handler, mock_agent):
 
 
 @pytest.mark.asyncio
-async def test_compact_stops_thinking_on_failure(handler, mock_agent, mock_frontend):
-    """Spinner must be stopped even when summarization fails."""
+async def test_compact_no_rich_live_spinner(handler, mock_agent, mock_frontend):
+    """No rich.live spinner during summarization — it flickers layered on the pt app.
+
+    Regression: /compact used frontend.start_thinking() (a rich.live.Live at ~10fps)
+    on top of prompt_toolkit's full-screen app, repainting through emit_block /
+    run_in_terminal and fighting pt's own status spinner = visible flicker. The
+    progress indicator is now a single static status block.
+    """
     summarizer = MagicMock()
     summarizer._render_range_to_markdown = MagicMock(return_value="# History")
     summarizer.summarize = AsyncMock(side_effect=RuntimeError("boom"))
@@ -168,5 +174,8 @@ async def test_compact_stops_thinking_on_failure(handler, mock_agent, mock_front
 
     await handler.handle("/compact")
 
-    mock_frontend.start_thinking.assert_called_once()
-    mock_frontend.stop_thinking.assert_called_once()
+    mock_frontend.start_thinking.assert_not_called()
+    mock_frontend.stop_thinking.assert_not_called()
+    # A single static "Summarizing history…" status line is rendered instead.
+    rendered = [c.args[0] for c in mock_frontend.render.call_args_list if c.args]
+    assert any(isinstance(o, TextOutput) and "Summarizing history" in o.content for o in rendered)

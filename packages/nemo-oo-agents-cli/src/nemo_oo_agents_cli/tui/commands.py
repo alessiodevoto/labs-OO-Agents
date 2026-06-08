@@ -990,8 +990,15 @@ class CompactCommand(Command):
             summarizer = summarizers[0]
             start_tag = tags[0]
             end_tag = tags[-1]
+            # A static status line — not start_thinking(). The latter spins a
+            # rich.live.Live (~10 fps) layered on top of prompt_toolkit's
+            # full-screen app; each repaint hops through emit_block /
+            # run_in_terminal and fights pt's own status spinner, which the
+            # user sees as flicker. Compaction runs on the UI loop (a command,
+            # not an agent turn) so the native "thinking…" status never shows
+            # anyway — one status block plus the result block is enough.
+            await self.frontend.render(TextOutput("Summarizing history\u2026", "info"))
             try:
-                await self.frontend.start_thinking("Summarizing history\u2026")
                 history_md = summarizer._render_range_to_markdown(start_tag, end_tag)
                 target_chars = getattr(getattr(summarizer, "config", None), "target_chars", 2000)
                 summary_text = await summarizer.summarize(history_md, target_chars)
@@ -1015,8 +1022,6 @@ class CompactCommand(Command):
                         "warning",
                     )
                 )
-            finally:
-                await self.frontend.stop_thinking()
 
         self.agent_run(lambda: self.agent.event_manager.clear())
         tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
