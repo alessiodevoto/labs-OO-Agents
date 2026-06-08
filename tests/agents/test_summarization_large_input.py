@@ -1,27 +1,20 @@
-"""Regression tests for issue 180.
+"""Regression tests for issue 180 and summarizer input sizing.
 
-`TokenBudgetSummarizer.summarize()` must accept arbitrarily large input —
+`TokenBudgetSummarizer.summarize()` must accept large rendered history —
 its purpose is to compress oversized history. Before this fix the default
-PredictConfig.max_param_chars=200_000 + TruncationConfig defaults rejected
-anything past those bounds, causing the summarizer to silently fail with
-a WARNING and leaving history uncompressed (catch-22).
+PredictConfig.max_param_chars=200_000 rejected large histories, causing the
+summarizer to silently fail with a WARNING and leaving history uncompressed
+(catch-22).
 
-These tests pin the per-method @strategy / truncation overrides on
-SummarizationAgent.summarize so future refactors don't quietly reintroduce
-the bug.
+Do not add a method-wide TruncationConfig override here: issue 243 showed
+that strategy-level truncation re-renders unrelated call history for the
+child summarizer prompt and can itself cause prompt-too-long failures.
 """
 
-from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent
+from nemo_oo_agents.agents import SummarizationAgent
 from nemo_oo_agents.config.strategy_config import PredictConfig
 from nemo_oo_agents.strategies.current_call import CurrentCall
 from nemo_oo_agents.strategies.predict import PredictStrategy
-
-
-def _assert_format_unconstrained(fc) -> None:
-    """All three structural bounds must be ``None`` (unconstrained)."""
-    assert fc.max_string is None
-    assert fc.max_length is None
-    assert fc.max_depth is None
 
 
 def test_summarize_strategy_override_present():
@@ -37,32 +30,16 @@ def test_summarize_strategy_override_present():
     assert override.config.max_param_chars is None
 
 
-def test_summarize_truncation_override_present():
-    """_strategy_truncation is set on the wrapper directly (decorators.py:128).
+def test_summarize_has_no_method_wide_truncation_override():
+    """The summarizer must not override truncation for the whole child prompt.
 
-    All structural bounds on prefill_format and event_format must be lifted.
-    ``None`` is the framework's "unconstrained" sentinel (matching pformat's
-    max_string=None semantics).
+    `max_param_chars=None` keeps the explicit `history_markdown` argument from
+    being rejected before the call. A method-level TruncationConfig is broader:
+    it also re-renders all context events inherited by the child agent. That
+    caused issue 243's prompt-too-long failure, so the summarizer must leave
+    method-wide truncation unset.
     """
-    tc = SummarizationAgent.summarize._strategy_truncation
-    assert tc is not None
-    _assert_format_unconstrained(tc.prefill_format)
-    _assert_format_unconstrained(tc.event_format)
-
-
-def test_method_summarizer_inherits_overrides():
-    """MethodSummarizer inherits summarize() from SummarizationAgent.
-
-    Same identity-level test on both attribute paths to lock the inheritance
-    contract (the override is on the base class, not redefined per subclass).
-    """
-    inner = MethodSummarizer.summarize.__wrapped__
-    assert inner._strategy_override.config.max_param_chars is None
-
-    tc = MethodSummarizer.summarize._strategy_truncation
-    assert tc is not None
-    _assert_format_unconstrained(tc.prefill_format)
-    _assert_format_unconstrained(tc.event_format)
+    assert SummarizationAgent.summarize._strategy_truncation is None
 
 
 def _summarizer_call(history_markdown: str) -> CurrentCall:

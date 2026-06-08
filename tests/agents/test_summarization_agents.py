@@ -13,6 +13,7 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
 from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
 from nemo_oo_agents.events import AfterTurn, Message
 from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
@@ -124,6 +125,32 @@ class TestSummarizationAgentBase:
         assert len(events) == 3
         assert events[0][0] == "1"
         assert events[-1][0] == "3"
+
+    def test_render_range_to_markdown_uses_parent_event_format(self, fake_llm):
+        """Summarizer source markdown preserves the parent agent's event bounds."""
+
+        class BoundedAgent(
+            Agent,
+            llm=fake_llm,
+            truncation=TruncationConfig(
+                event_format=FormatConfig(max_string=25, max_length=10, max_depth=5)
+            ),
+        ):
+            pass
+
+        agent = BoundedAgent()
+        agent.event_manager.add(Message(content="x" * 200))
+        summarizer = SummarizationAgent(agent)
+
+        rendered = summarizer._render_range_to_markdown("1", "1")
+
+        assert "str(len=200" in rendered
+        assert "x" * 100 not in rendered
+
+    def test_summarize_has_no_method_wide_truncation_override(self):
+        """A large history parameter must not unbound-render unrelated context events."""
+        method = getattr(SummarizationAgent.summarize, "__func__", SummarizationAgent.summarize)
+        assert getattr(method, "_strategy_truncation", None) is None
 
 
 # =============================================================================
