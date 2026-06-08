@@ -446,7 +446,15 @@ class ShellTools5(Skill):
         # displayed output reported (when that output is the standard file:line:
         # format). If the displayed output isn't in that shape, we can't verify
         # -> attach nothing.
-        displayed = self._displayed_anchor_lines(displayed_stdout)
+        #
+        # Single explicit file: grep omits the filename, so its output is
+        # ``line:...`` (no path). The path is known a priori from the parsed
+        # command, so pass it in to let line-only output reconcile against the
+        # one file we searched.
+        single_file = paths[0] if len(paths) == 1 and not paths[0].endswith("/") else None
+        if single_file and single_file.startswith("./"):
+            single_file = single_file[2:]
+        displayed = self._displayed_anchor_lines(displayed_stdout, single_file=single_file)
         if displayed is None:
             # The command's own output isn't in verifiable file:line: form
             # (e.g. grep without -n). Can't cross-check -> attach nothing.
@@ -469,12 +477,20 @@ class ShellTools5(Skill):
         return out
 
     @staticmethod
-    def _displayed_anchor_lines(stdout: str) -> set[tuple[str, int]] | None:
+    def _displayed_anchor_lines(
+        stdout: str, *, single_file: str | None = None
+    ) -> set[tuple[str, int]] | None:
         """Parse `path:line:...` from the agent's own output, or None if not that shape.
 
         Returns the set of (path, line) the command itself reported. Used to
-        verify the rg anchors match what the agent saw. If no line is in
-        file:line: form (e.g. grep without -n), returns None -> unverifiable.
+        verify the rg anchors match what the agent saw.
+
+        ``single_file`` is the one explicit file the search targeted, if any.
+        grep omits the filename when searching a single file, so its output is
+        ``line:...`` (no path); when we know that file a priori we accept the
+        line-only form and attribute every line to ``single_file``. Without it,
+        line-only output (e.g. grep without -n, or an unknowable path) returns
+        None -> unverifiable.
         """
         found: set[tuple[str, int]] = set()
         any_line = False
@@ -483,6 +499,12 @@ class ShellTools5(Skill):
             m = re.match(r"^(?:\./)?([^:]+):(\d+):", ln)
             if m:
                 found.add((m.group(1), int(m.group(2))))
+            elif single_file is not None:
+                # Single-file grep: "line:content" with no path. Attribute it
+                # to the known file so it reconciles with the rg anchors.
+                lm = re.match(r"^(\d+):", ln)
+                if lm:
+                    found.add((single_file, int(lm.group(1))))
         if not any_line:
             return set()  # no output -> no matches, verifiable as empty
         if not found:

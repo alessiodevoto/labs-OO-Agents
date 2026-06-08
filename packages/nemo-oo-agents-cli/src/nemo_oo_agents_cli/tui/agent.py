@@ -698,10 +698,12 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.libwriting", self.libs)
         self.skills.activate(["nemo.*"])
 
-        # The shell's API surface is stable across the session, so pin it as a
-        # STATIC block (computed once, lives in the cacheable system-prompt
-        # prefix) rather than a per-turn dynamic block.
-        self.context_manager.set_static("shell", doc(type(self.shell)))
+        # Render the shell's API surface from the *live* shell type each turn.
+        # A dynamic block (re-evaluated per turn) instead of a static one: the
+        # default shell class can change (e.g. ShellTools3 -> ShellTools5), and a
+        # static block computed once at construction would pin a stale doc for
+        # the wrong class. The expr is cheap (a cached doc() of a stable type).
+        self.context_manager.set_dynamic("shell", "doc(type(self.shell))")
 
         # Skills register their own context blocks via context_block class attr
 

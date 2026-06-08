@@ -151,6 +151,38 @@ async def test_grep_without_n_is_unverifiable(repo: Path):
     assert r.matches is None
 
 
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "grep -n 'foo' a.py",  # single explicit file: grep omits the path
+        "grep -rn 'foo' a.py",  # -r with one file still prints "line:" only
+    ],
+)
+@pytest.mark.asyncio
+async def test_single_file_grep_attaches_matches(repo: Path, cmd: str):
+    """A grep targeting one explicit file omits the filename ("line:content"),
+    but the path is known a priori, so matches must still attach and be correct.
+    """
+    sh = ShellTools5(cwd=str(repo))
+    r = await sh.run(cmd)
+    truth = _grep_anchor_lines(repo, cmd.replace(" a.py", " --with-filename a.py"))
+    assert r.matches is not None, "single-file pure search should attach matches"
+    got = {(m.path, m.start) for m in r.matches}
+    assert got == truth
+    # every reported line belongs to the one file we searched
+    assert {m.path for m in r.matches} == {"a.py"}
+
+
+@pytest.mark.asyncio
+async def test_single_file_grep_match_is_editable(repo: Path):
+    """A Match from a single-file grep can be passed to replace() to edit in place."""
+    sh = ShellTools5(cwd=str(repo))
+    r = await sh.run("grep -n 'fooo = 1' a.py")
+    assert r.matches, "single-file grep should find the assignment"
+    await sh.replace(r.matches[0], "fooo = 999\n")
+    assert "fooo = 999" in (repo / "a.py").read_text()
+
+
 # --------------------------------------------------------------------------
 # Property / fuzz
 # --------------------------------------------------------------------------
