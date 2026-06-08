@@ -37,6 +37,7 @@ class BootstrapResult:
     session_manager: "SessionManager | None"
     tracing_enabled: bool
     resumed: bool
+    restored: bool
     session_id: str | None
     # Messages accumulated during bootstrap (errors, warnings, info).
     # The caller renders them through its frontend after bootstrap returns.
@@ -126,6 +127,7 @@ async def bootstrap(
             session_manager=None,
             tracing_enabled=False,
             resumed=False,
+            restored=False,
             session_id=None,
             messages=[],
         )
@@ -327,20 +329,11 @@ async def bootstrap(
         except Exception as e:
             messages.append(TextOutput(f"Could not restore agent state: {e}", "warning"))
 
-    # Notify skills the agent was just reconstituted (post-restore, pre-first-turn)
-    # so they can run setup like reconnecting to external services. Always emitted
-    # on startup; ``restored`` is True only when a snapshot was actually applied
-    # (not merely "-c was passed"), so a subscriber like agent_mesh can trust it.
-    if agent is not None and _session_id is not None:
-        try:
-            from nemo_oo_agents.events import TuiSessionResumed
-
-            agent.event_manager.register_event_type(TuiSessionResumed)
-            agent.event_manager.add(
-                TuiSessionResumed(session_id=_session_id, restored=_actually_restored)
-            )
-        except Exception:
-            logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
+    # NOTE: the ``TuiSessionResumed`` event is emitted later, in ``build_registry``
+    # — AFTER library skills (e.g. agent_mesh) are attached and have subscribed.
+    # Emitting here (before skill attach) would fire into the void: no subscriber
+    # exists yet, so a skill's resume handler (e.g. mesh auto-reconnect) would
+    # never see it. The ``restored`` flag is carried on BootstrapResult.
 
     # ------------------------------------------------------------------
     # Rich content replay (nemo oo term, session resume only)
@@ -388,6 +381,7 @@ async def bootstrap(
         session_manager=session_manager,
         tracing_enabled=tracing_enabled,
         resumed=_resumed,
+        restored=_actually_restored,
         session_id=_session_id,
         messages=messages,
     )
@@ -455,6 +449,20 @@ def build_registry(
     }
     if lib_patterns:
         result.agent.skills.activate(list(lib_patterns))
+
+    # Emit TuiSessionResumed now that library skills (e.g. agent_mesh) are
+    # attached and have subscribed — emitting earlier (in bootstrap, before skill
+    # attach) would fire into the void so a skill's resume handler never sees it.
+    if result.session_id is not None:
+        try:
+            from nemo_oo_agents.events import TuiSessionResumed
+
+            result.agent.event_manager.register_event_type(TuiSessionResumed)
+            result.agent.event_manager.add(
+                TuiSessionResumed(session_id=result.session_id, restored=result.restored)
+            )
+        except Exception:
+            logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
 
     # Agent-facing MCP registry (self.mcp). Holds connection/activation state and
     # wraps the stateless MCPManager factory. Registered through the agent's
