@@ -584,3 +584,215 @@ class TestHeredocHint:
         # Fix 2: write to file then bash it
         assert "shell.write" in result
         assert "bash" in result.lower()
+
+
+class _ShellToolsLike:
+    def replace(self, target, old_or_new="", new=None):
+        """Replace at an unambiguous location."""
+        ...
+
+
+class _FooLike:
+    def bar(self, target, count=1):
+        """Do a bar."""
+        ...
+
+
+def _bare_func(a, b):
+    """A bare function."""
+    ...
+
+
+def _format_bad_call(fn) -> str:
+    """Run *fn* (which must raise a TypeError) and return the LLM-formatted error."""
+    try:
+        fn()
+    except TypeError as e:
+        return format_error_for_llm(e)
+    raise AssertionError("expected a TypeError")
+
+
+class TestBadCallAgentdoc:
+    """Issue #245: a call-shape TypeError appends the callable's concise agentdoc.
+
+    A bad method/function call ("got an unexpected keyword argument", "missing N
+    required positional argument", ...) names the bad arg but never the correct
+    signature, so the model loops guessing synonyms. We resolve the callable from
+    the traceback frames and append its concise agentdoc.
+
+    The helper callables are module-level on purpose — that mirrors the
+    real-world case (tool/skill methods live at module scope and their instances
+    are bound names in the cell), which is what the traceback-frame resolver can
+    actually reach.
+    """
+
+    def test_unexpected_keyword_appends_signature(self):
+        """An unexpected-kwarg call appends the method's concise signature."""
+
+        def cell():
+            tool = _ShellToolsLike()
+            tool.replace(target="x", old="a", new="b")
+
+        result = _format_bad_call(cell)
+        assert "unexpected keyword argument 'old'" in result
+        assert "_ShellToolsLike.replace" in result
+        assert "old_or_new" in result
+        assert "Replace at an unambiguous location" in result
+
+    def test_missing_positional_appends_signature(self):
+        """A missing-positional call appends the method's concise signature."""
+
+        def cell():
+            foo = _FooLike()
+            foo.bar()
+
+        result = _format_bad_call(cell)
+        assert "missing 1 required positional argument" in result
+        assert "_FooLike.bar" in result
+        assert "count" in result
+
+    def test_bare_function_too_many_positional_appends_signature(self):
+        """A too-many-positional call to a bare function appends its signature."""
+
+        def cell():
+            _bare_func(1, 2, 3)
+
+        result = _format_bad_call(cell)
+        assert "takes 2 positional arguments but 3 were given" in result
+        assert "_bare_func" in result
+
+    def test_non_call_typeerror_is_unchanged(self):
+        """A TypeError that is not a bad call must not gain an agentdoc block."""
+
+        def cell():
+            return 1 + "x"
+
+        result = _format_bad_call(cell)
+        assert "unsupported operand type" in result
+        assert "signature" not in result.lower()
+
+    def test_unresolvable_callable_falls_back_cleanly(self):
+        """If the callable can't be resolved, no agentdoc is appended (no regression)."""
+        from nemo_oo_agents.errors.formatting import _bad_call_agentdoc
+
+        err = TypeError("Nonexistent.method() got an unexpected keyword argument 'z'")
+        assert _bad_call_agentdoc(err) is None
+
+
+# Module-level fixtures for the resolver hardening tests (issue #245 review).
+class _AlphaTool:
+    def run(self, target, mode="x"):
+        """The real AlphaTool.run."""
+        ...
+
+
+class _SideEffectProbe:
+    """A class named like a tool whose called attr is a side-effecting property."""
+
+    accessed = False
+
+    @property
+    def run(self):  # noqa: D401 - property standing in for a method name
+        type(self).accessed = True
+        return lambda *a, **k: None
+
+
+class _Config245:
+    def __init__(self, host, port=80):
+        """A config constructed with (host, port)."""
+        ...
+
+
+class TestBadCallAgentdocHardening:
+    """Review follow-ups for #245: ambiguity, descriptor safety, constructors."""
+
+    def test_distinct_qualname_decoy_does_not_block_real_resolution(self):
+        """A same-NAMED but different-QUALNAME decoy in scope doesn't shadow the real one."""
+
+        def make_decoy():
+            class _AlphaTool:  # same class name, different qualname (has <locals>)
+                def run(self, x):
+                    """Decoy run."""
+                    ...
+
+            return _AlphaTool()
+
+        def cell():
+            real = _AlphaTool()
+            decoy = make_decoy()  # noqa: F841 - in scope to create the name collision
+            real.run(target="t", bogus=1)
+
+        result = _format_bad_call(cell)
+        assert "unexpected keyword argument 'bogus'" in result
+        # The decoy's stripped qualname is still "_AlphaTool.run", BUT it lives in
+        # a different frame's locals; uniqueness is judged per resolution, and the
+        # real module-level _AlphaTool.run is the single match reachable here.
+        assert "_AlphaTool.run" in result
+
+    def test_truly_ambiguous_qualnames_in_one_frame_resolve_to_none(self):
+        """Two callables with identical stripped qualnames in the SAME live frame → None.
+
+        This exercises the uniqueness guard for real (not via an empty traceback):
+        both candidates are reachable in the call-site frame, so the resolver must
+        refuse to guess and append no signature.
+        """
+
+        # Two module-level-style functions that share a qualname after <locals>
+        # stripping. We fabricate the collision by giving a second function the
+        # same __qualname__ as the first, then call one with a bad signature while
+        # both are bound names in the failing frame.
+        def alpha(a, b):
+            """First alpha."""
+            ...
+
+        def alpha_decoy(a, b, c):
+            """Second alpha (different arity)."""
+            ...
+
+        alpha_decoy.__qualname__ = alpha.__qualname__  # force identical qualname
+
+        def cell():
+            one = alpha  # noqa: F841 - both bound in this frame
+            two = alpha_decoy  # noqa: F841
+            one(1, 2, 3)  # bad call -> "...alpha() takes 2 positional arguments but 3..."
+
+        result = _format_bad_call(cell)
+        assert "positional argument" in result
+        # Ambiguous (two distinct callables, same qualname, same frame) → no signature.
+        assert "this signature" not in result
+
+    def test_property_is_not_invoked_during_resolution(self):
+        """A same-named class exposing the attr as a @property must NOT be executed."""
+        _SideEffectProbe.accessed = False
+
+        def cell():
+            probe = _SideEffectProbe()  # noqa: F841 - in scope; attr is a property
+            tool = _AlphaTool()
+            tool.run(target="t", bogus=1)
+
+        _format_bad_call(cell)
+        assert _SideEffectProbe.accessed is False, (
+            "resolver invoked a @property (descriptor side effect)"
+        )
+
+    def test_constructor_bad_call_appends_init_signature(self):
+        """Calling a TYPE with bad kwargs surfaces __init__'s signature."""
+
+        def cell():
+            _Config245(hostname="x")
+
+        result = _format_bad_call(cell)
+        assert "unexpected keyword argument 'hostname'" in result
+        assert "_Config245.__init__" in result
+        assert "port" in result
+
+    def test_raising_str_does_not_escape(self):
+        """A TypeError subclass whose __str__ raises must not break formatting."""
+
+        class _BadStr(TypeError):
+            def __str__(self):
+                raise RuntimeError("boom")
+
+        from nemo_oo_agents.errors.formatting import _bad_call_agentdoc
+
+        assert _bad_call_agentdoc(_BadStr()) is None

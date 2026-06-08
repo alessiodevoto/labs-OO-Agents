@@ -60,6 +60,124 @@ Fix 2 — write the script to a file first, then run it:
     await shell.run("bash /tmp/script.sh")"""
 
 
+# Call-shape TypeError messages — a method/function called with the wrong
+# signature. These name the bad arg but never the correct signature, so the
+# model loops guessing synonyms (issue #245). We append the callable's concise
+# agentdoc so the correction is actionable.
+_BAD_CALL_RE = re.compile(
+    r"^(?P<qual>[\w.]+)\(\) (?:"
+    r"got an unexpected keyword argument"
+    r"|missing \d+ required positional argument"
+    r"|takes \d+ positional argument"
+    r"|takes from \d+ to \d+ positional arguments"
+    r"|takes no arguments"
+    r")"
+)
+
+
+def _callable_qualname(value: object) -> str | None:
+    """Best-effort ``__qualname__`` of a callable, with ``<locals>`` stripped.
+
+    Used to confirm a resolved callable is *the* one named by the error, not a
+    same-named decoy. Returns None if it has no usable qualname.
+    """
+    qn = getattr(value, "__qualname__", None)
+    if not isinstance(qn, str):
+        return None
+    return ".".join(p for p in qn.split(".") if p != "<locals>")
+
+
+def _resolve_called_callable(qual: str, error: Exception) -> object | None:
+    """Find the callable named ``qual`` in the traceback's frames.
+
+    A call-shape ``TypeError`` is raised at the *call site* (the callee is never
+    entered), so the target object lives in some frame's locals/globals. ``qual``
+    is the message's qualname, e.g. ``"ShellTools5.replace"`` or ``"my_func"``.
+
+    The error gives only the qualname, not the identity of the object that
+    raised — so we collect every candidate in the frames whose own qualname
+    matches ``qual`` and return it ONLY if it is unique. Two distinct same-named
+    callables in scope → ambiguous → ``None`` (don't show a confident-but-wrong
+    signature). Attribute lookup uses ``inspect.getattr_static`` so a ``@property``
+    (or any descriptor) on an unrelated in-scope object is never *invoked* during
+    the scan. Returns the callable to ``doc()`` or ``None``.
+    """
+    import inspect
+
+    # Drop "<locals>" segments — nested defs render as
+    # "outer.<locals>.Cls.meth"; the owning class is the last non-<locals> part.
+    parts = [p for p in qual.split(".") if p != "<locals>"]
+    attr = parts[-1]
+    owner = parts[-2] if len(parts) >= 2 else None
+
+    tb = getattr(error, "__traceback__", None)
+    frames = []
+    while tb is not None:
+        frames.append(tb.tb_frame)
+        tb = tb.tb_next
+
+    def _matches(candidate: object) -> bool:
+        return callable(candidate) and _callable_qualname(candidate) == qual
+
+    candidates: list[object] = []
+    seen: set[int] = set()
+
+    def _consider(candidate: object) -> None:
+        if candidate is None or not _matches(candidate):
+            return
+        if id(candidate) in seen:
+            return
+        seen.add(id(candidate))
+        candidates.append(candidate)
+
+    for frame in frames:
+        ns = {**frame.f_globals, **frame.f_locals}
+        for value in ns.values():
+            # Method call: an instance of the owning class. Resolve the attribute
+            # statically (no descriptor invocation) and confirm its qualname.
+            if owner is not None and type(value).__name__ == owner:
+                try:
+                    _consider(inspect.getattr_static(value, attr, None))
+                except Exception:
+                    pass
+            # Bare function (no owner) — the value itself is the callable.
+            if owner is None:
+                _consider(value)
+        # The owning class itself living in the namespace (unbound method).
+        if owner is not None:
+            cls = ns.get(owner)
+            if isinstance(cls, type):
+                try:
+                    _consider(inspect.getattr_static(cls, attr, None))
+                except Exception:
+                    pass
+
+    # Unique match only — a single resolvable callable whose qualname is exactly
+    # what the error named. Zero or multiple (ambiguous) → best-effort None.
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _bad_call_agentdoc(error: Exception) -> str | None:
+    """If ``error`` is a call-shape TypeError to a resolvable callable, return
+    its concise agentdoc to append to the feedback. Best-effort; ``None`` on any
+    miss so the caller falls back to the raw error (no regression)."""
+    if not isinstance(error, TypeError):
+        return None
+    try:
+        m = _BAD_CALL_RE.match(str(error))
+        if not m:
+            return None
+        target = _resolve_called_callable(m.group("qual"), error)
+        if target is None:
+            return None
+        from nemo_oo_agents.agentdoc import doc
+
+        rendered = doc(target, concise=True)
+        return str(rendered).strip() or None
+    except Exception:
+        return None
+
+
 def _is_user_code_frame(filename: str) -> bool:
     """Check if a traceback frame is from user code (not framework internals).
 
@@ -193,7 +311,14 @@ class IPythonErrorFormatter:
         if _is_validation_error(error):
             return f"{type(error).__name__}: {error}"
 
-        return self._format_runtime_error(error, line_offset)
+        formatted = self._format_runtime_error(error, line_offset)
+        # Issue #245: append the called callable's concise signature on a
+        # call-shape TypeError (see _bad_call_agentdoc). Best-effort — unchanged
+        # output on any miss.
+        agentdoc = _bad_call_agentdoc(error)
+        if agentdoc:
+            formatted = f"{formatted}\n\nThe callable you called has this signature:\n{agentdoc}"
+        return formatted
 
     def _format_syntax_error(self, error: SyntaxError, code: str | None, line_offset: int) -> str:
         """Format SyntaxError using Python's traceback module, IPython-style.
