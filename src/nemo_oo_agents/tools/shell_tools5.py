@@ -304,11 +304,13 @@ class ShellTools5(Skill):
     def __init__(self, cwd: str = ".", **kwargs: Any):
         super().__init__(**kwargs)
         self.cwd = Path(cwd).resolve()
-        self._session: BashSession | None = None
+        # Construct the session eagerly (it starts lazily on first run) so a
+        # consumer wired at construction time — e.g. RepoTools(session=shell._session)
+        # in the TUI — shares this shell's bash session instead of capturing None.
+        self._session: BashSession = BashSession(cwd=str(self.cwd))
 
     async def _get_session(self) -> BashSession:
-        if self._session is None:
-            self._session = BashSession(cwd=str(self.cwd))
+        if not self._session._started:
             await self._session.start()
         return self._session
 
