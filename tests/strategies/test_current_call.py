@@ -201,3 +201,54 @@ class TestCurrentCallImmutability:
 
         with pytest.raises(AttributeError):
             call.method_name = "new_method"
+
+
+def test_from_method_captures_param_names_from_live_signature():
+    """from_method captures ordered param names from the live signature.
+
+    This is the authoritative path used by every real agent call: param names
+    come from inspect.signature(method), so format_parameters_as_code never parses
+    a signature string. Covers Annotated[str, spec(...)] and a comma-in-default —
+    the cases that previously produced phantom 'spec(...' params.
+    """
+    from typing import Annotated
+
+    from nemo_oo_agents.agentdoc import spec
+    from nemo_oo_agents.strategies.current_call import CurrentCall
+
+    def method(
+        self,
+        chunk_text: Annotated[str, spec(max_string=None)],
+        chunk_index: int,
+        opts: dict = {"a": 1, "b": 2},  # noqa: B006 - exercises comma-in-default
+    ) -> dict: ...
+
+    call = CurrentCall.from_method(method, args=("hello", 3))
+    assert call.param_names == ["chunk_text", "chunk_index", "opts"]
+
+    rendered = call.format_parameters_as_code()
+    assert "chunk_text = 'hello'" in rendered
+    assert "chunk_index = 3" in rendered
+    assert "spec(max_string" not in rendered
+    assert "Annotated" not in rendered
+
+
+def test_format_parameters_uses_param_names_not_signature_string():
+    """With param_names present, the signature string is never re-parsed.
+
+    Build via a real method (the production path), then confirm a deliberately
+    wrong signature string on the same call is ignored in favour of param_names.
+    """
+    import dataclasses
+
+    from nemo_oo_agents.strategies.current_call import CurrentCall
+
+    def method(self, a: int, b: str) -> None: ...
+
+    call = CurrentCall.from_method(method, args=(1, "x"))
+    # Corrupt the signature string; param_names must still drive the rendering.
+    call = dataclasses.replace(call, signature="(self, GARBAGE not a real sig")
+    rendered = call.format_parameters_as_code()
+    assert "a = 1" in rendered
+    assert "b = 'x'" in rendered
+    assert "GARBAGE" not in rendered

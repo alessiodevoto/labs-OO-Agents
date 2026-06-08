@@ -824,15 +824,11 @@ class TestCurrentCallFormatParametersAsCode:
         assert call.format_parameters_as_code() == ""
 
     def test_positional_args_mapped_by_name(self):
-        """Positional args should be mapped to param names from signature."""
-        call = CurrentCall(
-            id="x",
-            method_name="m",
-            decorator="plan",
-            signature="(self, x: int, y: str)",
-            args=(10, "hello"),
-            kwargs={},
-        )
+        """Positional args should be mapped to param names from the live signature."""
+
+        def m(self, x: int, y: str): ...
+
+        call = CurrentCall.from_method(m, args=(10, "hello"))
         result = call.format_parameters_as_code()
         assert "x = 10" in result
         assert "y = 'hello'" in result

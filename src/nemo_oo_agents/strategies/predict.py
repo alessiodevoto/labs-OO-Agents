@@ -390,25 +390,21 @@ class PredictStrategy(GenerationStrategy):
         always, so a string that already exceeds the limit certainly has an oversized repr.
         """
         from nemo_oo_agents.agentdoc import TruncatingStringIO
-        from nemo_oo_agents.strategies.current_call import _parse_param_names
 
         limit = self.config.max_param_chars
         # ``None`` disables the guard entirely — used by the summarizer.
         if limit is None:
             return
 
-        # Build a name → value mapping the same way format_parameters_as_code does.
+        # Build a name → value mapping the same way format_parameters_as_code does,
+        # using the authoritative param names captured from the live signature.
         named: list[tuple[str, Any]] = []
-        if call.signature:
-            try:
-                param_names = _parse_param_names(call.signature)
-                for i, name in enumerate(param_names):
-                    if i < len(call.args):
-                        named.append((name, call.args[i]))
-                named += list(call.kwargs.items())
-            except (ValueError, AttributeError):
-                named = [(f"arg_{i}", v) for i, v in enumerate(call.args)]
-                named += list(call.kwargs.items())
+        param_names = call.param_names
+        if param_names:
+            for i, name in enumerate(param_names):
+                if i < len(call.args):
+                    named.append((name, call.args[i]))
+            named += list(call.kwargs.items())
         else:
             named = [(f"arg_{i}", v) for i, v in enumerate(call.args)]
             named += list(call.kwargs.items())

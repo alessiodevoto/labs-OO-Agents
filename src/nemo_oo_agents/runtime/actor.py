@@ -2531,6 +2531,9 @@ class ActorRuntime:
                     return_type=return_type,
                     pre_ellipsis_code=pre_ellipsis_code,
                     session_locals=call_session_locals,
+                    # Authoritative ordered names from the live signature (excludes
+                    # 'self') so format_parameters_as_code never re-parses the string.
+                    param_names=[p for p in sig.parameters if p != "self"],
                 )
 
                 # Store current call context in context vars for RuntimeServices.generate()
