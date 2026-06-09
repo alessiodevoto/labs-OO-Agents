@@ -6,8 +6,10 @@ Each test simulates a file + old_str that would have failed before the improveme
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools import (
-    ShellTools,
+from nemo_oo_agents.tools.shell_tools_legacy import (
+    ShellToolsLegacy as ShellTools,
+)
+from nemo_oo_agents.tools.shell_tools_legacy import (
     _find_closest_match,
     _strip_line_number_prefixes,
 )

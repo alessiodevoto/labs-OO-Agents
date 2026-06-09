@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools import ShellTools
+from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
 
 has_rg = pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep not installed")
 
@@ -197,8 +197,8 @@ class TestFindBackCompat:
 
     async def test_find_directories(self, shell, sample_tree):
         """type='d' should work the same regardless of rg availability (always uses find)."""
-        rg_result = await _find_with_rg(shell, "sub", str(sample_tree), type="d")
-        fallback_result = await _find_without_rg(shell, "sub", str(sample_tree), type="d")
+        rg_result = await _find_with_rg(shell, "sub", str(sample_tree), entry_type="d")
+        fallback_result = await _find_without_rg(shell, "sub", str(sample_tree), entry_type="d")
 
         assert rg_result.total_matches == fallback_result.total_matches
         assert rg_result.total_matches > 0

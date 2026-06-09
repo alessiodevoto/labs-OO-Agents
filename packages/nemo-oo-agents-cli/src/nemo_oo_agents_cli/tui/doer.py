@@ -32,7 +32,7 @@ with hidden:
     from nemo_oo_agents.storage.markers import nosnapshot
     from nemo_oo_agents.strategies import CodeActStrategy
     from nemo_oo_agents.tools import TodoManager
-    from nemo_oo_agents.tools.shell_tools5 import ShellTools5 as ShellTools
+    from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents_cli.tools.repo_tools import RepoTools
 
@@ -60,7 +60,7 @@ class DoerAgent(Agent):
     """One-shot executor for a single todo item.
 
     You have these tools:
-    - self.shell — ShellTools3: run(cmd, stdin=), read(path, lines=), write_file(path, content),
+    - self.shell — ShellTools: run(cmd, stdin=), read(path, lines=), write_file(path, content),
       replace(match/region/path, ...), rg(pat, path), cat(), find(), run_pipe(), lines(path, s, e)
     - self.repo — repo intelligence: filemap(), repo_map(), search_symbol()
     - self.todo — view and update the todo list (self.todo.status(), self.todo.done(), etc.)
@@ -83,7 +83,7 @@ class DoerAgent(Agent):
     ):
         super().__init__(**kwargs)
         # Use the shell variant the parent is currently running (so /swap-shell
-        # propagates to doers); default to the module's ShellTools (ShellTools3).
+        # propagates to doers); default to the module's ShellTools.
         self.shell = (shell_cls or ShellTools)(cwd=cwd)
         self.repo = repo
         self.todo = todo

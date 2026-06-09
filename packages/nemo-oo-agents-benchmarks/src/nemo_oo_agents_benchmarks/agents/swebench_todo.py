@@ -25,10 +25,7 @@ from nemo_oo_agents.agentdoc import doc, hidden
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.tools.shell_tools import ShellTools
-from nemo_oo_agents.tools.shell_tools2 import ShellTools2
-from nemo_oo_agents.tools.shell_tools3 import ShellTools3
-from nemo_oo_agents.tools.shell_tools4 import ShellTools4
-from nemo_oo_agents.tools.shell_tools5 import ShellTools5
+from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy
 from nemo_oo_agents.tools.todo import TodoManager
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
@@ -37,35 +34,21 @@ _CONDA_ACTIVATE = "export PATH=/opt/harbor/cpython312/bin:$PATH; source /opt/min
 
 @hidden
 def _make_shell(cwd: str = "/testbed"):
-    """Construct the shell variant selected by the SHELL_VARIANT env var.
-
-    SHELL_VARIANT=2 -> ShellTools2 (simple), 3 -> ShellTools3 (python-native),
-    anything else (default) -> the original ShellTools. This is the bake-off
-    switch: point each swebench experiment arm at a different value.
+    """Construct the shell. ``SHELL_VARIANT=legacy`` selects the old bash-based
+    ``ShellToolsLegacy``; anything else (default) uses the canonical
+    ``ShellTools`` (formerly the "v5" bake-off winner, now the only modern shell).
     """
-    raw = os.environ.get("SHELL_VARIANT", "").strip()
-    # Normalize unknown/empty to "1" BEFORE tagging, so the metric matches what
-    # actually runs (an unsupported value must not be tagged as itself while
-    # execution silently falls back to variant 1 — that corrupts bake-off data).
-    variant = raw if raw in ("1", "2", "3", "4", "5") else "1"
-    if raw and raw != variant:
-        logger.warning("Unknown SHELL_VARIANT=%r; falling back to variant 1", raw)
+    raw = os.environ.get("SHELL_VARIANT", "").strip().lower()
+    variant = "legacy" if raw == "legacy" else "default"
+    if raw and raw not in ("legacy", "default", "1", "5"):
+        logger.warning("Unknown SHELL_VARIANT=%r; using the default shell", raw)
     try:
         from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 
         get_harness_metrics().set_shell_variant(variant)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to tag shell_variant in harness metrics", exc_info=True)
-    if variant == "2":
-        shell = ShellTools2(cwd=cwd)
-    elif variant == "3":
-        shell = ShellTools3(cwd=cwd)
-    elif variant == "4":
-        shell = ShellTools4(cwd=cwd)
-    elif variant == "5":
-        shell = ShellTools5(cwd=cwd)
-    else:
-        shell = ShellTools(cwd=cwd)
+    shell = ShellToolsLegacy(cwd=cwd) if variant == "legacy" else ShellTools(cwd=cwd)
     shell._init_command = _CONDA_ACTIVATE
     return shell
 
