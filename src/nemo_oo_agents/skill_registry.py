@@ -626,7 +626,7 @@ class SkillRegistry(Skill):
     async def _reload_single_module(self, name: str, attr: str, skill: Any, mod_name: str) -> str:
         """Reload only the skill's own leaf module via ``importlib.reload``.
 
-        Used for builtin tool skills (e.g. ``ShellTools3``) whose top package is
+        Used for builtin tool skills (e.g. ``ShellTools``) whose top package is
         in ``_NO_RELOAD``. Re-execs just that module file and re-resolves the
         skill class *by name* — tool skills are duck-typed and may not subclass
         ``Skill``, so a Skill-subclass scan would miss them.

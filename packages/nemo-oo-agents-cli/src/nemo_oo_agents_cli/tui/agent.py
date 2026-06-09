@@ -25,7 +25,7 @@ with hidden:
     from nemo_oo_agents.skill_registry import SkillRegistry
     from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
     from nemo_oo_agents.tools import SkillWriting, TodoManager
-    from nemo_oo_agents.tools.shell_tools5 import ShellTools5 as ShellTools
+    from nemo_oo_agents.tools.shell_tools import ShellTools
     from nemo_oo_agents.tools.todo import Todo
     from nemo_oo_agents.tools.web_publisher import WebPublisher
     from nemo_oo_agents_cli.tools.pyp import (
@@ -700,7 +700,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         # Render the shell's API surface from the *live* shell type each turn.
         # A dynamic block (re-evaluated per turn) instead of a static one: the
-        # default shell class can change (e.g. ShellTools3 -> ShellTools5), and a
+        # default shell class can change, and a
         # static block computed once at construction would pin a stale doc for
         # the wrong class. The expr is cheap (a cached doc() of a stable type).
         self.context_manager.set_dynamic("shell", "doc(type(self.shell))")

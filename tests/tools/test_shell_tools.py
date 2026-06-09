@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools import ShellTools
+from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for ShellTools5 transparent grep->Match.
+"""Tests for ShellTools transparent grep->Match.
 
 Strategy:
 - Gate truth-table: is_pure_search_command() accepts pure searches, rejects
@@ -22,8 +22,8 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools5 import (
-    ShellTools5,
+from nemo_oo_agents.tools.shell_tools import (
+    ShellTools,
     is_pure_search_command,
 )
 
@@ -105,7 +105,7 @@ def _grep_anchor_lines(repo: Path, cmd: str) -> set[tuple[str, int]]:
 )
 @pytest.mark.asyncio
 async def test_matches_equal_grep(repo: Path, cmd: str):
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run(cmd)
     truth = _grep_anchor_lines(repo, cmd)
     assert r.matches is not None, "pure search should attach matches"
@@ -115,7 +115,7 @@ async def test_matches_equal_grep(repo: Path, cmd: str):
 
 @pytest.mark.asyncio
 async def test_match_anchor_is_editable(repo: Path):
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run("grep -rn 'fooo = 1' .")
     assert r.matches, "should find the assignment"
     m = next(x for x in r.matches if x.path == "a.py")
@@ -137,7 +137,7 @@ async def test_match_anchor_is_editable(repo: Path):
 )
 @pytest.mark.asyncio
 async def test_fail_closed(repo: Path, cmd: str):
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run(cmd)
     assert r.matches is None
 
@@ -145,7 +145,7 @@ async def test_fail_closed(repo: Path, cmd: str):
 @pytest.mark.asyncio
 async def test_grep_without_n_is_unverifiable(repo: Path):
     """grep without -n prints no line numbers -> can't verify -> attach nothing."""
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run("grep -r 'foo' .")
     assert r.matches is None
 
@@ -155,7 +155,7 @@ async def test_truncated_head_attaches_displayed_subset(repo: Path):
     """A safe ``| head -N`` truncates the *display* to a prefix; the shown lines
     are still real matches, so attach exactly those (subset, not the full set).
     """
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     full = await sh.run("grep -rn 'foo' .")
     assert full.matches is not None and len(full.matches) > 1
 
@@ -175,7 +175,7 @@ async def test_truncated_head_attaches_displayed_subset(repo: Path):
 @pytest.mark.asyncio
 async def test_truncated_head_match_is_editable(repo: Path):
     """A Match from a head-truncated grep edits at the correct anchor."""
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run("grep -rn 'fooo = 1' . | head -5")
     assert r.matches, "should attach the assignment despite the head pipe"
     m = next(x for x in r.matches if x.path == "a.py")
@@ -195,7 +195,7 @@ async def test_single_file_grep_attaches_matches(repo: Path, cmd: str):
     """A grep targeting one explicit file omits the filename ("line:content"),
     but the path is known a priori, so matches must still attach and be correct.
     """
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run(cmd)
     truth = _grep_anchor_lines(repo, cmd.replace(" a.py", " --with-filename a.py"))
     assert r.matches is not None, "single-file pure search should attach matches"
@@ -208,7 +208,7 @@ async def test_single_file_grep_attaches_matches(repo: Path, cmd: str):
 @pytest.mark.asyncio
 async def test_single_file_grep_match_is_editable(repo: Path):
     """A Match from a single-file grep can be passed to replace() to edit in place."""
-    sh = ShellTools5(cwd=str(repo))
+    sh = ShellTools(cwd=str(repo))
     r = await sh.run("grep -n 'fooo = 1' a.py")
     assert r.matches, "single-file grep should find the assignment"
     await sh.replace(r.matches[0], "fooo = 999\n")
@@ -239,7 +239,7 @@ async def test_property_oracle(tmp_path: Path, seed: int):
     rng = random.Random(seed * 7919)
     pat = rng.choice(["a", "b", "abc", "x", ":", "la", "f"])
     cmd = f"grep -rn -F {pat!r} ."
-    sh = ShellTools5(cwd=str(root))
+    sh = ShellTools(cwd=str(root))
     r = await sh.run(cmd)
     truth = _grep_anchor_lines(root, cmd)
     # invariant: either matches is None (gate/verify declined) OR it equals truth
@@ -338,7 +338,7 @@ async def test_scraped_patterns_oracle(code_repo: Path, pattern: str):
     cmd = f"grep -rn {pattern!r} ."
     if not is_pure_search_command(cmd):
         pytest.skip("gate declined (not a pure search)")
-    sh = ShellTools5(cwd=str(code_repo))
+    sh = ShellTools(cwd=str(code_repo))
     r = await sh.run(cmd)
     truth = _grep_anchor_lines(code_repo, cmd)
     # Invariant: matches is None OR equals grep's own reported anchors.
@@ -358,7 +358,7 @@ async def test_scraped_alternation_patterns(code_repo: Path, pattern: str):
     cmd = f"grep -rn {pattern!r} ."
     # the gate must NOT mistake the in-pattern | for a shell pipe
     assert is_pure_search_command(cmd), "quoted | must not trip the pipe gate"
-    sh = ShellTools5(cwd=str(code_repo))
+    sh = ShellTools(cwd=str(code_repo))
     r = await sh.run(cmd)
     truth = _grep_anchor_lines(code_repo, cmd)
     if r.matches is not None:
@@ -372,17 +372,17 @@ class TestIsPureSearchCommand:
     """Test is_pure_search_command handles real agent grep patterns."""
 
     def test_bare_grep(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -rn "pattern" src/') is True
 
     def test_grep_single_file(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -n "foo" bar.py') is True
 
     def test_cd_prefix_stripped(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert (
             is_pure_search_command('cd /testbed && grep -n "sympy_integers" sympy/printing/str.py')
@@ -390,7 +390,7 @@ class TestIsPureSearchCommand:
         )
 
     def test_cd_prefix_with_rn(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert (
             is_pure_search_command('cd /testbed && grep -rn "max_iter" sklearn/decomposition/')
@@ -398,24 +398,24 @@ class TestIsPureSearchCommand:
         )
 
     def test_pipe_head_allowed(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -rn "pattern" src/ | head -50') is True
 
     def test_pipe_tail_allowed(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -rn "pattern" src/ | tail -5') is True
 
     def test_cd_and_pipe_head(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert (
             is_pure_search_command('cd /testbed && grep -rn "max_iter" sklearn/ | head -50') is True
         )
 
     def test_find_xargs_grep_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert (
             is_pure_search_command('find /testbed -name "*.py" | xargs grep -l "Foo" | head -30')
@@ -423,31 +423,31 @@ class TestIsPureSearchCommand:
         )
 
     def test_pipe_sort_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -rn "pattern" src/ | sort') is False
 
     def test_pipe_awk_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -rn "pattern" src/ | awk "{print $1}"') is False
 
     def test_only_matching_flag_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -orn "pattern" src/') is False
 
     def test_count_flag_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -crn "pattern" src/') is False
 
     def test_context_flag_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('grep -A2 "pattern" src/') is False
 
     def test_echo_pipe_grep_rejected(self):
-        from nemo_oo_agents.tools.shell_tools5 import is_pure_search_command
+        from nemo_oo_agents.tools.shell_tools import is_pure_search_command
 
         assert is_pure_search_command('echo "hello" | grep "h"') is False
