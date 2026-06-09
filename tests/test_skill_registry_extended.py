@@ -205,10 +205,10 @@ class TestResolveDeps:
 
 class TestReload:
     @pytest.mark.asyncio
-    async def test_reload_not_loaded_returns_error(self, registry):
-        """Reloading an unknown skill returns an error message."""
-        result = await registry.reload("nemo.nonexistent")
-        assert "not loaded" in result.lower() or "not in" in result.lower()
+    async def test_reload_not_loaded_raises(self, registry):
+        """Reloading an unknown skill raises loudly instead of silently no-op'ing (issue 250)."""
+        with pytest.raises(KeyError):
+            await registry.reload("nemo.nonexistent")
 
     @pytest.mark.asyncio
     async def test_reload_all_loaded(self, registry, agent):
@@ -218,3 +218,77 @@ class TestReload:
         result = await registry.reload()
         # Should attempt to reload both — result is a string summary
         assert isinstance(result, str)
+
+    @pytest.mark.asyncio
+    async def test_reload_bare_leaf_resolves_to_fq_name(self, registry):
+        """A bare leaf name resolves to its fully-qualified skill (issue 250)."""
+        registry.register("nvzurich.agent_mesh", FakeSkill())
+        called = {}
+
+        async def fake(name):
+            called["name"] = name
+            return "ok"
+
+        registry._reload_one = fake
+        result = await registry.reload("agent_mesh")
+        assert called["name"] == "nvzurich.agent_mesh"
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_reload_glob_resolves_single_match(self, registry):
+        """An fnmatch glob that hits exactly one loaded skill is accepted."""
+        registry.register("nvzurich.agent_mesh", FakeSkill())
+        called = {}
+
+        async def fake(name):
+            called["name"] = name
+            return "ok"
+
+        registry._reload_one = fake
+        await registry.reload("nvzurich.*")
+        assert called["name"] == "nvzurich.agent_mesh"
+
+    @pytest.mark.asyncio
+    async def test_reload_ambiguous_leaf_raises(self, registry):
+        """A leaf that matches more than one loaded skill fails loudly."""
+        registry.register("nvzurich.shell", FakeSkill())
+        registry.register("nemo.shell", FakeSkill())
+        with pytest.raises(ValueError):
+            await registry.reload("shell")
+
+    @pytest.mark.asyncio
+    async def test_reload_ambiguous_glob_raises(self, registry):
+        """A glob that matches more than one loaded skill fails loudly."""
+        registry.register("nvzurich.shell", FakeSkill())
+        registry.register("nvzurich.agent_mesh", FakeSkill())
+        with pytest.raises(ValueError):
+            await registry.reload("nvzurich.*")
+
+    @pytest.mark.asyncio
+    async def test_reload_hyphenated_leaf_resolves(self, registry):
+        """A hyphenated leaf query resolves a skill keyed with an underscore leaf (issue 250)."""
+        registry.register("nvzurich.agent_mesh", FakeSkill())
+        called = {}
+
+        async def fake(name):
+            called["name"] = name
+            return "ok"
+
+        registry._reload_one = fake
+        await registry.reload("agent-mesh")
+        assert called["name"] == "nvzurich.agent_mesh"
+
+    @pytest.mark.asyncio
+    async def test_reload_exact_fq_name_takes_precedence(self, registry):
+        """An exact FQ name reloads that skill even when a leaf would be ambiguous."""
+        registry.register("nvzurich.shell", FakeSkill())
+        registry.register("nemo.shell", FakeSkill())
+        called = {}
+
+        async def fake(name):
+            called["name"] = name
+            return "ok"
+
+        registry._reload_one = fake
+        await registry.reload("nemo.shell")
+        assert called["name"] == "nemo.shell"

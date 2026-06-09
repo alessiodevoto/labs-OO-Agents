@@ -553,17 +553,50 @@ class SkillRegistry(Skill):
         Re-imports the skill's module and re-attaches the updated instance.
 
         Args:
-            name: Fully-qualified skill name (e.g. 'nemo.shell'). If None, reload all.
+            name: A loaded skill name. Accepts the fully-qualified name
+                ('nvzurich.agent_mesh'), an fnmatch glob ('nvzurich.*'), or the
+                bare leaf ('agent_mesh') when it unambiguously identifies one
+                loaded skill. If None, reload all loaded skills.
 
         Returns:
             Status message.
+
+        Raises:
+            KeyError: No loaded skill matches ``name``.
+            ValueError: ``name`` matches more than one loaded skill.
         """
-        if name is not None:
-            return await self._reload_one(name)
-        results = []
-        for n in list(self._loaded):
-            results.append(await self._reload_one(n))
-        return "\n".join(results)
+        if name is None:
+            results = []
+            for n in list(self._loaded):
+                results.append(await self._reload_one(n))
+            return "\n".join(results)
+        return await self._reload_one(self._resolve_loaded(name))
+
+    def _resolve_loaded(self, name: str) -> str:
+        """Resolve ``name`` to a single loaded skill's fully-qualified name.
+
+        Skills are keyed by FQ name (e.g. ``nvzurich.agent_mesh``), so an exact
+        FQ name wins immediately. Otherwise we accept an fnmatch glob or a bare
+        leaf (last dotted segment) — matching the ergonomics of ``activate()``.
+
+        Raises KeyError on no match, ValueError on an ambiguous one, so a
+        mistyped or duplicated name fails loudly instead of silently no-op'ing
+        (issue 250).
+        """
+        if name in self._loaded:
+            return name
+        matched = self._match([name], self._loaded)
+        if not matched:
+            leaf = self._attr_name(name)
+            matched = {n for n in self._loaded if self._attr_name(n) == leaf}
+        if not matched:
+            raise KeyError(f"Skill {name!r} is not loaded. Loaded: {sorted(self._loaded)}")
+        if len(matched) > 1:
+            raise ValueError(
+                f"Skill {name!r} is ambiguous — matches {sorted(matched)}; "
+                "use the fully-qualified name."
+            )
+        return next(iter(matched))
 
     # Top packages whose sys.modules entries must never be purged wholesale:
     # clearing them would strand the live framework (Agent, runtime, every type
