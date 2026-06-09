@@ -275,7 +275,13 @@ class SkillWriting(Skill):
         Returns the registry's status string (starts with "Reloaded" on success).
         """
         if hasattr(self._agent, "skills"):
-            return await self._agent.skills.reload(f"local.{lib_name}")
+            try:
+                return await self._agent.skills.reload(f"local.{lib_name}")
+            except KeyError:
+                # First lint+reload of a brand-new library: it isn't registered
+                # yet, so skills.reload() raises. Fall through to the manager,
+                # which imports and attaches it from disk.
+                pass
         mgr = LibraryManager(self._agent, self._path)
         mgr._reload(lib_name)
         return f"Reloaded local.{lib_name}"
