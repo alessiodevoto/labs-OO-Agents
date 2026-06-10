@@ -3,12 +3,12 @@
 """E2E integration test: archival fires on ContextWindowExceededError.
 
 Three-phase lifecycle:
-1. Call at ~95% of context window → succeeds → calibrates ratio
+1. Call at ~95% of context window → succeeds → populates calibrated stats
 2. Call at ~105% of context window → fails → archives events → retry succeeds
 3. Verify context is at ~60% after archival
 
-Uses the calibration ratio from Phase 1 to compute the exact event count
-for Phase 2. No hardcoded per-event estimates.
+Uses calibrated ContextWindowStats.total_tokens to compute the event count for
+Phase 2. No hardcoded per-event estimates.
 
 Fixture: pre-generated events (tests/integration/fixtures/archival_95pct.json.gz).
 
@@ -90,7 +90,7 @@ class TestArchivalOnContextErrorE2E:
 
         # ── Phase 1: Call at ~95% → succeed → calibrate ────────────
         # Start with a conservative estimate: load 20% of events.
-        # If the call succeeds (likely), use the calibration ratio to
+        # If the call succeeds (likely), use calibrated stats.total_tokens to
         # compute how many events = 95% and add more. Repeat until we're
         # at 95% ± 2% of the real context window.
         n_initial = len(all_events) // 5
@@ -99,17 +99,13 @@ class TestArchivalOnContextErrorE2E:
         result1 = await agent.respond("Say hello in one word.")
         assert result1, "Phase 1 (initial): should succeed"
 
-        ratio = agent.runtime._token_calibration_ratio
-        assert ratio is not None and ratio > 0, f"Calibration ratio should be learned, got {ratio}"
-
-        # Now compute how many events we need for 95% of real context
+        # Now compute how many events we need for 95% of the real context
         stats = agent.runtime._last_context_stats
         n_current = len(list(agent.event_manager.keys()))
-        litellm_per_event = stats.total_tokens / max(1, n_current)
+        tokens_per_event = stats.total_tokens / max(1, n_current)
 
         target_real_95 = int(ctx_window * 0.95)
-        target_litellm_95 = target_real_95 / ratio
-        n_for_95 = int(target_litellm_95 / litellm_per_event)
+        n_for_95 = int(target_real_95 / tokens_per_event)
 
         if n_for_95 > n_current:
             # Add more events to reach 95%
@@ -125,18 +121,16 @@ class TestArchivalOnContextErrorE2E:
                     f"Phase 1: no archival expected, got {len(summary_events)}"
                 )
 
-                # Update calibration
-                ratio = agent.runtime._token_calibration_ratio
+                # Update calibrated stats
                 stats = agent.runtime._last_context_stats
 
         n_at_95 = len(list(agent.event_manager.keys()))
 
         # ── Phase 2: Call at ~105% → fail → archive → retry ────────
         # Compute how many events for 105%
-        litellm_per_event = stats.total_tokens / max(1, n_at_95)
+        tokens_per_event = stats.total_tokens / max(1, n_at_95)
         target_real_105 = int(ctx_window * 1.05)
-        target_litellm_105 = target_real_105 / ratio
-        n_for_105 = int(target_litellm_105 / litellm_per_event)
+        n_for_105 = int(target_real_105 / tokens_per_event)
 
         extra_105 = min(n_for_105 - n_at_95, len(all_events) - n_at_95)
         assert extra_105 > 0, (
@@ -165,22 +159,17 @@ class TestArchivalOnContextErrorE2E:
             f"Archival should reduce events: {n_events_after} >= {n_events_before}"
         )
 
-        # ── Phase 3: Verify ~60% utilization with a real API call ──
+        # ── Phase 4: Verify ~60% utilization with a real API call ──
         # Make another call. It should succeed (context is now smaller).
         # Use response.usage.prompt_tokens to verify actual utilization.
         result3 = await agent.respond("Confirm context was reduced.")
-        assert result3, "Phase 3: call after archival should succeed"
+        assert result3, "Phase 4: call after archival should succeed"
 
-        # The calibration ratio should still be set from Phase 1
-        ratio_post = agent.runtime._token_calibration_ratio
-        assert ratio_post is not None and ratio_post > 0
-
-        # Check actual utilization from the API's perspective
+        # Check utilization in calibrated/API-token scale
         stats_post = agent.runtime._last_context_stats
         assert stats_post is not None
 
-        # Estimate real tokens from litellm tokens using the calibrated ratio
-        estimated_real = stats_post.total_tokens * ratio_post
+        estimated_real = stats_post.total_tokens
         utilization = estimated_real / ctx_window
 
         # After archival targeting 60%, utilization should be near 60%.

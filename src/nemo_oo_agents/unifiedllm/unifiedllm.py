@@ -919,11 +919,10 @@ class TokenCalibration:
     who want a conservative first estimate can raise this.
     """
 
-    __slots__ = ("_ratios", "_alpha", "_default_ratio", "_last_actual")
+    __slots__ = ("_ratios", "_alpha", "_default_ratio")
 
     def __init__(self, *, alpha: float = 0.3, default_ratio: float = 1.0):
         self._ratios: dict[str, float] = {}
-        self._last_actual: dict[str, int] = {}
         self._alpha = alpha
         self._default_ratio = default_ratio
 
@@ -931,7 +930,6 @@ class TokenCalibration:
         """Record one observation after an LLM call."""
         if estimated <= 0 or actual <= 0:
             return
-        self._last_actual[model] = actual
         observed = actual / estimated
         prev = self._ratios.get(model)
         if prev is None:
@@ -942,10 +940,6 @@ class TokenCalibration:
     def ratio(self, model: str) -> float:
         """Current calibration ratio for *model* (default if unseen)."""
         return self._ratios.get(model, self._default_ratio)
-
-    def last_actual(self, model: str) -> int | None:
-        """Last API-reported prompt_tokens for *model*, or None if unseen."""
-        return self._last_actual.get(model)
 
     def calibrate(self, model: str, estimated: int) -> int:
         """Apply the calibration ratio to a raw estimate."""
@@ -961,28 +955,59 @@ _token_calibration = TokenCalibration()
 
 
 def _update_token_calibration(
-    model: str, messages: list[dict[str, Any]], usage: dict[str, int]
+    model: str,
+    messages: list[dict[str, Any]],
+    usage: dict[str, int],
+    tools: list[dict[str, Any]] | None = None,
 ) -> None:
     """Update token calibration from an API response's usage data.
 
-    Computes a raw (uncalibrated) estimate by summing litellm.token_counter
-    over each message's text content, then records the ratio against the
-    API-reported prompt_tokens.
+    The recorded ratio is ``actual / estimated`` where ``actual`` is the API's
+    reported ``prompt_tokens``. For the ratio to reflect the model tokenizer's
+    real skew (and not a *coverage* gap), ``estimated`` must count the SAME
+    request the API billed:
+
+    * **messages-mode** ``token_counter`` (not a per-message text sum) so the
+      chat-template / role framing the API charges is included, and
+    * the **tool/function schemas** that were sent (``tools``) — for an agent
+      with a large tool surface these are a big, fixed per-call cost that the
+      API bills in ``prompt_tokens``. Omitting them (the old behavior, which
+      summed only message text) made ``estimated`` far smaller than ``actual``
+      and inflated the ratio (observed ~2.7x), which then scaled every
+      displayed/triggering token count up by that bogus factor.
     """
     actual = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
     if actual <= 0:
         return
-    estimated = 0
-    for msg in messages:
-        content = msg.get("content")
-        if isinstance(content, str):
-            estimated += litellm.token_counter(model=model, text=content)
-        elif isinstance(content, list):
-            # Multi-part content (e.g. vision messages)
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    estimated += litellm.token_counter(model=model, text=part.get("text", ""))
-    _token_calibration.update(model, estimated, actual)
+    # Calibration is best-effort: it must NEVER raise out of the (already paid)
+    # response path. The whole estimate — primary AND fallback — is guarded.
+    try:
+        try:
+            estimated = litellm.token_counter(model=model, messages=messages)
+            if tools:
+                # Count the full messages+tools payload the way the API bills it,
+                # then take the larger of the bare and with-tools counts
+                # (with_tools is normally >= bare; max only guards a tokenizer
+                # that returns less with tools attached).
+                with_tools = litellm.token_counter(model=model, messages=messages, tools=tools)
+                estimated = max(estimated, with_tools)
+        except Exception:
+            # token_counter can reject some message/tool shapes; fall back to the
+            # per-message text sum rather than skip calibration entirely.
+            estimated = 0
+            for msg in messages:
+                content = msg.get("content")
+                if isinstance(content, str):
+                    estimated += litellm.token_counter(model=model, text=content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            estimated += litellm.token_counter(
+                                model=model, text=part.get("text", "")
+                            )
+        _token_calibration.update(model, estimated, actual)
+    except Exception:
+        logger.debug("token calibration skipped (estimate failed)", exc_info=True)
 
 
 class UnifiedLLM(ABC):
@@ -1687,7 +1712,9 @@ class CompletionClient(UnifiedLLM):
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
         if usage:
             _record_llm_metric("token_usage", usage)
-            _update_token_calibration(self.model, prepared_messages, usage)
+            _update_token_calibration(
+                self.model, prepared_messages, usage, tools=api_params.get("tools")
+            )
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
@@ -1857,7 +1884,9 @@ class CompletionClient(UnifiedLLM):
         reasoning, usage = _extract_reasoning_and_usage(raw_response)
         if usage:
             _record_llm_metric("token_usage", usage)
-            _update_token_calibration(self.model, prepared_messages, usage)
+            _update_token_calibration(
+                self.model, prepared_messages, usage, tools=api_params.get("tools")
+            )
         raw_tool_calls = raw_response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
         if raw_tool_calls:
@@ -2158,7 +2187,7 @@ class ResponsesClient(UnifiedLLM):
             elif isinstance(usage_obj, dict):
                 usage = usage_obj
         if usage:
-            _update_token_calibration(self.model, messages, usage)
+            _update_token_calibration(self.model, messages, usage, tools=api_params.get("tools"))
 
         output: list[Any] = raw_response.output  # type: ignore[assignment]
         raw_tool_calls = [item for item in output if item.type == "function_call"]
@@ -2275,7 +2304,7 @@ class ResponsesClient(UnifiedLLM):
             elif isinstance(usage_obj, dict):
                 usage = usage_obj
         if usage:
-            _update_token_calibration(self.model, messages, usage)
+            _update_token_calibration(self.model, messages, usage, tools=api_params.get("tools"))
 
         output: list[Any] = raw_response.output  # type: ignore[assignment]
         raw_tool_calls = [item for item in output if item.type == "function_call"]

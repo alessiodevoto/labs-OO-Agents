@@ -581,10 +581,7 @@ class ActorRuntime:
         # asyncio.gather on the same agent, the last write wins. For per-task
         # isolation, read stats from the on_messages_built hook's context_stats kwarg.
         self._last_context_stats: ContextWindowStats | None = None
-        # Token calibration: ratio of actual API tokens to litellm estimate.
-        # Learned from response.usage.input_tokens after each successful LLM call.
-        # Used by _archive_on_context_error to compute accurate archival targets.
-        self._token_calibration_ratio: float | None = None
+        self._last_prompt_tokens_actual: int | None = None
 
     def _ensure_generation_lock_on_current_loop(self) -> None:
         """Recreate _generation_lock if the event loop changed (gl-212).
@@ -617,10 +614,10 @@ class ActorRuntime:
         n_active = len(active_tags)
         if n_active == 0:
             return
-        # Shed against the REAL current prompt size vs a REAL 70%% budget.
-        # stats.total_tokens is calibrated to the API's count by _build_messages
-        # (so total_tok and ctx_window are on the same real scale — no ratio
-        # conversion). On a COLD-START context error (the first call IS the
+        # Shed against the REAL current prompt size vs a REAL 70% budget.
+        # After successful calls, stats.total_tokens is provider usage; before
+        # usage exists it is only render_context's fallback estimate. On a
+        # COLD-START context error (the first call IS the
         # overflow, so no prior response has calibrated the counter), prefer the
         # authoritative token count the error itself reports — it's ground truth
         # and beats an uncalibrated estimate.
@@ -631,13 +628,21 @@ class ActorRuntime:
             reported = _parse_prompt_tokens(exc)
             if reported and reported > total_tok:
                 total_tok = reported
+            elif reported is None and total_tok <= target_tok:
+                # The provider rejected the request, so the prompt exceeded the
+                # true window even if our estimate is still under target and the
+                # error text omits a parseable token count. Shed at least one
+                # average event instead of no-op'ing and retrying the same prompt.
+                avg_event_guess = math.ceil(max(1, stats.events_tokens) / max(1, n_active))
+                total_tok = target_tok + max(1, avg_event_guess)
         tokens_to_shed = max(0, total_tok - target_tok)
         if tokens_to_shed == 0:
             return
-        # Per-event estimate in the same real-token scale: (total -
-        # context_blocks) / n_active so numerator and denominator match.
-        events_real_tok = max(0, total_tok - stats.context_blocks_tokens)
-        avg_event_tok = events_real_tok / max(1, n_active)
+        # Only event tokens are archiveable. total_tok may include fixed
+        # tool-schema tokens, and archiving events cannot remove those; using
+        # total_tok - context_blocks here would overestimate per-event size and
+        # under-archive for tool-heavy agents.
+        avg_event_tok = max(0, stats.events_tokens) / max(1, n_active)
         n_to_archive = min(
             int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
             n_active,
@@ -660,9 +665,7 @@ class ActorRuntime:
             hm = get_harness_metrics()
             if isinstance(hm, HarnessMetrics):
                 hm.context_limits_events_collapsed += n_to_archive
-                hm.context_limits_tokens_archived += n_to_archive * (
-                    events_real_tok // max(1, n_active)
-                )
+                hm.context_limits_tokens_archived += int(n_to_archive * avg_event_tok)
 
     @property
     def _agent_call_stack(self) -> tuple[str | None, ...]:
@@ -1060,6 +1063,14 @@ class ActorRuntime:
         _prompt_tokens = int(
             _usage_dict.get("prompt_tokens") or _usage_dict.get("input_tokens") or 0
         )
+        if _prompt_tokens > 0:
+            self._last_prompt_tokens_actual = _prompt_tokens
+            if self._last_context_stats is not None:
+                # Prefer the provider's exact prompt token count over local estimates
+                # for ctx% display, summarization triggers, and archive sizing.
+                self._last_context_stats = self._last_context_stats.model_copy(
+                    update={"total_tokens": _prompt_tokens}
+                )
         _completion_tokens = int(
             _usage_dict.get("completion_tokens") or _usage_dict.get("output_tokens") or 0
         )
@@ -2753,9 +2764,10 @@ class ActorRuntime:
         then render_context() to format them using the agent's configured
         block and provider formatters.
 
-        ``tools`` is currently unused after the proactive clamp removal
-        but kept in the signature for future use (e.g., tool-schema-aware
-        token counting).
+        ``tools`` is accepted for call-site compatibility. This method no
+        longer performs full-payload pre-call token estimation; context stats
+        stay as render_context fallback until provider usage is written after a
+        successful call.
         """
         hm = get_harness_metrics()
         with hm.timer("time_prepare_context"):
@@ -2823,36 +2835,12 @@ class ActorRuntime:
 
         set_journal_payload_from_messages(result.messages)
 
-        # Count the full structured message list, then apply the SAME
-        # per-model calibration that ``self._llm.count_tokens`` uses for
-        # ``events_tokens`` (render_context counts events with the calibrated
-        # client counter). litellm's raw tokenizer under-counts some gateway
-        # models (e.g. Azure-Anthropic claude-opus ~2.4x); the calibration
-        # ratio = API-reported prompt_tokens / raw estimate corrects it. Using
-        # the RAW count here left total_tokens systematically below
-        # events_tokens (impossible for a documented blocks+events sum) and,
-        # worse, made the TUI ctx%% and the TokenBudgetSummarizer trigger read
-        # a number ~ratio× smaller than what the API actually receives — so
-        # the summarizer fired far too late and its own render overflowed the
-        # model limit. Calibrate so total_tokens reflects the real payload.
-        #
-        # No proactive clamping — if the context exceeds the model's limit,
-        # the API returns ContextWindowExceededError and the recovery path
-        # in generate() archives events, rebuilds messages, and retries.
+        # Do not pre-call estimate the full request size here. The only exact
+        # prompt token count is provider usage from a successful API response;
+        # generate() writes that actual value back into _last_context_stats after
+        # the call. Until then, keep render_context's local estimate as a fallback
+        # for diagnostics and context-window error recovery.
         messages = result.output
-        stats = result.stats
-        if ctx_window and isinstance(messages, list) and messages:
-            import litellm
-
-            from nemo_oo_agents.unifiedllm.unifiedllm import _token_calibration
-
-            raw_total = litellm.token_counter(model=llm_client.model, messages=messages)
-            total_tok = _token_calibration.calibrate(llm_client.model, raw_total)
-            stats = stats.model_copy(
-                update={
-                    "total_tokens": total_tok,
-                    "events_tokens": stats.events_tokens,
-                }
-            )
-        self._last_context_stats = stats
+        self._last_context_stats = result.stats
+        self._last_prompt_tokens_actual = None
         return messages
