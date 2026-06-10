@@ -77,6 +77,38 @@ def terminal_cols(default: int = 120, minimum: int = 20) -> int:
         return default
 
 
+def format_session_rule(cols: int, label: str = "") -> list[tuple[str, str]]:
+    """Build the formatted-text fragments for the session rule.
+
+    The rule is rendered at ``cols - 1`` so it never occupies the terminal's
+    final column. A full-bleed line forces a cursor wrap to the next row on most
+    terminals; when ``run_in_terminal`` (``emit_block``) repaints this
+    non-full-screen app after a SIGWINCH resize, prompt_toolkit's erase is sized
+    to the pre-resize frame and can't reclaim that wrapped cell — leaving a stale
+    rule of the old width plus a blank gap line in the scrollback (the
+    "resize clutter" bug). Reserving the last column keeps the rule on one row so
+    the erase stays correct across resizes.
+    """
+    width = max(cols - 1, 1)
+    if label:
+        # Clamp the whole line (fill + space + label) to ``width`` so an
+        # over-long label can't push the rule into the final column and
+        # re-introduce the resize residue. The dash branch needs room for at
+        # least one dash plus the separating space, i.e. ``len(label) <=
+        # width - 2``; otherwise (including ``len(label) == width - 1``, where
+        # ``max(..., 1)`` would silently round the fill back up and re-bleed to
+        # the final column) fall straight through to truncation, keeping the
+        # label tail (the context-usage / id that matters most).
+        if len(label) > width - 2:
+            return [("class:rule.label", label[-width:])]
+        dashes = width - len(label) - 1  # >= 1 by the guard above
+        return [
+            ("class:rule", "─" * dashes + " "),
+            ("class:rule.label", label),
+        ]
+    return [("class:rule", "─" * width)]
+
+
 PROMPT_MARKER = "❯ "
 
 
@@ -291,15 +323,8 @@ class TUIApplication:
         # on a horizontal rule. Built from formatted text (not a Rich
         # Rule) so it re-measures with the live terminal width.
         def _session_rule_formatted():
-            cols = terminal_cols(minimum=20)
             label = self._session_label_fn() if self._session_label_fn is not None else ""
-            if label:
-                dashes = max(cols - len(label) - 1, 1)
-                return [
-                    ("class:rule", "─" * dashes + " "),
-                    ("class:rule.label", label),
-                ]
-            return [("class:rule", "─" * cols)]
+            return format_session_rule(terminal_cols(minimum=20), label)
 
         session_rule = Window(
             FormattedTextControl(_session_rule_formatted, focusable=False), height=1
