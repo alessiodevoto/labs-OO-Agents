@@ -139,13 +139,12 @@ class TestArchivalFiresOnContextError:
         assert len(summary_events) >= 1, "Archival should emit Summary events"
 
     @pytest.mark.asyncio
-    async def test_archival_fires_with_unparseable_token_count_and_known_ratio(self):
-        """When the error message has no recognizable token count but a
-        calibration ratio was already learned from a prior successful call,
-        archival still fires using the known ratio.
+    async def test_archival_fires_with_unparseable_token_count_by_shedding_minimum(self):
+        """When the error message has no recognizable token count, archive anyway.
 
-        In practice, the ratio is almost always available by the time
-        context overflows — it's learned from the very first successful call.
+        The provider rejected the request, so the prompt is too large even if
+        our local estimate is under target. The safety net must shed at least
+        one average event rather than retrying the identical overflowing prompt.
         """
         from unittest.mock import patch
 
@@ -161,9 +160,6 @@ class TestArchivalFiresOnContextError:
             agent.event_manager.add(Message(content=f"message {i} " * 50))
 
         n_events_before = len(list(agent.event_manager.keys()))
-
-        # Simulate a prior successful call having set the calibration ratio
-        agent.runtime._token_calibration_ratio = 1.5
 
         # Error with NO parseable token count — some unknown provider format
         error = _ContextWindowExceededError("context length exceeded: too many tokens in the input")
@@ -189,10 +185,10 @@ class TestArchivalFiresOnContextError:
         # _parse_prompt_tokens should return None for this error
         assert _parse_prompt_tokens(error) is None, "This error format should NOT be parseable"
 
-        # Archival should fire using the pre-existing ratio
+        # Archival should fire with a conservative minimum shed
         n_events_after = len(list(agent.event_manager.keys()))
         assert n_events_after < n_events_before, (
-            f"Archival should fire with known ratio even when token count unparseable: "
+            f"Archival should fire even when token count is unparseable: "
             f"{n_events_after} >= {n_events_before}. "
             f"Summary events: {len(summary_events)}"
         )

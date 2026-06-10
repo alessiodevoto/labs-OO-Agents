@@ -595,35 +595,20 @@ class TokenBudgetSummarizer(SummarizationAgent):
     @hidden
     @no_trace
     def _should_summarize(self, event: "AfterTurn") -> bool:
-        """Trigger when over token budget.
-
-        Prefers API-reported prompt_tokens (ground truth from the LLM response)
-        when available. Falls back to render_context estimates otherwise.
-        """
+        """Trigger only from provider-reported prompt tokens."""
         agent = self._target_agent
         if agent is None:
             return False
 
-        # Prefer API-reported token count — ground truth from the LLM response.
         try:
-            from nemo_oo_agents.unifiedllm.unifiedllm import _token_calibration
-
-            llm = getattr(agent, "_llm", None)
-            llm_model = getattr(llm, "model", None)
-            if llm_model is not None:
-                actual = _token_calibration.last_actual(llm_model)
-                if actual is not None:
-                    return actual > self.config.max_tokens
+            actual = getattr(agent.runtime, "_last_prompt_tokens_actual", None)
         except Exception:
             logger.warning(
                 "TokenBudgetSummarizer: failed to read API-reported token count", exc_info=True
             )
-
-        # Fallback to render_context estimate (calibrated via EMA).
-        stats = agent.context_stats
-        if stats is None:
             return False
-        return stats.total_tokens > self.config.max_tokens
+
+        return actual is not None and actual > self.config.max_tokens
 
     @hidden
     @no_trace

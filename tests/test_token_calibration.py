@@ -81,24 +81,6 @@ class TestTokenCalibration:
         cal.update("model-a", estimated=100, actual=-10)
         assert cal.ratio("model-a") == 1.0
 
-    def test_last_actual_unseen(self):
-        cal = TokenCalibration()
-        assert cal.last_actual("unseen") is None
-
-    def test_last_actual_tracks(self):
-        cal = TokenCalibration()
-        cal.update("model-a", estimated=100, actual=150)
-        assert cal.last_actual("model-a") == 150
-        cal.update("model-a", estimated=200, actual=350)
-        assert cal.last_actual("model-a") == 350
-
-    def test_last_actual_per_model(self):
-        cal = TokenCalibration()
-        cal.update("model-a", estimated=100, actual=150)
-        cal.update("model-b", estimated=100, actual=250)
-        assert cal.last_actual("model-a") == 150
-        assert cal.last_actual("model-b") == 250
-
     def test_repr(self):
         cal = TokenCalibration()
         cal.update("m", estimated=100, actual=200)

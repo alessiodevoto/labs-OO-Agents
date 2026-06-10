@@ -75,31 +75,67 @@ class TestAdaptiveArchivalComputation:
         assert n == 1
 
 
-class TestCalibrationRatioAffectsCap:
-    """When the calibration ratio is known, the archival cap tightens."""
+class TestRealScaleArchivalCap:
+    """The archival safety net works in calibrated/API token scale directly."""
 
-    def test_ratio_tightens_cap(self):
-        """With ratio=1.3, cap should be ctx_window*0.70/1.3 ≈ 0.538 of window."""
-        ctx_window = 200_000
-        ratio = 1.3
-        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
-        # 200K * 0.70 / 1.3 ≈ 107,692 (tighter than 140,000 uncalibrated)
-        assert cap < int(ctx_window * 0.70)
-        assert 107_000 < cap < 108_000
+    def _compute_n_to_archive(self, *, cap, total_tok, events_tok, n_active):
+        """Replicate the archival computation from _archive_on_context_error."""
+        if n_active == 0:
+            return 0
+        target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
+        tokens_to_shed = max(0, total_tok - target_tok)
+        if tokens_to_shed == 0:
+            return 0
+        avg_event_tok = events_tok / max(1, n_active)
+        return min(
+            int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
+            n_active,
+        )
 
-    def test_no_ratio_uses_default(self):
-        """Without calibration, cap is just ctx_window * 0.70."""
+    def test_cap_is_real_token_budget_not_ratio_scaled(self):
+        """No per-actor ratio should tighten the cap after total_tokens is calibrated."""
         ctx_window = 200_000
-        ratio = 1.0
-        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
+        cap = int(ctx_window * 0.70)
         assert cap == 140_000
 
-    def test_ratio_below_one_clamped(self):
-        """Ratio < 1 (litellm overcounts) is clamped to 1.0 — no widening."""
+    def test_real_scaled_total_sheds_enough_for_undercounting_tokenizer(self):
+        """Regression: shed from real total to a real target, with no ratio-B drift."""
         ctx_window = 200_000
-        ratio = 0.8
-        cap = int(ctx_window * 0.70 / max(ratio, 1.0))
-        assert cap == 140_000  # not widened
+        cap = int(ctx_window * 0.70)
+        total_tok = 180_000
+        context_blocks_tok = 20_000
+        n_active = 16
+        events_tok = total_tok - context_blocks_tok
+
+        n = self._compute_n_to_archive(
+            cap=cap,
+            total_tok=total_tok,
+            events_tok=events_tok,
+            n_active=n_active,
+        )
+
+        # target = 140k * 0.60 = 84k; shed 96k. Events avg = 160k/16 = 10k.
+        assert n == 10
+
+    def test_fixed_tool_tokens_do_not_inflate_archiveable_event_average(self):
+        """Tool-schema tokens are fixed overhead, not archiveable event tokens."""
+        ctx_window = 1_000
+        cap = int(ctx_window * 0.70)
+        total_tok = 1_250  # 950 fixed tool tokens + 300 event tokens
+        events_tok = 300
+        n_active = 30
+
+        n = self._compute_n_to_archive(
+            cap=cap,
+            total_tok=total_tok,
+            events_tok=events_tok,
+            n_active=n_active,
+        )
+
+        # target = 420; shed 830. Events avg = 300/30 = 10, so all events are
+        # archiveable and must be selected. Using total_tok/n_active would pick
+        # only 20 and leave the fixed tool overhead still over the window.
+        assert n == 30
 
 
 class TestArchiveTargetUtilization:

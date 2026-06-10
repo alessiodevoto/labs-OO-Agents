@@ -195,18 +195,8 @@ class TestTokenBudgetSummarizer:
         assert summarizer._should_summarize(event) is False
 
     def test_should_summarize_over_budget(self, test_agent):
-        """Should summarize when over budget."""
-        from nemo_oo_agents import ContextWindowStats
-
-        # Simulate the runtime having built a prompt over the budget.
-        test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
-            context_blocks_count=0,
-            events_tokens=500,
-            events_count=10,
-            total_tokens=500,
-        )
-
+        """Should summarize when this runtime's provider-reported prompt count is over budget."""
+        test_agent.runtime._last_prompt_tokens_actual = 500
         summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=100))
 
         event = AfterTurn(
@@ -219,6 +209,54 @@ class TestTokenBudgetSummarizer:
             success=True,
         )
         assert summarizer._should_summarize(event) is True
+
+    def test_should_not_summarize_from_estimate_when_actual_under_budget(self, test_agent):
+        """A local estimate alone does not trigger summarization; actual usage is authoritative."""
+        from nemo_oo_agents import ContextWindowStats
+
+        test_agent.runtime._last_prompt_tokens_actual = 600
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=1500,
+            events_count=20,
+            total_tokens=1500,
+        )
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=1000))
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-1",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
+
+    def test_should_not_summarize_without_provider_actual(self, test_agent):
+        """No provider actual means no token-budget summarization trigger."""
+        from nemo_oo_agents import ContextWindowStats
+
+        test_agent.runtime._last_prompt_tokens_actual = None
+        test_agent.runtime._last_context_stats = ContextWindowStats(
+            context_blocks_tokens=0,
+            context_blocks_count=0,
+            events_tokens=1500,
+            events_count=20,
+            total_tokens=1500,
+        )
+        summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=1000))
+        event = AfterTurn(
+            method_name="test",
+            strategy="CODEACT",
+            generation_id="gen-1",
+            parent_generation_id=None,
+            turn_number=1,
+            is_final=True,
+            success=True,
+        )
+        assert summarizer._should_summarize(event) is False
 
     def test_compute_range_preserves_recent(self, test_agent):
         """Compute range preserves recent events."""
@@ -699,20 +737,12 @@ class TestSummarizationAsyncIntegration:
     @pytest.mark.asyncio
     async def test_after_turn_triggers_summarization_when_over_budget(self, test_agent):
         """_handle_after_turn schedules summarization when over token budget."""
-        from nemo_oo_agents import ContextWindowStats
-
         # Add enough events to have something to summarize
         for _ in range(20):
             test_agent.event_manager.add(Message(content="x" * 100))
 
-        # Simulate the runtime having built an over-budget prompt.
-        test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
-            context_blocks_count=0,
-            events_tokens=1000,
-            events_count=20,
-            total_tokens=1000,
-        )
+        # Simulate this runtime's last successful call reporting an over-budget prompt.
+        test_agent.runtime._last_prompt_tokens_actual = 1000
 
         # Very low budget to trigger summarization
         summarizer = TokenBudgetSummarizer(
@@ -779,7 +809,6 @@ class TestSummarizationAsyncIntegration:
     @pytest.mark.asyncio
     async def test_end_to_end_summarization_flow(self, fake_llm):
         """Full flow: add events → trigger summarization → verify collapse."""
-        from nemo_oo_agents import ContextWindowStats
 
         # Create agent with events
         class SimpleAgent(Agent, llm=fake_llm):
@@ -794,14 +823,8 @@ class TestSummarizationAsyncIntegration:
         initial_tag_count = len(agent.event_manager.keys())
         assert initial_tag_count == 20
 
-        # Simulate the runtime having built an over-budget prompt.
-        agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
-            context_blocks_count=0,
-            events_tokens=1000,
-            events_count=20,
-            total_tokens=1000,
-        )
+        # Simulate this runtime's last successful call reporting an over-budget prompt.
+        agent.runtime._last_prompt_tokens_actual = 1000
 
         # Create summarizer with low threshold to trigger
         summarizer = TokenBudgetSummarizer(
@@ -956,6 +979,7 @@ class TestSummarizationAsyncIntegration:
             events_count=20,
             total_tokens=200_000,
         )
+        test_agent.runtime._last_prompt_tokens_actual = 200_000
 
         summarizer = TokenBudgetSummarizer(
             test_agent, config=TokenBudgetConfig(max_tokens=100, preserve_recent=5)
@@ -1009,6 +1033,7 @@ class TestSummarizationAsyncIntegration:
             events_count=20,
             total_tokens=200_000,
         )
+        test_agent.runtime._last_prompt_tokens_actual = 200_000
 
         summarizer = TokenBudgetSummarizer(
             test_agent, config=TokenBudgetConfig(max_tokens=100, preserve_recent=5)
@@ -1039,6 +1064,7 @@ class TestSummarizationAsyncIntegration:
 
         # Turn 2 BeforeTurn — applies the completed summary.
         summarizer._handle_before_turn(before_turn)
+        test_agent.runtime._last_prompt_tokens_actual = None
         active = test_agent.event_manager.keys()
         assert any(".." in t for t in active), "BeforeTurn should apply the summary"
         assert summarizer._pending_task is None
