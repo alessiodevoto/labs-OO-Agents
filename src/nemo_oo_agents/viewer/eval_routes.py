@@ -71,6 +71,10 @@ _NAME_KEYS = {"display_name", "test_name", "test_id"}
 # Keys that contain large/complex data and belong in the detail view only.
 _DETAIL_ONLY_KEYS = {"input", "output", "expected", "scores", "trace_file", "duration_seconds"}
 
+# Trace-derived table metrics. These are rendered as fixed frontend columns,
+# not discovered as eval metadata.
+_TRACE_METRIC_KEYS = {"duration_ms", "span_count"}
+
 
 def _build_experiment_summary_item(experiment: str) -> ExperimentSummaryItem | None:
     """Build summary for a single experiment from indexed sessions."""
@@ -122,7 +126,30 @@ def _session_to_test_dict(
             continue
         d.setdefault(key, val)
 
+    # Trace-derived metrics (merged in by _sessions_to_test_dicts) override
+    # any same-named eval-metadata field.
+    d["duration_ms"] = session.get("duration_ms")
+    d["span_count"] = session.get("span_count")
+
     return d
+
+
+def _sessions_to_test_dicts(
+    sessions: list[dict[str, Any]], *, include_detail: bool = False
+) -> list[dict[str, Any]]:
+    """Build test rows, enriching with trace-derived ``duration_ms``.
+
+    ``span_count`` is already on the session dict from the sessions row;
+    ``duration_ms`` is computed (latest span end − earliest start) via a
+    single batched query.
+    """
+    durations = otlp_store.get_session_durations_ms([s["id"] for s in sessions])
+    return [
+        _session_to_test_dict(
+            {**s, "duration_ms": durations.get(s["id"])}, include_detail=include_detail
+        )
+        for s in sessions
+    ]
 
 
 def _collect_metadata_keys(tests: list[dict[str, Any]]) -> list[str]:
@@ -131,7 +158,7 @@ def _collect_metadata_keys(tests: list[dict[str, Any]]) -> list[str]:
     Excludes keys used for test name and detail-only keys.
     """
     all_keys: set[str] = set()
-    skip = {"session_id"} | _NAME_KEYS | _DETAIL_ONLY_KEYS
+    skip = {"session_id"} | _NAME_KEYS | _DETAIL_ONLY_KEYS | _TRACE_METRIC_KEYS
     for t in tests:
         all_keys.update(k for k in t if k not in skip)
     return sorted(all_keys)
@@ -200,7 +227,7 @@ def list_all_experiments() -> list[ExperimentSummaryItem]:
 
 def _collect_column_info(tests: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return column metadata with unique values for each metadata key."""
-    skip = {"session_id"} | _NAME_KEYS | _DETAIL_ONLY_KEYS
+    skip = {"session_id"} | _NAME_KEYS | _DETAIL_ONLY_KEYS | _TRACE_METRIC_KEYS
     key_values: dict[str, set[str]] = {}
     for t in tests:
         for k, v in t.items():
@@ -227,7 +254,7 @@ def get_experiment(
     if not sessions:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
-    tests = [_session_to_test_dict(s, include_detail=True) for s in sessions]
+    tests = _sessions_to_test_dicts(sessions, include_detail=True)
     metadata_keys = _collect_metadata_keys(tests)
     columns = _collect_column_info(tests)
 
@@ -322,7 +349,7 @@ def get_experiment_summary_endpoint(
     if not sessions:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
-    tests = [_session_to_test_dict(s) for s in sessions]
+    tests = _sessions_to_test_dicts(sessions)
 
     # Apply the same filters as the detail endpoint
     known_params = {"search"}
@@ -441,7 +468,7 @@ def get_experiment_tests(experiment_id: str):
     if not sessions:
         raise HTTPException(status_code=404, detail=f"Experiment {experiment_id} not found")
 
-    tests = [_session_to_test_dict(s, include_detail=True) for s in sessions]
+    tests = _sessions_to_test_dicts(sessions, include_detail=True)
     metadata_keys = _collect_metadata_keys(tests)
     return {"tests": tests, "metadata_keys": metadata_keys}
 

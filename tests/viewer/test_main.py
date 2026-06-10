@@ -138,6 +138,69 @@ def _seed_session(db: sqlite3.Connection, session_id: str = "sess1") -> None:
     db.commit()
 
 
+def _ingest_eval_session(session_id: str, experiment: str, spans: list[tuple[int, int]]) -> None:
+    """Ingest an eval session with the given (start_ns, end_ns) spans."""
+    otlp_store.ingest(
+        {
+            "resourceSpans": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "session.id", "value": {"stringValue": session_id}},
+                            {"key": "experiment", "value": {"stringValue": experiment}},
+                            {"key": "eval.passed", "value": {"boolValue": True}},
+                            {"key": "eval.test_id", "value": {"stringValue": session_id}},
+                        ]
+                    },
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "traceId": f"t-{session_id}",
+                                    "spanId": f"s-{session_id}-{i}",
+                                    "name": "test.span",
+                                    "kind": 1,
+                                    "startTimeUnixNano": str(start),
+                                    "endTimeUnixNano": str(end),
+                                    "attributes": [],
+                                }
+                                for i, (start, end) in enumerate(spans)
+                            ]
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/eval/experiment/{experiment_id}
+# ---------------------------------------------------------------------------
+
+
+class TestEvalExperimentEndpoint:
+    def test_rows_include_trace_metrics_and_can_sort_by_duration(self, client):
+        _ingest_eval_session("fast", "exp-metrics", [(1_000_000_000, 1_050_000_000)])
+        _ingest_eval_session(
+            "slow",
+            "exp-metrics",
+            [
+                (1_000_000_000, 1_500_000_000),
+                (2_000_000_000, 3_500_000_000),
+                (1_500_000_000, 1_750_000_000),
+            ],
+        )
+
+        resp = client.get("/api/eval/experiment/exp-metrics?sort_by=duration_ms&sort_dir=desc")
+
+        assert resp.status_code == 200
+        results = resp.json()["results"]
+        assert [r["session_id"] for r in results] == ["slow", "fast"]
+        assert (results[0]["span_count"], results[0]["duration_ms"]) == (3, 2500.0)
+        assert (results[1]["span_count"], results[1]["duration_ms"]) == (1, 50.0)
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/journal/messages
 # ---------------------------------------------------------------------------

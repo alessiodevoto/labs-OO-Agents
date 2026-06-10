@@ -21,6 +21,7 @@ import { KeyboardShortcutsHelp } from "@/components/shared/KeyboardShortcutsHelp
 import { useColumnConfig } from "@/hooks/useColumnConfig";
 import { useKeyboardNav } from "@/hooks/useKeyboardNav";
 import { buildFilterParams } from "@/utils/evalFilters";
+import { formatDurationMs } from "@/utils/time";
 
 const PAGE_SIZE = 50;
 
@@ -317,6 +318,31 @@ export function EvalExperimentDetail() {
         render: (t) => renderCellValue(t, col),
       });
     }
+
+    const passedIdx = cols.findIndex((c) => c.key === "passed");
+    const insertAt = passedIdx === -1 ? cols.length : passedIdx + 1;
+    cols.splice(
+      insertAt,
+      0,
+      {
+        key: "duration_ms",
+        label: "Duration",
+        className: "w-24 text-right font-mono text-xs text-gray-400 tabular-nums",
+        render: (t) =>
+          typeof t.duration_ms === "number" && Number.isFinite(t.duration_ms)
+            ? formatDurationMs(t.duration_ms)
+            : "—",
+      },
+      {
+        key: "span_count",
+        label: "Spans",
+        className: "w-20 text-right font-mono text-xs text-gray-400 tabular-nums",
+        render: (t) =>
+          typeof t.span_count === "number" && Number.isFinite(t.span_count)
+            ? Math.round(t.span_count).toLocaleString()
+            : "—",
+      },
+    );
 
     return cols;
   }, [

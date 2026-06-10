@@ -416,6 +416,58 @@ class TestIngestNewSession:
         result = store.ingest(_make_body(session_id="s1", spans=[]))
         assert result["span_count"] == 0
 
+    def test_session_durations_ms_spans_endpoints_to_endpoints(self):
+        store.ingest(
+            _make_body(
+                session_id="s1",
+                spans=[
+                    {
+                        "traceId": "t",
+                        "spanId": "a",
+                        "name": "x",
+                        "kind": 1,
+                        "startTimeUnixNano": "1000000000",
+                        "endTimeUnixNano": "1500000000",
+                        "attributes": [],
+                    },
+                    {
+                        "traceId": "t",
+                        "spanId": "b",
+                        "name": "y",
+                        "kind": 1,
+                        "startTimeUnixNano": "2000000000",
+                        "endTimeUnixNano": "3500000000",
+                        "attributes": [],
+                    },
+                ],
+            )
+        )
+        store.ingest(_make_body(session_id="empty", spans=[]))
+        # Zero-duration spans (e.g. when endTimeUnixNano was missing on ingest
+        # and fell back to startTimeUnixNano) must report 0.0 ms, not None.
+        store.ingest(
+            _make_body(
+                session_id="zero",
+                spans=[
+                    {
+                        "traceId": "t",
+                        "spanId": "z",
+                        "name": "x",
+                        "kind": 1,
+                        "startTimeUnixNano": "1000000000",
+                        "endTimeUnixNano": "1000000000",
+                        "attributes": [],
+                    },
+                ],
+            )
+        )
+
+        # Sessions without spans (or unknown ids) are absent — callers use .get(session_id).
+        assert store.get_session_durations_ms(["s1", "empty", "zero", "missing"]) == {
+            "s1": 2500.0,
+            "zero": 0.0,
+        }
+
 
 # ---------------------------------------------------------------------------
 # ingest — re-ingest (session merge)

@@ -41,6 +41,8 @@ export interface TestResult {
   test_name: string;
   display_name: string;
   passed: boolean | null;
+  duration_ms?: number | null;
+  span_count?: number | null;
   model?: string;
   agent_class?: string;
   method?: string;

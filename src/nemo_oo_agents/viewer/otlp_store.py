@@ -873,6 +873,33 @@ def list_sessions(
     return [_row_to_session_dict(r) for r in rows]
 
 
+def get_session_durations_ms(session_ids: list[str]) -> dict[str, float | None]:
+    """Return ``{session_id: duration_ms}`` (latest span end − earliest span start).
+
+    ``None`` for sessions with no spans, so callers can render "—" rather than
+    a misleading 0. Chunked under SQLite's SQLITE_MAX_VARIABLE_NUMBER (999).
+    """
+    if not session_ids:
+        return {}
+    db = _get_db()
+    unique_ids = list(dict.fromkeys(session_ids))
+    out: dict[str, float | None] = {}
+    for i in range(0, len(unique_ids), 500):
+        chunk = unique_ids[i : i + 500]
+        placeholders = ",".join("?" * len(chunk))
+        rows = db.execute(
+            f"SELECT session_id, MIN(start_time_ns) AS t0, MAX(end_time_ns) AS t1 "
+            f"FROM spans WHERE session_id IN ({placeholders}) GROUP BY session_id",
+            chunk,
+        ).fetchall()
+        for row in rows:
+            t0, t1 = row["t0"], row["t1"]
+            out[row["session_id"]] = (
+                (t1 - t0) / 1_000_000 if t0 is not None and t1 is not None and t1 >= t0 else None
+            )
+    return out
+
+
 def list_experiments() -> list[str]:
     """Return list of known experiment names."""
     db = _get_db()
