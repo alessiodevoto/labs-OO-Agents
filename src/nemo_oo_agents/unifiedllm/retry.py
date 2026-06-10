@@ -20,6 +20,19 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# Provider/LiteLLM error substrings to fall back on when an error only carries a
+# stringified form (e.g. raw gateway HTML) without a usable ``.status_code`` or a
+# ``status {code}`` token. Keyed by HTTP status code so a phrase only triggers a
+# retry when that code is present in ``RetryConfig.retryable_status_codes``.
+# ``error_str`` is lowercased before matching, so class-name forms (e.g.
+# ``BadGatewayError``) match too.
+_RETRYABLE_STATUS_PHRASES: dict[int, tuple[str, ...]] = {
+    500: ("internal server error", "internalservererror"),
+    502: ("bad gateway", "badgatewayerror"),
+    503: ("service unavailable", "serviceunavailableerror"),
+    504: ("gateway timeout", "gateway time-out"),
+}
+
 
 class EmptyContentError(Exception):
     """Raised when LLM returns empty content but has reasoning.
@@ -73,15 +86,30 @@ def _is_retryable_error(error: Exception, config: RetryConfig) -> tuple[bool, bo
     if isinstance(error, EmptyContentError) and config.retry_on_empty_content:
         return True, False
 
+    # Prefer the structured status code when the exception exposes one (LiteLLM /
+    # OpenAI APIStatusError subclasses carry ``.status_code`` — e.g. BadGatewayError
+    # has 502). This is more robust than string matching, which misses errors whose
+    # message is raw gateway HTML without a "status 502" token.
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        if status_code == 429:
+            return (True, True) if 429 in config.retryable_status_codes else (False, False)
+        if status_code in config.retryable_status_codes:
+            return True, False
+
     error_str = str(error).lower()
 
-    # Check for rate limit (429)
+    # Check for rate limit (429) — only retryable if 429 is in the configured set.
     if "status 429" in error_str or "rate limit" in error_str:
-        return True, True
+        return (True, True) if 429 in config.retryable_status_codes else (False, False)
 
     # Check for retryable status codes
     for code in config.retryable_status_codes:
         if f"status {code}" in error_str:
+            return True, False
+        # Fall back to provider/LiteLLM phrasing (e.g. "502 Bad Gateway",
+        # "BadGatewayError") when the "status {code}" token is absent.
+        if any(phrase in error_str for phrase in _RETRYABLE_STATUS_PHRASES.get(code, ())):
             return True, False
 
     # Check for timeout errors

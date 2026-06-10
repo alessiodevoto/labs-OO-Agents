@@ -2092,6 +2092,43 @@ class ReasoningCompletionClient(CompletionClient):
 
 
 class ResponsesClient(UnifiedLLM):
+    def __init__(
+        self,
+        model: str,
+        retry_config: RetryConfig | None = None,
+        http_config: HttpConfig | None = None,
+        cache_control_injection_points: list[dict[str, Any]] | None = None,
+        **config,
+    ):
+        """
+        Initialize ResponsesClient.
+
+        Mirrors CompletionClient so the Responses API path gets the same retry,
+        HTTP, and cache-control behaviour. Accepting these as named parameters
+        also keeps them out of ``self.config`` — otherwise they would leak into
+        ``litellm.responses()`` as bogus API params.
+
+        Args:
+            model: The model identifier (e.g., "openai/gpt-5.3-codex").
+            retry_config: Optional retry configuration for API-level retries.
+                          Handles 429, 500, 502, 503, 504, timeouts, etc.
+            http_config: Optional HTTP connection pool and timeout settings. Values
+                         are applied process-wide via the httpx monkey-patch.
+            cache_control_injection_points: Optional list of role/position rules to
+                enable prompt caching (for example: {"role": "system"} or
+                {"role": "tool", "position": "last"}). Applied to all calls.
+            **config: Additional configuration passed to litellm (api_key, api_base, etc.)
+        """
+        super().__init__(model, **config)
+        self.retry_config = retry_config
+        self._http_config = http_config or HttpConfig()
+        _set_http_config(self._http_config)
+        # Only set default if explicitly None (not if empty list is passed)
+        if cache_control_injection_points is not None:
+            self.cache_control_injection_points = cache_control_injection_points
+        else:
+            self.cache_control_injection_points = DEFAULT_CACHE_CONTROL_INJECTION_POINTS
+
     def _convert_tool_to_schema(self, tool: Tool) -> dict[str, Any]:
         """Convert Tool object to Responses API schema format."""
         schema_loose = tool.get_parameter_schema()
@@ -2176,7 +2213,16 @@ class ResponsesClient(UnifiedLLM):
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning
 
-        raw_response = cast("litellm.ResponsesAPIResponse", litellm.responses(**api_params))
+        def _make_call():
+            return cast("litellm.ResponsesAPIResponse", litellm.responses(**api_params))
+
+        # Track LLM call for debugging (visible via SIGUSR2 if nemo_oo_agents debug handler installed)
+        with _track_llm_call(model=self.model, endpoint=self.config.get("api_base")):
+            raw_response = (
+                sync_retry(_make_call, config=self.retry_config)
+                if self.retry_config
+                else _make_call()
+            )
 
         # Extract usage if available (Responses API may have different structure)
         usage = None
@@ -2293,7 +2339,16 @@ class ResponsesClient(UnifiedLLM):
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning
 
-        raw_response = cast("litellm.ResponsesAPIResponse", await litellm.aresponses(**api_params))
+        async def _make_call():
+            return cast("litellm.ResponsesAPIResponse", await litellm.aresponses(**api_params))
+
+        # Track LLM call for debugging (visible via SIGUSR2 if nemo_oo_agents debug handler installed)
+        with _track_llm_call(model=self.model, endpoint=self.config.get("api_base")):
+            raw_response = (
+                await with_retry(_make_call, config=self.retry_config)
+                if self.retry_config
+                else await _make_call()
+            )
 
         # Extract usage if available (Responses API may have different structure)
         usage = None

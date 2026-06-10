@@ -109,6 +109,27 @@ async def classify(self, text: str) -> str: ...
 agent = MyAgent(llm=different_llm)
 ```
 
+### Retries for transient API errors
+
+LLM API calls can fail with transient errors (502 Bad Gateway, 503, timeouts,
+connection resets) — common against the NVIDIA inference endpoint on long agent runs.
+**Retries are off unless you pass a `retry_config`.** Pass one to enable automatic
+retry with exponential backoff; the bare `RetryConfig()` defaults already cover the
+transient cases, so you don't special-case individual status codes.
+
+```python
+from unifiedllm import get_llm_client, RetryConfig
+
+llm = get_llm_client("aws/anthropic/claude-haiku-4-5-v1", retry_config=RetryConfig())
+# Works for responses-API models too: ..., client_type="responses", retry_config=RetryConfig()
+# Direct construction: CompletionClient(model=..., retry_config=RetryConfig())
+```
+
+Defaults: `max_retries=3` (up to 4 total attempts) for `{429, 500, 502, 503, 504}`,
+timeouts, and connection errors; rate-limit (429) errors get `rate_limit_extra_retries=3`
+more on top. Tune with `RetryConfig(max_retries=5, base_delay=2.0, ...)`. Both
+`CompletionClient` and `ResponsesClient` apply the same policy.
+
 ## Guide: Building an Agent from Scratch
 
 Start at Step 1 and only move to the next step when you hit the limitation it addresses.
