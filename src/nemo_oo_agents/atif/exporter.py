@@ -23,7 +23,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from uuid import uuid4
 
 from nemo_oo_agents.atif.schema import (
@@ -114,6 +114,18 @@ class _PendingStep:
         self.llm_call_count: int = 0  # bumped by LLMComplete
 
 
+class _DispatchStep(NamedTuple):
+    """A buffered delegation step: a parent's reference to an embedded
+    sub-trajectory (standalone or sub-agent), flushed once the system step
+    exists. ``extra`` carries per-handoff metadata (e.g. step-range offset)."""
+
+    name: str
+    trajectory_id: str
+    session_id: str | None
+    timestamp: str
+    extra: dict[str, Any] | None = None
+
+
 # Dispatch table: event_type string → AtifExporter handler-method name.
 #
 # The exporter does NOT subscribe to each of these individually. Instead it
@@ -123,6 +135,8 @@ class _PendingStep:
 # the trajectory via the role-based fallback in ``_dispatch_event``.
 _HANDLER_DISPATCH: dict[str, str] = {
     "Task": "on_task",
+    "BeforeAgentCall": "on_before_agent_call",
+    "AfterAgentCall": "on_after_agent_call",
     "BeforeTurn": "on_before_turn",
     "SystemPrompt": "on_system_prompt",
     "LLMComplete": "on_llm_complete",
@@ -291,23 +305,13 @@ class AtifExporter:
         # this to False to avoid double writes.
         self._writes_to_disk = True
 
-        # ContextVar tokens for the standalone-cascade.
-        #
-        # ``_install_token``: set by :func:`install_atif` only when
-        # ``cascade_to_standalones=True`` (i.e. atif_scope). Lifetime =
-        # the install/uninstall window. Standalone calls happening
-        # ANYWHERE inside the install window cascade to this exporter.
-        #
-        # ``_run_token``: set by :meth:`on_before_turn` when a TOP-LEVEL
-        # turn opens (turn_number=1, parent_generation_id is None) AND
-        # no install_token is already set. Reset by :meth:`on_after_turn`
-        # at the matching top-level final AfterTurn. Lifetime = one
-        # agent_call run. Used by ``enable_atif()`` (which patches
-        # ``Agent.__init__`` and CANNOT use install-time set because
-        # multiple agents share the same async context, which would
-        # otherwise cross-contaminate their trajectories).
+        # Cascade-binding token. At most one is set at a time; they differ
+        # only in who releases it: install (atif_scope, until uninstall),
+        # entrypoint (per top-level agent call), or run (per generation turn,
+        # a fallback for turns not preceded by an agent-call event).
         self._install_token: contextvars.Token | None = None
         self._run_token: contextvars.Token | None = None
+        self._entrypoint_token: contextvars.Token | None = None
 
         # System-prompt state. The framework fires SystemPrompt AFTER the
         # Task event (see runtime/actor.py — render-at-call-time invariant),
@@ -317,6 +321,22 @@ class AtifExporter:
         self._system_step_emitted: bool = False
         self._system_content_hash: int | None = None
         self._buffered_tasks: list[Task] = []
+        # Sub-agent / standalone handoff dispatch steps that occurred before the
+        # first SystemPrompt (a pure-Python orchestrator that delegated before
+        # any generation turn). Buffered like Tasks and flushed after the system
+        # step, ahead of the task, to preserve chronology. Each entry is a
+        # ``_DispatchStep`` (name, trajectory_id, session_id, timestamp, extra).
+        self._buffered_dispatches: list[_DispatchStep] = []
+        # Per-run agent-call state (only one outer call binds an exporter at a
+        # time — same-agent nested calls return early). Set by
+        # on_before_agent_call, consumed by the matching on_after_agent_call:
+        # the call_id that bound us, the parent exporter to embed into (or None
+        # if top-level), and this trajectory's step count at call start (for
+        # the handoff step-range offset).
+        self._arm_call_id: str | None = None
+        self._adoptive_parent: Any = None
+        self._embed_start_step: int = 0
+        self._saved_writes_to_disk: bool = True
         # Drift: when a later SystemPrompt differs from the first, stash the
         # new content for the next agent step's extra. Cleared on emit.
         self._pending_system_drift: str | None = None
@@ -479,6 +499,11 @@ class AtifExporter:
                 self._next_step_id += 1
                 self._system_step_emitted = True
                 self._system_content_hash = hash(content)
+                # Flush delegation dispatch steps that ran before this first
+                # turn — chronologically they precede the task below.
+                for dispatch in self._buffered_dispatches:
+                    self._emit_dispatch_step(dispatch)
+                self._buffered_dispatches.clear()
                 # Flush any tasks that arrived before the system step.
                 for buffered in self._buffered_tasks:
                     self._emit_task_step(buffered)
@@ -487,6 +512,73 @@ class AtifExporter:
                 return
             if hash(content) != self._system_content_hash:
                 self._pending_system_drift = content
+
+    def on_before_agent_call(self, event: Any) -> None:
+        """``BeforeAgentCall`` ⇒ bind the cascade var to this exporter.
+
+        The event fires on the agent's own EventManager, so each exporter
+        binds with itself. Three cases by what the var currently holds:
+
+        - ``self`` — a method of this agent is already running (same-agent
+          nested call, or atif_scope's install binding); no-op.
+        - ``None`` — top-level run: bind self, write own file as usual.
+        - another exporter ``parent`` — this agent runs nested under
+          ``parent``: bind self (so this agent's own children nest under it)
+          and mark for embedding into ``parent`` (suppress own file). The
+          handoff is recorded on the matching :meth:`on_after_agent_call`.
+        """
+        with self._lock:
+            cur = _atif_exporter_var.get()
+            if cur is self:
+                return
+            try:
+                self._entrypoint_token = _atif_exporter_var.set(self)
+            except Exception:  # noqa: BLE001
+                self._entrypoint_token = None
+            self._arm_call_id = getattr(event, "call_id", None) or ""
+            self._adoptive_parent = cur
+            self._embed_start_step = len(self._trajectory.steps)
+            self._saved_writes_to_disk = self._writes_to_disk
+            if cur is not None:
+                # Nested under a parent run ⇒ embed there, not a separate file.
+                # Restored on the matching on_after_agent_call so suppression is
+                # scoped to this call (a reused instance may later run top-level).
+                self._writes_to_disk = False
+
+        # Note: concurrent calls into the *same* agent instance (e.g.
+        # ``asyncio.gather(agent.m(a), agent.m(b))``) are not supported — a
+        # single instance shares one event history/pending state. Parallel work
+        # should use distinct sub-agent instances.
+
+    def on_after_agent_call(self, event: Any) -> None:
+        """``AfterAgentCall`` ⇒ release the binding (success or exception).
+
+        For a nested run, lift this agent's trajectory into the parent's
+        ``subagent_trajectories[]`` and emit a handoff reference step carrying
+        the step-range this call produced. For a top-level run, finalize the
+        trajectory if a generation turn never did (pure-Python orchestrator).
+        """
+        with self._lock:
+            cid = getattr(event, "call_id", None) or ""
+            if cid != self._arm_call_id:
+                return  # not the call that bound us (same-agent nested / unmatched)
+            if self._entrypoint_token is not None:
+                try:
+                    _atif_exporter_var.reset(self._entrypoint_token)
+                except (LookupError, ValueError):
+                    pass
+                self._entrypoint_token = None
+            parent = self._adoptive_parent
+            start_step = self._embed_start_step
+            self._arm_call_id = None
+            self._adoptive_parent = None
+            self._writes_to_disk = self._saved_writes_to_disk
+            if parent is not None and hasattr(parent, "_embed_subagent_handoff"):
+                parent._embed_subagent_handoff(self, start_step, len(self._trajectory.steps))
+            else:
+                # Top-level: finalize a pure-Python orchestrator that never
+                # opened a generation turn (no on_after_turn finalize fired).
+                self._finalize_if_needed(success=getattr(event, "success", True))
 
     def on_before_turn(self, event: BeforeTurn) -> None:
         """``BeforeTurn`` ⇒ open a pending agent step keyed by generation_id.
@@ -498,17 +590,9 @@ class AtifExporter:
         ``parent_generation_id`` so consumers can reconstruct the
         nesting tree.
 
-        At a TOP-LEVEL turn boundary
-        (``turn_number == 1 and parent_generation_id is None``), this
-        method also pushes the exporter onto the
-        ``_atif_exporter_var`` ContextVar so standalone generation
-        functions called inside the running agent's body cascade into
-        this trajectory. The push happens only if no install-time
-        binding already exists (which is the case for
-        :func:`enable_atif`'s patched ``Agent.__init__``; for
-        :func:`atif_scope`, the install-time set already covers it).
-        The token is stored in ``self._run_token`` and reset by
-        :meth:`on_after_turn` at the matching final turn.
+        At a top-level turn boundary it also arms the standalone cascade
+        (``_run_token``) — a fallback for turns not preceded by a
+        ``BeforeAgentCall`` event, skipped when any binding already exists.
         """
         with self._lock:
             self._pending[event.generation_id] = _PendingStep(
@@ -518,15 +602,12 @@ class AtifExporter:
                 strategy_name=event.strategy,
                 turn_number=event.turn_number,
             )
-            # Top-level run-scoped cascade. Skip if atif_scope already
-            # bound us at install time (avoids redundant double-push) or
-            # if we're already in a run we haven't seen the AfterTurn
-            # for (defensive — should not happen under normal LIFO).
             if (
                 event.turn_number == 1
                 and event.parent_generation_id is None
                 and self._install_token is None
                 and self._run_token is None
+                and self._entrypoint_token is None
             ):
                 self._run_token = _atif_exporter_var.set(self)
 
@@ -774,9 +855,13 @@ class AtifExporter:
         steps so the on-disk trajectory still records the prompt.
         """
         with self._lock:
-            # Flush orphan-buffered Tasks (crashed before first LLM call).
-            if self._buffered_tasks:
+            # Flush orphan-buffered dispatch steps + Tasks (crashed or finished
+            # before the first LLM call).
+            if self._buffered_dispatches or self._buffered_tasks:
                 self._system_step_emitted = True
+                for dispatch in self._buffered_dispatches:
+                    self._emit_dispatch_step(dispatch)
+                self._buffered_dispatches.clear()
                 for buffered in self._buffered_tasks:
                     self._emit_task_step(buffered)
                 self._buffered_tasks.clear()
@@ -792,6 +877,12 @@ class AtifExporter:
                 except (LookupError, ValueError):
                     pass
                 self._run_token = None
+            if self._entrypoint_token is not None:
+                try:
+                    _atif_exporter_var.reset(self._entrypoint_token)
+                except (LookupError, ValueError):
+                    pass
+                self._entrypoint_token = None
 
     def get_trajectory(self) -> Trajectory:
         """Return a snapshot of the current trajectory (for tests)."""
@@ -827,11 +918,21 @@ class AtifExporter:
                 except (LookupError, ValueError):
                     pass
                 self._install_token = None
-            # Flush orphan-buffered Tasks (no SystemPrompt arrived).
-            if self._buffered_tasks:
-                # Mark "no system step" so subsequent Tasks (if any) emit
-                # directly instead of re-buffering.
+            if self._entrypoint_token is not None:
+                try:
+                    _atif_exporter_var.reset(self._entrypoint_token)
+                except (LookupError, ValueError):
+                    pass
+                self._entrypoint_token = None
+            # Flush orphan-buffered dispatch steps + Tasks (no SystemPrompt
+            # arrived).
+            if self._buffered_dispatches or self._buffered_tasks:
+                # Mark "no system step" so subsequent events emit directly
+                # instead of re-buffering.
                 self._system_step_emitted = True
+                for dispatch in self._buffered_dispatches:
+                    self._emit_dispatch_step(dispatch)
+                self._buffered_dispatches.clear()
                 for buffered in self._buffered_tasks:
                     self._emit_task_step(buffered)
                 self._buffered_tasks.clear()
@@ -887,15 +988,133 @@ class AtifExporter:
             children_list = list(root.subagent_trajectories or [])
             children_list.append(child_trajectory)
             self._trajectory = root.model_copy(update={"subagent_trajectories": children_list})
-            # Queue a ref to be attached to the enclosing parent step's
-            # observation when that step is finalized.
-            if enclosing_tool_call_id and child_trajectory.trajectory_id:
-                self._pending_subagent_refs.setdefault(enclosing_tool_call_id, []).append(
-                    SubagentTrajectoryRef(
-                        trajectory_id=child_trajectory.trajectory_id,
-                        session_id=child_trajectory.session_id,
+            # Reference the embedded child from a parent observation rather
+            # than leaving it orphaned.
+            if child_trajectory.trajectory_id:
+                if enclosing_tool_call_id:
+                    # Ran inside a tool call: ref it on that tool_call's observation.
+                    self._pending_subagent_refs.setdefault(enclosing_tool_call_id, []).append(
+                        SubagentTrajectoryRef(
+                            trajectory_id=child_trajectory.trajectory_id,
+                            session_id=child_trajectory.session_id,
+                        )
                     )
+                else:
+                    # Pure-Python orchestrator (no tool call): a dispatch step
+                    # carrying the ref.
+                    self._dispatch_or_buffer(
+                        _DispatchStep(
+                            name=child_trajectory.agent.name,
+                            trajectory_id=child_trajectory.trajectory_id,
+                            session_id=child_trajectory.session_id,
+                            timestamp=_iso8601_utc(),
+                            extra={"event_kind": "standalone_dispatch"},
+                        )
+                    )
+            self._write()
+
+    def _embed_subagent_handoff(self, child: AtifExporter, start_step: int, end_step: int) -> None:
+        """Embed a nested sub-*Agent*'s trajectory and record a handoff.
+
+        Called from the child's :meth:`on_after_agent_call` when its run was
+        nested under this exporter. The child accumulates ONE trajectory across
+        all its calls (an OO agent shares event history), so we upsert it by
+        ``trajectory_id`` and emit a handoff reference step whose ref records
+        the step-range this particular call produced.
+        """
+        with self._lock:
+            child_traj = child.get_trajectory()
+            tid = child_traj.trajectory_id
+            if not tid:
+                return
+            self._upsert_subagent(child_traj)
+            self._dispatch_or_buffer(
+                _DispatchStep(
+                    name=child_traj.agent.name,
+                    trajectory_id=tid,
+                    session_id=child_traj.session_id,
+                    timestamp=_iso8601_utc(),
+                    extra={
+                        "event_kind": "subagent_handoff",
+                        "subagent_step_range": [start_step, end_step],
+                    },
                 )
+            )
+            self._write()
+
+    def _upsert_subagent(self, child_traj: Trajectory) -> None:
+        """Insert *child_traj* into ``subagent_trajectories[]``, or replace the
+        existing entry with the same ``trajectory_id`` (a reused sub-agent's
+        accumulating trajectory)."""
+        children = list(self._trajectory.subagent_trajectories or [])
+        for i, existing in enumerate(children):
+            if existing.trajectory_id == child_traj.trajectory_id:
+                children[i] = child_traj
+                break
+        else:
+            children.append(child_traj)
+        self._trajectory = self._trajectory.model_copy(update={"subagent_trajectories": children})
+
+    def _dispatch_or_buffer(self, dispatch: _DispatchStep) -> None:
+        """Emit a delegation dispatch step now, or buffer it until the system
+        step exists (a delegation before the first generation turn)."""
+        if self._system_step_emitted:
+            self._emit_dispatch_step(dispatch)
+        else:
+            self._buffered_dispatches.append(dispatch)
+
+    def _emit_dispatch_step(self, dispatch: _DispatchStep) -> None:
+        """Append a deterministic-dispatch step (``llm_call_count=0``) whose
+        observation references an embedded sub-trajectory (standalone or
+        sub-agent)."""
+        kind = (dispatch.extra or {}).get("event_kind")
+        if kind == "subagent_handoff":
+            message = f"Handoff to sub-agent `{dispatch.name}`."
+        else:
+            message = f"Called standalone generation function `{dispatch.name}`."
+        ref_extra = {k: v for k, v in (dispatch.extra or {}).items() if k != "event_kind"} or None
+        self._append_step(
+            StepObject(
+                step_id=self._next_step_id,
+                timestamp=dispatch.timestamp,
+                source="agent",
+                message=message,
+                observation=ObservationSchema(
+                    results=[
+                        ObservationResultSchema(
+                            subagent_trajectory_ref=[
+                                SubagentTrajectoryRef(
+                                    trajectory_id=dispatch.trajectory_id,
+                                    session_id=dispatch.session_id,
+                                    extra=ref_extra,
+                                )
+                            ],
+                        )
+                    ]
+                ),
+                llm_call_count=0,
+                extra={"event_kind": kind, "subagent_name": dispatch.name},
+            )
+        )
+        self._next_step_id += 1
+        self._write()
+
+    def _finalize_if_needed(self, *, success: bool | None) -> None:
+        """Finalize a top-level trajectory that no generation turn finalized
+        (a pure-Python orchestrator). Flushes buffered dispatches first. No-op
+        if already finalized."""
+        with self._lock:
+            if self._finalized:
+                return
+            if self._buffered_dispatches or self._buffered_tasks:
+                self._system_step_emitted = True
+                for dispatch in self._buffered_dispatches:
+                    self._emit_dispatch_step(dispatch)
+                self._buffered_dispatches.clear()
+                for buffered in self._buffered_tasks:
+                    self._emit_task_step(buffered)
+                self._buffered_tasks.clear()
+            self._finalize_trajectory(success=success)
             self._write()
 
     @classmethod
@@ -929,9 +1148,15 @@ class AtifExporter:
         child._writes_to_disk = False
         child._install_token = None
         child._run_token = None
+        child._entrypoint_token = None
+        child._arm_call_id = None
+        child._adoptive_parent = None
+        child._embed_start_step = 0
+        child._saved_writes_to_disk = False
         child._system_step_emitted = False
         child._system_content_hash = None
         child._buffered_tasks = []
+        child._buffered_dispatches = []
         child._pending_system_drift = None
         return child
 
