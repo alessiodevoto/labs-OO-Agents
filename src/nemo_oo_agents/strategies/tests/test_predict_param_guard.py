@@ -11,9 +11,15 @@ import pytest
 from nemo_oo_agents.config.strategy_config import PredictConfig
 from nemo_oo_agents.strategies.current_call import CurrentCall
 from nemo_oo_agents.strategies.predict import PredictStrategy
+from tests.helpers.signature_utils import param_names_from_signature
 
 
-def _make_call(args=(), kwargs=None, signature=None):
+def _make_call(args=(), kwargs=None, signature=None, param_names=None):
+    # Real CurrentCalls carry param_names captured from the live signature
+    # (from_method / actor). Derive them here so the guard reports real parameter
+    # names rather than arg_<i>.
+    if param_names is None and signature:
+        param_names = param_names_from_signature(signature)
     return CurrentCall(
         id="test-id",
         method_name="test",
@@ -21,6 +27,7 @@ def _make_call(args=(), kwargs=None, signature=None):
         signature=signature,
         args=args,
         kwargs=kwargs or {},
+        param_names=param_names,
     )
 
 

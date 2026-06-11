@@ -7,9 +7,15 @@ allows PredictStrategy to cap large parameter values before embedding in prompts
 """
 
 from nemo_oo_agents.strategies.current_call import CurrentCall
+from tests.helpers.signature_utils import param_names_from_signature
 
 
-def _make_call(method_name="test", signature=None, args=(), kwargs=None):
+def _make_call(method_name="test", signature=None, args=(), kwargs=None, param_names=None):
+    # Real CurrentCalls carry param_names captured from the live signature
+    # (from_method / actor); derive them so positional args render under their real
+    # names rather than arg_<i>.
+    if param_names is None and signature:
+        param_names = param_names_from_signature(signature)
     return CurrentCall(
         id="test-id",
         method_name=method_name,
@@ -17,6 +23,7 @@ def _make_call(method_name="test", signature=None, args=(), kwargs=None):
         signature=signature,
         args=args,
         kwargs=kwargs or {},
+        param_names=param_names,
     )
 
 

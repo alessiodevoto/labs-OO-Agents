@@ -152,6 +152,155 @@ class TestCurrentCallFromMethod:
         assert call.parent_id == "parent_call_789"
 
 
+class TestCurrentCallBoundParameters:
+    """Tests for CurrentCall.bound_parameters() — effective inputs, each once.
+
+    from_method() mirrors positional args into kwargs, so concatenating
+    args + kwargs.values() double-counts a positional argument. bound_parameters()
+    must yield each input exactly once.
+    """
+
+    def test_positional_arg_mirrored_into_kwargs_appears_once(self):
+        """The issue's core case: a positional arg is in both args and kwargs."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, image: str) -> dict:
+            """Analyze {image}."""
+            pass
+
+        sentinel = object()
+        call = CurrentCall.from_method(analyze, args=(sentinel,), kwargs={})
+
+        # from_method mirrors the positional into kwargs (and keeps it in args)
+        assert call.args == (sentinel,)
+        assert call.kwargs == {"image": sentinel}
+
+        bound = call.bound_parameters()
+        assert bound == {"image": sentinel}
+        # The de-dup invariant: exactly one value, not two.
+        assert list(bound.values()) == [sentinel]
+
+    def test_positional_and_keyword_mix(self):
+        """Positional + keyword args map to the right names with no duplicates."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, data: str, count: int = 10) -> list:
+            """..."""
+            pass
+
+        call = CurrentCall.from_method(analyze, args=("hello",), kwargs={"count": 5})
+        bound = call.bound_parameters()
+        assert bound == {"data": "hello", "count": 5}
+
+    def test_var_positional_args_each_appear_once(self):
+        """*args: extra positionals land under arg_<i>; none are duplicated."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, *imgs) -> dict:
+            """..."""
+            pass
+
+        a, b = object(), object()
+        call = CurrentCall.from_method(analyze, args=(a, b), kwargs={})
+
+        bound = call.bound_parameters()
+        # First positional maps to the var-positional name; the rest get arg_<i>.
+        assert list(bound.values()) == [a, b]
+        # No object appears twice.
+        assert len(bound) == 2
+
+    def test_keyword_only_param(self):
+        """Keyword-only param: no stray '*' key leaks into the mapping."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, *, image: str) -> dict:
+            """..."""
+            pass
+
+        sentinel = object()
+        call = CurrentCall.from_method(analyze, args=(), kwargs={"image": sentinel})
+        bound = call.bound_parameters()
+        assert bound == {"image": sentinel}
+
+    def test_positional_only_param(self):
+        """Positional-only params ('/') map to their names via param_names."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, a, b, /) -> dict:
+            """..."""
+            pass
+
+        call = CurrentCall.from_method(analyze, args=("x", "y"), kwargs={})
+        bound = call.bound_parameters()
+        assert bound == {"a": "x", "b": "y"}
+        assert "/" not in bound
+
+    def test_no_signature_uses_arg_index_names(self):
+        """Without a signature, positionals become arg_<i> and kwargs keep names."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        call = CurrentCall(
+            id="c",
+            method_name="m",
+            decorator="agent",
+            signature=None,
+            args=("p0", "p1"),
+            kwargs={"k": "v"},
+        )
+        bound = call.bound_parameters()
+        assert bound == {"arg_0": "p0", "arg_1": "p1", "k": "v"}
+
+    def test_signature_with_commas_in_annotations(self):
+        """Commas inside type annotations don't corrupt the name→value mapping.
+
+        bound_parameters() relies on param_names captured from inspect (not on
+        splitting the signature string on commas), so a parameter annotated with a
+        comma-containing generic still maps to the right name with no duplicates.
+        """
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        def analyze(self, a: dict[str, int], b: int) -> dict:
+            """..."""
+            pass
+
+        payload = {"x": 1}
+        call = CurrentCall.from_method(analyze, args=(payload, 2), kwargs={})
+        assert call.bound_parameters() == {"a": payload, "b": 2}
+
+    def test_uses_param_names_not_signature_string(self):
+        """bound_parameters relies on the authoritative param_names field, not on
+        parsing the (possibly awkward) signature string — so even a signature with
+        a '->' inside a default value maps positionals to the right names."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        call = CurrentCall(
+            id="c",
+            method_name="m",
+            decorator="agent",
+            signature="(self, x: str = 'a->b', y: int = 3) -> dict",
+            param_names=["x", "y"],
+            args=("first", 7),
+            kwargs={},
+        )
+        bound = call.bound_parameters()
+        assert bound == {"x": "first", "y": 7}
+
+    def test_kwarg_collision_with_synthetic_key_kwarg_wins(self):
+        """A kwarg named arg_<i> overrides the synthetic positional key (documented)."""
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        call = CurrentCall(
+            id="c",
+            method_name="m",
+            decorator="agent",
+            signature=None,
+            args=("positional",),
+            kwargs={"arg_0": "keyword"},
+        )
+        bound = call.bound_parameters()
+        assert bound == {"arg_0": "keyword"}
+
+
 class TestCurrentCallEquality:
     """Tests for CurrentCall equality and hashing."""
 

@@ -227,8 +227,13 @@ class PredictStrategy(GenerationStrategy):
         from nemo_oo_agents.media import Media
         from nemo_oo_agents.runtime.media_capture import media_to_content_block
 
-        all_values = list(call.args) + list(call.kwargs.values())
-        media_blocks = [media_to_content_block(v) for v in all_values if isinstance(v, Media)]
+        # bound_parameters() attaches each effective input once (positional args
+        # also appear in kwargs, so a raw args+kwargs union would double-attach).
+        media_blocks = [
+            media_to_content_block(v)
+            for v in call.bound_parameters().values()
+            if isinstance(v, Media)
+        ]
 
         # Guard against oversized parameters before building the prompt.
         # PredictStrategy is single-shot — a truncated input produces silently wrong output.
@@ -396,20 +401,9 @@ class PredictStrategy(GenerationStrategy):
         if limit is None:
             return
 
-        # Build a name → value mapping the same way format_parameters_as_code does,
-        # using the authoritative param names captured from the live signature.
-        named: list[tuple[str, Any]] = []
-        param_names = call.param_names
-        if param_names:
-            for i, name in enumerate(param_names):
-                if i < len(call.args):
-                    named.append((name, call.args[i]))
-            named += list(call.kwargs.items())
-        else:
-            named = [(f"arg_{i}", v) for i, v in enumerate(call.args)]
-            named += list(call.kwargs.items())
-
-        for name, value in named:
+        # Check each effective input once (bound_parameters() de-duplicates the
+        # positional/keyword overlap).
+        for name, value in call.bound_parameters().items():
             # Fast path for strings: avoids repr() allocation for large inputs.
             # len(s) ≤ len(repr(s)) always, so if the string itself exceeds limit
             # its repr certainly does too.
