@@ -82,6 +82,43 @@ class CurrentCall:
             return NotImplemented
         return self.id == other.id
 
+    def bound_parameters(self) -> dict[str, Any]:
+        """Return effective parameter name → value, each input represented exactly once.
+
+        Positional arguments are mapped to the authoritative parameter names
+        (``self.param_names``, captured from the live signature by :meth:`from_method`);
+        keyword arguments override and extend them. Positional args beyond the named
+        parameters (e.g. ``*args``, or when no ``param_names`` is available) are
+        included under synthetic ``arg_<i>`` keys.
+
+        This de-duplicates the overlap created by :meth:`from_method`, which stores
+        positional args in both ``args`` and (mapped by name) ``kwargs`` for template
+        expansion. Concatenating ``args + kwargs.values()`` therefore counts a
+        positional argument twice; iterating ``bound_parameters().values()`` counts
+        it once.
+
+        When a keyword argument's name collides with a synthetic ``arg_<i>`` key,
+        the keyword argument wins (kwargs are authoritative).
+
+        Returns:
+            Ordered mapping of effective parameter name to value.
+
+        Example:
+            For a method ``analyze(self, image)`` invoked positionally as
+            ``analyze(img)``, ``from_method`` stores ``img`` in both ``args`` and
+            ``kwargs["image"]``. ``bound_parameters()`` collapses that overlap and
+            returns ``{"image": img}`` — ``img`` appears exactly once.
+        """
+        result: dict[str, Any] = {}
+        param_names = self.param_names or []
+        for i, value in enumerate(self.args):
+            if i < len(param_names):
+                result[param_names[i]] = value
+            else:
+                result[f"arg_{i}"] = value
+        result.update(self.kwargs)
+        return result
+
     def format_parameters_as_code(
         self,
         value_formatter: Callable[[Any], str] | None = None,
@@ -152,42 +189,23 @@ class CurrentCall:
 
             return _fmt
 
-        if not self.signature:
-            # No signature available: format positional args as arg_0, arg_1, … then kwargs.
-            lines = [f"arg_{i} = {default_fmt(value)}" for i, value in enumerate(self.args)]
-            lines += [f"{name} = {fmt_for(name)(value)}" for name, value in self.kwargs.items()]
-            return "\n".join(lines)
-
-        # Use the authoritative param names captured from the live signature
-        # (set by from_method / actor's CurrentCall construction). When absent
-        # (e.g. a CurrentCall built with neither a live method nor param_names),
-        # fall back to positional arg_i names.
+        # Map each effective input to its name exactly once. bound_parameters() is
+        # the single source of truth for positional→name binding — it uses the
+        # authoritative param_names (captured from the live signature by
+        # from_method / actor), maps overflow positionals to ``arg_<i>`` keys, and
+        # lets kwargs override. Delegating keeps this formatter, _assert_param_sizes,
+        # and the media collection consistent. The per-parameter formatter still
+        # picks up any Annotated spec() overrides (arg_<i> keys have none, so they
+        # fall back to default_fmt).
+        param_dict = self.bound_parameters()
+        if not param_dict:
+            return ""
         try:
-            param_names = self.param_names or []
-            if not param_names and not self.kwargs:
-                lines = [f"arg_{i} = {default_fmt(value)}" for i, value in enumerate(self.args)]
-                lines += [f"{name} = {fmt_for(name)(value)}" for name, value in self.kwargs.items()]
-                return "\n".join(lines)
-
-            # Build parameter dict: map positional args to names, then add kwargs
-            param_dict: dict[str, Any] = {}
-            for i, name in enumerate(param_names):
-                if i < len(self.args):
-                    param_dict[name] = self.args[i]
-
-            # Merge kwargs (they override positional if there's overlap)
-            param_dict.update(self.kwargs)
-
-            if not param_dict:
-                return ""
-
-            # Format as Python assignments — per-parameter formatter picks up
-            # any spec overrides from Annotated metadata.
             lines = [f"{name} = {fmt_for(name)(value)}" for name, value in param_dict.items()]
             return "\n".join(lines)
-
         except (ValueError, AttributeError):
-            # Fallback: just format kwargs
+            # A value's repr/formatter raised (e.g. a broken __repr__). Fall back to
+            # formatting only the explicitly-passed kwargs, which are the safe values.
             if not self.kwargs:
                 return ""
             lines = [f"{name} = {fmt_for(name)(value)}" for name, value in self.kwargs.items()]
