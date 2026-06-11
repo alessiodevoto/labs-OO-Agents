@@ -70,3 +70,22 @@ async def test_write_file_is_overwrite(sh, tmp_path):
     await sh.write_file("f.txt", "old")
     await sh.write_file("f.txt", "new")
     assert (tmp_path / "f.txt").read_text() == "new"
+
+
+@pytest.mark.asyncio
+async def test_close_terminates_underlying_bash_session(sh):
+    """Verify close() terminates BashSession and the shell lazily restarts."""
+    r = await sh.run("echo started")
+    assert r.success
+    assert sh._session._process is not None
+
+    await sh.close()
+
+    assert sh._session._process is None
+    assert not sh._session._started
+
+    # The shell remains reusable after close(); a fresh session starts lazily.
+    r2 = await sh.run("echo restarted")
+    assert r2.success
+    assert "restarted" in r2.stdout
+    await sh.close()

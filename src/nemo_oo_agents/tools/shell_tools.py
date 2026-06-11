@@ -35,7 +35,7 @@ import shlex
 from pathlib import Path
 from typing import Annotated, Any
 
-from nemo_oo_agents.agentdoc import spec
+from nemo_oo_agents.agentdoc import hidden, spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 
@@ -136,6 +136,12 @@ class ShellResult(str):
     ``.matches`` is a ``list[Match]`` when the command was a pure search and the
     anchors are trustworthy; otherwise ``None``.
     """
+
+    stdout: str
+    stderr: str
+    returncode: int
+    success: bool
+    matches: list[Match] | None
 
     def __new__(
         cls,
@@ -313,6 +319,11 @@ class ShellTools(Skill):
         if not self._session._started:
             await self._session.start()
         return self._session
+
+    @hidden
+    async def close(self) -> None:
+        """Terminate the underlying bash session owned by this shell."""
+        await self._session.close()
 
     async def run(
         self,
