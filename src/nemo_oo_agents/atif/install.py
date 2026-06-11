@@ -108,21 +108,12 @@ def install_atif(
     trajectory afterwards.
 
     Args:
-        cascade_to_standalones: when ``True``, also push the exporter
-            into the ``_atif_exporter_var`` ContextVar so standalone
-            generation functions called within the current async
-            context cascade their child trajectories under this
-            exporter as ``subagent_trajectories[]`` entries.
-
-            **Default is False.** The cascade is appropriate when the
-            caller knows it owns the lifetime of one logical run — i.e.
-            from :func:`atif_scope`. It is NOT appropriate from
-            :func:`enable_atif`'s patched ``Agent.__init__`` path, where
-            multiple agents share the same async context: each agent
-            owns its own trajectory file, and the contextvar would
-            leak across construction calls (last-constructed-wins),
-            causing standalone calls to be attributed to the wrong
-            agent's trajectory.
+        cascade_to_standalones: when ``True``, bind the cascade ContextVar at
+            install time so standalone generation functions in this async
+            context embed under this exporter. Use only when the caller owns one
+            logical run (``atif_scope``); ``enable_atif`` leaves it ``False`` and
+            binds run-scoped instead, since its agents share an async context and
+            an install-time bind would cross-attribute their trajectories.
     """
     exporter = AtifExporter(
         path=path,
@@ -135,26 +126,15 @@ def install_atif(
         trajectory_id=trajectory_id,
     )
 
-    # Subscribe once via the wildcard so custom EventBase subclasses
-    # (defined outside this framework or added in future releases)
-    # also flow into the trajectory. The exporter's ``_dispatch_event``
-    # routes known event_types to their dedicated handlers and falls
-    # back to a role-based generic step for anything new.
+    # Wildcard subscription so any event type flows into the trajectory.
+    # Standalone-cascade arming happens off this subscription, via the
+    # exporter's BeforeAgentCall/AfterAgentCall (and BeforeTurn) handlers.
     unsubscribers: list[Callable[[], None]] = [
         event_manager.on("*", exporter._dispatch_event),
     ]
-
-    # Install-time cascade is opt-in (see *cascade_to_standalones* docstring).
-    # When False, the exporter still cascades automatically at agent_call
-    # run-time via :meth:`AtifExporter.on_before_turn` /
-    # :meth:`on_after_turn` (push on the top-level BeforeTurn, pop on the
-    # matching final AfterTurn). That run-scoped cascade is correct for
-    # ``enable_atif()`` because the contextvar is bound only while the
-    # specific agent's run is in flight — no cross-agent leakage.
-    #
-    # When True, also do an install-time set so that standalone calls
-    # happening inside the install window but OUTSIDE any agent_call
-    # frame also cascade. atif_scope wants this; enable_atif does not.
+    # atif_scope opts into an install-time binding so standalone calls outside
+    # any agent-call frame also cascade; enable_atif does not (it binds
+    # run-scoped instead — see cascade_to_standalones).
     if cascade_to_standalones:
         exporter._install_token = _atif_exporter_var.set(exporter)
 
@@ -164,13 +144,19 @@ def install_atif(
                 unsub()
             except Exception:  # noqa: BLE001
                 logger.debug("atif: failed to unsubscribe handler", exc_info=True)
-        # Reset both tokens (LIFO: run-scoped first if present, then install).
+        # Defensively release any still-held cascade binding.
         if exporter._run_token is not None:
             try:
                 _atif_exporter_var.reset(exporter._run_token)
             except (LookupError, ValueError):
                 pass
             exporter._run_token = None
+        if exporter._entrypoint_token is not None:
+            try:
+                _atif_exporter_var.reset(exporter._entrypoint_token)
+            except (LookupError, ValueError):
+                pass
+            exporter._entrypoint_token = None
         if exporter._install_token is not None:
             try:
                 _atif_exporter_var.reset(exporter._install_token)

@@ -290,6 +290,56 @@ class AfterTurn(EventBase):  # type: ignore[misc]
     )
 
 
+class BeforeAgentCall(EventBase):  # type: ignore[misc]
+    """Emitted when any agent method invocation begins (generation, pure-Python,
+    or sync). Pub-sub complement to the ``agent_call`` middleware, symmetric with
+    :class:`BeforeTurn`. ``Role.RUNTIME_EVENT`` so it is never recorded.
+
+    ``is_top_level`` is the agent-instance nesting axis (no agent active before
+    this call) — subscribers wanting "outermost run" filter on it, not
+    ``parent_call_id`` (the call stack is also pushed for sync/``@no_trace``).
+    """
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    method_name: Annotated[str, Field(description="Name of the agent method being invoked")]
+    call_id: Annotated[str, Field(description="Unique ID for this agent-method call")]
+    parent_call_id: str | None = Field(
+        default=None, description="Nearest traced ancestor call ID, or None at the top level"
+    )
+    is_top_level: Annotated[
+        bool,
+        Field(description="True iff no agent was active (_parent_agent_var) before this call"),
+    ]
+    needs_generation: bool = Field(
+        default=False, description="True for ellipsis (LLM) methods; False for pure-Python/sync"
+    )
+
+
+class AfterAgentCall(EventBase):  # type: ignore[misc]
+    """Completion of an agent method (success or exception), symmetric with
+    :class:`BeforeAgentCall`. ``Role.RUNTIME_EVENT`` (never recorded)."""
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+
+    method_name: Annotated[str, Field(description="Name of the agent method that was invoked")]
+    call_id: Annotated[str, Field(description="Unique ID for this agent-method call")]
+    parent_call_id: str | None = Field(
+        default=None, description="Nearest traced ancestor call ID, or None at the top level"
+    )
+    is_top_level: Annotated[
+        bool,
+        Field(description="True iff no agent was active (_parent_agent_var) before this call"),
+    ]
+    needs_generation: bool = Field(
+        default=False, description="True for ellipsis (LLM) methods; False for pure-Python/sync"
+    )
+    success: Annotated[bool, Field(description="True if the method returned normally")] = True
+    exception_type: str | None = Field(
+        default=None, description="Exception type name if the method raised"
+    )
+
+
 class TuiSessionResumed(EventBase):  # type: ignore[misc]
     """Emitted once after a TUI agent is reconstituted from a snapshot.
 

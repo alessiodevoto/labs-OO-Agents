@@ -10,6 +10,7 @@ Having this in one place eliminates duplication and ensures consistent behavior
 for context variable management, tracing hooks, and execution routing.
 """
 
+import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,7 @@ from uuid import uuid4
 
 # These imports are safe at module level (no circular dependencies)
 from nemo_oo_agents.context_blocks.scoped import _scoped_blocks_var, _scoped_events_var
+from nemo_oo_agents.events import AfterAgentCall, BeforeAgentCall
 from nemo_oo_agents.runtime.context_vars import (
     _get_agent_call_stack,
     _in_generation_session,
@@ -28,6 +30,8 @@ from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
 
 if TYPE_CHECKING:
     from nemo_oo_agents.strategies.base import GenerationStrategy
+
+logger = logging.getLogger(__name__)
 
 
 def create_agent_method_wrapper(
@@ -161,6 +165,23 @@ def create_agent_method_wrapper(
             # Set parent agent context for LLM inheritance by subagents
             parent_token = _parent_agent_var.set(self)
 
+            # Emit a generic agent-call lifecycle event for subscribers (e.g.
+            # ATIF arms its standalone cascade on the top-level call). is_top_level
+            # = no agent was active before this call. Defensive: never break the call.
+            is_top_level = current_parent is None
+            try:
+                self.event_manager.add(
+                    BeforeAgentCall(
+                        method_name=original_func.__name__,
+                        call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        is_top_level=is_top_level,
+                        needs_generation=needs_generation,
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("agent-call: BeforeAgentCall emission failed", exc_info=True)
+
             result = None
             exception_caught = None
 
@@ -237,6 +258,25 @@ def create_agent_method_wrapper(
                 exception_caught = e
                 raise
             finally:
+                # Completion event (fires on success and exception). Defensive.
+                try:
+                    self.event_manager.add(
+                        AfterAgentCall(
+                            method_name=original_func.__name__,
+                            call_id=call_id,
+                            parent_call_id=parent_call_id,
+                            is_top_level=is_top_level,
+                            needs_generation=needs_generation,
+                            success=exception_caught is None,
+                            exception_type=(
+                                type(exception_caught).__name__
+                                if exception_caught is not None
+                                else None
+                            ),
+                        )
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.debug("agent-call: AfterAgentCall emission failed", exc_info=True)
                 # Reset scoped blocks/events context if we cleared it
                 if scoped_blocks_token is not None:
                     _scoped_blocks_var.reset(scoped_blocks_token)
@@ -375,6 +415,22 @@ def create_sync_agent_method_wrapper(
         # nearest traced ancestor — same semantics as the async wrapper.
         _push_agent_call_id(call_id if _tracing_enabled[0] else parent_call_id)
 
+        # Same agent-call event as the async wrapper. The sync wrapper doesn't
+        # set _parent_agent_var, so read it directly for is_top_level.
+        is_top_level = _parent_agent_var.get() is None
+        try:
+            self.event_manager.add(
+                BeforeAgentCall(
+                    method_name=original_func.__name__,
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    is_top_level=is_top_level,
+                    needs_generation=False,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("agent-call: BeforeAgentCall emission failed (sync)", exc_info=True)
+
         hook_context = None
         result = None
         exception_caught: Exception | None = None
@@ -396,6 +452,24 @@ def create_sync_agent_method_wrapper(
             exception_caught = e
             raise
         finally:
+            try:
+                self.event_manager.add(
+                    AfterAgentCall(
+                        method_name=original_func.__name__,
+                        call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        is_top_level=is_top_level,
+                        needs_generation=False,
+                        success=exception_caught is None,
+                        exception_type=(
+                            type(exception_caught).__name__
+                            if exception_caught is not None
+                            else None
+                        ),
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("agent-call: AfterAgentCall emission failed (sync)", exc_info=True)
             _pop_agent_call_id()
             if hook_context is not None:
                 call_after_hook(
