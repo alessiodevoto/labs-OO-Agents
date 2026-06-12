@@ -198,12 +198,15 @@ class Command(abc.ABC):
     async def agent_run_async(self, fn):
         """Awaitable ``agent_run`` — never blocks the calling loop.
 
-        Falls back to the blocking ``agent_run`` only when no async dispatcher
-        is wired (tests / pre-startup), where there is no UI loop to protect.
+        Falls back to inline execution when no async dispatcher is wired
+        (tests / pre-startup), where there is no UI loop to protect.
         """
         if self._agent_run_async is not None:
             return await self._agent_run_async(fn)
-        return self.agent_run(fn)
+        result = fn()
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
 
     @abc.abstractmethod
     async def execute(self, args: list[str]) -> "CommandResult":
@@ -1320,8 +1323,7 @@ class SessionCommand(Command):
             return False, f"Unknown subcommand `{args[0]}`"
         if args[0].lower() in ("resume", "delete") and len(args) < 2:
             return False, f"Usage: /session {args[0]} <session_id>"
-        if args[0].lower() == "rename" and len(args) < 2:
-            return False, "Usage: /session rename <name>"
+        # /session rename with no name regenerates the automatic Predict title.
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
@@ -1435,10 +1437,31 @@ class SessionCommand(Command):
             return CommandResult.ok(TextOutput(f"Session {matches[0][:8]} deleted.", "success"))
 
         if subcmd == "rename":
-            name = " ".join(args[1:]).strip()
             if self.session_manager is None:
                 return CommandResult.err("No active session.")
-            self.session_manager.rename(name, user_named=True)
+
+            if len(args) > 1:
+                name = " ".join(args[1:]).strip()
+                self.session_manager.rename(name, user_named=True)
+                return CommandResult.ok(TextOutput(f"Session renamed to: {name}", "success"))
+
+            turns = self.session_manager.turns
+            first_user = next((t.content for t in turns if t.role == "user" and t.content), "")
+            if not first_user:
+                return CommandResult.err("No user message available to generate a session name.")
+
+            async def _generate_name() -> str:
+                name = await self.agent.name_session(first_user[:400])
+                return str(name).strip().strip('"').strip("'")[:60]
+
+            try:
+                name = await self.agent_run_async(_generate_name)
+            except Exception as e:
+                return CommandResult.err(f"Could not generate session name: {e}")
+
+            if not name:
+                return CommandResult.err("Generated session name was empty.")
+            self.session_manager.rename(name, user_named=False)
             return CommandResult.ok(TextOutput(f"Session renamed to: {name}", "success"))
 
         if subcmd == "new":

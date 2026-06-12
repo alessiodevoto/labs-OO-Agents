@@ -1243,3 +1243,42 @@ def test_refresh_skill_commands_updates_output_to_agent_metadata(registry):
     assert skill.description == "fresh command"
     assert skill.output_to_agent is False
     assert skill._method() == "new"
+
+
+@pytest.mark.asyncio
+async def test_session_rename_without_name_regenerates_predict_title(handler, mock_agent):
+    """/session rename with no args reruns the TUI name_session Predict call."""
+    from types import SimpleNamespace
+
+    session_manager = MagicMock()
+    session_manager.turns = [
+        SimpleNamespace(role="user", content="Help debug a failing GitLab pipeline")
+    ]
+    handler.registry.get_command("session").session_manager = session_manager
+    mock_agent.name_session = AsyncMock(return_value='"CI pipeline debug"')
+
+    result = await handler.handle("/session rename")
+
+    assert result.success is True
+    mock_agent.name_session.assert_awaited_once_with("Help debug a failing GitLab pipeline")
+    session_manager.rename.assert_called_once_with("CI pipeline debug", user_named=False)
+    assert any(
+        isinstance(o, TextOutput) and "Session renamed to: CI pipeline debug" in o.content
+        for o in result.outputs
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_rename_without_name_requires_user_turn(handler):
+    """Regenerating a title needs a prior user message to summarize."""
+    session_manager = MagicMock()
+    session_manager.turns = []
+    handler.registry.get_command("session").session_manager = session_manager
+
+    result = await handler.handle("/session rename")
+
+    assert result.success is False
+    assert any(
+        isinstance(o, TextOutput) and "No user message available" in o.content
+        for o in result.outputs
+    )
