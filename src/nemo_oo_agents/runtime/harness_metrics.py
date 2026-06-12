@@ -192,6 +192,7 @@ class HarnessMetrics(BaseModel):
     time_llm_call: TimingStat = Field(default_factory=TimingStat)
     time_code_validation: TimingStat = Field(default_factory=TimingStat)
     time_code_execution: TimingStat = Field(default_factory=TimingStat)
+    time_tracing_overhead: TimingStat = Field(default_factory=TimingStat)
     turn_count: int = 0
 
     # ── Helpers ──────────────────────────────────────────────────────
@@ -417,6 +418,10 @@ class HarnessMetrics(BaseModel):
             stat = getattr(self, field, None)
             if isinstance(stat, TimingStat):
                 stat.record(elapsed)
+
+    def tracing_overhead(self, elapsed_s: float) -> None:
+        """Record wall-clock time spent inside installed tracing hook callbacks."""
+        self.time_tracing_overhead.record(elapsed_s)
 
     def record_turn(self) -> None:
         self.turn_count += 1
@@ -938,6 +943,12 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
     ),
     *_timing_schema_entries(
         "harness.time.code_execution", "Code execution", "Timing", lambda m: m.time_code_execution
+    ),
+    *_timing_schema_entries(
+        "harness.time.tracing_overhead",
+        "Tracing overhead",
+        "Timing",
+        lambda m: m.time_tracing_overhead,
     ),
     SchemaEntry("harness.turn_count", "Turns", "Timing", lambda m: m.turn_count),
     # Context Limits (triggered when budgets are hit)
