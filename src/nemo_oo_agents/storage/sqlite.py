@@ -196,6 +196,15 @@ def _is_corruption_error(exc: sqlite3.Error) -> bool:
     )
 
 
+class CorruptDatabaseError(sqlite3.DatabaseError):
+    """Raised when a write fails because the SQLite file is corrupt.
+
+    Subclasses sqlite3.DatabaseError so existing ``except sqlite3.Error``
+    handlers still catch it, while giving callers (e.g. the TUI) a typed
+    signal to surface recovery guidance instead of an opaque crash.
+    """
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Create tables if needed and verify schema version."""
     conn.executescript(_SCHEMA)
@@ -325,7 +334,25 @@ class SQLiteEventBackend:
                     self._do_store(tag, event, data, order)
                 except sqlite3.IntegrityError:
                     logger.info("store(%s): row already persisted before I/O error", tag)
+                except sqlite3.DatabaseError as retry_exc:
+                    # A double failure (I/O error then corruption on the
+                    # reconnected retry) must not escape unhandled either.
+                    self._raise_for_db_error(tag, retry_exc)
+            except sqlite3.DatabaseError as e:
+                self._raise_for_db_error(tag, e)
             self._next_tag_num = max(self._next_tag_num, _tag_max_num(tag) + 1)
+
+    def _raise_for_db_error(self, tag: str, exc: sqlite3.DatabaseError) -> typing.NoReturn:
+        """Re-raise a write-path DatabaseError, typed if it indicates corruption.
+
+        Read paths degrade via _is_corruption_error(); the write path must not
+        crash a spawned task with an opaque, uncaught DatabaseError. Corruption
+        becomes CorruptDatabaseError; anything else propagates unchanged.
+        """
+        if not _is_corruption_error(exc):
+            raise exc
+        logger.error("store(%s): database is corrupt — %s", tag, exc)
+        raise CorruptDatabaseError(str(exc)) from exc
 
     def _do_store(self, tag: str, event: EventBase, data: str, order: int) -> None:
         with self._conn:
@@ -705,6 +732,12 @@ class SQLiteStorageManager:
             )
         else:
             conn.execute("PRAGMA journal_mode=WAL")
+            # synchronous=FULL even on normal disks: with the default NORMAL,
+            # a disk-full (ENOSPC) during a WAL commit/checkpoint can persist
+            # partially-written or zeroed pages, surfacing later as
+            # "database disk image is malformed". FULL fsyncs before the commit
+            # is acknowledged, so an interrupted write rolls back cleanly.
+            conn.execute("PRAGMA synchronous=FULL")
         return conn
 
     def _reconnect(self) -> None:

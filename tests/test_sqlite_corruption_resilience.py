@@ -277,13 +277,79 @@ class TestVirtiofsDetection:
         assert "PRAGMA journal_mode=DELETE" in seen_pragmas
         assert "PRAGMA synchronous=FULL" in seen_pragmas
 
-    def test_synchronous_normal_on_ext4(self, tmp_db):
-        """Storage manager uses default synchronous on non-virtiofs."""
+    def test_synchronous_full_on_ext4(self, tmp_db):
+        """Storage manager uses synchronous=FULL on non-virtiofs disks too.
+
+        WAL+NORMAL leaves a disk-full window that can corrupt the file; FULL
+        closes it. Regression for the disk-full corruption crash.
+        """
         with patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=False):
             sm = SQLiteStorageManager(tmp_db)
             try:
                 row = sm._conn.execute("PRAGMA synchronous").fetchone()
-                # WAL mode default is NORMAL = 1
-                assert row[0] in (1, 2)  # depends on SQLite compile options
+                assert row[0] == 2  # FULL
+                row2 = sm._conn.execute("PRAGMA journal_mode").fetchone()
+                assert row2[0] == "wal"
             finally:
                 sm.close()
+
+
+# ─── P0: Write path survives corruption (regression: uncaught DatabaseError) ──
+
+
+class TestStoreCorruptionResilience:
+    """store() must not let a corrupt DB escape as an uncaught task exception.
+
+    Regression for the disk-full → "database disk image is malformed" crash:
+    the read paths degrade gracefully via _is_corruption_error(), but store()
+    only caught OperationalError("disk I/O error"). A bare
+    sqlite3.DatabaseError("... malformed") escaped uncaught from a spawned
+    background task.
+    """
+
+    def test_store_raises_typed_corruption_error(self, storage):
+        """store() converts a corruption DatabaseError into CorruptDatabaseError."""
+        from nemo_oo_agents.storage.sqlite import CorruptDatabaseError
+
+        def boom(*args, **kwargs):
+            raise sqlite3.DatabaseError("database disk image is malformed")
+
+        storage._backend._do_store = boom
+
+        event = _make_event("9")
+        with pytest.raises(CorruptDatabaseError):
+            storage._backend.store("9", event)
+
+    def test_store_propagates_non_corruption_errors(self, storage):
+        """store() does not mask unrelated DB failures as corruption."""
+
+        def boom(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        storage._backend._do_store = boom
+
+        event = _make_event("9")
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            storage._backend.store("9", event)
+
+    def test_store_retry_path_corruption_is_typed(self, storage):
+        """A corruption DatabaseError on the reconnected retry is also typed, not uncaught.
+
+        Reproduces the double-failure: disk-I/O error on the first _do_store,
+        then corruption on the retry after reconnect.
+        """
+        from nemo_oo_agents.storage.sqlite import CorruptDatabaseError
+
+        calls = {"n": 0}
+
+        def first_io_then_corrupt(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise sqlite3.OperationalError("disk I/O error")
+            raise sqlite3.DatabaseError("database disk image is malformed")
+
+        storage._backend._do_store = first_io_then_corrupt
+        storage._backend._on_io_error = lambda: None
+
+        with pytest.raises(CorruptDatabaseError):
+            storage._backend.store("9", _make_event("9"))
