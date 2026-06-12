@@ -881,14 +881,20 @@ pulse-trufflehog-scan:
     - docker info
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - docker pull "$PULSE_SECRET_SCANNER_IMAGE" || exit 86
-    - >-
-      docker run --rm
-      -v "$CI_PROJECT_DIR:/repo"
-      -w /repo
-      "$PULSE_SECRET_SCANNER_IMAGE"
-      /usr/bin/pulse-secret-scanner filesystem . --json --only-verified --fail
-      --allowlist .nspect-allowlist.toml --no-allowlisted-results
-      | tee trufflehog-report.json
+    - |
+      set +e
+      docker run --rm         -v "$CI_PROJECT_DIR:/repo"         -w /repo         "$PULSE_SECRET_SCANNER_IMAGE"         filesystem . --json --only-verified         --allowlist .nspect-allowlist.toml --no-allowlisted-results         > trufflehog-report.json
+      scanner_status=$?
+      cat trufflehog-report.json
+      if grep -Eq '"Verified"[[:space:]]*:[[:space:]]*true' trufflehog-report.json; then
+        exit 1
+      fi
+      if grep -Eq '"verified_secrets"[[:space:]]*:[[:space:]]*[1-9][0-9]*' trufflehog-report.json; then
+        exit 1
+      fi
+      if [ "$scanner_status" -ne 0 ] && ! grep -q '"verified_secrets"' trufflehog-report.json; then
+        exit "$scanner_status"
+      fi
   allow_failure:
     exit_codes:
       - 86
