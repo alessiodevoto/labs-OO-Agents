@@ -36,6 +36,7 @@ stages:
   - build
   - publish
   - deploy  # Docker image build and deployment
+  - pages  # GitLab Pages: publish the slide deck
 
 lint:
   stage: lint
@@ -876,3 +877,29 @@ pulse-trufflehog-scan:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "merge_train_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ---------------------------------------------------------------------------
+# GitLab Pages — publish the NeMo OO Agents slide deck.
+# Pages serves the committed `public/index.html` deck. Runs on the default
+# branch where Pages publishes, and manually on MRs for artifact previews.
+# ---------------------------------------------------------------------------
+pages:
+  stage: pages
+  image:
+    name: debian:bookworm-slim
+    pull_policy: if-not-present
+  tags:
+    - os/linux
+    - docker-build
+    - interactive-agents
+  script:
+    - test -f public/index.html
+  artifacts:
+    paths:
+      - public
+  rules:
+    - *no-schedule
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
