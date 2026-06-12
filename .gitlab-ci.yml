@@ -860,6 +860,14 @@ pulse-trufflehog-scan:
   image: gitlab-master.nvidia.com:5005/pstooling/pulse-group/pulse-secret-scanner:1.79
   tags:
     - os/linux
+  # Infra-resilience: a registry image-pull auth failure (runner with stale
+  # /root/.docker/config.json) is a runner_system_failure, not a secret finding.
+  # Retry those so an infra flake doesn't gate merges; real findings still fail
+  # (the scanner exits non-zero -> script_failure, which is NOT retried here).
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
   # GitLab runs `script` in a shell (it does NOT route through the image
   # ENTRYPOINT), so call the scanner binary by its absolute path. Per the
   # image Dockerfile the binary is /usr/bin/pulse-secret-scanner. Args match
@@ -902,4 +910,3 @@ pages:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: manual
