@@ -857,23 +857,41 @@ deploy-staging:
 # =============================================================================
 pulse-trufflehog-scan:
   stage: security
-  image: gitlab-master.nvidia.com:5005/pstooling/pulse-group/pulse-secret-scanner:1.79
+  image:
+    name: docker:24.0.5
+    pull_policy: if-not-present
+  services:
+    - name: docker:24.0.5-dind
+      pull_policy: if-not-present
   tags:
     - os/linux
-  # Infra-resilience: a registry image-pull auth failure (runner with stale
-  # /root/.docker/config.json) is a runner_system_failure, not a secret finding.
-  # Retry those so an infra flake doesn't gate merges; real findings still fail
-  # (the scanner exits non-zero -> script_failure, which is NOT retried here).
+    - docker-build
+    - interactive-agents
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_DRIVER: overlay2
+    PULSE_SECRET_SCANNER_IMAGE: gitlab-master.nvidia.com:5005/pstooling/pulse-group/pulse-secret-scanner:1.79
   retry:
     max: 2
     when:
       - runner_system_failure
-  # GitLab runs `script` in a shell (it does NOT route through the image
-  # ENTRYPOINT), so call the scanner binary by its absolute path. Per the
-  # image Dockerfile the binary is /usr/bin/pulse-secret-scanner. Args match
-  # nSpect: filesystem scan, verified results only, JSON, non-zero on a finding.
+  # Pull the scanner image inside the script so registry/auth infra failures can
+  # be mapped to one allowed exit code while verified secret findings still block.
   script:
-    - /usr/bin/pulse-secret-scanner filesystem . --json --only-verified --fail --allowlist .nspect-allowlist.toml --no-allowlisted-results | tee trufflehog-report.json
+    - docker info
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker pull "$PULSE_SECRET_SCANNER_IMAGE" || exit 86
+    - >-
+      docker run --rm
+      -v "$CI_PROJECT_DIR:/repo"
+      -w /repo
+      "$PULSE_SECRET_SCANNER_IMAGE"
+      /usr/bin/pulse-secret-scanner filesystem . --json --only-verified --fail
+      --allowlist .nspect-allowlist.toml --no-allowlisted-results
+      | tee trufflehog-report.json
+  allow_failure:
+    exit_codes:
+      - 86
   artifacts:
     when: always
     paths:
