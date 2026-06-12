@@ -83,6 +83,32 @@ class ContextApi(Skill):
         else:
             self._context.set_dynamic(key, expr)
 
+    def set_static(self, key: str, value: Any = _MISSING, *, expr: str | None = None) -> None:
+        """Set a static context block (placed in the cacheable prefix).
+
+        The static/dynamic *partition* and the value *kind* are independent.
+        Pass ``value`` for a plain block that doesn't change between turns. Pass
+        ``expr`` to get a block re-evaluated every turn that *still* lives in the
+        cacheable prefix — the shape framework blocks like ``<self>`` use. (The
+        plain ``self.context[key] = ...`` and ``set_dynamic`` paths always land
+        in the volatile suffix, so ``expr=`` here is the only way to combine
+        re-evaluation with the static section.)
+
+        Args:
+            key: Block key.
+            value: Plain value to store in the static partition.
+            expr: Python expression to evaluate each turn (keyword-only,
+                mutually exclusive with ``value``).
+        """
+        if expr is not None and value is not _MISSING:
+            raise TypeError("Cannot specify both value and expr=")
+        if expr is not None:
+            self._context.set_static(key, expr=expr)
+        elif value is not _MISSING:
+            self._context.set_static(key, value)
+        else:
+            raise TypeError("set_static() requires either value or expr=")
+
     def __getitem__(self, key: str) -> Any:
         # Protected keys are hidden from iteration (__contains__/keys()/len)
         # but readable by name — the LLM already sees their rendered content

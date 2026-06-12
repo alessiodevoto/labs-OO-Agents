@@ -24,6 +24,8 @@ from typing import Any
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 
+_SENTINEL = object()
+
 
 class ContextManager:
     """Dict-like API for managing context blocks.
@@ -70,34 +72,47 @@ class ContextManager:
             )
         self.set_dynamic(key, value=value)
 
-    def set_static(self, key: str, value: Any) -> None:
+    def set_static(self, key: str, value: Any = _SENTINEL, *, expr: str | None = None) -> None:
         """Set a static context block (placed in the cacheable prefix).
 
-        Static blocks are stable across turns. Use for data the LLM needs
-        but that doesn't change between turns.
+        Static blocks live in the stable, cacheable prefix of the prompt. The
+        ``static`` partition and the value *kind* are independent axes: a static
+        block can hold a plain value OR a re-evaluated expression. Pass
+        ``value`` for a plain, unchanging value. Pass ``expr`` to register a
+        block that is re-evaluated every turn yet still rendered in the cacheable
+        prefix (the same shape framework blocks like ``<self>`` use).
 
         Args:
             key: Block key (unique identifier).
-            value: Any value. Stored as-is; pprint formatting happens at render time.
+            value: Plain value to store (mutually exclusive with ``expr``).
+            expr: Python expression re-evaluated each turn (keyword-only,
+                mutually exclusive with ``value``).
 
         Raises:
             ProtectedBlockError: If key is protected.
-            TypeError: If value is a DynamicContext (use set_dynamic instead).
+            TypeError: If both ``value`` and ``expr`` are given, neither is
+                given, or ``value`` is a DynamicContext (use ``expr=`` instead).
         """
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
-        if isinstance(value, DynamicContext):
-            raise TypeError(
-                f"Use self.context.set_dynamic({key!r}, {value.expr!r}) "
-                f"instead of self.context.set_static({key!r}, DynamicContext(...))"
-            )
+        if expr is not None and _SENTINEL is not value:
+            raise TypeError("Cannot specify both value and expr=")
 
-        self._blocks[key] = value
+        if expr is not None:
+            self._blocks[key] = DynamicContext(expr)
+        elif _SENTINEL is not value:
+            if isinstance(value, DynamicContext):
+                raise TypeError(
+                    f"Use self.context.set_static({key!r}, expr={value.expr!r}) "
+                    f"instead of passing a DynamicContext as value"
+                )
+            self._blocks[key] = value
+        else:
+            raise TypeError("set_static() requires either value or expr=")
+
         self._static[key] = True
         self._invalidate(key)
-
-    _SENTINEL = object()
 
     def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _SENTINEL) -> None:
         """Set a dynamic context block (placed in the volatile suffix).
@@ -117,12 +132,12 @@ class ContextManager:
         if key in self.protected_keys:
             raise ProtectedBlockError(key, "modify")
 
-        if expr is not None and self._SENTINEL is not value:
+        if expr is not None and _SENTINEL is not value:
             raise TypeError("Cannot specify both expr and value=")
 
         if expr is not None:
             self._blocks[key] = DynamicContext(expr)
-        elif self._SENTINEL is not value:
+        elif _SENTINEL is not value:
             self._blocks[key] = value
         else:
             raise TypeError("set_dynamic() requires either expr or value=")
@@ -320,7 +335,7 @@ class ContextManager:
         """
         if expr is not None:
             self._blocks[key] = DynamicContext(expr)
-        elif self._SENTINEL is not value:
+        elif _SENTINEL is not value:
             self._blocks[key] = value
         else:
             raise TypeError("set_dynamic_protected() requires either expr or value=")
