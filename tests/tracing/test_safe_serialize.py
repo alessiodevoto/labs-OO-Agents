@@ -39,6 +39,23 @@ class TestSafeSerialize:
         result = OpenInferenceHooks._safe_serialize(big_list, max_chars=5000)
         assert len(result) < 10_000  # cap + notice overhead
 
+    def test_large_nested_trace_payload_is_structurally_bounded(self):
+        """Trace attrs bound container breadth + string size before the global cap.
+
+        Without trace-specific ``max_length``/``max_string`` options, this kind
+        of payload is fully walked and materialized into a multi-MB string before
+        the final 50 KB cap is applied.
+        """
+        obj = {"files": [{"name": f"f{i}", "content": "x" * 100_000} for i in range(40)]}
+
+        result = OpenInferenceHooks._safe_serialize(obj, max_chars=50_000)
+
+        assert "list(len=40" in result
+        assert "str(len=100000" in result
+        assert "f0" in result
+        assert "f39" in result
+        assert len(result) < 50_000
+
     def test_default_cap_is_50k(self):
         """Values under 50K are not truncated by default."""
         medium = "y" * 40_000

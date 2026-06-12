@@ -64,6 +64,8 @@ def end_active_spans(reason: str = "timeout") -> int:
 
 _ERROR_MESSAGE_LIMIT = 5_000
 _TRACE_MAX_DEPTH = 16  # prevent stack overflow on deeply nested objects
+_TRACE_MAX_LENGTH = 20  # keep trace attr serialization bounded on large containers
+_TRACE_MAX_STRING = 2_000  # avoid materializing multi-MB strings in trace attrs
 
 
 def _error_message(exception: BaseException) -> str:
@@ -790,11 +792,19 @@ class OpenInferenceHooks:
         data: dict[str, Any] = {}
         if hasattr(result, "stdout"):
             data["stdout"] = truncating_pformat(
-                result.stdout, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+                result.stdout,
+                max_chars=max_chars,
+                max_depth=_TRACE_MAX_DEPTH,
+                max_length=_TRACE_MAX_LENGTH,
+                max_string=_TRACE_MAX_STRING,
             )
         if hasattr(result, "stderr"):
             data["stderr"] = truncating_pformat(
-                result.stderr, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+                result.stderr,
+                max_chars=max_chars,
+                max_depth=_TRACE_MAX_DEPTH,
+                max_length=_TRACE_MAX_LENGTH,
+                max_string=_TRACE_MAX_STRING,
             )
         if hasattr(result, "returned_value"):
             rv = result.returned_value
@@ -803,7 +813,11 @@ class OpenInferenceHooks:
                 data["returned_value"] = None
             else:
                 data["returned_value"] = truncating_pformat(
-                    rv, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH
+                    rv,
+                    max_chars=max_chars,
+                    max_depth=_TRACE_MAX_DEPTH,
+                    max_length=_TRACE_MAX_LENGTH,
+                    max_string=_TRACE_MAX_STRING,
                 )
         return json.dumps(data)
 
@@ -820,6 +834,12 @@ class OpenInferenceHooks:
         human inspection in the trace viewer, so a 50 K cap is generous.
         """
         try:
-            return truncating_pformat(obj, max_chars=max_chars, max_depth=_TRACE_MAX_DEPTH)
+            return truncating_pformat(
+                obj,
+                max_chars=max_chars,
+                max_depth=_TRACE_MAX_DEPTH,
+                max_length=_TRACE_MAX_LENGTH,
+                max_string=_TRACE_MAX_STRING,
+            )
         except Exception:
             return "<unserializable>"
