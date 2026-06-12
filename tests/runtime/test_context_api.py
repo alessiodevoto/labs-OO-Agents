@@ -40,6 +40,27 @@ def test_setitem_raises_for_dynamic_context_value():
         ctx["bad"] = DynamicContext("'expr'")
 
 
+def test_set_static_expr_lands_in_static_partition():
+    ctx = _ctx()
+    ctx.set_static("live", expr="1 + 1")
+    # Re-evaluated (DynamicContext marker) yet in the static/cacheable partition.
+    assert ctx._context.is_static("live") is True
+    assert isinstance(ctx._context._blocks["live"], DynamicContext)
+    assert ctx._context._blocks["live"].expr == "1 + 1"
+
+
+def test_set_static_rejects_both_value_and_expr():
+    ctx = _ctx()
+    with pytest.raises(TypeError, match="both"):
+        ctx.set_static("k", "v", expr="1")
+
+
+def test_set_static_rejects_neither():
+    ctx = _ctx()
+    with pytest.raises(TypeError, match="requires"):
+        ctx.set_static("k")
+
+
 # ── getitem ────────────────────────────────────────────────────────────────────
 
 
