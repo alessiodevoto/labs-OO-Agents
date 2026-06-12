@@ -82,6 +82,8 @@ export interface TraceEvent {
   };
   _is_span_event?: boolean;
   _parent_span_id?: string;
+  // DFS-preorder position (set by annotateTreeOrder); siblings ordered by start time.
+  _tree_rank?: number;
 }
 
 export type ViewState = 'collapsed' | 'concise' | 'expanded';
