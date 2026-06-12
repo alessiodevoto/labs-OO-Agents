@@ -589,6 +589,7 @@ class MCPTool:
         client: Any,
         server_name: str,
         tool_specs: list[MCPToolSpec],
+        refresh_ctx: dict[str, Any] | None = None,
     ) -> None:
         """Initialize with client, server name, and tool specs.
 
@@ -596,10 +597,15 @@ class MCPTool:
             client: MCP client for this tool instance
             server_name: Name of the server this tool instance targets
             tool_specs: List of tool specifications from the server
+            refresh_ctx: Optional context for auto-refreshing OAuth on a 401
+                during a tool call (server_url + oauth params + transport bits).
+                When present, ``_call_tool`` silently refreshes the access token
+                and retries once on a 401 instead of surfacing the raw error.
         """
         self._client = client
         self._server_name = server_name
         self._tool_specs = tool_specs
+        self._refresh_ctx = refresh_ctx or {}
 
     async def _call_tool(
         self,
@@ -618,6 +624,38 @@ class MCPTool:
         # Strip None values — MCP servers use Pydantic and reject None for optional params
         clean_args = {k: v for k, v in (arguments or {}).items() if v is not None}
 
+        try:
+            return await self._invoke(tool_name, clean_args)
+        except Exception as exc:
+            # A cached access token can expire between connect and call. Surface
+            # the *real* cause (a streaming MCP transport otherwise masks a 401
+            # behind ResponseNotRead / an opaque TaskGroup ExceptionGroup), and
+            # if it's a 401 and we have refresh context, transparently refresh
+            # the token and retry ONCE before giving up.
+            leaves = _flatten_exceptions(exc)
+            is_401 = any(
+                isinstance(leaf, httpx.HTTPStatusError) and leaf.response.status_code == 401
+                for leaf in leaves
+            )
+            if is_401 and self._refresh_ctx:
+                refreshed = await self._refresh_access_token()
+                if refreshed:
+                    return await self._invoke(tool_name, clean_args)
+            details = _describe_exceptions(leaves)
+            if is_401:
+                raise RuntimeError(
+                    f"MCP tool {tool_name!r} on {self._server_name!r} failed: 401 "
+                    f"Unauthorized (token expired and auto-refresh did not succeed). "
+                    f"Re-authenticate with `/mcp connect {self._server_name}`."
+                    + (f" [{details}]" if details else "")
+                ) from exc
+            raise RuntimeError(
+                f"MCP tool {tool_name!r} on {self._server_name!r} failed"
+                + (f": {details}" if details else "")
+            ) from exc
+
+    async def _invoke(self, tool_name: str, clean_args: dict[str, Any]) -> Any:
+        """Single tool-call attempt against the current client/session."""
         async with self._client.connect_to_server() as session:
             result = await session.call_tool(tool_name, clean_args)
 
@@ -628,6 +666,42 @@ class MCPTool:
             return result.content
 
         return result
+
+    async def _refresh_access_token(self) -> bool:
+        """Refresh the OAuth access token and rebuild the client. Returns True on success.
+
+        Uses the cached refresh token via ``handle_mcp_oauth`` (use_cache=True),
+        so no human interaction is needed when a valid refresh token exists.
+        """
+        ctx = self._refresh_ctx
+        server_url = ctx.get("server_url")
+        if not server_url:
+            return False
+        try:
+            from .oauth import handle_mcp_oauth
+
+            token = await handle_mcp_oauth(
+                server_url=server_url,
+                redirect_uri=ctx.get("redirect_uri", "http://localhost:0/callback"),
+                client_id=ctx.get("client_id"),
+                scope=ctx.get("scope"),
+                open_browser=False,  # unattended refresh — never launch a browser
+                manual=False,
+                use_cache=True,
+            )
+            headers = dict(ctx.get("headers") or {})
+            headers["Authorization"] = f"{token.token_type} {token.access_token}"
+            self._client = create_mcp_client(
+                transport=ctx.get("transport"),
+                url=server_url,
+                command=ctx.get("command"),
+                args=ctx.get("args"),
+                env=ctx.get("env"),
+                headers=headers,
+            )
+            return True
+        except Exception:
+            return False
 
 
 class MCPManager:
@@ -846,8 +920,21 @@ class MCPManager:
                 )
             )
 
-        # Generate dynamic class and create instance
+        # Generate dynamic class and create instance. Stash a refresh context so
+        # _call_tool can transparently refresh the OAuth token + retry once on a
+        # 401 mid-session (cached access tokens expire between connect and call).
+        refresh_ctx = {
+            "server_url": url or config_server.get("url") or "",
+            "redirect_uri": oauth_redirect_uri,
+            "client_id": oauth_client_id,
+            "scope": oauth_scope,
+            "headers": headers,
+            "transport": transport,
+            "command": command,
+            "args": args,
+            "env": env,
+        }
         dynamic_class = _make_dynamic_class(server_name, tool_specs, MCPTool)
         instance = object.__new__(dynamic_class)
-        instance.__init__(client, server_name, tool_specs)
+        instance.__init__(client, server_name, tool_specs, refresh_ctx=refresh_ctx)
         return instance
