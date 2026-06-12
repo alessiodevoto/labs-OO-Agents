@@ -6,6 +6,7 @@ import type {
   OtlpValue,
   TraceEvent,
 } from './types';
+import { annotateTreeOrder } from '@/components/trace/tree_order';
 
 export async function fetchTraces(params: {
   page?: number;
@@ -187,6 +188,10 @@ export function convertOtlpSpansToEvents(spans: OtlpSpan[]): TraceEvent[] {
     const timeB = b._span_data?.start_time_ns || 0;
     return timeA - timeB;
   });
+
+  // Tag each event with its tree-order rank so the viewer can render spans in
+  // call-graph order (de-interleaving concurrent subtrees).
+  annotateTreeOrder(events);
 
   return events;
 }

@@ -21,6 +21,16 @@ _context_active_spans: ContextVar[dict[str, Span] | None] = ContextVar(
     "context_active_spans", default=None
 )
 
+# Tracks the code_execution span currently running in THIS async task, paired with the
+# call_id of the agent whose generated code is executing. Lets a method invoked directly
+# from that code (e.g. ``self.submit()`` inside ``execute_python``) nest under the
+# execution span rather than the enclosing agent-method span — reflecting that the call
+# happened inside that execution. Per-task ContextVar, so it is concurrency-safe under
+# asyncio.gather (each task gets its own value; child tasks inherit at spawn time).
+_current_code_execution: ContextVar[tuple[Span, str | None] | None] = ContextVar(
+    "current_code_execution", default=None
+)
+
 
 def _get_active_spans() -> dict[str, Span]:
     """Get the active spans dict for the current async context."""
@@ -155,6 +165,20 @@ class OpenInferenceHooks:
         # This pattern prevents potential timing issues with ContextVar inheritance in async contexts
         spans_dict = _get_active_spans()
         parent_span = spans_dict.get(parent_call_id) if parent_call_id else None
+
+        # If this method was invoked directly from an agent's executing code (e.g.
+        # self.submit() inside execute_python), nest it under the active code_execution
+        # span instead of the enclosing agent-method span — so it appears where it ran.
+        # Only when the call is a DIRECT child of the executing agent (parent_call_id ==
+        # the code's owning call_id); transitive calls (method -> method) are unchanged.
+        active_exec = _current_code_execution.get()
+        if (
+            active_exec is not None
+            and active_exec[1] is not None
+            and active_exec[1] == parent_call_id
+        ):
+            parent_span = active_exec[0]
+
         context = trace.set_span_in_context(parent_span) if parent_span else None
 
         # Create span
@@ -435,10 +459,25 @@ class OpenInferenceHooks:
         # Track span
         _get_active_spans()[execution_id] = span
 
+        # Mark this as the active code execution for the current task, paired with the
+        # call_id of the agent whose code is running (top of the agent call stack — pushed
+        # by the method wrapper before the body runs). Methods invoked directly from this
+        # code nest under this span (see before_agent_call). Reset in after_code_execution.
+        exec_token = None
+        try:
+            from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack
+
+            stack = _get_agent_call_stack()
+            owning_call_id = stack[-1] if stack else None
+            exec_token = _current_code_execution.set((span, owning_call_id))
+        except Exception:
+            exec_token = None
+
         return {
             "span": span,
             "execution_id": execution_id,
             "generation_id": generation_id,
+            "exec_token": exec_token,
             **kwargs,  # Pass through all extra context
             "start_time": time.time(),
         }
@@ -456,6 +495,12 @@ class OpenInferenceHooks:
         """Complete code execution span."""
         if not context:
             return
+
+        # Restore the previous active-execution marker (supports nested execute_python).
+        exec_token = context.get("exec_token")
+        if exec_token is not None:
+            with contextlib.suppress(Exception):
+                _current_code_execution.reset(exec_token)
 
         span: Span = context.get("span")
 

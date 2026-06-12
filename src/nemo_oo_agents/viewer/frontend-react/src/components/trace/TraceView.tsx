@@ -69,6 +69,10 @@ function applyFilters(events: TraceEvent[], filter: FilterState): TraceEvent[] {
     result = result.filter((e) => eventToSearchString(e).includes(term));
   }
 
+  // Call-tree order: DFS preorder, siblings by start time, so concurrent subtrees
+  // stay contiguous at every depth. Degrades to a flat timestamp sort for traces
+  // with no nesting. Eval-summary spans are floated to the top, as before.
+  result = [...result].sort((a, b) => (a._tree_rank ?? 0) - (b._tree_rank ?? 0));
   if (result.some((e) => e.type.startsWith("span.eval"))) {
     const evalEvents = result.filter((e) => e.type.startsWith("span.eval"));
     const rest = result.filter((e) => !e.type.startsWith("span.eval"));
@@ -319,6 +323,7 @@ export function TraceView({ sessionId, onBack }: TraceViewProps) {
     );
   }
 
+  // Drives the "N of M events" counter.
   const filterActive =
     filterState.textSearch !== "" ||
     filterState.spanId !== "" ||
