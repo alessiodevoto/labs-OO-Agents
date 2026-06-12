@@ -36,6 +36,8 @@ AGENT_CLASSES: dict[str, str] = {
     "tau-bench": "nemo_oo_agents_benchmarks.agents.tau_bench:TauBenchAgent",
     # DABStep — ported from agent006 rsc_dab_agent_hard_opt63
     "dabstep": "nemo_oo_agents_benchmarks.agents.dabstep:DABStepAgent",
+    # Unified SWE-bench + Terminal-Bench agent
+    "bench": "nemo_oo_agents_benchmarks.agents.bench_agent:BenchAgent",
 }
 
 __all__ = ["AGENT_CLASSES"]

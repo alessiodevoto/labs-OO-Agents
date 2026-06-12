@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import textwrap
 from typing import TYPE_CHECKING, Any
 
@@ -144,12 +145,21 @@ class SWEBenchTodoAgent(
     related methods. Use your shell's targeted-edit method (see the `self.shell` block) for changes.
     Validate after EACH edit — run the failing test immediately.
 
-    ### Phase 3: Verify (DO NOT SKIP)
+    ### Phase 3: Verify (DO NOT SKIP — this is ENFORCED)
 
-    3a. **Run failing tests**: Confirm they pass.
-    3b. **Run related tests**: Check for regressions.
+    3a. **Run the failing tests through the gate**: call
+        `await self.verify("<test command>")` with the REAL test command
+        (pytest / the repo's runtests.py / unittest — whatever runs the
+        failing tests). This is the ONLY way to satisfy the return gate: a
+        hand-rolled script that prints "PASSED" does NOT count. You cannot
+        finish until your most recent `verify()` shows a green run.
+    3b. **Run related tests**: Check for regressions (also via `verify()`).
     3c. **Review diff**: `await self.shell.run("git diff HEAD")` — no debug prints,
         no spurious whitespace changes, no unnecessary modifications.
+
+    If you `return_result(...)` without (a) edits in the worktree and (b) a
+    passing `verify()` this session, the gate REJECTS the return and bounces
+    you back with the reason. Don't waste turns testing that — just verify.
 
     ## Tool examples
 
@@ -192,12 +202,91 @@ class SWEBenchTodoAgent(
     - Giving up too early — if your first approach fails, try a different angle
     """
 
+    # Max times solve_task() will bounce a premature return back into the loop
+    # before giving up and letting the (honest) failure stand.
+    _MAX_VERIFY_BOUNCES = 3
+
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
         self.shell = _make_shell("/testbed")
         self.todo = TodoManager()
         self.problem_statement = ""
+        # Verification-gate state: the LAST test run the agent did via
+        # ``self.verify()`` this session, and how many times we have bounced a
+        # premature return. ``last_verify`` is None until the agent runs the
+        # tests through the gate — a hand-rolled "print(\'PASSED\')" script does
+        # NOT set it, so the model cannot fake its way past the gate.
+        self._last_verify: dict[str, Any] | None = None
+        self._verify_bounces = 0
+        self._pending_nudge: str | None = None
         self.context_manager.set_static("self.shell", doc(type(self.shell)))
+
+    @hidden
+    def _parse_test_outcome(self, result: Any) -> dict[str, Any]:
+        """Best-effort pass/fail parse of a test run's output.
+
+        Recognizes pytest, Django's runtests.py, and unittest summaries. Errs
+        toward ``passed=False`` when ambiguous — the gate should only open on a
+        clearly-green run, never on a maybe.
+        """
+        text = getattr(result, "text", None) or getattr(result, "stdout", None) or str(result)
+        low = text.lower()
+        n_failed = n_passed = 0
+        m = re.search(r"(\d+) failed", low)
+        if m:
+            n_failed = int(m.group(1))
+        m = re.search(r"(\d+) passed", low)
+        if m:
+            n_passed = int(m.group(1))
+        # Django/unittest style: "FAILED (failures=2, errors=1)" / "OK"
+        failed_markers = (
+            "failed (",
+            "errors=",
+            "failures=",
+            " no tests ran",
+            "collected 0 items",
+        )
+        rc = getattr(result, "returncode", None)
+        looks_failed = n_failed > 0 or any(mk in low for mk in failed_markers)
+        looks_passed = (n_passed > 0 and n_failed == 0) or low.rstrip().endswith("ok")
+        passed = bool(looks_passed and not looks_failed and (rc in (0, None)))
+        return {
+            "passed": passed,
+            "n_passed": n_passed,
+            "n_failed": n_failed,
+            "returncode": rc,
+            "preview": text[-500:],
+        }
+
+    async def verify(self, test_cmd: str) -> str:
+        """Run the failing test(s) and record the outcome for the return gate.
+
+        THIS is the only way to satisfy the "did you actually verify?" gate that
+        guards ``return_result``. A hand-rolled ``python -c '...print("PASSED")'``
+        script does NOT count — you must run the real test command (pytest, the
+        repo's runtests.py, etc.) through here. The gate opens only when the most
+        recent ``verify()`` shows a green run AND the worktree carries edits.
+
+        Args:
+            test_cmd: The shell command that runs the task's failing tests
+                (e.g. ``pytest path/to/test_x.py::test_y`` or
+                ``./tests/runtests.py app.tests.Foo``).
+
+        Returns:
+            A short status line (passed / failed + counts) — also printed.
+        """
+        result = await self.shell.run(test_cmd, timeout=600)
+        outcome = self._parse_test_outcome(result)
+        outcome["cmd"] = test_cmd
+        self._last_verify = outcome
+        verdict = "PASSED" if outcome["passed"] else "FAILED"
+        msg = (
+            f"verify [{verdict}]  cmd={test_cmd!r}  "
+            f"passed={outcome['n_passed']} failed={outcome['n_failed']} rc={outcome['returncode']}"
+        )
+        print(msg)
+        print(result)
+        return msg
 
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner.
@@ -232,6 +321,9 @@ class SWEBenchTodoAgent(
         self.shell = _make_shell(cwd)
         self.context_manager.set_static("self.shell", doc(type(self.shell)))
         self.todo.clear()
+        self._last_verify = None
+        self._verify_bounces = 0
+        self._pending_nudge = None
 
         # Activate the testbed conda env if available (no-op on non-conda containers).
         await self.shell.run(_CONDA_ACTIVATE)
@@ -287,6 +379,35 @@ class SWEBenchTodoAgent(
         ``return_result("done")`` (any short status string). Do NOT paste a
         diff, do NOT call ``git add``, do NOT construct a result object.
         """
+        # On a verification bounce we re-enter here with a pending nudge. Don't
+        # re-run the explore opener (the agent already explored, and re-showing
+        # all-done todos just invites another instant return). Surface the nudge
+        # as the FIRST and most prominent thing, with the current diff + verify
+        # state, so the agent acts on it instead of re-declaring done.
+        if self._pending_nudge:
+            diff = (await self.shell.run("git diff HEAD")).text.strip()
+            print("=== RETURN BLOCKED BY VERIFICATION GATE ===")
+            print(self._pending_nudge)
+            print("\n=== Worktree edits present:", bool(diff), "===")
+            lv = self._last_verify
+            print(
+                "=== Last verify:",
+                "none yet"
+                if lv is None
+                else f"{'PASSED' if lv['passed'] else 'FAILED'} "
+                f"(passed={lv['n_passed']} failed={lv['n_failed']}, cmd={lv['cmd']!r})",
+                "===",
+            )
+            print("\n=== Todo Status ===")
+            print(self.todo.status())
+            print(
+                "\nResolve the blocker above. You CANNOT finish until your most "
+                "recent self.verify(<cmd>) shows a green run on real tests."
+            )
+            self._pending_nudge = None
+            ...
+            return "done"
+
         # Start with Phase 1a: explore the repo structure
         r = await self.shell.run("ls -la")
         print("=== Repo Structure ===")
@@ -295,27 +416,109 @@ class SWEBenchTodoAgent(
         print(self.todo.status())
         ...
 
-    async def solve_task(self, description: str, response_format: str = "") -> str:
-        """Public wrapper: run the workflow, then confirm the worktree carries edits.
+    @hidden
+    def _reopen_verify_todos(self) -> None:
+        """Reopen the Phase-3 verify todos after a bounce.
 
-        The harbor verifier grades the working tree in place (it runs the
-        task's own test script against /testbed) — it never reads a returned
-        patch. So there is nothing to extract or submit: the agent's job is
-        simply to leave correct edits in the tree. We just sanity-check that
-        edits exist and return a short status; an empty diff is logged as a
-        warning (the run will score 0, but that's a real signal, not a
-        submission-protocol bug).
+        The agent re-declares done partly because todo_status reads all-complete.
+        Reopening the verify phases makes the pending work visible so the next
+        pass doesn't just re-confirm a finished checklist.
         """
-        try:
-            result = await self._solve_task(description, response_format)
-        except Exception as e:
-            logger.error("Error solving task: %s", e)
-            result = None
+        for t in self.todo.list_todos():
+            title = getattr(t, "title", "")
+            if "Phase 3a" in title or "Phase 3b" in title:
+                try:
+                    self.todo.reopen(t.id)
+                except Exception:  # noqa: BLE001
+                    logger.debug("Could not reopen verify todo %s (%r)", t.id, title, exc_info=True)
 
-        if response_format != "diff":
-            return str(result) if result is not None else ""
+    async def _verification_gate(self) -> str | None:
+        """Return a nudge string if the agent must NOT stop yet, else None.
 
-        r = await self.shell.run("git diff HEAD")
-        if not r.text.strip():
-            logger.warning("git diff HEAD is empty — agent left no edits in the worktree")
+        Three things must hold before a ``return_result`` is honored:
+          1. the worktree carries edits (the harness grades /testbed in place);
+          2. the agent ran the failing tests THIS session via ``self.verify()``;
+          3. that most-recent verify showed a green run.
+
+        Each failing condition yields a concrete, actionable nudge — the agent
+        is bounced back into the loop with exactly one reason it can't stop,
+        rather than being allowed to record a bogus "done". A passing manual
+        script never sets ``_last_verify``, so it cannot open the gate.
+        """
+        diff = (await self.shell.run("git diff HEAD")).text.strip()
+        if not diff:
+            return (
+                "STOP REJECTED: your worktree has NO edits (`git diff HEAD` is empty). "
+                "The harness grades /testbed in place — your file changes ARE the "
+                "submission. Make the actual fix, then verify it, then finish."
+            )
+        if self._last_verify is None:
+            return (
+                "STOP REJECTED: you never ran the failing tests this session. A fix you "
+                "haven't run is not a fix. Run the task's failing test(s) via "
+                '`await self.verify("<test command>")` (real pytest / runtests.py — '
+                "NOT a hand-rolled script that prints PASSED) and see them pass first."
+            )
+        if not self._last_verify["passed"]:
+            lv = self._last_verify
+            return (
+                f"STOP REJECTED: your last `verify()` FAILED "
+                f"(passed={lv['n_passed']} failed={lv['n_failed']}, cmd={lv['cmd']!r}). "
+                "Fix the implementation until that exact command passes. A manual "
+                "script printing success does not count — make the real tests green."
+            )
+        return None
+
+    async def solve_task(self, description: str, response_format: str = "") -> str:
+        """Public wrapper: run the workflow behind a verification gate.
+
+        The harbor verifier grades the working tree in place — file edits in
+        /testbed ARE the submission. The dominant failure mode is the agent
+        declaring ``done`` without ever running the failing tests and seeing
+        them pass. So we gate the return: when the agent stops, we check that
+        (a) the worktree carries edits and (b) the agent verified a green test
+        run this session via ``self.verify()``. If not, we bounce it back into
+        the loop with a concrete reason — up to ``_MAX_VERIFY_BOUNCES`` times —
+        instead of accepting an unverified submission. State (shell, /testbed
+        edits, todos, last verify) persists across bounces on ``self``.
+
+        Non-diff tasks keep the old pass-through behavior.
+        """
+        result = None
+        desc = description
+        for attempt in range(self._MAX_VERIFY_BOUNCES + 1):
+            try:
+                result = await self._solve_task(desc, response_format)
+            except Exception as e:
+                logger.error("Error solving task: %s", e)
+                result = None
+
+            if response_format != "diff":
+                return str(result) if result is not None else ""
+
+            nudge = await self._verification_gate()
+            if nudge is None:
+                return str(result) if result is not None else "done"
+
+            if attempt >= self._MAX_VERIFY_BOUNCES:
+                # Out of bounces — let the (honest) unverified result stand.
+                logger.warning("Verification gate exhausted bounces; returning unverified.")
+                return str(result) if result is not None else "done"
+            self._verify_bounces += 1
+            logger.warning(
+                "Verification gate bounced return (attempt %d/%d): %s",
+                self._verify_bounces,
+                self._MAX_VERIFY_BOUNCES,
+                nudge.split(":", 1)[0],
+            )
+            # Re-enter the loop. Two things make the nudge actually land instead
+            # of the agent re-declaring done off already-complete todos:
+            #   1. ``_pending_nudge`` makes _solve_task skip the explore opener
+            #      and surface the blocker as the first/only thing it sees;
+            #   2. reopening the verify todos so todo_status shows pending work
+            #      (the agent re-returned because everything read "done").
+            self._pending_nudge = nudge
+            self._reopen_verify_todos()
+            desc = description
+
         return str(result) if result is not None else "done"
