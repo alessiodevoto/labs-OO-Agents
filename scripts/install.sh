@@ -12,7 +12,9 @@
 #      model aliases registered via the
 #      `nemo_oo_agents.bundled_configs` entry-point group).
 #   4. Optionally prompts for `NVIDIA_INTERNAL_API_KEY` (via /dev/tty) and
-#      writes it to `~/.config/nat/oo/env` as a sh-style export line.
+#      writes it to `~/.config/nemo_oo/secrets.yaml` (chmod 600). The CLI
+#      loads this file into the process env automatically on every run —
+#      no shell-rc edit needed.
 #
 # Skip the API-key prompt by setting `NEMO_OO_INSTALL_NONINTERACTIVE=1`
 # or by piping into a non-TTY environment (e.g. CI).
@@ -27,7 +29,7 @@ set -eu
 
 REPO_URL="${NEMO_OO_INSTALL_REPO:-https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git}"
 REPO_REF="${NEMO_OO_INSTALL_REF:-main}"
-ENV_FILE="${NEMO_OO_INSTALL_ENV_FILE:-$HOME/.config/nat/oo/env}"
+SECRETS_FILE="${NEMO_OO_INSTALL_SECRETS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/nemo_oo/secrets.yaml}"
 
 # ---------------------------------------------------------------------------
 # UI helpers
@@ -41,6 +43,18 @@ red() { printf '\033[31m%s\033[0m' "$1"; }
 info() { printf '%s %s\n' "$(green '==>')" "$1"; }
 warn() { printf '%s %s\n' "$(yellow '!!!')" "$1" >&2; }
 die() { printf '%s %s\n' "$(red 'ERROR:')" "$1" >&2; exit 1; }
+
+# Fail early with a clear message if a required command is missing (pattern
+# borrowed from Astral's official `uv` installer).
+check_cmd() { command -v "$1" >/dev/null 2>&1; }
+need_cmd() { check_cmd "$1" || die "required command not found: $1"; }
+
+require_prereqs() {
+    # `uv` is installed by this script; everything else must already exist.
+    for cmd in curl sed chmod mkdir mv dirname date; do
+        need_cmd "$cmd"
+    done
+}
 
 # ---------------------------------------------------------------------------
 # Step 1: uv
@@ -72,7 +86,34 @@ Open a new shell and re-run this installer, or add \`\$HOME/.local/bin\` to PATH
 # Step 2: managed Python
 # ---------------------------------------------------------------------------
 
+# Set when we detect a system Python >=3.12 we can reuse, so that
+# `uv tool install` is pinned to it and uv does not try to download one
+# (which requires GitHub access).
+SYSTEM_PYTHON=""
+
+find_system_python() {
+    # Probe common interpreter names for one that reports >=3.12.
+    for py in python3.13 python3.12 python3 python; do
+        if ! command -v "$py" >/dev/null 2>&1; then
+            continue
+        fi
+        ver=$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
+        case "$ver" in
+            3.12|3.13|3.1[4-9]|3.[2-9][0-9]|[4-9].*)
+                SYSTEM_PYTHON="$(command -v "$py")"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
 ensure_python() {
+    if find_system_python; then
+        ver=$("$SYSTEM_PYTHON" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown)
+        info "Reusing existing Python $ver at $SYSTEM_PYTHON (skipping uv python install)"
+        return 0
+    fi
     info "Ensuring uv-managed Python 3.12 is available..."
     uv python install 3.12
 }
@@ -89,8 +130,19 @@ install_tool() {
         UV_INSTALL_FLAGS=""
     fi
 
+    # When we found a usable system Python, pin uv to it and disable
+    # uv's Python downloads so the install works in sandboxes without
+    # GitHub access.
+    if [ -n "$SYSTEM_PYTHON" ]; then
+        UV_PYTHON_FLAGS="--python $SYSTEM_PYTHON"
+        UV_PYTHON_DOWNLOADS=never
+        export UV_PYTHON_DOWNLOADS
+    else
+        UV_PYTHON_FLAGS=""
+    fi
+
     info "Installing nemo-oo-agents-cli (with core + NVIDIA aliases) as a uv tool..."
-    uv tool install $UV_INSTALL_FLAGS \
+    uv tool install $UV_INSTALL_FLAGS $UV_PYTHON_FLAGS \
         "nemo-oo-agents-cli @ git+${REPO_URL}@${REPO_REF}#subdirectory=packages/nemo-oo-agents-cli" \
         --with "nemo-oo-agents @ git+${REPO_URL}@${REPO_REF}" \
         --with "nemo-oo-agents-nvidia @ git+${REPO_URL}@${REPO_REF}#subdirectory=packages/nemo-oo-agents-nvidia"
@@ -130,18 +182,25 @@ prompt_api_key() {
         return 0
     fi
 
-    mkdir -p "$(dirname "$ENV_FILE")"
+    mkdir -p "$(dirname "$SECRETS_FILE")"
+    # Emit the key as a double-quoted YAML scalar so values containing ':',
+    # '#', leading '{'/'[', etc. can't malform the file. Inside double quotes
+    # only '\' and '"' need escaping.
+    escaped_key=$(printf '%s' "$api_key" | sed 's/\\/\\\\/g; s/"/\\"/g')
     # Write atomically so a concurrent installer can't read a half-written file.
-    tmp_file="${ENV_FILE}.tmp.$$"
+    # The CLI reads this YAML and pushes `env:` into the process env on every
+    # run (non-clobbering) — no shell-rc edit needed.
+    tmp_file="${SECRETS_FILE}.tmp.$$"
     {
         printf '# Written by nemo oo install.sh on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        printf '# Source this file from your shell rc, or pass it through your\n'
-        printf '# preferred env-loading mechanism.\n'
-        printf 'export NVIDIA_INTERNAL_API_KEY=%s\n' "$api_key"
+        printf '# Loaded automatically by the nemo oo CLI (non-clobbering — a\n'
+        printf '# value already exported in your shell wins). Add more keys under env:.\n'
+        printf 'env:\n'
+        printf '  NVIDIA_INTERNAL_API_KEY: "%s"\n' "$escaped_key"
     } > "$tmp_file"
     chmod 600 "$tmp_file"
-    mv "$tmp_file" "$ENV_FILE"
-    info "Wrote NVIDIA_INTERNAL_API_KEY to $ENV_FILE (mode 600)."
+    mv "$tmp_file" "$SECRETS_FILE"
+    info "Wrote NVIDIA_INTERNAL_API_KEY to $SECRETS_FILE (mode 600)."
 }
 
 # ---------------------------------------------------------------------------
@@ -153,25 +212,24 @@ print_next_steps() {
     info "$(green 'Install complete.')"
     printf '\n'
 
-    if [ -f "$ENV_FILE" ]; then
+    if [ -f "$SECRETS_FILE" ]; then
         printf '%s\n' "$(bold 'Next steps:')"
-        printf '  1. Add the env file to your shell rc so the key is loaded automatically:\n'
-        printf '\n'
-        printf '       echo "source %s" >> ~/.bashrc   # or ~/.zshrc, ~/.profile\n' "$ENV_FILE"
-        printf '\n'
-        printf '  2. Open a new shell (or `source` the rc file once) so the key\n'
-        printf '     and `~/.local/bin` PATH change take effect.\n'
-        printf '\n'
-        printf '  3. Run the TUI:\n'
+        printf '  1. Open a new shell so the `~/.local/bin` PATH change takes effect.\n'
+        printf '  2. Run the TUI — your API key is loaded automatically from\n'
+        printf '     %s:\n' "$SECRETS_FILE"
         printf '\n'
         printf '       %s\n' "$(bold 'nemo oo tui')"
         printf '\n'
     else
         printf '%s\n' "$(bold 'Next steps:')"
         printf '  1. Open a new shell so the PATH change picks up.\n'
-        printf '  2. Set your API key (or skip and rely on UNIFIEDLLM_CONFIG paths):\n'
+        printf '  2. Add your API key so it loads automatically on every run.\n'
+        printf '     Create %s with:\n' "$SECRETS_FILE"
         printf '\n'
-        printf '       export NVIDIA_INTERNAL_API_KEY=sk-…\n'
+        printf '       env:\n'
+        printf '         NVIDIA_INTERNAL_API_KEY: sk-…\n'
+        printf '\n'
+        printf '     (or just `export NVIDIA_INTERNAL_API_KEY=sk-…` in your shell)\n'
         printf '\n'
         printf '  3. Run the TUI:\n'
         printf '\n'
@@ -181,7 +239,7 @@ print_next_steps() {
 
     printf '%s\n' "$(bold 'Inspect / customize the bundled LLM aliases:')"
     printf '       nemo oo config show     # which YAMLs are loading\n'
-    printf '       nemo oo config eject    # local copy at ~/.config/nat/oo/llm_config.yaml\n'
+    printf '       nemo oo config eject    # local copy at ~/.config/nemo_oo/llm_config.yaml\n'
     printf '\n'
     printf '%s\n' "$(bold 'Upgrade later:')"
     printf '       uv tool upgrade nemo-oo-agents-cli\n'
@@ -194,6 +252,7 @@ print_next_steps() {
 
 main() {
     info "nemo oo TUI installer — ref=${REPO_REF}"
+    require_prereqs
     ensure_uv
     ensure_python
     install_tool

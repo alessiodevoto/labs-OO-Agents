@@ -76,8 +76,9 @@ from nemo_oo_agents.token_counter import char_approximate_token_counter  # noqa:
 from nemo_oo_agents.unifiedllm import LLMResponse  # noqa: E402
 
 
-# Lazy re-export of llm_config_chain — defer the platformdirs import
-# inside paths.py until the helper is actually called.
+# Lazy re-export of llm_config_chain — defer importing the llm_config /
+# paths machinery (and the registry it touches) until the helper is
+# actually called, keeping ``import nemo_oo_agents`` cheap.
 def __getattr__(name):
     if name == "llm_config_chain":
         from nemo_oo_agents.llm_config import llm_config_chain

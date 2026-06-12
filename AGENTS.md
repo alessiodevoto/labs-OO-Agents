@@ -149,7 +149,7 @@ from openinference_instrumentation_nemo_oo_agents import enable_tracing
 exporter = enable_tracing(trace_dir="traces/my_agent")
 ```
 
-Trace viewer runs on `TRACE_VIEWER_PORT` (default 5001). See `examples/quickstart/06_tracing.py` for a full example.
+Trace viewer runs on `NEMO_OO_TRACE_VIEWER_PORT` (default 5001). See `examples/quickstart/06_tracing.py` for a full example.
 
 - **All public methods are traced by default.** Private (`_private`) and dunder (`__method__`) methods are also traced unless you opt out.
 - **Use `@no_trace` to exclude from traces.** Decorate any method (public, private, or dunder) with `@no_trace` to prevent it from appearing in traces while still allowing generation.

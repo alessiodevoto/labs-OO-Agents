@@ -308,7 +308,7 @@ class _RichReplayPayload:
 
     Not part of the public ``Output`` union — intercepted by ``CommandHandler``
     and the ``--continue`` startup path before reaching any frontend renderer.
-    Each instance is POSTed to ``NEMO_RICH_URL`` in sequence so that plots
+    Each instance is POSTed to ``NEMO_OO_RICH_URL`` in sequence so that plots
     appear at their correct inline positions between history turns.
     """
 

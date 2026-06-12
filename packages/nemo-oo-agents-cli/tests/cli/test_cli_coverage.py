@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-from nemo_oo_agents_cli._common import format_size, load_dotenv_into
+from nemo_oo_agents_cli._common import format_size
 
 # ---------------------------------------------------------------------------
 # _common.py
@@ -72,73 +72,6 @@ class TestFindProjectRoot:
         result = find_project_root()
         # It either found pyproject.toml or fell back to cwd
         assert result.exists()
-
-
-class TestLoadDotenvInto:
-    def test_basic_key_value(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("FOO=bar\nBAZ=qux\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert env["FOO"] == "bar"
-        assert env["BAZ"] == "qux"
-
-    def test_ignores_comments(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("# comment\nFOO=bar\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert "# comment" not in env
-        assert env["FOO"] == "bar"
-
-    def test_ignores_blank_lines(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("\nFOO=bar\n\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert env == {"FOO": "bar"}
-
-    def test_strips_quotes_single(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("FOO='hello world'\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert env["FOO"] == "hello world"
-
-    def test_strips_quotes_double(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text('FOO="hello world"\n')
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert env["FOO"] == "hello world"
-
-    def test_value_with_equals_sign(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("FOO=a=b=c\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert env["FOO"] == "a=b=c"
-
-    def test_missing_file_silently_ignored(self, tmp_path):
-        env = {}
-        load_dotenv_into(tmp_path / "nonexistent.env", env)
-        assert env == {}
-
-    def test_skips_lines_without_equals(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("NOEQUALS\nFOO=bar\n")
-        env = {}
-        load_dotenv_into(env_file, env)
-        assert "NOEQUALS" not in env
-        assert env["FOO"] == "bar"
-
-    def test_updates_existing_dict(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("NEW=value\n")
-        env = {"EXISTING": "stays"}
-        load_dotenv_into(env_file, env)
-        assert env["EXISTING"] == "stays"
-        assert env["NEW"] == "value"
 
 
 # ---------------------------------------------------------------------------

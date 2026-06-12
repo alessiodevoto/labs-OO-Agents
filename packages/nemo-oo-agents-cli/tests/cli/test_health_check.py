@@ -105,7 +105,7 @@ class TestClassifyError:
         exc = Exception("The model `fake-model` does not exist")
         with patch("nemo_oo_agents_cli.tui.health_check._has_project_config", return_value=False):
             result = _classify_error(exc, llm)
-        assert "create .nemo_oo_agents/config.toml" in result.fix_hint
+        assert "/config set model" in result.fix_hint
 
     def test_model_not_found_suggests_edit_config(self):
         llm = _make_llm(model="fake-model")

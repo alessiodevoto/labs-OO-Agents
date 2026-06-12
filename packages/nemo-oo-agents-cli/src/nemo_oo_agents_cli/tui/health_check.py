@@ -109,13 +109,13 @@ def _has_llm_config_yaml() -> bool:
 
 
 def _has_project_config() -> bool:
-    """Check if .nemo_oo_agents/config.toml exists."""
+    """Check if a settings.yaml exists in any layer (user / project / env)."""
     try:
-        from nemo_oo_agents.paths import get_project_dir
+        from .settings import settings_present
 
-        return get_project_dir("config.toml").exists()
+        return settings_present()
     except Exception:
-        return Path(".nemo_oo_agents/config.toml").exists()
+        return Path(".nemo_oo/settings.yaml").exists()
 
 
 def _classify_error(exc: Exception, llm: UnifiedLLM) -> HealthCheckResult:
@@ -192,11 +192,10 @@ def _classify_error(exc: Exception, llm: UnifiedLLM) -> HealthCheckResult:
             "  • Run with --model <name> to try a different model",
         ]
         if has_config:
-            fix_lines.append("  • Or edit 'model' in .nemo_oo_agents/config.toml")
+            fix_lines.append("  • Or edit 'default_model' in .nemo_oo/settings.yaml")
         else:
             fix_lines.append(
-                "  • Or create .nemo_oo_agents/config.toml with: [tui]\n"
-                '    model = "<valid-model-name>"'
+                "  • Or run `/config set model <valid-model-name>` to write settings.yaml"
             )
         if has_yaml:
             fix_lines.append(
@@ -303,7 +302,7 @@ def _classify_error(exc: Exception, llm: UnifiedLLM) -> HealthCheckResult:
     if has_yaml:
         fix_lines.append("  • Check llm_config.yaml for api_base / api_key_env")
     if has_config:
-        fix_lines.append("  • Check .nemo_oo_agents/config.toml for model name")
+        fix_lines.append("  • Check .nemo_oo/settings.yaml for model name")
 
     return HealthCheckResult(
         ok=False,

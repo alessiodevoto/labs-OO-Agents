@@ -20,7 +20,6 @@ def _isolated_env(tmp_path, monkeypatch):
     ``nemo_oo_agents.llm_config.bundled_config_paths``.
     """
     monkeypatch.delenv("NEMO_OO_LLM_CONFIG", raising=False)
-    monkeypatch.delenv("NAT_CONFIG_DIR", raising=False)
     monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
     user_dir = tmp_path / "user"
     user_dir.mkdir()
@@ -275,3 +274,50 @@ class TestEjectCommand:
         result = runner.invoke(command, ["eject", "--force"])
         assert result.exit_code == 1
         assert "directory" in result.output.lower()
+
+
+class TestShowSettingsSecrets:
+    """`nemo oo config show` reports settings.yaml + secrets.yaml layers."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_layer_env(self, monkeypatch):
+        monkeypatch.delenv("NEMO_OO_SETTINGS", raising=False)
+        monkeypatch.delenv("NEMO_OO_SECRETS", raising=False)
+
+    def test_show_prints_settings_and_secrets_headers(self, _isolated_env):
+        result = CliRunner().invoke(command, ["show"])
+        assert result.exit_code == 0, result.output
+        assert "Settings (settings.yaml):" in result.output
+        assert "Secrets (secrets.yaml):" in result.output
+        assert "NEMO_OO_SETTINGS (override):" in result.output
+        assert "NEMO_OO_SECRETS (override):" in result.output
+
+    def test_settings_summary_shows_section_key_counts(self, _isolated_env):
+        user_dir = Path(os.environ["NEMO_OO_USER_DIR"])
+        (user_dir / "settings.yaml").write_text(
+            "tui:\n  default_model: foo\n  vi_mode: true\nagent:\n  orchestrator: true\n"
+        )
+        result = CliRunner().invoke(command, ["show"])
+        assert result.exit_code == 0
+        assert "tui: 2 keys" in result.output
+        assert "agent: 1 keys" in result.output
+
+    def test_secrets_values_are_redacted(self, _isolated_env):
+        user_dir = Path(os.environ["NEMO_OO_USER_DIR"])
+        (user_dir / "secrets.yaml").write_text(
+            "env:\n  NVIDIA_INTERNAL_API_KEY: sk-supersecret\n  ANTHROPIC_API_KEY: sk-ant-xyz\n"
+        )
+        result = CliRunner().invoke(command, ["show"])
+        assert result.exit_code == 0
+        # Key names shown, values never printed.
+        assert "NVIDIA_INTERNAL_API_KEY" in result.output
+        assert "ANTHROPIC_API_KEY" in result.output
+        assert "values redacted" in result.output
+        assert "sk-supersecret" not in result.output
+        assert "sk-ant-xyz" not in result.output
+
+    def test_absent_files_marked_not_present(self, _isolated_env):
+        result = CliRunner().invoke(command, ["show"])
+        assert result.exit_code == 0
+        # Both settings and secrets user/project layers absent.
+        assert result.output.count("not present") >= 4

@@ -3,7 +3,7 @@
 """Session management — UUID-keyed persistent conversation history.
 
 Each session gets a ``SQLiteStorageManager`` at
-``<project-root>/.nemo_oo_agents/sessions/<uuid>.db``.  TUI metadata (session start info,
+``<project-root>/.nemo_oo/sessions/<uuid>.db``.  TUI metadata (session start info,
 user input, renames) is stored as ``Metadata`` events via the event
 manager.  Agent turns are reconstructed from ``Message`` events already
 recorded by the agent framework.
@@ -378,7 +378,7 @@ def build_resume_outputs(
 
     Callers are responsible for rendering each item:
     - ``HistoryReplay`` → ``await frontend.render(item)``
-    - ``_RichReplayPayload`` → ``httpx.post(NEMO_RICH_URL, json=item.payload)``
+    - ``_RichReplayPayload`` → ``httpx.post(NEMO_OO_RICH_URL, json=item.payload)``
     """
     import sqlite3 as _sqlite3
 

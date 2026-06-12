@@ -58,6 +58,7 @@ For deeper understanding, see these topic-specific docs:
 | Single vs multi-agent | `docs/guides/single-vs-multi-agent.md` | Architectural decisions |
 | Structured output | `docs/guides/structured-output.md` | Return types, Pydantic validation, PythonSource pattern |
 | Method design | `docs/guides/writing-generation-methods.md` | Writing effective generation methods |
+| Config migration (0.4.x → 0.5.0) | `docs/guides/config-migration.md` | Moving existing config to the unified `nemo_oo` layout (settings/secrets/llm_config YAML) — breaking changes in 0.5.0 |
 
 ## Working Documentation
 
@@ -150,9 +151,47 @@ The integration installs three middleware via `event_manager.intercept()`:
 | `nemo_flow_tool_middleware` | `execute_python` | Routes code execution through NeMo Flow tool pipeline |
 | `nemo_flow_agent_call_middleware` | `agent_call` | Wraps each agent method in a NeMo Flow Function scope |
 
+## Config files
+
+Three config files share one layout, one precedence chain, and one loader
+(`nemo_oo_agents.layered_config`). All are optional — absence means "use the
+layer below."
+
+| File | What | Bundled defaults | Env-var override |
+|------|------|------------------|------------------|
+| `llm_config.yaml` | LLM model aliases | entry-point group `nemo_oo_agents.bundled_configs` | `NEMO_OO_LLM_CONFIG` |
+| `settings.yaml` | TUI settings (`tui:` / `agent:` sections, dataclass field names) | in-code defaults | `NEMO_OO_SETTINGS` |
+| `secrets.yaml` | API keys (`env:` name→value map, pushed into `os.environ` non-clobbering) | — | `NEMO_OO_SECRETS` |
+
+```text
+~/.config/nemo_oo/           # user-global   (XDG_CONFIG_HOME aware; override base with NEMO_OO_USER_DIR)
+├── settings.yaml
+├── secrets.yaml             # chmod 600
+└── llm_config.yaml
+
+.nemo_oo/                    # project-local (override base with NEMO_OO_PROJECT_DIR)
+├── settings.yaml
+├── secrets.yaml             # gitignore strongly recommended
+└── llm_config.yaml
+```
+
+Precedence (low → high, last wins): bundled defaults → user → project →
+env-var path(s). For `secrets.yaml`, an env var already set in the process
+always wins over a file value. `null` deletes a key inherited from a lower
+layer. Run `nemo oo config show` to see which layers are loading (secret
+values redacted).
+
+`secrets.yaml`:
+
+```yaml
+env:
+  NVIDIA_INTERNAL_API_KEY: sk-...
+  ANTHROPIC_API_KEY: sk-ant-...
+```
+
 ## Environment Variables
 
-See `.env` for API keys:
+See `.env` for API keys (library use); the CLI/TUI reads `secrets.yaml`:
 - `OPENAI_API_KEY` — OpenAI
 - `NVIDIA_API_KEY` — NVIDIA NIM (integrate.api.nvidia.com)
 - `NVIDIA_INTERNAL_API_KEY` — NVIDIA internal (inference-api.nvidia.com)
@@ -162,3 +201,21 @@ See `.env` for API keys:
 | `openai` | OpenAI API | `OPENAI_API_KEY` |
 | `nvidia` | integrate.api.nvidia.com | `NVIDIA_API_KEY` |
 | `nvidia_internal` | inference-api.nvidia.com | `NVIDIA_INTERNAL_API_KEY` |
+
+### `NEMO_OO_*` variables
+
+All framework-owned env vars use the `NEMO_OO_` prefix:
+
+| Variable | What |
+|----------|------|
+| `NEMO_OO_USER_DIR` | Override the user config base (default `~/.config/nemo_oo`, XDG-aware) |
+| `NEMO_OO_PROJECT_DIR` | Override the project config dir (default `<root>/.nemo_oo`) |
+| `NEMO_OO_LLM_CONFIG` | Comma-separated YAML path(s) — highest-priority `llm_config.yaml` layer |
+| `NEMO_OO_SETTINGS` | Comma-separated YAML path(s) — highest-priority `settings.yaml` layer |
+| `NEMO_OO_SECRETS` | Comma-separated YAML path(s) — highest-priority `secrets.yaml` layer |
+| `NEMO_OO_TRACE_VIEWER_PORT` | Port for the trace viewer (`nemo oo start-dev`; default 5001) |
+| `NEMO_OO_TRACE_DB` | SQLite trace-store path for the viewer (default `~/.config/nemo_oo/traces.db`) |
+| `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nemo oo term` for the web frontend (internal) |
+
+Any var named under a `secrets.yaml` `env:` map (e.g. `NVIDIA_INTERNAL_API_KEY`)
+is pushed into the process env non-clobbering — an already-exported value always wins.

@@ -161,7 +161,7 @@ class WebPublisher(Skill):
             except Exception as exc:
                 _log.debug("WebPublisher: could not store RichOutput event: %s", exc)
 
-        url = os.environ.get("NEMO_RICH_URL")
+        url = os.environ.get("NEMO_OO_RICH_URL")
         if not url:
             return
         try:

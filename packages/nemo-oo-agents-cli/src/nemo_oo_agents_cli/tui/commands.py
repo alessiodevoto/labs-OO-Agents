@@ -1372,7 +1372,7 @@ class SessionCommand(Command):
             from .session_manager import SESSIONS_DIR as _SESSIONS_DIR
 
             _session_db_path = _SESSIONS_DIR / f"{full_id}.db"
-            _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+            _in_nemo_term = bool(_os.environ.get("NEMO_OO_RICH_URL"))
 
             # Acquire the session lock FIRST — fail fast if another process owns it.
             from nemo_oo_agents.storage import SQLiteStorageManager
@@ -2249,7 +2249,7 @@ class TimeTravelCommand(Command):
         # Build resume outputs to replay history
         import os as _os
 
-        _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+        _in_nemo_term = bool(_os.environ.get("NEMO_OO_RICH_URL"))
         outputs = build_resume_outputs(new_db_path, new_session_id, in_nemo_term=_in_nemo_term)
 
         outputs.append(
@@ -2973,12 +2973,12 @@ class CommandHandler:
         except Exception as exc:
             result = CommandResult.err(f"Command failed: {exc}")
         # Render outputs in order.  _RichReplayPayload sentinels are intercepted
-        # here (not forwarded to the frontend) and POSTed to NEMO_RICH_URL so
+        # here (not forwarded to the frontend) and POSTed to NEMO_OO_RICH_URL so
         # plots appear at their correct inline position between history turns.
         import os as _os
 
         _rich_url = (
-            _os.environ.get("NEMO_RICH_URL")
+            _os.environ.get("NEMO_OO_RICH_URL")
             if any(isinstance(o, _RichReplayPayload) for o in result.outputs)
             else None
         )

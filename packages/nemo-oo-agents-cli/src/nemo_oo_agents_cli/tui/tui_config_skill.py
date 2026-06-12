@@ -2,48 +2,57 @@
 # SPDX-License-Identifier: Apache-2.0
 """TUI Configuration — inspect and manage NeMo OO Agents TUI settings."""
 
-import re
-import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
 from nemo_oo_agents.skill import Skill, slash_command
 
+# Friendly ``/config set`` keys → dataclass field names written under ``tui:``.
+# Keeps the short names users already know while the file uses field names.
+_FRIENDLY_KEYS: dict[str, str] = {
+    "model": "default_model",
+    "python": "show_python",
+    "vi": "vi_mode",
+    "trace": "trace_dir",
+    "libs_dirs": "libs_dirs",
+}
+
 
 class TuiConfigurationSkill(Skill):
-    """Inspect and manage TUI configuration: config file, external skills, libs, models.
+    """Inspect and manage TUI configuration: settings file, external skills, libs, models.
 
-    The TUI reads configuration from ``.nemo_oo_agents/config.toml`` in the
-    project root. This skill provides ``/config`` to view and edit settings,
-    and documents the full schema so the agent can answer questions.
+    The TUI reads configuration from layered ``settings.yaml`` files. This
+    skill provides ``/config`` to view and edit settings, and documents the
+    full schema so the agent can answer questions.
 
-    ## Config file
+    ## Settings file
 
-    Location: ``<project-root>/.nemo_oo_agents/config.toml``
+    Layered (last wins): user ``~/.config/nemo_oo/settings.yaml`` →
+    project ``<project-root>/.nemo_oo/settings.yaml`` →
+    ``$NEMO_OO_SETTINGS``. ``/config set`` writes the project-local file.
 
-    ```toml
-    [tui]
-    model = "claude-opus-4-8"        # LLM model (litellm or unifiedllm alias)
-    python = false                    # Show Python execution panels
-    vi = false                        # Vi keybindings
-    libs_dirs = ["/path/to/skills"]   # External library skill directories
-    trace = ".nemo_oo_agents/traces"  # Trace output directory
+    ```yaml
+    tui:
+      default_model: claude-opus-4-8   # LLM model (litellm or unifiedllm alias)
+      show_python: false               # Show Python execution panels
+      vi_mode: false                   # Vi keybindings
+      libs_dirs: ["/path/to/skills"]   # External library skill directories
+      trace_dir: .nemo_oo/traces       # Trace output directory
 
-    # MCP servers can be configured inline in this same file. Use env vars for
-    # secrets so tokens are not committed.
-    mcp_auto_connect = ["maas"]
-
-    [tui.mcp_servers.maas]
-    url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
-    transport = "streamable-http"
-
-    [tui.mcp_servers.maas.headers]
-    Authorization = "Bearer ${MAAS_API_KEY}"
+      # MCP servers can be configured inline here. Use env vars for secrets
+      # so tokens are not committed; ${VAR} is expanded when connecting.
+      mcp_auto_connect: [maas]
+      mcp_servers:
+        maas:
+          url: https://maas.stg.astra.nvidia.com/maas/confluence/mcp
+          transport: streamable-http
+          headers:
+            Authorization: "Bearer ${MAAS_API_KEY}"
     ```
 
     ## External skills libraries (libs_dirs)
 
-    ``libs_dirs`` is a TOML array of absolute paths. Each subdirectory with a
+    ``libs_dirs`` is a YAML list of absolute paths. Each subdirectory with a
     ``pyproject.toml`` is loaded as a library skill (available as ``self.<name>``).
 
     Structure of a skills repo::
@@ -87,7 +96,7 @@ class TuiConfigurationSkill(Skill):
     - ``.cursor/skills/``, ``.claude/skills/``, ``.claude/commands/``
     - ``tui/skills/``, ``~/.claude/skills/``, ``~/.claude/commands/``
 
-    ## CLI flags (override config.toml)
+    ## CLI flags (override settings.yaml)
 
     ``--model``, ``--mcp-file``, ``--libs-dir``, ``--skills-dir``, ``--trace``,
     ``--no-trace``, ``--vi``, ``--python``, ``--agent <module:Class>``
@@ -120,7 +129,7 @@ class TuiConfigurationSkill(Skill):
         /config          — show current effective configuration
         /config libs     — list libs_dirs and discovered libraries
         /config skills   — list skills_dirs and discovered skills
-        /config set <k> <v> — update a key in config.toml
+        /config set <k> <v> — update a key in settings.yaml
         /config path     — show config file path
         """
         if action == "show":
@@ -136,36 +145,45 @@ class TuiConfigurationSkill(Skill):
         return "Unreachable"
 
     def _config_path(self) -> Path:
-        """Return the path to the project config.toml."""
+        """Return the path to the project-local settings.yaml (where `set` writes)."""
         from nemo_oo_agents.paths import get_project_dir
 
-        return get_project_dir("config.toml")
+        from .settings import SETTINGS_FILENAME
+
+        return get_project_dir(SETTINGS_FILENAME)
 
     def _load_raw(self) -> dict[str, Any]:
-        """Load and return the raw config.toml contents."""
-        path = self._config_path()
-        if not path.exists():
-            return {}
-        with open(path, "rb") as f:
-            return tomllib.load(f)
+        """Load the merged, effective settings (all layers, last wins)."""
+        from nemo_oo_agents.layered_config import load_layered_yaml
+
+        from .settings import SETTINGS_ENV_VAR, SETTINGS_FILENAME
+
+        return load_layered_yaml(SETTINGS_FILENAME, SETTINGS_ENV_VAR)
 
     def _show_config(self) -> str:
-        """Format current config for display."""
-        path = self._config_path()
-        if not path.exists():
+        """Format the current effective config for display."""
+        import yaml
+
+        from .settings import SETTINGS_ENV_VAR, SETTINGS_FILENAME, settings_present
+
+        data = self._load_raw()
+        if not data:
             return (
-                f"No config file exists yet at `{path}`. The TUI is running on defaults.\n\n"
-                "To create one, edit the file directly or use `/config set <key> <value>`.\n"
+                "No settings file exists yet in any layer. The TUI is running on defaults.\n\n"
+                "To create one, edit a `settings.yaml` directly or use "
+                "`/config set <key> <value>`.\n"
                 "Available keys: `model`, `python`, `vi`, `libs_dirs`, `trace`.\n\n"
                 "Example: `/config set model claude-opus-4-8`"
             )
-        content = path.read_text().rstrip()
+        content = yaml.safe_dump(data, sort_keys=False).rstrip()
+        layers = "present" if settings_present() else "none"
         return (
-            f"Current TUI configuration (`{path}`):\n\n"
-            f"```toml\n{content}\n```\n\n"
-            "To change a setting: `/config set <key> <value>` (rewrites this file).\n"
+            f"Effective TUI configuration (merged from {SETTINGS_FILENAME} layers; "
+            f"{SETTINGS_ENV_VAR} override applies):\n\n"
+            f"```yaml\n{content}\n```\n\n"
+            f"`/config set` writes the project file (`{self._config_path()}`).\n"
             'To add an external skills library: `/config set libs_dirs ["/path/to/skills"]`\n'
-            "Changes take effect on TUI restart."
+            f"(layers: {layers}). Changes take effect on TUI restart."
         )
 
     def _show_libs(self) -> str:
@@ -176,12 +194,12 @@ class TuiConfigurationSkill(Skill):
             return (
                 "No external library directories are configured.\n\n"
                 "To point the TUI at an external skills repo, add `libs_dirs` to "
-                "`.nemo_oo_agents/config.toml`:\n\n"
-                '```toml\n[tui]\nlibs_dirs = ["/absolute/path/to/skills-repo"]\n```\n\n'
+                "`.nemo_oo/settings.yaml`:\n\n"
+                '```yaml\ntui:\n  libs_dirs: ["/absolute/path/to/skills-repo"]\n```\n\n'
                 "Each subdirectory with a `pyproject.toml` becomes a loadable skill "
                 "(available as `self.<name>`). The `pyproject.toml` must declare an "
                 'entry-point under `[project.entry-points."nemo_oo_agents.skills"]`.\n\n'
-                "After editing config.toml, restart the TUI to pick up the new libraries."
+                "After editing settings.yaml, restart the TUI to pick up the new libraries."
             )
 
         lines = ["The following library directories are configured:\n"]
@@ -208,7 +226,7 @@ class TuiConfigurationSkill(Skill):
 
         lines.append("")
         lines.append(
-            "To add another directory: edit `.nemo_oo_agents/config.toml` and append to the `libs_dirs` array."
+            "To add another directory: edit `.nemo_oo/settings.yaml` and append to the `libs_dirs` list."
         )
         lines.append('To reload a library after code changes: `await self.libs.reload("<name>")`')
         lines.append(
@@ -264,51 +282,66 @@ class TuiConfigurationSkill(Skill):
         return "\n".join(lines)
 
     def _set_config(self, args: str) -> str:
-        """Set a config key by rewriting config.toml."""
+        """Set a key under ``tui:`` by rewriting the project settings.yaml.
+
+        Reads the project file (only — not the merged layers), updates the
+        single key under ``tui:``, and writes it back. Friendly aliases
+        (``model``, ``python``, ``vi``, ``trace``) map to dataclass field
+        names.
+        """
+        import yaml
+
         parts = args.strip().split(None, 1)
         if len(parts) < 2:
             return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-8"
 
-        key, value = parts
-        path = self._config_path()
+        raw_key, raw_value = parts
+        field = _FRIENDLY_KEYS.get(raw_key, raw_key)
+        value = self._parse_value(raw_value)
 
+        path = self._config_path()
+        data: dict[str, Any] = {}
         if path.exists():
-            content = path.read_text()
+            loaded = yaml.safe_load(path.read_text())
+            if isinstance(loaded, dict):
+                data = loaded
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            content = "# NeMo OO Agents TUI configuration\n\n[tui]\n"
 
-        # Try to replace existing key under [tui]
-        pattern = rf"^(\s*){re.escape(key)}\s*=.*$"
-        # Detect value type: bool, int, or string
-        formatted = self._format_value(value)
-        new_line = f"{key} = {formatted}"
+        tui = data.setdefault("tui", {})
+        if not isinstance(tui, dict):
+            tui = {}
+            data["tui"] = tui
+        tui[field] = value
 
-        if re.search(pattern, content, re.MULTILINE):
-            content = re.sub(pattern, new_line, content, flags=re.MULTILINE)
-        else:
-            # Append after [tui] section
-            if "[tui]" not in content:
-                content = content.rstrip() + "\n\n[tui]\n"
-            content = content.rstrip() + f"\n{new_line}\n"
-
-        path.write_text(content)
-        return f"Set `{key} = {formatted}` in {path}\n⚠️ Restart TUI for changes to take effect."
+        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        return f"Set `tui.{field} = {value!r}` in {path}\n⚠️ Restart TUI for changes to take effect."
 
     @staticmethod
-    def _format_value(raw: str) -> str:
-        """Format a raw string value for TOML output."""
+    def _parse_value(raw: str) -> Any:
+        """Parse a raw CLI string into a bool / int / list / str for YAML."""
+        import yaml
+
         low = raw.lower()
-        if low in ("true", "false"):
-            return low
+        if low == "true":
+            return True
+        if low == "false":
+            return False
         try:
-            int(raw)
-            return raw
+            return int(raw)
         except ValueError:
             pass
-        # Strip surrounding quotes if user typed them
+        # Allow inline YAML/JSON lists, e.g. ["a", "b"].
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                parsed = yaml.safe_load(raw)
+                if isinstance(parsed, list):
+                    return parsed
+            except yaml.YAMLError:
+                pass
+        # Strip surrounding quotes if the user typed them.
         if (raw.startswith('"') and raw.endswith('"')) or (
             raw.startswith("'") and raw.endswith("'")
         ):
             raw = raw[1:-1]
-        return f'"{raw}"'
+        return raw

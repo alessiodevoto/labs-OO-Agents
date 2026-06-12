@@ -44,53 +44,24 @@ class BootstrapResult:
     messages: list[Output] = field(default_factory=list)
 
 
-_CONFIG_TOML_TEMPLATE = """\
-# NeMo OO Agents TUI — project-local configuration
-# Place this file at .nemo_oo_agents/config.toml to override defaults.
-# All keys are optional; omit any you don't want to change.
+def _scaffold_settings(config: "Config") -> None:
+    """Write a commented user-level ``settings.yaml`` on first run.
 
-[tui]
-# LLM model (from unifiedllm registry)
-# model = "{default_model}"
+    Only scaffolds when *no* ``settings.yaml`` exists in any layer
+    (user / project / ``NEMO_OO_SETTINGS``), so it never clobbers a file
+    the user already has. The scaffold is fully commented, so reading it
+    back yields the same defaults.
+    """
+    from nemo_oo_agents.paths import get_user_dir
 
-# Write trace files to this directory (relative to project root).
-# Omit or comment out to use OTLP auto-probe only (no files written).
-# trace = ".nemo_oo_agents/traces"
+    from .settings import SETTINGS_FILENAME, render_settings_template, settings_present
 
-# Show agent Python code execution panels
-# python = false
+    if settings_present():
+        return
 
-# Vi keybindings in the prompt input
-# vi = false
-
-# MCP servers can be declared inline here (preferred) instead of a separate
-# .mcp.json. Use env vars for secrets; string values are expanded when the
-# server is connected.
-# mcp_auto_connect = ["maas"]
-#
-# [tui.mcp_servers.maas]
-# url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
-# transport = "streamable-http"
-#
-# [tui.mcp_servers.maas.headers]
-# Authorization = "Bearer ${MAAS_API_KEY}"
-"""
-
-
-def _scaffold_project_dir(config: "Config") -> None:
-    """Create .nemo_oo_agents/ and write a config.toml template on first run."""
-    from nemo_oo_agents.paths import get_project_dir
-
-    project_dir = get_project_dir()
-    project_dir.mkdir(exist_ok=True)
-
-    config_path = project_dir / "config.toml"
-    if not config_path.exists():
-        # NB: plain .replace(), not .format() — the template contains literal
-        # braces (e.g. ${MAAS_API_KEY}) that str.format() would treat as fields.
-        config_path.write_text(
-            _CONFIG_TOML_TEMPLATE.replace("{default_model}", config.tui.default_model)
-        )
+    target = get_user_dir(SETTINGS_FILENAME)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_settings_template(config))
 
 
 async def bootstrap(
@@ -133,9 +104,9 @@ async def bootstrap(
         )
 
     # ------------------------------------------------------------------
-    # Project directory — scaffold .nemo_oo_agents/ on first run
+    # Settings — scaffold ~/.config/nemo_oo/settings.yaml on first run
     # ------------------------------------------------------------------
-    _scaffold_project_dir(config)
+    _scaffold_settings(config)
 
     # ------------------------------------------------------------------
     # LLM registry — populate from project + user + NEMO_OO_LLM_CONFIG.
@@ -151,8 +122,13 @@ async def bootstrap(
     # ------------------------------------------------------------------
     try:
         from nemo_oo_agents.llm_config import llm_config_chain
+        from nemo_oo_agents.secrets import load_secrets_into_env
         from nemo_oo_agents.unifiedllm import reload_registry
 
+        # Push secrets.yaml env vars before the registry loads so the
+        # health check sees the right API key. Non-clobbering: an env var
+        # already set in the shell wins.
+        load_secrets_into_env()
         reload_registry(*llm_config_chain())
     except Exception as e:
         from .output import TextOutput
@@ -343,7 +319,7 @@ async def bootstrap(
     # interface — no direct storage access needed.
     import os as _os
 
-    if _resumed and _os.environ.get("NEMO_RICH_URL"):
+    if _resumed and _os.environ.get("NEMO_OO_RICH_URL"):
         try:
             from nemo_oo_agents.tools.web_publisher import RichOutput
             from nemo_oo_agents.tools.web_publisher import WebPublisher as _WP

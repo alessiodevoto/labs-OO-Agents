@@ -106,12 +106,15 @@ def command(args: tuple[str, ...]):
 Common helpers live in `src/nemo_oo_agents_cli/_common.py`:
 
 ```python
-from nemo_oo_agents_cli._common import find_project_root, format_size, load_dotenv_into
+from nemo_oo_agents_cli._common import find_project_root, format_size
 
 root = find_project_root()           # Path to project root (where pyproject.toml is)
 format_size(1_500_000)               # "1.4 MB"
-load_dotenv_into(root / ".env", env) # Parse .env into a dict
 ```
+
+For API keys / env vars, use `nemo_oo_agents.secrets.load_secrets_into_env()`
+(reads the layered `secrets.yaml`); for any layered config file use
+`nemo_oo_agents.layered_config.load_layered_yaml(filename, env_var)`.
 
 ## Performance Rule
 
