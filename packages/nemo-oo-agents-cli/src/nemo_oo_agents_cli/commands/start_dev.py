@@ -69,8 +69,8 @@ def _find_pid_on_port(port: int) -> str | None:
     "db_path_opt",
     type=click.Path(dir_okay=False),
     default=None,
-    help="SQLite trace store path. Defaults to ~/Library/Application Support/nat/oo/traces.db "
-    "(or $TRACE_STORE_DB if set). Pass an explicit path to run a second viewer "
+    help="SQLite trace store path. Defaults to ~/.config/nemo_oo/traces.db "
+    "(or $NEMO_OO_TRACE_DB if set). Pass an explicit path to run a second viewer "
     "side-by-side with the default one.",
 )
 def command(port: int, host: str, db_path_opt: str | None):
@@ -80,17 +80,17 @@ def command(port: int, host: str, db_path_opt: str | None):
 
     from nemo_oo_agents.paths import get_user_dir
 
-    # Resolve the DB path with --db winning, then $TRACE_STORE_DB, then the
-    # user-dir default. Set TRACE_STORE_DB unconditionally so the viewer
+    # Resolve the DB path with --db winning, then $NEMO_OO_TRACE_DB, then the
+    # user-dir default. Set NEMO_OO_TRACE_DB unconditionally so the viewer
     # module picks it up at import time (it reads the env var at the top).
     if db_path_opt:
         db_path = Path(db_path_opt).expanduser().resolve()
-    elif "TRACE_STORE_DB" in os.environ:
-        db_path = Path(os.environ["TRACE_STORE_DB"]).expanduser().resolve()
+    elif "NEMO_OO_TRACE_DB" in os.environ:
+        db_path = Path(os.environ["NEMO_OO_TRACE_DB"]).expanduser().resolve()
     else:
         db_path = get_user_dir("traces.db")
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    os.environ["TRACE_STORE_DB"] = str(db_path)
+    os.environ["NEMO_OO_TRACE_DB"] = str(db_path)
 
     try:
         from nemo_oo_agents.viewer.main import app

@@ -25,7 +25,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-DB_PATH = Path(os.environ.get("TRACE_STORE_DB", Path.cwd() / "traces.db"))
+DB_PATH = Path(os.environ.get("NEMO_OO_TRACE_DB", Path.cwd() / "traces.db"))
 
 _db: sqlite3.Connection | None = None  # used only by init_db() for schema setup
 
@@ -228,7 +228,7 @@ def _check_writable(path: Path) -> None:
             f"Diagnose with:\n"
             f"  lsof {path}\n"
             f"  pgrep -af nemo_oo_agents.viewer\n"
-            f"Then kill any stale viewer, or pick a different TRACE_STORE_DB."
+            f"Then kill any stale viewer, or pick a different NEMO_OO_TRACE_DB."
         ) from e
     finally:
         probe.close()

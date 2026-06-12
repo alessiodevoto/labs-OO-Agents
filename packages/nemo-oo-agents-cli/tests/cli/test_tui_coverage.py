@@ -101,6 +101,24 @@ from nemo_oo_agents_cli.tui.config import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_config_dir(tmp_path, monkeypatch):
+    """Isolate the layered settings.yaml dirs so Config.load() never picks
+    up the developer's real ~/.config/nemo_oo/settings.yaml or a project file.
+
+    Returns the user-level dir; write a ``settings.yaml`` there to exercise
+    the file layer.
+    """
+    user = tmp_path / "user"
+    user.mkdir()
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.setenv("NEMO_OO_USER_DIR", str(user))
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(proj))
+    monkeypatch.delenv("NEMO_OO_SETTINGS", raising=False)
+    return user
+
+
 class TestConfigDefaults:
     def test_default_model(self):
         cfg = Config.load()
@@ -223,34 +241,44 @@ class TestConfigOverrides:
 
 
 class TestConfigFile:
-    def test_config_file_model_override(self, tmp_path):
-        config_file = tmp_path / "config.toml"
-        config_file.write_text('[tui]\nmodel = "file-model"\n')
-        with patch(
-            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"model": "file-model"}
-        ):
-            cfg = Config.load()
+    """The file layer is now layered ``settings.yaml`` (dataclass field names
+    under ``tui:`` / ``agent:``), loaded via the shared layered-config helper.
+    """
+
+    def test_settings_file_model_override(self, isolated_config_dir):
+        (isolated_config_dir / "settings.yaml").write_text("tui:\n  default_model: file-model\n")
+        cfg = Config.load()
         assert cfg.tui.default_model == "file-model"
 
-    def test_config_file_trace_dir_override(self, tmp_path):
-        trace_dir = str(tmp_path / "traces")
-        with patch(
-            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"trace": trace_dir}
-        ):
-            cfg = Config.load()
-        assert cfg.tui.trace_dir == Path(trace_dir)
+    def test_settings_file_trace_dir_override(self, isolated_config_dir, tmp_path):
+        trace_dir = tmp_path / "traces"
+        (isolated_config_dir / "settings.yaml").write_text(f"tui:\n  trace_dir: {trace_dir}\n")
+        cfg = Config.load()
+        assert cfg.tui.trace_dir == trace_dir
 
-    def test_explicit_override_beats_config_file(self):
-        with patch(
-            "nemo_oo_agents_cli.tui.config._load_config_file", return_value={"model": "file-model"}
-        ):
-            cfg = Config.load(model="explicit-model")
+    def test_settings_file_nested_agent_section(self, isolated_config_dir):
+        (isolated_config_dir / "settings.yaml").write_text(
+            "agent:\n  orchestrator: true\n  summarization:\n    window_size: 99\n"
+        )
+        cfg = Config.load()
+        assert cfg.agent.orchestrator is True
+        assert cfg.agent.summarization.window_size == 99
+
+    def test_explicit_override_beats_settings_file(self, isolated_config_dir):
+        (isolated_config_dir / "settings.yaml").write_text("tui:\n  default_model: file-model\n")
+        cfg = Config.load(model="explicit-model")
         assert cfg.tui.default_model == "explicit-model"
 
-    def test_missing_config_file_uses_defaults(self, tmp_path):
-        with patch("nemo_oo_agents_cli.tui.config._load_config_file", return_value={}):
-            cfg = Config.load()
+    def test_missing_settings_file_uses_defaults(self, isolated_config_dir):
+        cfg = Config.load()
         assert cfg.tui.default_model == DEFAULT_MODEL
+
+    def test_unknown_settings_key_ignored(self, isolated_config_dir):
+        (isolated_config_dir / "settings.yaml").write_text(
+            "tui:\n  default_model: file-model\n  bogus_key: 1\n"
+        )
+        cfg = Config.load()
+        assert cfg.tui.default_model == "file-model"
 
 
 class TestSetNested:
@@ -1650,7 +1678,7 @@ class TestStartDevCommand:
             assert "5001" in result.output or "NeMo" in result.output
 
     def test_db_flag_sets_trace_store_db(self, tmp_path):
-        """--db overrides the user-dir default and stamps $TRACE_STORE_DB
+        """--db overrides the user-dir default and stamps $NEMO_OO_TRACE_DB
         so the viewer module sees it when it reads the env at import."""
         import os
         import sys
@@ -1662,7 +1690,7 @@ class TestStartDevCommand:
         mock_viewer.main = mock_viewer_main
 
         custom_db = tmp_path / "side-by-side.db"
-        orig_env = os.environ.pop("TRACE_STORE_DB", None)
+        orig_env = os.environ.pop("NEMO_OO_TRACE_DB", None)
         try:
             with patch.dict(
                 sys.modules,
@@ -1677,17 +1705,17 @@ class TestStartDevCommand:
                     )
             assert result.exit_code == 0
             # The env var the viewer reads is stamped with the resolved path.
-            assert os.environ["TRACE_STORE_DB"] == str(custom_db.resolve())
+            assert os.environ["NEMO_OO_TRACE_DB"] == str(custom_db.resolve())
             # Banner shows the DB so the user knows which file this viewer is on.
             assert str(custom_db.resolve()) in result.output
         finally:
             if orig_env is None:
-                os.environ.pop("TRACE_STORE_DB", None)
+                os.environ.pop("NEMO_OO_TRACE_DB", None)
             else:
-                os.environ["TRACE_STORE_DB"] = orig_env
+                os.environ["NEMO_OO_TRACE_DB"] = orig_env
 
     def test_existing_trace_store_db_env_is_respected(self, tmp_path):
-        """If --db isn't passed but $TRACE_STORE_DB is set, use that."""
+        """If --db isn't passed but $NEMO_OO_TRACE_DB is set, use that."""
         import os
         import sys
 
@@ -1698,8 +1726,8 @@ class TestStartDevCommand:
         mock_viewer.main = mock_viewer_main
 
         env_db = tmp_path / "from-env.db"
-        orig_env = os.environ.get("TRACE_STORE_DB")
-        os.environ["TRACE_STORE_DB"] = str(env_db)
+        orig_env = os.environ.get("NEMO_OO_TRACE_DB")
+        os.environ["NEMO_OO_TRACE_DB"] = str(env_db)
         try:
             with patch.dict(
                 sys.modules,
@@ -1711,9 +1739,9 @@ class TestStartDevCommand:
                 with patch("uvicorn.run"):
                     result = self.runner.invoke(start_dev_command, ["--port", "5003"])
             assert result.exit_code == 0
-            assert os.environ["TRACE_STORE_DB"] == str(env_db.resolve())
+            assert os.environ["NEMO_OO_TRACE_DB"] == str(env_db.resolve())
         finally:
             if orig_env is None:
-                os.environ.pop("TRACE_STORE_DB", None)
+                os.environ.pop("NEMO_OO_TRACE_DB", None)
             else:
-                os.environ["TRACE_STORE_DB"] = orig_env
+                os.environ["NEMO_OO_TRACE_DB"] = orig_env

@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Configuration loading for NeMo OO Agents TUI.
 
-Hydra-like config: structured dataclass with Config.load(**overrides).
+Hydra-like config: structured Pydantic models with Config.load(**overrides).
 
 Resolution order (last wins):
-    1. Dataclass defaults
-    2. Config file (.nemo_oo_agents/config.toml, [tui] section)
+    1. Model defaults
+    2. Layered ``settings.yaml`` (user → project → ``NEMO_OO_SETTINGS``),
+       loaded via :mod:`nemo_oo_agents_cli.tui.settings`
     3. Keyword overrides from CLI args (_OVERRIDES map)
 
 Usage:
@@ -20,22 +21,19 @@ Usage:
     config = Config.load()
 """
 
-import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from pydantic import BaseModel, Field, field_validator
+
 if TYPE_CHECKING:
     from nemo_oo_agents.unifiedllm import CompletionClient
-
-logger = logging.getLogger(__name__)
 
 # Default model — direct litellm-supported name. Override via config or --model.
 DEFAULT_MODEL = "claude-opus-4-8"
 
 
-@dataclass
-class SummarizationConfig:
+class SummarizationConfig(BaseModel):
     """Configuration for history summarization.
 
     ``max_tokens`` defaults to ``None`` meaning "80% of the LLM's context
@@ -52,34 +50,38 @@ class SummarizationConfig:
     target_chars: int = 4000
 
 
-@dataclass
-class AgentConfig:
+class AgentConfig(BaseModel):
     """Configuration for the TUI agent's behavior."""
 
     # History summarization settings
-    summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
+    summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
 
     # Orchestrator mode (multi-phase workflow)
     orchestrator: bool = False
 
-    # Working directory for bash commands
+    # Working directory for bash commands. Stored as a string (downstream
+    # always str()s it); a Path is accepted and coerced for ergonomics.
     working_dir: str = "."
 
+    @field_validator("working_dir", mode="before")
+    @classmethod
+    def _coerce_working_dir(cls, v: object) -> object:
+        return str(v) if isinstance(v, Path) else v
 
-@dataclass
-class TUIConfig:
+
+class TUIConfig(BaseModel):
     """Configuration for the TUI presentation layer."""
 
-    # MCP servers.  Inline ``mcp_servers`` in config.toml is the preferred single-file
+    # MCP servers.  Inline ``mcp_servers`` in settings.yaml is the preferred single-file
     # configuration; ``mcp_file`` remains as a compatibility bridge for VS Code / Claude
     # style .mcp.json files.
     mcp_file: Path = Path(".mcp.json")
-    mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
-    mcp_auto_connect: list[str] = field(default_factory=list)
+    mcp_servers: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    mcp_auto_connect: list[str] = Field(default_factory=list)
 
     # Directories to search for skills and user-invocable commands.
     # Includes both project-local and user-global Claude/Cursor conventions.
-    skills_dirs: list[Path] = field(
+    skills_dirs: list[Path] = Field(
         default_factory=lambda: [
             Path(".cursor/skills"),
             Path(".claude/skills"),
@@ -91,8 +93,8 @@ class TUIConfig:
     )
 
     # Extra directories containing library skill packages (each subdir is a skill).
-    # Added via config.toml or --libs-dir CLI flag.
-    libs_dirs: list[Path] = field(default_factory=list)
+    # Added via settings.yaml or --libs-dir CLI flag.
+    libs_dirs: list[Path] = Field(default_factory=list)
 
     # Default LLM model (from unifiedllm registry)
     default_model: str = DEFAULT_MODEL
@@ -117,8 +119,7 @@ class TUIConfig:
     toolbar_snippet: str | None = None
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     """Top-level configuration. Single source of truth.
 
     Usage:
@@ -127,8 +128,8 @@ class Config:
         config = Config.load()               # pure defaults + env
     """
 
-    tui: TUIConfig = field(default_factory=TUIConfig)
-    agent: AgentConfig = field(default_factory=AgentConfig)
+    tui: TUIConfig = Field(default_factory=TUIConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
 
     # Runtime flags (not persisted)
     no_splash: bool = False
@@ -167,17 +168,16 @@ class Config:
     def load(cls, **overrides) -> "Config":
         """Build config: defaults → config file → overrides.
 
-        Config file: .nemo_oo_agents/config.toml (project-local, optional).
-        Accepts any keyword argument matching _OVERRIDES keys.
+        Config file: layered ``settings.yaml`` (user → project →
+        ``NEMO_OO_SETTINGS``), discovered through the shared layered-config
+        helper. Accepts any keyword argument matching _OVERRIDES keys.
         Unknown keys are silently ignored, so you can pass ``**vars(args)``
         from argparse directly.
         """
-        cfg = cls()
+        from .settings import load_settings
 
-        # Layer 2: project-local config file (.nemo_oo_agents/config.toml)
-        for key, val in _load_config_file().items():
-            if key in cls._OVERRIDES:
-                _set_nested(cfg, *_unpack_target(cls._OVERRIDES[key], val))
+        # Layers 1-2: dataclass defaults, then layered settings.yaml.
+        cfg = load_settings(cls())
 
         # Layer 3: explicit overrides (highest priority)
         for key, target in cls._OVERRIDES.items():
@@ -269,24 +269,6 @@ class Config:
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
-def _load_config_file() -> dict:
-    """Load .nemo_oo_agents/config.toml and return its [tui] section as a flat dict."""
-    import tomllib
-
-    from nemo_oo_agents.paths import get_project_dir
-
-    config_path = get_project_dir("config.toml")
-    if not config_path.exists():
-        return {}
-    try:
-        with open(config_path, "rb") as f:
-            data = tomllib.load(f)
-        return data.get("tui", {})
-    except (OSError, tomllib.TOMLDecodeError) as e:
-        logger.warning("Failed to load config file %s: %s", config_path, e)
-        return {}
-
-
 def _unpack_target(target, value):
     """Unpack a target spec into (path, transformed_value)."""
     if isinstance(target, tuple):
@@ -296,7 +278,7 @@ def _unpack_target(target, value):
 
 
 def _set_nested(obj, path: str, value):
-    """Set a dotted attribute path on a nested dataclass."""
+    """Set a dotted attribute path on a nested config model."""
     parts = path.split(".")
     for part in parts[:-1]:
         obj = getattr(obj, part)

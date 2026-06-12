@@ -4,28 +4,28 @@
 
 Two root directories:
 
-- **User dir** — namespaced under NAT's config directory at ``oo/``:
-  ``~/.config/nat/oo/`` on Linux, ``~/Library/Application Support/nat/oo/``
-  on macOS.  Respects the ``NAT_CONFIG_DIR`` environment variable.
-  Overridable via ``NEMO_OO_USER_DIR``.
+- **User dir** — ``~/.config/nemo_oo/`` on every platform (honors
+  ``XDG_CONFIG_HOME`` if set). A single, predictable location so the
+  installer and the runtime always agree. Override the whole base with
+  ``NEMO_OO_USER_DIR``.
 
-- **Project dir** (``<project-root>/.nemo_oo_agents/``) — local to the
-  current project; config, optional trace files, library code.
-  Overridable via ``NEMO_OO_PROJECT_DIR``.
+- **Project dir** (``<project-root>/.nemo_oo/``) — local to the current
+  project; config, optional trace files, library code. Override with
+  ``NEMO_OO_PROJECT_DIR``.
 
 Usage::
 
     from nemo_oo_agents.paths import get_user_dir, get_project_dir
 
-    sessions = get_user_dir("sessions")        # ~/.config/nat/oo/sessions
-    config   = get_project_dir("config.toml") # <root>/.nemo_oo_agents/config.toml
+    sessions = get_user_dir("sessions")          # ~/.config/nemo_oo/sessions
+    config   = get_project_dir("settings.yaml")  # <root>/.nemo_oo/settings.yaml
 """
 
 import os
 from pathlib import Path
 
 #: Directory name used for the project-local directory.
-DIR_NAME = ".nemo_oo_agents"
+DIR_NAME = ".nemo_oo"
 
 
 def find_project_root() -> Path:
@@ -44,44 +44,39 @@ def find_project_root() -> Path:
 def get_user_dir(*parts: str) -> Path:
     """Return the user-global NeMo OO Agents directory, optionally joined with *parts*.
 
-    Namespaced under NAT's config directory (``oo/`` subdirectory), so it
-    co-locates with other NAT components.  Respects ``NAT_CONFIG_DIR`` if set.
-    Override the entire base with ``NEMO_OO_USER_DIR``.
-
-    Default locations:
-
-    - Linux:  ``~/.config/nat/oo/``
-    - macOS:  ``~/Library/Application Support/nat/oo/``
+    Location is ``~/.config/nemo_oo/`` on every platform (honoring
+    ``XDG_CONFIG_HOME`` when set), so the path is predictable and the
+    installer (``install.sh``) and the runtime always resolve the same
+    place. Override the entire base with ``NEMO_OO_USER_DIR``.
 
     Examples::
 
-        get_user_dir()              # ~/.config/nat/oo/
-        get_user_dir("sessions")    # ~/.config/nat/oo/sessions/
-        get_user_dir("traces.db")   # ~/.config/nat/oo/traces.db
+        get_user_dir()              # ~/.config/nemo_oo/
+        get_user_dir("sessions")    # ~/.config/nemo_oo/sessions/
+        get_user_dir("traces.db")   # ~/.config/nemo_oo/traces.db
     """
     override = os.environ.get("NEMO_OO_USER_DIR")
     if override:
         base = Path(override)
     else:
-        from platformdirs import user_config_dir
-
-        nat_config = os.environ.get("NAT_CONFIG_DIR", user_config_dir(appname="nat"))
-        base = Path(nat_config) / "oo"
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        config_home = Path(xdg) if xdg else Path.home() / ".config"
+        base = config_home / "nemo_oo"
     return base.joinpath(*parts) if parts else base
 
 
 def get_project_dir(*parts: str) -> Path:
     """Return the project-local NeMo OO Agents directory, optionally joined with *parts*.
 
-    Defaults to ``<project-root>/.nemo_oo_agents/`` where the project root is
+    Defaults to ``<project-root>/.nemo_oo/`` where the project root is
     the nearest ancestor directory containing a ``pyproject.toml``.  Override
     with the ``NEMO_OO_PROJECT_DIR`` environment variable.
 
     Examples::
 
-        get_project_dir()                  # <root>/.nemo_oo_agents/
-        get_project_dir("config.toml")     # <root>/.nemo_oo_agents/config.toml
-        get_project_dir("traces")          # <root>/.nemo_oo_agents/traces/
+        get_project_dir()                   # <root>/.nemo_oo/
+        get_project_dir("settings.yaml")    # <root>/.nemo_oo/settings.yaml
+        get_project_dir("traces")           # <root>/.nemo_oo/traces/
     """
     base_str = os.environ.get("NEMO_OO_PROJECT_DIR")
     base = Path(base_str) if base_str else find_project_root() / DIR_NAME

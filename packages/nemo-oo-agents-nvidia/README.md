@@ -10,8 +10,8 @@ var to set and no path to copy. Set `NVIDIA_INTERNAL_API_KEY` (or
 Work in `get_llm_client()`.
 
 To customize, run `nemo oo config eject` to write a per-user copy at
-`~/.config/nat/oo/llm_config.yaml`, drop an `llm_config.yaml` into
-your project's `.nemo_oo_agents/` directory, or point
+`~/.config/nemo_oo/llm_config.yaml`, drop an `llm_config.yaml` into
+your project's `.nemo_oo/` directory, or point
 `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run
 `nemo oo config show` to inspect which layers are loading.
 

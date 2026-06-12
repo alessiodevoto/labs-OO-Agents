@@ -16,7 +16,18 @@ Intended precedence:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from nemo_oo_agents_cli.tui.config import Config
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings(tmp_path_factory, monkeypatch):
+    """Pin the layered settings.yaml dirs so Config.load() can't read a real
+    user/project settings.yaml (e.g. one written by `/config set` at the
+    repo root) and perturb skills_dirs assertions."""
+    monkeypatch.setenv("NEMO_OO_USER_DIR", str(tmp_path_factory.mktemp("settings-user")))
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path_factory.mktemp("settings-proj")))
+    monkeypatch.delenv("NEMO_OO_SETTINGS", raising=False)
 
 
 def _skill_dir(base: Path, name: str) -> Path:

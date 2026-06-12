@@ -32,11 +32,10 @@ Priority (last wins):
 from __future__ import annotations
 
 import logging
-import os
 from importlib import metadata
 from pathlib import Path
 
-from nemo_oo_agents.paths import get_project_dir, get_user_dir
+from nemo_oo_agents.layered_config import layered_paths
 
 logger = logging.getLogger(__name__)
 
@@ -88,36 +87,6 @@ def bundled_config_paths() -> list[Path]:
     return out
 
 
-def _resolved_if_exists(path: Path) -> Path | None:
-    """Return ``path.resolve()`` if the file exists, else ``None``."""
-    try:
-        if path.exists():
-            return path.resolve()
-    except OSError:
-        # Permission or stat failure — treat as missing.
-        return None
-    return None
-
-
-def _env_paths() -> list[tuple[Path, Path | None]]:
-    """Parse the ``NEMO_OO_LLM_CONFIG`` env var into ``(raw, resolved)`` pairs.
-
-    Resolved is ``None`` when the file doesn't exist (a warning is
-    emitted by :func:`llm_config_chain`).
-    """
-    raw = os.environ.get(_CONFIG_ENV_VAR, "").strip()
-    if not raw:
-        return []
-    out: list[tuple[Path, Path | None]] = []
-    for entry in raw.split(","):
-        entry = entry.strip()
-        if not entry:
-            continue
-        p = Path(entry).expanduser()
-        out.append((p, _resolved_if_exists(p)))
-    return out
-
-
 def llm_config_chain() -> list[Path]:
     """Return YAML config files for the LLM registry, lowest priority first.
 
@@ -129,9 +98,9 @@ def llm_config_chain() -> list[Path]:
        the NVIDIA-gateway aliases; install nothing for an OSS-only
        registry.
     2. ``get_user_dir("llm_config.yaml")`` — user-global default
-       (``~/.config/nat/oo/llm_config.yaml`` on Linux).
+       (``~/.config/nemo_oo/llm_config.yaml``).
     3. ``get_project_dir("llm_config.yaml")`` — project-local config
-       (``<project-root>/.nemo_oo_agents/llm_config.yaml``).
+       (``<project-root>/.nemo_oo/llm_config.yaml``).
     4. ``NEMO_OO_LLM_CONFIG`` env var — comma-separated YAML paths.
        Highest priority: an explicit env var always wins so users can
        override project / user config from a shell session without
@@ -147,45 +116,16 @@ def llm_config_chain() -> list[Path]:
 
     Paths from ``NEMO_OO_LLM_CONFIG`` that don't exist log a warning.
     User and project layer paths are silently skipped when missing.
+
+    The user → project → env-var walk (and resolved-path dedup) is the
+    shared :func:`nemo_oo_agents.layered_config.layered_paths` logic;
+    this function only adds the bundled-defaults layer on top.
     """
-    bundled = [
-        resolved for b in bundled_config_paths() if (resolved := _resolved_if_exists(b)) is not None
-    ]
-    user = _resolved_if_exists(get_user_dir(_CONFIG_FILENAME))
-    project = _resolved_if_exists(get_project_dir(_CONFIG_FILENAME))
-    env_entries = _env_paths()
-
-    # Walk layers in priority order and keep the *latest* (highest
-    # priority) occurrence of any resolved path.
-    chain: list[Path] = []
-    seen: dict[Path, int] = {}
-
-    def _push(resolved: Path) -> None:
-        if resolved in seen:
-            chain.pop(seen[resolved])
-            for k, v in seen.items():
-                if v > seen[resolved]:
-                    seen[k] = v - 1
-            seen.pop(resolved)
-        seen[resolved] = len(chain)
-        chain.append(resolved)
-
-    for path in bundled:
-        _push(path)
-
-    if user is not None:
-        _push(user)
-
-    if project is not None:
-        _push(project)
-
-    for raw, resolved in env_entries:
-        if resolved is None:
-            logger.warning("%s path does not exist: %s", _CONFIG_ENV_VAR, raw)
-            continue
-        _push(resolved)
-
-    return chain
+    return layered_paths(
+        _CONFIG_FILENAME,
+        _CONFIG_ENV_VAR,
+        prepend=bundled_config_paths(),
+    )
 
 
 __all__ = ["bundled_config_paths", "llm_config_chain"]

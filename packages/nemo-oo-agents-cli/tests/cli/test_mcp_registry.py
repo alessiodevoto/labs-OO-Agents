@@ -369,7 +369,7 @@ async def test_mcp_add_slash_command_returns_agent_task(monkeypatch, tmp_path):
     )
     assert "maas-gdrive" in out
     assert "tui.mcp_servers" in out
-    assert "config.toml" in out
+    assert "settings.yaml" in out
     # Includes the currently-configured servers for context.
     assert "maas" in out
 

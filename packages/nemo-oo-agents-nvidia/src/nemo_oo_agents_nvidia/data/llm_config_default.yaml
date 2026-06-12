@@ -4,9 +4,9 @@
 #
 # Loaded automatically as the lowest-priority layer of the config chain
 # when the package is installed. To customize, run `nemo oo config eject`
-# (writes a copy to ~/.config/nat/oo/llm_config.yaml), point
+# (writes a copy to ~/.config/nemo_oo/llm_config.yaml), point
 # NEMO_OO_LLM_CONFIG at a different file, or drop an llm_config.yaml in
-# your project's .nemo_oo_agents/ directory.
+# your project's .nemo_oo/ directory.
 #
 # External users who don't want these NVIDIA aliases simply don't install
 # nemo-oo-agents-nvidia.

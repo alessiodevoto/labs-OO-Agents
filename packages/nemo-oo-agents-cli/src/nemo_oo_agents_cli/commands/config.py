@@ -1,22 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""``nemo oo config`` — inspect and customize the LLM-registry config chain.
+"""``nemo oo config`` — inspect and customize the project's config files.
 
 Subcommands:
 
-- ``show``   — print the resolved file chain (which layers are loaded).
+- ``show``   — print the resolved layers for ``llm_config.yaml``,
+               ``settings.yaml``, and ``secrets.yaml`` (secret values
+               redacted — only key names shown).
 - ``path``   — print the user-level YAML path (where ``eject`` writes).
 - ``eject``  — copy a bundled-defaults YAML to the user-level path so
                you can edit it locally.
+
+All three files share the same directories and precedence (user →
+project → env-var override); see :mod:`nemo_oo_agents.layered_config`.
 
 The config chain (last wins):
 
 1. Bundled defaults — every package that registers under the
    ``nemo_oo_agents.bundled_configs`` entry-point group. Install
    ``nemo-oo-agents-nvidia`` for the NVIDIA-gateway aliases.
-2. User config at ``~/.config/nat/oo/llm_config.yaml``
+2. User config at ``~/.config/nemo_oo/llm_config.yaml``
    (overridable via ``NEMO_OO_USER_DIR``).
-3. Project-local ``.nemo_oo_agents/llm_config.yaml``.
+3. Project-local ``.nemo_oo/llm_config.yaml``.
 4. ``NEMO_OO_LLM_CONFIG`` env var — comma-separated YAML paths;
    the global override, highest priority.
 """
@@ -169,6 +174,87 @@ def show_cmd():
             present = "set" if os.environ.get(var) else "NOT SET"
             click.echo(f"  {var:30s}  ({present})")
 
+    # ── Settings & secrets (same dirs, same precedence) ───────────────
+    click.echo("")
+    _show_layered_file("Settings", "settings.yaml", "NEMO_OO_SETTINGS", _summarize_settings)
+    click.echo("")
+    _show_layered_file("Secrets", "secrets.yaml", "NEMO_OO_SECRETS", _summarize_secrets)
+
+
+def _summarize_settings(path: Path) -> str:
+    """One-line summary of a settings.yaml: top-level sections + key count."""
+    try:
+        import yaml
+
+        data = yaml.safe_load(path.read_text())
+    except Exception:
+        return "(unreadable)"
+    if not isinstance(data, dict) or not data:
+        return "(empty)"
+    parts = []
+    for section in ("tui", "agent"):
+        sect = data.get(section)
+        if isinstance(sect, dict):
+            parts.append(f"{section}: {len(sect)} keys")
+    return ", ".join(parts) if parts else f"{len(data)} keys"
+
+
+def _summarize_secrets(path: Path) -> str:
+    """One-line summary of a secrets.yaml: env var NAMES only (values redacted)."""
+    try:
+        import yaml
+
+        data = yaml.safe_load(path.read_text())
+    except Exception:
+        return "(unreadable)"
+    if not isinstance(data, dict):
+        return "(empty)"
+    env_map = data.get("env")
+    if not isinstance(env_map, dict) or not env_map:
+        return "(no env: keys)"
+    names = sorted(str(k) for k in env_map)
+    return "env: " + ", ".join(names) + "  (values redacted)"
+
+
+def _show_layered_file(label: str, filename: str, env_var: str, summarize) -> None:
+    """Print the user → project → env-var layers for *filename*.
+
+    *summarize* is called per existing file to produce a one-line,
+    value-safe description. The highest-priority occurrence of a resolved
+    path wins; lower occurrences are flagged as shadowed.
+    """
+    from nemo_oo_agents.layered_config import layered_paths
+    from nemo_oo_agents.paths import get_project_dir, get_user_dir
+
+    resolved_set = set(layered_paths(filename, env_var))
+
+    def _summary(path: Path) -> str:
+        try:
+            note = "" if path.resolve() in resolved_set else "  (shadowed by a higher layer)"
+        except OSError:
+            note = ""
+        return f"present — {summarize(path)}{note}"
+
+    click.echo(f"{label} ({filename}):")
+
+    user_path = get_user_dir(filename)
+    project_path = get_project_dir(filename)
+    for layer, path in (("User", user_path), ("Project", project_path)):
+        click.echo(f"  {layer} ({path}):")
+        click.echo(f"    {_summary(path)}" if path.exists() else "    not present")
+
+    env_val = os.environ.get(env_var, "").strip()
+    click.echo(f"  {env_var} (override):")
+    if not env_val:
+        click.echo("    not set")
+        return
+    for raw in env_val.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        p = Path(raw).expanduser()
+        click.echo(f"    {p}: {_summary(p)}" if p.exists() else f"    {p}  (does not exist)")
+
 
 @command.command("path")
 def path_cmd():
@@ -185,7 +271,7 @@ def path_cmd():
 def eject_cmd(force: bool):
     """Copy a bundled-defaults YAML to the user-level config path.
 
-    The user-level path is ``~/.config/nat/oo/llm_config.yaml`` (XDG;
+    The user-level path is ``~/.config/nemo_oo/llm_config.yaml`` (XDG;
     override with ``NEMO_OO_USER_DIR``). Bundled defaults still load
     as a lower-priority layer, so the ejected copy *adds* to /
     overrides on top of them — you can prune the ejected file to just

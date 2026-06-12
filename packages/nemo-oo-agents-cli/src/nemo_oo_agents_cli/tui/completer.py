@@ -320,7 +320,7 @@ class Completer:
         """Complete configured MCP server names for /mcp connect|disconnect.
 
         Reads the live ``self.mcp`` ``MCPRegistry`` so the candidates reflect both
-        ``.mcp.json`` and inline ``config.toml`` servers,
+        ``.mcp.json`` and inline ``settings.yaml`` servers,
         and annotates which are currently connected. ``disconnect`` only offers
         connected servers; ``connect`` offers all configured servers.
         """

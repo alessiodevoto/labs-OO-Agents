@@ -30,13 +30,40 @@ def nemo():
     """NeMo — NVIDIA's agent framework CLI."""
 
 
+# Thin launcher subcommands that don't touch API keys in *this* process:
+# `term` runs a web/PTY server and re-spawns the CLI as a child (which loads
+# secrets itself via bootstrap); `completion` just emits a shell script.
+# Skipping the secrets preload for them avoids importing the heavy
+# ``nemo_oo_agents`` core (~1.5s) on startup — keeping `nemo oo term` fast and
+# its SIGINT shutdown prompt.
+_SKIP_SECRETS_PRELOAD = {"term", "completion"}
+
+
 @nemo.group()
-def oo():
+@click.pass_context
+def oo(ctx):
     """OO Agents — agent toolkit.
 
     Extensible CLI for running agents, evaluations, and trace management.
     Add new commands by dropping a .py file in nemo_oo_agents_cli/commands/.
     """
+    if ctx.invoked_subcommand in _SKIP_SECRETS_PRELOAD:
+        return
+    # Load secrets.yaml into the process env before any subcommand runs so
+    # non-TUI commands (config show, eval, …) see the same API keys the TUI
+    # does. Non-clobbering (shell env wins) and best-effort: a broken or
+    # missing secrets file must never block the CLI — but log the failure at
+    # debug so it's recoverable rather than silently swallowed.
+    try:
+        from nemo_oo_agents.secrets import load_secrets_into_env
+
+        load_secrets_into_env()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).debug(
+            "Failed to preload secrets.yaml into the environment", exc_info=True
+        )
 
 
 # -- Auto-discover and register all commands from commands/ -----------------

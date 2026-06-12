@@ -142,6 +142,11 @@ def _load_models_from_yaml(path: Path) -> dict[str, dict[str, Any] | None]:
 # framework (TUI bootstrap) can call reload_registry() explicitly during
 # startup. reload_registry() updates this dict in-place so existing
 # references stay live.
+# NOTE: entries are raw dicts so litellm can receive arbitrary passthrough
+# kwargs and external readers (nat plugin, eval_pipeline, viewer) keep working.
+# The typed boundary is ``nemo_oo_agents.config.ModelConfig`` /
+# ``get_model_config()``. Long term this should become
+# ``dict[str, ModelConfig]`` once those readers are migrated.
 MODELS: dict[str, dict[str, Any]] = {}
 
 # Set to True once reload_registry has run (with or without paths) so
@@ -176,8 +181,7 @@ def reload_registry(*paths: Path) -> dict[str, dict[str, Any]]:
 
     if not paths:
         # Imported lazily so the unifiedllm package doesn't pull in
-        # nemo_oo_agents.paths (and transitively platformdirs) at
-        # module-load time.
+        # nemo_oo_agents.llm_config / paths at module-load time.
         from nemo_oo_agents.llm_config import llm_config_chain
 
         paths = tuple(llm_config_chain())

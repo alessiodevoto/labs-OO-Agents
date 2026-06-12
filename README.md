@@ -23,11 +23,11 @@
 
 ```bash
 curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/raw/main/scripts/install.sh | sh
-exec $SHELL          # pick up PATH + the API key the script wrote
+exec $SHELL          # pick up the ~/.local/bin PATH change
 nemo oo tui          # launch the interactive agent REPL
 ```
 
-The script installs `uv`, a managed Python, the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), and prompts for your `NVIDIA_INTERNAL_API_KEY`. Upgrade later with `uv tool upgrade nemo-oo-agents-cli`.
+The script installs `uv`, a managed Python, and the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), then prompts for your `NVIDIA_INTERNAL_API_KEY` and saves it to `~/.config/nemo_oo/secrets.yaml`. Upgrade later with `uv tool upgrade nemo-oo-agents-cli`.
 
 ### Use as a library
 
@@ -59,13 +59,22 @@ NeMo OO Agents ships as four lockstep packages from this repo:
 
 ### API Keys
 
-For library use, drop a `.env` in your project directory:
+Keys are read from `~/.config/nemo_oo/secrets.yaml` unless already exported in your shell (the export wins). The installer writes this file; you can also edit it by hand:
+
+```yaml
+# ~/.config/nemo_oo/secrets.yaml   (chmod 600; gitignore the project-local one)
+env:
+  NVIDIA_INTERNAL_API_KEY: your-api-key-here
+  # ANTHROPIC_API_KEY: sk-ant-...
+```
+
+For **library use** (not the CLI), drop a `.env` in your project directory instead — it's loaded by scripts and the viewer:
 
 ```bash
 echo 'NVIDIA_INTERNAL_API_KEY=your-api-key-here' > .env
 ```
 
-For `uv tool`-installed CLIs, export in your shell rc instead (`.env` is only loaded by scripts and the viewer, not by the TUI).
+Run `nemo oo config show` to see which `secrets.yaml` / `settings.yaml` / `llm_config.yaml` layers are loading (secret values are redacted — only key names are shown).
 
 - **NVIDIA Inference HUB**: All the quickstart examples and bundled aliases route through inference.nvidia.com. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INTERNAL_API_KEY`.
 
@@ -137,7 +146,7 @@ llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
 
-Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nemo oo config eject` (writes to `~/.config/nat/oo/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nemo_oo_agents/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nemo oo config show` to inspect which files are loading.
+Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nemo oo config eject` (writes to `~/.config/nemo_oo/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nemo_oo/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nemo oo config show` to inspect which files are loading.
 
 See [`src/nemo_oo_agents/unifiedllm/registry.py`](src/nemo_oo_agents/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 

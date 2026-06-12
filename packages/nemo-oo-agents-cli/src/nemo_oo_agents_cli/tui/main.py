@@ -164,13 +164,13 @@ async def main(
     if result.resumed and result.session_id is not None:
         import os as _os
 
-        _in_nemo_term = bool(_os.environ.get("NEMO_RICH_URL"))
+        _in_nemo_term = bool(_os.environ.get("NEMO_OO_RICH_URL"))
         _db_path = SESSIONS_DIR / f"{result.session_id}.db"
         _resume_outputs = build_resume_outputs(
             _db_path, result.session_id, in_nemo_term=_in_nemo_term
         )
         if _resume_outputs:
-            _rich_url = _os.environ.get("NEMO_RICH_URL") if _in_nemo_term else None
+            _rich_url = _os.environ.get("NEMO_OO_RICH_URL") if _in_nemo_term else None
             for _item in _resume_outputs:
                 if isinstance(_item, _RichReplayPayload):
                     if _rich_url:

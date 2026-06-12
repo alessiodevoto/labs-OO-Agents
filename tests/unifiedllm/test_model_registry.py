@@ -23,8 +23,8 @@ def _isolate_registry(tmp_path, monkeypatch):
     """Reset registry + redirect user/project dirs to a clean temp dir.
 
     Without this, tests inherit whatever the real user has in
-    ``~/.config/nat/oo/llm_config.yaml`` (or in the project's
-    ``.nemo_oo_agents/`` directory) and become flaky.
+    ``~/.config/nemo_oo/llm_config.yaml`` (or in the project's
+    ``.nemo_oo/`` directory) and become flaky.
 
     Bundled-default entry-points are stubbed empty so the test suite
     is insensitive to whether ``nemo-oo-agents-nvidia`` (or other

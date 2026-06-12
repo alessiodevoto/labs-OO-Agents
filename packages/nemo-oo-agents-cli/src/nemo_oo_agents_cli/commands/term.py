@@ -132,7 +132,7 @@ def command(
 
     # Rich content endpoint URL that the agent will POST to
     rich_url = f"http://127.0.0.1:{port}/rich"
-    env_extra = {"NEMO_RICH_URL": rich_url}
+    env_extra = {"NEMO_OO_RICH_URL": rich_url}
 
     from nemo_oo_agents_cli.web.pty_server import create_pty_app
 

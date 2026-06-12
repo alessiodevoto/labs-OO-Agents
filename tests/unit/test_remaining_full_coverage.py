@@ -953,9 +953,9 @@ class TestWebPublisherMethods:
 
         mock_em = MagicMock()
         wp = WebPublisher(event_manager=mock_em)
-        # No NEMO_RICH_URL set, so POST is skipped but event is stored
+        # No NEMO_OO_RICH_URL set, so POST is skipped but event is stored
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("NEMO_RICH_URL", None)
+            os.environ.pop("NEMO_OO_RICH_URL", None)
             wp._post({"kind": "html", "html": "<p>test</p>"})
 
         mock_em.add.assert_called_once()
@@ -967,7 +967,7 @@ class TestWebPublisherMethods:
         mock_em = MagicMock()
         wp = WebPublisher(event_manager=mock_em)
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("NEMO_RICH_URL", None)
+            os.environ.pop("NEMO_OO_RICH_URL", None)
             wp._post({"kind": "clear"})
 
         mock_em.add.assert_not_called()
@@ -978,17 +978,17 @@ class TestWebPublisherMethods:
 
         wp = WebPublisher(event_manager=None)
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("NEMO_RICH_URL", None)
+            os.environ.pop("NEMO_OO_RICH_URL", None)
             # Should not raise
             wp._post({"kind": "markdown", "text": "hi"})
 
     def test_post_with_nemo_rich_url_httpx(self):
-        """_post sends HTTP POST when NEMO_RICH_URL is set and httpx is available."""
+        """_post sends HTTP POST when NEMO_OO_RICH_URL is set and httpx is available."""
         from nemo_oo_agents.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         mock_httpx = MagicMock()
-        with patch.dict(os.environ, {"NEMO_RICH_URL": "http://localhost:1234/rich"}):
+        with patch.dict(os.environ, {"NEMO_OO_RICH_URL": "http://localhost:1234/rich"}):
             with patch.dict(sys.modules, {"httpx": mock_httpx}):
                 wp._post({"kind": "json", "data": {"x": 1}})
                 mock_httpx.post.assert_called_once()
@@ -998,7 +998,7 @@ class TestWebPublisherMethods:
         from nemo_oo_agents.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
-        with patch.dict(os.environ, {"NEMO_RICH_URL": "http://localhost:1234/rich"}):
+        with patch.dict(os.environ, {"NEMO_OO_RICH_URL": "http://localhost:1234/rich"}):
             # Make httpx import fail
             with patch("builtins.__import__", side_effect=_selective_import_error("httpx")):
                 import logging
@@ -1014,7 +1014,7 @@ class TestWebPublisherMethods:
         wp = WebPublisher(event_manager=None)
         mock_httpx = MagicMock()
         mock_httpx.post.side_effect = ConnectionError("refused")
-        with patch.dict(os.environ, {"NEMO_RICH_URL": "http://localhost:1234/rich"}):
+        with patch.dict(os.environ, {"NEMO_OO_RICH_URL": "http://localhost:1234/rich"}):
             with patch.dict(sys.modules, {"httpx": mock_httpx}):
                 # Should not raise
                 wp._post({"kind": "html", "html": "<b>test</b>"})
@@ -1027,7 +1027,7 @@ class TestWebPublisherMethods:
         mock_em.add.side_effect = RuntimeError("storage full")
         wp = WebPublisher(event_manager=mock_em)
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("NEMO_RICH_URL", None)
+            os.environ.pop("NEMO_OO_RICH_URL", None)
             # Should not raise
             wp._post({"kind": "html", "html": "<b>test</b>"})
 

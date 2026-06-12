@@ -30,7 +30,7 @@ class MCPRegistry(Skill):
     """Connect to MCP servers and surface their tools to the agent.
 
     Mirrors :class:`SkillRegistry`. An MCP server is *configured* (in
-    ``.mcp.json`` or the TUI ``[tui.mcp_servers.*]`` config), *connected* (an
+    ``.mcp.json`` or the TUI ``tui.mcp_servers`` settings.yaml block), *connected* (an
     authenticated client that lists the server's tools), and *activated* (its
     tools are listed as callable free functions in the ``<mcp>`` context
     block). A connected-but-deactivated server keeps its authenticated client
@@ -71,8 +71,8 @@ class MCPRegistry(Skill):
         )
         await self.mcp.connect(["myserver"])
 
-    To persist a server, add a ``[tui.mcp_servers.<name>]`` block to
-    ``.nemo_oo_agents/config.toml`` (see ``self.tui_config``) or a VS Code /
+    To persist a server, add a ``tui.mcp_servers.<name>`` block to
+    ``.nemo_oo/settings.yaml`` or a VS Code /
     Claude-style ``.mcp.json``; ``register`` is in-memory only.
 
     ## OAuth: what the AGENT can do vs. what the HUMAN must do
@@ -184,8 +184,8 @@ class MCPRegistry(Skill):
         The user pastes whatever they have about a server — a name and URL, a
         ``claude mcp add ...`` line, a docs snippet, an OAuth client id, etc.
         This does NOT edit anything itself; it returns a task for the agent,
-        which reads the details, writes the ``[tui.mcp_servers.<name>]`` block in
-        ``.nemo_oo_agents/config.toml``, and guides the user through connecting
+        which reads the details, writes the ``tui.mcp_servers.<name>`` block in
+        ``.nemo_oo/settings.yaml``, and guides the user through connecting
         (OAuth/host-browser handoff as needed).
         """
         details = args.strip()
@@ -205,7 +205,7 @@ class MCPRegistry(Skill):
             "Do the following:\n"
             "1. Parse the server name, URL, transport (default `streamable-http` for HTTP "
             "URLs), and any auth info (OAuth client_id, static API key/headers).\n"
-            f"2. Add a `[tui.mcp_servers.<name>]` block to the TUI config at `{config_path}` "
+            f"2. Add a `tui.mcp_servers.<name>` YAML block to the TUI config at `{config_path}` "
             "(create the file/section if missing; do NOT clobber existing servers). Use "
             "`headers` for a static API key, or `oauth_client_id` for a pre-provisioned "
             "OAuth client. Don't set `oauth_manual` unless the server requires OOB.\n"
@@ -219,10 +219,12 @@ class MCPRegistry(Skill):
         )
 
     def _config_path(self) -> Path:
-        """Return the TUI config.toml path (project dir)."""
+        """Return the project-local TUI settings.yaml path."""
         from nemo_oo_agents.paths import get_project_dir
 
-        return get_project_dir("config.toml")
+        from .settings import SETTINGS_FILENAME
+
+        return get_project_dir(SETTINGS_FILENAME)
 
     def __init__(
         self,
@@ -233,7 +235,7 @@ class MCPRegistry(Skill):
 
         Args:
             mcp_file: Path to a VS Code / Claude-style ``.mcp.json``.
-            servers: Inline server config (from TUI ``[tui.mcp_servers.*]``).
+            servers: Inline server config (from TUI ``tui.mcp_servers`` in settings.yaml).
         """
         self._mcp_file = mcp_file
         self._servers: dict[str, dict[str, Any]] = dict(servers or {})
@@ -283,7 +285,7 @@ class MCPRegistry(Skill):
 
         Use ``url``/``headers``/``transport`` for HTTP servers, or
         ``command``/``args``/``env`` for stdio servers. To persist, add a
-        ``[tui.mcp_servers.<name>]`` block to the TUI config instead.
+        ``tui.mcp_servers.<name>`` block to settings.yaml instead.
         """
         entry: dict[str, Any] = {}
         for key, val in (

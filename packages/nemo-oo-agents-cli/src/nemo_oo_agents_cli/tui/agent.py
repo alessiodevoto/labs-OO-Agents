@@ -42,7 +42,7 @@ import re  # noqa: F401
 from nemo_oo_agents.runtime import producers  # noqa: F401
 from nemo_oo_agents.runtime.producers import after, cron, monitor, run_job, tail  # noqa: F401
 
-# os is used by this module (NEMO_RICH_URL check) but not useful to expose to
+# os is used by this module (NEMO_OO_RICH_URL check) but not useful to expose to
 # the agent's REPL — hide it so doc(self) / exec_globals don't advertise it.
 with hidden:
     import os
@@ -308,7 +308,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         # from the ``queues`` context block. Composed via
         # ``QueueManager.status()`` so adding new channels Just Works.
         self.context.set_dynamic("queues", "self.queue_manager.status()")
-        if os.environ.get("NEMO_RICH_URL"):
+        if os.environ.get("NEMO_OO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
             self.event_manager.register_event_type(RichOutput)
