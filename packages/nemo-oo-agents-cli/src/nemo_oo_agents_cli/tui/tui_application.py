@@ -831,14 +831,14 @@ class TUIApplication:
 
             logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
 
-            # Goal mode: if enabled and there are open todos, inject a
-            # synthetic notification with the next open todo instead of
-            # waiting for user input.
+            # Goal mode: if enabled, there are open todos, and no real user
+            # messages are queued, inject a synthetic notification with the
+            # next open todo instead of waiting for user input.
             goal_injected = False
             if self._config is not None and getattr(self._config, "tui", None) is not None:
                 if not self._config.tui.goal_mode and hasattr(agent, "context"):
                     agent.context.pop("goal_mode", None)
-                if self._config.tui.goal_mode:
+                if self._config.tui.goal_mode and user_messages_in.is_empty():
                     # Set goal-mode context block so the agent sees the behavioral instruction
                     if hasattr(agent, "context"):
                         agent.context["goal_mode"] = (

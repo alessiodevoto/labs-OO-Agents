@@ -132,6 +132,42 @@ class TestGoalModeDispatcher:
         assert "You are in goal mode" in turns_seen[1]
         assert "Fix the bug" in turns_seen[1]
 
+    async def test_goal_mode_prioritizes_queued_user_message_before_todo_injection(self):
+        """If the user speaks while a turn is running, deliver that message before Goal-mode TODO."""
+        from .tui_app_harness import FakeAgent, TUIHarness
+
+        agent = FakeAgent()
+        config = MagicMock()
+        config.tui = MagicMock()
+        config.tui.goal_mode = True
+
+        from nemo_oo_agents.tools.todo import TodoManager
+
+        agent.todo = TodoManager()
+        agent.todo.add("Fix the bug")
+
+        turns_seen: list[str] = []
+
+        def queue_user_message(ag, msg):
+            turns_seen.append(msg)
+            ag._user_messages_in.put("user interruption")
+
+        def record_and_stop_after_goal(ag, msg):
+            turns_seen.append(msg)
+            if "You are in goal mode" in msg:
+                config.tui.goal_mode = False
+
+        agent.script = [queue_user_message, record_and_stop_after_goal, record_and_stop_after_goal]
+
+        async with TUIHarness(agent=agent, config=config) as h:
+            await h.submit_async("start")
+            await h.wait_for(lambda: len(turns_seen) >= 3, timeout=3.0)
+
+        assert turns_seen[0] == "start"
+        assert turns_seen[1] == "user interruption"
+        assert "You are in goal mode" in turns_seen[2]
+        assert "Fix the bug" in turns_seen[2]
+
     async def test_goal_mode_off_does_not_inject(self):
         """When goal_mode=off, no injection even with open todos."""
         from .tui_app_harness import FakeAgent, TUIHarness
