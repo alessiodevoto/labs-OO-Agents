@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agentdoc import doc, hidden
+from nemo_oo_agents.agentdoc import doc, hidden, spec
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.context_blocks import DynamicContext
 from nemo_oo_agents.tools.shell_tools import ShellTools
@@ -140,6 +140,10 @@ class BenchAgent(
         self.shell = _make_shell(cwd)
         self.todo = TodoManager()
         self.problem_statement = ""
+        # Base Agent hides context/events by default; BenchAgent's context_usage
+        # hint references them, so expose both APIs to the LLM here.
+        spec(self, "context", hidden=False)
+        spec(self, "events", hidden=False)
         self.context_manager.set_static("self.shell", doc(type(self.shell)))
 
     async def _run_evaluation(self, task_input: dict) -> dict:
