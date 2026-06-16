@@ -1246,7 +1246,7 @@ class ActorRuntime:
 
             from nemo_oo_agents.agentdoc import doc
             from nemo_oo_agents.decorators import strategy
-            from nemo_oo_agents.media import Audio, File, Image, Media
+            from nemo_oo_agents.media import Audio, File, Image, Media, Video
             from nemo_oo_agents.runtime.media_capture import show
             from nemo_oo_agents.runtime.pprint import pprint
             from nemo_oo_agents.strategies import (
@@ -1281,6 +1281,7 @@ class ActorRuntime:
                     "Media": Media,
                     "Image": Image,
                     "Audio": Audio,
+                    "Video": Video,
                     "File": File,
                     # decorators and strategies for LLM-generated methods
                     "strategy": strategy,

@@ -8,6 +8,7 @@ to accumulate multimodal content blocks during execute_python() calls.
 All content blocks follow LiteLLM's format conventions:
 - Images:  {"type": "image_url", "image_url": {"url": ..., "format": ...}}
 - Audio:   {"type": "input_audio", "input_audio": {"data": ..., "format": ...}}
+- Video:   {"type": "video_url", "video_url": {"url": ...}}
 - Files:   {"type": "file", "file": {"file_data": "data:...;base64,...", "filename": ...}}
 
 LiteLLM automatically converts these to provider-native formats.
@@ -57,10 +58,10 @@ def media_to_content_block(media: Any) -> dict[str, Any]:
     (e.g. Anthropic image source format) is handled by LiteLLM.
     See: https://docs.litellm.ai/docs/completion/vision
     """
-    from nemo_oo_agents.media import Audio, File, Image, Media
+    from nemo_oo_agents.media import Audio, File, Image, Media, Video
 
     if not isinstance(media, Media):
-        raise TypeError(f"Expected Media (Image/Audio/File), got {type(media).__name__}")
+        raise TypeError(f"Expected Media (Image/Audio/Video/File), got {type(media).__name__}")
 
     if isinstance(media, Image):
         image_url_dict: dict[str, Any] = {"url": media.data_url}
@@ -80,6 +81,13 @@ def media_to_content_block(media: Any) -> dict[str, Any]:
             "input_audio": {"data": media._base64_data(), "format": fmt},
         }
 
+    if isinstance(media, Video):
+        # LiteLLM video_url format: {"type": "video_url", "video_url": {"url": ...}}
+        video_url_dict: dict[str, Any] = {"url": media.data_url}
+        if media.vendor_metadata:
+            video_url_dict.update(media.vendor_metadata)
+        return {"type": "video_url", "video_url": video_url_dict}
+
     if isinstance(media, File):
         # LiteLLM file format
         return {
@@ -96,9 +104,9 @@ image_to_content_block = media_to_content_block
 
 
 def show(obj: Any) -> None:
-    """Display an image, audio clip, or file so you can see/hear it.
+    """Display an image, audio clip, video, or file so you can see/hear it.
 
-    Call show() on any Image, Audio, or File object to perceive its contents.
+    Call show() on any Image, Audio, Video, or File object to perceive its contents.
     Also accepts PIL images and matplotlib figures (auto-converted to PNG).
     """
     from nemo_oo_agents.media import Media
@@ -110,7 +118,7 @@ def show(obj: Any) -> None:
         converted = _try_auto_convert(obj)
         if converted is None:
             raise TypeError(
-                f"show() expects Image, Audio, File, PIL.Image, or matplotlib Figure, "
+                f"show() expects Image, Audio, Video, File, PIL.Image, or matplotlib Figure, "
                 f"got {type(obj).__name__}"
             )
         block = converted

@@ -958,10 +958,10 @@ class MyAgent(Agent, llm=llm):
 
 ### Media Types
 
-Handle multimodal content -- **only works with multimodal-capable LLMs** (e.g. Claude 4.x, GPT-4o, Gemini). Text-only models will error when passed `Image` or `Audio`.
+Handle multimodal content -- **only works with multimodal-capable LLMs** (e.g. Claude 4.x, GPT-4o, Gemini). Text-only models will error when passed `Image`, `Audio`, or `Video`.
 
 ```python
-from nemo_oo_agents import Image, Audio, File
+from nemo_oo_agents import Image, Audio, Video, File
 
 class MediaAgent(Agent, llm=llm):
     async def describe_image(self, image: Image) -> str:

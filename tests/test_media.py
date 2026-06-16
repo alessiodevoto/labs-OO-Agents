@@ -11,7 +11,7 @@ Covers:
 import base64
 from pathlib import Path
 
-from nemo_oo_agents.media import Image
+from nemo_oo_agents.media import Image, Video
 
 
 class TestImageFromFile:
@@ -97,3 +97,45 @@ class TestBaseBase64Data:
         result = img._base64_data()
 
         assert result == url
+
+
+class TestVideo:
+    """Tests for the Video media subclass — mirrors Image's surface."""
+
+    def test_from_file_reads_bytes_and_returns_video(self, tmp_path: Path):
+        """Video.from_file() loads an .mp4 and produces a data:video/mp4 URL."""
+        mp4_file = tmp_path / "clip.mp4"
+        # Minimal bytes; mimetypes will guess video/mp4 from the extension
+        mp4_file.write_bytes(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 32)
+
+        video = Video.from_file(mp4_file)
+
+        assert isinstance(video, Video)
+        assert video.media_type == "video/mp4"
+        assert video.modality == "video"
+        assert video.data_url.startswith("data:video/mp4;base64,")
+
+    def test_from_url_default_media_type_is_video_mp4(self):
+        """Video.from_url() defaults to 'video/mp4' when no media_type is given."""
+        url = "https://example.com/clip.mp4"
+        video = Video.from_url(url)
+
+        assert isinstance(video, Video)
+        assert video.media_type == "video/mp4"
+        # URL is preserved verbatim — no base64 wrapping
+        assert video.data_url == url
+
+    def test_from_bytes_honors_explicit_media_type(self):
+        """Video.from_bytes() respects an explicit media_type like video/webm."""
+        video = Video.from_bytes(b"webm-fake-bytes", media_type="video/webm")
+
+        assert isinstance(video, Video)
+        assert video.media_type == "video/webm"
+        assert video.data_url.startswith("data:video/webm;base64,")
+        decoded = base64.b64decode(video._base64_data())
+        assert decoded == b"webm-fake-bytes"
+
+    def test_vendor_metadata_round_trips_via_from_url(self):
+        """from_url() vendor_metadata kwargs are stored on the instance."""
+        video = Video.from_url("https://example.com/clip.mp4", fps=1, max_frames=32)
+        assert video.vendor_metadata == {"fps": 1, "max_frames": 32}

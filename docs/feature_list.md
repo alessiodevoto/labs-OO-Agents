@@ -233,7 +233,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Showing media & wrapping objects as tools
 
-- **Show media inside a CodeAct cell** — `show(obj)` from `nemo_oo_agents.runtime.media_capture` lets agent code surface an `Image`/`Audio`/`File` (or PIL image / matplotlib `Figure`, auto-converted to PNG) into the LLM's next turn via a task-local media buffer, capped by `MediaCaptureConfig.max_attachments_per_execution`.
+- **Show media inside a CodeAct cell** — `show(obj)` from `nemo_oo_agents.runtime.media_capture` lets agent code surface an `Image`/`Audio`/`Video`/`File` (or PIL image / matplotlib `Figure`, auto-converted to PNG) into the LLM's next turn via a task-local media buffer, capped by `MediaCaptureConfig.max_attachments_per_execution`.
 - **Wrap any object as a discoverable tool** — `Skill(obj)` adopts an arbitrary object's docstring/`dir()` so its methods appear in `doc(self.<skill>)`; assign it as an agent attribute (e.g. `self.pd = Skill(pd)`) to expose third-party libraries. **(custom)**
 - **Expose user-typed slash commands from a skill** — `@slash_command(name, argument_hint=, completions=, user_only=)` on a `Skill` method registers a `/name` action whose return value is injected as a prompt; discovered automatically on skill activation/reload. **(custom)**
 
@@ -537,18 +537,18 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Media Types
 
-- **Construct media from disk** — `Image.from_file()`, `Audio.from_file()`, and `File.from_file()` read bytes off a path and infer the MIME type via `mimetypes` (falling back to `application/octet-stream`).
-- **Construct media from raw bytes** — `Image.from_bytes()`, `Audio.from_bytes()`, `File.from_bytes()` wrap bytes plus an explicit `media_type` into a base64 data URL.
-- **Construct media from a URL** — `Image.from_url()`, `Audio.from_url()`, `File.from_url()` reference a remote URL with no download (passed straight to the LLM); each subclass supplies a sensible default `media_type` (`image/jpeg`, `audio/wav`, `application/pdf`).
+- **Construct media from disk** — `Image.from_file()`, `Audio.from_file()`, `Video.from_file()`, and `File.from_file()` read bytes off a path and infer the MIME type via `mimetypes` (falling back to `application/octet-stream`).
+- **Construct media from raw bytes** — `Image.from_bytes()`, `Audio.from_bytes()`, `Video.from_bytes()`, `File.from_bytes()` wrap bytes plus an explicit `media_type` into a base64 data URL.
+- **Construct media from a URL** — `Image.from_url()`, `Audio.from_url()`, `Video.from_url()`, `File.from_url()` reference a remote URL with no download (passed straight to the LLM); each subclass supplies a sensible default `media_type` (`image/jpeg`, `audio/wav`, `video/mp4`, `application/pdf`).
 - **Attach provider-specific hints** — pass extra `**vendor_metadata` kwargs to any constructor (e.g. `Image.from_url(url, detail="high")`) which merge into the emitted image content block.
 - **Inspect media payloads** — read `.data_url`, `.media_type`, `.modality`, `.vendor_metadata`, `.content_hash` (8-char SHA-256), and `.size_bytes` (None for URL refs) on any `Media` instance.
 - **Subclass the Media base** — extend `Media` for a custom modality by overriding the `_modality` class attribute; unknown subclasses fall back to an `image_url` content block. **(custom)**
 
 ### Showing Media in CodeAct
 
-- **Show media mid-cell** — call `show(media)` inside an `execute_python` cell on any `Image`/`Audio`/`File` to append a content block the LLM can perceive on the next turn; prints `[shown: ...]`.
+- **Show media mid-cell** — call `show(media)` inside an `execute_python` cell on any `Image`/`Audio`/`Video`/`File` to append a content block the LLM can perceive on the next turn; prints `[shown: ...]`.
 - **Auto-convert PIL and matplotlib** — `show()` also accepts a `PIL.Image.Image` or `matplotlib.figure.Figure` and renders it to a PNG `image_url` block via lazy imports.
-- **Use media types in generated code** — `show`, `Media`, `Image`, `Audio`, and `File` are pre-injected into the CodeAct exec namespace so generated code can construct and display media without imports.
+- **Use media types in generated code** — `show`, `Media`, `Image`, `Audio`, `Video`, and `File` are pre-injected into the CodeAct exec namespace so generated code can construct and display media without imports.
 
 ### Passing Media as Method Arguments
 
@@ -561,7 +561,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Cap attachments per cell** — `MediaCaptureConfig.max_attachments_per_execution` (default 5) bounds how many `show()` blocks a single `execute_python` cell keeps; the cap is per-cell, not per-turn or per-run. **(opt-in)**
 - **Observe spillover** — once the cap is hit, further `show()` calls in that cell are dropped and `[show() limit reached (N), attachment not added]` is printed to stdout for the LLM to see.
 - **Wire the cap through TruncationConfig** — set `media_capture` on `TruncationConfig` (validated to be > 0, merges field-by-field via `merge_with()`); both `MediaCaptureConfig` and `TruncationConfig` are exported from `nemo_oo_agents.config`. **(opt-in)**
-- **Convert a Media object to a content block** — call `media_to_content_block(media)` to produce LiteLLM-universal blocks (`image_url` / `input_audio` / `file`) that LiteLLM maps to provider-native formats.
+- **Convert a Media object to a content block** — call `media_to_content_block(media)` to produce LiteLLM-universal blocks (`image_url` / `input_audio` / `video_url` / `file`) that LiteLLM maps to provider-native formats.
 
 ## 12. Code Execution, Inspection & Debugging
 
@@ -593,7 +593,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 ### REPL Persistence & Output Access
 
 - **Persist variables and imports across cells** — the actor captures `__repl_captured_locals__` from each `__repl_wrapper__` run so names and imports defined in one execution remain available in the next.
-- **Pre-load common names into agent code** — `exec_globals` ships `self`, `asyncio`, `typing` (+`Annotated`/`Any`/`Literal`/`Optional`/`Union`), `doc`/`methods`/`variables`, `pprint`, `show`/`Media`/`Image`/`Audio`/`File`, strategy classes, and the `strategy` decorator; `help` is shadowed by `doc` to avoid blocking on stdin.
+- **Pre-load common names into agent code** — `exec_globals` ships `self`, `asyncio`, `typing` (+`Annotated`/`Any`/`Literal`/`Optional`/`Union`), `doc`/`methods`/`variables`, `pprint`, `show`/`Media`/`Image`/`Audio`/`Video`/`File`, strategy classes, and the `strategy` decorator; `help` is shadowed by `doc` to avoid blocking on stdin.
 - **Access prior results Jupyter-style** — `OutAccessor` exposes `Out[n]` (by execution count, sparse-safe), `Out[-n]` (from end), `Out.last`, `len(Out)`, and `in`, backed by `PythonOutput` events.
 - **Pretty-print with truncation** — `pprint()` offers a Rich-compatible API (`max_length`, `max_string`, `max_depth`, `expand_all`) for large structures in generated code.
 - **Signal non-error control flow** — `ExecutionSignal` (subclass of `BaseException`, so `except Exception` won't swallow it) is the base for control-flow signals like `return_result()`'s internal `_ReturnResultSignal`, distinguished from errors by the actor.
