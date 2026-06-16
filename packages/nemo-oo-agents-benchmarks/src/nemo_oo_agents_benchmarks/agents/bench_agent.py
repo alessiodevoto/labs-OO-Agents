@@ -82,6 +82,7 @@ class BenchAgent(
     Agent,
     llm=FakeLLMClient(),
     context={
+        "context_usage": DynamicContext(expr="self._context_usage_block()"),
         "todo_status": DynamicContext(expr="self.todo.status()"),
         "task": DynamicContext(expr="self.problem_statement"),
     },
@@ -121,6 +122,17 @@ class BenchAgent(
     """
 
     terminal: Any = None  # Injected by some runners; None otherwise
+
+    def _context_usage_block(self) -> str:
+        """Return context-window usage plus a benchmark-agent compaction hint."""
+        if not self.context_stats:
+            return ""
+        return (
+            f"{self.context_stats.format()}\n"
+            "If event history is taking too much space, summarize older work "
+            "and call self.events.collapse(start_tag, end_tag, summary_text) "
+            "to replace it with a compact summary while keeping details accessible."
+        )
 
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
