@@ -54,11 +54,12 @@ class ExecutionNamespaceBuilder:
         import asyncio
         import typing as _typing
 
-        # Start with the agent's defining module globals (module-level imports passthrough).
-        from nemo_oo_agents.agentdoc.visibility import filter_module_globals
+        # Start with the agent's defining-module globals (module-level imports
+        # passthrough), merged across the MRO so parent-module symbols of
+        # cross-module ancestors are also available. Mirrors execute_code().
+        from nemo_oo_agents.agentdoc.visibility import filter_mro_module_globals
 
-        agent_module = inspect.getmodule(type(agent))
-        namespace: dict[str, Any] = filter_module_globals(agent_module) if agent_module else {}
+        namespace: dict[str, Any] = filter_mro_module_globals(type(agent))
 
         # Mirror core execute_code symbols.
         from nemo_oo_agents.agentdoc import doc

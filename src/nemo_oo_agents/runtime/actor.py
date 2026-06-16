@@ -1264,11 +1264,13 @@ class ActorRuntime:
         # Set parent agent context for LLM inheritance by subagents
         parent_token = _parent_agent_var.set(self.agent)
         try:
-            # Build execution globals first (needed for validation error messages)
-            from nemo_oo_agents.agentdoc.visibility import filter_module_globals
+            # Build execution globals first (needed for validation error messages).
+            # Walk the MRO so an agent inheriting from a parent defined in another
+            # module also gets that module's module-level symbols (functions,
+            # constants, types). Leaf module wins on name collisions.
+            from nemo_oo_agents.agentdoc.visibility import filter_mro_module_globals
 
-            agent_module = inspect.getmodule(type(self.agent))
-            exec_globals = filter_module_globals(agent_module) if agent_module else {}
+            exec_globals = filter_mro_module_globals(type(self.agent))
 
             # Import agentdoc functions for use in generated code
             # Import decorators and strategies for use in generated code
