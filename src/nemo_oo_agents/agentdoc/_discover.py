@@ -78,19 +78,7 @@ def discover_referenced_types(
 
     # Handle callable (function/method) directly
     if inspect.isfunction(obj) or inspect.ismethod(obj):
-        try:
-            sig = inspect.signature(obj)
-
-            # Extract from parameters
-            for param in sig.parameters.values():
-                if param.annotation is not inspect.Parameter.empty:
-                    _extract_types_from_hint(param.annotation, discovered)
-
-            # Extract from return type
-            if sig.return_annotation is not inspect.Signature.empty:
-                _extract_types_from_hint(sig.return_annotation, discovered)
-        except (ValueError, TypeError):
-            pass  # Can't introspect this callable
+        _extract_types_from_callable(obj, discovered)
 
         # Filter to only custom types, excluding already-seen types
         custom_types = [
@@ -126,24 +114,73 @@ def discover_referenced_types(
         if not (inspect.isfunction(attr) or inspect.ismethod(attr)):
             continue
 
-        try:
-            sig = inspect.signature(attr)
-
-            # Extract from parameters
-            for param in sig.parameters.values():
-                if param.annotation is not inspect.Parameter.empty:
-                    _extract_types_from_hint(param.annotation, discovered)
-
-            # Extract from return type
-            if sig.return_annotation is not inspect.Signature.empty:
-                _extract_types_from_hint(sig.return_annotation, discovered)
-        except (ValueError, TypeError):
-            # Skip methods we can't introspect
-            continue
+        _extract_types_from_callable(attr, discovered)
 
     # Filter to only custom types, excluding already-seen types
     custom_types = [t for t in discovered if _is_custom_type(t) and (seen is None or t not in seen)]
     return sorted(custom_types, key=lambda t: t.__name__)
+
+
+def _extract_types_from_callable(attr: Any, discovered: set[type]) -> None:
+    """Extract referenced types from a callable's parameter and return annotations.
+
+    Handles ``from __future__ import annotations`` (PEP 563), where every annotation
+    is a string at runtime, as well as eager (live-object) annotations and forward refs.
+
+    Strategy:
+    1. Try ``typing.get_type_hints(attr)`` (``include_extras=False``) for fully
+       resolved annotations. ``Annotated`` metadata is stripped, which is harmless
+       because ``_extract_types_from_hint`` unwraps ``Annotated`` via ``args[0]`` anyway.
+    2. Walk the signature; for each annotation prefer the resolved hint, then fall back
+       to ``eval``-ing string annotations against the owning module's globals (mirroring
+       ``_extract_types_from_type_string``), then to the live annotation object.
+
+    ``get_type_hints`` raises if *any* annotation is unresolvable, so the per-annotation
+    string fallback keeps the remaining annotations working.
+
+    Args:
+        attr: The function or method to scan.
+        discovered: Set to add discovered types to (modified in place).
+    """
+    # 1. Fully-resolved hints (handles PEP 563 strings and forward refs in one shot).
+    resolved: dict[str, Any] = {}
+    try:
+        resolved = typing.get_type_hints(attr)
+    except Exception:  # noqa: BLE001 - any resolution failure falls back below
+        resolved = {}
+
+    try:
+        sig = inspect.signature(attr)
+    except (ValueError, TypeError):
+        # Can't introspect the signature; rely on whatever get_type_hints gave us.
+        for hint in resolved.values():
+            _extract_types_from_hint(hint, discovered)
+        return
+
+    # Eval context mirrors _extract_types_from_type_string: typing first, then module
+    # globals (so module names override typing).
+    eval_context: dict[str, Any] = dict(vars(typing))
+    module = inspect.getmodule(attr)
+    if module:
+        eval_context.update(vars(module))
+
+    def handle(annotation: Any, key: str) -> None:
+        if key in resolved:
+            _extract_types_from_hint(resolved[key], discovered)
+        elif isinstance(annotation, str):
+            try:
+                _extract_types_from_hint(eval(annotation, eval_context), discovered)  # noqa: S307
+            except (NameError, AttributeError, TypeError, SyntaxError, ValueError):
+                pass  # Can't evaluate - might be a complex expression or unavailable type
+        else:
+            _extract_types_from_hint(annotation, discovered)
+
+    for name, param in sig.parameters.items():
+        if param.annotation is not inspect.Parameter.empty:
+            handle(param.annotation, name)
+
+    if sig.return_annotation is not inspect.Signature.empty:
+        handle(sig.return_annotation, "return")
 
 
 def _extract_types_from_field(
