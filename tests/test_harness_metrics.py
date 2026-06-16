@@ -414,6 +414,7 @@ def _populate_all_fields(m: HarnessMetrics) -> None:
     m.time_llm_call.record(1.5)
     m.time_code_validation.record(0.01)
     m.time_code_execution.record(0.4)
+    m.tracing_overhead(0.02)
     m.record_turn()
 
 
@@ -904,6 +905,17 @@ class TestTiming:
         assert m.time_llm_call.min_s > 0
         assert m.time_llm_call.max_s >= m.time_llm_call.min_s
 
+    def test_tracing_overhead_records_to_timing_stat(self):
+        m = HarnessMetrics()
+
+        m.tracing_overhead(0.01)
+        m.tracing_overhead(0.03)
+
+        assert m.time_tracing_overhead.count == 2
+        assert m.time_tracing_overhead.total_s == pytest.approx(0.04)
+        assert m.time_tracing_overhead.min_s == pytest.approx(0.01)
+        assert m.time_tracing_overhead.max_s == pytest.approx(0.03)
+
     def test_record_turn(self):
         m = HarnessMetrics()
         m.record_turn()
@@ -916,6 +928,7 @@ class TestTiming:
         m.time_prepare_context.record(0.1)
         m.time_prepare_context.record(0.3)
         m.time_llm_call.record(2.5)
+        m.tracing_overhead(0.02)
         m.turn_count = 5
         attrs = m.to_span_attributes()
         assert attrs["harness.time.prepare_context.total_s"] == 0.4
@@ -925,6 +938,8 @@ class TestTiming:
         assert attrs["harness.time.prepare_context.count"] == 2
         assert attrs["harness.time.prepare_context.samples"] == [0.1, 0.3]
         assert attrs["harness.time.llm_call.total_s"] == 2.5
+        assert attrs["harness.time.tracing_overhead.total_s"] == 0.02
+        assert attrs["harness.time.tracing_overhead.count"] == 1
         assert attrs["harness.turn_count"] == 5
 
     def test_zero_timing_not_in_attributes(self):

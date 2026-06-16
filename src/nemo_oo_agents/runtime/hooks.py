@@ -27,6 +27,7 @@ Usage:
 """
 
 import logging
+import time
 from contextvars import ContextVar
 from typing import Any, Protocol, runtime_checkable
 
@@ -348,6 +349,16 @@ def get_hooks() -> InstrumentationHooks | None:
     return _instrumentation_hooks_var.get()
 
 
+def _record_tracing_overhead(elapsed_s: float) -> None:
+    """Record time spent inside tracing hook callbacks, if metrics are active."""
+    try:
+        from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+
+        get_harness_metrics().tracing_overhead(elapsed_s)
+    except Exception:
+        logger.debug("Failed to record tracing overhead metric", exc_info=True)
+
+
 def call_before_hook(hook_name: str, **kwargs: Any) -> Any:
     """Defensively call a before_* hook method. Returns context or None.
 
@@ -366,11 +377,14 @@ def call_before_hook(hook_name: str, **kwargs: Any) -> Any:
     hooks = get_hooks()
     if not hooks:
         return None
+    t0 = time.perf_counter()
     try:
         return getattr(hooks, hook_name)(**kwargs)
     except Exception:
         logger.warning("Hook %s failed", hook_name, exc_info=True)
         return None
+    finally:
+        _record_tracing_overhead(time.perf_counter() - t0)
 
 
 def call_after_hook(hook_name: str, context: Any, **kwargs: Any) -> None:
@@ -389,10 +403,13 @@ def call_after_hook(hook_name: str, context: Any, **kwargs: Any) -> None:
     hooks = get_hooks()
     if not hooks:
         return
+    t0 = time.perf_counter()
     try:
         getattr(hooks, hook_name)(context=context, **kwargs)
     except Exception:
         logger.warning("Hook %s failed", hook_name, exc_info=True)
+    finally:
+        _record_tracing_overhead(time.perf_counter() - t0)
 
 
 __all__ = [

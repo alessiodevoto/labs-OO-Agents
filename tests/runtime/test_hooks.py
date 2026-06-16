@@ -4,6 +4,8 @@ import pytest
 
 from nemo_oo_agents.runtime.hooks import (
     InstrumentationHooks,
+    call_after_hook,
+    call_before_hook,
     get_hooks,
     set_hooks,
 )
@@ -405,3 +407,63 @@ class TestHooksContextPassthrough:
 
         finally:
             set_hooks(None)
+
+
+class TestHookDispatchMetrics:
+    """Hook dispatch records tracing overhead into harness metrics."""
+
+    @pytest.fixture(autouse=True)
+    def _cleanup_hooks(self):
+        yield
+        set_hooks(None)
+
+    def test_before_and_after_hooks_record_tracing_overhead(self):
+        from nemo_oo_agents.runtime.harness_metrics import harness_metrics_session
+
+        mock = MockHooks()
+        set_hooks(mock)
+
+        with harness_metrics_session() as hm:
+            context = call_before_hook(
+                "before_generation",
+                agent=None,
+                method_name="method",
+                strategy="strategy",
+                generation_id="gen-1",
+                parent_generation_id=None,
+            )
+            call_after_hook(
+                "after_generation",
+                context,
+                agent=None,
+                method_name="method",
+                result="ok",
+                exception=None,
+                generation_id="gen-1",
+            )
+
+            assert hm.time_tracing_overhead.count == 2
+            assert hm.time_tracing_overhead.total_s > 0
+            attrs = hm.to_span_attributes()
+            assert attrs["harness.time.tracing_overhead.count"] == 2
+
+    def test_failing_hook_still_records_tracing_overhead(self):
+        from nemo_oo_agents.runtime.harness_metrics import harness_metrics_session
+
+        set_hooks(FailingHooks())
+
+        with harness_metrics_session() as hm:
+            assert (
+                call_before_hook(
+                    "before_generation",
+                    agent=None,
+                    method_name="method",
+                    strategy="strategy",
+                    generation_id="gen-1",
+                    parent_generation_id=None,
+                )
+                is None
+            )
+
+            assert hm.time_tracing_overhead.count == 1
+            assert hm.time_tracing_overhead.total_s > 0
