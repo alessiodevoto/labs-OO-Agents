@@ -87,6 +87,10 @@ class DoerAgent(Agent):
         self.shell = (shell_cls or ShellTools)(cwd=cwd)
         self.repo = repo
         self.todo = todo
+        # Render the shell's API surface from the *live* shell type each turn.
+        # set_static with expr= re-evaluates the expression per turn (like set_dynamic)
+        # but places the block in the cacheable prefix for better prompt caching.
+        self.context.set_static("self.shell", expr="doc(type(self.shell))")
 
         # Skill registry: register passed-in skills + discover plugins
         from nemo_oo_agents.skill_registry import SkillRegistry

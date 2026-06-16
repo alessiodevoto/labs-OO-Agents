@@ -699,11 +699,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.activate(["nemo.*"])
 
         # Render the shell's API surface from the *live* shell type each turn.
-        # A dynamic block (re-evaluated per turn) instead of a static one: the
-        # default shell class can change, and a
-        # static block computed once at construction would pin a stale doc for
-        # the wrong class. The expr is cheap (a cached doc() of a stable type).
-        self.context_manager.set_dynamic("shell", "doc(type(self.shell))")
+        # set_static with expr= re-evaluates the expression per turn (like set_dynamic)
+        # but places the block in the cacheable prefix for better prompt caching.
+        self.context.set_static("self.shell", expr="doc(type(self.shell))")
 
         # Skills register their own context blocks via context_block class attr
 
