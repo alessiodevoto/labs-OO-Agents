@@ -24,14 +24,18 @@ from __future__ import annotations
 
 from nemo_oo_agents.agentdoc._visibility import (
     filter_module_globals,
+    filter_mro_module_globals,
     is_hidden_field,
     is_hidden_method,
     is_hidden_module_variable,
+    iter_agent_mro_modules,
 )
 
 __all__ = [
     "filter_module_globals",
+    "filter_mro_module_globals",
     "is_hidden_field",
     "is_hidden_method",
     "is_hidden_module_variable",
+    "iter_agent_mro_modules",
 ]

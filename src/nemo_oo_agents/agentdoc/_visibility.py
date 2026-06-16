@@ -248,3 +248,55 @@ def filter_module_globals(module: types.ModuleType) -> dict[str, Any]:
             continue
         result[k] = v
     return result
+
+
+def iter_agent_mro_modules(agent_class: type) -> list[types.ModuleType]:
+    """Ordered (base -> leaf) list of distinct user-defined modules across the MRO.
+
+    These are the modules whose module-level names contribute to an agent's
+    generated-code globals. When an ``Agent`` subclass inherits from a parent
+    ``Agent`` (or plain mixin) defined in another module, the parent module's
+    module-level functions, constants, and types must also be exposed —
+    otherwise the child's ``execute_python()`` REPL hits ``NameError`` on names
+    the parent's generation methods rely on.
+
+    Framework base modules (``nemo_oo_agents`` and submodules) and ``builtins``
+    are skipped so only user / mixin modules appear — EXCEPT the leaf class's
+    own module, which is always included (this preserves prior behavior for
+    agents defined inside the framework, e.g. tests and synthesized standalone
+    agents). Duplicate modules are de-duplicated, retaining the first
+    (base-most) position; ordering is base -> leaf so that callers merging in
+    iteration order let the most-derived (leaf) module win on name collisions.
+    """
+    leaf_module = inspect.getmodule(agent_class)
+    modules: list[types.ModuleType] = []
+    seen: set[int] = set()
+    # reversed(__mro__) => object first, leaf last (base -> leaf order).
+    for cls in reversed(agent_class.__mro__):
+        module = inspect.getmodule(cls)
+        if module is None or id(module) in seen:
+            continue
+        name = getattr(module, "__name__", "")
+        is_framework = (
+            name == "builtins" or name == "nemo_oo_agents" or name.startswith("nemo_oo_agents.")
+        )
+        if module is not leaf_module and is_framework:
+            continue
+        seen.add(id(module))
+        modules.append(module)
+    return modules
+
+
+def filter_mro_module_globals(agent_class: type) -> dict[str, Any]:
+    """Merge :func:`filter_module_globals` across the agent class MRO.
+
+    Modules from :func:`iter_agent_mro_modules` are merged base -> leaf so the
+    most-derived (leaf) module wins on name collisions, matching Python's own
+    name-resolution intuition. This is the multi-module generalization of
+    ``filter_module_globals`` used to build generated-code globals for agents
+    that inherit across modules.
+    """
+    result: dict[str, Any] = {}
+    for module in iter_agent_mro_modules(agent_class):
+        result.update(filter_module_globals(module))
+    return result

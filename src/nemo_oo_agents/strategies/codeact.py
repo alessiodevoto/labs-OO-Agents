@@ -384,9 +384,16 @@ Standard Python builtins and agent instance (`self`) are available."""
         context = self._extract_module_context(agent_module, agent=runtime.agent)
 
         # Filter out blocked modules so the LLM doesn't see unavailable symbols
+        from nemo_oo_agents.agentdoc.visibility import iter_agent_mro_modules
         from nemo_oo_agents.runtime.restrictions import is_from_blocked_module
 
         blocked = self.config.restrictions.blocked_modules
+
+        # Names of all modules across the agent's MRO that contribute symbols —
+        # used to classify a symbol as "defined here" vs "imported". This mirrors
+        # the merged namespace built in _extract_module_context so the displayed
+        # types/functions reflect parent-module symbols too.
+        own_module_names = {m.__name__ for m in iter_agent_mro_modules(type(runtime.agent))}
 
         # Separate into categories
         modules = []
@@ -405,13 +412,13 @@ Standard Python builtins and agent instance (`self`) are available."""
                     modules.append(name)
             elif isinstance(obj, type):
                 obj_module = getattr(obj, "__module__", None)
-                if obj_module == agent_module.__name__:
+                if obj_module in own_module_names:
                     types_defined.append(name)
                 else:
                     imported_items.append(name)
             elif callable(obj):
                 obj_module = getattr(obj, "__module__", None)
-                if obj_module == agent_module.__name__:
+                if obj_module in own_module_names:
                     functions_defined.append(name)
                 else:
                     imported_items.append(name)
@@ -428,7 +435,8 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         if types_defined:
             parts.append(
-                f"**Available types** (defined in agent module): {', '.join(sorted(types_defined))}"
+                "**Available types** (defined in agent or ancestor modules): "
+                f"{', '.join(sorted(types_defined))}"
             )
             parts.append(
                 f"  Tip: Use `doc({types_defined[0]})` to inspect fields before constructing"
@@ -436,7 +444,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         if functions_defined:
             parts.append(
-                "**Available functions** (defined in agent module): "
+                "**Available functions** (defined in agent or ancestor modules): "
                 f"{', '.join(sorted(functions_defined))}"
             )
 
@@ -2344,9 +2352,23 @@ Standard Python builtins and agent instance (`self`) are available."""
         """
         context: dict[str, Any] = {}
 
-        from nemo_oo_agents.agentdoc.visibility import filter_module_globals
+        from nemo_oo_agents.agentdoc.visibility import (
+            filter_module_globals,
+            filter_mro_module_globals,
+            iter_agent_mro_modules,
+        )
 
-        filtered = filter_module_globals(agent_module)
+        # Merge module-level globals across the agent's MRO so a parent defined
+        # in another module contributes its module-level symbols too. The
+        # "defined here" check below treats any MRO module as own, not just the
+        # leaf module. Fall back to the single (leaf) module when no agent
+        # instance is available.
+        if agent is not None:
+            filtered = filter_mro_module_globals(type(agent))
+            own_module_names = {m.__name__ for m in iter_agent_mro_modules(type(agent))}
+        else:
+            filtered = filter_module_globals(agent_module)
+            own_module_names = {agent_module.__name__}
 
         # 1. Module-level imports and definitions
         for name, obj in filtered.items():
@@ -2356,25 +2378,26 @@ Standard Python builtins and agent instance (`self`) are available."""
                 continue
 
             # Include imported classes/functions
-            # Check if it was imported (not defined in this module)
+            # Check if it was imported (not defined in an MRO module)
             obj_module = getattr(obj, "__module__", None)
-            if obj_module and obj_module != agent_module.__name__:
+            if obj_module and obj_module not in own_module_names:
                 if isinstance(obj, type) or callable(obj):
                     context[name] = obj
                     continue
 
         # 2. Module-level definitions: classes AND functions (incl. standalone
-        #    @strategy wrappers) defined in the agent's own module. Visible by
-        #    default — filter_module_globals has already dropped names hidden
-        #    via @hidden, Annotated[..., hidden], or `with hidden:`. Functions
-        #    were previously excluded here (only `type` instances were kept),
-        #    so a module-level helper or standalone generation function was
-        #    invisible to the agent and absent from exec_globals.
+        #    @strategy wrappers) defined in the agent's own (or ancestor's)
+        #    module. Visible by default — filter_module_globals has already
+        #    dropped names hidden via @hidden, Annotated[..., hidden], or
+        #    `with hidden:`. Functions were previously excluded here (only
+        #    `type` instances were kept), so a module-level helper or standalone
+        #    generation function was invisible to the agent and absent from
+        #    exec_globals.
         for name, obj in filtered.items():
             if name in context:
                 continue
             obj_module = getattr(obj, "__module__", None)
-            if obj_module == agent_module.__name__ and callable(obj):
+            if obj_module in own_module_names and callable(obj):
                 context[name] = obj
 
         # 3. Auto-import classes for skill/tool instances found on the agent
