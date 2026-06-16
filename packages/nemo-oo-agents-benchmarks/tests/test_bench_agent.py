@@ -8,6 +8,7 @@ import pytest
 from nemo_oo_agents_benchmarks.agents import bench_agent as bench_agent_module
 from nemo_oo_agents_benchmarks.agents.bench_agent import BenchAgent, TaskResult
 
+from nemo_oo_agents.agentdoc import doc
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
@@ -55,6 +56,16 @@ def test_bench_agent_installs_context_usage_dynamic_block():
     keys = list(agent.context_manager.keys())
 
     assert "context_usage" in keys
+
+
+def test_bench_agent_exposes_context_and_events_apis():
+    """BenchAgent exposes context and events APIs so the LLM can act on context-usage hints."""
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    agent_doc = doc(agent)
+
+    assert "context:" in agent_doc
+    assert "events:" in agent_doc
 
 
 def test_context_usage_block_includes_collapse_hint():
