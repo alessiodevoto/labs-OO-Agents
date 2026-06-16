@@ -31,6 +31,27 @@ def _fresh_agent() -> TUIAgent:
     return TUIAgent(llm=FakeLLMClient())
 
 
+def test_tui_agent_installs_static_shell_doc_context():
+    """Verify TUIAgent registers the live shell doc as a static expr block."""
+    agent = _fresh_agent()
+    raw = dict(agent.context_manager._raw_items())
+
+    assert "self.shell" in raw
+    assert raw["self.shell"].expr == "doc(type(self.shell))"
+    assert agent.context_manager.is_static("self.shell") is True
+
+
+def test_doer_agent_installs_static_shell_doc_context():
+    """Verify DoerAgent registers the live shell doc as a static expr block."""
+    agent = _fresh_agent()
+    doer = agent.make_doer()
+    raw = dict(doer.context_manager._raw_items())
+
+    assert "self.shell" in raw
+    assert raw["self.shell"].expr == "doc(type(self.shell))"
+    assert doer.context_manager.is_static("self.shell") is True
+
+
 # ---------------------------------------------------------------------------
 # Agent-side: queue declaration
 # ---------------------------------------------------------------------------
