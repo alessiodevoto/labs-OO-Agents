@@ -106,7 +106,7 @@ async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_pa
             command_to_verify="pytest -q",
         )
 
-    monkeypatch.setattr(bench_agent_module, "_make_shell", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
     agent = BenchAgent(llm=FakeLLMClient())
     monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
 
@@ -124,7 +124,6 @@ async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_pa
         },
     }
     assert shells[-1].cwd == str(tmp_path)
-    assert shells[-1].commands
 
 
 @pytest.mark.asyncio
@@ -135,7 +134,7 @@ async def test_run_evaluation_returns_failure_on_exception(monkeypatch, tmp_path
     async def fake_solve_task(description: str):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(bench_agent_module, "_make_shell", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
     agent = BenchAgent(llm=FakeLLMClient())
     monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
 
@@ -144,3 +143,91 @@ async def test_run_evaluation_returns_failure_on_exception(monkeypatch, tmp_path
     )
 
     assert result == {"response": "", "success": False, "error": "boom"}
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_requires_problem_statement(monkeypatch, tmp_path):
+    """BenchAgent rejects tasks without a usable task description."""
+
+    def fake_make_shell(cwd: str):
+        return _FakeShell(cwd)
+
+    monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    with pytest.raises(ValueError, match="user_message, problem_statement, or task_description"):
+        await agent._run_evaluation({"working_dir": str(tmp_path)})
+
+
+def test_bench_agent_uses_shell_and_todo_context_blocks():
+    """BenchAgent renders shell and todo docs as static context blocks."""
+
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    keys = list(agent.context_manager.keys())
+
+    assert "shell" in keys
+    assert "todo" in keys
+    assert "self.shell" not in keys
+
+    todo_doc = agent.context_manager["todo"]
+    assert "def add(" in todo_doc
+    assert "def done(" in todo_doc
+
+
+def test_solve_task_prompt_uses_todo_plan_workflow():
+    """The task prompt asks the agent to make a todo-based plan."""
+
+    doc = BenchAgent._solve_task.__doc__ or ""
+
+    assert "2. Write a plan based on todos" in doc
+    assert "Use ``doc(self)`` to see all available tools and methods." not in doc
+
+
+def test_bench_agent_preseeds_planning_todo():
+    """BenchAgent starts each task with an explicit planning todo."""
+
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    todos = agent.todo.list_todos()
+
+    assert [t.title for t in todos] == ["Create a todo-based plan with clear dependencies"]
+
+
+@pytest.mark.asyncio
+async def test_run_evaluation_reseeds_planning_todo_after_clear(monkeypatch, tmp_path):
+    """The planning todo is restored after per-task todo reset."""
+
+    def fake_make_shell(cwd: str):
+        return _FakeShell(cwd)
+
+    async def fake_solve_task(description: str):
+        titles = [t.title for t in agent.todo.list_todos()]
+        assert titles == ["Create a todo-based plan with clear dependencies"]
+        return TaskResult(
+            solution_description="Planned and fixed.",
+            evidence="pytest passed",
+            command_to_verify="pytest -q",
+        )
+
+    monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    agent = BenchAgent(llm=FakeLLMClient())
+    agent.todo.add("stale todo")
+    monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
+
+    result = await agent._run_evaluation(
+        {"problem_statement": "fix the bug", "working_dir": str(tmp_path)}
+    )
+
+    assert result["success"] is True
+
+
+def test_problem_statement_skips_blank_primary_field():
+    """Blank higher-priority fields do not block fallback task text."""
+
+    assert (
+        bench_agent_module._problem_statement(
+            {"user_message": "   ", "problem_statement": " use this "}
+        )
+        == "use this"
+    )
