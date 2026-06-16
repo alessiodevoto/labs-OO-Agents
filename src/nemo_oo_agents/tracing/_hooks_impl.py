@@ -7,13 +7,14 @@ import difflib
 import inspect
 import os
 import time
+import traceback
 from contextvars import ContextVar
 from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from nemo_oo_agents.agentdoc import truncating_pformat
+from nemo_oo_agents.agentdoc import TruncatingStringIO, truncating_pformat
 
 # Context variable for per-async-context active span tracking
 # This prevents context leakage during concurrent execution (e.g., parallel eval samples)
@@ -79,18 +80,34 @@ _TRACE_MAX_STRING = 2_000  # avoid materializing multi-MB strings in trace attrs
 
 
 def _error_message(exception: BaseException) -> str:
-    """Return str(exception) capped at _ERROR_MESSAGE_LIMIT chars.
+    """Return str(exception) capped via the shared truncating IO path.
 
     Exception messages are unbounded — a custom exception can embed repr()
     of a large object.  Span attributes with MB-sized values blow up OTLP
     payloads and trace storage.
     """
-    msg = str(exception)
-    if len(msg) <= _ERROR_MESSAGE_LIMIT:
-        return msg
-    half = _ERROR_MESSAGE_LIMIT // 2
-    dropped = len(msg) - _ERROR_MESSAGE_LIMIT
-    return f"{msg[:half]}\n... {dropped:,} chars truncated ...\n{msg[-half:]}"
+    stream = TruncatingStringIO(limit=_ERROR_MESSAGE_LIMIT)
+    stream.write(str(exception))
+    return stream.getvalue()
+
+
+def _exception_stacktrace(exception: BaseException) -> str:
+    """Return the formatted traceback for ``exception`` capped like error.message."""
+    stream = TruncatingStringIO(limit=_ERROR_MESSAGE_LIMIT)
+    traceback.print_exception(type(exception), exception, exception.__traceback__, file=stream)
+    return stream.getvalue()
+
+
+def _record_error(span: Span, exception: BaseException) -> None:
+    """Attach common error attributes, including the traceback, to ``span``."""
+    message = _error_message(exception)
+    exception_type = type(exception).__name__
+    span.set_status(Status(StatusCode.ERROR, str(exception)))
+    span.set_attribute("error.type", exception_type)
+    span.set_attribute("error.message", message)
+    span.set_attribute("exception.type", exception_type)
+    span.set_attribute("exception.message", message)
+    span.set_attribute("exception.stacktrace", _exception_stacktrace(exception))
 
 
 # OpenInference span kinds
@@ -271,9 +288,7 @@ class OpenInferenceHooks:
 
         # Set result/error
         if exception:
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", _error_message(exception))
+            _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
             with contextlib.suppress(Exception):
@@ -382,9 +397,7 @@ class OpenInferenceHooks:
 
         # Set result/error
         if exception:
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", _error_message(exception))
+            _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
             # Capture the generation result
@@ -511,9 +524,7 @@ class OpenInferenceHooks:
 
         # Set result/error
         if exception:
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", _error_message(exception))
+            _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
             try:
@@ -619,9 +630,7 @@ class OpenInferenceHooks:
 
         # Set result/error
         if exception:
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", _error_message(exception))
+            _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
             try:
@@ -726,9 +735,7 @@ class OpenInferenceHooks:
 
         # Set result/error
         if exception:
-            span.set_status(Status(StatusCode.ERROR, str(exception)))
-            span.set_attribute("error.type", type(exception).__name__)
-            span.set_attribute("error.message", _error_message(exception))
+            _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
             try:
