@@ -16,29 +16,36 @@ Core contract:
 
 from __future__ import annotations
 
-import logging
-import os
-from typing import TYPE_CHECKING, Any
+from nemo_oo_agents import hidden as _hidden
 
-from pydantic import BaseModel, Field
+_agentdoc_hidden_names = {"_hidden"}
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agentdoc import doc, hidden, spec
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.context_blocks import DynamicContext
-from nemo_oo_agents.tools.shell_tools import ShellTools
-from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy
-from nemo_oo_agents.tools.todo import TodoManager
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+with _hidden:
+    import logging
+    import os
+    from typing import TYPE_CHECKING, Any
+
+    from pydantic import BaseModel, Field
+
+    from nemo_oo_agents import Agent, CodeActStrategy, strategy
+    from nemo_oo_agents.agentdoc import doc, spec
+    from nemo_oo_agents.config import CodeActConfig
+    from nemo_oo_agents.context_blocks import DynamicContext
+    from nemo_oo_agents.tools.shell_tools import ShellTools
+    from nemo_oo_agents.tools.todo import TodoManager
+    from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
     from nemo_oo_agents.unifiedllm import UnifiedLLM
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
-_CONDA_ACTIVATE = (
-    "export PATH=/opt/harbor/cpython312/bin:$PATH; "
-    "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed 2>/dev/null || true"
+_OPTIONAL_TESTBED_ACTIVATE = (
+    "if [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then "
+    "[ -d /opt/harbor/cpython312/bin ] && export PATH=/opt/harbor/cpython312/bin:$PATH; "
+    "source /opt/miniconda3/etc/profile.d/conda.sh; "
+    "conda env list | awk '{print $1}' | grep -qx testbed && conda activate testbed || true; "
+    "fi"
 )
 
 
@@ -60,22 +67,16 @@ class TaskResult(BaseModel):
     )
 
 
-@hidden
-def _make_shell(cwd: str = "/") -> ShellTools | ShellToolsLegacy:
-    """Construct the shell variant based on SHELL_VARIANT env."""
-    raw = os.environ.get("SHELL_VARIANT", "").strip().lower()
-    variant = "legacy" if raw == "legacy" else "default"
-    if raw and raw not in ("legacy", "default", "1", "5"):
-        logger.warning("Unknown SHELL_VARIANT=%r; using the default shell", raw)
-    try:
-        from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
-
-        get_harness_metrics().set_shell_variant(variant)
-    except Exception:  # noqa: BLE001
-        logger.warning("Failed to tag shell_variant in harness metrics", exc_info=True)
-    shell = ShellToolsLegacy(cwd=cwd) if variant == "legacy" else ShellTools(cwd=cwd)
-    shell._init_command = _CONDA_ACTIVATE
-    return shell
+@_hidden
+def _problem_statement(task_input: dict) -> str:
+    """Extract the task text from supported Harbor/benchmark field names."""
+    for key in ("user_message", "problem_statement", "task_description"):
+        value = task_input.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    raise ValueError(
+        "task_input must include a non-empty user_message, problem_statement, or task_description"
+    )
 
 
 class BenchAgent(
@@ -101,8 +102,8 @@ class BenchAgent(
     ## Workflow
 
     1. **Understand** -- explore the codebase/environment, reproduce the issue
-    2. **Implement** -- make the fix or complete the task
-    3. **Verify** -- run the relevant tests and confirm they pass
+    2. **Plan** -- write a plan based on todos
+    3. **Implement and verify** -- make the fix and run relevant tests
     4. **Return** -- ``return_result(TaskResult(...))`` with evidence
 
     ## Return format
@@ -121,7 +122,7 @@ class BenchAgent(
     Mark todos done as you complete them.
     """
 
-    terminal: Any = None  # Injected by some runners; None otherwise
+    shell: ShellTools
 
     def _context_usage_block(self) -> str:
         """Return context-window usage plus a benchmark-agent compaction hint."""
@@ -137,24 +138,26 @@ class BenchAgent(
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
         cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
-        self.shell = _make_shell(cwd)
+        self.shell = ShellTools(cwd=cwd)
+        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
         self.todo = TodoManager()
+        self._seed_todos()
         self.problem_statement = ""
         # Base Agent hides context/events by default; BenchAgent's context_usage
         # hint references them, so expose both APIs to the LLM here.
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
-        self.context_manager.set_static("self.shell", doc(type(self.shell)))
+        self.context_manager.set_static("shell", doc(type(self.shell)))
+        self.context_manager.set_static("todo", doc(type(self.todo)))
+
+    def _seed_todos(self) -> None:
+        """Preload the planning todo every benchmark task should start from."""
+        self.todo.add("Create a todo-based plan with clear dependencies")
 
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner."""
         # Read task fields generically (Harbor adapters vary in field names).
-        self.problem_statement = (
-            task_input.get("user_message")
-            or task_input.get("problem_statement")
-            or task_input.get("task_description")
-            or ""
-        )
+        self.problem_statement = _problem_statement(task_input)
         instructions = task_input.get("system_prompt") or task_input.get("instructions") or ""
         initial_obs = task_input.get("initial_observation") or ""
 
@@ -170,10 +173,12 @@ class BenchAgent(
                 raise ValueError(f"working_dir does not exist: {cwd!r}")
         else:
             cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
-        self.shell = _make_shell(cwd)
-        self.context_manager.set_static("self.shell", doc(type(self.shell)))
+        self.shell = ShellTools(cwd=cwd)
+        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
+        self.context_manager.set_static("shell", doc(type(self.shell)))
+        self.context_manager.set_static("todo", doc(type(self.todo)))
         self.todo.clear()
-        await self.shell.run(_CONDA_ACTIVATE)
+        self._seed_todos()
 
         try:
             result = await self._solve_task(self.problem_statement)
@@ -187,7 +192,7 @@ class BenchAgent(
             result_str = str(result) if result is not None else ""
             return {"response": result_str, "success": True, "result": result}
         except Exception as e:
-            logger.error("BenchAgent failed: %s", e)
+            _logger.error("BenchAgent failed: %s", e)
             return {"response": "", "success": False, "error": str(e)}
 
     @strategy(
@@ -231,10 +236,8 @@ class BenchAgent(
         ## Workflow
 
         1. Explore and understand the task/codebase
-        2. Implement the solution
-        3. Run tests to verify
+        2. Write a plan based on todos
+        3. Implement the solution and run tests to verify
         4. Return ``TaskResult(...)`` with concrete evidence
-
-        Use ``doc(self)`` to see all available tools and methods.
         """
         ...
