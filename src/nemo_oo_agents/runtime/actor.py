@@ -48,6 +48,7 @@ from nemo_oo_agents.events import (
     SystemPrompt,
 )
 from nemo_oo_agents.runtime.context_vars import (
+    _current_event_format_var,
     _in_exec_middleware,
     _in_generation_session,
     _parent_agent_var,
@@ -582,6 +583,37 @@ class ActorRuntime:
         # isolation, read stats from the on_messages_built hook's context_stats kwarg.
         self._last_context_stats: ContextWindowStats | None = None
         self._last_prompt_tokens_actual: int | None = None
+        self._event_format_cache: dict[tuple[tuple[str, Any], ...], Any] = {}
+        self._event_format_cache_max_entries = 32
+
+    def _event_format_for_event(self, event: Any) -> Any:
+        """Return the FormatConfig to use when serializing an event.
+
+        Events produced during a generation method carry a persisted
+        ``metadata["truncation_event_format"]`` written by ``EventManager.add()``
+        from the active ``_current_event_format_var``. Reading that metadata here
+        keeps historical events stable across session resume. Events without
+        persisted format metadata fall back to the agent-level event format.
+        """
+        metadata = getattr(event, "metadata", {})
+        event_format = metadata.get("truncation_event_format")
+        if event_format is None:
+            return self.agent._truncation.event_format
+        if not isinstance(event_format, dict):
+            from nemo_oo_agents.config.truncation_config import FormatConfig
+
+            return FormatConfig.model_validate(event_format)
+        cache_key = tuple(sorted(event_format.items()))
+        cached = self._event_format_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        from nemo_oo_agents.config.truncation_config import FormatConfig
+
+        resolved = FormatConfig.model_validate(event_format)
+        if len(self._event_format_cache) >= self._event_format_cache_max_entries:
+            self._event_format_cache.pop(next(iter(self._event_format_cache)))
+        self._event_format_cache[cache_key] = resolved
+        return resolved
 
     def _ensure_generation_lock_on_current_loop(self) -> None:
         """Recreate _generation_lock if the event loop changed (gl-212).
@@ -2528,6 +2560,9 @@ class ActorRuntime:
                 method_token = _current_method_var.set(method)
                 llm_token = _current_llm_var.set(llm_client)
                 truncation_token = _current_truncation_config_var.set(resolved_truncation)
+                event_format_token = _current_event_format_var.set(
+                    resolved_truncation.event_format.model_dump()
+                )
 
                 # Propagate decorator context to nested calls:
                 # merge parent's inherited context with this method's @strategy(context={...})
@@ -2565,6 +2600,7 @@ class ActorRuntime:
                     _current_method_var.reset(method_token)
                     _current_llm_var.reset(llm_token)
                     _current_truncation_config_var.reset(truncation_token)
+                    _current_event_format_var.reset(event_format_token)
                     _decorator_context_var.reset(decorator_ctx_token)
                     _decorator_events_var.reset(decorator_evt_token)
             else:
@@ -2676,7 +2712,7 @@ class ActorRuntime:
         """
         from nemo_oo_agents.runtime.context_builder import build_context
 
-        tc = self.truncation_config
+        tc = self.agent._truncation
         call_kwargs = call_kwargs or {}
 
         # Get current strategy
@@ -2772,7 +2808,7 @@ class ActorRuntime:
         hm = get_harness_metrics()
         with hm.timer("time_prepare_context"):
             blocks = await self._prepare_context(method, call_args, call_kwargs)
-        tc = self.truncation_config
+        tc = self.agent._truncation
         llm_client = _current_llm_var.get()
 
         effective_context_limit = tc.max_context_tokens
@@ -2820,6 +2856,7 @@ class ActorRuntime:
                 context_limit=effective_context_limit,
                 count_tokens=count_tokens,
                 event_format=tc.event_format,
+                event_format_resolver=self._event_format_for_event,
                 model_context_window=getattr(llm_client, "context_window", None),
             )
 

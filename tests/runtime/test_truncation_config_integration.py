@@ -670,14 +670,20 @@ for i in range(4):
         assert agent.runtime.truncation_config.capture.max_stdout == 100_000
 
     @pytest.mark.asyncio
-    async def test_method_level_max_context_tokens_limits_context_rendering(self):
-        """Method-level max_context_tokens should override the agent-level setting.
+    async def test_method_level_max_context_tokens_visible_to_strategy_but_not_render_budget(self):
+        """Method-level max_context_tokens is visible via runtime.truncation_config,
+        but the whole-context render/eviction budget is AGENT-level by design.
 
-        We use a custom strategy that captures what runtime.truncation_config
-        reports for max_context_tokens, then verify it matches the method override
-        (not the agent-level value).
+        ``max_context_tokens`` sizes the shared context window; a per-call value
+        cannot meaningfully re-scope it (every call sees the same accumulated
+        events). So ``_build_messages`` reads ``self.agent._truncation`` for the
+        render budget while ``runtime.truncation_config`` still reports the
+        method override for code that wants the per-call config (e.g. stdout
+        capture). This test pins BOTH facts so the agent-level render behavior
+        can't silently regress to method-level.
         """
         from nemo_oo_agents import strategy
+        from nemo_oo_agents.runtime.actor import _current_llm_var
         from nemo_oo_agents.strategies.base import GenerationStrategy
         from nemo_oo_agents.strategies.current_call import CurrentCall
 
@@ -692,7 +698,15 @@ for i in range(4):
                 return {}
 
             async def execute(self, runtime, call: CurrentCall):
-                captured["max_context_tokens"] = runtime.truncation_config.max_context_tokens
+                # The per-call override is still visible to the strategy.
+                captured["runtime_max_context_tokens"] = (
+                    runtime.truncation_config.max_context_tokens
+                )
+                # ...but the render budget actually used is agent-level.
+                method = getattr(runtime.agent, call.method_name)
+                await runtime._build_messages(method)
+                stats = runtime._last_context_stats
+                captured["render_max_context_tokens"] = stats.max_context_tokens
                 return "done"
 
         class TestAgent(
@@ -709,10 +723,16 @@ for i in range(4):
                 ...
 
         agent = TestAgent()
-        await agent.run()
+        token = _current_llm_var.set(_TEST_LLM)
+        try:
+            await agent.run()
+        finally:
+            _current_llm_var.reset(token)
 
-        # Strategy must have seen the method-level max_context_tokens, not the agent's
-        assert captured["max_context_tokens"] == 5_000
+        # Strategy still sees the method-level override.
+        assert captured["runtime_max_context_tokens"] == 5_000
+        # But the render/eviction budget is the AGENT-level value, not the method's.
+        assert captured["render_max_context_tokens"] == 20_000
 
     @pytest.mark.asyncio
     async def test_concurrent_method_calls_have_isolated_truncation_configs(self):
@@ -851,3 +871,188 @@ for i in range(4):
         # Outer sees its own config before and after calling inner
         assert captured["outer_before"] == 1_000
         assert captured["outer_after"] == 1_000
+
+
+class TestPerCallTruncationRendering:
+    """Method-level truncation should apply only to events from that call."""
+
+    @pytest.mark.asyncio
+    async def test_method_level_event_format_applies_only_to_matching_call_events(self):
+        """Verify method-level event_format applies only to events from that method."""
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.events import Error
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        class EventAddingStrategy(GenerationStrategy):
+            name = "EVENT_ADDING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                marker = call.method_name.upper()
+                runtime.event_manager.add(Error(content=f"{marker}_" + marker[0] * 2000))
+                return "done"
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(event_format=FormatConfig(max_string=1000)),
+        ):
+            @strategy(
+                EventAddingStrategy(),
+                truncation=TruncationConfig(event_format=FormatConfig(max_string=40)),
+            )
+            async def small_event(self) -> str: ...
+
+            @strategy(EventAddingStrategy())
+            async def agent_event(self) -> str: ...
+
+        agent = TestAgent()
+        await agent.small_event()
+        await agent.agent_event()
+
+        # _prepare_context deliberately does not serialize events; render through
+        # _build_messages so the per-call event_format resolver is exercised.
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+
+        token = _current_llm_var.set(_TEST_LLM)
+        try:
+            messages = await agent.runtime._build_messages(agent.small_event)
+        finally:
+            _current_llm_var.reset(token)
+        rendered = "\n".join(str(m.get("content", "")) for m in messages)
+
+        assert "str(len=2012" in rendered
+        assert "[:20]='SMALL_EVENT_" in rendered
+        assert "[:500]='AGENT_EVENT_" in rendered
+
+    @pytest.mark.asyncio
+    async def test_method_level_context_block_format_does_not_rerender_whole_context(self):
+        """Verify method-level truncation does not re-render existing context blocks."""
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        class BuildingStrategy(GenerationStrategy):
+            name = "BUILDING"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                blocks = await runtime._prepare_context(
+                    getattr(runtime.agent, call.method_name), call.args, call.kwargs
+                )
+                rendered_context = next(b.content for b in blocks if b.key == "payload")
+                return rendered_context
+
+        class TestAgent(
+            Agent,
+            llm=_TEST_LLM,
+            truncation=TruncationConfig(
+                context_block_format=FormatConfig(max_string=1000, max_length=100, max_depth=4)
+            ),
+            context={"payload": {"items": list(range(80))}},
+        ):
+            @strategy(
+                BuildingStrategy(),
+                truncation=TruncationConfig(
+                    context_block_format=FormatConfig(max_string=40, max_length=10, max_depth=2)
+                ),
+            )
+            async def inspect_context(self) -> str: ...
+
+        agent = TestAgent()
+        rendered_context = await agent.inspect_context()
+
+        assert "dict(len=1" not in rendered_context
+        assert "list(len=80" not in rendered_context
+        assert "79" in rendered_context
+
+    @pytest.mark.asyncio
+    async def test_event_truncation_format_persists_across_session_resume(self):
+        """metadata["truncation_event_format"] is persisted on events and still
+        scopes rendering after the events are reloaded from storage (resume).
+
+        The per-call rendering design must NOT depend on runtime-local
+        caches surviving a restart: the format travels with the event's metadata.
+        This test reloads events through a SQLite round-trip (serializing metadata
+        to JSON and back) and asserts the method-level bound is still applied.
+        """
+        import tempfile
+        from pathlib import Path
+
+        from nemo_oo_agents import strategy
+        from nemo_oo_agents.events import Error
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nemo_oo_agents.storage import SQLiteStorageManager
+        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nemo_oo_agents.strategies.current_call import CurrentCall
+
+        class EventAddingStrategy(GenerationStrategy):
+            name = "EVENT_ADDING_RESUME"
+            traceable = False
+            requires_lock = False
+
+            def get_block_overrides(self):
+                return {}
+
+            async def execute(self, runtime, call: CurrentCall):
+                runtime.event_manager.add(Error(content="R_" + "R" * 2000))
+                return "done"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "session.db"
+
+            class TestAgent(
+                Agent,
+                llm=_TEST_LLM,
+                truncation=TruncationConfig(event_format=FormatConfig(max_string=1000)),
+            ):
+                @strategy(
+                    EventAddingStrategy(),
+                    truncation=TruncationConfig(event_format=FormatConfig(max_string=40)),
+                )
+                async def small_event(self) -> str: ...
+
+            storage = SQLiteStorageManager(str(db_path))
+            agent = TestAgent(storage=storage)
+            await agent.small_event()
+
+            # Confirm the format was persisted onto the event's metadata.
+            error_events = agent.event_manager.filter(type="Error")
+            assert error_events, "expected an Error event"
+            persisted = error_events[-1].metadata.get("truncation_event_format")
+            assert persisted == {"max_string": 40, "max_length": 200, "max_depth": 5}
+
+            # Release the session lock so a fresh manager can reopen the DB.
+            storage.close()
+
+            # Simulate resume: fresh agent + storage pointed at the same DB. The
+            # new runtime has a cold format cache, so per-call scoping must come
+            # entirely from event metadata.
+            storage2 = SQLiteStorageManager(str(db_path))
+            try:
+                agent2 = TestAgent(storage=storage2)
+                assert agent2.event_manager.filter(type="Error"), "events did not reload"
+
+                token = _current_llm_var.set(_TEST_LLM)
+                try:
+                    messages = await agent2.runtime._build_messages(agent2.small_event)
+                finally:
+                    _current_llm_var.reset(token)
+                rendered = "\n".join(str(m.get("content", "")) for m in messages)
+
+                # The reloaded event renders under the method-level bound (40), not
+                # the agent-level bound (1000): head window = max_string // 2 = 20.
+                assert "str(len=2002" in rendered
+                assert "[:20]='R_" in rendered
+                assert "[:500]" not in rendered
+            finally:
+                storage2.close()

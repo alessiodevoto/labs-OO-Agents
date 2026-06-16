@@ -134,6 +134,20 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
     ):
         self._event_format = event_format  # set from tc.event_format by CodeActLiteStrategy
 
+    def format_event(
+        self,
+        event: Any,
+        event_format: "FormatConfig | None" = None,
+    ) -> str:
+        return plain_event_content(event, event_format=event_format or self._event_format)
+
+    def _content_for_block(self, block: ResolvedBlock) -> str:
+        if block.content:
+            return block.content
+        if block.event is not None:
+            return plain_event_content(block.event, event_format=self._event_format)
+        return ""
+
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
         # System blocks: reuse XML wrapping from the base class by calling it on
         # the SYSTEM-role blocks only. That gives us a list with a single
@@ -174,10 +188,7 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
                 # Tool result: merge PythonOutput content if available.
                 py_out_block = python_outputs.get(event.tool_call_id)
                 if py_out_block and py_out_block.event:
-                    content = plain_event_content(
-                        py_out_block.event,
-                        event_format=self._event_format,
-                    )
+                    content = self._content_for_block(py_out_block)
                 elif event.result is not None:
                     content = event.result.content
                 else:
@@ -198,13 +209,7 @@ class PlainCodeActBlockFormatter(XMLBlockFormatter):  # type: ignore[misc]  # un
                 continue
 
             else:
-                if block.event is not None:
-                    content = plain_event_content(
-                        block.event,
-                        event_format=self._event_format,
-                    )
-                else:
-                    content = block.content or ""
+                content = self._content_for_block(block)
                 messages.append(RenderedMessage(role=block.role, content=content))
 
         return messages

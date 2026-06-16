@@ -1707,6 +1707,56 @@ class TestPlainProviderFormatterFormat:
         assert len(tool_msgs) == 1
         assert tool_msgs[0].content == "python result"
 
+    def test_tool_call_with_python_output_prefers_pre_serialized_content(self):
+        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
+        from nemo_oo_agents.context_blocks.models import Role
+
+        formatter = PlainProviderFormatter()
+        po = PythonOutput(
+            tool_call_id="tc_match",
+            execution_status=ResultStatus.COMPLETE,
+            execution_count=1,
+            value="X" * 2000,
+        )
+        po_block = ResolvedBlock(
+            key="po",
+            content="PRE_SERIALIZED_BY_RENDER_CONTEXT",
+            role=Role.TOOL,
+            event=po,
+        )
+        tce = ToolCallEvent(
+            tool_call_id="tc_match",
+            name="execute_python",
+            arguments={"code": "x = 1"},
+            result=None,
+        )
+        tce_block = ResolvedBlock(key="tc", content="", role=Role.ASSISTANT, event=tce)
+
+        messages = formatter.format([tce_block, po_block])
+        tool_msgs = [m for m in messages if m.role == Role.TOOL]
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0].content == "PRE_SERIALIZED_BY_RENDER_CONTEXT"
+        assert "str(len=2000" not in tool_msgs[0].content
+
+    def test_non_tool_event_prefers_pre_serialized_content(self):
+        from nemo_oo_agents.context_blocks import ResolvedBlock
+        from nemo_oo_agents.context_blocks.models import Role
+
+        formatter = PlainProviderFormatter()
+        event = Error(content="X" * 2000)
+        block = ResolvedBlock(
+            key="err",
+            content="PRE_SERIALIZED_EVENT",
+            role=Role.USER,
+            event=event,
+        )
+
+        messages = formatter.format([block])
+        user_msgs = [m for m in messages if m.role == Role.USER]
+        assert len(user_msgs) == 1
+        assert user_msgs[0].content == "PRE_SERIALIZED_EVENT"
+        assert "X" * 2000 not in user_msgs[0].content
+
 
 class TestPredictStrategyRawExtractionFallback:
     """Tests covering lines 214-215 and 220-235: fallback raw extraction in exception handler."""
