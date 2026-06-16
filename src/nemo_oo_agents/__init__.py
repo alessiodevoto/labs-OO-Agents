@@ -41,7 +41,7 @@ from nemo_oo_agents.errors import (  # noqa: E402
     ValidationError,
 )
 from nemo_oo_agents.library_manager import LibraryManager  # noqa: E402
-from nemo_oo_agents.media import Audio, File, Image, Media  # noqa: E402
+from nemo_oo_agents.media import Audio, File, Image, Media, Video  # noqa: E402
 from nemo_oo_agents.metaclass import AgentMeta, no_trace  # noqa: E402
 
 # Export prompt inspection utilities
@@ -119,6 +119,7 @@ __all__ = [
     "Media",
     "Image",
     "Audio",
+    "Video",
     "File",
     # Agent and decorators
     "Agent",

@@ -1,10 +1,11 @@
 """Tests for multimodal media capture via show() in CodeAct execution."""
 
 import base64
+from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.media import Audio, File, Image, Media
+from nemo_oo_agents.media import Audio, File, Image, Media, Video
 from nemo_oo_agents.runtime.media_capture import (
     _media_buffer_var,
     _MediaBuffer,
@@ -12,6 +13,14 @@ from nemo_oo_agents.runtime.media_capture import (
     media_to_content_block,
     show,
 )
+
+
+def _write_fake_mp4(tmp_path: Path) -> Path:
+    """Write minimal .mp4 bytes; mimetypes guesses video/mp4 from the extension."""
+    mp4 = tmp_path / "clip.mp4"
+    mp4.write_bytes(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 32)
+    return mp4
+
 
 # ---------------------------------------------------------------------------
 # Media class hierarchy
@@ -33,6 +42,11 @@ class TestMediaHierarchy:
         f = File.from_url("https://example.com/report.pdf")
         assert isinstance(f, Media)
         assert f.modality == "file"
+
+    def test_video_is_media(self):
+        v = Video.from_url("https://example.com/clip.mp4")
+        assert isinstance(v, Media)
+        assert v.modality == "video"
 
     def test_no_llm_specific_methods(self):
         """Media should NOT have LLM-specific methods."""
@@ -81,6 +95,27 @@ class TestFile:
         assert f.data_url == "https://example.com/report.pdf"
 
 
+class TestVideo:
+    def test_from_file(self, tmp_path: Path):
+        v = Video.from_file(_write_fake_mp4(tmp_path))
+        assert v.media_type == "video/mp4"
+        assert v.data_url.startswith("data:video/mp4;base64,")
+        r = repr(v)
+        assert r.startswith("Video(video/mp4, ")
+        assert "bytes)" in r
+
+    def test_from_url_default_media_type(self):
+        v = Video.from_url("https://example.com/clip.mp4")
+        assert v.media_type == "video/mp4"
+        assert v.data_url == "https://example.com/clip.mp4"
+
+    def test_from_bytes_explicit_media_type(self):
+        v = Video.from_bytes(b"webm-bytes", media_type="video/webm")
+        assert v.media_type == "video/webm"
+        decoded = base64.b64decode(v._base64_data())
+        assert decoded == b"webm-bytes"
+
+
 # ---------------------------------------------------------------------------
 # Content block conversion
 # ---------------------------------------------------------------------------
@@ -112,6 +147,28 @@ class TestMediaToContentBlock:
         block = media_to_content_block(f)
         assert block["type"] == "file"
         assert block["file"]["file_data"] == "https://example.com/report.pdf"
+
+    def test_video_block_from_file(self, tmp_path: Path):
+        v = Video.from_file(_write_fake_mp4(tmp_path))
+        block = media_to_content_block(v)
+        assert block["type"] == "video_url"
+        assert block["video_url"]["url"].startswith("data:video/mp4;base64,")
+
+    def test_video_block_url_preserves_url(self):
+        v = Video.from_url("https://example.com/clip.mp4")
+        block = media_to_content_block(v)
+        assert block == {
+            "type": "video_url",
+            "video_url": {"url": "https://example.com/clip.mp4"},
+        }
+
+    def test_video_vendor_metadata_merged_into_block(self):
+        v = Video.from_url("https://example.com/clip.mp4", fps=1, max_frames=32)
+        block = media_to_content_block(v)
+        assert block["type"] == "video_url"
+        assert block["video_url"]["url"] == "https://example.com/clip.mp4"
+        assert block["video_url"]["fps"] == 1
+        assert block["video_url"]["max_frames"] == 32
 
     def test_raises_on_non_media(self):
         with pytest.raises(TypeError, match="Expected Media"):
@@ -161,6 +218,18 @@ class TestShow:
             show(f)
             assert len(buf.blocks) == 1
             assert buf.blocks[0]["type"] == "file"
+        finally:
+            _media_buffer_var.reset(token)
+
+    def test_show_collects_video(self, capsys, tmp_path: Path):
+        buf = _MediaBuffer(max_attachments=10)
+        token = _media_buffer_var.set(buf)
+        try:
+            video = Video.from_file(_write_fake_mp4(tmp_path))
+            show(video)
+            assert len(buf.blocks) == 1
+            assert buf.blocks[0]["type"] == "video_url"
+            assert buf.blocks[0]["video_url"]["url"].startswith("data:video/mp4;base64,")
         finally:
             _media_buffer_var.reset(token)
 

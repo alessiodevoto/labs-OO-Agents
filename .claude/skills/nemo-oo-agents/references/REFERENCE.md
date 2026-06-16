@@ -395,10 +395,10 @@ class MyAgent(Agent, llm=llm):
 
 ## Media Types
 
-Handle images, audio, and files in agent methods:
+Handle images, audio, video, and files in agent methods:
 
 ```python
-from nemo_oo_agents import Image, Audio, File
+from nemo_oo_agents import Image, Audio, Video, File
 
 class MediaAgent(Agent, llm=llm):
     async def describe_image(self, img: Image) -> str:
@@ -407,6 +407,10 @@ class MediaAgent(Agent, llm=llm):
 
     async def transcribe(self, audio: Audio) -> str:
         """Transcribe the audio recording."""
+        ...
+
+    async def summarize_clip(self, video: Video) -> str:
+        """Summarize what happens in this video."""
         ...
 ```
 
