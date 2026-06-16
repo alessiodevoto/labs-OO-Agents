@@ -97,7 +97,10 @@ def _collect_referenced_types_transitive(
     from nemo_oo_agents.agentdoc._discover import discover_referenced_types
 
     all_types: set[type] = set()
-    frontier = set(seed_types)
+    # Exclude the primary type from the seed too: a type that references itself in its
+    # own method signatures (common, e.g. DataFrame methods returning DataFrame) must
+    # not list itself under "Referenced Types".
+    frontier = {t for t in seed_types if t is not exclude}
     while frontier:
         all_types.update(frontier)
         next_frontier: set[type] = set()
