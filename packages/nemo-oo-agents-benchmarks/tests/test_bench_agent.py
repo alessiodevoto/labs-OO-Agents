@@ -48,6 +48,36 @@ def test_bench_agent_class_exists():
     assert hasattr(BenchAgent, "_run_evaluation")
 
 
+def test_bench_agent_installs_context_usage_dynamic_block():
+    """BenchAgent exposes live context-window usage to the LLM."""
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    keys = list(agent.context_manager.keys())
+
+    assert "context_usage" in keys
+
+
+def test_context_usage_block_includes_collapse_hint():
+    """Context usage tells agents how to compact old event history."""
+    from nemo_oo_agents.context_blocks.models import ContextWindowStats
+
+    agent = BenchAgent(llm=FakeLLMClient())
+    agent.runtime._last_context_stats = ContextWindowStats(
+        context_blocks_tokens=100,
+        context_blocks_count=2,
+        events_tokens=900,
+        events_count=12,
+        total_tokens=1000,
+        max_context_tokens=1000,
+        max_event_tokens=1000,
+    )
+
+    block = agent._context_usage_block()
+
+    assert "Context usage:" in block
+    assert "self.events.collapse(start_tag, end_tag, summary_text)" in block
+
+
 @pytest.mark.asyncio
 async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_path):
     shells: list[_FakeShell] = []
