@@ -146,12 +146,16 @@ def is_hidden_field(cls: Any, name: str) -> bool:
             return False
         cls = type(cls)
 
-    # Class-level imperative override — spec(MyClass, "field", hidden=True/False)
-    imperative_hidden = get_field_metadata(cls, name).get("hidden")
-    if imperative_hidden is True:
-        return True
-    if imperative_hidden is False:
-        return False
+    # Class-level imperative override — spec(MyClass, "field", hidden=True/False).
+    # Walk the MRO (leaf → base) so an override declared on a parent class is
+    # honored on the child; the most-derived declaration wins.  get_field_metadata
+    # is intentionally own-dict-only, so we iterate the MRO here.
+    for klass in cls.__mro__:
+        imperative_hidden = get_field_metadata(klass, name).get("hidden")
+        if imperative_hidden is True:
+            return True
+        if imperative_hidden is False:
+            return False
 
     for klass in cls.__mro__:
         if name not in inspect.get_annotations(klass):

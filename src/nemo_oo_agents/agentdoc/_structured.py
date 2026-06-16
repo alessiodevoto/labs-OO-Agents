@@ -1010,14 +1010,40 @@ def _extract_plain_class_fields(obj: type) -> list[FieldInfo]:
         fields.append(FieldInfo(name=name, type=type_str, default=default, description=description))
         seen_names.add(name)
 
-    # 2. Then extract non-annotated class-level attributes (tools, child agents, etc.)
-    # Only look at the class's own __dict__, not inherited attributes
-    for name, value in obj.__dict__.items():
+    # 2. Then extract non-annotated class-level attributes (tools, child agents, etc.).
+    # Walk the full MRO (base → derived) so inherited un-annotated class attributes
+    # (e.g. `shell = ShellTools()` declared on a base agent) appear in the child's
+    # doc(), matching how annotated fields (step 1) and methods are collected.
+    #
+    # Candidate names are gathered only from the __dict__s of classes in obj.__mro__
+    # (base-class attrs ordered before derived, mirroring step 1). Restricting the
+    # name source to the class MRO ensures inspect.getattr_static() below resolves
+    # each name within the class MRO before the metaclass, so metaclass attributes
+    # are never pulled in. The effective (leaf-resolved) value is used, so the leaf
+    # class wins on name collisions.
+    # (mro_index was computed in step 1 above; reuse it for the same ordering.)
+    candidate_names: list[str] = []
+    seen_candidates: set[str] = set()  # O(1) dedup alongside the ordered list
+    for _klass in sorted(
+        (c for c in obj.__mro__ if c is not object),
+        key=lambda c: (len(c.__mro__), mro_index[c]),
+    ):
+        for name in _klass.__dict__:
+            if name not in seen_candidates:
+                seen_candidates.add(name)
+                candidate_names.append(name)
+
+    for name in candidate_names:
         # Skip already-seen (annotated) fields
         if name in seen_names:
             continue
         # Skip private/dunder attributes
         if name.startswith("_"):
+            continue
+        # Resolve the effective value via the MRO (leaf wins) without invoking
+        # descriptors. REQUIRED guards names that vanished between collection and lookup.
+        value = inspect.getattr_static(obj, name, REQUIRED)
+        if value is REQUIRED:
             continue
         # Skip methods, functions, classmethods, staticmethods, properties
         if callable(value) and not isinstance(value, type):

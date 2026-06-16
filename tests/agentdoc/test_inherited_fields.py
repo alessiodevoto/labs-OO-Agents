@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from nemo_oo_agents.agentdoc import doc
+from nemo_oo_agents.agentdoc import doc, spec
 from nemo_oo_agents.agentdoc._structured import extract_type_info
 from nemo_oo_agents.agentdoc._visibility import hidden
 
@@ -228,3 +228,181 @@ class TestHiddenInheritance:
         assert "label" in result
         assert "child_field" in result
         assert "api_key" not in result
+
+
+# ---------------------------------------------------------------------------
+# Inherited un-annotated class attributes
+#
+# Un-annotated class-level attributes (e.g. `shell = ShellTools()`,
+# `todos = TodoManager()`) declared on a base class were dropped from the
+# child's doc() because step 2 of field extraction only scanned the leaf
+# class's own __dict__. Annotated fields and methods survived (they walk the
+# MRO); bare attributes did not.
+# ---------------------------------------------------------------------------
+
+
+class _Tool:
+    """A tool-like object used as an un-annotated class attribute."""
+
+
+class _ToolA:
+    pass
+
+
+class _ToolB:
+    pass
+
+
+class TestInheritedUnannotatedAttrs:
+    def test_inherited_bare_attr_present(self):
+        """A bare (un-annotated) class attribute on the parent appears on the child."""
+
+        class Parent:
+            annotated_attr: _Tool = _Tool()
+            bare_attr = _Tool()
+
+        class Child(Parent):
+            pass
+
+        info = extract_type_info(Child)
+        field_names = [f.name for f in info.fields]
+        assert "annotated_attr" in field_names
+        assert "bare_attr" in field_names
+
+    def test_inherited_bare_attr_rendered_as_instance_marker(self):
+        """The inherited bare attr renders with a ClassName() instance marker."""
+
+        class Parent:
+            bare_attr = _Tool()
+
+        class Child(Parent):
+            pass
+
+        result = doc(Child)
+        assert "bare_attr" in result
+        assert "_Tool()" in result
+
+    def test_deep_inheritance_grandparent_bare_attr(self):
+        """Un-annotated attr declared on a grandparent shows on the grandchild."""
+
+        class Grandparent:
+            gp_tool = _Tool()
+
+        class Parent(Grandparent):
+            pass
+
+        class Child(Parent):
+            pass
+
+        field_names = [f.name for f in extract_type_info(Child).fields]
+        assert "gp_tool" in field_names
+
+    def test_leaf_override_wins(self):
+        """When a child re-declares a parent bare attr, the child's value wins."""
+
+        class Parent:
+            tool = _ToolA()
+
+        class Child(Parent):
+            tool = _ToolB()
+
+        info = extract_type_info(Child)
+        field_names = [f.name for f in info.fields]
+        assert field_names.count("tool") == 1
+        tool_field = next(f for f in info.fields if f.name == "tool")
+        # Default marker formats as ClassName()
+        assert repr(tool_field.default) == "_ToolB()"
+
+    def test_parent_spec_hidden_attr_suppressed(self):
+        """spec(Parent, attr, hidden=True) on a bare parent attr stays out of child doc()."""
+
+        class Parent:
+            visible_tool = _Tool()
+            secret_tool = _Tool()
+
+        spec(Parent, "secret_tool", hidden=True)
+
+        class Child(Parent):
+            pass
+
+        result = doc(Child)
+        assert "visible_tool" in result
+        assert "secret_tool" not in result
+
+    def test_leaf_spec_unhide_wins_over_parent_hidden(self):
+        """Leaf-level spec(hidden=False) overrides a parent spec(hidden=True)."""
+
+        class Parent:
+            tool = _Tool()
+
+        spec(Parent, "tool", hidden=True)
+
+        class Child(Parent):
+            pass
+
+        spec(Child, "tool", hidden=False)
+
+        result = doc(Child)
+        assert "tool" in result
+
+    def test_inherited_attr_ordering(self):
+        """Inherited bare attr renders before the child's own bare attr."""
+
+        class Parent:
+            parent_tool = _Tool()
+
+        class Child(Parent):
+            child_tool = _Tool()
+
+        field_names = [f.name for f in extract_type_info(Child).fields]
+        assert field_names.index("parent_tool") < field_names.index("child_tool")
+
+    def test_metaclass_attribute_not_leaked(self):
+        """An attribute defined only on a metaclass must not appear in child doc()."""
+
+        class Meta(type):
+            meta_only_attr = _Tool()
+
+        class Parent(metaclass=Meta):
+            bare_attr = _Tool()
+
+        class Child(Parent):
+            pass
+
+        field_names = [f.name for f in extract_type_info(Child).fields]
+        assert "bare_attr" in field_names
+        assert "meta_only_attr" not in field_names
+
+
+class TestInheritedUnannotatedAgentAttrs:
+    """The real-world case: a base Agent with un-annotated tool attrs."""
+
+    def test_agent_subclass_inherits_bare_tool_attrs(self):
+        from nemo_oo_agents import Agent
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
+
+        fake_llm = FakeLLMClient([])
+
+        class _Shell:
+            """Stand-in for ShellTools."""
+
+        class _Todos:
+            """Stand-in for TodoManager."""
+
+        class BaseAgent(Agent, llm=fake_llm):
+            shell = _Shell()
+            todos = _Todos()
+
+        class ChildAgent(BaseAgent):
+            pass
+
+        field_names = [f.name for f in extract_type_info(ChildAgent).fields]
+        assert "shell" in field_names
+        assert "todos" in field_names
+
+        result = doc(ChildAgent)
+        assert "shell" in result
+        assert "todos" in result
+        # Framework internals must not leak into the child's doc().
+        assert "_enable_tracing" not in field_names
+        assert "runtime" not in result
