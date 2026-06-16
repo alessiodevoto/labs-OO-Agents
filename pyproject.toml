@@ -232,7 +232,7 @@ disable_error_code = ["empty-body", "return", "call-arg"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["worktrees", ".vscode-server"]
+extend-exclude = ["worktrees", ".vscode-server", ".claude"]
 
 [tool.ruff.lint]
 select = [
