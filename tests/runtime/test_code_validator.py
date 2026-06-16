@@ -577,6 +577,114 @@ class TestSecurityValidatorAdditionalRejects:
         validator.validate(code, default_context)
 
 
+class TestSecurityValidatorProcessTermination:
+    """E005 — process termination escapes (raise SystemExit, sys.exit(), etc.).
+
+    AST detection is a fast-fail for the literal forms; indirect forms
+    (aliasing the callable, raising a name bound elsewhere) are deliberately not
+    caught here — the runtime converts any SystemExit/KeyboardInterrupt that
+    reaches it into an ordinary execution error.
+    """
+
+    def test_reject_raise_systemexit(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        with pytest.raises(ValidationError, match="SystemExit.*forbidden"):
+            validator.validate("raise SystemExit", default_context)
+
+    def test_reject_raise_systemexit_with_code(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        with pytest.raises(ValidationError, match="SystemExit.*forbidden"):
+            validator.validate("raise SystemExit(3)", default_context)
+
+    def test_reject_raise_keyboardinterrupt(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        with pytest.raises(ValidationError, match="KeyboardInterrupt.*forbidden"):
+            validator.validate("raise KeyboardInterrupt", default_context)
+
+    def test_reject_sys_exit(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(ast.parse("sys.exit()"), ValidationContext())
+        assert any(i.code == "E005" and "sys.exit" in i.message for i in issues)
+
+    def test_reject_os_underscore_exit(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(ast.parse("os._exit(1)"), ValidationContext())
+        assert any(i.code == "E005" and "os._exit" in i.message for i in issues)
+
+    def test_reject_os_abort(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(ast.parse("os.abort()"), ValidationContext())
+        assert any(i.code == "E005" and "os.abort" in i.message for i in issues)
+
+    def test_reject_sys_exit_module_alias(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("import sys as s\ns.exit()"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for sys.exit" in i.message for i in issues)
+
+    def test_reject_os_underscore_exit_module_alias(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("import os as o\no._exit(1)"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for os._exit" in i.message for i in issues)
+
+    def test_reject_os_abort_module_alias(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("import os as o\no.abort()"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for os.abort" in i.message for i in issues)
+
+    def test_reject_from_sys_import_exit_alias(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("from sys import exit as bye\nbye()"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for sys.exit" in i.message for i in issues)
+
+    def test_reject_from_os_import_underscore_exit_alias(
+        self, security_validator: SecurityValidator
+    ):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("from os import _exit as die\ndie(1)"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for os._exit" in i.message for i in issues)
+
+    def test_reject_from_os_import_abort_alias(self, security_validator: SecurityValidator):
+        import ast
+
+        issues = security_validator.validate(
+            ast.parse("from os import abort as die\ndie()"), ValidationContext()
+        )
+        assert any(i.code == "E005" and "alias for os.abort" in i.message for i in issues)
+
+    def test_allow_raise_ordinary_exception(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        """Ordinary exceptions are fine — only process-termination is blocked."""
+        validator.validate("raise ValueError('nope')", default_context)
+
+    def test_allow_raise_cancellederror(
+        self, validator: UnifiedCodeValidator, default_context: ValidationContext
+    ):
+        """asyncio.CancelledError must NOT be blocked — cancellation is legitimate."""
+        validator.validate("import asyncio\nraise asyncio.CancelledError", default_context)
+
+
 # =============================================================================
 # BlockingCallValidator Tests
 # =============================================================================

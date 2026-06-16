@@ -26,6 +26,7 @@ Usage:
 #   E002 — Restricted or blocked import (module in restricted_imports or blocked_modules)
 #   E003 — Forbidden dunder attribute access (__class__, __subclasses__, etc.)
 #   E004 — Forbidden escape via sys/os attributes (sys.modules, os.system, etc.)
+#   E005 — Process termination (raise SystemExit, sys.exit()/os._exit(), exit()/quit())
 # REPLPolicyValidator:
 #   E101 — Bare function/class definition without assignment or call
 #   E104 — Import statement (use exec_globals instead)
@@ -194,6 +195,8 @@ class _SecurityVisitor(ast.NodeVisitor):
         self.issues: list[ValidationIssue] = []
         # Track aliases: local_name -> original_forbidden_name
         self.forbidden_aliases: dict[str, str] = {}
+        # Track aliases like `import os as o; o._exit()` / `import sys as s; s.exit()`.
+        self.module_aliases: dict[str, str] = {}
 
     def visit_Import(self, node: ast.Import) -> Any:
         """Check import statements."""
@@ -201,6 +204,11 @@ class _SecurityVisitor(ast.NodeVisitor):
             available, deny_tier = self._is_module_available(alias.name)
             if not available:
                 self.issues.append(self._make_import_error(node, alias.name, deny_tier))
+
+            root_module = alias.name.split(".", 1)[0]
+            if root_module in ("sys", "os"):
+                self.module_aliases[alias.asname or root_module] = root_module
+
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
@@ -224,11 +232,17 @@ class _SecurityVisitor(ast.NodeVisitor):
         if not available:
             self.issues.append(self._make_import_error(node, module_name, deny_tier))
         else:
-            # Track aliases of forbidden builtins
+            # Track aliases of forbidden builtins and imported process-termination calls.
             for alias in node.names:
+                local_name = alias.asname or alias.name
                 if alias.name in FORBIDDEN_BUILTINS:
-                    local_name = alias.asname or alias.name
                     self.forbidden_aliases[local_name] = alias.name
+                if (module_name, alias.name) in (
+                    ("sys", "exit"),
+                    ("os", "_exit"),
+                    ("os", "abort"),
+                ):
+                    self.forbidden_aliases[local_name] = f"{module_name}.{alias.name}"
 
         self.generic_visit(node)
 
@@ -250,14 +264,19 @@ class _SecurityVisitor(ast.NodeVisitor):
             # Check aliased forbidden calls
             elif func_name in self.forbidden_aliases:
                 original = self.forbidden_aliases[func_name]
-                self.issues.append(
-                    ValidationIssue(
-                        line=node.lineno,
-                        col=node.col_offset,
-                        message=f"{func_name}() is forbidden (alias for {original})",
-                        code="E001",
+                if original in ("sys.exit", "os._exit", "os.abort"):
+                    self._add_process_termination_call_issue(
+                        node, f"{func_name}() (alias for {original})"
                     )
-                )
+                else:
+                    self.issues.append(
+                        ValidationIssue(
+                            line=node.lineno,
+                            col=node.col_offset,
+                            message=f"{func_name}() is forbidden (alias for {original})",
+                            code="E001",
+                        )
+                    )
             # Check setattr/delattr/getattr with dunder names or forbidden attr calls
             elif func_name in ("setattr", "delattr", "getattr"):
                 self._check_attr_modification_with_dunder(node, func_name)
@@ -290,8 +309,34 @@ class _SecurityVisitor(ast.NodeVisitor):
                         code="E001",
                     )
                 )
+            # Process-termination attribute calls: sys.exit(), os._exit(), os.abort(), plus aliases.
+            elif isinstance(node.func.value, ast.Name):
+                module_name = self.module_aliases.get(node.func.value.id, node.func.value.id)
+                if (module_name, node.func.attr) in (
+                    ("sys", "exit"),
+                    ("os", "_exit"),
+                    ("os", "abort"),
+                ):
+                    call = f"{node.func.value.id}.{node.func.attr}()"
+                    if node.func.value.id != module_name:
+                        call += f" (alias for {module_name}.{node.func.attr})"
+                    self._add_process_termination_call_issue(node, call)
 
         self.generic_visit(node)
+
+    def _add_process_termination_call_issue(self, node: ast.Call, call: str) -> None:
+        self.issues.append(
+            ValidationIssue(
+                line=node.lineno,
+                col=node.col_offset,
+                message=(
+                    f"{call} is forbidden - it terminates at the process/control-flow "
+                    "level and can cancel sibling tasks. Use break, a flag, a helper "
+                    "return, or return_result() to stop."
+                ),
+                code="E005",
+            )
+        )
 
     def visit_Attribute(self, node: ast.Attribute) -> Any:
         """Check attribute access for dangerous dunders."""
@@ -352,6 +397,39 @@ class _SecurityVisitor(ast.NodeVisitor):
                     message="Access to '__builtins__' is forbidden - "
                     "this could bypass security restrictions",
                     code="E101",
+                )
+            )
+        self.generic_visit(node)
+
+    def visit_Raise(self, node: ast.Raise) -> Any:
+        """Flag `raise SystemExit` / `raise SystemExit(...)`.
+
+        SystemExit (and KeyboardInterrupt) are BaseException, not Exception, so
+        a generated cell raising one escapes the runtime's per-cell error
+        handling and can cancel sibling tasks (e.g. a surrounding TaskGroup).
+        To stop a cell, use break, a flag, a helper return, or return_result().
+        This is a fast-fail for the literal form; the runtime also converts any
+        SystemExit/KeyboardInterrupt that reaches it into an execution error.
+        """
+        exc = node.exc
+        # `raise SystemExit` (Name) or `raise SystemExit(...)` (Call of a Name)
+        name = None
+        if isinstance(exc, ast.Name):
+            name = exc.id
+        elif isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name):
+            name = exc.func.id
+        if name in ("SystemExit", "KeyboardInterrupt"):
+            self.issues.append(
+                ValidationIssue(
+                    line=node.lineno,
+                    col=node.col_offset,
+                    message=(
+                        f"raise {name} is forbidden - it terminates the cell at "
+                        "the process/control-flow level and can cancel sibling "
+                        "tasks. Use break, a flag, a helper return, or "
+                        "return_result() to stop."
+                    ),
+                    code="E005",
                 )
             )
         self.generic_visit(node)

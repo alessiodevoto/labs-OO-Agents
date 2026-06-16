@@ -1717,6 +1717,39 @@ class ActorRuntime:
                 )
                 return result
 
+            except (SystemExit, KeyboardInterrupt) as e:
+                # A generated cell used raise SystemExit / sys.exit() / exit() / quit()
+                # (or Ctrl-C surfaced as KeyboardInterrupt). These are BaseException,
+                # not Exception, so without this handler they would escape execute_code,
+                # propagate through the strategy into the parent async flow, and cancel
+                # sibling tasks (e.g. a surrounding asyncio.TaskGroup). Convert to an
+                # ordinary execution error so one cell cannot terminate the parent run.
+                # NOTE: asyncio.CancelledError (also BaseException) is deliberately NOT
+                # caught here — real cancellation must still propagate.
+                captured_locals = _extract_captured_locals(exec_globals)
+
+                # ExecutionResult.error is typed Exception | None, so wrap the
+                # BaseException in a RuntimeError (original kept as __cause__).
+                wrapped = RuntimeError(
+                    f"{type(e).__name__} raised inside generated code. "
+                    "Do not use raise SystemExit / sys.exit() / exit() / quit() to stop "
+                    "a cell — use break, a flag, a helper return, or return_result()."
+                )
+                wrapped.__cause__ = e
+
+                result = ExecutionResult(
+                    stdout=stdout_buffer.getvalue(),
+                    stderr=stderr_buffer.getvalue(),
+                    error=wrapped,
+                    defined_methods={},
+                    returned_value=_NO_RETURN,
+                    explicit_return=False,
+                    captured_locals=captured_locals,
+                    wrapper_line_offset=wrapper_line_offset,
+                    images=media_buffer.blocks,
+                )
+                return result
+
             except Exception as e:
                 # Extract captured locals even on error (IPython behavior).
                 # The wrapper function's finally block still runs before this handler,
