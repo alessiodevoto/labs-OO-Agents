@@ -23,7 +23,7 @@ from nemo_oo_agents.events import (
     EventBase,
     Summary,
 )
-from nemo_oo_agents.runtime.context_vars import _get_agent_call_stack
+from nemo_oo_agents.runtime.context_vars import _current_event_format_var, _get_agent_call_stack
 from nemo_oo_agents.runtime.event_backend import EventBackend, InMemoryBackend
 
 if TYPE_CHECKING:
@@ -134,6 +134,9 @@ class EventManager:
         stack = _get_agent_call_stack()
         if stack and "call_id" not in event.metadata:
             event.metadata["call_id"] = stack[-1]
+        event_format = _current_event_format_var.get()
+        if event_format is not None and "truncation_event_format" not in event.metadata:
+            event.metadata["truncation_event_format"] = event_format
 
         # Emit to handlers
         self._emit(event)

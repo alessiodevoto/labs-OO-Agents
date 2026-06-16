@@ -42,6 +42,13 @@ _agent_call_stack_var: contextvars.ContextVar[tuple[str | None, ...]] = contextv
     "agent_call_stack", default=()
 )
 
+# Task-local event render format for events produced by the active generation
+# method. EventManager persists this into event.metadata so historical events
+# render the same way after session resume and do not depend on call_id maps.
+_current_event_format_var: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "current_event_format", default=None
+)
+
 
 def _get_agent_call_stack() -> tuple[str | None, ...]:
     """Get the agent call stack for the current async context.

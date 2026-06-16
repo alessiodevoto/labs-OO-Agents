@@ -142,6 +142,7 @@ def render_context(
     context_limit: int | None = None,
     count_tokens: Callable[[str], int] | None = None,
     event_format: "FormatConfig | None" = None,
+    event_format_resolver: Callable[[Any], "FormatConfig | None"] | None = None,
     model_context_window: int | None = None,
 ) -> RenderResult:
     """Render resolved blocks into provider-specific output with utilization stats.
@@ -150,11 +151,11 @@ def render_context(
     — content passes through verbatim. Context blocks over budget are marked
     EVICTED in place.
 
-    ``event_format`` carries the structural bounds (max_string / max_length /
-    max_depth) for event-field rendering at trajectory build time. The
-    block_formatter's ``format_event`` is called with these bounds so that
-    nested string fields within events are bounded (otherwise pformat's
-    structured-instance fallback caps strings at 150 chars).
+    ``event_format`` carries the default structural bounds (max_string /
+    max_length / max_depth) for event-field rendering at trajectory build time.
+    ``event_format_resolver`` can override those bounds for a single event,
+    which lets method-level ``@strategy(truncation=...)`` affect events from
+    that method without re-rendering the rest of the context under that config.
     """
     if count_tokens is None and context_limit is not None:
         raise ValueError(
@@ -173,7 +174,12 @@ def render_context(
     serialized_messages: list[ResolvedBlock] = []
     for block in message_blocks:
         if block.event is not None and not isinstance(block.event, ToolCallEvent):
-            content = block_formatter.format_event(block.event, event_format=event_format)
+            resolved_event_format = (
+                event_format_resolver(block.event)
+                if event_format_resolver is not None
+                else event_format
+            )
+            content = block_formatter.format_event(block.event, event_format=resolved_event_format)
             block = block.model_copy(update={"content": content})
         serialized_messages.append(block)
     message_blocks = serialized_messages

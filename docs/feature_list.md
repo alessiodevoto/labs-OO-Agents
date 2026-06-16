@@ -367,7 +367,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Assembly & rendering pipeline
 
-- **Render blocks to provider output** — `render_context(blocks, block_formatter=..., provider_formatter=..., context_limit=..., count_tokens=..., event_format=..., model_context_window=...)` partitions by role, pre-serializes non-tool events, evicts over-budget context blocks in place (no event truncation), and returns a `RenderResult(output, stats, messages)` NamedTuple.
+- **Render blocks to provider output** — `render_context(blocks, block_formatter=..., provider_formatter=..., context_limit=..., count_tokens=..., event_format=..., event_format_resolver=..., model_context_window=...)` partitions by role, pre-serializes non-tool events, evicts over-budget context blocks in place (no event truncation), and returns a `RenderResult(output, stats, messages)` NamedTuple.
 - **Describe a resolved block** — `ResolvedBlock(key, content, role, metadata, event)` carries pre-evaluated content, a `Role`, typed `BlockMetadata`, and the original `EventBase` for event blocks.
 - **Mark dynamic expressions** — `DynamicContext("expr")` wraps a Python expression, validating its syntax at construction (raises `BlockSyntaxError`).
 - **Carry typed block metadata** — `BlockMetadata` exposes `expr`, `tag`, `truncated`, `user_block`, `static`, and `source_dynamic` flags that drive truncation order and formatter behavior.
