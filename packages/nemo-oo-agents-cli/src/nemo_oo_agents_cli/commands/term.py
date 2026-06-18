@@ -63,7 +63,7 @@ _RESUME_LAST = "__last__"
 )
 @click.option(
     "--host",
-    default="127.0.0.1",
+    default="0.0.0.0",
     show_default=True,
     help="Host to bind the web server to",
 )
