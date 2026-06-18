@@ -7,14 +7,14 @@ from typing import Any, Literal
 
 from nemo_oo_agents.skill import Skill, slash_command
 
-# Friendly ``/config set`` keys → dataclass field names written under ``tui:``.
+# Friendly ``/config set`` keys → settings paths.
 # Keeps the short names users already know while the file uses field names.
 _FRIENDLY_KEYS: dict[str, str] = {
-    "model": "default_model",
-    "python": "show_python",
-    "vi": "vi_mode",
-    "trace": "trace_dir",
-    "libs_dirs": "libs_dirs",
+    "model": "tui.default_model",
+    "python": "tui.show_python",
+    "vi": "tui.vi_mode",
+    "trace": "tui.trace_dir",
+    "libs_dirs": "tui.libs_dirs",
 }
 
 
@@ -282,12 +282,12 @@ class TuiConfigurationSkill(Skill):
         return "\n".join(lines)
 
     def _set_config(self, args: str) -> str:
-        """Set a key under ``tui:`` by rewriting the project settings.yaml.
+        """Set a key in the project settings.yaml.
 
-        Reads the project file (only — not the merged layers), updates the
-        single key under ``tui:``, and writes it back. Friendly aliases
-        (``model``, ``python``, ``vi``, ``trace``) map to dataclass field
-        names.
+        Reads the project file (only — not the merged layers), updates one
+        setting, and writes it back. Friendly aliases (``model``, ``python``,
+        ``vi``, ``trace``) map to their ``tui.`` settings paths; dotted keys
+        are treated as explicit nested paths.
         """
         import yaml
 
@@ -296,7 +296,10 @@ class TuiConfigurationSkill(Skill):
             return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-8"
 
         raw_key, raw_value = parts
-        field = _FRIENDLY_KEYS.get(raw_key, raw_key)
+        try:
+            setting_path = self._setting_path(raw_key)
+        except ValueError as exc:
+            return f"Error: {exc}"
         value = self._parse_value(raw_value)
 
         path = self._config_path()
@@ -308,14 +311,34 @@ class TuiConfigurationSkill(Skill):
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
 
-        tui = data.setdefault("tui", {})
-        if not isinstance(tui, dict):
-            tui = {}
-            data["tui"] = tui
-        tui[field] = value
+        self._set_mapping_path(data, setting_path, value)
 
         path.write_text(yaml.safe_dump(data, sort_keys=False))
-        return f"Set `tui.{field} = {value!r}` in {path}\n⚠️ Restart TUI for changes to take effect."
+        dotted = ".".join(setting_path)
+        return f"Set `{dotted} = {value!r}` in {path}\n⚠️ Restart TUI for changes to take effect."
+
+    @staticmethod
+    def _setting_path(raw_key: str) -> list[str]:
+        """Return the nested settings path for a user-facing key."""
+        key = _FRIENDLY_KEYS.get(raw_key, raw_key)
+        parts = key.split(".")
+        if any(not part for part in parts):
+            raise ValueError(f"Invalid config key: {raw_key!r}")
+        if len(parts) == 1:
+            parts.insert(0, "tui")
+        return parts
+
+    @staticmethod
+    def _set_mapping_path(data: dict[str, Any], path: list[str], value: Any) -> None:
+        """Set ``data[path[0]]...[path[-1]]`` creating dictionaries as needed."""
+        current = data
+        for part in path[:-1]:
+            child = current.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                current[part] = child
+            current = child
+        current[path[-1]] = value
 
     @staticmethod
     def _parse_value(raw: str) -> Any:
