@@ -299,6 +299,7 @@ async def get_session_fast(
     target_session_id: str = Query(..., description="6-char session ID to inspect"),
     span_id: str = Query(..., description="Span ID of the target agent session"),
     concise: bool = Query(False, description="Truncate long content"),
+    include_reasoning: bool = Query(True, description="Include model reasoning content"),
 ) -> ExplorerTextResponse:
     """Load only the subtree for a specific session and run get_session().
 
@@ -306,7 +307,9 @@ async def get_session_fast(
     for large traces when you already know the span_id of the agent session.
     """
     explorer = await asyncio.to_thread(_build_explorer_for_span, session_id, span_id)
-    result = await explorer.get_session(target_session_id, concise=concise)
+    result = await explorer.get_session(
+        target_session_id, concise=concise, include_reasoning=include_reasoning
+    )
     return ExplorerTextResponse(result=result)
 
 
@@ -316,13 +319,16 @@ async def get_turn_fast(
     target_session_id: str = Query(..., description="6-char session ID"),
     span_id: str = Query(..., description="Span ID of the target agent session"),
     turn_index: int = Query(..., description="Turn index"),
+    include_reasoning: bool = Query(True, description="Include model reasoning content"),
 ) -> ExplorerTextResponse:
     """Load only the subtree for a specific session and run get_turn().
 
     Uses get_descendant_spans() to avoid loading the full trace.
     """
     explorer = await asyncio.to_thread(_build_explorer_for_span, session_id, span_id)
-    result = await explorer.get_turn(target_session_id, turn_index)
+    result = await explorer.get_turn(
+        target_session_id, turn_index, include_reasoning=include_reasoning
+    )
     return ExplorerTextResponse(result=result)
 
 
@@ -342,10 +348,13 @@ async def get_session(
     session_id: str = Query(..., description="Viewer session ID"),
     target_session_id: str = Query(..., description="6-char session ID to inspect"),
     concise: bool = Query(False, description="Truncate long content"),
+    include_reasoning: bool = Query(True, description="Include model reasoning content"),
 ) -> ExplorerTextResponse:
     """Run get_session() server-side for a specific session."""
     explorer = await asyncio.to_thread(_build_explorer, session_id)
-    result = await explorer.get_session(target_session_id, concise=concise)
+    result = await explorer.get_session(
+        target_session_id, concise=concise, include_reasoning=include_reasoning
+    )
     return ExplorerTextResponse(result=result)
 
 
@@ -356,9 +365,7 @@ async def get_session_list(
     """Return structured session list."""
     explorer = await asyncio.to_thread(_build_explorer, session_id)
     summaries = await explorer.get_session_list()
-    return {
-        "sessions": [s.model_dump() if hasattr(s, "model_dump") else vars(s) for s in summaries]
-    }
+    return {"sessions": [vars(s) for s in summaries]}
 
 
 @router.get("/turn")
@@ -366,10 +373,13 @@ async def get_turn(
     session_id: str = Query(..., description="Viewer session ID"),
     target_session_id: str = Query(..., description="6-char session ID"),
     turn_index: int = Query(..., description="Turn index"),
+    include_reasoning: bool = Query(True, description="Include model reasoning content"),
 ) -> ExplorerTextResponse:
     """Run get_turn() server-side."""
     explorer = await asyncio.to_thread(_build_explorer, session_id)
-    result = await explorer.get_turn(target_session_id, turn_index)
+    result = await explorer.get_turn(
+        target_session_id, turn_index, include_reasoning=include_reasoning
+    )
     return ExplorerTextResponse(result=result)
 
 
