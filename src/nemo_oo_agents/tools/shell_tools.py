@@ -59,10 +59,11 @@ class FileWrite:
 
 
 class Match:
-    """An anchored region of a file — the bridge between reading and editing.
+    """Editable file anchor returned by file/search tools.
 
-    Print it to view numbered lines. Pass to replace() to edit without ambiguity.
-    Slice with [start:end] (1-indexed line numbers) to narrow the region.
+    Pass any ``Match`` to ``self.shell.replace(match, new_text)``. Print it to
+    view numbered lines. Slice with ``match[start:end]`` (1-indexed inclusive
+    line numbers) to narrow the region before replacing.
     """
 
     def __init__(self, path: str, start: int, end: int, text: str):
@@ -604,7 +605,7 @@ class ShellTools(Skill):
         """
         Read a file (or line range) -> Match object.
 
-        Print the Match to see numbered lines. Pass to replace() for editing.
+        Print the Match to see numbered lines. Pass any Match to replace() for editing.
         Slice with match[start:end] to narrow the region.
 
         Args:

@@ -1,28 +1,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""RepoTools — repository analysis and code intelligence.
+"""RepoTools — code navigation that returns ShellTools Match anchors.
 
-Provides tools for understanding codebases at a higher level than individual
-file operations: repository mapping, file structure overviews, and symbol search.
-
-Attach to an agent::
-
-    class MyAgent(Agent, llm=llm):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self.repo = RepoTools(root="/path/to/repo")
+Use ``symbols()`` to find definitions and ``refs()`` to find usages. Both return
+``RepoResult``: printable lines plus editable ``Match`` objects for
+``self.shell.replace(result[i], new_text)``.
 """
 
 import logging
 import re
 import shlex
-from dataclasses import dataclass
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
 from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
+from nemo_oo_agents.tools.shell_tools import Match
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +35,10 @@ class FileMapResult:
         list[str], spec(description="Formatted symbol lines (name, kind, line number)")
     ]
     truncated: Annotated[bool, spec(description="True if symbols were capped")] = False
+    anchors: Annotated[
+        list[Match],
+        spec(description="ShellTools-compatible anchors for each symbol line"),
+    ] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -57,6 +57,10 @@ class RepoMapResult:
     summary: Annotated[str, spec(description="Formatted repo map with key files and their exports")]
     num_files: Annotated[int, spec(description="Total files analyzed")]
     truncated: Annotated[bool, spec(description="True if output was capped")] = False
+    anchors: Annotated[
+        list[Match],
+        spec(description="ShellTools-compatible anchors for symbol lines in the map"),
+    ] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -72,6 +76,10 @@ class SymbolSearchResult:
     matches: Annotated[list[str], spec(description="Matching symbol lines (file:line: kind name)")]
     total_matches: Annotated[int, spec(description="Total matches found")]
     truncated: Annotated[bool, spec(description="True if results were capped")] = False
+    anchors: Annotated[
+        list[Match],
+        spec(description="ShellTools-compatible anchors for each returned match"),
+    ] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -94,6 +102,10 @@ class ReferenceSearchResult:
     matches: Annotated[list[str], spec(description="Reference lines (file:line: context)")]
     total_matches: Annotated[int, spec(description="Total references found")]
     truncated: Annotated[bool, spec(description="True if results were capped")] = False
+    anchors: Annotated[
+        list[Match],
+        spec(description="ShellTools-compatible anchors for each returned reference"),
+    ] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -110,6 +122,45 @@ class ReferenceSearchResult:
         return self.text
 
 
+@dataclass
+class RepoResult:
+    query: Annotated[str, spec(description="Search query or symbol name")]
+    lines: Annotated[list[str], spec(description="Display lines: file:line: context")]
+    matches: Annotated[
+        list[Match],
+        spec(description="ShellTools-compatible anchors; pass an item to self.shell.replace()"),
+    ] = field(default_factory=list)
+    total_matches: Annotated[int, spec(description="Total matches found")] = 0
+    truncated: Annotated[bool, spec(description="True if results were capped")] = False
+
+    @property
+    def text(self) -> str:
+        if not self.lines:
+            return f'No matches for "{self.query}" found.'
+        parts = list(self.lines)
+        if self.truncated:
+            parts.append(f"\n... ({self.total_matches} total, showing first {len(self.lines)})")
+        else:
+            noun = "match" if self.total_matches == 1 else "matches"
+            parts.append(f"\n({self.total_matches} {noun})")
+        return "\n".join(parts)
+
+    def __str__(self) -> str:
+        return self.text
+
+    def __len__(self) -> int:
+        return len(self.matches)
+
+    def __bool__(self) -> bool:
+        return len(self.matches) > 0
+
+    def __iter__(self) -> Iterator[Match]:
+        return iter(self.matches)
+
+    def __getitem__(self, index: int) -> Match:
+        return self.matches[index]
+
+
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
@@ -117,7 +168,7 @@ _LANG_MAP = {
     ".py": "python",
     ".js": "javascript",
     ".ts": "typescript",
-    ".tsx": "typescript",
+    ".tsx": "tsx",
     ".jsx": "javascript",
     ".rb": "ruby",
     ".go": "go",
@@ -201,6 +252,91 @@ def _detect_lang(path: Path) -> str:
     return _LANG_MAP.get(path.suffix.lower(), "unknown")
 
 
+def _tree_sitter_available() -> bool:
+    try:
+        from nemo_oo_agents_cli.tools._tree_sitter_backend import TREE_SITTER_AVAILABLE
+    except ImportError:
+        return False
+    return TREE_SITTER_AVAILABLE
+
+
+def _line_match(path: Path, line_no: int) -> Match | None:
+    try:
+        lines = path.read_text(errors="replace").splitlines(keepends=True)
+    except OSError:
+        return None
+    if not (1 <= line_no <= len(lines)):
+        return None
+    return Match(str(path), line_no, line_no, lines[line_no - 1])
+
+
+def _symbol_anchor_pairs(path: Path, symbols: list[str]) -> list[tuple[str, Match]]:
+    try:
+        lines = path.read_text(errors="replace").splitlines(keepends=True)
+    except OSError:
+        return []
+    pairs: list[tuple[str, Match]] = []
+    for symbol in symbols:
+        line_text = symbol.strip()
+        if not line_text:
+            continue
+        line_no_text = line_text.split(maxsplit=1)[0]
+        try:
+            line_no = int(line_no_text)
+        except ValueError:
+            continue
+        if 1 <= line_no <= len(lines):
+            pairs.append((symbol, Match(str(path), line_no, line_no, lines[line_no - 1])))
+    return pairs
+
+
+def _symbol_anchors(path: Path, symbols: list[str]) -> list[Match]:
+    return [anchor for _, anchor in _symbol_anchor_pairs(path, symbols)]
+
+
+def _anchor_from_match_line(line: str, root: Path) -> Match | None:
+    path_text, sep, rest = line.partition(":")
+    if not sep:
+        return None
+    m = re.match(r"\s*(\d+)\b", rest)
+    if not m:
+        return None
+    fpath = Path(path_text)
+    if not fpath.is_absolute():
+        fpath = root / fpath
+    return _line_match(fpath, int(m.group(1)))
+
+
+def _format_match(anchor: Match, root: Path) -> str:
+    path = Path(anchor.path)
+    try:
+        display_path = str(path.relative_to(root)) if path.is_absolute() else anchor.path
+    except ValueError:
+        display_path = anchor.path
+    return f"{display_path}:{anchor.start}: {anchor.text.strip()}"
+
+
+def _is_definition_line(content: str, name: str = "") -> bool:
+    if any(
+        re.match(pattern, content)
+        for pattern in (
+            r"^\s*(?:export\s+)?(?:async\s+)?function\s+",
+            r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+",
+            r"^\s*(?:export\s+)?(?:interface|type)\s+",
+            r"^\s*(?:async\s+)?def\s+",
+            r"^\s*(?:func|fn|type|struct|trait|impl|enum|module)\s+",
+        )
+    ):
+        return True
+    return bool(
+        name
+        and re.match(
+            rf"^\s*(?:export\s+)?(?:const|let|var)\s+{re.escape(name)}\b\s*=",
+            content,
+        )
+    )
+
+
 def _extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[str]:
     """Extract symbol definitions from a file using tree-sitter AST (with regex fallback)."""
     # Try tree-sitter first (AST-aware, more accurate)
@@ -248,28 +384,106 @@ def _extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[str]
 # RepoTools Skill
 # ---------------------------------------------------------------------------
 class RepoTools(Skill):
-    """Repository analysis and code intelligence.
+    """Find code locations as ShellTools ``Match`` anchors.
 
-    Tools for understanding codebases: file structure overviews,
-    repository maps showing key files and their symbols, cross-file
-    symbol search, and reference finding.
+    Two methods:
+        symbols(path=".", query="")  — definitions / file or repo overview
+        refs(name, path=".")         — references/usages, excluding definitions
 
-    Tools:
-        filemap(path)              — show file symbols (functions, classes)
-        repo_map(paths, depth)     — overview of key files and their exports
-        search_symbol(name)        — find function/class definitions across files
-        search_references(name)    — find call sites / usages of a symbol
+    Results print like search output and index/iterate as editable matches::
+        r = await self.repo.symbols("src/", query="Handler")
+        await self.shell.replace(r[0], new_code)
     """
 
     __nosnapshot__ = True
 
-    def __init__(self, root: str | Path = ".", session: BashSession | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path = ".",
+        session: BashSession | None = None,
+        require_tree_sitter: bool = False,
+    ) -> None:
         self._root = Path(root).resolve()
         self._session = session  # shared session with ShellTools (optional)
         self._has_rg: bool | None = None  # lazy-checked
+        if not _tree_sitter_available():
+            message = "tree-sitter is not available; RepoTools will use regex/rg fallbacks"
+            if require_tree_sitter:
+                raise RuntimeError(message)
+            logger.warning(message)
 
     def __repr__(self) -> str:
         return f"RepoTools(root={str(self._root)!r})"
+
+    async def symbols(
+        self,
+        path: Annotated[str, spec(description="File or directory to inspect")] = ".",
+        query: Annotated[str, spec(description="Optional symbol-name substring filter")] = "",
+        max_results: Annotated[int, spec(description="Maximum result lines")] = 50,
+    ) -> RepoResult:
+        """Find definitions under a file or directory.
+
+        Returns printable lines plus editable ``Match`` anchors; use
+        ``await self.shell.replace(result[0], new_text)`` to edit a hit.
+        """
+        resolved = self._resolve(path)
+        query_lower = query.lower()
+
+        if resolved.is_file():
+            file_result = await self._filemap(path, max_symbols=max_results if not query else 500)
+            pairs = [
+                (symbol, anchor)
+                for symbol, anchor in zip(file_result.symbols, file_result.anchors, strict=True)
+                if not query_lower or query_lower in symbol.lower()
+            ]
+            anchors = [anchor for _, anchor in pairs[:max_results]]
+            return RepoResult(
+                query=query or path,
+                lines=[_format_match(anchor, self._root) for anchor in anchors],
+                matches=anchors,
+                total_matches=len(pairs),
+                truncated=len(pairs) > max_results,
+            )
+
+        if query:
+            symbol_result = await self._search_symbol(query, path=path, max_results=max_results)
+            return RepoResult(
+                query=query,
+                lines=symbol_result.matches,
+                matches=symbol_result.anchors,
+                total_matches=symbol_result.total_matches,
+                truncated=symbol_result.truncated,
+            )
+
+        map_result = await self._repo_map(paths=[path], max_files=max_results)
+        anchors = map_result.anchors[:max_results]
+        return RepoResult(
+            query=path,
+            lines=[_format_match(anchor, self._root) for anchor in anchors],
+            matches=anchors,
+            total_matches=len(map_result.anchors),
+            truncated=map_result.truncated or len(map_result.anchors) > max_results,
+        )
+
+    async def refs(
+        self,
+        name: Annotated[str, spec(description="Symbol or qualified name to find references for")],
+        path: Annotated[str, spec(description="Directory to search")] = ".",
+        max_results: Annotated[int, spec(description="Maximum result lines")] = 50,
+    ) -> RepoResult:
+        """Find references/usages of a symbol, excluding definitions.
+
+        Returns printable lines plus editable ``Match`` anchors; use
+        ``await self.shell.replace(result[0], new_text)`` to edit a hit.
+        """
+        result = await self._search_references(name, path=path, max_results=max_results)
+        return RepoResult(
+            query=name,
+            lines=result.matches,
+            matches=result.anchors,
+            total_matches=result.total_matches,
+            truncated=result.truncated,
+        )
 
     async def _check_rg(self) -> bool:
         """Check if rg (ripgrep) is available, caching the result."""
@@ -286,7 +500,7 @@ class RepoTools(Skill):
     # ------------------------------------------------------------------
     # filemap — show symbols in a single file
     # ------------------------------------------------------------------
-    async def filemap(self, path: str, max_symbols: int = 200) -> FileMapResult:
+    async def _filemap(self, path: str, max_symbols: int = 200) -> FileMapResult:
         """Show the structure of a file: function and class definitions with line numbers.
 
         Useful for getting an overview of a file without reading every line.
@@ -300,8 +514,8 @@ class RepoTools(Skill):
             FileMapResult with symbol listing.
 
         Examples:
-            r = await self.repo.filemap("src/main.py")
-            r = await self.repo.filemap("internal/llm/tools/edit.go")
+            r = await self.repo._filemap("src/main.py")
+            r = await self.repo._filemap("internal/llm/tools/edit.go")
         """
         resolved = self._resolve(path)
         if not resolved.is_file():
@@ -318,17 +532,19 @@ class RepoTools(Skill):
         symbols = _extract_symbols(resolved, lang, max_symbols=max_symbols)
         truncated = len(symbols) >= max_symbols
 
+        symbol_anchor_pairs = _symbol_anchor_pairs(resolved, symbols)
         return FileMapResult(
             path=path,
             language=lang,
-            symbols=symbols,
+            symbols=[symbol for symbol, _ in symbol_anchor_pairs],
             truncated=truncated,
+            anchors=[anchor for _, anchor in symbol_anchor_pairs],
         )
 
     # ------------------------------------------------------------------
     # repo_map — overview of repository structure and key symbols
     # ------------------------------------------------------------------
-    async def repo_map(
+    async def _repo_map(
         self,
         paths: list[str] | None = None,
         depth: int = 3,
@@ -351,9 +567,9 @@ class RepoTools(Skill):
             RepoMapResult with formatted repository overview.
 
         Examples:
-            r = await self.repo.repo_map()
-            r = await self.repo.repo_map(paths=["src/", "lib/"])
-            r = await self.repo.repo_map(max_files=100, depth=4)
+            r = await self.repo._repo_map()
+            r = await self.repo._repo_map(paths=["src/", "lib/"])
+            r = await self.repo._repo_map(max_files=100, depth=4)
         """
         # Find source files, sorted by modification time (newest first)
         search_paths = paths or ["."]
@@ -393,6 +609,7 @@ class RepoTools(Skill):
 
         # Build the map
         sections: list[str] = []
+        anchors: list[Match] = []
         for fpath in unique_files:
             try:
                 rel = fpath.relative_to(self._root)
@@ -400,9 +617,11 @@ class RepoTools(Skill):
                 rel = fpath
             lang = _detect_lang(fpath)
             symbols = _extract_symbols(fpath, lang, max_symbols=max_symbols_per_file)
-            if symbols:
+            symbol_anchor_pairs = _symbol_anchor_pairs(fpath, symbols)
+            if symbol_anchor_pairs:
                 sections.append(f"\n{rel}:")
-                sections.extend(symbols)
+                sections.extend(symbol for symbol, _ in symbol_anchor_pairs)
+                anchors.extend(anchor for _, anchor in symbol_anchor_pairs)
             else:
                 sections.append(f"\n{rel}: ({lang})")
 
@@ -420,12 +639,13 @@ class RepoTools(Skill):
             summary=summary,
             num_files=len(unique_files),
             truncated=len(all_files) > max_files,
+            anchors=anchors,
         )
 
     # ------------------------------------------------------------------
     # search_symbol — find definitions across the codebase
     # ------------------------------------------------------------------
-    async def search_symbol(
+    async def _search_symbol(
         self,
         name: str,
         path: str = ".",
@@ -445,8 +665,8 @@ class RepoTools(Skill):
             SymbolSearchResult with matching definitions.
 
         Examples:
-            r = await self.repo.search_symbol("calculate_score")
-            r = await self.repo.search_symbol("Handler", path="src/")
+            r = await self.repo._search_symbol("calculate_score")
+            r = await self.repo._search_symbol("Handler", path="src/")
         """
         resolved = self._resolve(path)
         matches: list[str] = []
@@ -484,6 +704,13 @@ class RepoTools(Skill):
                     break
 
         total = len(matches)
+        paired = [
+            (match, anchor)
+            for match, anchor in (
+                (m, _anchor_from_match_line(m, self._root)) for m in matches[:max_results]
+            )
+            if anchor is not None
+        ]
         if total == 0:
             from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 
@@ -493,15 +720,16 @@ class RepoTools(Skill):
         truncated = total >= max_results
         return SymbolSearchResult(
             query=name,
-            matches=matches[:max_results],
+            matches=[m for m, _ in paired],
             total_matches=total,
             truncated=truncated,
+            anchors=[a for _, a in paired],
         )
 
     # ------------------------------------------------------------------
     # search_references — find call sites / usages
     # ------------------------------------------------------------------
-    async def search_references(
+    async def _search_references(
         self,
         name: Annotated[
             str,
@@ -526,8 +754,8 @@ class RepoTools(Skill):
             ReferenceSearchResult with matching reference lines.
 
         Examples:
-            r = await self.repo.search_references("from_file")
-            r = await self.repo.search_references("TraceExplorer.from_file")
+            r = await self.repo._search_references("from_file")
+            r = await self.repo._search_references("TraceExplorer.from_file")
         """
         resolved = self._resolve(path)
 
@@ -548,24 +776,36 @@ class RepoTools(Skill):
                         fpath, lang, name, max_results=max_results - len(all_matches)
                     )
                     if refs:
-                        rel = fpath.relative_to(self._root)
+                        try:
+                            rel = fpath.relative_to(self._root)
+                        except ValueError:
+                            rel = fpath
                         for line_no, context in refs:
                             all_matches.append(f"{rel}:{line_no}: {context}")
                     if len(all_matches) >= max_results:
                         break
                 if all_matches:
                     truncated = len(all_matches) >= max_results
+                    paired = [
+                        (match, anchor)
+                        for match, anchor in (
+                            (m, _anchor_from_match_line(m, self._root))
+                            for m in all_matches[:max_results]
+                        )
+                        if anchor is not None
+                    ]
                     return ReferenceSearchResult(
                         query=name,
-                        matches=all_matches[:max_results],
+                        matches=[m for m, _ in paired],
                         total_matches=len(all_matches),
                         truncated=truncated,
+                        anchors=[a for _, a in paired],
                     )
         except ImportError:
             pass
 
         # Fallback: ripgrep-based reference search with heuristic filtering
-        search_name = name.replace(".", "\\.")  # escape dots for regex
+        search_name = re.escape(name)
         pattern = f"\\b{search_name}\\b"
 
         if self._session:
@@ -586,11 +826,9 @@ class RepoTools(Skill):
                 except OSError:
                     continue
 
-        # Filter out definitions, comments, and string-only lines
-        def_patterns = [
-            r"^\s*(def|class|async\s+def|func|fn|type|interface|struct|trait|impl|enum)\s+",
-        ]
+        # Filter out definitions, comments, and string-only lines.
         matches: list[str] = []
+        anchors: list[Match] = []
         for raw in raw_lines:
             if len(matches) >= max_results:
                 break
@@ -600,13 +838,17 @@ class RepoTools(Skill):
                 continue
             content = parts[2].strip()
             # Skip definitions
-            if any(re.match(p, content) for p in def_patterns):
+            if _is_definition_line(content, name.split(".")[-1]):
                 continue
             # Skip comment-only lines
             stripped = content.lstrip()
             if stripped.startswith("#") or stripped.startswith("//"):
                 continue
+            anchor = _anchor_from_match_line(raw, self._root)
+            if anchor is None:
+                continue
             matches.append(f"{parts[0]}:{parts[1]}: {content}")
+            anchors.append(anchor)
 
         truncated = len(matches) >= max_results
         return ReferenceSearchResult(
@@ -614,6 +856,7 @@ class RepoTools(Skill):
             matches=matches[:max_results],
             total_matches=len(matches),
             truncated=truncated,
+            anchors=anchors[:max_results],
         )
 
     # ------------------------------------------------------------------
