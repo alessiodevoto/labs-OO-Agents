@@ -385,6 +385,7 @@ class SkillRegistry(Skill):
                 raise KeyError(f"Skill {name!r} not found in entry points")
             skill_or_cls = entry.entry_point.load()
 
+        skill: Any
         if isinstance(skill_or_cls, type) and issubclass(skill_or_cls, Skill):
             skill = skill_or_cls(**kwargs)
         elif isinstance(skill_or_cls, Skill):
@@ -632,6 +633,32 @@ class SkillRegistry(Skill):
             return await self._reload_single_module(name, attr, skill, mod_name)
         return await self._reload_package(name, attr, top_pkg)
 
+    async def _detach_old_for_reload(self, attr: str) -> tuple[Any, bool]:
+        """Detach the existing agent skill before reloading its module code."""
+        old_skill = getattr(self._agent, attr, None)
+        if old_skill is not None and hasattr(old_skill, "detach"):
+            result = old_skill.detach()
+            if inspect.isawaitable(result):
+                await result
+            return old_skill, True
+        return old_skill, False
+
+    async def _restore_old_after_reload_failure(
+        self, name: str, old_skill: Any, old_detached: bool
+    ) -> None:
+        """Best-effort restore of a skill detached before a failed reload."""
+        if old_detached and old_skill is not None and hasattr(old_skill, "attach"):
+            try:
+                restore = old_skill.attach(self._agent)
+                if inspect.isawaitable(restore):
+                    await restore
+            except Exception:
+                logger.warning(
+                    "Best-effort re-attach of old skill %r also failed",
+                    name,
+                    exc_info=True,
+                )
+
     async def _reload_package(self, name: str, attr: str, top_pkg: str) -> str:
         """Purge and re-import an entire top-level package (user/lib skills)."""
         import asyncio
@@ -640,6 +667,12 @@ class SkillRegistry(Skill):
 
         if top_pkg not in _sys.modules:
             return f"Package {top_pkg} not in sys.modules — cannot reload"
+        old_skill = getattr(self._agent, attr, None)
+        try:
+            old_skill, old_detached = await self._detach_old_for_reload(attr)
+        except Exception as e:
+            await self._restore_old_after_reload_failure(name, old_skill, old_skill is not None)
+            return f"Reload failed for {name}: {e}"
         try:
             # Clear all submodules so reimport gets fresh code from disk
             prefix = top_pkg + "."
@@ -648,13 +681,24 @@ class SkillRegistry(Skill):
             mod = await asyncio.to_thread(importlib.import_module, top_pkg)
             # Find the Skill subclass in the reloaded module
             from nemo_oo_agents.skill import Skill as _Skill
-
-            for obj in vars(mod).values():
-                if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
-                    return await self._install_reloaded(name, attr, obj)
-            return f"Reloaded module {top_pkg} but no Skill subclass found"
         except Exception as e:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
             return f"Reload failed for {name}: {e}"
+
+        for obj in vars(mod).values():
+            if isinstance(obj, type) and issubclass(obj, _Skill) and obj is not _Skill:
+                try:
+                    return await self._install_reloaded(
+                        name,
+                        attr,
+                        obj,
+                        old_skill=old_skill,
+                        old_detached=old_detached,
+                    )
+                except Exception as e:
+                    return f"Reload failed for {name}: {e}"
+        await self._restore_old_after_reload_failure(name, old_skill, old_detached)
+        return f"Reloaded module {top_pkg} but no Skill subclass found"
 
     async def _reload_single_module(self, name: str, attr: str, skill: Any, mod_name: str) -> str:
         """Reload only the skill's own leaf module via ``importlib.reload``.
@@ -676,47 +720,84 @@ class SkillRegistry(Skill):
         if mod is None:
             return f"Module {mod_name} not in sys.modules — cannot reload"
         cls_name = type(skill).__name__
+        old_skill = getattr(self._agent, attr, None)
+        try:
+            old_skill, old_detached = await self._detach_old_for_reload(attr)
+        except Exception as e:
+            await self._restore_old_after_reload_failure(name, old_skill, old_skill is not None)
+            return f"Reload failed for {name}: {e}"
         try:
             mod = await asyncio.to_thread(importlib.reload, mod)
         except Exception as e:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
             return f"Reload failed for {name}: {e}"
+
         new_cls = getattr(mod, cls_name, None)
         if not isinstance(new_cls, type):
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
             return f"Reloaded {mod_name} but class {cls_name} not found in it"
         # Reload the class *defined in* this module, not a same-named re-export.
         if getattr(new_cls, "__module__", None) != mod_name:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
             return (
                 f"Reloaded {mod_name} but {cls_name} is defined elsewhere "
                 f"({getattr(new_cls, '__module__', '?')}) — not reloadable"
             )
         try:
-            return await self._install_reloaded(name, attr, new_cls)
+            return await self._install_reloaded(
+                name,
+                attr,
+                new_cls,
+                old_skill=old_skill,
+                old_detached=old_detached,
+            )
         except Exception as e:
             return f"Reload failed for {name}: {e}"
 
-    async def _install_reloaded(self, name: str, attr: str, new_cls: type) -> str:
+    async def _install_reloaded(
+        self,
+        name: str,
+        attr: str,
+        new_cls: type,
+        *,
+        old_skill: Any | None = None,
+        old_detached: bool = False,
+    ) -> str:
         """Construct a fresh skill from ``new_cls`` and swap it onto the agent.
 
         Shared bookkeeping for both reload paths: construct, attach, re-register
         the context block, and refresh slash commands.
 
-        Construction and ``attach`` run *before* the agent is mutated, so if
-        either raises the agent is left untouched (the caller surfaces the
-        error). Only once the new skill is built and attached do we swap it in,
-        keeping context-block (un)registration paired with the swap so a failure
-        can never leave a half-reloaded skill or an orphaned context block.
+        The caller detaches the old skill before reloading module code and
+        passes the detached instance here. Constructing and attaching the new
+        skill still run before the agent attribute is mutated. If attach fails
+        after a successful old detach, the registry best-effort re-attaches the
+        old skill before surfacing the failure. Only once the new skill is
+        attached do we swap it in, keeping context-block (un)registration paired
+        with the swap so a failure can't leave a half-reloaded skill or orphaned
+        context block.
         """
+        if old_skill is None:
+            old_skill = getattr(self._agent, attr, None)
         try:
             new_skill = new_cls()
         except TypeError as e:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
             return (
                 f"Skill {name!r} ({new_cls.__name__}) is not reloadable: "
                 f"constructor raised TypeError ({e})"
             )
-        if hasattr(new_skill, "attach"):
-            result = new_skill.attach(self._agent)
-            if inspect.isawaitable(result):
-                await result
+        except Exception:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
+            raise
+        try:
+            if hasattr(new_skill, "attach"):
+                result = new_skill.attach(self._agent)
+                if inspect.isawaitable(result):
+                    await result
+        except Exception:
+            await self._restore_old_after_reload_failure(name, old_skill, old_detached)
+            raise
         if name in self._activated:
             self._unregister_context_block(name)
         setattr(self._agent, attr, new_skill)

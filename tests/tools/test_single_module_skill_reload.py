@@ -6,6 +6,8 @@ framework. These tests pin the narrow leaf-module reload path that reloads ONLY
 the skill's own module via ``importlib.reload`` and re-resolves the class by name.
 """
 
+import asyncio
+import importlib
 import sys
 import types
 
@@ -155,11 +157,15 @@ async def test_user_skill_reload_path_unchanged(monkeypatch):
 
     from nemo_oo_agents.skill import Skill
 
-    ns = {"Skill": Skill}
+    events = []
+    ns = {"Skill": Skill, "events": events, "asyncio": asyncio}
     exec(
         """
 class LibSkill(Skill):
     version = "v1"
+    async def detach(self):
+        events.append("old-detach")
+        await asyncio.sleep(0)
 """,
         ns,
     )
@@ -177,11 +183,14 @@ class LibSkill(Skill):
     registry._attr_map["local.mylib"] = "mylib"
     registry._loaded.add("local.mylib")
 
-    ns2 = {"Skill": Skill}
+    ns2 = {"Skill": Skill, "events": events}
     exec(
         """
 class LibSkill(Skill):
     version = "v2"
+    def attach(self, agent):
+        events.append("new-attach")
+        self._agent = agent
 """,
         ns2,
     )
@@ -190,9 +199,8 @@ class LibSkill(Skill):
     mod_v2 = types.ModuleType("mylib")
     mod_v2.LibSkill = SkillV2
 
-    import importlib
-
     def fake_import(name):
+        events.append("package-import")
         _sys.modules[name] = mod_v2
         return mod_v2
 
@@ -202,6 +210,7 @@ class LibSkill(Skill):
     _sys.modules.pop("mylib", None)
 
     assert "Reloaded" in result, result
+    assert events == ["old-detach", "package-import", "new-attach"]
     assert agent.mylib.version == "v2"
 
 
@@ -241,8 +250,6 @@ class FakeUnderscore:
     agent.fake_u = skill
     registry._attr_map["ext.fake_u"] = "fake_u"
     registry._loaded.add("ext.fake_u")
-
-    import importlib
 
     def fake_reload(m):
         assert m is sys.modules[mod_name]
@@ -306,8 +313,6 @@ class Boom:
     registry._attr_map["nemo.boom"] = "boom"
     registry._loaded.add("nemo.boom")
 
-    import importlib
-
     def fake_reload(m):
         assert m is sys.modules[mod_name]
         ns2: dict = {}
@@ -335,3 +340,380 @@ class Boom:
     # Agent must still hold the original, attached skill — not the broken v2.
     assert agent.boom is original
     assert agent.boom.version == "v1"
+
+
+@pytest.mark.asyncio
+async def test_reload_awaits_old_detach_before_new_attach(monkeypatch):
+    """Hot-reload must tear down the old skill before starting the new one."""
+    mod_name = "nemo_oo_agents.tools._fake_async_detach_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeAsyncDetach:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach-start")
+            await asyncio.sleep(0)
+            events.append("old-detach-end")
+
+    old_cls = FakeAsyncDetach
+    mod.FakeAsyncDetach = old_cls
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = old_cls()
+    original.attach(agent)
+    agent.fake_async_detach = original
+    registry._attr_map["nemo.fake_async_detach"] = "fake_async_detach"
+    registry._loaded.add("nemo.fake_async_detach")
+
+    def fake_reload(m):
+        assert m is sys.modules[mod_name]
+
+        class FakeAsyncDetach:
+            version = "v2"
+            __module__ = mod_name
+
+            def attach(self, agent):
+                events.append("new-attach")
+                self.agent = agent
+
+        m.FakeAsyncDetach = FakeAsyncDetach
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_async_detach")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reloaded" in result, result
+    assert events == ["old-detach-start", "old-detach-end", "new-attach"]
+    assert agent.fake_async_detach is not original
+    assert agent.fake_async_detach.version == "v2"
+
+
+@pytest.mark.asyncio
+async def test_reload_detaches_old_skill_before_reexecuting_module(monkeypatch):
+    """Old cleanup must run before importlib.reload mutates module globals."""
+    mod_name = "nemo_oo_agents.tools._fake_detach_before_reload_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeDetachBeforeReload:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+
+    old_cls = FakeDetachBeforeReload
+    mod.FakeDetachBeforeReload = old_cls
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = old_cls()
+    original.attach(agent)
+    agent.fake_detach_before_reload = original
+    registry._attr_map["nemo.fake_detach_before_reload"] = "fake_detach_before_reload"
+    registry._loaded.add("nemo.fake_detach_before_reload")
+
+    def fake_reload(m):
+        assert m is sys.modules[mod_name]
+        events.append("module-reload")
+
+        class FakeDetachBeforeReload:
+            version = "v2"
+            __module__ = mod_name
+
+            def attach(self, agent):
+                events.append("new-attach")
+                self.agent = agent
+
+        m.FakeDetachBeforeReload = FakeDetachBeforeReload
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_detach_before_reload")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reloaded" in result, result
+    assert events == ["old-detach", "module-reload", "new-attach"]
+    assert agent.fake_detach_before_reload is not original
+    assert agent.fake_detach_before_reload.version == "v2"
+
+
+@pytest.mark.asyncio
+async def test_reload_restores_old_skill_if_new_attach_fails_after_detach(monkeypatch):
+    """If new attach fails after old detach, best-effort reattach the old skill."""
+    mod_name = "nemo_oo_agents.tools._fake_restore_after_detach_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeRestoreAfterDetach:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            events.append("old-attach")
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+
+    old_cls = FakeRestoreAfterDetach
+    mod.FakeRestoreAfterDetach = old_cls
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = old_cls()
+    original.attach(agent)
+    events.clear()
+    agent.fake_restore_after_detach = original
+    registry._attr_map["nemo.fake_restore_after_detach"] = "fake_restore_after_detach"
+    registry._loaded.add("nemo.fake_restore_after_detach")
+
+    def fake_reload(m):
+        assert m is sys.modules[mod_name]
+
+        class FakeRestoreAfterDetach:
+            version = "v2"
+            __module__ = mod_name
+
+            def attach(self, agent):
+                events.append("new-attach")
+                raise RuntimeError("attach boom")
+
+        m.FakeRestoreAfterDetach = FakeRestoreAfterDetach
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_restore_after_detach")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reload failed" in result, result
+    assert events == ["old-detach", "new-attach", "old-attach"]
+    assert agent.fake_restore_after_detach is original
+
+
+@pytest.mark.asyncio
+async def test_reload_reports_new_attach_error_if_old_reattach_also_fails(monkeypatch):
+    """The replacement attach failure is more useful than a restore failure."""
+    mod_name = "nemo_oo_agents.tools._fake_restore_also_fails_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeRestoreAlsoFails:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            events.append("old-attach")
+            if events.count("old-attach") > 1:
+                raise RuntimeError("restore boom")
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+
+    old_cls = FakeRestoreAlsoFails
+    mod.FakeRestoreAlsoFails = old_cls
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = old_cls()
+    original.attach(agent)
+    events.clear()
+    agent.fake_restore_also_fails = original
+    registry._attr_map["nemo.fake_restore_also_fails"] = "fake_restore_also_fails"
+    registry._loaded.add("nemo.fake_restore_also_fails")
+
+    def fake_reload(m):
+        assert m is sys.modules[mod_name]
+
+        class FakeRestoreAlsoFails:
+            version = "v2"
+            __module__ = mod_name
+
+            def attach(self, agent):
+                events.append("new-attach")
+                raise RuntimeError("new attach boom")
+
+        m.FakeRestoreAlsoFails = FakeRestoreAlsoFails
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_restore_also_fails")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reload failed" in result, result
+    assert "new attach boom" in result, result
+    assert "restore boom" not in result, result
+    assert events == ["old-detach", "new-attach", "old-attach"]
+    assert agent.fake_restore_also_fails is original
+
+
+@pytest.mark.asyncio
+async def test_reload_failure_reattaches_old_skill_after_reload_raises(monkeypatch):
+    """A failed module reload after old detach restores the original skill."""
+    mod_name = "nemo_oo_agents.tools._fake_reload_raises_after_detach_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeReloadRaisesAfterDetach:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            events.append("old-attach")
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+
+    mod.FakeReloadRaisesAfterDetach = FakeReloadRaisesAfterDetach
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = FakeReloadRaisesAfterDetach()
+    original.attach(agent)
+    events.clear()
+    agent.fake_reload_raises_after_detach = original
+    registry._attr_map["nemo.fake_reload_raises_after_detach"] = "fake_reload_raises_after_detach"
+    registry._loaded.add("nemo.fake_reload_raises_after_detach")
+
+    def fake_reload(m):
+        events.append("module-reload")
+        raise RuntimeError("reload boom")
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_reload_raises_after_detach")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reload failed" in result, result
+    assert "reload boom" in result, result
+    assert events == ["old-detach", "module-reload", "old-attach"]
+    assert agent.fake_reload_raises_after_detach is original
+
+
+@pytest.mark.asyncio
+async def test_reload_failure_does_not_reload_when_old_detach_raises(monkeypatch):
+    """If old detach fails, stop before module reload and return a controlled failure."""
+    mod_name = "nemo_oo_agents.tools._fake_detach_raises_before_reload_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeDetachRaisesBeforeReload:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            events.append("old-attach")
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+            raise RuntimeError("detach boom")
+
+    mod.FakeDetachRaisesBeforeReload = FakeDetachRaisesBeforeReload
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = FakeDetachRaisesBeforeReload()
+    original.attach(agent)
+    events.clear()
+    agent.fake_detach_raises_before_reload = original
+    registry._attr_map["nemo.fake_detach_raises_before_reload"] = "fake_detach_raises_before_reload"
+    registry._loaded.add("nemo.fake_detach_raises_before_reload")
+
+    def fake_reload(m):
+        events.append("module-reload")
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_detach_raises_before_reload")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reload failed" in result, result
+    assert "detach boom" in result, result
+    assert events == ["old-detach", "old-attach"]
+    assert agent.fake_detach_raises_before_reload is original
+
+
+@pytest.mark.asyncio
+async def test_reload_restores_old_skill_if_new_constructor_raises(monkeypatch):
+    """Constructor failures after pre-reload detach also restore the old skill."""
+    mod_name = "nemo_oo_agents.tools._fake_constructor_raises_for_test"
+    mod = types.ModuleType(mod_name)
+    mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
+    events = []
+
+    class FakeConstructorRaises:
+        version = "v1"
+        __module__ = mod_name
+
+        def attach(self, agent):
+            events.append("old-attach")
+            self.agent = agent
+
+        async def detach(self):
+            events.append("old-detach")
+            await asyncio.sleep(0)
+
+    mod.FakeConstructorRaises = FakeConstructorRaises
+    sys.modules[mod_name] = mod
+
+    agent = _FakeAgent()
+    registry = SkillRegistry(agent)
+    original = FakeConstructorRaises()
+    original.attach(agent)
+    events.clear()
+    agent.fake_constructor_raises = original
+    registry._attr_map["nemo.fake_constructor_raises"] = "fake_constructor_raises"
+    registry._loaded.add("nemo.fake_constructor_raises")
+
+    def fake_reload(m):
+        events.append("module-reload")
+
+        class FakeConstructorRaises:
+            version = "v2"
+            __module__ = mod_name
+
+            def __init__(self):
+                events.append("new-construct")
+                raise RuntimeError("constructor boom")
+
+        m.FakeConstructorRaises = FakeConstructorRaises
+        return m
+
+    monkeypatch.setattr(importlib, "reload", fake_reload)
+    result = await registry.reload("nemo.fake_constructor_raises")
+    sys.modules.pop(mod_name, None)
+
+    assert "Reload failed" in result, result
+    assert "constructor boom" in result, result
+    assert events == ["old-detach", "module-reload", "new-construct", "old-attach"]
+    assert agent.fake_constructor_raises is original

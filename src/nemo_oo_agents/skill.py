@@ -308,6 +308,7 @@ class Skill:
     context_block: Annotated[tuple[str, str] | None, hidden] = None
 
     _agent: Any = None
+    _source_dir: Path
 
     def __init__(self, obj: Any = None, *, content: str | None = None, name: str | None = None):
         n_given = sum(x is not None for x in (obj, content))
