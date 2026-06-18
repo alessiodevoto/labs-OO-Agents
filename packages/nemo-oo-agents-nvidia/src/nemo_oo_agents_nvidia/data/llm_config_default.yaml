@@ -60,6 +60,14 @@ models:
     context_window: 272000
     max_tokens: 32768
 
+  nemotron-3-ultra-reasoning-high:
+    model_name: openai/nvidia/nvidia/nemotron-3-ultra
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 272000
+    max_tokens: 32768
+    reasoning_effort: high
+
   nemotron-super-49b:
     model_name: openai/nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5
     api_base: https://inference-api.nvidia.com/v1
@@ -229,11 +237,26 @@ models:
     context_window: 200000
     max_tokens: 64000
 
+  claude-opus-reasoning-high:
+    model_name: openai/aws/anthropic/claude-opus-4-5
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 200000
+    max_tokens: 64000
+    reasoning_effort: high
+
   claude-opus-4-6:
     model_name: openai/aws/anthropic/bedrock-claude-opus-4-6
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 1000000
+
+  claude-opus-4-6-reasoning-high:
+    model_name: openai/aws/anthropic/bedrock-claude-opus-4-6
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 1000000
+    reasoning_effort: high
 
   claude-opus-4-7:
     model_name: openai/aws/anthropic/bedrock-claude-opus-4-7

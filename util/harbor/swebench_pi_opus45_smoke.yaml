@@ -1,0 +1,39 @@
+# Harbor config for PI harness v0.72.1 × opus 4.5 smoke test on SWEbench (5 tasks).
+# Uses NVIDIA internal gateway to route to AWS Bedrock claude-opus-4-5.
+jobs_dir: /localhome/local-rcabral/harbor_jobs/swebench_pi_opus45_smoke_20260615
+n_attempts: 1
+timeout_multiplier: 1.0
+environment_build_timeout_multiplier: 5.0
+agent_setup_timeout_multiplier: 8.0
+verifier_timeout_multiplier: 2.0
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 1
+  quiet: false
+
+environment:
+  type: docker
+  env:
+    NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
+    OPENAI_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
+    OPENAI_API_BASE: "https://inference-api.nvidia.com/v1"
+    OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"
+  mounts_json:
+    - type: bind
+      source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor
+      target: /opt/harbor
+      read_only: true
+
+agents:
+  - import_path: util.harbor.pi_harness.agent:PiAgent
+    model_name: aws/anthropic/claude-opus-4-5
+    override_setup_timeout_sec: 1200
+    override_timeout_sec: 7200
+    kwargs:
+      version: "0.72.1"
+      provider: "aws"
+      api_base: "https://inference-api.nvidia.com/v1"
+
+datasets:
+  - path: util/harbor/tasks/swebench_smoke

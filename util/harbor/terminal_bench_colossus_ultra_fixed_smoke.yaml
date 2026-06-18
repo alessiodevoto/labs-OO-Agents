@@ -1,24 +1,26 @@
-# Harbor config for SWE-bench Verified — Docker mode, swebench/todo agent, opus.
-jobs_dir: /localhome/local-rcabral/harbor_jobs/swebench_todo_docker_opus
+# TB1 smoke test: nemotron-3-ultra (GA) with NEMO_OO_LLM_CONFIG fix
+# 5 tasks to verify the fix works before full run.
+
+jobs_dir: /localhome/local-rcabral/harbor_jobs/terminal_bench_ultra_fixed_smoke
 n_attempts: 1
-timeout_multiplier: 1.0
-environment_build_timeout_multiplier: 5.0
+timeout_multiplier: 1.5
+environment_build_timeout_multiplier: 8.0
 agent_setup_timeout_multiplier: 5.0
-verifier_timeout_multiplier: 2.0
+verifier_timeout_multiplier: 3.0
 
 orchestrator:
   type: local
-  n_concurrent_trials: 4
+  n_concurrent_trials: 2
   quiet: false
 
 environment:
   type: docker
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
-    OPENAI_API_KEY: "${OPENAI_API_KEY}"
-    OPENAI_API_BASE: "https://inference-api.nvidia.com/v1"
-    OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"
     NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    OTLP_ENDPOINT: "http://10.87.108.113:5001/v1/traces"
+    SHELL_VARIANT: "3"
+    NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
   mounts_json:
     - type: bind
       source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor
@@ -30,10 +32,9 @@ environment:
 
 agents:
   - name: nemo-oo-agents
-    model_name: claude-opus-4-6
+    model_name: nemotron-3-ultra
     kwargs:
       agent_type: swebench/todo
-      tools: swebench
 
 datasets:
-  - path: util/harbor/tasks/swebench_all
+  - path: util/harbor/tasks/terminal_bench
