@@ -318,7 +318,7 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
         params["api_key"] = api_key
 
     # Copy model-specific defaults from config (overrides win)
-    for key in ("temperature", "top_p", "max_tokens", "reasoning"):
+    for key in ("temperature", "top_p", "max_tokens", "reasoning", "reasoning_effort"):
         if key in config and key not in overrides:
             params[key] = config[key]
 

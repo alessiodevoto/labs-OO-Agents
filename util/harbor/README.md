@@ -310,14 +310,52 @@ find . -name reward.txt -exec cat {} \; | sort | uniq -c
 
 ### Troubleshooting
 
+
+### Full-run smoke gate (mandatory)
+
+Before launching any full Harbor benchmark run, run an exact-configuration smoke
+with the same agent, model alias, tools, overlay, and container mode. Then gate
+it with:
+
+```bash
+python util/harbor/validate_harbor_smoke.py <smoke jobs_dir-or-run_dir> --min-completed 1
+```
+
+Do **not** scale to the full task set just because `harbor run` exits 0 or
+`result.json` says `success: true`. LLM/provider failures can be swallowed by
+the agent bounce loop and appear as `response: "done"`, `n_input_tokens: 0`,
+`n_output_tokens: 0`; Harbor then runs the verifier and records ordinary reward
+0 with no infra exception. The smoke gate fails these benchmark-invalid runs by
+checking token usage, dummy responses, exceptions, and known bad log strings
+(`LLM Provider NOT provided`, `Unknown agent_type`, `uv: command not found`,
+`Cannot import 'hatchling.build'`, etc.).
+
+For Opus 4.6 SWE-bench, use the local nemo-oo alias `claude-opus-4-6` (mapped
+in `llm_config_default.yaml` to `openai/aws/anthropic/bedrock-claude-opus-4-6`
+via the NVIDIA OpenAI-compatible gateway) and set:
+
+```yaml
+env:
+  NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+agents:
+  - model_name: claude-opus-4-6
+```
+
+The raw Harbor/API model id `aws/anthropic/bedrock-claude-opus-4-6` is not a
+LiteLLM provider route by itself inside nemo-oo; if it is passed through as the
+agent model, LiteLLM raises `LLM Provider NOT provided` and the benchmark run is
+invalid even though the verifier reports normal 0 rewards.
+
 **"no space left on device" during Apptainer builds:**
 - Check `df -h /tmp` — Apptainer builds to `/tmp` by default
 - Set `export TMPDIR=/localhome/$USER/apptainer_tmp` before running
 - If `/tmp` is full: `sudo rm -rf /tmp/apptainer_staging_*/`
 
 **"LLM Provider NOT provided" error:**
-- Harbor writes `llm_config.yaml` to `/installed-agent/nemo_oo_agents/`
-- Ensure `NEMO_OO_LLM_CONFIG` env var is in `env_passthrough` in your YAML config
+- Harbor writes `llm_config.yaml` to `/installed-agent/nemo_oo_agents/`.
+- Set `NEMO_OO_LLM_CONFIG=/installed-agent/nemo_oo_agents/llm_config.yaml` in the YAML `environment.env`.
+- Use a nemo-oo model alias listed in that config (for Opus 4.6: `claude-opus-4-6`) or a LiteLLM-ready route with provider prefix (`openai/...`). Do not pass raw `aws/anthropic/...` ids through to the agent.
+- Run `python util/harbor/validate_harbor_smoke.py <smoke jobs_dir> --min-completed 1` before scaling.
 
 **SSH authentication failures:**
 - Use FQDN from Colossus, not IP
