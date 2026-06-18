@@ -10,7 +10,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from nemo_oo_agents_cli.tools.repo_tools import RepoTools
+from nemo_oo_agents_cli.tools.repo_tools import RepoTools, _detect_lang
+
+from nemo_oo_agents.tools.shell_tools import Match
 
 
 @pytest.fixture
@@ -71,6 +73,23 @@ def ref_repo(tmp_path):
         """)
     )
 
+    (src / "widgets.ts").write_text(
+        textwrap.dedent("""        export interface Widget {
+            name: string;
+        }
+
+        export class WidgetRunner {
+        }
+
+        export function runWidget() {
+            return helperWidget();
+        }
+
+        const helperWidget = () => 1;
+        const instance = new Widget();
+        """)
+    )
+
     return tmp_path
 
 
@@ -83,7 +102,7 @@ class TestSearchReferences:
     async def test_finds_call_sites(self, ref_repo):
         """search_references should find usages of a symbol (not definitions)."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("create_app", path="src/")
+        r = await rt._search_references("create_app", path="src/")
         assert r.total_matches > 0
         # Should find the call in main.py
         assert any("create_app" in m for m in r.matches)
@@ -91,7 +110,7 @@ class TestSearchReferences:
     async def test_excludes_definitions(self, ref_repo):
         """Definitions (def/class lines) should be filtered out."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("create_app", path="src/")
+        r = await rt._search_references("create_app", path="src/")
         # "def create_app" should NOT appear in results
         for m in r.matches:
             content = m.split(": ", 1)[-1] if ": " in m else m
@@ -99,10 +118,39 @@ class TestSearchReferences:
                 f"Definition line should be excluded: {m}"
             )
 
+    async def test_excludes_typescript_definitions(self, ref_repo):
+        """TypeScript function/class/interface/const definitions should be filtered out."""
+        rt = RepoTools(root=ref_repo)
+
+        helper_refs = await rt._search_references("helperWidget", path="src/")
+        assert any("return helperWidget()" in m for m in helper_refs.matches)
+        assert not any("const helperWidget" in m for m in helper_refs.matches)
+
+        run_refs = await rt._search_references("runWidget", path="src/")
+        assert not any("function runWidget" in m for m in run_refs.matches)
+
+        widget_refs = await rt._search_references("Widget", path="src/")
+        assert not any("interface Widget" in m for m in widget_refs.matches)
+        assert not any("class WidgetRunner" in m for m in widget_refs.matches)
+
+    async def test_typescript_const_usage_is_not_filtered_as_definition(
+        self, ref_repo, monkeypatch
+    ):
+        """Fallback reference search should keep variable declarations that use the symbol."""
+        import nemo_oo_agents_cli.tools._tree_sitter_backend as tsmod
+
+        monkeypatch.setattr(tsmod, "TREE_SITTER_AVAILABLE", False)
+        rt = RepoTools(root=ref_repo)
+
+        widget_refs = await rt._search_references("Widget", path="src/")
+
+        assert any("const instance = new Widget()" in m for m in widget_refs.matches)
+        assert not any("interface Widget" in m for m in widget_refs.matches)
+
     async def test_finds_class_references(self, ref_repo):
         """Should find references to class names."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("Application", path="src/")
+        r = await rt._search_references("Application", path="src/")
         assert r.total_matches > 0
         # Should find usage in main.py and test_app.py
         files_found = {m.split(":")[0] for m in r.matches}
@@ -111,7 +159,7 @@ class TestSearchReferences:
     async def test_qualified_name(self, ref_repo):
         """Qualified name like 'Application.run' should only match lines with both parts."""
         rt = RepoTools(root=ref_repo)
-        result = await rt.search_references("Application.run", path="src/")
+        result = await rt._search_references("Application.run", path="src/")
         # Matches (if any) should reference "run" in context of "Application"
         for m in result.matches:
             content = m.split(": ", 1)[-1] if ": " in m else m
@@ -120,30 +168,39 @@ class TestSearchReferences:
     async def test_no_results_for_nonexistent(self, ref_repo):
         """Should return empty for symbols that don't exist."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("zzz_nonexistent_symbol_zzz", path="src/")
+        r = await rt._search_references("zzz_nonexistent_symbol_zzz", path="src/")
         assert r.total_matches == 0
         assert r.matches == []
 
     async def test_max_results_cap(self, ref_repo):
         """max_results should limit the number of returned matches."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("Application", path="src/", max_results=2)
+        r = await rt._search_references("Application", path="src/", max_results=2)
         assert len(r.matches) <= 2
 
     async def test_result_format(self, ref_repo):
         """Each match should have format 'file:line: context'."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("create_app", path="src/")
+        r = await rt._search_references("create_app", path="src/")
         for m in r.matches:
             parts = m.split(":", 2)
             assert len(parts) >= 3, f"Expected 'file:line: context' format, got: {m}"
             # Second part should be a number
             assert parts[1].strip().isdigit(), f"Expected line number, got: {parts[1]}"
 
+    async def test_reference_results_include_shell_matches(self, ref_repo):
+        """Reference results expose ShellTools Match anchors for direct editing."""
+        rt = RepoTools(root=ref_repo)
+        r = await rt._search_references("create_app", path="src/")
+        assert r.anchors
+        assert len(r.anchors) == len(r.matches)
+        assert all(isinstance(anchor, Match) for anchor in r.anchors)
+        assert any('create_app("myapp")' in anchor.text for anchor in r.anchors)
+
     async def test_skips_comment_only_lines(self, ref_repo):
         """Lines that are only comments should be filtered out."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("Application", path="src/")
+        r = await rt._search_references("Application", path="src/")
         for m in r.matches:
             content = m.split(": ", 1)[-1] if ": " in m else m
             assert not content.strip().startswith("#"), f"Comment-only line should be excluded: {m}"
@@ -151,14 +208,14 @@ class TestSearchReferences:
     async def test_reference_search_result_text(self, ref_repo):
         """ReferenceSearchResult.text should format nicely."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("Application", path="src/")
+        r = await rt._search_references("Application", path="src/")
         text = r.text
         assert "references" in text.lower() or "Application" in text
 
     async def test_reference_search_result_text_no_matches(self, ref_repo):
         """ReferenceSearchResult.text for empty results."""
         rt = RepoTools(root=ref_repo)
-        r = await rt.search_references("zzz_nope_zzz", path="src/")
+        r = await rt._search_references("zzz_nope_zzz", path="src/")
         assert "no references" in r.text.lower()
 
     async def test_with_session(self, ref_repo):
@@ -169,7 +226,7 @@ class TestSearchReferences:
         await session.start()
         try:
             rt = RepoTools(root=ref_repo, session=session)
-            r = await rt.search_references("Application", path="src/")
+            r = await rt._search_references("Application", path="src/")
             # With session, uses ripgrep fallback. Should still find references.
             assert r.total_matches >= 0  # May be 0 if rg not installed
         finally:
@@ -210,6 +267,30 @@ class TestTreeSitterBackend:
 
         result = _get_parser("brainfuck")
         assert result is None
+
+    def test_tsx_queries_alias_typescript_queries(self):
+        """TSX files should use the TSX parser with TypeScript-compatible queries."""
+        from nemo_oo_agents_cli.tools._tree_sitter_backend import (
+            _DEFINITION_QUERIES,
+            _REFERENCE_QUERIES,
+        )
+
+        assert _detect_lang(Path("component.tsx")) == "tsx"
+        assert _DEFINITION_QUERIES["tsx"] == _DEFINITION_QUERIES["typescript"]
+        assert _REFERENCE_QUERIES["tsx"] == _REFERENCE_QUERIES["typescript"]
+
+    def test_swebench_pro_tree_sitter_language_keys(self):
+        """Tree-sitter has grammar/query coverage for Python, JS/TS, TSX, and Go."""
+        from nemo_oo_agents_cli.tools._tree_sitter_backend import (
+            _DEFINITION_QUERIES,
+            _GRAMMAR_MODULES,
+            _REFERENCE_QUERIES,
+        )
+
+        for language in ("python", "javascript", "typescript", "tsx", "go"):
+            assert language in _GRAMMAR_MODULES
+            assert language in _DEFINITION_QUERIES
+            assert language in _REFERENCE_QUERIES
 
     def test_get_parser_python(self):
         """_get_parser('python') should return a parser if tree-sitter-python is installed."""

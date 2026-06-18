@@ -31,13 +31,14 @@ except ImportError:
 # Language grammar loaders (lazy-loaded)
 _PARSERS: dict[str, ts.Parser] = {}
 
-# Map language name → grammar module
+# Map language name → grammar module and language loader function.
 _GRAMMAR_MODULES = {
-    "python": "tree_sitter_python",
-    "javascript": "tree_sitter_javascript",
-    "typescript": "tree_sitter_typescript",
-    "go": "tree_sitter_go",
-    "rust": "tree_sitter_rust",
+    "python": ("tree_sitter_python", "language"),
+    "javascript": ("tree_sitter_javascript", "language"),
+    "typescript": ("tree_sitter_typescript", "language_typescript"),
+    "tsx": ("tree_sitter_typescript", "language_tsx"),
+    "go": ("tree_sitter_go", "language"),
+    "rust": ("tree_sitter_rust", "language"),
 }
 
 # Tree-sitter queries for extracting definitions per language
@@ -77,6 +78,8 @@ _DEFINITION_QUERIES = {
 }
 
 # Tree-sitter queries for finding references (call sites, imports, usages)
+_DEFINITION_QUERIES["tsx"] = _DEFINITION_QUERIES["typescript"]
+
 _REFERENCE_QUERIES = {
     "python": """
         (call function: (identifier) @ref)
@@ -106,6 +109,7 @@ _REFERENCE_QUERIES = {
         (identifier) @ref
     """,
 }
+_REFERENCE_QUERIES["tsx"] = _REFERENCE_QUERIES["typescript"]
 
 
 def _get_parser(lang: str) -> ts.Parser | None:
@@ -116,21 +120,37 @@ def _get_parser(lang: str) -> ts.Parser | None:
     if lang in _PARSERS:
         return _PARSERS[lang]
 
-    mod_name = _GRAMMAR_MODULES.get(lang)
-    if not mod_name:
+    grammar = _GRAMMAR_MODULES.get(lang)
+    if not grammar:
         return None
+    mod_name, loader_name = grammar
 
     try:
         import importlib
 
         grammar_mod = importlib.import_module(mod_name)
-        language = ts.Language(grammar_mod.language())
+        language_fn = getattr(grammar_mod, loader_name)
+        language = ts.Language(language_fn())
         parser = ts.Parser(language)
         _PARSERS[lang] = parser
         return parser
     except (ImportError, AttributeError, Exception) as e:
         logger.debug(f"tree-sitter grammar not available for {lang}: {e}")
         return None
+
+
+def _query_captures(query: ts.Query, root_node: ts.Node) -> list[tuple[ts.Node, str]]:
+    legacy_captures = getattr(query, "captures", None)
+    if legacy_captures is not None:
+        return legacy_captures(root_node)
+
+    captures = ts.QueryCursor(query).captures(root_node)
+    if isinstance(captures, dict):
+        flattened = [
+            (node, capture_name) for capture_name, nodes in captures.items() for node in nodes
+        ]
+        return sorted(flattened, key=lambda item: item[0].start_byte)
+    return captures
 
 
 def ts_extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[str] | None:
@@ -162,7 +182,7 @@ def ts_extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[st
         return None
 
     symbols: list[str] = []
-    captures = query.captures(tree.root_node)
+    captures = _query_captures(query, tree.root_node)
 
     # Process captures — look for @name captures paired with @def
     seen_lines: set[int] = set()
@@ -179,9 +199,9 @@ def ts_extract_symbols(path: Path, lang: str, max_symbols: int = 200) -> list[st
 
         name = source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
-        # Determine kind from parent node type
+        # Determine kind from the enclosing definition node.
         parent = node.parent
-        kind = _node_type_to_kind(parent.type if parent else "unknown", lang)
+        kind = _node_to_kind(parent, lang, source)
 
         # Calculate indent
         indent = node.start_point[1]
@@ -222,7 +242,7 @@ def ts_find_references(
         return None
 
     lines = source.decode("utf-8", errors="replace").splitlines()
-    captures = query.captures(tree.root_node)
+    captures = _query_captures(query, tree.root_node)
 
     # Handle qualified names (e.g. "TraceExplorer.from_file" → match "from_file")
     search_name = name.split(".")[-1] if "." in name else name
@@ -261,6 +281,26 @@ def ts_find_references(
         results.append((line, line_text.strip()))
 
     return results if results else None
+
+
+def _node_to_kind(node: ts.Node | None, lang: str, source: bytes) -> str:
+    """Map a tree-sitter definition node to a human-readable kind string."""
+    if node is None:
+        return "symbol"
+
+    if lang == "python" and node.type == "function_definition":
+        line = source.splitlines()[node.start_point[0]].lstrip()
+        if line.startswith(b"async def "):
+            return "async function"
+
+    if lang == "go" and node.type == "type_spec":
+        for child in node.children:
+            if child.type == "struct_type":
+                return "struct"
+            if child.type == "interface_type":
+                return "interface"
+
+    return _node_type_to_kind(node.type, lang)
 
 
 def _node_type_to_kind(node_type: str, lang: str) -> str:
@@ -305,5 +345,7 @@ def _is_definition_node(node_type: str, lang: str) -> bool:
         "type_alias_declaration",
         "type_declaration",
         "type_spec",
+        "lexical_declaration",
+        "variable_declarator",
     }
     return node_type in def_types

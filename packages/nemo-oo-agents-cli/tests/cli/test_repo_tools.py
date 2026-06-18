@@ -11,13 +11,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+import nemo_oo_agents_cli.tools.repo_tools as repo_tools_mod
 from nemo_oo_agents_cli.tools.repo_tools import (
     RepoTools,
     _detect_lang,
     _extract_symbols,
+    _symbol_anchor_pairs,
 )
 
 from nemo_oo_agents.tools._bash_session import BashSession
+from nemo_oo_agents.tools.shell_tools import Match
 
 
 @pytest.fixture
@@ -132,7 +135,16 @@ class TestLanguageDetection:
 
     def test_typescript(self):
         assert _detect_lang(Path("app.ts")) == "typescript"
-        assert _detect_lang(Path("app.tsx")) == "typescript"
+        assert _detect_lang(Path("app.tsx")) == "tsx"
+
+    def test_swebench_pro_languages(self):
+        """SWE-bench Pro covers Python, JavaScript/TypeScript, and Go."""
+        assert _detect_lang(Path("app.py")) == "python"
+        assert _detect_lang(Path("app.js")) == "javascript"
+        assert _detect_lang(Path("app.jsx")) == "javascript"
+        assert _detect_lang(Path("app.ts")) == "typescript"
+        assert _detect_lang(Path("app.tsx")) == "tsx"
+        assert _detect_lang(Path("main.go")) == "go"
 
     def test_unknown(self):
         assert _detect_lang(Path("data.csv")) == "unknown"
@@ -181,20 +193,47 @@ class TestSymbolExtraction:
 class TestFilemap:
     async def test_filemap_python(self, sample_repo):
         rt = RepoTools(root=sample_repo)
-        r = await rt.filemap("src/main.py")
+        r = await rt._filemap("src/main.py")
         assert r.language == "python"
         assert len(r.symbols) > 0
         assert "Application" in r.text
 
+    async def test_filemap_includes_shell_match_anchors(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+        r = await rt._filemap("src/main.py")
+        assert r.anchors
+        assert len(r.anchors) == len(r.symbols)
+        assert all(isinstance(anchor, Match) for anchor in r.anchors)
+        assert any("class Application" in anchor.text for anchor in r.anchors)
+
+    def test_symbol_anchor_pairs_preserve_symbol_anchor_alignment(self, sample_repo):
+        fpath = sample_repo / "src" / "main.py"
+        pairs = _symbol_anchor_pairs(
+            fpath,
+            [
+                "   3 class Application",
+                "not-a-line invalid symbol",
+                "  13 function create_app",
+            ],
+        )
+
+        assert [symbol.strip() for symbol, _ in pairs] == [
+            "3 class Application",
+            "13 function create_app",
+        ]
+        assert [anchor.start for _, anchor in pairs] == [3, 13]
+        assert "class Application" in pairs[0][1].text
+        assert "def create_app" in pairs[1][1].text
+
     async def test_filemap_go(self, sample_repo):
         rt = RepoTools(root=sample_repo)
-        r = await rt.filemap("src/server.go")
+        r = await rt._filemap("src/server.go")
         assert r.language == "go"
         assert "Server" in r.text
 
     async def test_filemap_nonexistent(self, sample_repo):
         rt = RepoTools(root=sample_repo)
-        r = await rt.filemap("nonexistent.py")
+        r = await rt._filemap("nonexistent.py")
         assert "not found" in r.text.lower() or "error" in r.text.lower()
 
 
@@ -204,16 +243,23 @@ class TestFilemap:
 class TestRepoMap:
     async def test_repo_map_basic(self, sample_repo):
         rt = RepoTools(root=sample_repo)
-        r = await rt.repo_map(paths=["src/"])
+        r = await rt._repo_map(paths=["src/"])
         assert r.num_files > 0
         assert "Application" in r.summary or "main.py" in r.summary
+
+    async def test_repo_map_includes_shell_match_anchors(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+        r = await rt._repo_map(paths=["src/"])
+        assert r.anchors
+        assert all(isinstance(anchor, Match) for anchor in r.anchors)
+        assert any("class Application" in anchor.text for anchor in r.anchors)
 
     async def test_repo_map_with_session(self, sample_repo):
         session = BashSession(cwd=sample_repo)
         await session.start()
         try:
             rt = RepoTools(root=sample_repo, session=session)
-            r = await rt.repo_map(paths=["src/"])
+            r = await rt._repo_map(paths=["src/"])
             assert r.num_files > 0
         finally:
             await session.close()
@@ -228,7 +274,7 @@ class TestSearchSymbol:
         await session.start()
         try:
             rt = RepoTools(root=sample_repo, session=session)
-            r = await rt.search_symbol("Application", path="src/")
+            r = await rt._search_symbol("Application", path="src/")
             assert r.total_matches > 0
             assert any("Application" in m for m in r.matches)
         finally:
@@ -239,20 +285,111 @@ class TestSearchSymbol:
         await session.start()
         try:
             rt = RepoTools(root=sample_repo, session=session)
-            r = await rt.search_symbol("zzz_nonexistent_zzz", path="src/")
+            r = await rt._search_symbol("zzz_nonexistent_zzz", path="src/")
             assert r.total_matches == 0
         finally:
             await session.close()
 
     async def test_search_fallback_no_session(self, sample_repo):
         rt = RepoTools(root=sample_repo)
-        r = await rt.search_symbol("Config")
+        r = await rt._search_symbol("Config")
         assert r.total_matches > 0
 
+    async def test_search_symbol_includes_shell_match_anchors(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+        r = await rt._search_symbol("Config")
+        assert r.anchors
+        assert len(r.anchors) == len(r.matches)
+        assert all(isinstance(anchor, Match) for anchor in r.anchors)
+        assert any("class Config" in anchor.text for anchor in r.anchors)
+
 
 # ==========================================================================
-# repr
+# symbols / refs preferred API
 # ==========================================================================
+class TestPreferredApi:
+    async def test_symbols_file_returns_shelltools_matches(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+
+        r = await rt.symbols("src/main.py", query="Application")
+
+        assert r.query == "Application"
+        assert r.total_matches >= 1
+        assert r.lines
+        assert r.matches
+        assert len(r.lines) == len(r.matches)
+        assert all(isinstance(match, Match) for match in r.matches)
+        assert any("class Application" in match.text for match in r.matches)
+        assert "src/main.py:" in r.text
+
+    async def test_symbols_directory_query_adapts_search_symbol(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+
+        r = await rt.symbols("src/", query="Config")
+
+        assert r.total_matches >= 1
+        assert r.lines
+        assert r.matches
+        assert len(r.lines) == len(r.matches)
+        assert all(isinstance(match, Match) for match in r.matches)
+        assert any("class Config" in match.text for match in r.matches)
+
+    async def test_symbols_directory_without_query_returns_editable_anchors(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+
+        r = await rt.symbols("src/", max_results=5)
+
+        assert r.lines
+        assert r.matches
+        assert len(r.lines) == len(r.matches)
+        assert all(isinstance(match, Match) for match in r.matches)
+        assert any("Application" in match.text for match in r.matches)
+
+    async def test_refs_returns_shelltools_matches(self, sample_repo):
+        rt = RepoTools(root=sample_repo)
+
+        r = await rt.refs("Application", path="src/")
+
+        assert r.query == "Application"
+        assert r.total_matches >= 1
+        assert r.lines
+        assert r.matches
+        assert len(r.lines) == len(r.matches)
+        assert all(isinstance(match, Match) for match in r.matches)
+        assert any("Application" in match.text for match in r.matches)
+
+
+# ============================================================================
+# constructor tree-sitter policy
+# ============================================================================
+class TestConstructorTreeSitterPolicy:
+    def test_warns_when_tree_sitter_unavailable(self, sample_repo, monkeypatch, caplog):
+        monkeypatch.setattr(repo_tools_mod, "_tree_sitter_available", lambda: False)
+        caplog.set_level("WARNING", logger="nemo_oo_agents_cli.tools.repo_tools")
+
+        RepoTools(root=sample_repo)
+
+        assert "tree-sitter is not available" in caplog.text
+        assert "regex/rg fallbacks" in caplog.text
+
+    def test_require_tree_sitter_raises_when_unavailable(self, sample_repo, monkeypatch):
+        monkeypatch.setattr(repo_tools_mod, "_tree_sitter_available", lambda: False)
+
+        with pytest.raises(RuntimeError, match="tree-sitter is not available"):
+            RepoTools(root=sample_repo, require_tree_sitter=True)
+
+    def test_no_warning_when_tree_sitter_available(self, sample_repo, monkeypatch, caplog):
+        monkeypatch.setattr(repo_tools_mod, "_tree_sitter_available", lambda: True)
+        caplog.set_level("WARNING", logger="nemo_oo_agents_cli.tools.repo_tools")
+
+        RepoTools(root=sample_repo)
+
+        assert "tree-sitter is not available" not in caplog.text
+
+
+# ============================================================================
+# repr
+# ============================================================================
 class TestRepr:
     def test_repr(self, sample_repo):
         rt = RepoTools(root=sample_repo)
@@ -278,7 +415,7 @@ class TestRgFallback:
         try:
             rt = RepoTools(root=sample_repo, session=session)
             rt._has_rg = True  # force rg path
-            r = await rt.repo_map(paths=["src/"])
+            r = await rt._repo_map(paths=["src/"])
             assert r.num_files > 0
             assert "main.py" in r.summary or "Application" in r.summary
         finally:
@@ -291,7 +428,7 @@ class TestRgFallback:
         try:
             rt = RepoTools(root=sample_repo, session=session)
             rt._has_rg = False  # force fallback path
-            r = await rt.repo_map(paths=["src/"])
+            r = await rt._repo_map(paths=["src/"])
             assert r.num_files > 0
             assert "main.py" in r.summary or "Application" in r.summary
         finally:
@@ -300,7 +437,7 @@ class TestRgFallback:
     async def test_repo_map_no_session_uses_fallback(self, sample_repo):
         """Without a session, repo_map always uses directory walking."""
         rt = RepoTools(root=sample_repo)
-        r = await rt.repo_map(paths=["src/"])
+        r = await rt._repo_map(paths=["src/"])
         assert r.num_files > 0
 
     async def test_search_symbol_rg_path(self, sample_repo):
@@ -314,7 +451,7 @@ class TestRgFallback:
         try:
             rt = RepoTools(root=sample_repo, session=session)
             rt._has_rg = True  # force rg path
-            r = await rt.search_symbol("Application", path="src/")
+            r = await rt._search_symbol("Application", path="src/")
             assert r.total_matches > 0
         finally:
             await session.close()
@@ -326,7 +463,7 @@ class TestRgFallback:
         try:
             rt = RepoTools(root=sample_repo, session=session)
             rt._has_rg = False  # force fallback path
-            r = await rt.search_symbol("Application", path="src/")
+            r = await rt._search_symbol("Application", path="src/")
             assert r.total_matches > 0
             assert any("Application" in m for m in r.matches)
         finally:
