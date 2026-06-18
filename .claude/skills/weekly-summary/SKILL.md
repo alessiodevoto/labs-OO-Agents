@@ -172,6 +172,14 @@ The reader-facing summary carries no MR/issue numbers — but the person *runnin
 
 Use full GitLab URLs if the summary will be shared somewhere clickable (`<base>/-/merge_requests/<IID>`, `<base>/-/issues/<NN>`); get `<base>` from `git remote get-url origin`.
 
+### Step 6: Write the summary to `WEEKLY_SUMMARY.md`
+
+After presenting the summary in chat, write the final summary — the reader-facing sections **plus** the collapsed sources appendix — to `WEEKLY_SUMMARY.md` in the repo root, overwriting any previous week's file. This gives a stable, shareable artifact on disk.
+
+- Path: repo root (e.g. `<repo>/WEEKLY_SUMMARY.md`); get the repo root from `git rev-parse --show-toplevel`.
+- Content: the same Markdown shown in chat — `## What we achieved`, `## What's next`, then the `<details>` sources block.
+- Always overwrite; this file reflects the most recent run, not a history.
+
 ## Format Rules
 
 - Use the project name from the repo (e.g., "NeMo OO Agents", "AAD Framework").
