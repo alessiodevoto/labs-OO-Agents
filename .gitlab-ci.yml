@@ -40,12 +40,12 @@ stages:
 
 lint:
   stage: lint
+  tags:
+    - os/linux
   timeout: 10 minutes  # lint takes ~50s; 10m catches zombie runners
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
-  tags:
-    - os/linux
+    pull_policy: always
   cache:
     key:
       files:
@@ -69,9 +69,9 @@ lint:
 
 check-frontend-build:
   stage: lint
-  image: node:22-slim
   tags:
     - os/linux
+  image: node:22-slim
   before_script:
     - apt-get update -qq && apt-get install -y -qq git
   script:
@@ -117,6 +117,8 @@ check-frontend-build:
 # Shared boilerplate — all test jobs extend this
 .test-base:
   stage: test
+  tags:
+    - os/linux
   timeout: 15 minutes  # Force zombie runners to fail fast (real tests take <5m)
   interruptible: true  # Allow GitLab to auto-cancel when a newer pipeline supersedes this one
   retry:
@@ -128,9 +130,7 @@ check-frontend-build:
       # (3 × 15 min = 45 min apparent hang). Let it fail fast on first timeout.
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
-  tags:
-    - os/linux
+    pull_policy: always
   cache:
     key:
       files:
@@ -401,6 +401,8 @@ test-trace-explorer:
 # Package test jobs report JUnit inline via artifacts: reports: junit: above.
 upload-test-report:
   stage: test
+  tags:
+    - os/linux
   timeout: 5 minutes  # should complete in <30s; 5m catches zombie runners
   retry:
     max: 2
@@ -408,9 +410,7 @@ upload-test-report:
       - runner_system_failure
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
-  tags:
-    - os/linux
+    pull_policy: always
   needs:
     - job: test-core
       artifacts: true
@@ -443,14 +443,14 @@ upload-test-report:
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
 capability-test:
   stage: capability
+  tags:
+    - os/linux
   # DAG: run as soon as test-core finishes (no full-stage wait).
   # Also cascades: if test-core is skipped or fails, this is skipped automatically.
   needs: [test-core]
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
-  tags:
-    - os/linux
+    pull_policy: always
   cache:
     key:
       files:
@@ -582,11 +582,11 @@ capability-test:
 #   The tests self-skip if that key is absent, so a misconfigured schedule is a no-op.
 integration-return-types:
   stage: capability
-  image:
-    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
   tags:
     - os/linux
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: always
   timeout: 30 minutes
   retry:
     max: 1
@@ -648,11 +648,11 @@ integration-return-types:
 # pipeline.
 .build-package-base:
   stage: build
-  image:
-    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
   tags:
     - os/linux
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: always
   variables:
     # uv-dynamic-versioning runs `git describe` at build time; needs the full
     # tag history, not the shallow clone GitLab does by default. GIT_DEPTH=0
@@ -713,11 +713,11 @@ build-package-cli:
 # build base so build/publish jobs are always co-included or co-excluded.
 .publish-package-base:
   stage: publish
-  image:
-    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
-    pull_policy: if-not-present
   tags:
     - os/linux
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: always
   variables:
     UV_PUBLISH_USERNAME: gitlab-ci-token
     UV_PUBLISH_PASSWORD: $CI_JOB_TOKEN
@@ -756,14 +756,12 @@ build-docker-images:
   stage: deploy
   image:
     name: docker:24.0.5
-    pull_policy: if-not-present
+    pull_policy: always
   services:
     - name: docker:24.0.5-dind
-      pull_policy: if-not-present
+      pull_policy: always
   tags:
-    - os/linux
     - docker-build
-    - interactive-agents
   variables:
     # TLS certificates directory for secure Docker daemon communication
     DOCKER_TLS_CERTDIR: "/certs"
@@ -805,14 +803,12 @@ build-docker-images:
 # Deploy to staging server via SSH
 deploy-staging:
   stage: deploy
+  tags:
+    - os/linux
   needs: [build-docker-images]  # Wait for images to be built
   image:
     name: debian:latest
-    pull_policy: if-not-present
-  tags:
-    - os/linux
-    - docker-build
-    - interactive-agents
+    pull_policy: always
   before_script:
     - command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )
     - eval $(ssh-agent -s)
@@ -858,33 +854,40 @@ deploy-staging:
 pulse-trufflehog-scan:
   stage: security
   image:
-    name: docker:24.0.5
-    pull_policy: if-not-present
-  services:
-    - name: docker:24.0.5-dind
-      pull_policy: if-not-present
+    name: gitlab-master.nvidia.com:5005/interactive-agents/nemo_oo_agents/pulse-secret-scanner:1.79
+    pull_policy: always
+    entrypoint: [""]
   tags:
-    - os/linux
-    - docker-build
-    - interactive-agents
+    - secret_detection
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_DRIVER: overlay2
-    PULSE_SECRET_SCANNER_IMAGE: gitlab-master.nvidia.com:5005/pstooling/pulse-group/pulse-secret-scanner:1.79
+    # GitLab Runner pulls the job image before `script:` runs. The scanner image
+    # is mirrored into this project registry, so provide registry auth at
+    # prepare_executor time.
+    DOCKER_AUTH_CONFIG: '{"auths":{"gitlab-master.nvidia.com:5005":{"username":"gitlab-ci-token","password":"$CI_JOB_TOKEN"}}}'
   retry:
     max: 2
     when:
       - runner_system_failure
-  # Pull the scanner image inside the script so registry/auth infra failures can
-  # be mapped to one allowed exit code while verified secret findings still block.
   script:
-    - docker info
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - docker pull "$PULSE_SECRET_SCANNER_IMAGE" || exit 86
     - |
+      set -eu
+      scanner=""
+      for candidate in trufflehog pulse-secret-scanner /trufflehog /pulse-secret-scanner /usr/local/bin/trufflehog /usr/bin/trufflehog; do
+        if command -v "$candidate" >/dev/null 2>&1 || [ -x "$candidate" ]; then
+          scanner="$candidate"
+          break
+        fi
+      done
+      if [ -z "$scanner" ]; then
+        echo "ERROR: could not find scanner binary in $CI_JOB_IMAGE"
+        find / -maxdepth 3 -type f -perm -111 2>/dev/null | sort | sed -n '1,120p'
+        exit 86
+      fi
+      echo "Using scanner: $scanner"
       set +e
-      docker run --rm         -v "$CI_PROJECT_DIR:/repo"         -w /repo         "$PULSE_SECRET_SCANNER_IMAGE"         filesystem . --json --only-verified         --allowlist .nspect-allowlist.toml --no-allowlisted-results         > trufflehog-report.json
+      "$scanner" filesystem . --json --only-verified --allowlist .nspect-allowlist.toml --no-allowlisted-results > trufflehog-report.json
       scanner_status=$?
+      set -e
       cat trufflehog-report.json
       if grep -Eq '"Verified"[[:space:]]*:[[:space:]]*true' trufflehog-report.json; then
         exit 1
@@ -917,13 +920,11 @@ pulse-trufflehog-scan:
 # ---------------------------------------------------------------------------
 pages:
   stage: pages
-  image:
-    name: debian:bookworm-slim
-    pull_policy: if-not-present
   tags:
     - os/linux
-    - docker-build
-    - interactive-agents
+  image:
+    name: debian:bookworm-slim
+    pull_policy: always
   script:
     - test -f public/index.html
   artifacts:
