@@ -197,6 +197,7 @@ class LLMTurn:
     token_counts: dict[str, int] | None = None
     duration_ms: float | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)  # Tool calls in response
+    reasoning_content: str = ""  # Hidden/model reasoning emitted alongside response
     span_id: str = ""  # Span ID of the acompletion span
     provider: str = ""  # LLM provider (e.g., "openai", "anthropic")
     invocation_parameters: dict[str, Any] = field(default_factory=dict)  # temperature, etc.
@@ -634,6 +635,59 @@ def _extract_response(attrs: dict[str, Any]) -> str:
         return content
     # Fallback to output.value if available
     return attrs.get("output.value", "")
+
+
+def _extract_reasoning_content(attrs: dict[str, Any]) -> str:
+    """Extract model reasoning from span attributes."""
+    reasoning_parts: list[str] = []
+
+    def add(value: Any) -> None:
+        if value is None:
+            return
+        if not isinstance(value, str):
+            value = str(value)
+        value = value.strip()
+        if value and value not in reasoning_parts:
+            reasoning_parts.append(value)
+
+    add(attrs.get("llm.reasoning_content"))
+
+    msg_idx = 0
+    max_empty_messages = 2
+    empty_count = 0
+    while empty_count < max_empty_messages:
+        found = False
+        for suffix in (
+            "message.reasoning_content",
+            "message.additional_kwargs.reasoning_content",
+            "message.provider_specific_fields.reasoning_content",
+        ):
+            key = f"llm.output_messages.{msg_idx}.{suffix}"
+            if key in attrs:
+                found = True
+                add(attrs.get(key))
+        if f"llm.output_messages.{msg_idx}.message.content" in attrs:
+            found = True
+        empty_count = 0 if found else empty_count + 1
+        msg_idx += 1
+
+    output_value = attrs.get("output.value")
+    if isinstance(output_value, str) and "reasoning_content" in output_value:
+        try:
+            parsed = json.loads(output_value)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            add(parsed.get("reasoning_content"))
+            choices = parsed.get("choices")
+            if isinstance(choices, list):
+                for choice in choices:
+                    if isinstance(choice, dict):
+                        message = choice.get("message")
+                        if isinstance(message, dict):
+                            add(message.get("reasoning_content"))
+
+    return "\n".join(reasoning_parts)
 
 
 def _extract_token_counts(attrs: dict[str, Any]) -> dict[str, int] | None:
@@ -1117,6 +1171,7 @@ def _populate_session_turns_from_generation(
                 token_counts=_extract_token_counts(attrs),
                 duration_ms=duration_ns / 1_000_000 if duration_ns else None,
                 tool_calls=_extract_tool_calls(attrs),
+                reasoning_content=_extract_reasoning_content(attrs),
                 span_id=span.get("span_id", ""),
                 provider=attrs.get("llm.provider", ""),
                 invocation_parameters=_extract_invocation_parameters(attrs),
@@ -1250,6 +1305,7 @@ class TurnInfo:
     model: str | None = None
     token_counts: dict[str, int] | None = None
     tool_calls: list[dict] | None = None  # [{function_name, arguments}]
+    reasoning_content: str | None = None
 
     # For execution turns
     code: str | None = None
@@ -1293,6 +1349,12 @@ class TurnInfo:
                 lines.append(f"**[{i}] {msg.get('role', 'unknown').upper()}**")
                 lines.append("```")
                 lines.append(msg.get("content", ""))
+                lines.append("```")
+                lines.append("")
+            if self.reasoning_content:
+                lines.append("### Reasoning")
+                lines.append("```")
+                lines.append(self.reasoning_content)
                 lines.append("```")
                 lines.append("")
             lines.append("### LLM Response")
@@ -1351,6 +1413,7 @@ class TurnInfo:
                     "model": self.model,
                     "token_counts": self.token_counts,
                     "tool_calls": self.tool_calls or [],
+                    "reasoning_content": self.reasoning_content,
                 }
             )
         else:
@@ -3187,7 +3250,9 @@ class TraceExplorer:
             result_preview=result_preview,
         )
 
-    async def get_session(self, session_id: str, *, concise: bool = False) -> str:
+    async def get_session(
+        self, session_id: str, *, concise: bool = False, include_reasoning: bool = True
+    ) -> str:
         """Get detailed execution info about a specific session.
 
         Shows how a method executed: turns, tool calls, reasoning, errors.
@@ -3277,7 +3342,11 @@ class TraceExplorer:
         lines.append("")
 
         # Execution section - turn-by-turn details with XML structure
-        lines.extend(self._format_session_execution(session, concise=concise))
+        lines.extend(
+            self._format_session_execution(
+                session, concise=concise, include_reasoning=include_reasoning
+            )
+        )
 
         # Navigation
         lines.append("")
@@ -3316,7 +3385,9 @@ class TraceExplorer:
         ]
         return SessionData(session=summary, turns=turns)
 
-    def _format_session_turns_summary(self, session: AgentSession) -> list[str]:
+    def _format_session_turns_summary(
+        self, session: AgentSession, *, include_reasoning: bool = True
+    ) -> list[str]:
         """Format session turns as one-line summaries (concise mode).
 
         Format: Turn N: [TYPE] code_preview → STATUS (duration)
@@ -3337,6 +3408,9 @@ class TraceExplorer:
                 )
                 error = exec_turn.error if exec_turn else None
                 status = _format_turn_status(error)
+                reasoning_marker = (
+                    " [reasoning]" if include_reasoning and turn.reasoning_content else ""
+                )
 
                 # Determine turn type based on tool_call_id pattern
                 if exec_turn and exec_turn.tool_call_id.startswith("prefill"):
@@ -3376,7 +3450,7 @@ class TraceExplorer:
                         code_preview = resp
 
                 lines.append(
-                    f"  Turn {turn_num}: [{turn_type}] {code_preview} → {status} ({duration:.0f}ms)"
+                    f"  Turn {turn_num}: [{turn_type}]{reasoning_marker} {code_preview} → {status} ({duration:.0f}ms)"
                 )
 
                 turn_num += 1
@@ -3402,7 +3476,11 @@ class TraceExplorer:
         return lines
 
     def _format_session_execution(
-        self, session: AgentSession, *, concise: bool = True
+        self,
+        session: AgentSession,
+        *,
+        concise: bool = True,
+        include_reasoning: bool = True,
     ) -> list[str]:
         """Format session turns as XML mirroring OpenAI message format.
 
@@ -3416,7 +3494,7 @@ class TraceExplorer:
 
         # Concise mode: show one-line summaries per turn
         if concise:
-            return self._format_session_turns_summary(session)
+            return self._format_session_turns_summary(session, include_reasoning=include_reasoning)
 
         max_len = 5000  # Full content in verbose mode
 
@@ -3505,10 +3583,16 @@ class TraceExplorer:
 
                 # Assistant response (from this turn's LLM call)
                 has_response = turn.response and turn.response.strip()
+                has_reasoning = include_reasoning and bool(turn.reasoning_content.strip())
                 has_tool_calls = bool(turn.tool_calls)
 
-                if has_response or has_tool_calls:
+                if has_response or has_reasoning or has_tool_calls:
                     lines.append("  <assistant>")
+
+                    if has_reasoning:
+                        lines.append("    <reasoning>")
+                        lines.extend(indent(trunc(turn.reasoning_content.strip()), "      "))
+                        lines.append("    </reasoning>")
 
                     # Text response (if any)
                     if has_response:
@@ -3924,7 +4008,9 @@ class TraceExplorer:
     # Turn Navigation
     # =========================================================================
 
-    async def get_turn(self, session_id: str, turn_index: int) -> str:
+    async def get_turn(
+        self, session_id: str, turn_index: int, *, include_reasoning: bool = True
+    ) -> str:
         """Get full context window, LLM response, and execution output for a specific turn.
 
         Shows exactly what the LLM saw and produced. Answer: "What was the exact
@@ -3951,7 +4037,9 @@ class TraceExplorer:
         turn = session.turns[turn_index]
 
         if isinstance(turn, LLMTurn):
-            return self._format_llm_turn_full(session, turn_index, turn)
+            return self._format_llm_turn_full(
+                session, turn_index, turn, include_reasoning=include_reasoning
+            )
         else:
             return self._format_exec_turn_full(session, turn_index, turn)
 
@@ -3971,7 +4059,14 @@ class TraceExplorer:
         turn = session.turns[turn_index]
         return self._build_turn_info(session.session_id, turn_index, turn)
 
-    def _format_llm_turn_full(self, session: AgentSession, turn_index: int, turn: LLMTurn) -> str:
+    def _format_llm_turn_full(
+        self,
+        session: AgentSession,
+        turn_index: int,
+        turn: LLMTurn,
+        *,
+        include_reasoning: bool = True,
+    ) -> str:
         """Format an LLM turn with full context window using XML-style tags.
 
         Format: [CONTEXT] → [LLM OUTPUT] → [EXECUTION RESULT]
@@ -4076,10 +4171,16 @@ class TraceExplorer:
 
         # LLM response
         has_response = turn.response and turn.response.strip()
+        has_reasoning = include_reasoning and bool(turn.reasoning_content.strip())
         has_tool_calls = bool(turn.tool_calls)
 
-        if has_response or has_tool_calls:
+        if has_response or has_reasoning or has_tool_calls:
             lines.append("  <assistant>")
+
+            if has_reasoning:
+                lines.append("    <reasoning>")
+                lines.extend(indent(trunc(turn.reasoning_content.strip()), "      "))
+                lines.append("    </reasoning>")
 
             if has_response:
                 lines.extend(indent(trunc(turn.response.strip()), "    "))
@@ -4304,6 +4405,7 @@ class TraceExplorer:
                 turn_type="llm",
                 messages=[{"role": m.role, "content": m.content} for m in turn.messages],
                 response=turn.response,
+                reasoning_content=turn.reasoning_content or None,
                 model=turn.model,
                 token_counts=turn.token_counts,
                 tool_calls=[
@@ -5200,20 +5302,21 @@ class TraceExplorer:
             return 0
         return max(s.depth for s in self._all_sessions)
 
-    async def get_method_counts(self) -> dict[str, int]:
-        """Get invocation count for each agent method.
-
-        Returns:
-            Dict mapping "AgentName.method_name" to invocation count
-        """
+    def _get_method_counts(self) -> dict[str, int]:
+        """Internal: Get invocation count for each agent method."""
         counts: dict[str, int] = {}
         for session in self._all_sessions:
             name = session.full_name
             counts[name] = counts.get(name, 0) + 1
         return counts
 
-    # Backward compat alias
-    _get_method_counts = get_method_counts
+    async def get_method_counts(self) -> dict[str, int]:
+        """Get invocation count for each agent method.
+
+        Returns:
+            Dict mapping "AgentName.method_name" to invocation count
+        """
+        return self._get_method_counts()
 
     def _get_depth_distribution(self) -> dict[int, int]:
         """Internal: Get count of sessions at each depth level."""
@@ -6788,6 +6891,11 @@ Examples (experiment mode):
         action="store_true",
         help="Show harness telemetry (model-helping patterns tracked via OTLP spans)",
     )
+    parser.add_argument(
+        "--no-reasoning",
+        action="store_true",
+        help="Hide model reasoning_content in session and turn output",
+    )
 
     args = parser.parse_args()
 
@@ -6839,6 +6947,7 @@ Examples (experiment mode):
         return
 
     # Load trace from file or viewer
+    trace: Any
     try:
         if args.viewer:
             # Try thin-client path first (server-side execution, much faster)
@@ -6919,12 +7028,20 @@ Examples (experiment mode):
             turn = await trace.get_turn_data(args.session, args.turn)
             _print_json(turn.to_dict() if turn else None)
         else:
-            print(await trace.get_turn(args.session, args.turn))
+            print(
+                await trace.get_turn(
+                    args.session, args.turn, include_reasoning=not args.no_reasoning
+                )
+            )
     elif args.session:
         if args.json:
             _print_json((await trace.get_session_data(args.session)).to_dict())
         else:
-            print(await trace.get_session(args.session, concise=not args.verbose))
+            print(
+                await trace.get_session(
+                    args.session, concise=not args.verbose, include_reasoning=not args.no_reasoning
+                )
+            )
     elif args.errors:
         if args.json:
             _print_json(await trace.get_errors_data())

@@ -37,6 +37,54 @@ def _make_otlp_spans() -> list[dict]:
     return [agent_span]
 
 
+def _make_otlp_spans_with_reasoning() -> list[dict]:
+    """Create a minimal agent/generation/LLM trace with output reasoning."""
+    spans = _make_otlp_spans()
+    generation_span = {
+        "traceId": "trace001",
+        "spanId": "gen001",
+        "parentSpanId": "aabbccdd11223344",
+        "name": "generation",
+        "kind": 1,
+        "startTimeUnixNano": "1100000000",
+        "endTimeUnixNano": "1900000000",
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "generation.id", "value": {"stringValue": "gen001abcdef"}},
+            {"key": "agent.name", "value": {"stringValue": "TestAgent"}},
+            {"key": "agent.method", "value": {"stringValue": "handle"}},
+            {"key": "agent.call_id", "value": {"stringValue": "call_001"}},
+        ],
+        "status": {"code": 1},
+        "events": [],
+        "_resource": {},
+    }
+    llm_span = {
+        "traceId": "trace001",
+        "spanId": "llm001",
+        "parentSpanId": "gen001",
+        "name": "acompletion",
+        "kind": 1,
+        "startTimeUnixNano": "1200000000",
+        "endTimeUnixNano": "1300000000",
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
+            {"key": "llm.model_name", "value": {"stringValue": "test-model"}},
+            {"key": "llm.input_messages.0.message.role", "value": {"stringValue": "user"}},
+            {"key": "llm.input_messages.0.message.content", "value": {"stringValue": "solve"}},
+            {"key": "llm.output_messages.0.message.content", "value": {"stringValue": "final"}},
+            {
+                "key": "llm.output_messages.0.message.reasoning_content",
+                "value": {"stringValue": "server-side reasoning"},
+            },
+        ],
+        "status": {"code": 1},
+        "events": [],
+        "_resource": {},
+    }
+    return spans + [generation_span, llm_span]
+
+
 @pytest.fixture
 def app():
     """Create a test FastAPI app with explorer routes."""
@@ -52,10 +100,14 @@ def app():
 @pytest.fixture
 def mock_otlp_store():
     """Mock otlp_store functions used by explorer_routes."""
+    from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache
+
+    clear_explorer_cache()
     with patch("nemo_oo_agents.viewer.explorer_routes.otlp_store") as mock_store:
         mock_store.session_exists.return_value = True
         mock_store.get_session_spans.return_value = _make_otlp_spans()
         yield mock_store
+    clear_explorer_cache()
 
 
 # =============================================================================
@@ -235,3 +287,81 @@ async def test_client_bypasses_env_proxy(monkeypatch):
         assert h._transport_for_url(url) is h._transport, (
             "viewer request must go direct, not through the env proxy"
         )
+
+
+@pytest.mark.asyncio
+async def test_session_endpoint_include_reasoning_flag(app, mock_otlp_store):
+    """Session endpoint includes reasoning by default and hides it when requested."""
+    mock_otlp_store.get_session_spans.return_value = _make_otlp_spans_with_reasoning()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(
+            "/api/explorer/session",
+            params={"session_id": "test-session", "target_session_id": "aabbcc"},
+        )
+        hidden = await client.get(
+            "/api/explorer/session",
+            params={
+                "session_id": "test-session",
+                "target_session_id": "aabbcc",
+                "include_reasoning": False,
+            },
+        )
+
+    assert resp.status_code == 200
+    assert "server-side reasoning" in resp.json()["result"]
+    assert hidden.status_code == 200
+    assert "server-side reasoning" not in hidden.json()["result"]
+
+
+@pytest.mark.asyncio
+async def test_turn_endpoint_include_reasoning_flag(app, mock_otlp_store):
+    """Turn endpoint includes reasoning by default and hides it when requested."""
+    mock_otlp_store.get_session_spans.return_value = _make_otlp_spans_with_reasoning()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(
+            "/api/explorer/turn",
+            params={
+                "session_id": "test-session",
+                "target_session_id": "aabbcc",
+                "turn_index": 0,
+            },
+        )
+        hidden = await client.get(
+            "/api/explorer/turn",
+            params={
+                "session_id": "test-session",
+                "target_session_id": "aabbcc",
+                "turn_index": 0,
+                "include_reasoning": False,
+            },
+        )
+
+    assert resp.status_code == 200
+    assert "server-side reasoning" in resp.json()["result"]
+    assert hidden.status_code == 200
+    assert "server-side reasoning" not in hidden.json()["result"]
+
+
+@pytest.mark.asyncio
+async def test_client_passes_include_reasoning_params(monkeypatch):
+    """Thin client forwards include_reasoning to session/turn endpoints."""
+    seen: list[tuple[str, dict]] = []
+
+    async def fake_get(self, url, params=None):
+        seen.append((str(url), dict(params or {})))
+        request = httpx.Request("GET", url, params=params)
+        return httpx.Response(200, json={"result": "ok"}, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    client = TraceExplorerClient("http://viewer", "viewer-session")
+
+    await client.get_session("aabbcc", include_reasoning=False)
+    await client.get_turn("aabbcc", 0, include_reasoning=False)
+    await client.get_session_fast("aabbcc", "span1", include_reasoning=False)
+    await client.get_turn_fast("aabbcc", "span1", 0, include_reasoning=False)
+
+    assert [params["include_reasoning"] for _, params in seen] == [False, False, False, False]
+    assert seen[0][1]["target_session_id"] == "aabbcc"
+    assert seen[1][1]["turn_index"] == 0
+    assert seen[2][1]["span_id"] == "span1"
+    assert seen[3][1]["span_id"] == "span1"

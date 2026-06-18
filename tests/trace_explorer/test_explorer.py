@@ -18,6 +18,7 @@ from nemo_oo_agents.trace_explorer.explorer import (
     _extract_any_value,
     _extract_failing_line,
     _extract_messages,
+    _extract_reasoning_content,
     _extract_response,
     _extract_token_counts,
     _extract_tool_calls,
@@ -108,6 +109,7 @@ def make_llm_span(
     messages: list[tuple[str, str]] | None = None,
     tool_calls: list[tuple[str, str]] | None = None,
     response: str = "",
+    reasoning_content: str | None = None,
     model: str = "test-model",
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
@@ -132,6 +134,8 @@ def make_llm_span(
     # Add output content
     if response:
         flat_attrs["llm.output_messages.0.message.content"] = response
+    if reasoning_content:
+        flat_attrs["llm.output_messages.0.message.reasoning_content"] = reasoning_content
 
     # Add tool calls
     if tool_calls:
@@ -1605,3 +1609,119 @@ class TestPopulateTurnsFallbacks:
             )
         finally:
             trace_file.unlink()
+
+
+class TestTraceExplorerReasoningContent:
+    """Reasoning content should be available to thin-client consumers."""
+
+    def test_extract_reasoning_from_output_message(self):
+        attrs = {
+            "llm.output_messages.0.message.content": "final answer",
+            "llm.output_messages.0.message.reasoning_content": "reasoning steps",
+        }
+        assert _extract_reasoning_content(attrs) == "reasoning steps"
+
+    @pytest.mark.asyncio
+    async def test_get_turn_includes_reasoning_by_default_and_can_suppress(self):
+        trace_file = create_trace_file(
+            [
+                make_generation_span("gen1", "abcdef123456"),
+                make_llm_span(
+                    "llm1",
+                    "gen1",
+                    messages=[("user", "solve it")],
+                    response="final answer",
+                    reasoning_content="private chain of thought",
+                ),
+            ]
+        )
+        try:
+            trace = await TraceExplorer.from_file(trace_file)
+            with_reasoning = await trace.get_turn("abcdef", 0)
+            without_reasoning = await trace.get_turn("abcdef", 0, include_reasoning=False)
+
+            assert "<reasoning>" in with_reasoning
+            assert "private chain of thought" in with_reasoning
+            assert "final answer" in with_reasoning
+            assert "private chain of thought" not in without_reasoning
+            assert "final answer" in without_reasoning
+        finally:
+            trace_file.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_get_session_includes_reasoning_by_default_and_can_suppress(self):
+        trace_file = create_trace_file(
+            [
+                make_generation_span("gen1", "abcdef123456"),
+                make_llm_span(
+                    "llm1",
+                    "gen1",
+                    messages=[("user", "solve it")],
+                    response="final answer",
+                    reasoning_content="session reasoning evidence",
+                ),
+            ]
+        )
+        try:
+            trace = await TraceExplorer.from_file(trace_file)
+            with_reasoning = await trace.get_session("abcdef", concise=False)
+            without_reasoning = await trace.get_session(
+                "abcdef", concise=False, include_reasoning=False
+            )
+            concise = await trace.get_session("abcdef", concise=True)
+
+            assert "<reasoning>" in with_reasoning
+            assert "session reasoning evidence" in with_reasoning
+            assert "session reasoning evidence" not in without_reasoning
+            assert "[reasoning]" in concise
+        finally:
+            trace_file.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_get_turn_data_exposes_reasoning(self):
+        trace_file = create_trace_file(
+            [
+                make_generation_span("gen1", "abcdef123456"),
+                make_llm_span(
+                    "llm1",
+                    "gen1",
+                    messages=[("user", "solve it")],
+                    response="final answer",
+                    reasoning_content="structured reasoning",
+                ),
+            ]
+        )
+        try:
+            trace = await TraceExplorer.from_file(trace_file)
+            turn = await trace.get_turn_data("abcdef", 0)
+            assert turn is not None
+            assert turn.reasoning_content == "structured reasoning"
+            assert turn.to_dict()["reasoning_content"] == "structured reasoning"
+        finally:
+            trace_file.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_turn_full_content_renders_reasoning_before_response(self):
+        trace_file = create_trace_file(
+            [
+                make_generation_span("gen1", "abcdef123456"),
+                make_llm_span(
+                    "llm1",
+                    "gen1",
+                    messages=[("user", "solve it")],
+                    response="final answer",
+                    reasoning_content="structured reasoning",
+                ),
+            ]
+        )
+        try:
+            trace = await TraceExplorer.from_file(trace_file)
+            turn = await trace.get_turn_data("abcdef", 0)
+            assert turn is not None
+            content = turn.full_content()
+
+            reasoning_index = content.index("### Reasoning")
+            response_index = content.index("### LLM Response")
+            assert reasoning_index < response_index
+        finally:
+            trace_file.unlink(missing_ok=True)

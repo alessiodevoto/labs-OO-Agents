@@ -93,7 +93,9 @@ class TraceExplorerClient:
         """
         return await self._get_text("overview", {"concise": concise})
 
-    async def get_session(self, session_id: str, *, concise: bool = False) -> str:
+    async def get_session(
+        self, session_id: str, *, concise: bool = False, include_reasoning: bool = True
+    ) -> str:
         """Get detailed execution info about a specific session.
 
         Args:
@@ -105,6 +107,7 @@ class TraceExplorerClient:
             {
                 "target_session_id": session_id,
                 "concise": concise,
+                "include_reasoning": include_reasoning,
             },
         )
 
@@ -113,7 +116,9 @@ class TraceExplorerClient:
         data = await self._get("session-list")
         return data.get("sessions", [])
 
-    async def get_turn(self, session_id: str, turn_index: int) -> str:
+    async def get_turn(
+        self, session_id: str, turn_index: int, *, include_reasoning: bool = True
+    ) -> str:
         """Get full details for a specific turn.
 
         Args:
@@ -125,6 +130,7 @@ class TraceExplorerClient:
             {
                 "target_session_id": session_id,
                 "turn_index": turn_index,
+                "include_reasoning": include_reasoning,
             },
         )
 
@@ -202,7 +208,12 @@ class TraceExplorerClient:
         return await self._get("error-spans")
 
     async def get_session_fast(
-        self, session_id: str, span_id: str, *, concise: bool = False
+        self,
+        session_id: str,
+        span_id: str,
+        *,
+        concise: bool = False,
+        include_reasoning: bool = True,
     ) -> str:
         """Get session details using only the subtree under span_id.
 
@@ -220,10 +231,18 @@ class TraceExplorerClient:
                 "target_session_id": session_id,
                 "span_id": span_id,
                 "concise": concise,
+                "include_reasoning": include_reasoning,
             },
         )
 
-    async def get_turn_fast(self, session_id: str, span_id: str, turn_index: int) -> str:
+    async def get_turn_fast(
+        self,
+        session_id: str,
+        span_id: str,
+        turn_index: int,
+        *,
+        include_reasoning: bool = True,
+    ) -> str:
         """Get turn details using only the subtree under span_id.
 
         Much faster than get_turn() for large traces.
@@ -239,6 +258,7 @@ class TraceExplorerClient:
                 "target_session_id": session_id,
                 "span_id": span_id,
                 "turn_index": turn_index,
+                "include_reasoning": include_reasoning,
             },
         )
 
