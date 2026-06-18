@@ -223,11 +223,38 @@ class TestPersistentWorker:
             result = json.loads(stdout)
             assert result["passed"] is True
             assert result["output"] == "positive"
-            # The print output should be on stderr
-            assert b"NOISE FROM AGENT" in stderr
+            # The print output should be on stderr and identify the owning task.
+            assert b"[test_001] NOISE FROM AGENT" in stderr
         finally:
             if proc.poll() is None:
                 proc.kill()
+
+    def test_output_prefixer_supports_writelines(self):
+        """Stream wrapper preserves writelines() and prefixes each line."""
+        import io
+
+        from eval_pipeline.subprocess_worker import _TaskOutputPrefixer
+
+        stream = io.StringIO()
+        prefixer = _TaskOutputPrefixer(stream, "task_001")
+
+        prefixer.writelines(["first\n", "second\n"])
+
+        assert stream.getvalue() == "[task_001] first\n[task_001] second\n"
+
+    def test_output_prefixer_treats_carriage_return_as_line_separator(self):
+        """Carriage-return-only progress output should not suppress the next prefix."""
+        import io
+
+        from eval_pipeline.subprocess_worker import _TaskOutputPrefixer
+
+        stream = io.StringIO()
+        prefixer = _TaskOutputPrefixer(stream, "task_001")
+
+        prefixer.write("progress\r")
+        prefixer.write("done\n")
+
+        assert stream.getvalue() == "[task_001] progress\r[task_001] done\n"
 
     def test_error_on_bad_json_then_good_task(self, tmp_path):
         """Bad JSON produces error result, but next task still works."""

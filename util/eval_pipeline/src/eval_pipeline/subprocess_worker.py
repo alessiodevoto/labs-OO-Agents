@@ -37,6 +37,37 @@ from .scoring import (
 log = logging.getLogger(__name__)
 
 
+class _TaskOutputPrefixer:
+    """Prefix task-owned stdout/stderr lines without touching protocol stdout."""
+
+    def __init__(self, stream, task_id: str):
+        self._stream = stream
+        self._prefix = f"[{task_id}] "
+        self._at_line_start = True
+
+    def write(self, text: str) -> int:
+        for chunk in text.splitlines(keepends=True):
+            if self._at_line_start and chunk:
+                self._stream.write(self._prefix)
+            self._stream.write(chunk)
+            self._at_line_start = chunk[-1] in ("\n", "\r") if chunk else self._at_line_start
+        return len(text)
+
+    def writelines(self, lines) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def isatty(self) -> bool:
+        return self._stream.isatty()
+
+    @property
+    def encoding(self) -> str | None:
+        return getattr(self._stream, "encoding", None)
+
+
 async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     """Execute a single evaluation task in this subprocess.
 
@@ -474,6 +505,7 @@ def main() -> None:
     # to stderr so that print() in agent code / libraries doesn't corrupt
     # the JSON line protocol.
     _proto_out = sys.stdout.buffer
+    _real_stderr = sys.stderr
     sys.stdout = sys.stderr
 
     # Enable tracemalloc early so allocations from the first task are tracked.
@@ -494,6 +526,9 @@ def main() -> None:
             try:
                 task_input = SubprocessTaskInput.model_validate_json(line)
                 _eval_meta = merge_eval_metadata(task_input.eval_metadata, task_input.task.metadata)
+                _prefixed_output = _TaskOutputPrefixer(_real_stderr, task_input.task.id)
+                sys.stdout = _prefixed_output
+                sys.stderr = _prefixed_output
 
                 # -- memory cap setup ------------------------------------ #
                 if task_input.memory_limit_mb:
@@ -581,6 +616,8 @@ def main() -> None:
 
             finally:
                 # -- memory cap teardown --------------------------------- #
+                sys.stdout = _real_stderr
+                sys.stderr = _real_stderr
                 if monitor:
                     monitor.stop()
                 if task_input and task_input.memory_limit_mb and _memory_mod:
