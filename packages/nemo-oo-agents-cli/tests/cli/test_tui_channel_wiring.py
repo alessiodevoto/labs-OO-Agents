@@ -31,14 +31,23 @@ def _fresh_agent() -> TUIAgent:
     return TUIAgent(llm=FakeLLMClient())
 
 
-def test_tui_agent_installs_static_shell_doc_context():
-    """Verify TUIAgent registers the live shell doc as a static expr block."""
+def test_tui_agent_installs_static_python_tools_context():
+    """Verify TUIAgent registers ShellTools and RepoTools docs together."""
     agent = _fresh_agent()
     raw = dict(agent.context_manager._raw_items())
 
-    assert "self.shell" in raw
-    assert raw["self.shell"].expr == "doc(type(self.shell))"
-    assert agent.context_manager.is_static("self.shell") is True
+    assert "python_tools" in raw
+    assert raw["python_tools"].expr == "doc(RepoTools, ShellTools)"
+    assert agent.context_manager.is_static("python_tools") is True
+    assert "self.shell" not in raw
+
+
+def test_tui_agent_wires_repo_to_shell_session():
+    """TUIAgent gives RepoTools the same root/session as ShellTools."""
+    agent = _fresh_agent()
+
+    assert agent.repo._root == agent.shell.cwd
+    assert agent.repo._session is agent.shell._session
 
 
 def test_doer_agent_installs_static_shell_doc_context():
