@@ -278,7 +278,7 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
         # Responses API without YAML — pass client_type directly
         llm = get_llm_client("openai/gpt-5.3-codex", client_type="responses")
     """
-    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
+    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient, RetryConfig
 
     ensure_loaded()
 
@@ -321,6 +321,23 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
     for key in ("temperature", "top_p", "max_tokens", "reasoning", "reasoning_effort"):
         if key in config and key not in overrides:
             params[key] = config[key]
+
+    # Registry aliases can centrally tune or disable the clients' default endpoint
+    # retry behavior. ``retry_config: false`` means a single attempt for every
+    # endpoint error; a mapping is passed to RetryConfig(...). Explicit call-site
+    # overrides still win.
+    if "retry_config" in config and "retry_config" not in overrides:
+        retry_config = config["retry_config"]
+        if retry_config is False or retry_config is None:
+            params["retry_config"] = RetryConfig(max_retries=0, rate_limit_extra_retries=0)
+        elif isinstance(retry_config, dict):
+            params["retry_config"] = RetryConfig(**retry_config)
+        else:
+            logger.warning(
+                "Ignoring model %r retry_config: expected mapping, false, or null; got %s.",
+                name,
+                type(retry_config).__name__,
+            )
 
     params.update(overrides)
 

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for retry logic."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from nemo_oo_agents.unifiedllm.retry import (
@@ -113,6 +115,38 @@ class TestIsRetryableError:
         assert is_retryable is True
         assert is_rate_limit is False
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ConnectError("failed to connect"),
+            httpx.ConnectTimeout("connection timed out"),
+            httpx.RemoteProtocolError("server disconnected without sending a response"),
+            httpx.NetworkError("network is unreachable"),
+        ],
+    )
+    def test_httpx_endpoint_errors_are_retryable(self, error):
+        """httpx transport failures are retryable endpoint errors."""
+        config = RetryConfig()
+
+        is_retryable, is_rate_limit = _is_retryable_error(error, config)
+
+        assert is_retryable is True
+        assert is_rate_limit is False
+
+    def test_api_connection_class_name_is_retryable(self):
+        """Provider APIConnectionError-style exceptions are retryable."""
+
+        class APIConnectionError(Exception):
+            pass
+
+        config = RetryConfig()
+        error = APIConnectionError("endpoint not reachable")
+
+        is_retryable, is_rate_limit = _is_retryable_error(error, config)
+
+        assert is_retryable is True
+        assert is_rate_limit is False
+
     def test_non_retryable_error(self):
         """Test that non-retryable errors are not retried."""
         config = RetryConfig()
@@ -144,6 +178,22 @@ class TestIsRetryableError:
         assert is_retryable is True
         assert is_rate_limit is False
 
+    def test_internal_server_error_with_server_disconnected_message(self):
+        """LiteLLM InternalServerError with server-disconnected text is retryable."""
+        import litellm
+
+        config = RetryConfig()
+        error = litellm.InternalServerError(
+            message=(
+                "InternalServerError: OpenAIException - Server disconnected\n"
+                "No fallback model group found for original model_group=nvidia/qwen/qwen3.5-35b-a3b."
+            ),
+            model="m",
+            llm_provider="openai",
+        )
+
+        assert _is_retryable_error(error, config) == (True, False)
+
     def test_status_code_attribute_400_not_retryable(self):
         """A 400 .status_code is not in retryable set."""
         import litellm
@@ -154,6 +204,19 @@ class TestIsRetryableError:
         is_retryable, _ = _is_retryable_error(error, config)
 
         assert is_retryable is False
+
+    @pytest.mark.parametrize("status_code", [400, 401, 403, 404, 418])
+    def test_structured_non_retryable_status_stays_terminal(self, status_code):
+        """Structured non-retryable HTTP statuses do not fall through to endpoint phrases."""
+
+        class StatusError(Exception):
+            def __init__(self, code: int):
+                self.status_code = code
+                super().__init__("endpoint not reachable; request timed out")
+
+        config = RetryConfig()
+
+        assert _is_retryable_error(StatusError(status_code), config) == (False, False)
 
     def test_bad_gateway_string_without_status_token(self):
         """Raw 'BadGatewayError: 502 Bad Gateway' string (no 'status 502') is retryable."""
@@ -243,6 +306,22 @@ class TestWithRetry:
         assert mock_func.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_retry_on_endpoint_disconnect_then_success(self):
+        """Endpoint disconnects use the same retry loop as 5xx errors."""
+        mock_func = AsyncMock(
+            side_effect=[
+                Exception("RemoteDisconnected: remote end closed connection without response"),
+                "success",
+            ]
+        )
+        config = RetryConfig(base_delay=0.01, jitter_factor=0.0)
+
+        result = await with_retry(mock_func, config=config)
+
+        assert result == "success"
+        assert mock_func.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_max_retries_exhausted(self):
         """Test that exception is raised when max retries exceeded."""
         mock_func = AsyncMock(side_effect=Exception("API call failed with status 500"))
@@ -253,6 +332,28 @@ class TestWithRetry:
 
         # Initial attempt + 2 retries = 3 calls
         assert mock_func.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_endpoint_retry_limit_exhausted(self):
+        """Endpoint errors stop after the configured retry limit."""
+        mock_func = AsyncMock(side_effect=Exception("endpoint not reachable"))
+        config = RetryConfig(max_retries=2, base_delay=0.01, jitter_factor=0.0)
+
+        with pytest.raises(Exception, match="endpoint not reachable"):
+            await with_retry(mock_func, config=config)
+
+        assert mock_func.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_propagates_without_retry(self):
+        """Task cancellation must not be converted into retry/TimeoutError."""
+        mock_func = AsyncMock(side_effect=asyncio.CancelledError())
+        config = RetryConfig(max_retries=2, base_delay=0.01, jitter_factor=0.0)
+
+        with pytest.raises(asyncio.CancelledError):
+            await with_retry(mock_func, config=config)
+
+        assert mock_func.call_count == 1
 
     @pytest.mark.asyncio
     async def test_non_retryable_error_not_retried(self):
