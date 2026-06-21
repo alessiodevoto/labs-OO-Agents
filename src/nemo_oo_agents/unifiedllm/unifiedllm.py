@@ -1180,15 +1180,21 @@ class UnifiedLLM(ABC):
         """Get context window size (max input tokens).
 
         Resolution order:
-        1. Registry config (if created via get_llm_client())
-        2. Registry lookup by model name or model_name field
-        3. litellm model info (for known models)
-        4. None (unknown model)
+        1. Explicit ``context_window`` config passed to the client constructor
+        2. Registry config (if created via get_llm_client())
+        3. Registry lookup by model name or model_name field
+        4. litellm model info (for known models)
+        5. None (unknown model)
 
         Returns:
             Maximum input tokens for this model, or None if unknown.
         """
-        # First, check registry config (set by get_llm_client())
+        # First, honor explicit direct-client config.
+        cw = self.config.get("context_window")
+        if cw is not None:
+            return cw
+
+        # Then check registry config (set by get_llm_client()).
         if self._registry_config is not None:
             cw = self._registry_config.get("context_window")
             if cw is not None:
