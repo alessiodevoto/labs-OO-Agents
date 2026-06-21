@@ -16,8 +16,10 @@ import pytest
 from nemo_oo_agents import Agent
 from nemo_oo_agents.events import Message
 from nemo_oo_agents.runtime.actor import (
+    _context_window_for_error,
     _current_llm_var,
     _current_method_var,
+    _parse_context_window_tokens,
     _parse_prompt_tokens,
 )
 from nemo_oo_agents.unifiedllm import FakeLLMClient
@@ -80,6 +82,36 @@ class TestPromptTokensRegex:
         assert result == 1203158, f"Should handle litellm-wrapped NVIDIA format, got {result}"
 
 
+class TestContextWindowTokensRegex:
+    """_parse_context_window_tokens must handle provider context-limit text."""
+
+    def test_context_window_is_parsed_from_openai_nvidia_format(self):
+        """Provider error text can be the only source for model context size."""
+        exc = Exception(
+            "This model's maximum context length is 262144 tokens. "
+            "However, you requested 32000 output tokens and your prompt contains "
+            "at least 230145 input tokens."
+        )
+
+        assert _parse_context_window_tokens(exc) == 262144
+
+    def test_context_window_is_parsed_from_anthropic_gt_format(self):
+        """Anthropic/Azure style 'input > maximum' text exposes the window too."""
+        exc = Exception("prompt is too long: 1,017,198 tokens > 1,000,000 maximum")
+
+        assert _parse_context_window_tokens(exc) == 1000000
+
+    def test_provider_reported_window_wins_over_stale_client_value(self):
+        """The provider error is authoritative for the endpoint that rejected us."""
+
+        class StaleWindowLLM:
+            context_window = 131072
+
+        exc = Exception("This model's maximum context length is 262144 tokens.")
+
+        assert _context_window_for_error(StaleWindowLLM(), exc) == 262144
+
+
 class TestArchivalFiresOnContextError:
     """_archive_on_context_error must fire even when prompt tokens can't be parsed."""
 
@@ -137,6 +169,62 @@ class TestArchivalFiresOnContextError:
             f"Summary events: {len(summary_events)}"
         )
         assert len(summary_events) >= 1, "Archival should emit Summary events"
+
+    @pytest.mark.asyncio
+    async def test_archival_uses_provider_window_when_llm_window_is_missing(self):
+        """Direct CompletionClient/custom models may not expose context_window.
+
+        The provider's ContextWindowExceededError still includes the true window,
+        so recovery should archive events instead of no-oping and retrying the
+        same overlarge prompt until CodeAct exhausts its retries.
+        """
+        from unittest.mock import patch
+
+        class NoWindowLLM(_FakeLLM):
+            @property
+            def context_window(self):
+                return None
+
+        llm = NoWindowLLM()
+        llm.model = "openai/nvidia/qwen/qwen3.5-35b-a3b"
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for i in range(30):
+            agent.event_manager.add(Message(content=f"message {i} " * 200))
+
+        n_events_before = len(list(agent.event_manager.keys()))
+        error = _ContextWindowExceededError(
+            "This model's maximum context length is 262144 tokens. "
+            "However, you requested 32000 output tokens and your prompt contains "
+            "at least 230145 input tokens."
+        )
+
+        summary_events = []
+        agent.event_manager.on("Summary", lambda ev: summary_events.append(ev))
+
+        method = type(agent).respond
+        llm_token = _current_llm_var.set(llm)
+        method_token = _current_method_var.set(method)
+        try:
+            with patch.object(llm, "acall", side_effect=error):
+                with patch(
+                    "nemo_oo_agents.runtime.actor._is_context_window_error",
+                    side_effect=lambda exc: isinstance(exc, _ContextWindowExceededError),
+                ):
+                    with pytest.raises(_ContextWindowExceededError):
+                        await agent.runtime.generate(tools=[], max_tokens=32000)
+        finally:
+            _current_llm_var.reset(llm_token)
+            _current_method_var.reset(method_token)
+
+        n_events_after = len(list(agent.event_manager.keys()))
+        assert n_events_after < n_events_before
+        assert len(summary_events) >= 1
 
     @pytest.mark.asyncio
     async def test_archival_fires_with_unparseable_token_count_by_shedding_minimum(self):

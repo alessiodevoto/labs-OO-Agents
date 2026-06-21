@@ -267,6 +267,13 @@ _PROMPT_TOKENS_RE = _re.compile(
     _re.IGNORECASE,
 )
 
+_CONTEXT_WINDOW_TOKENS_RE = _re.compile(
+    r"maximum\s+context\s+length\s+is\s+(\d[\d,]*)\s+tokens"
+    r"|context\s+window\s+of\s+(?:this\s+model\s+is\s+)?(\d[\d,]*)\s+tokens"
+    r"|(\d[\d,]*)\s+tokens\s*>\s*(\d[\d,]*)\s+maximum",
+    _re.IGNORECASE,
+)
+
 
 def _is_context_window_error(exc: BaseException) -> bool:
     """Recognize context-window errors using typed and provider-normalized signals."""
@@ -310,6 +317,30 @@ def _parse_prompt_tokens(exc: BaseException) -> int | None:
             return int(m.group(1).replace(",", ""))
         cur = cur.__cause__ or cur.__context__
     return None
+
+
+def _parse_context_window_tokens(exc: BaseException) -> int | None:
+    """Extract model context-window size from a ContextWindowExceededError chain."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        m = _CONTEXT_WINDOW_TOKENS_RE.search(str(cur))
+        if m:
+            # Alternatives capture either the window directly or "input > maximum".
+            for group in reversed(m.groups()):
+                if group:
+                    return int(group.replace(",", ""))
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
+def _context_window_for_error(llm_client: Any, exc: BaseException) -> int | None:
+    """Return the provider-reported context window, falling back to the client."""
+    reported = _parse_context_window_tokens(exc)
+    if reported:
+        return reported
+    return getattr(llm_client, "context_window", None)
 
 
 def _compute_reduced_max_tokens(
@@ -915,13 +946,14 @@ class ActorRuntime:
                             raise
                         # Always archive first — even if we can't reduce max_tokens,
                         # shedding events lets the retry (or caller's next attempt) succeed.
+                        _ctx_window = _context_window_for_error(llm_client, _cw_exc)
                         self._archive_on_context_error(
-                            getattr(llm_client, "context_window", None),
+                            _ctx_window,
                             exc=_cw_exc,
                         )
                         _reduced = _compute_reduced_max_tokens(
                             _cw_exc,
-                            getattr(llm_client, "context_window", None),
+                            _ctx_window,
                             ctx.params.get("max_tokens"),
                         )
                         if _reduced is None:
@@ -996,13 +1028,14 @@ class ActorRuntime:
                             raise
                         # Always archive first — even if we can't reduce max_tokens,
                         # shedding events lets the retry (or caller's next attempt) succeed.
+                        _ctx_window = _context_window_for_error(llm_client, _cw_exc)
                         self._archive_on_context_error(
-                            getattr(llm_client, "context_window", None),
+                            _ctx_window,
                             exc=_cw_exc,
                         )
                         _reduced = _compute_reduced_max_tokens(
                             _cw_exc,
-                            getattr(llm_client, "context_window", None),
+                            _ctx_window,
                             kwargs.get("max_tokens"),
                         )
                         if _reduced is None:
@@ -1015,7 +1048,7 @@ class ActorRuntime:
                             kwargs.get("max_tokens"),
                             _reduced,
                             _parse_prompt_tokens(_cw_exc),
-                            getattr(llm_client, "context_window", None),
+                            _ctx_window,
                         )
                         # Re-build messages after archival so the retry sees the
                         # reduced event store. Retrying with the same messages would
