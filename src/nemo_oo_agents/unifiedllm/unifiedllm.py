@@ -989,7 +989,9 @@ def _update_token_calibration(
                 # then take the larger of the bare and with-tools counts
                 # (with_tools is normally >= bare; max only guards a tokenizer
                 # that returns less with tools attached).
-                with_tools = litellm.token_counter(model=model, messages=messages, tools=tools)
+                with_tools = litellm.token_counter(
+                    model=model, messages=messages, tools=cast(Any, tools)
+                )
                 estimated = max(estimated, with_tools)
         except Exception:
             # token_counter can reject some message/tool shapes; fall back to the
@@ -1602,8 +1604,12 @@ class CompletionClient(UnifiedLLM):
         Args:
             model: The model identifier (e.g., "gpt-4o-mini", "nvidia_nim/...").
             retry_config: Optional retry configuration for API-level retries.
-                         Handles 429, 500, timeouts, etc. Set retry_on_empty_content=True
-                         to also retry when reasoning models return empty content.
+                         Defaults to RetryConfig(), which retries transient endpoint
+                         failures such as rate limits, server errors, timeouts,
+                         disconnects, and unreachable endpoints. Pass
+                         RetryConfig(max_retries=0, rate_limit_extra_retries=0) to disable endpoint retries. Set
+                         retry_on_empty_content=True to also retry when reasoning
+                         models return empty content.
             http_config: Optional HTTP connection pool and timeout settings. Values
                          are applied process-wide via the httpx monkey-patch; the most
                          recent CompletionClient's config applies to new httpx clients.
@@ -1614,7 +1620,7 @@ class CompletionClient(UnifiedLLM):
             **config: Additional configuration passed to litellm (api_key, api_base, etc.)
         """
         super().__init__(model, **config)
-        self.retry_config = retry_config
+        self.retry_config = retry_config or RetryConfig()
         self._http_config = http_config or HttpConfig()
         _set_http_config(self._http_config)
         # Only set default if explicitly None (not if empty list is passed)
@@ -2111,7 +2117,11 @@ class ResponsesClient(UnifiedLLM):
         Args:
             model: The model identifier (e.g., "openai/gpt-5.3-codex").
             retry_config: Optional retry configuration for API-level retries.
-                          Handles 429, 500, 502, 503, 504, timeouts, etc.
+                          Defaults to RetryConfig(), which retries transient endpoint
+                          failures such as rate limits, server errors, timeouts,
+                          disconnects, and unreachable endpoints. Pass
+                          RetryConfig(max_retries=0, rate_limit_extra_retries=0) to
+                          disable endpoint retries.
             http_config: Optional HTTP connection pool and timeout settings. Values
                          are applied process-wide via the httpx monkey-patch.
             cache_control_injection_points: Optional list of role/position rules to
@@ -2120,7 +2130,7 @@ class ResponsesClient(UnifiedLLM):
             **config: Additional configuration passed to litellm (api_key, api_base, etc.)
         """
         super().__init__(model, **config)
-        self.retry_config = retry_config
+        self.retry_config = retry_config or RetryConfig()
         self._http_config = http_config or HttpConfig()
         _set_http_config(self._http_config)
         # Only set default if explicitly None (not if empty list is passed)

@@ -12,6 +12,7 @@ import pytest
 from nemo_oo_agents.unifiedllm import (
     MODELS,
     CompletionClient,
+    RetryConfig,
     ensure_loaded,
     get_llm_client,
     reload_registry,
@@ -113,6 +114,67 @@ class TestGetLlmClient:
         reload_registry(path)
         llm = get_llm_client("my-alias")
         assert llm.model == "openai/my-org/my-model"
+
+    def test_registry_retry_config_mapping(self, tmp_path):
+        """Registry aliases can tune default endpoint retries centrally."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+                retry_config:
+                  max_retries: 1
+                  base_delay: 0.01
+                  rate_limit_extra_retries: 0
+            """,
+        )
+        reload_registry(path)
+
+        llm = get_llm_client("my-alias")
+
+        assert isinstance(llm.retry_config, RetryConfig)
+        assert llm.retry_config.max_retries == 1
+        assert llm.retry_config.base_delay == 0.01
+        assert llm.retry_config.rate_limit_extra_retries == 0
+        assert "retry_config" not in llm.config
+
+    def test_registry_retry_config_false_disables_retries(self, tmp_path):
+        """Registry aliases can opt out of default endpoint retries centrally."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+                retry_config: false
+            """,
+        )
+        reload_registry(path)
+
+        llm = get_llm_client("my-alias")
+
+        assert llm.retry_config.max_retries == 0
+        assert llm.retry_config.rate_limit_extra_retries == 0
+        assert "retry_config" not in llm.config
+
+    def test_retry_config_override_beats_registry(self, tmp_path):
+        """Explicit call-site retry_config overrides YAML defaults."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+                retry_config: false
+            """,
+        )
+        reload_registry(path)
+        override = RetryConfig(max_retries=5)
+
+        llm = get_llm_client("my-alias", retry_config=override)
+
+        assert llm.retry_config is override
 
     def test_overrides_take_precedence(self):
         """User overrides should take precedence over registry defaults."""

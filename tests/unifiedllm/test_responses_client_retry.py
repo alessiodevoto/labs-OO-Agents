@@ -39,6 +39,7 @@ def make_bad_request() -> litellm.BadRequestError:
 
 
 FAST_RETRY = RetryConfig(max_retries=2, base_delay=0.01, max_delay=0.02, jitter_factor=0.0)
+NO_RETRY = RetryConfig(max_retries=0, rate_limit_extra_retries=0)
 
 
 class TestResponsesClientInit:
@@ -53,10 +54,11 @@ class TestResponsesClientInit:
         assert "http_config" not in client.config
         assert "cache_control_injection_points" not in client.config
 
-    def test_no_retry_config_by_default(self):
-        """No retry_config is attached unless one is explicitly passed."""
+    def test_retry_config_defaults_enabled(self):
+        """Endpoint retries are enabled by default."""
         client = ResponsesClient(model="test-model")
-        assert client.retry_config is None
+        assert isinstance(client.retry_config, RetryConfig)
+        assert client.retry_config.max_retries == RetryConfig().max_retries
 
 
 class TestResponsesClientSyncRetry:
@@ -74,9 +76,9 @@ class TestResponsesClientSyncRetry:
         assert mock_responses.call_count == 2
         assert resp.content == "hello"
 
-    def test_no_retry_without_config(self):
-        """Without a retry_config, a 502 is not retried and bubbles out immediately."""
-        client = ResponsesClient(model="test-model")
+    def test_zero_retry_config_disables_retries(self):
+        """RetryConfig(max_retries=0, rate_limit_extra_retries=0) disables endpoint retries."""
+        client = ResponsesClient(model="test-model", retry_config=NO_RETRY)
         with patch("litellm.responses", side_effect=make_bad_gateway()) as mock_responses:
             with pytest.raises(litellm.BadGatewayError):
                 client.call(messages=[{"role": "user", "content": "hi"}])
@@ -115,9 +117,9 @@ class TestResponsesClientAsyncRetry:
         assert resp.content == "hello"
 
     @pytest.mark.asyncio
-    async def test_no_retry_without_config(self):
-        """Without a retry_config, a 502 is not retried and bubbles out immediately."""
-        client = ResponsesClient(model="test-model")
+    async def test_zero_retry_config_disables_retries(self):
+        """RetryConfig(max_retries=0, rate_limit_extra_retries=0) disables endpoint retries."""
+        client = ResponsesClient(model="test-model", retry_config=NO_RETRY)
         mock = AsyncMock(side_effect=make_bad_gateway())
         with patch("litellm.aresponses", mock):
             with pytest.raises(litellm.BadGatewayError):

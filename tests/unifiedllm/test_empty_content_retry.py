@@ -78,8 +78,8 @@ class TestCompletionClientEmptyContentRetry:
         )
 
     @pytest.fixture
-    def client_without_retry(self):
-        """Create client without retry config."""
+    def client_default_retry(self):
+        """Create client with default endpoint retry config."""
         return CompletionClient(model="test-model")
 
     @pytest.fixture
@@ -162,17 +162,76 @@ class TestCompletionClientEmptyContentRetry:
             assert mock_acompletion.call_count == 1  # No retries
 
     @pytest.mark.asyncio
-    async def test_no_retry_when_no_config(self, client_without_retry):
-        """Test that retry is disabled when no retry_config provided."""
+    async def test_default_config_does_not_retry_empty_content(self, client_default_retry):
+        """Default endpoint retries do not retry empty content unless explicitly enabled."""
         mock_response = make_mock_response(content="", reasoning="I'm thinking...")
 
         with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = mock_response
 
-            response = await client_without_retry.acall([{"role": "user", "content": "Hi"}])
+            response = await client_default_retry.acall([{"role": "user", "content": "Hi"}])
 
             assert response.content == ""
-            assert mock_acompletion.call_count == 1  # No retries
+            assert mock_acompletion.call_count == 1  # Empty-content retry remains opt-in
+
+    def test_completion_client_default_retries_bad_gateway_sync(self):
+        """CompletionClient.call retries endpoint errors by default."""
+        client = CompletionClient(model="test-model")
+        with (
+            patch("nemo_oo_agents.unifiedllm.retry.time.sleep"),
+            patch(
+                "litellm.completion",
+                side_effect=[Exception("status 502 bad gateway"), make_mock_response(content="ok")],
+            ) as mock_completion,
+        ):
+            response = client.call([{"role": "user", "content": "Hi"}])
+
+        assert response.content == "ok"
+        assert mock_completion.call_count == 2
+
+    def test_completion_client_zero_retry_config_disables_sync_retries(self):
+        """RetryConfig(max_retries=0, rate_limit_extra_retries=0) opts out for call()."""
+        client = CompletionClient(
+            model="test-model", retry_config=RetryConfig(max_retries=0, rate_limit_extra_retries=0)
+        )
+        with patch(
+            "litellm.completion", side_effect=Exception("status 502 bad gateway")
+        ) as mock_completion:
+            with pytest.raises(Exception, match="status 502"):
+                client.call([{"role": "user", "content": "Hi"}])
+
+        assert mock_completion.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_completion_client_default_retries_bad_gateway_async(self):
+        """CompletionClient.acall retries endpoint errors by default."""
+        client = CompletionClient(model="test-model")
+        sleep = AsyncMock()
+        mock_acompletion = AsyncMock(
+            side_effect=[Exception("status 502 bad gateway"), make_mock_response(content="ok")]
+        )
+        with (
+            patch("nemo_oo_agents.unifiedllm.retry.asyncio.sleep", sleep),
+            patch("litellm.acompletion", mock_acompletion),
+        ):
+            response = await client.acall([{"role": "user", "content": "Hi"}])
+
+        assert response.content == "ok"
+        assert mock_acompletion.call_count == 2
+        sleep.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_completion_client_zero_retry_config_disables_async_retries(self):
+        """RetryConfig(max_retries=0, rate_limit_extra_retries=0) opts out for acall()."""
+        client = CompletionClient(
+            model="test-model", retry_config=RetryConfig(max_retries=0, rate_limit_extra_retries=0)
+        )
+        mock_acompletion = AsyncMock(side_effect=Exception("status 502 bad gateway"))
+        with patch("litellm.acompletion", mock_acompletion):
+            with pytest.raises(Exception, match="status 502"):
+                await client.acall([{"role": "user", "content": "Hi"}])
+
+        assert mock_acompletion.call_count == 1
 
     @pytest.mark.asyncio
     async def test_tool_calls_bypass_retry(self, client_with_retry):
