@@ -2777,6 +2777,7 @@ source = { editable = "packages/nemo-oo-agents-benchmarks" }
 dependencies = [
     { name = "click", marker = "python_full_version < '3.14'" },
     { name = "nemo-oo-agents", marker = "python_full_version < '3.14'" },
+    { name = "nemo-oo-agents-cli", marker = "python_full_version < '3.14'" },
     { name = "pandas", marker = "python_full_version < '3.14'" },
 ]
 
@@ -2872,6 +2873,7 @@ requires-dist = [
     { name = "mechanize", marker = "extra == 'bigcodebench'", specifier = ">=0.4.0" },
     { name = "natsort", marker = "extra == 'bigcodebench'", specifier = ">=8.4.0" },
     { name = "nemo-oo-agents", editable = "." },
+    { name = "nemo-oo-agents-cli", editable = "packages/nemo-oo-agents-cli" },
     { name = "nltk", marker = "extra == 'bigcodebench'", specifier = ">=3.8.0" },
     { name = "numpy", marker = "extra == 'bigcodebench'", specifier = ">=1.24.0" },
     { name = "opencv-python", marker = "extra == 'bigcodebench'", specifier = ">=4.8.0" },

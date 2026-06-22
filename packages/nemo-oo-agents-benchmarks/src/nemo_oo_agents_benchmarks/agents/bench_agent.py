@@ -9,6 +9,7 @@ agent handles SWE-bench, Terminal-Bench, or any Harbor-compatible task.
 
 Core contract:
 - ``self.shell`` for persistent shell access (run/read/replace/write_file)
+- ``self.repo`` for code navigation that returns ShellTools Match anchors
 - ``self.todo`` for optional structured progress tracking
 - Structured return: the agent must declare solution_description, evidence,
   and command_to_verify when finishing -- forcing reflection before return.
@@ -25,6 +26,7 @@ with _hidden:
     import os
     from typing import TYPE_CHECKING, Any
 
+    from nemo_oo_agents_cli.tools.repo_tools import RepoTools
     from pydantic import BaseModel, Field
 
     from nemo_oo_agents import Agent, CodeActStrategy, strategy
@@ -93,10 +95,12 @@ class BenchAgent(
     ## Tools
 
     ```python
-    r = await self.shell.run("command")                # persistent shell
-    r = await self.shell.read("file.py", lines=(1,50)) # view -> Match
-    await self.shell.replace(r, new_code)              # edit at Match
-    await self.shell.write_file("file.py", content)    # create/overwrite
+    r = await self.shell.run("command")                     # persistent shell
+    r = await self.shell.read("file.py", lines=(1,50))      # view -> Match
+    defs = await self.repo.symbols("src/", query="Handler") # definitions -> Match anchors
+    refs = await self.repo.refs("Handler", path="src/")     # usages -> Match anchors
+    await self.shell.replace(defs[0], new_code)              # edit at Match
+    await self.shell.write_file("file.py", content)         # create/overwrite
     ```
 
     ## Workflow
@@ -123,6 +127,7 @@ class BenchAgent(
     """
 
     shell: ShellTools
+    repo: RepoTools
 
     def _context_usage_block(self) -> str:
         """Return context-window usage plus a benchmark-agent compaction hint."""
@@ -138,8 +143,7 @@ class BenchAgent(
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
         cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
-        self.shell = ShellTools(cwd=cwd)
-        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
+        self._install_python_tools(cwd)
         self.todo = TodoManager()
         self._seed_todos()
         self.problem_statement = ""
@@ -147,8 +151,14 @@ class BenchAgent(
         # hint references them, so expose both APIs to the LLM here.
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
-        self.context_manager.set_static("shell", doc(type(self.shell)))
+        self.context_manager.set_static("python_tools", doc(RepoTools, ShellTools))
         self.context_manager.set_static("todo", doc(type(self.todo)))
+
+    def _install_python_tools(self, cwd: str) -> None:
+        """Install shell/repo tools rooted at the same working directory."""
+        self.shell = ShellTools(cwd=cwd)
+        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
+        self.repo = RepoTools(root=cwd, session=self.shell._session)
 
     def _seed_todos(self) -> None:
         """Preload the planning todo every benchmark task should start from."""
@@ -173,9 +183,7 @@ class BenchAgent(
                 raise ValueError(f"working_dir does not exist: {cwd!r}")
         else:
             cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
-        self.shell = ShellTools(cwd=cwd)
-        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
-        self.context_manager.set_static("shell", doc(type(self.shell)))
+        self._install_python_tools(cwd)
         self.context_manager.set_static("todo", doc(type(self.todo)))
         self.todo.clear()
         self._seed_todos()
@@ -214,7 +222,9 @@ class BenchAgent(
         ## Instructions
         - Use ``await self.shell.run("command")`` to run shell commands.
         - Use ``await self.shell.read("path")`` to view files.
-        - Use ``await self.shell.replace(...)`` to edit files.
+        - Use ``await self.repo.symbols(path, query="...")`` to find definitions.
+        - Use ``await self.repo.refs(name, path=".")`` to find usages.
+        - Use ``await self.shell.replace(...)`` to edit files or RepoTools matches.
         - Use ``await self.shell.write_file(path, content)`` to create files.
         - Use ``self.todo`` to track progress on multi-step work.
         - You have root access; install packages as needed.

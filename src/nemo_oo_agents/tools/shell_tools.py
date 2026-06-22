@@ -316,6 +316,9 @@ class ShellTools(Skill):
         # in the TUI — shares this shell's bash session instead of capturing None.
         self._session: BashSession = BashSession(cwd=str(self.cwd))
 
+    def __repr__(self) -> str:
+        return f"ShellTools(cwd={self.cwd!s})"
+
     async def _get_session(self) -> BashSession:
         if not self._session._started:
             await self._session.start()

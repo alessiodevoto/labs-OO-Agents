@@ -413,7 +413,8 @@ class RepoTools(Skill):
             logger.warning(message)
 
     def __repr__(self) -> str:
-        return f"RepoTools(root={str(self._root)!r})"
+        session = "shared" if self._session is not None else "none"
+        return f"RepoTools(root={str(self._root)!r}, session={session}, has_rg={self._has_rg!r})"
 
     async def symbols(
         self,

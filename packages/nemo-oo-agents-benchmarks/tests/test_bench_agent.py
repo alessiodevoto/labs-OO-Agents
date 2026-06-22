@@ -16,10 +16,17 @@ class _FakeShell:
     def __init__(self, cwd: str) -> None:
         self.cwd = cwd
         self.commands: list[str] = []
+        self._session = object()
 
     async def run(self, command: str):
         self.commands.append(command)
         return None
+
+
+class _FakeRepo:
+    def __init__(self, root: str, session: object | None = None) -> None:
+        self.root = root
+        self.session = session
 
 
 def test_task_result_model():
@@ -107,6 +114,7 @@ async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_pa
         )
 
     monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "RepoTools", _FakeRepo)
     agent = BenchAgent(llm=FakeLLMClient())
     monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
 
@@ -135,6 +143,7 @@ async def test_run_evaluation_returns_failure_on_exception(monkeypatch, tmp_path
         raise RuntimeError("boom")
 
     monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "RepoTools", _FakeRepo)
     agent = BenchAgent(llm=FakeLLMClient())
     monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
 
@@ -153,26 +162,55 @@ async def test_run_evaluation_requires_problem_statement(monkeypatch, tmp_path):
         return _FakeShell(cwd)
 
     monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "RepoTools", _FakeRepo)
     agent = BenchAgent(llm=FakeLLMClient())
 
     with pytest.raises(ValueError, match="user_message, problem_statement, or task_description"):
         await agent._run_evaluation({"working_dir": str(tmp_path)})
 
 
-def test_bench_agent_uses_shell_and_todo_context_blocks():
-    """BenchAgent renders shell and todo docs as static context blocks."""
+def test_bench_agent_uses_python_tools_and_todo_context_blocks():
+    """BenchAgent renders Python tool and todo docs as static context blocks."""
 
     agent = BenchAgent(llm=FakeLLMClient())
 
     keys = list(agent.context_manager.keys())
 
-    assert "shell" in keys
+    assert "python_tools" in keys
     assert "todo" in keys
+    assert "shell" not in keys
     assert "self.shell" not in keys
+
+    python_tools_doc = agent.context_manager["python_tools"]
+    assert "class RepoTools" in python_tools_doc
+    assert "def symbols(" in python_tools_doc
+    assert "def refs(" in python_tools_doc
+    assert "class ShellTools" in python_tools_doc
+    assert "def run(" in python_tools_doc
 
     todo_doc = agent.context_manager["todo"]
     assert "def add(" in todo_doc
     assert "def done(" in todo_doc
+
+
+def test_bench_agent_wires_repo_to_shell_session():
+    """BenchAgent gives RepoTools the same root/session as ShellTools."""
+
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    assert agent.repo._root == agent.shell.cwd
+    assert agent.repo._session is agent.shell._session
+
+
+def test_tool_repr_shows_state():
+    """pprint()/repr expose held tool state instead of object addresses."""
+
+    agent = BenchAgent(llm=FakeLLMClient())
+
+    assert repr(agent.shell) == f"ShellTools(cwd={agent.shell.cwd!s})"
+    assert repr(agent.repo) == (
+        f"RepoTools(root={str(agent.repo._root)!r}, session=shared, has_rg=None)"
+    )
 
 
 def test_solve_task_prompt_uses_todo_plan_workflow():
@@ -211,6 +249,7 @@ async def test_run_evaluation_reseeds_planning_todo_after_clear(monkeypatch, tmp
         )
 
     monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
+    monkeypatch.setattr(bench_agent_module, "RepoTools", _FakeRepo)
     agent = BenchAgent(llm=FakeLLMClient())
     agent.todo.add("stale todo")
     monkeypatch.setattr(agent, "_solve_task", fake_solve_task)
