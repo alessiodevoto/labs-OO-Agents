@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_oo_agents_cli.tui.health_check import (
+    _PROBE_MAX_TOKENS,
     _classify_error,
     _detect_provider,
     _get_expected_env_var,
@@ -149,6 +150,18 @@ class TestClassifyError:
         assert not result.ok
         assert "timed out" in result.error_message
 
+    def test_output_limit_reached(self):
+        llm = _make_llm(model="openai/azure/openai/gpt-5.5")
+        exc = Exception(
+            "Could not finish the message because max_tokens or model output limit "
+            "was reached. Please try again with higher max_tokens."
+        )
+        result = _classify_error(exc, llm)
+        assert not result.ok
+        assert "output limit" in result.error_message
+        assert "--model <name>" in result.fix_hint
+        assert "file a bug" in result.fix_hint
+
     def test_rate_limit_429(self):
         llm = _make_llm(model="gpt-4o")
         exc = Exception("Error code: 429 - Too Many Requests")
@@ -252,10 +265,10 @@ class TestProbeLLM:
         assert result.ok
         assert result.error_message is None
 
-        # Verify the probe used minimal tokens
+        # Verify the probe used a small, non-pathological token cap
         llm.acall.assert_called_once()
         call_kwargs = llm.acall.call_args
-        assert call_kwargs.kwargs["max_tokens"] == 1
+        assert call_kwargs.kwargs["max_tokens"] == _PROBE_MAX_TOKENS
 
     @pytest.mark.asyncio
     async def test_auth_error_probe(self):

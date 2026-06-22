@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 # for cold-start endpoints (serverless, NIM behind an autoscaler).
 _PROBE_TIMEOUT_SECONDS = 30
 
+# Some providers/models reject a one-token output cap as too small to finish
+# even a tiny health-check response. Keep this cheap without being pathological.
+_PROBE_MAX_TOKENS = 32
+
 # Known provider → env var mapping (covers the common cases)
 _PROVIDER_API_KEY_ENV: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -277,6 +281,28 @@ def _classify_error(exc: Exception, llm: UnifiedLLM) -> HealthCheckResult:
             fix_hint="\n".join(fix_lines),
         )
 
+    # --- Output cap too small ---
+    if any(
+        k in msg
+        for k in (
+            "max_tokens or model output limit was reached",
+            "model output limit was reached",
+            "finish the message because max_tokens",
+            "output limit was reached",
+        )
+    ):
+        return HealthCheckResult(
+            ok=False,
+            error_message=f"LLM health check output limit was too small for model '{model}'.",
+            fix_hint=(
+                "The startup probe reached the model output cap before completing.\n"
+                "  • Try a different model temporarily with --model <name>\n"
+                "  • Upgrade nemo-oo-agents if a newer version is available\n"
+                "  • If this persists on the latest version, file a bug with the "
+                "model name and full startup error"
+            ),
+        )
+
     # --- Rate limit ---
     if any(k in msg for k in ("429", "rate limit", "too many requests", "rate_limit")):
         return HealthCheckResult(
@@ -325,7 +351,7 @@ async def probe_llm(llm: UnifiedLLM) -> HealthCheckResult:
         await asyncio.wait_for(
             llm.acall(
                 messages=[{"role": "user", "content": "hi"}],
-                max_tokens=1,
+                max_tokens=_PROBE_MAX_TOKENS,
             ),
             timeout=_PROBE_TIMEOUT_SECONDS,
         )
