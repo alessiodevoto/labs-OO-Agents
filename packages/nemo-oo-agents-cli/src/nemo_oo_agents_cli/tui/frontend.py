@@ -39,6 +39,51 @@ if TYPE_CHECKING:
     from .config import Config
 
 
+def render_history_replay_to_ansi(output: HistoryReplay, width: int) -> str:
+    """Render resumed conversation history to one ANSI block at *width*."""
+    from rich.console import Console as RichConsole
+    from rich.markdown import Markdown
+    from rich.rule import Rule
+    from rich.text import Text
+
+    dim = COLORS["overlay1"]
+    user_color = COLORS["subtext1"]
+
+    render_width = max(int(width), 20)
+    buf = io.StringIO()
+    # Rich ignores ``width=`` for force_terminal consoles when it can read the
+    # real terminal size.  Supplying COLUMNS pins the semantic replay width.
+    bc = RichConsole(
+        file=buf,
+        width=render_width,
+        highlight=False,
+        force_terminal=True,
+        _environ={"COLUMNS": str(render_width), "LINES": "25"},
+    )
+
+    if output.show_header:
+        omit_note = ""
+        if output.omitted_count:
+            omit_note = f" ({output.omitted_count} earlier turns omitted)"
+        bc.print(
+            Rule(
+                title=f"[{dim}]session {output.session_id} — history{omit_note}[/]",
+                style=COLORS["surface1"],
+            )
+        )
+    for turn in output.turns:
+        if turn.role == "user":
+            bc.print(Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}"))
+        else:
+            bc.print(Text("OO:", style=f"bold {dim}"))
+            bc.print(Markdown(turn.content), style=dim)
+        bc.print()
+    if output.show_footer:
+        bc.print(Rule(style=COLORS["surface1"]))
+
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Protocol
 # ---------------------------------------------------------------------------
@@ -129,11 +174,21 @@ class TerminalFrontend:
         self._config = config
         self._console = TUIConsole()
         self._input_handler = None  # initialised after registry is ready
+        self._app = None
         self._renderers = self._build_renderer_map()
 
     # ------------------------------------------------------------------
     # Input handler initialisation (needs the command registry)
     # ------------------------------------------------------------------
+
+    def bind_app(self, app: Any) -> None:
+        """Bind the live TUIApplication for in-app modal views."""
+        self._app = app
+
+    async def open_event_explorer(self, event_manager: Any) -> None:
+        if self._app is None:
+            raise RuntimeError("TUI application is not ready.")
+        await self._app.open_event_explorer(event_manager)
 
     def init_input(self, registry) -> None:
         """Wire up the prompt_toolkit input handler with slash completions."""
@@ -205,7 +260,12 @@ class TerminalFrontend:
         self._console.print_agent(output.content, show_rule=output.show_rule)
 
     def _render_clear(self, _output: ClearScreen) -> None:
-        self._console.console.clear()
+        stream = getattr(self._console.console, "file", None)
+        clear_transcript = getattr(stream, "clear_transcript", None)
+        if callable(clear_transcript):
+            clear_transcript()
+        else:
+            self._console.console.clear()
 
     def _render_thinking(self, output: Thinking) -> None:
         if output.active:
@@ -360,50 +420,34 @@ class TerminalFrontend:
     def _render_history_replay(self, output: HistoryReplay) -> None:
         """Render past conversation turns in a dimmed style.
 
-        Uses a buffered console to pre-render all output, then writes
-        the result to the terminal in a single flush — eliminates the
-        flicker that occurs when each turn triggers a separate write.
+        Uses a buffered console to pre-render all output, then writes one block.
+        When the live TUI has redirected the console through ``_EmitStream``,
+        attach a semantic replay callback so fullscreen resize replay re-renders
+        resumed history at the new width instead of reusing stale ANSI.
         """
-        from rich.console import Console as RichConsole
-        from rich.markdown import Markdown
-        from rich.rule import Rule
-        from rich.text import Text
+        stream = self._console.console.file
+        replay_width = getattr(stream, "replay_width", None)
+        if callable(replay_width):
+            width = replay_width(self._console.console.width or 80)
+        else:
+            width = self._console.console.width or 80
 
-        dim = COLORS["overlay1"]
-        user_color = COLORS["subtext1"]
-
-        # Pre-render into a string buffer so the terminal gets one
-        # contiguous write instead of per-turn flushes.
-        buf = io.StringIO()
-        width = self._console.console.width or 80
-        bc = RichConsole(file=buf, width=width, highlight=False, force_terminal=True)
-
-        if output.show_header:
-            omit_note = ""
-            if output.omitted_count:
-                omit_note = f" ({output.omitted_count} earlier turns omitted)"
-            bc.print(
-                Rule(
-                    title=f"[{dim}]session {output.session_id} — history{omit_note}[/]",
-                    style=COLORS["surface1"],
-                )
+        rendered = render_history_replay_to_ansi(output, width)
+        emit_with_replay = getattr(stream, "emit_with_replay", None)
+        if getattr(stream, "supports_semantic_replay", False) is True and callable(
+            emit_with_replay
+        ):
+            emit_with_replay(
+                rendered,
+                lambda o=output, s=stream, w=width: render_history_replay_to_ansi(
+                    o, s.replay_width(w) if callable(getattr(s, "replay_width", None)) else w
+                ),
             )
-        for turn in output.turns:
-            if turn.role == "user":
-                bc.print(
-                    Text(f" You: {turn.content}", style=f"{user_color} on {COLORS['surface0']}")
-                )
-            else:
-                # Render agent turns as dimmed markdown
-                bc.print(Text("OO:", style=f"bold {dim}"))
-                bc.print(Markdown(turn.content), style=dim)
-            bc.print()
-        if output.show_footer:
-            bc.print(Rule(style=COLORS["surface1"]))
+            return
 
         # Single write to the real terminal
-        self._console.console.file.write(buf.getvalue())
-        self._console.console.file.flush()
+        stream.write(rendered)
+        stream.flush()
 
     def _render_startup(self, info: StartupInfo) -> None:
         from rich.rule import Rule

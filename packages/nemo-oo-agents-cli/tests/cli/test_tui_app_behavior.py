@@ -22,6 +22,10 @@ right now because every listed behaviour is implemented.
 
 from __future__ import annotations
 
+import asyncio
+import io
+from types import SimpleNamespace
+
 import pytest
 
 from .tui_app_harness import FakeAgent, TUIHarness
@@ -569,3 +573,212 @@ async def test_hard_submit_message_re_entry_pushes_to_queue_not_stomps_task() ->
         # submit_message ran) or merged into a "first\nsecond" item
         # (if the merge race went the other way).
         await h.wait_for(lambda: any("second" in m for m in agent.messages_received))
+
+
+class _DummySubview:
+    title = "dummy"
+
+    def __init__(self) -> None:
+        self.opened = False
+        self.closed = False
+        self.keys: list[tuple[str, str]] = []
+
+    def render(self, width: int, height: int) -> str:
+        return f"dummy {width}x{height}"
+
+    def handle_key(self, action: str, value: str = "") -> str:
+        self.keys.append((action, value))
+        if action == "quit":
+            return "close"
+        return "handled"
+
+    def on_open(self) -> None:
+        self.opened = True
+
+    def on_close(self) -> None:
+        self.closed = True
+
+
+async def test_in_app_subview_hosts_keys_without_editing_prompt() -> None:
+    view = _DummySubview()
+    async with TUIHarness() as h:
+        task = asyncio.create_task(h.app.open_subview(view))
+        await h.wait_for(lambda: h.app.active_subview is view)
+
+        await h.type_keys("abc")
+        await h.wait_for(lambda: ("text", "c") in view.keys)
+        assert h.capture_input() == ""
+        assert view.opened is True
+
+        await h.press("escape")
+        await h.wait_for(lambda: ("escape", "") in view.keys)
+        assert h.app.active_subview is view
+
+        await h.press("q")
+        await asyncio.wait_for(task, timeout=1)
+        assert h.app.active_subview is None
+        assert view.closed is True
+
+
+async def test_prompt_toolkit_resize_polling_disabled_to_avoid_delayed_double_redraw() -> None:
+    async with TUIHarness(full_screen=True) as h:
+        assert h.app._app.terminal_size_polling_interval is None
+
+
+async def test_resize_with_active_subview_redraws_once_without_transcript_replay() -> None:
+    view = _DummySubview()
+    async with TUIHarness(full_screen=True) as h:
+        h.app.emit_block("transcript behind subview\n")
+        await h.wait_output_contains("transcript behind subview")
+        task = asyncio.create_task(h.app.open_subview(view))
+        await h.wait_for(lambda: h.app.active_subview is view)
+
+        h.app.handle_resize(cols=40, rows=20)
+        assert h.app._fullscreen_invalidate_count == 0
+
+        await h.press("q")
+        await asyncio.wait_for(task, timeout=1)
+
+
+async def test_fullscreen_mode_keeps_native_scrollback_and_replays_on_resize() -> None:
+    """Fullscreen keeps steady-state terminal scrollback and pays on resize.
+
+    The transcript is still written to native terminal scrollback. On resize,
+    fullscreen clears the visible screen and replays the retained ANSI transcript
+    at the new width, Antigravity-style.
+    """
+    agent = FakeAgent()
+
+    async def step(self: FakeAgent, msg: str):
+        self.emit_message("A long traceback-ish line in native scrollback")
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent, full_screen=True) as h:
+        assert h.app.full_screen is True
+        assert h.app._app.full_screen is False
+        assert h.app._output_window is None
+        await h.submit_async("trigger")
+        await h.wait_output_contains("traceback-ish line")
+        assert h.app._fullscreen_invalidate_count == 0
+        h.app.handle_resize(cols=40, rows=20)
+        assert h.app._fullscreen_invalidate_count == 1
+
+
+async def test_default_mode_uses_fullscreen_replay() -> None:
+    async with TUIHarness() as h:
+        assert h.app.full_screen is True
+        assert h.app._app.full_screen is False
+        assert h.app._output_window is None
+
+
+async def test_fullscreen_streaming_output_uses_native_scrollback_until_resize() -> None:
+    async with TUIHarness(full_screen=True) as h:
+        for i in range(25):
+            h.app.emit_block(f"chunk {i}\n")
+        await h.wait_output_contains("chunk 24")
+        assert h.app._fullscreen_invalidate_count == 0
+        h.app.handle_resize(cols=50, rows=20)
+        assert h.app._fullscreen_invalidate_count == 1
+
+
+async def test_fullscreen_resize_replays_semantic_callbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replay callbacks re-render retained semantic blocks at resize time."""
+    async with TUIHarness(full_screen=True) as h:
+        calls = 0
+
+        def replay() -> str:
+            nonlocal calls
+            calls += 1
+            return f"reflowed width={h.app.output_columns()}\n"
+
+        h.app.emit_block("old width\n", replay=replay)
+        await h.wait_output_contains("old width")
+        capture = io.StringIO()
+        monkeypatch.setattr("sys.__stdout__", capture)
+
+        h.app.handle_resize(cols=50, rows=20)
+
+        assert calls == 1
+        assert capture.getvalue().startswith("[H[2J")
+        assert not capture.getvalue().startswith("[H[2J[3J")
+        assert "reflowed width=50" in capture.getvalue()
+        assert "old width" not in capture.getvalue()
+
+
+async def test_fullscreen_resize_prunes_replay_blocks_to_active_event_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with TUIHarness(full_screen=True) as h:
+        active_event = SimpleNamespace(id="active")
+        h.app.agent.event_manager = SimpleNamespace(items=lambda: [("2", active_event)])
+        h.app.emit_block("old event\n", event_id="old")
+        h.app.emit_block("active event\n", event_id="active")
+        h.app.emit_block("recent command\n")
+        capture = io.StringIO()
+        monkeypatch.setattr("sys.__stdout__", capture)
+
+        h.app.handle_resize(cols=50, rows=20)
+
+        replayed = capture.getvalue()
+        assert "active event" in replayed
+        assert "recent command" in replayed
+        assert "old event" not in replayed
+
+
+async def test_fullscreen_resize_keeps_blocks_inside_active_summary_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with TUIHarness(full_screen=True) as h:
+        summary_event = SimpleNamespace(id="summary")
+        h.app.agent.event_manager = SimpleNamespace(items=lambda: [("2..4", summary_event)])
+        h.app.emit_block("child event\n", tags={"3"})
+        h.app.emit_block("outside event\n", tags={"7"})
+        capture = io.StringIO()
+        monkeypatch.setattr("sys.__stdout__", capture)
+
+        h.app.handle_resize(cols=50, rows=20)
+
+        replayed = capture.getvalue()
+        assert "child event" in replayed
+        assert "outside event" not in replayed
+
+
+async def test_fullscreen_resize_falls_back_to_raw_ansi(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with TUIHarness(full_screen=True) as h:
+        h.app.emit_block("raw ansi fallback\n")
+        await h.wait_output_contains("raw ansi fallback")
+        capture = io.StringIO()
+        monkeypatch.setattr("sys.__stdout__", capture)
+
+        h.app.handle_resize(cols=50, rows=20)
+
+        assert "raw ansi fallback" in capture.getvalue()
+
+
+async def test_clear_screen_resets_fullscreen_resize_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with TUIHarness(full_screen=True) as h:
+        h.app.emit_block("before clear\n")
+        await h.wait_output_contains("before clear")
+        h.app.clear_transcript()
+        h.app.emit_block("after clear\n")
+        await h.wait_output_contains("after clear")
+        capture = io.StringIO()
+        monkeypatch.setattr("sys.__stdout__", capture)
+
+        h.app.handle_resize(cols=50, rows=20)
+
+        replayed = capture.getvalue()
+        assert "after clear" in replayed
+        assert "before clear" not in replayed
+        assert "\x1b[3J" not in replayed
+
+
+async def test_non_fullscreen_keeps_native_scrollback_path() -> None:
+    async with TUIHarness() as h:
+        h.app.emit_block("plain scrollback\n")
+        await h.wait_output_contains("plain scrollback")
+        assert h.app._fullscreen_invalidate_count == 0

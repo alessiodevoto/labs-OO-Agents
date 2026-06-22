@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 _KEY_SEQUENCES: dict[str, str] = {
     "enter": "\r",
     "escape": "\x1b",
+    "q": "q",
     "tab": "\t",
     "backspace": "\x7f",
     "up": "\x1b[A",
@@ -58,6 +59,8 @@ _KEY_SEQUENCES: dict[str, str] = {
     "left": "\x1b[D",
     "home": "\x1b[H",
     "end": "\x1b[F",
+    "pageup": "\x1b[5~",
+    "pagedown": "\x1b[6~",
     "c-c": "\x03",
     "c-d": "\x04",
     "c-j": "\n",  # bare LF — used by prompt_toolkit as "Shift+Enter"
@@ -220,9 +223,12 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
     on ``__aenter__``, tears it down (with a timeout) on ``__aexit__``.
     """
 
-    def __init__(self, agent: FakeAgent | None = None, config: Any = None) -> None:
+    def __init__(
+        self, agent: FakeAgent | None = None, config: Any = None, full_screen: bool | None = None
+    ) -> None:
         self.agent = agent or FakeAgent()
         self._config = config
+        self._full_screen = full_screen
         self._pipe_ctx: Any = None
         self._session_ctx: Any = None
         self._run_task: asyncio.Task | None = None
@@ -245,7 +251,15 @@ class TUIHarness(AbstractAsyncContextManager["TUIHarness"]):
             ["/help", "/exit", "/clear", "/compact", "!bash", "!ipython"],
             sentence=True,
         )
-        self.app = TUIApplication(agent=self.agent, completer=completer, config=self._config)
+        kwargs = {}
+        if self._full_screen is not None:
+            kwargs["full_screen"] = self._full_screen
+        self.app = TUIApplication(
+            agent=self.agent,
+            completer=completer,
+            config=self._config,
+            **kwargs,
+        )
         self._pipe = pipe
 
         self._run_task = asyncio.create_task(self.app.run_async())

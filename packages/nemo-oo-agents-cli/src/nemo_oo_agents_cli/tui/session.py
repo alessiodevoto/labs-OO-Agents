@@ -113,11 +113,14 @@ def _build_user_bar(text: str, app: "TUIApplication", colors: dict) -> str:
     # terminal_cols helper if the app output can't report.
     cols: int
     try:
-        cols = app._app.output.get_size().columns  # type: ignore[attr-defined]
+        cols = app.output_columns(minimum=20)
     except Exception:
-        from .tui_application import terminal_cols
+        try:
+            cols = app._app.output.get_size().columns  # type: ignore[attr-defined]
+        except Exception:
+            from .tui_application import terminal_cols
 
-        cols = terminal_cols(minimum=40)
+            cols = terminal_cols(minimum=40)
     cols = max(cols, 20)
 
     fg = _hex_to_ansi256(colors["text"])
@@ -154,8 +157,16 @@ class _EmitStream:
     command renders as ONE block / ONE hop.
     """
 
-    def __init__(self, emit: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        emit: Callable[..., None],
+        replay_width: Callable[[], int] | None = None,
+        clear: Callable[[], None] | None = None,
+    ) -> None:
+        self.supports_semantic_replay = True
         self._emit = emit
+        self._replay_width = replay_width
+        self._clear = clear
         self._buf: list[str] = []
         self._held = 0
 
@@ -175,6 +186,28 @@ class _EmitStream:
         self._buf.clear()
         if chunk:
             self._emit(chunk)
+
+    def clear_transcript(self) -> None:
+        self._buf.clear()
+        if self._clear is not None:
+            self._clear()
+
+    def replay_width(self, default: int = 80) -> int:
+        if self._replay_width is None:
+            return default
+        try:
+            return int(self._replay_width())
+        except Exception:
+            return default
+
+    def emit_with_replay(self, text: str, replay: Callable[[], str]) -> None:
+        if self._buf:
+            chunk = "".join(self._buf)
+            self._buf.clear()
+            if chunk:
+                self._emit(chunk)
+        if text:
+            self._emit(text, replay=replay)
 
     @contextmanager
     def hold(self):
@@ -361,6 +394,7 @@ class Session:
         config: "Config",
         registry: "CommandRegistry",
         session_manager: "SessionManager | None" = None,
+        initial_outputs: list[Any] | None = None,
     ) -> None:
         from .commands import CommandHandler
 
@@ -370,6 +404,7 @@ class Session:
         self.registry = registry
         self._handler = CommandHandler(registry=registry, frontend=frontend)
         self._session_manager = session_manager
+        self._initial_outputs = list(initial_outputs or [])
         self._first_message: str | None = None  # first user turn (for auto-naming)
 
         # Streaming state shared with the AgentEventRenderer: the
@@ -526,7 +561,11 @@ class Session:
             completer=SlashCommandCompleter(self.registry),
             session_label=self._session_label,
             config=self.config,
+            full_screen=self.config.tui.full_screen,
         )
+        bind_app = getattr(self.frontend, "bind_app", None)
+        if callable(bind_app):
+            bind_app(self._app)
         # Wire agent_run into all commands so they can dispatch mutations
         # to the agent thread via self.agent_run(fn). agent_run_async is the
         # awaitable variant — commands running on the UI loop use it so they
@@ -547,22 +586,36 @@ class Session:
             def _on_user_message_hook(text: str) -> None:
                 # DB writes run here on the agent loop thread (the on_get
                 # caller), keeping all sqlite access on one thread.
+                user_event_id = None
+                user_tags = None
                 if self._session_manager is not None:
-                    self._session_manager.record_user(text)
+                    recorded = self._session_manager.record_user(text)
+                    if isinstance(recorded, tuple) and len(recorded) == 2:
+                        tag, event = recorded
+                        user_tags = {str(tag)}
+                        event_id = getattr(event, "id", None)
+                        if event_id is not None:
+                            user_event_id = str(event_id)
                 # UI rendering must happen on the UI loop.
                 app = self._app
                 loop = getattr(app, "_loop", None) if app is not None else None
                 if loop is None:
-                    self._on_user_message_ui(text)
+                    self._on_user_message_ui(text, event_id=user_event_id, tags=user_tags)
                     return
                 try:
                     on_ui_loop = asyncio.get_running_loop() is loop
                 except RuntimeError:
                     on_ui_loop = False
                 if on_ui_loop:
-                    self._on_user_message_ui(text)
+                    self._on_user_message_ui(text, event_id=user_event_id, tags=user_tags)
                 else:
-                    loop.call_soon_threadsafe(self._on_user_message_ui, text)
+                    loop.call_soon_threadsafe(
+                        lambda: self._on_user_message_ui(
+                            text,
+                            event_id=user_event_id,
+                            tags=user_tags,
+                        )
+                    )
 
             queue.set_on_get(_on_user_message_hook)
 
@@ -573,13 +626,21 @@ class Session:
         if tui_console is not None and hasattr(tui_console, "replace_console"):
             tui_console.replace_console(
                 RichConsole(
-                    file=_EmitStream(self._app.emit_block),  # type: ignore[arg-type]
+                    file=_EmitStream(
+                        self._app.emit_block,
+                        replay_width=lambda app=self._app: app.output_columns(minimum=40),
+                        clear=self._app.clear_transcript,
+                    ),  # type: ignore[arg-type]
                     force_terminal=True,
                     color_system="256",
                     width=120,
                     theme=CATPPUCCIN_THEME,
                 )
             )
+
+            for output in self._initial_outputs:
+                await self.frontend.render(output)
+            self._initial_outputs.clear()
 
         self._renderer = AgentEventRenderer(
             agent=self.agent,
@@ -742,21 +803,46 @@ class Session:
 
         return COLORS
 
-    def _emit_text(self, renderable: Any) -> None:
-        """Render a Rich renderable → ANSI → enqueue to the block queue.
-
-        This is the single path every producer takes: user-message bars,
-        code previews, agent markdown, slash-command echoes. Width tracks
-        the live terminal so full-width blocks span every column.
-        """
-        assert self._emit_console is not None and self._app is not None
+    def _render_to_ansi(self, renderable: Any) -> str:
+        """Render a Rich renderable using the current terminal width."""
+        assert self._emit_console is not None
         from .tui_application import terminal_cols
 
-        self._emit_console.width = terminal_cols(minimum=40)
+        try:
+            width = self._app.output_columns(minimum=40)  # type: ignore[union-attr]
+        except Exception:
+            width = terminal_cols(minimum=40)
+        self._emit_console.width = max(int(width), 40)
         buf = io.StringIO()
         self._emit_console.file = buf
         self._emit_console.print(renderable)
-        self._app.emit_block(buf.getvalue())
+        return buf.getvalue()
+
+    def _emit_text(
+        self,
+        renderable: Any,
+        *,
+        event_id: str | None = None,
+        tags: set[str] | frozenset[str] | None = None,
+        keep: bool = False,
+    ) -> None:
+        """Render a Rich renderable → ANSI → enqueue to the block queue.
+
+        In fullscreen mode, also retain a replay callback that re-renders the
+        same semantic Rich/Markdown object at the current width on resize.
+        """
+        assert self._app is not None
+
+        rendered = self._render_to_ansi(renderable)
+        full_screen = bool(
+            getattr(getattr(getattr(self, "config", None), "tui", None), "full_screen", False)
+            is True
+        )
+        replay = (lambda r=renderable: self._render_to_ansi(r)) if full_screen else None
+        if replay is None:
+            self._app.emit_block(rendered, event_id=event_id, tags=tags, keep=keep)
+        else:
+            self._app.emit_block(rendered, replay=replay, event_id=event_id, tags=tags, keep=keep)
 
     async def _on_command(self, text: str) -> None:
         """Handle one slash command submitted via the input or the queue.
@@ -951,7 +1037,13 @@ class Session:
             logger.debug("toolbar snippet failed: %s", snippet, exc_info=True)
             return ""
 
-    def _on_user_message_ui(self, text: str) -> None:
+    def _on_user_message_ui(
+        self,
+        text: str,
+        *,
+        event_id: str | None = None,
+        tags: set[str] | frozenset[str] | None = None,
+    ) -> None:
         """Render the user's submitted text as a full-width grey bar and
         reset per-turn renderer state.
 
@@ -969,7 +1061,23 @@ class Session:
             ):
                 self._name_session_on_agent_loop(text)
 
-        self._app.emit_block(_build_user_bar(text, self._app, self._colors))
+        bar = _build_user_bar(text, self._app, self._colors)
+        full_screen = bool(
+            getattr(getattr(getattr(self, "config", None), "tui", None), "full_screen", False)
+            is True
+        )
+        replay = (
+            (lambda t=text: _build_user_bar(t, self._app, self._colors)) if full_screen else None
+        )
+        emit_kwargs = {}
+        if event_id is not None:
+            emit_kwargs["event_id"] = event_id
+        if tags:
+            emit_kwargs["tags"] = tags
+        if replay is None:
+            self._app.emit_block(bar, **emit_kwargs)
+        else:
+            self._app.emit_block(bar, replay=replay, **emit_kwargs)
         self._renderer.reset_turn()
 
     def _loud_handler(self, _loop: asyncio.AbstractEventLoop, context: dict) -> None:

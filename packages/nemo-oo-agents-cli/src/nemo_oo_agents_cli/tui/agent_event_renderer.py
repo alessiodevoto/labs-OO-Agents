@@ -83,7 +83,7 @@ class AgentEventRenderer:
         self,
         *,
         agent: Any,
-        emit_text: Callable[[Any], None],
+        emit_text: Callable[..., None],
         show_python: Callable[[], bool],
         pending_code: dict[str, str],
         colors: dict[str, str],
@@ -132,13 +132,18 @@ class AgentEventRenderer:
         self._prior_render_message = prior
         if hasattr(self._agent, "_render_message"):
 
-            def _hook(text: str) -> None:
+            def _hook(text: str, **emit_kwargs: Any) -> None:
                 if prior is not None:
                     try:
                         prior(text)
+                    except TypeError:
+                        try:
+                            prior(text, **emit_kwargs)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
-                self._render_message(text)
+                self._render_message(text, **emit_kwargs)
 
             self._agent._render_message = _hook
 
@@ -171,7 +176,7 @@ class AgentEventRenderer:
 
     # ── message rendering (agent self.message()) ───────────────────────
 
-    def _render_message(self, text: str) -> None:
+    def _render_message(self, text: str, **emit_kwargs: Any) -> None:
         """Hook plugged into ``agent._render_message``.
 
         Emits the message inline as a Markdown block. Ordering vs
@@ -180,17 +185,28 @@ class AgentEventRenderer:
         enclosing ``ToolCallEvent`` and before the cell's
         ``PythonOutput`` arrives.
         """
-        self._emit_markdown(str(text))
+        self._emit_markdown(str(text), **emit_kwargs)
 
-    def _emit_markdown(self, text: str) -> None:
+    def _emit_markdown(self, text: str, **emit_kwargs: Any) -> None:
         if not self._agent_has_messaged:
             self._agent_has_messaged = True
             self._emit_text(
-                Rule(Text("OO ", style=self._colors["mauve"]), style="dim", align="left")
+                Rule(Text("OO ", style=self._colors["mauve"]), style="dim", align="left"),
+                **emit_kwargs,
             )
-        self._emit_text(Markdown(str(text)))
+        self._emit_text(Markdown(str(text)), **emit_kwargs)
 
     # ── agent event handlers ───────────────────────────────────────────
+
+    def _event_emit_kwargs(self, event: Any) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        event_id = getattr(event, "id", None)
+        if event_id is not None:
+            kwargs["event_id"] = str(event_id)
+        tag = getattr(event, "tag", None)
+        if tag is not None:
+            kwargs["tags"] = {str(tag)}
+        return kwargs
 
     def _on_reasoning(self, event: _ReasoningEvent) -> None:
         content = getattr(event, "content", "") or ""
@@ -199,7 +215,9 @@ class AgentEventRenderer:
         first_line = content.strip().split("\n", 1)[0][:80]
         if "inspecting inputs" in first_line.lower():
             return
-        self._emit_text(Text(f"∴ Reasoning: {first_line}", style="dim italic"))
+        self._emit_text(
+            Text(f"∴ Reasoning: {first_line}", style="dim italic"), **self._event_emit_kwargs(event)
+        )
 
     def _on_tool_call(self, event: _ToolCallEvent) -> None:
         name = getattr(event, "name", "")
@@ -231,7 +249,7 @@ class AgentEventRenderer:
             styled.stylize("not dim", 0, len(first_line) + 2)
         if "\n" in preview:
             styled.append("\n  " + preview.split("\n", 1)[1], style="dim")
-        self._emit_text(styled)
+        self._emit_text(styled, **self._event_emit_kwargs(event))
 
     def _on_python_output(self, event: _PythonOutputEvent) -> None:
         tool_call_id = getattr(event, "tool_call_id", "")
@@ -267,7 +285,9 @@ class AgentEventRenderer:
         # Preview mode: show a one-line error summary (muted red).
         if stderr.strip():
             first_err = stderr.strip().split("\n")[-1][:120]
-            self._emit_text(Text(f"  ⚠ {first_err}", style="dim red"))
+            self._emit_text(
+                Text(f"  ⚠ {first_err}", style="dim red"), **self._event_emit_kwargs(event)
+            )
 
     def _on_summary(self, event: _SummaryEvent) -> None:
         """Render a dim one-line notice when a summary/truncation is applied.
@@ -300,7 +320,9 @@ class AgentEventRenderer:
             detail = f"{n_events} events → {size} summary"
             verb = "summarized"
 
-        self._emit_text(Text(f"∴ {verb} {tag} · {detail}", style="dim italic"))
+        self._emit_text(
+            Text(f"∴ {verb} {tag} · {detail}", style="dim italic"), **self._event_emit_kwargs(event)
+        )
 
     def _on_text_only_reply(self, event: Any) -> None:
         """Render a drift notice and forward to the session capture hook.
@@ -317,7 +339,8 @@ class AgentEventRenderer:
                 f"⚠ agent replied without a tool call ({state}). "
                 f"Run /bug to capture this for the framework team.",
                 style="yellow",
-            )
+            ),
+            **self._event_emit_kwargs(event),
         )
         if self.on_text_only_reply is not None:
             try:

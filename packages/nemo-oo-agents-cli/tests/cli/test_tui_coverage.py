@@ -17,6 +17,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+
+def test_tui_command_help_does_not_offer_full_screen_option() -> None:
+    from nemo_oo_agents_cli.commands.tui import command
+
+    result = CliRunner().invoke(command, ["--help"])
+
+    assert result.exit_code == 0
+    assert "--full-screen" not in result.output
+    assert "--fullscreen" not in result.output
+    assert "--vi" in result.output
+
+
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -201,6 +213,19 @@ class TestConfigOverrides:
         """False for store_true flags should not override (already False default)."""
         cfg = Config.load(no_splash=False)
         assert cfg.no_splash is False  # default remains
+
+    def test_full_screen_override_true(self):
+        cfg = Config.load(full_screen=True)
+        assert cfg.tui.full_screen is True
+
+    def test_full_screen_false_skipped(self):
+        cfg = Config.load(full_screen=False)
+        assert cfg.tui.full_screen is True
+
+    def test_full_screen_does_not_force_no_splash_config(self):
+        cfg = Config.load(full_screen=True)
+        assert cfg.tui.full_screen is True
+        assert cfg.no_splash is False
 
     def test_no_trace_clears_trace_dir(self, tmp_path):
         cfg = Config.load(trace=str(tmp_path), no_trace=True)

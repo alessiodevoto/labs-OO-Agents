@@ -111,6 +111,9 @@ class TUIConfig(BaseModel):
     # Show agent Python code execution panels (off by default)
     show_python: bool = False
 
+    # Native scrollback with clear+rewrite transcript replay on resize.
+    full_screen: bool = True
+
     # Goal mode: when on, unresolved todos auto-feed the agent after each turn
     goal_mode: bool = False
 
@@ -155,6 +158,7 @@ class Config(BaseModel):
         "vi": "tui.vi_mode",
         "agent": "tui.agent_spec",
         "python": "tui.show_python",
+        "full_screen": "tui.full_screen",
         "libs_dirs": (
             "tui.libs_dirs",
             lambda v: [Path(p) for p in (v if isinstance(v, list) else [v])],
@@ -162,7 +166,13 @@ class Config(BaseModel):
     }
 
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)
-    _STORE_TRUE_FLAGS: ClassVar[set[str]] = {"no_splash", "no_trace", "vi", "python"}
+    _STORE_TRUE_FLAGS: ClassVar[set[str]] = {
+        "no_splash",
+        "no_trace",
+        "vi",
+        "python",
+        "full_screen",
+    }
 
     @classmethod
     def load(cls, **overrides) -> "Config":

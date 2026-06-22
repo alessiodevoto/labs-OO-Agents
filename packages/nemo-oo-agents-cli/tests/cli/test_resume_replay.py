@@ -173,3 +173,64 @@ class TestBatchRendering:
         assert "hello" in written
         assert "world" in written
         assert "bye" in written
+
+    def test_history_replay_on_emit_stream_keeps_semantic_replay_callback(self):
+        """Live TUI rendering stores resumed HistoryReplay as a reflowable block."""
+        from nemo_oo_agents_cli.tui.frontend import TerminalFrontend
+        from nemo_oo_agents_cli.tui.session import _EmitStream
+
+        emitted = []
+        current_width = 80
+
+        def emit(text: str, replay=None):
+            emitted.append((text, replay))
+
+        stream = _EmitStream(emit, replay_width=lambda: current_width)
+        mock_console = MagicMock()
+        mock_console.console.width = 120
+        mock_console.console.file = stream
+
+        frontend = TerminalFrontend.__new__(TerminalFrontend)
+        frontend._console = mock_console
+
+        replay = HistoryReplay(
+            turns=[
+                HistoryTurn(
+                    role="agent",
+                    content="This is a resumed markdown paragraph that should wrap differently.",
+                )
+            ],
+            session_id="abc123",
+            show_header=True,
+            show_footer=True,
+        )
+
+        frontend._render_history_replay(replay)
+
+        assert len(emitted) == 1
+        rendered, replay_callback = emitted[0]
+        assert "abc123" in rendered
+        assert callable(replay_callback)
+        current_width = 24
+        rerendered = replay_callback()
+        assert rerendered != rendered
+        assert "abc123" in rerendered
+        assert len(rerendered.splitlines()[0]) < len(rendered.splitlines()[0])
+
+    def test_emit_stream_preserves_order_when_semantic_block_appears_inside_hold(self):
+        """A semantic HistoryReplay inside batch_render must not jump ahead of buffered text."""
+        from nemo_oo_agents_cli.tui.session import _EmitStream
+
+        emitted = []
+
+        def emit(text: str, replay=None):
+            emitted.append((text, replay))
+
+        stream = _EmitStream(emit)
+        with stream.hold():
+            stream.write("before")
+            stream.emit_with_replay("history", lambda: "history-reflowed")
+            stream.write("after")
+
+        assert [text for text, _ in emitted] == ["before", "history", "after"]
+        assert emitted[1][1]() == "history-reflowed"

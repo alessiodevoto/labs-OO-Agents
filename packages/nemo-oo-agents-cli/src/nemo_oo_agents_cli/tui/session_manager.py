@@ -162,14 +162,16 @@ class SessionManager:
         """Update the stored agent class name (called after custom agent loads)."""
         self.agent_cls = agent_cls
 
-    def record_user(self, text: str) -> None:
+    def record_user(self, text: str):
         """Store the user's raw input as a TUIUserInput metadata event."""
-        self._do_record_user(text)
+        return self._do_record_user(text)
 
-    def _do_record_user(self, text: str) -> None:
+    def _do_record_user(self, text: str):
         from .tui_events import TUIUserInput
 
-        self._event_manager.add(TUIUserInput(text=text))
+        event = TUIUserInput(text=text)
+        tag = self._event_manager.add(event)
+        return tag, event
 
     def close(self) -> None:
         if getattr(self, "_closed", False):

@@ -361,9 +361,13 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         """
         from .tui_events import TUIAgentMessage
 
-        self.event_manager.add(TUIAgentMessage(content=str(text)))
+        event = TUIAgentMessage(content=str(text))
+        tag = self.event_manager.add(event)
         if self._render_message is not None:
-            self._render_message(text)
+            try:
+                self._render_message(text, event_id=str(event.id), tags={str(tag)})
+            except TypeError:
+                self._render_message(text)
         if echo:
             print(text)
 
