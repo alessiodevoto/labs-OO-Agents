@@ -689,8 +689,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         from nemo_oo_agents.paths import get_project_dir
 
         _project_dir = get_project_dir()
-        self.shell = ShellTools(cwd=config.working_dir)
-        self.repo = RepoTools(root=config.working_dir, session=self.shell._session)
+        self._install_python_tools(config.working_dir)
         self.libs = SkillWriting(self, path=_project_dir / "libs")
         self.todo = TodoManager()
 
@@ -702,10 +701,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.libwriting", self.libs)
         self.skills.activate(["nemo.*"])
 
-        # Render the shell's API surface from the *live* shell type each turn.
-        # set_static with expr= re-evaluates the expression per turn (like set_dynamic)
-        # but places the block in the cacheable prefix for better prompt caching.
-        self.context.set_static("self.shell", expr="doc(type(self.shell))")
+        # Render Python tool docs together so ShellTools/RepoTools stay paired in context.
+        self.context.set_static("python_tools", expr="doc(RepoTools, ShellTools)")
 
         # Skills register their own context blocks via context_block class attr
 
@@ -724,6 +721,11 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # Install summarizer after agent is initialized
         if config.summarization.policy != "none":
             install_summarizer(config.summarization, agent=self)
+
+    def _install_python_tools(self, cwd: str) -> None:
+        """Install shell/repo tools rooted at the same working directory."""
+        self.shell = ShellTools(cwd=cwd)
+        self.repo = RepoTools(root=cwd, session=self.shell._session)
 
     @hidden
     def get_summarization_status(self) -> dict:
