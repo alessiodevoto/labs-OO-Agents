@@ -471,6 +471,7 @@ def build_session(
     result: BootstrapResult,
     frontend: "Frontend",
     registry: "CommandRegistry",
+    initial_outputs: list[Output] | None = None,
 ) -> "Session":
     """Build the Session from bootstrap results + frontend + registry."""
     from .session import Session
@@ -481,4 +482,5 @@ def build_session(
         config=result.config,
         registry=registry,
         session_manager=result.session_manager,
+        initial_outputs=initial_outputs,
     )

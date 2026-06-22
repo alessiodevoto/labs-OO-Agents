@@ -23,6 +23,7 @@ import shutil
 import threading
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future as ConcurrentFuture
+from dataclasses import dataclass
 from typing import Any
 
 from prompt_toolkit.application import Application
@@ -30,8 +31,10 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import Completer
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
-from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
@@ -40,6 +43,7 @@ from prompt_toolkit.layout.processors import BeforeInput
 
 from .completer import expand_mentions
 from .queue_state import QueueState
+from .subapp import InAppSubview, normalize_key_result
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +116,15 @@ def format_session_rule(cols: int, label: str = "") -> list[tuple[str, str]]:
 PROMPT_MARKER = "❯ "
 
 
+@dataclass
+class ReplayBlock:
+    raw: str
+    replay: Callable[[], str] | None = None
+    event_id: str | None = None
+    tags: frozenset[str] = frozenset()
+    keep: bool = False
+
+
 def _coalesce_string_into_queue(inq: Any, text: str) -> None:
     """Push *text* onto *inq*, merging into the trailing item if it's a string.
 
@@ -153,6 +166,7 @@ class TUIApplication:
         completer: Completer | None = None,
         session_label: Callable[[], str] | None = None,
         config: Any = None,
+        full_screen: bool = True,
     ) -> None:
         """
         Args:
@@ -169,6 +183,9 @@ class TUIApplication:
                 ``last_bang_command()``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
                 completion. When omitted no completion is offered.
+            full_screen: Native-scrollback mode that clears and replays the
+                retained transcript on resize. Steady-state scrolling remains
+                terminal-native; resize pays the redraw cost.
 
         The per-message echo ("queued → accepted" transition, user-bar
         render, TUIUserInput log) is wired on the agent's
@@ -181,6 +198,7 @@ class TUIApplication:
         self._on_bang = on_bang
         self._session_label_fn: Callable[[], str] | None = session_label
         self._config = config
+        self.full_screen = full_screen
         self.state = QueueState()
 
         # Output scrollback. Two parallel stores:
@@ -190,6 +208,19 @@ class TUIApplication:
         #     TUI via FormattedTextControl so Rich styling survives.
         self.output_buffer = Buffer(read_only=False)
         self._output_ansi: list[str] = []
+        # Retained transcript replay units.  The raw ANSI is used as fallback;
+        # when a replay callback is provided, resize replay asks it to render at
+        # the current terminal width so Markdown/Rich blocks can reflow. Event-
+        # linked blocks are pruned against active event IDs/tags before
+        # fullscreen resize replay; untagged UI blocks keep a small recent tail.
+        self._replay_blocks: list[ReplayBlock] = []
+        self._untagged_replay_tail = 200
+
+        # In-app subview host. These are modal views inside the single
+        # prompt_toolkit Application, so resize/input remain owned by one app.
+        self._active_subview: InAppSubview | None = None
+        self._active_subview_done: asyncio.Future[None] | None = None
+        self._subview_control: FormattedTextControl | None = None
 
         # Input window: where user keystrokes land. A caller (Session)
         # passes the real CommandRegistry-backed completer; otherwise
@@ -253,6 +284,10 @@ class TUIApplication:
         # through this one queue — no races.
         self._block_queue: asyncio.Queue[str] | None = None
         self._consumer_task: asyncio.Task | None = None
+        # Diagnostic/test counter for fullscreen clear+rewrite replays.
+        self._fullscreen_invalidate_count = 0
+        self._last_rendered_size: tuple[int, int] | None = None
+        self._replay_columns_override: int | None = None
         # Captured in run_async; used by emit_block for thread-safe
         # enqueue without calling the deprecated asyncio.get_event_loop().
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -267,11 +302,10 @@ class TUIApplication:
 
         kb = self._build_key_bindings()
 
-        # Output scrollback lives in the terminal itself above the
-        # active region: every ``emit_block`` enqueues a chunk that the
-        # consumer task writes via ``run_in_terminal`` → ``sys.__stdout__``.
-        # No output Window in the layout — keeps the active region tiny
-        # and preserves native terminal scrollback.
+        # Transcript output lives in terminal scrollback. In full_screen mode we
+        # still use native scrollback during steady state, but on resize we clear
+        # the visible screen and replay the retained transcript at the new width.
+        self._output_window = None
 
         # Queue window: shown whenever the agent has unconsumed messages
         # in its user_messages input queue. Mirrors the pre-rewrite
@@ -362,34 +396,144 @@ class TUIApplication:
             filter=Condition(lambda: self.input_buffer.complete_state is not None),
         )
 
-        # Active region (top → bottom):
+        # Active bottom region (top → bottom):
         #   queued type-ahead lines (only while agent working)
         #   status (spinner + optional badges)
-        #   session rule — always visible, sits flush against the prompt
+        #   session rule — always visible while at the transcript tail
         #   input
         #   completions (only while completing)
+        main_container = HSplit(
+            [
+                queue_window,
+                status_window,
+                session_rule,
+                input_window,
+                completions_window,
+            ],
+        )
+
+        def _subview_formatted():
+            view = self._active_subview
+            if view is None:
+                return ANSI("")
+            try:
+                size = self._app.output.get_size()
+                width, height = int(size.columns), int(size.rows)
+            except Exception:
+                width, height = terminal_cols(minimum=80), 24
+            return ANSI(view.render(width, height))
+
+        self._subview_control = FormattedTextControl(
+            _subview_formatted,
+            focusable=True,
+            show_cursor=False,
+        )
+        subview_window = Window(
+            self._subview_control,
+            wrap_lines=False,
+            always_hide_cursor=True,
+        )
+
+        def _root_container():
+            return subview_window if self._active_subview is not None else main_container
+
         self._app = Application(
             layout=Layout(
-                HSplit(
-                    [
-                        queue_window,
-                        status_window,
-                        session_rule,
-                        input_window,
-                        completions_window,
-                    ],
-                ),
+                DynamicContainer(_root_container),
                 focused_element=input_window,
             ),
             key_bindings=kb,
             full_screen=False,
+            before_render=self._before_render,
             # When the Application exits (e.g. /exit), erase the live
             # region so the final screen is just the committed
             # scrollback. Otherwise the empty ❯ from the input line
             # gets a final redraw right before exit and appears as a
             # ghost prompt above '❯ /exit' in the transcript.
             erase_when_done=True,
+            mouse_support=True,
+            # SIGWINCH already invalidates the app; the fallback poll creates a
+            # delayed second redraw (~0.5–0.75s later), which is visible in
+            # fullscreen subviews after terminal resize.
+            terminal_size_polling_interval=None,
         )
+
+    async def open_event_explorer(self, event_manager: Any) -> None:
+        """Open the event explorer as an in-app subview."""
+        from .event_explorer import EventExplorerView
+
+        await self.open_subview(EventExplorerView(event_manager))
+
+    async def open_subview(self, view: InAppSubview) -> None:
+        """Open *view* inside the existing prompt_toolkit Application.
+
+        This is the reusable seam for future ToDo, Sessions, Jobs, Artifacts,
+        and similar browse/edit/comment panes. It deliberately does not launch
+        a nested Application; the host owns focus, key dispatch, resize, mouse,
+        and restoration to the main prompt. Host-level convention: ``q`` closes
+        the subview; ``Esc`` is reserved for contextual clear/cancel/back inside
+        the active view.
+        """
+        if self._active_subview_done is not None and not self._active_subview_done.done():
+            return
+        self._active_subview = view
+        loop = asyncio.get_running_loop()
+        self._active_subview_done = loop.create_future()
+        view.on_open()
+        if self._subview_control is not None:
+            self._app.layout.focus(self._subview_control)
+        if self._app.is_running:
+            self._app.invalidate()
+        try:
+            await self._active_subview_done
+        finally:
+            active = self._active_subview
+            if active is not None:
+                active.on_close()
+            self._active_subview = None
+            self._active_subview_done = None
+            try:
+                self._app.layout.focus(self._input_window)
+            except Exception:
+                pass
+            if self._app.is_running:
+                self._app.invalidate()
+
+    def _close_subview(self) -> None:
+        done = self._active_subview_done
+        if done is not None and not done.done():
+            done.get_loop().call_soon_threadsafe(done.set_result, None)
+        else:
+            active = self._active_subview
+            if active is not None:
+                active.on_close()
+            self._active_subview = None
+        if self._app.is_running:
+            self._app.invalidate()
+
+    @property
+    def active_subview(self) -> InAppSubview | None:
+        """Currently hosted in-app subview, if any."""
+        return self._active_subview
+
+    @property
+    def _event_explorer_model(self) -> Any | None:
+        """Compatibility accessor for tests while /events moves to subviews."""
+        view = self._active_subview
+        return getattr(view, "model", None)
+
+    def _subview_key(self, event, action: str, value: str = "") -> bool:
+        view = self._active_subview
+        if view is None:
+            return False
+        result = normalize_key_result(view.handle_key(action, value))
+        if result == "close":
+            self._close_subview()
+        elif result == "ignored":
+            return False
+        if self._app.is_running:
+            self._app.invalidate()
+        return True
 
     # ── key bindings --------------------------------------------------
 
@@ -403,8 +547,83 @@ class TUIApplication:
         legacy = _legacy_kb(vi_mode=False)
 
         kb = KeyBindings()
+        subview_active = Condition(lambda: self._active_subview is not None)
+        subview_inactive = ~subview_active
 
-        @kb.add("c-c")
+        @kb.add(Keys.Any, filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "text", event.data)
+
+        @kb.add("escape", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "escape")
+
+        @kb.add("q", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "quit")
+
+        @kb.add("enter", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "enter")
+
+        @kb.add("/", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "slash")
+
+        @kb.add("backspace", filter=subview_active, eager=True)
+        @kb.add("c-h", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "backspace")
+
+        @kb.add("tab", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "tab")
+
+        @kb.add("down", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "down")
+
+        @kb.add("j", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "j")
+
+        @kb.add("up", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "up")
+
+        @kb.add("k", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "k")
+
+        @kb.add("pagedown", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "page_down")
+
+        @kb.add("pageup", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "page_up")
+
+        @kb.add("home", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "home")
+
+        @kb.add("end", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "end")
+
+        @kb.add(Keys.ScrollDown, filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "scroll_down")
+
+        @kb.add(Keys.ScrollUp, filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "scroll_up")
+
+        @kb.add("c-c", filter=subview_active, eager=True)
+        def _(event):
+            self._close_subview()
+
+        @kb.add("c-c", filter=subview_inactive)
         def _(event):
             # If an agent is running, C-c cancels the task and keeps the
             # buffer. Otherwise it exits the app.
@@ -413,11 +632,11 @@ class TUIApplication:
                 return
             event.app.exit()
 
-        @kb.add("c-d")
+        @kb.add("c-d", filter=subview_inactive)
         def _(event):
             event.app.exit()
 
-        @kb.add("tab")
+        @kb.add("tab", filter=subview_inactive)
         def _(event):
             # Standard Tab: open the menu if closed, advance to the
             # next option if already open. start_completion doesn't
@@ -428,7 +647,7 @@ class TUIApplication:
             else:
                 buf.complete_next()
 
-        @kb.add("s-tab")
+        @kb.add("s-tab", filter=subview_inactive)
         def _(event):
             buf = event.current_buffer
             if buf.complete_state is not None:
@@ -439,7 +658,7 @@ class TUIApplication:
         # the agent was working so you can edit it). In the forever-loop
         # model we pop from the agent's user_messages queue; items
         # already consumed by the agent can't be edited.
-        empty_buffer = Condition(lambda: self.input_buffer.text == "")
+        empty_buffer = Condition(lambda: self.input_buffer.text == "") & subview_inactive
 
         def _pop_last_queued() -> str | None:
             if self.agent is None:
@@ -466,7 +685,7 @@ class TUIApplication:
         # Esc: soft-cancel the agent while preserving the queue. Any
         # messages already submitted during the turn are delivered as
         # the next respond() via the done-callback.
-        @kb.add("escape")
+        @kb.add("escape", filter=subview_inactive)
         def _(event):
             if self.is_thinking() and self._agent_task is not None:
                 self._agent_task.cancel()
@@ -1061,7 +1280,21 @@ class TUIApplication:
 
     # ── output pipeline -----------------------------------------------
 
-    def emit_block(self, text: str) -> None:
+    def clear_transcript(self) -> None:
+        """Clear live transcript buffers and fullscreen resize replay retention."""
+        self._output_ansi.clear()
+        self._replay_blocks.clear()
+        self.output_buffer.set_document(Document(""), bypass_readonly=True)
+
+    def emit_block(
+        self,
+        text: str,
+        replay: Callable[[], str] | None = None,
+        *,
+        event_id: str | None = None,
+        tags: set[str] | frozenset[str] | None = None,
+        keep: bool = False,
+    ) -> None:
         """Enqueue one ANSI-bearing block for the transcript.
 
         This is the ONE public contract for writing to the transcript:
@@ -1080,6 +1313,15 @@ class TUIApplication:
 
         # GIL-safe: list.append is atomic. Reading from off-thread is fine.
         self._output_ansi.append(text)
+        self._replay_blocks.append(
+            ReplayBlock(
+                raw=text,
+                replay=replay,
+                event_id=str(event_id) if event_id is not None else None,
+                tags=frozenset(str(t) for t in (tags or ())),
+                keep=keep,
+            )
+        )
 
         # Before the consumer is up (pre-run_async) we're single-threaded
         # by construction — safe to touch the buffer directly + emit to
@@ -1122,11 +1364,8 @@ class TUIApplication:
         """
         stripped = _strip_ansi(text)
         existing = self.output_buffer.text
-        joined = (
-            existing + stripped
-            if not existing or existing.endswith("\n")
-            else existing + "\n" + stripped
-        )
+        appended = stripped if not existing or existing.endswith("\n") else "\n" + stripped
+        joined = existing + appended
         self.output_buffer.document = Document(text=joined, cursor_position=len(joined))
 
     # ── surface the harness (and real callers) rely on ----------------
@@ -1247,6 +1486,133 @@ class TUIApplication:
                 # the consumer. Fall through and pick up the next block.
                 continue
 
+    def output_columns(self, minimum: int = 20) -> int:
+        """Current transcript render width, including forced resize replays."""
+        if self._replay_columns_override is not None:
+            return max(int(self._replay_columns_override), minimum)
+        try:
+            return max(int(self._app.output.get_size().columns), minimum)
+        except Exception:
+            return terminal_cols(minimum=minimum)
+
+    def _before_render(self, _app) -> None:
+        """Replay retained transcript when fullscreen mode sees a terminal resize.
+
+        This keeps steady-state scrolling in the terminal's native scrollback,
+        while resize pays the heavy cost: clear the visible screen,
+        then rewrite the retained transcript before prompt_toolkit redraws the
+        live bottom region.
+        """
+        if not self.full_screen:
+            return
+        try:
+            size = self._app.output.get_size()
+            current = (int(size.columns), int(size.rows))
+        except Exception:
+            return
+        if self._last_rendered_size is None:
+            self._last_rendered_size = current
+            return
+        if current != self._last_rendered_size:
+            self._last_rendered_size = current
+            if self._active_subview is not None:
+                return
+            self._replay_fullscreen_transcript()
+
+    @staticmethod
+    def _tag_range(tag: str) -> tuple[int, int] | None:
+        try:
+            if ".." in tag:
+                a, b = tag.split("..", 1)
+                return int(a), int(b)
+            n = int(tag)
+            return n, n
+        except Exception:
+            return None
+
+    def _active_replay_identity(self) -> tuple[set[str], list[tuple[int, int]]]:
+        em = getattr(self.agent, "event_manager", None)
+        if em is None or not hasattr(em, "items"):
+            return set(), []
+        active_ids: set[str] = set()
+        ranges: list[tuple[int, int]] = []
+        try:
+            items = list(em.items())
+        except Exception:
+            return active_ids, ranges
+        for tag, event in items:
+            rng = self._tag_range(str(tag))
+            if rng is not None:
+                ranges.append(rng)
+            event_id = getattr(event, "id", None)
+            if event_id is not None:
+                active_ids.add(str(event_id))
+        return active_ids, ranges
+
+    def _tag_is_active(self, tag: str, active_ranges: list[tuple[int, int]]) -> bool:
+        rng = self._tag_range(tag)
+        if rng is None:
+            return False
+        start, end = rng
+        return any(
+            start <= active_end and end >= active_start
+            for active_start, active_end in active_ranges
+        )
+
+    def _prune_replay_blocks_for_active_events(self) -> None:
+        if not self._replay_blocks:
+            return
+        active_ids, active_ranges = self._active_replay_identity()
+        if not active_ids and not active_ranges:
+            return
+        keep_indexes: set[int] = set()
+        untagged_indexes: list[int] = []
+        for i, block in enumerate(self._replay_blocks):
+            if block.keep:
+                keep_indexes.add(i)
+            elif block.event_id is not None:
+                if block.event_id in active_ids:
+                    keep_indexes.add(i)
+            elif block.tags:
+                if any(self._tag_is_active(tag, active_ranges) for tag in block.tags):
+                    keep_indexes.add(i)
+            else:
+                untagged_indexes.append(i)
+        # Untagged blocks cover startup/help/status/command output that is not
+        # represented by active LLM events. Keep only the recent tail so resize
+        # replay follows active conversation state without losing current UI
+        # affordances.
+        keep_indexes.update(untagged_indexes[-self._untagged_replay_tail :])
+        self._replay_blocks = [
+            block for i, block in enumerate(self._replay_blocks) if i in keep_indexes
+        ]
+
+    def _replay_fullscreen_transcript(self) -> None:
+        if not self.full_screen or not self._replay_blocks:
+            return
+        import sys as _sys
+
+        out = _sys.__stdout__
+        if out is None:
+            return
+        self._prune_replay_blocks_for_active_events()
+        chunks: list[str] = []
+        for block in self._replay_blocks:
+            if block.replay is None:
+                chunks.append(block.raw)
+                continue
+            try:
+                chunks.append(block.replay())
+            except Exception:
+                chunks.append(block.raw)
+        try:
+            out.write("\x1b[H\x1b[2J")
+            out.write("".join(chunks))
+            out.flush()
+            self._fullscreen_invalidate_count += 1
+        except Exception:
+            return
+
     def exit(self) -> None:
         if self._app.is_running:
             self._app.exit()
@@ -1324,5 +1690,15 @@ class TUIApplication:
         exists for tests (and callers that want to force a redraw after
         a non-SIGWINCH layout change).
         """
+        if self.full_screen:
+            size = (int(cols), int(rows))
+            if self._last_rendered_size != size:
+                self._last_rendered_size = size
+                if self._active_subview is None:
+                    self._replay_columns_override = int(cols)
+                    try:
+                        self._replay_fullscreen_transcript()
+                    finally:
+                        self._replay_columns_override = None
         if self._app.is_running:
             self._app.invalidate()

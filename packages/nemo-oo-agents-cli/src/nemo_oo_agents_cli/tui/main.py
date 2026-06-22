@@ -152,15 +152,13 @@ async def main(
         agent=agent,
     )
 
-    # Render bootstrap messages (errors, warnings, info)
-    for msg in result.messages:
-        await frontend.render(msg)
-
-    # Startup info panel
     _startup_info = build_startup_info(result)
-    await frontend.render(_startup_info)
+    _initial_outputs = [*result.messages, _startup_info]
 
-    # Show resumed session history (interleaved with any rich content)
+    # Show resumed session history (interleaved with any rich content). Terminal
+    # text/markdown outputs are deferred until Session.run(), after the frontend
+    # console is redirected through TUIApplication.emit_block; that makes them
+    # part of fullscreen resize replay instead of one-off pre-app writes.
     if result.resumed and result.session_id is not None:
         import os as _os
 
@@ -178,22 +176,26 @@ async def main(
                             import httpx as _httpx
 
                             _httpx.post(
-                                _rich_url, json={**_item.payload, "_replay": True}, timeout=5.0
+                                _rich_url,
+                                json={**_item.payload, "_replay": True},
+                                timeout=5.0,
                             )
                         except Exception:
                             pass
                 else:
-                    await frontend.render(_item)
-            await frontend.render(TextOutput(f"Session {result.session_id[:8]} resumed.", "status"))
+                    _initial_outputs.append(_item)
+            _initial_outputs.append(
+                TextOutput(f"Session {result.session_id[:8]} resumed.", "status")
+            )
         else:
-            await frontend.render(TextOutput("No previous session with turns found.", "info"))
+            _initial_outputs.append(TextOutput("No previous session with turns found.", "info"))
     elif continue_last:
-        await frontend.render(TextOutput("No previous session with turns found.", "info"))
+        _initial_outputs.append(TextOutput("No previous session with turns found.", "info"))
 
     # Wire frontend → registry → session
     registry = build_registry(result, frontend)
     registry.startup_info = _startup_info
     frontend.init_input(registry)  # terminal-specific: prompt_toolkit completions
-    session = build_session(result, frontend, registry)
+    session = build_session(result, frontend, registry, initial_outputs=_initial_outputs)
 
     await session.run()
