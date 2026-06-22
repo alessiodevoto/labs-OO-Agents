@@ -423,6 +423,7 @@ class TestContextWindowStatsFormat:
         assert "8 events" in text
         # No percentages without any limits
         assert "%" not in text
+        assert "self.events.collapse(start_tag, end_tag, summary_text=...)" in text
 
     def test_format_model_context_window(self):
         """With model_context_window but no per-category limits, total shows percentage."""
@@ -461,11 +462,10 @@ class TestContextWindowStatsFormat:
         assert "Events:" in text
         assert "4,250 / 20,000 tokens (21.2%)" in text
         assert "18 events" in text
-        # No warning at 25%
-        assert "nearly full" not in text
+        assert "self.events.collapse(start_tag, end_tag, summary_text=...)" in text
 
-    def test_format_warning_when_hot(self):
-        """Warning shown when utilization exceeds 80%."""
+    def test_format_cleanup_guidance_when_hot(self):
+        """Cleanup guidance remains visible when utilization exceeds 80%."""
         stats = ContextWindowStats(
             context_blocks_tokens=29_000,
             context_blocks_count=5,
@@ -476,13 +476,13 @@ class TestContextWindowStatsFormat:
             max_event_tokens=20_000,
         )
         text = stats.format()
-        assert "nearly full" in text
+        assert "self.events.collapse(start_tag, end_tag, summary_text=...)" in text
+        assert "doc(self.events)" in text
         assert "self.context" in text
         assert "ContextApi" in text
-        assert "self.events (EventsApi) to summarize or manage event history" in text
 
-    def test_format_warning_when_dropped(self):
-        """Warning shown when blocks or events were dropped."""
+    def test_format_cleanup_guidance_when_dropped(self):
+        """Cleanup guidance remains visible when blocks or events were dropped."""
         stats = ContextWindowStats(
             context_blocks_tokens=500,
             context_blocks_count=2,
@@ -495,7 +495,7 @@ class TestContextWindowStatsFormat:
         )
         text = stats.format()
         assert "1 EVICTED" in text
-        assert "nearly full" in text
+        assert "self.events.collapse(start_tag, end_tag, summary_text=...)" in text
 
     def test_format_dropped_counts_shown(self):
         """Dropped counts appear in the breakdown lines."""

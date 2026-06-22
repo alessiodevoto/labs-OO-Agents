@@ -338,15 +338,13 @@ class ContextWindowStats(BaseModel):
             ev_parts.append(f"{self.events_dropped} dropped")
         lines.append(f"  Events:         {' — '.join(ev_parts)}")
 
-        # --- Warning ---
-        ctx_hot = self.context_utilization is not None and self.context_utilization > 0.8
-        evt_hot = self.event_utilization is not None and self.event_utilization > 0.8
-        if self.context_blocks_dropped or self.events_dropped or ctx_hot or evt_hot:
-            lines.append(
-                "Context is nearly full. Context blocks over budget are labeled "
-                "EVICTED. Use self.context (ContextApi) to summarize or remove "
-                "blocks, and self.events (EventsApi) to summarize or manage "
-                "event history."
-            )
+        # --- Cleanup guidance ---
+        lines.append(
+            "Free space by collapsing older event history with "
+            "self.events.collapse(start_tag, end_tag, summary_text=...); "
+            "use doc(self.events) for the available event-history tools. "
+            "Use self.context (ContextApi) to summarize or remove large "
+            "context blocks."
+        )
 
         return "\n".join(lines)
