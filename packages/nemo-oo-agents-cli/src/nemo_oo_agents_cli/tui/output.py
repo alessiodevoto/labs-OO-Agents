@@ -200,6 +200,31 @@ class BashOutput:
 
 
 @dataclass
+class CommandStatus:
+    """Lifecycle status for one TUI command invocation.
+
+    This is UI-local command state, not an agent background job. Slash commands
+    and bang commands use it for consistent queued/running/finished feedback.
+    """
+
+    id: int
+    kind: Literal["slash", "bang"]
+    state: Literal["queued", "running", "done", "failed", "cancelled"]
+    text: str
+    error: str = ""
+
+    def to_json(self) -> dict:
+        return {
+            "type": "command_status",
+            "id": self.id,
+            "kind": self.kind,
+            "state": self.state,
+            "text": self.text,
+            "error": self.error,
+        }
+
+
+@dataclass
 class HistoryTurn:
     """One turn in a replayed session history."""
 
@@ -330,6 +355,7 @@ Output = (
     | SessionEnd
     | Thinking
     | BashOutput
+    | CommandStatus
     | DiffOutput
     | RichOutput
     | HistoryReplay

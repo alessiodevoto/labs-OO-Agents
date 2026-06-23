@@ -20,6 +20,7 @@ from .output import (
     BashOutput,
     ClearScreen,
     CodeExecution,
+    CommandStatus,
     DiffOutput,
     HelpOutput,
     HistoryReplay,
@@ -257,6 +258,7 @@ class TerminalFrontend:
             ClearScreen: self._render_clear,
             Thinking: self._render_thinking,
             BashOutput: self._render_bash,
+            CommandStatus: self._render_command_status,
             RichOutput: self._render_rich,
             DiffOutput: self._render_diff,
             HistoryReplay: self._render_history_replay,
@@ -348,8 +350,6 @@ class TerminalFrontend:
             self._console.print_status(output.footer)
 
     def _render_bash(self, output: BashOutput) -> None:
-        if output.command:
-            self._console.console.print(f"[bold dark_orange]❯ {output.command}[/]")
         if output.stdout:
             # Ensure text ends with newline so _EmitStream produces exactly
             # ONE flush (one emit_block call). Two separate flushes (text
@@ -360,6 +360,24 @@ class TerminalFrontend:
             self._console.console.print(text, end="")
         if output.stderr:
             self._console.print_error(output.stderr)
+
+    def _render_command_status(self, output: CommandStatus) -> None:
+        prefix = "/" if output.kind == "slash" else "!"
+        text = output.text if output.text.startswith(("/", "!")) else f"{prefix}{output.text}"
+        label = f"[{output.id}] {text}"
+        if output.state == "queued":
+            self._console.print_status(f"○ queued {label}")
+        elif output.state == "running":
+            self._console.print_status(f"▶ running {label}")
+        elif output.state == "done":
+            from rich.markup import escape
+
+            self._console.print_success(f"[command]{escape(text)}[/command]")
+        elif output.state == "cancelled":
+            self._console.print_warning(f"■ cancelled {label}")
+        else:
+            suffix = f": {output.error}" if output.error else ""
+            self._console.print_error(f"✗ failed {label}{suffix}")
 
     def _render_rich(self, output: RichOutput) -> None:
         """Terminal fallback for rich visual output — show summary text."""
