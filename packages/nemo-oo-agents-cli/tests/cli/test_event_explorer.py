@@ -213,6 +213,20 @@ def test_event_explorer_ansi_styles_header_footer_and_mode_label() -> None:
     assert "\x1b[1;30;46mBROWSE MODE\x1b[0m" in rendered.splitlines()[-1]
 
 
+def test_event_explorer_fts_divider_prompt_matches_session_explorer_style() -> None:
+    model = EventExplorerModel(
+        build_event_rows(
+            SimpleNamespace(items=lambda: [("1", _FakeEvent("TUIUserInput", text="alpha"))])
+        )
+    )
+    model.search_active = True
+    model.set_query("alpha")
+
+    rendered = render_event_explorer(model, width=90, height=12, ansi=True)
+
+    assert "\x1b[1;30;45m[FTS: alpha] \x1b[0m" in rendered
+
+
 def test_event_explorer_fts_mode_survives_tab_focus_changes() -> None:
     rows = build_event_rows(
         SimpleNamespace(
@@ -336,7 +350,7 @@ def test_event_explorer_search_shows_match_position_and_highlights_matches() -> 
 
     rendered = render_event_explorer(model, width=80, height=14, ansi=True)
     assert "match 1/2" in rendered
-    assert "[30;43malpha[0m" in rendered
+    assert "\x1b[30;43malpha\x1b[0m" in rendered
 
     model.move(+1)
     rendered = render_event_explorer(model, width=80, height=14, ansi=True)
@@ -599,16 +613,16 @@ async def test_tui_app_event_explorer_fts_can_search_printable_navigation_and_qu
 
     agent = FakeAgent()
     agent.event_manager = SimpleNamespace(
-        items=lambda: [("1", _FakeEvent("TUIUserInput", text="jqk event"))]
+        items=lambda: [("1", _FakeEvent("TUIUserInput", text="jqkr event"))]
     )
     async with TUIHarness(agent=agent) as h:
         task = asyncio.create_task(h.app.open_event_explorer(agent.event_manager))
         await h.wait_for(lambda: h.app._event_explorer_model is not None)
 
         await h.type_keys("/")
-        await h.type_keys("jqk")
+        await h.type_keys("jqkr")
 
-        await h.wait_for(lambda: h.app._event_explorer_model.query == "jqk")
+        await h.wait_for(lambda: h.app._event_explorer_model.query == "jqkr")
         assert h.capture_input() == ""
         assert h.app.active_subview is not None
 
@@ -628,3 +642,497 @@ def test_event_explorer_has_in_app_mouse_scroll_bindings() -> None:
     assert "Keys.ScrollUp" in source
     assert "mouse_support=True" in source
     assert "_SuspendedPromptToolkitResize" not in source
+
+
+# ============================================================================
+# Session explorer tests
+# ============================================================================
+
+
+def _session_row(id: str, name: str, turns: list[tuple[str, str]]):
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerRow
+    from nemo_oo_agents_cli.tui.session_manager import Turn
+
+    turn_objs = [
+        Turn(role=role, content=content, ts=1000.0 + i) for i, (role, content) in enumerate(turns)
+    ]
+    search_text = "\n".join([id, name, "test-model", *[t.content for t in turn_objs]])
+    return SessionExplorerRow(
+        id=id,
+        name=name,
+        model="test/model",
+        agent="TUIAgent",
+        working_dir="/tmp/project",
+        started_at=1000.0,
+        last_active=2000.0,
+        turn_count=len(turn_objs),
+        turns=turn_objs,
+        search_text=search_text,
+    )
+
+
+def test_session_explorer_model_searches_across_sessions_and_dialog() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel
+
+    rows = [
+        _session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("user", "hello world")]),
+        _session_row(
+            "bbbb0000-0000-0000-0000-000000000002", "beta", [("agent", "contains frobnicator")]
+        ),
+    ]
+    model = SessionExplorerModel(rows)
+
+    model.set_query("frobnicator")
+
+    assert model.matches == [1]
+    assert model.current is rows[1]
+
+
+def test_session_explorer_navigation_tab_and_rendering() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    rows = [
+        _session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("user", "first")]),
+        _session_row("bbbb0000-0000-0000-0000-000000000002", "beta", [("agent", "second")]),
+    ]
+    model = SessionExplorerModel(rows)
+
+    model.move(+1)
+    model.toggle_focus()
+    rendered = render_session_explorer(model, width=90, height=20)
+
+    assert model.current is rows[1]
+    assert model.focus == "dialog"
+    assert "Session Explorer" in rendered
+    assert "session dialog" in rendered
+    assert "beta" in rendered
+    assert "OO:" in rendered
+    assert "second" in rendered
+
+
+def test_session_explorer_opens_detail_at_end_of_long_session() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    turns = [("user", f"early line {i}") for i in range(20)] + [("agent", "final answer")]
+    model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "long", turns)]
+    )
+    model.toggle_focus()
+
+    rendered = render_session_explorer(model, width=90, height=12)
+
+    assert "final answer" in rendered
+    assert "early line 0" not in rendered
+
+
+def test_session_explorer_visible_tail_renders_markdown() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    model = SessionExplorerModel(
+        [
+            _session_row(
+                "aaaa0000-0000-0000-0000-000000000001",
+                "markdown",
+                [("agent", "**bold final**\n\n- one\n- two")],
+            )
+        ]
+    )
+    model.focus = "dialog"
+
+    rendered = render_session_explorer(model, width=80, height=16, ansi=True)
+
+    assert "\x1b[1mbold final\x1b[0m" in rendered
+    assert "\x1b[1m • \x1b[0mone" in rendered
+
+
+def test_session_explorer_highlight_does_not_bleed_into_blank_lines() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    row = _session_row(
+        "aaaa0000-0000-0000-0000-000000000001",
+        "hi",
+        [("agent", "a line ending with hi")],
+    )
+    model = SessionExplorerModel([row])
+    model.set_query("hi")
+
+    rendered = render_session_explorer(model, width=60, height=18, ansi=True)
+    lines = rendered.splitlines()
+    highlighted = [line for line in lines if "\x1b[30;43m" in line]
+
+    assert highlighted
+    assert all(line.strip(" \x1b[0m") for line in highlighted)
+    assert not any(line.endswith("\x1b[30;43m") for line in lines)
+
+
+def test_session_explorer_has_separate_session_and_dialog_fts_modes() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    rows = [
+        _session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("agent", "shared needle")]),
+        _session_row("bbbb0000-0000-0000-0000-000000000002", "beta", [("agent", "other text")]),
+    ]
+    model = SessionExplorerModel(rows)
+
+    model.set_query("alpha", scope="sessions")
+    assert model.matches == [0]
+
+    model.focus = "dialog"
+    model.search_active = True
+    model.search_scope = "dialog"
+    model.edit_query("needle")
+    rendered = render_session_explorer(model, width=90, height=16, ansi=True)
+
+    assert model.matches == [0]
+    assert model.session_query == "alpha"
+    assert model.detail_query == "needle"
+    assert "[FTS dialog: needle]" in rendered
+    assert "\x1b[30;106mneedle\x1b[0m" in rendered
+
+
+def test_session_explorer_tab_switches_fts_scope_with_pane() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel, SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("agent", "needle")])]
+    )
+
+    assert view.handle_key("slash") == "handled"
+    assert view.model.search_scope == "sessions"
+    assert view.handle_key("tab") == "handled"
+    assert view.model.focus == "dialog"
+    assert view.model.search_scope == "dialog"
+
+
+def test_session_explorer_dialog_fts_up_down_moves_between_matches() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    row = _session_row(
+        "aaaa0000-0000-0000-0000-000000000001",
+        "alpha",
+        [("agent", "needle one\n" + "filler\n" * 8 + "needle two")],
+    )
+    model = SessionExplorerModel([row])
+    model.focus = "dialog"
+    model.search_active = True
+    model.set_query("needle", scope="dialog")
+
+    render_session_explorer(model, width=80, height=10)
+    first_offset = model.detail_offset
+    model.move_or_scroll(+1)
+    render_session_explorer(model, width=80, height=10)
+
+    assert model.detail_search_cursor == 1
+    assert model.detail_offset > first_offset
+
+
+def test_session_explorer_tab_to_dialog_fts_then_down_moves_to_next_match() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        SessionExplorerView,
+        render_session_explorer,
+    )
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [
+            _session_row(
+                "aaaa0000-0000-0000-0000-000000000001",
+                "alpha",
+                [("agent", "needle one\n" + "filler\n" * 10 + "needle two")],
+            )
+        ]
+    )
+    view.pending_input = None
+
+    render_session_explorer(view.model, width=80, height=12)
+    assert view.handle_key("slash") == "handled"
+    for ch in "needle":
+        assert view.handle_key("text", ch) == "handled"
+    assert view.handle_key("tab") == "handled"
+
+    # The user can press Down immediately after Tab, before the redraw that
+    # discovers dialog match line numbers.
+    assert view.handle_key("down") == "handled"
+    rendered = render_session_explorer(view.model, width=80, height=12)
+
+    assert view.model.search_scope == "dialog"
+    assert view.model.focus == "dialog"
+    assert view.model.detail_search_cursor == 1
+    assert "needle two" in rendered
+    assert "needle one" not in rendered
+
+
+def test_session_explorer_list_fts_navigation_scrolls_detail_to_match() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    first = _session_row(
+        "aaaa0000-0000-0000-0000-000000000001",
+        "alpha one",
+        [("agent", "alpha near top")],
+    )
+    second = _session_row(
+        "bbbb0000-0000-0000-0000-000000000002",
+        "alpha two",
+        [("agent", "filler\n" * 12 + "alpha near bottom")],
+    )
+    model = SessionExplorerModel([first, second])
+    model.search_active = True
+    model.set_query("alpha", scope="sessions")
+
+    rendered = render_session_explorer(model, width=80, height=10)
+    assert "alpha near top" in rendered
+
+    model.move_or_scroll(+1)
+    rendered = render_session_explorer(model, width=80, height=10)
+
+    assert model.cursor == 1
+    assert "alpha near bottom" in rendered
+
+
+def test_session_explorer_fts_divider_prompt_is_highlighted_when_active() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("agent", "needle")])]
+    )
+    model.search_active = True
+    model.set_query("alpha", scope="sessions")
+
+    rendered = render_session_explorer(model, width=90, height=12, ansi=True)
+
+    assert "\x1b[1;30;45m[FTS sessions: alpha] \x1b[0m" in rendered
+
+
+def test_session_explorer_selected_dialog_match_uses_distinct_highlight() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import (
+        SessionExplorerModel,
+        render_session_explorer,
+    )
+
+    row = _session_row(
+        "aaaa0000-0000-0000-0000-000000000001",
+        "alpha",
+        [("agent", "needle one\n" + "filler\n" * 8 + "needle two")],
+    )
+    model = SessionExplorerModel([row])
+    model.focus = "dialog"
+    model.search_active = True
+    model.set_query("needle", scope="dialog")
+    render_session_explorer(model, width=80, height=10, ansi=True)
+    model.move_or_scroll(+1)
+
+    rendered = render_session_explorer(model, width=80, height=10, ansi=True)
+
+    assert "\x1b[30;106mneedle\x1b[0m two" in rendered
+    assert "\x1b[30;43mneedle\x1b[0m one" not in rendered
+
+
+def test_session_explorer_mouse_scroll_actions_target_dialog() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel, SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [
+            _session_row(
+                "aaaa0000-0000-0000-0000-000000000001",
+                "long",
+                [("user", f"line {i}") for i in range(20)],
+            )
+        ]
+    )
+
+    view.handle_key("scroll_up")
+
+    assert view.model.focus == "dialog"
+
+
+def test_session_explorer_view_fts_accepts_navigation_and_quit_chars() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel
+
+    view.model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "jqk", [("user", "jqk query")])]
+    )
+
+    assert view.handle_key("slash") == "handled"
+    assert view.handle_key("j") == "handled"
+    assert view.handle_key("quit") == "handled"
+    assert view.handle_key("k") == "handled"
+
+    assert view.model.query == "jqk"
+    assert view.handle_key("escape") == "handled"
+    assert view.model.search_active is False
+    assert view.handle_key("quit") == "close"
+
+
+def test_session_explorer_resume_key_closes_with_resume_prefill() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel, SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("user", "hello")])]
+    )
+    view.pending_input = None
+
+    assert view.handle_key("resume") == "close"
+    assert view.pending_input == "/session resume aaaa0000"
+
+
+def test_session_explorer_resume_key_types_r_in_fts_mode() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel, SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("user", "hello")])]
+    )
+    view.pending_input = None
+    view.model.search_active = True
+
+    assert view.handle_key("resume") == "handled"
+    assert view.model.query == "r"
+    assert view.pending_input is None
+
+
+def test_session_explorer_slash_key_types_slash_in_fts_mode() -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerModel, SessionExplorerView
+
+    view = SessionExplorerView.__new__(SessionExplorerView)
+    view.model = SessionExplorerModel(
+        [_session_row("aaaa0000-0000-0000-0000-000000000001", "alpha", [("user", "path /tmp")])]
+    )
+    view.pending_input = None
+
+    assert view.handle_key("slash") == "handled"
+    assert view.handle_key("text", "t") == "handled"
+    assert view.handle_key("slash") == "handled"
+    assert view.handle_key("text", "m") == "handled"
+
+    assert view.model.search_active is True
+    assert view.model.query == "t/m"
+
+
+@pytest.mark.asyncio
+async def test_session_list_opens_in_app_explorer_when_available() -> None:
+    from nemo_oo_agents_cli.tui.commands import SessionCommand
+
+    frontend = MagicMock()
+    frontend.open_session_explorer = AsyncMock()
+    cmd = SessionCommand(frontend, MagicMock(), MagicMock())
+
+    result = await cmd.execute(["list"])
+
+    assert result.success is True
+    assert "closed" in result.outputs[0].content
+    frontend.open_session_explorer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_tui_app_opens_and_closes_session_explorer_in_app(monkeypatch) -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerRow
+    from nemo_oo_agents_cli.tui.session_manager import Turn
+
+    from cli.tui_app_harness import TUIHarness
+
+    rows = [
+        SessionExplorerRow(
+            id="aaaa0000-0000-0000-0000-000000000001",
+            name="alpha session",
+            model="test/model",
+            agent="TUIAgent",
+            working_dir="/tmp/project",
+            started_at=1000.0,
+            last_active=2000.0,
+            turn_count=1,
+            turns=[Turn(role="user", content="find alpha", ts=1000.0)],
+            search_text="alpha session find alpha",
+        )
+    ]
+    monkeypatch.setattr(
+        "nemo_oo_agents_cli.tui.session_explorer.build_session_rows",
+        lambda *, limit=100: rows,
+    )
+
+    async with TUIHarness() as h:
+        task = asyncio.create_task(h.app.open_session_explorer())
+        await h.wait_for(lambda: h.app.active_subview is not None)
+
+        view = h.app.active_subview
+        assert view is not None
+        model = view.model
+        assert model.current.id.startswith("aaaa0000")
+        await h.type_keys("/")
+        await h.type_keys("alpha")
+        await h.wait_for(lambda: model.query == "alpha")
+        await h.press("tab")
+        await h.wait_for(lambda: model.focus == "dialog")
+
+        assert h.capture_input() == ""
+        await h.press("escape")
+        await h.press("q")
+        await asyncio.wait_for(task, timeout=1)
+        assert h.app.active_subview is None
+
+
+@pytest.mark.asyncio
+async def test_tui_app_session_explorer_resume_prefills_input(monkeypatch) -> None:
+    from nemo_oo_agents_cli.tui.session_explorer import SessionExplorerRow
+    from nemo_oo_agents_cli.tui.session_manager import Turn
+
+    from cli.tui_app_harness import TUIHarness
+
+    rows = [
+        SessionExplorerRow(
+            id="aaaa0000-0000-0000-0000-000000000001",
+            name="alpha session",
+            model="test/model",
+            agent="TUIAgent",
+            working_dir="/tmp/project",
+            started_at=1000.0,
+            last_active=2000.0,
+            turn_count=1,
+            turns=[Turn(role="user", content="find alpha", ts=1000.0)],
+            search_text="alpha session find alpha",
+        )
+    ]
+    monkeypatch.setattr(
+        "nemo_oo_agents_cli.tui.session_explorer.build_session_rows",
+        lambda *, limit=100: rows,
+    )
+
+    async with TUIHarness() as h:
+        task = asyncio.create_task(h.app.open_session_explorer())
+        await h.wait_for(lambda: h.app.active_subview is not None)
+
+        await h.type_keys("r")
+        await asyncio.wait_for(task, timeout=1)
+
+        assert h.app.active_subview is None
+        assert h.capture_input() == "/session resume aaaa0000"

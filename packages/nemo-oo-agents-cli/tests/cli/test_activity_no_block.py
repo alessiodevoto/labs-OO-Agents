@@ -127,3 +127,161 @@ async def test_activity_probe_uses_async_dispatch():
 
     assert used["async"] is True
     assert used["sync"] is False
+
+
+@pytest.mark.asyncio
+async def test_agent_mutating_commands_use_async_dispatch(tmp_path):
+    """UI-loop commands must not call blocking agent_run while the agent is busy."""
+    from pathlib import Path
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from nemo_oo_agents_cli.tui.commands import (
+        BugCommand,
+        CompactCommand,
+        ModelCommand,
+        SwitchCommand,
+    )
+
+    async def assert_uses_async_dispatch(cmd, execute_args):
+        used = {"sync": False, "async": False}
+
+        def sync_run(fn):
+            used["sync"] = True
+            return fn()
+
+        async def async_run(fn):
+            used["async"] = True
+            return fn()
+
+        cmd._agent_run = sync_run
+        cmd._agent_run_async = async_run
+        result = await cmd.execute(execute_args)
+        assert result.success
+        assert used["async"] is True
+        assert used["sync"] is False
+
+    config = MagicMock()
+    config.default_model = "old/model"
+    agent = MagicMock()
+    agent.event_manager.keys.return_value = ["1", "2"]
+    agent.context_stats = None
+
+    with patch("nemo_oo_agents.unifiedllm.get_llm_client", return_value=MagicMock()):
+        await assert_uses_async_dispatch(ModelCommand(AsyncMock(), config, agent), ["new/model"])
+        await assert_uses_async_dispatch(SwitchCommand(AsyncMock(), config, agent), ["new/model"])
+
+    compact = CompactCommand(AsyncMock(), config, agent)
+    agent._summarizers = []
+    await assert_uses_async_dispatch(compact, [])
+
+    storage = MagicMock()
+    agent._storage = storage
+    session_manager = MagicMock()
+    session_manager.agent_db_path = Path(__file__)
+    backup_db = tmp_path / "session.db"
+    backup_db.write_text("sqlite backup placeholder")
+    bug = BugCommand(AsyncMock(), config, agent, session_manager=session_manager)
+    bug._backup_db_to_temp = MagicMock(return_value=backup_db)
+    bug._upload_and_file = MagicMock(return_value="https://example.test/bug")
+    await assert_uses_async_dispatch(bug, [])
+
+
+@pytest.mark.asyncio
+async def test_session_swap_uses_async_agent_dispatch():
+    """Session manager swaps run agent mutations without blocking the UI loop."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session.agent = MagicMock()
+    session.agent.queue_manager = None
+    session.agent.event_manager = MagicMock()
+    session.registry = MagicMock()
+    session.registry.commands.return_value = []
+    old_storage = MagicMock()
+    session.agent._storage = old_storage
+    old_manager = MagicMock()
+    old_manager.close = MagicMock()
+    session._session_manager = old_manager
+    new_manager = MagicMock()
+    new_manager._storage = SimpleNamespace(event_backend=object())
+
+    used = {"async": 0, "sync": 0}
+
+    async def async_run(fn):
+        used["async"] += 1
+        return fn()
+
+    def sync_run(fn):
+        used["sync"] += 1
+        return fn()
+
+    session._app = SimpleNamespace(agent_run_async=async_run, agent_run=sync_run)
+
+    await session._swap_session_manager(new_manager)
+
+    assert used["async"] == 2
+    assert used["sync"] == 0
+
+
+@pytest.mark.asyncio
+async def test_python_skill_slash_commands_use_async_agent_dispatch():
+    """@slash_command methods run on the agent loop, not directly on the UI loop.
+
+    Mesh slash commands mutate the live AgentMesh client/QueueManager and can do
+    slow connect/list/cert work. Running those methods directly in
+    CommandHandler ties the work to prompt_toolkit's UI loop; routing them
+    through agent_run_async keeps input/redraw/output draining responsive while
+    the agent loop performs the operation.
+    """
+    from unittest.mock import AsyncMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandHandler, _UserSkill
+
+    class Registry:
+        def __init__(self):
+            self.skill_called = False
+
+        def get_user_skill(self, name):
+            if name != "mesh-list":
+                return None
+
+            def mesh_list(args: str = ""):
+                self.skill_called = True
+                return f"mesh roster for {args}"
+
+            return _UserSkill(
+                name="mesh-list",
+                body="",
+                description="Show the live mesh roster",
+                _method=mesh_list,
+            )
+
+        def get_command(self, name):
+            return None
+
+        def get_all_command_classes(self):
+            return {}
+
+    registry = Registry()
+    used = {"async": False}
+
+    async def agent_run_async(fn):
+        used["async"] = True
+        return fn()
+
+    handler = CommandHandler(
+        registry=registry,
+        frontend=AsyncMock(),
+        agent_run_async=agent_run_async,
+    )
+
+    result = await handler.handle("/mesh-list now")
+
+    assert result.success is True
+    assert used["async"] is True
+    assert registry.skill_called is True
+    assert result.slash_result is not None
+    assert result.slash_result.value == "mesh roster for now"

@@ -190,6 +190,16 @@ class TerminalFrontend:
             raise RuntimeError("TUI application is not ready.")
         await self._app.open_event_explorer(event_manager)
 
+    async def open_session_explorer(self) -> None:
+        if self._app is None:
+            raise RuntimeError("TUI application is not ready.")
+        await self._app.open_session_explorer()
+
+    async def open_activity_overlay(self, outputs: list[Output]) -> None:
+        if self._app is None:
+            raise RuntimeError("TUI application is not ready.")
+        await self._app.open_activity_overlay(outputs)
+
     def init_input(self, registry) -> None:
         """Wire up the prompt_toolkit input handler with slash completions."""
         from .input_handler import TUIInputHandler

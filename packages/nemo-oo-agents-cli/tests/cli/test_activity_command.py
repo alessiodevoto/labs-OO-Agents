@@ -124,3 +124,28 @@ async def test_import_error_fallback(command, monkeypatch):
     result = await command.execute([])
     assert not result.success
     assert isinstance(result.outputs[0], TextOutput)
+
+
+@pytest.mark.asyncio
+async def test_activity_command_opens_overlay_when_frontend_supports_it():
+    """Terminal-like frontends show /activity in the full-screen overlay."""
+
+    class OverlayFrontend:
+        def __init__(self) -> None:
+            self.outputs = None
+
+        async def open_activity_overlay(self, outputs):
+            self.outputs = outputs
+
+    _reset_activity_state()
+    frontend = OverlayFrontend()
+    cmd = ActivityCommand(frontend=frontend, config=MagicMock(), agent=MagicMock())
+
+    result = await cmd.execute([])
+
+    assert result.success
+    assert isinstance(result.outputs[0], TextOutput)
+    assert "closed" in result.outputs[0].content
+    assert frontend.outputs is not None
+    assert isinstance(frontend.outputs[0], TextOutput)
+    assert "idle" in frontend.outputs[0].content.lower()

@@ -439,7 +439,7 @@ class ModelCommand(Command):
                 self.agent._llm = get_llm_client(selected)
                 apply_model_limits(self.agent)
 
-            self.agent_run(_switch)
+            await self.agent_run_async(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
@@ -500,7 +500,7 @@ class SwitchCommand(Command):
                 self.agent._llm = get_llm_client(selected)
                 apply_model_limits(self.agent)
 
-            self.agent_run(_switch)
+            await self.agent_run_async(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
@@ -1005,7 +1005,7 @@ class CompactCommand(Command):
                 history_md = summarizer._render_range_to_markdown(start_tag, end_tag)
                 target_chars = getattr(getattr(summarizer, "config", None), "target_chars", 2000)
                 summary_text = await summarizer.summarize(history_md, target_chars)
-                self.agent_run(
+                await self.agent_run_async(
                     lambda: self.agent.event_manager.collapse(start_tag, end_tag, summary_text)
                 )
                 events_after = len(self.agent.event_manager.keys())
@@ -1026,7 +1026,7 @@ class CompactCommand(Command):
                     )
                 )
 
-        self.agent_run(lambda: self.agent.event_manager.clear())
+        await self.agent_run_async(lambda: self.agent.event_manager.clear())
         tok_sfx = f" (~{tokens_before:,} tokens freed)" if tokens_before else ""
         result = CommandResult.ok(
             TextOutput(f"Cleared {events_before} history events{tok_sfx}.", "success")
@@ -1308,7 +1308,7 @@ class SessionCommand(Command):
     @classmethod
     def help_text(cls) -> dict[str, str]:
         return {
-            "/session list": "List recent sessions",
+            "/session list": "Open the session explorer",
             "/session new": "Start a new session (current history cleared)",
             "/session resume <id>": "Resume a past session (injects history as context)",
             "/session delete <id>": "Delete a session",
@@ -1330,6 +1330,17 @@ class SessionCommand(Command):
         subcmd = args[0].lower()
 
         if subcmd == "list":
+            open_explorer = getattr(self.frontend, "open_session_explorer", None)
+            has_real_explorer = getattr(
+                type(self.frontend), "open_session_explorer", None
+            ) is not None or "open_session_explorer" in getattr(self.frontend, "__dict__", {})
+            if has_real_explorer and callable(open_explorer):
+                try:
+                    await open_explorer()
+                except Exception as exc:
+                    return CommandResult.err(f"Session explorer failed: {exc}")
+                return CommandResult.ok(TextOutput("Session explorer closed.", "status"))
+
             sessions = [s for s in SessionManager.list_sessions() if s.turn_count > 0]
             if not sessions:
                 return CommandResult.ok(TextOutput("No sessions found.", "info"))
@@ -2026,6 +2037,22 @@ class ActivityCommand(Command):
         return {"/activity": "Show what the agent is doing right now (python / LLM / idle)"}
 
     async def execute(self, args: list[str]) -> "CommandResult":
+        result = await self._activity_result()
+        if not result.success:
+            return result
+        open_overlay = getattr(self.frontend, "open_activity_overlay", None)
+        has_real_overlay = getattr(
+            type(self.frontend), "open_activity_overlay", None
+        ) is not None or "open_activity_overlay" in getattr(self.frontend, "__dict__", {})
+        if has_real_overlay and callable(open_overlay):
+            try:
+                await open_overlay(result.outputs)
+            except Exception as exc:
+                return CommandResult.err(f"Activity overlay failed: {exc}")
+            return CommandResult.ok(TextOutput("Activity overlay closed.", "status"))
+        return result
+
+    async def _activity_result(self) -> "CommandResult":
         try:
             from nemo_oo_agents.runtime.debug_handler import get_activity
         except ImportError:
@@ -2184,7 +2211,7 @@ class BugCommand(Command):
 
         # 1. Snapshot the live turn on the agent loop so the .db is current.
         try:
-            self.agent_run(lambda: storage.save_snapshot(self.agent))
+            await self.agent_run_async(lambda: storage.save_snapshot(self.agent))
         except Exception:
             logger.debug("bug capture snapshot failed", exc_info=True)
 
@@ -2628,9 +2655,15 @@ class CommandRegistry:
 class CommandHandler:
     """Parses slash-command input and dispatches to registered commands."""
 
-    def __init__(self, registry: "CommandRegistry", frontend: "Frontend") -> None:
+    def __init__(
+        self,
+        registry: "CommandRegistry",
+        frontend: "Frontend",
+        agent_run_async: Any | None = None,
+    ) -> None:
         self.registry = registry
         self.frontend = frontend
+        self._agent_run_async = agent_run_async
 
     async def handle(self, input_text: str) -> "CommandResult":
         if not input_text.startswith("/"):
@@ -2674,9 +2707,15 @@ class CommandHandler:
                         await self.frontend.render(output)
                     return result
 
-                result_val = skill._method(**kwargs)
-                if inspect.isawaitable(result_val):
-                    result_val = await result_val
+                def _call_skill_method():
+                    return skill._method(**kwargs)
+
+                if self._agent_run_async is not None:
+                    result_val = await self._agent_run_async(_call_skill_method)
+                else:
+                    result_val = _call_skill_method()
+                    if inspect.isawaitable(result_val):
+                        result_val = await result_val
 
                 slash_result = SlashCommandResult(
                     command=cmd_name,
