@@ -570,6 +570,7 @@ class Session:
         # to the agent thread via self.agent_run(fn). agent_run_async is the
         # awaitable variant — commands running on the UI loop use it so they
         # never block the loop (and stall message() output / spin the prompt).
+        self._handler._agent_run_async = self._app.agent_run_async
         for cmd in self.registry.commands():
             cmd._agent_run = self._app.agent_run
             cmd._agent_run_async = self._app.agent_run_async
@@ -717,7 +718,7 @@ class Session:
                     try:
                         app = getattr(self, "_app", None)
                         if app is not None:
-                            app.agent_run(lambda: storage.save_snapshot(self.agent))
+                            await app.agent_run_async(lambda: storage.save_snapshot(self.agent))
                         else:
                             # No agent loop — safe to call inline (single-threaded).
                             storage.save_snapshot(self.agent)
@@ -906,7 +907,7 @@ class Session:
                 _q = getattr(_new, "_user_messages_in", None)
                 if _q is not None:
                     _q.put(_swap_req.seed_prompt)
-                self._app.agent_run(lambda: self._app.swap_agent(_new))
+                await self._app.agent_run_async(lambda: self._app.swap_agent(_new))
                 return
             # Show slash-command output to the user immediately. Skill slash
             # commands often return Markdown (tables, lists), so render via the
@@ -967,14 +968,18 @@ class Session:
         storage = getattr(self.agent, "_storage", None)
         if storage is None or not hasattr(storage, "save_snapshot"):
             return
-        try:
-            app = self._app
-            if app is not None:
-                app.agent_run(lambda: storage.save_snapshot(self.agent))
-            else:
-                storage.save_snapshot(self.agent)
-        except Exception:
-            logger.debug("text-only-drift snapshot failed", exc_info=True)
+
+        async def _snapshot() -> None:
+            try:
+                app = self._app
+                if app is not None:
+                    await app.agent_run_async(lambda: storage.save_snapshot(self.agent))
+                else:
+                    storage.save_snapshot(self.agent)
+            except Exception:
+                logger.debug("text-only-drift snapshot failed", exc_info=True)
+
+        self._fire_and_forget(_snapshot())
 
     async def _on_bang(self, body: str) -> None:
         """Dispatch a ``!shell-command`` body (leading ``!`` already stripped)."""
@@ -1277,7 +1282,7 @@ class Session:
                 try:
                     app = getattr(self, "_app", None)
                     if app is not None:
-                        app.agent_run(lambda: storage.save_snapshot(self.agent))
+                        await app.agent_run_async(lambda: storage.save_snapshot(self.agent))
                     else:
                         storage.save_snapshot(self.agent)
                 except Exception:
@@ -1296,7 +1301,7 @@ class Session:
 
             app = getattr(self, "_app", None)
             if app is not None:
-                app.agent_run(_do_swap)
+                await app.agent_run_async(_do_swap)
             else:
                 _do_swap()
         # Propagate to registry and all command instances so /session export etc. use new ID.

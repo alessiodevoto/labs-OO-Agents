@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for /activity rendering: no flicker (batched output), no empty header band."""
 
+import asyncio
+
 import pytest
 from nemo_oo_agents_cli.tui.session import _EmitStream
 
@@ -159,3 +161,54 @@ def test_batch_render_ctx_uses_real_context():
     with _batch_render_ctx(_Frontend()):
         pass
     assert entered == ["enter", "exit"]
+
+
+def test_activity_overlay_renders_table_code_and_scrolls():
+    from nemo_oo_agents_cli.tui.activity_overlay import ActivityOverlayView, render_activity_overlay
+    from nemo_oo_agents_cli.tui.output import CodeExecution, TableOutput
+
+    view = ActivityOverlayView(
+        [
+            TableOutput(
+                columns=["", ""],
+                rows=[["Phase", "Executing Python"], ["  python (1.2s)", "print('hello')"]],
+                footer="In a code cell — not waiting on the model.",
+                show_header=False,
+            ),
+            CodeExecution(
+                tool_call_id="activity:test.py:2",
+                code="line1\nline2\nline3",
+                start_line=1,
+                highlight_line=2,
+            ),
+        ]
+    )
+
+    rendered = render_activity_overlay(view, width=80, height=10, ansi=False)
+
+    assert "Activity" in rendered
+    assert "Executing Python" in rendered
+    assert "print('hello')" in rendered
+    assert "Enter/Esc/q close" in rendered
+    assert view.handle_key("down") == "handled"
+    assert view.offset >= 0
+    assert view.handle_key("quit") == "close"
+
+
+@pytest.mark.asyncio
+async def test_tui_app_opens_and_closes_activity_overlay() -> None:
+    from nemo_oo_agents_cli.tui.output import TextOutput
+
+    from cli.tui_app_harness import TUIHarness
+
+    async with TUIHarness() as h:
+        task = asyncio.create_task(h.app.open_activity_overlay([TextOutput("Agent idle")]))
+        await h.wait_for(lambda: h.app.active_subview is not None)
+
+        rendered = h.app.active_subview.render(80, 10)
+        assert "Activity" in rendered
+        assert "Agent idle" in rendered
+
+        await h.press("q")
+        await asyncio.wait_for(task, timeout=1)
+        assert h.app.active_subview is None

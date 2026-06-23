@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-from types import SimpleNamespace
 
 import pytest
 
@@ -640,13 +639,8 @@ async def test_resize_with_active_subview_redraws_once_without_transcript_replay
         await asyncio.wait_for(task, timeout=1)
 
 
-async def test_fullscreen_mode_keeps_native_scrollback_and_replays_on_resize() -> None:
-    """Fullscreen keeps steady-state terminal scrollback and pays on resize.
-
-    The transcript is still written to native terminal scrollback. On resize,
-    fullscreen clears the visible screen and replays the retained ANSI transcript
-    at the new width, Antigravity-style.
-    """
+async def test_fullscreen_mode_rewrites_scrollback_on_resize() -> None:
+    """Fullscreen writes transcript once, then resize rewrites the whole scrollback."""
     agent = FakeAgent()
 
     async def step(self: FakeAgent, msg: str):
@@ -664,14 +658,7 @@ async def test_fullscreen_mode_keeps_native_scrollback_and_replays_on_resize() -
         assert h.app._fullscreen_invalidate_count == 1
 
 
-async def test_default_mode_uses_fullscreen_replay() -> None:
-    async with TUIHarness() as h:
-        assert h.app.full_screen is True
-        assert h.app._app.full_screen is False
-        assert h.app._output_window is None
-
-
-async def test_fullscreen_streaming_output_uses_native_scrollback_until_resize() -> None:
+async def test_fullscreen_streaming_output_rewrites_scrollback_on_resize() -> None:
     async with TUIHarness(full_screen=True) as h:
         for i in range(25):
             h.app.emit_block(f"chunk {i}\n")
@@ -681,10 +668,9 @@ async def test_fullscreen_streaming_output_uses_native_scrollback_until_resize()
         assert h.app._fullscreen_invalidate_count == 1
 
 
-async def test_fullscreen_resize_replays_semantic_callbacks(
+async def test_fullscreen_resize_replays_semantic_callbacks_and_clears_scrollback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Replay callbacks re-render retained semantic blocks at resize time."""
     async with TUIHarness(full_screen=True) as h:
         calls = 0
 
@@ -700,64 +686,15 @@ async def test_fullscreen_resize_replays_semantic_callbacks(
 
         h.app.handle_resize(cols=50, rows=20)
 
+        rewritten = capture.getvalue()
         assert calls == 1
-        assert capture.getvalue().startswith("[H[2J")
-        assert not capture.getvalue().startswith("[H[2J[3J")
-        assert "reflowed width=50" in capture.getvalue()
-        assert "old width" not in capture.getvalue()
+        assert rewritten.startswith("\x1b[H\x1b[2J\x1b[3J")
+        assert "reflowed width=50" in rewritten
+        assert "old width" not in rewritten
+        assert h.app._fullscreen_invalidate_count == 1
 
 
-async def test_fullscreen_resize_prunes_replay_blocks_to_active_event_ids(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async with TUIHarness(full_screen=True) as h:
-        active_event = SimpleNamespace(id="active")
-        h.app.agent.event_manager = SimpleNamespace(items=lambda: [("2", active_event)])
-        h.app.emit_block("old event\n", event_id="old")
-        h.app.emit_block("active event\n", event_id="active")
-        h.app.emit_block("recent command\n")
-        capture = io.StringIO()
-        monkeypatch.setattr("sys.__stdout__", capture)
-
-        h.app.handle_resize(cols=50, rows=20)
-
-        replayed = capture.getvalue()
-        assert "active event" in replayed
-        assert "recent command" in replayed
-        assert "old event" not in replayed
-
-
-async def test_fullscreen_resize_keeps_blocks_inside_active_summary_range(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async with TUIHarness(full_screen=True) as h:
-        summary_event = SimpleNamespace(id="summary")
-        h.app.agent.event_manager = SimpleNamespace(items=lambda: [("2..4", summary_event)])
-        h.app.emit_block("child event\n", tags={"3"})
-        h.app.emit_block("outside event\n", tags={"7"})
-        capture = io.StringIO()
-        monkeypatch.setattr("sys.__stdout__", capture)
-
-        h.app.handle_resize(cols=50, rows=20)
-
-        replayed = capture.getvalue()
-        assert "child event" in replayed
-        assert "outside event" not in replayed
-
-
-async def test_fullscreen_resize_falls_back_to_raw_ansi(monkeypatch: pytest.MonkeyPatch) -> None:
-    async with TUIHarness(full_screen=True) as h:
-        h.app.emit_block("raw ansi fallback\n")
-        await h.wait_output_contains("raw ansi fallback")
-        capture = io.StringIO()
-        monkeypatch.setattr("sys.__stdout__", capture)
-
-        h.app.handle_resize(cols=50, rows=20)
-
-        assert "raw ansi fallback" in capture.getvalue()
-
-
-async def test_clear_screen_resets_fullscreen_resize_replay(
+async def test_clear_screen_resets_rewritten_scrollback_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with TUIHarness(full_screen=True) as h:
@@ -772,9 +709,10 @@ async def test_clear_screen_resets_fullscreen_resize_replay(
         h.app.handle_resize(cols=50, rows=20)
 
         replayed = capture.getvalue()
+        assert replayed.startswith("\x1b[H\x1b[2J\x1b[3J")
         assert "after clear" in replayed
         assert "before clear" not in replayed
-        assert "\x1b[3J" not in replayed
+        assert h.app._fullscreen_invalidate_count == 1
 
 
 async def test_non_fullscreen_keeps_native_scrollback_path() -> None:

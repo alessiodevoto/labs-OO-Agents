@@ -183,9 +183,9 @@ class TUIApplication:
                 ``last_bang_command()``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
                 completion. When omitted no completion is offered.
-            full_screen: Native-scrollback mode that clears and replays the
-                retained transcript on resize. Steady-state scrolling remains
-                terminal-native; resize pays the redraw cost.
+            full_screen: Native-scrollback mode. Transcript output is written to
+                the terminal scrollback; resize only redraws prompt_toolkit's
+                live input/status region.
 
         The per-message echo ("queued → accepted" transition, user-bar
         render, TUIUserInput log) is wired on the agent's
@@ -208,11 +208,8 @@ class TUIApplication:
         #     TUI via FormattedTextControl so Rich styling survives.
         self.output_buffer = Buffer(read_only=False)
         self._output_ansi: list[str] = []
-        # Retained transcript replay units.  The raw ANSI is used as fallback;
-        # when a replay callback is provided, resize replay asks it to render at
-        # the current terminal width so Markdown/Rich blocks can reflow. Event-
-        # linked blocks are pruned against active event IDs/tags before
-        # fullscreen resize replay; untagged UI blocks keep a small recent tail.
+        # Retained transcript replay units. On resize we intentionally clear
+        # the visible screen + terminal scrollback, then rewrite these blocks.
         self._replay_blocks: list[ReplayBlock] = []
         self._untagged_replay_tail = 200
 
@@ -464,6 +461,18 @@ class TUIApplication:
 
         await self.open_subview(EventExplorerView(event_manager))
 
+    async def open_session_explorer(self) -> None:
+        """Open the session explorer as an in-app subview."""
+        from .session_explorer import SessionExplorerView
+
+        await self.open_subview(SessionExplorerView())
+
+    async def open_activity_overlay(self, outputs: list[Any]) -> None:
+        """Open the activity snapshot as an in-app subview."""
+        from .activity_overlay import ActivityOverlayView
+
+        await self.open_subview(ActivityOverlayView(outputs))
+
     async def open_subview(self, view: InAppSubview) -> None:
         """Open *view* inside the existing prompt_toolkit Application.
 
@@ -499,6 +508,14 @@ class TUIApplication:
             if self._app.is_running:
                 self._app.invalidate()
 
+    def _prefill_input(self, text: str) -> None:
+        self.input_buffer.text = text
+        self.input_buffer.cursor_position = len(text)
+        try:
+            self.input_buffer.cancel_completion()
+        except Exception:
+            pass
+
     def _close_subview(self) -> None:
         done = self._active_subview_done
         if done is not None and not done.done():
@@ -528,7 +545,10 @@ class TUIApplication:
             return False
         result = normalize_key_result(view.handle_key(action, value))
         if result == "close":
+            pending_input = getattr(view, "pending_input", None)
             self._close_subview()
+            if pending_input:
+                self._prefill_input(str(pending_input))
         elif result == "ignored":
             return False
         if self._app.is_running:
@@ -561,6 +581,10 @@ class TUIApplication:
         @kb.add("q", filter=subview_active, eager=True)
         def _(event):
             self._subview_key(event, "quit")
+
+        @kb.add("r", filter=subview_active, eager=True)
+        def _(event):
+            self._subview_key(event, "resume")
 
         @kb.add("enter", filter=subview_active, eager=True)
         def _(event):
@@ -1496,13 +1520,7 @@ class TUIApplication:
             return terminal_cols(minimum=minimum)
 
     def _before_render(self, _app) -> None:
-        """Replay retained transcript when fullscreen mode sees a terminal resize.
-
-        This keeps steady-state scrolling in the terminal's native scrollback,
-        while resize pays the heavy cost: clear the visible screen,
-        then rewrite the retained transcript before prompt_toolkit redraws the
-        live bottom region.
-        """
+        """Replay retained transcript when fullscreen mode sees a terminal resize."""
         if not self.full_screen:
             return
         try:
@@ -1578,10 +1596,6 @@ class TUIApplication:
                     keep_indexes.add(i)
             else:
                 untagged_indexes.append(i)
-        # Untagged blocks cover startup/help/status/command output that is not
-        # represented by active LLM events. Keep only the recent tail so resize
-        # replay follows active conversation state without losing current UI
-        # affordances.
         keep_indexes.update(untagged_indexes[-self._untagged_replay_tail :])
         self._replay_blocks = [
             block for i, block in enumerate(self._replay_blocks) if i in keep_indexes
@@ -1606,7 +1620,7 @@ class TUIApplication:
             except Exception:
                 chunks.append(block.raw)
         try:
-            out.write("\x1b[H\x1b[2J")
+            out.write("\x1b[H\x1b[2J\x1b[3J")
             out.write("".join(chunks))
             out.flush()
             self._fullscreen_invalidate_count += 1
