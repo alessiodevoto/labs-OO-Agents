@@ -88,6 +88,39 @@ def _batch_render_ctx(frontend: "Frontend"):
     return nullcontext()
 
 
+async def render_command_outputs(frontend: "Frontend", outputs: list[Output]) -> None:
+    """Render command outputs, preserving Rich replay sentinel handling.
+
+    ``_RichReplayPayload`` is an internal sentinel, not a public frontend output.
+    CommandHandler normally intercepts it before rendering; Session uses this
+    helper when output rendering is deferred until after the durable done line.
+    """
+    import os as _os
+
+    _rich_url = (
+        _os.environ.get("NEMO_OO_RICH_URL")
+        if any(isinstance(o, _RichReplayPayload) for o in outputs)
+        else None
+    )
+    with _batch_render_ctx(frontend):
+        for output in outputs:
+            if isinstance(output, _RichReplayPayload):
+                if _rich_url:
+                    try:
+                        import httpx as _httpx
+
+                        await asyncio.to_thread(
+                            _httpx.post,
+                            _rich_url,
+                            json={**output.payload, "_replay": True},
+                            timeout=5.0,
+                        )
+                    except Exception as exc:
+                        logger.debug("replay POST to %s failed: %s", _rich_url, exc)
+            else:
+                await frontend.render(output)
+
+
 def _detect_language(suffix: str) -> str:
     """Map a file extension to a language name for editor/diff rendering."""
     return {
@@ -2665,7 +2698,7 @@ class CommandHandler:
         self.frontend = frontend
         self._agent_run_async = agent_run_async
 
-    async def handle(self, input_text: str) -> "CommandResult":
+    async def handle(self, input_text: str, *, render_outputs: bool = True) -> "CommandResult":
         if not input_text.startswith("/"):
             return CommandResult(False)
 
@@ -2676,8 +2709,9 @@ class CommandHandler:
 
         if not parts:
             result = CommandResult.err("Empty command. Type /help for available commands.")
-            for output in result.outputs:
-                await self.frontend.render(output)
+            if render_outputs:
+                for output in result.outputs:
+                    await self.frontend.render(output)
             return result
 
         cmd_name = parts[0].lower()
@@ -2703,8 +2737,9 @@ class CommandHandler:
                     if e.hint:
                         msg += f"\nUsage: /{cmd_name} {e.hint}"
                     result = CommandResult.err(msg)
-                    for output in result.outputs:
-                        await self.frontend.render(output)
+                    if render_outputs:
+                        for output in result.outputs:
+                            await self.frontend.render(output)
                     return result
 
                 def _call_skill_method():
@@ -2741,52 +2776,23 @@ class CommandHandler:
                 )
                 msg = f"Unknown command: /{cmd_name}.{suffix} Type /help."
             result = CommandResult.err(msg)
-            for output in result.outputs:
-                await self.frontend.render(output)
+            if render_outputs:
+                for output in result.outputs:
+                    await self.frontend.render(output)
             return result
 
         is_valid, error_msg = command.validate_args(args)
         if not is_valid:
             result = CommandResult.err(error_msg or "Invalid arguments")
-            for output in result.outputs:
-                await self.frontend.render(output)
+            if render_outputs:
+                for output in result.outputs:
+                    await self.frontend.render(output)
             return result
 
         try:
             result = await command.execute(args)
         except Exception as exc:
             result = CommandResult.err(f"Command failed: {exc}")
-        # Render outputs in order.  _RichReplayPayload sentinels are intercepted
-        # here (not forwarded to the frontend) and POSTed to NEMO_OO_RICH_URL so
-        # plots appear at their correct inline position between history turns.
-        import os as _os
-
-        _rich_url = (
-            _os.environ.get("NEMO_OO_RICH_URL")
-            if any(isinstance(o, _RichReplayPayload) for o in result.outputs)
-            else None
-        )
-        # Coalesce all outputs of one command into a single scrollback block so
-        # the live prompt/spinner doesn't repaint between them (flicker).
-        with _batch_render_ctx(self.frontend):
-            for output in result.outputs:
-                if isinstance(output, _RichReplayPayload):
-                    if _rich_url:
-                        try:
-                            import httpx as _httpx
-
-                            # _replay=True tells the browser to skip blank-line
-                            # reservation so replayed plots don't push down the
-                            # prompt. Offloaded to a thread so the blocking POST
-                            # doesn't stall the UI event loop.
-                            await asyncio.to_thread(
-                                _httpx.post,
-                                _rich_url,
-                                json={**output.payload, "_replay": True},
-                                timeout=5.0,
-                            )
-                        except Exception as exc:
-                            logger.debug("replay POST to %s failed: %s", _rich_url, exc)
-                else:
-                    await self.frontend.render(output)
+        if render_outputs:
+            await render_command_outputs(self.frontend, result.outputs)
         return result

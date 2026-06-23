@@ -483,8 +483,13 @@ async def test_on_command_slash_result_renders_via_frontend_markdown() -> None:
 
     await session._on_command("/mesh-list")
 
-    rendered = frontend.render.call_args.args[0]
-    assert isinstance(rendered, AgentMessage)
+    rendered_agent_messages = [
+        call.args[0]
+        for call in frontend.render.await_args_list
+        if isinstance(call.args[0], AgentMessage)
+    ]
+    assert len(rendered_agent_messages) == 1
+    rendered = rendered_agent_messages[0]
     assert rendered.content == text
     assert rendered.show_rule is False
     app.emit_block.assert_not_called()

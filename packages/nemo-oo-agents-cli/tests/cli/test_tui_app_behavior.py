@@ -80,6 +80,67 @@ async def test_baseline_ctrl_d_exits():
         await h.wait_for(lambda: not h.app.is_running)
 
 
+async def test_baseline_command_status_is_dynamic_not_scrollback():
+    """Queued/running command state lives in the status area, not transcript."""
+    async with TUIHarness() as h:
+        h.app.set_command_status("· /mesh-list")
+        await h.wait_for(lambda: "/mesh-list" in h.capture_status())
+        assert "/mesh-list" not in h.capture_output()
+        h.app.set_command_status("")
+        await h.wait_for(lambda: "/mesh-list" not in h.capture_status())
+
+
+async def test_status_text_separates_thinking_and_command_status():
+    """Thinking and command statuses render as separated status rows."""
+    async with TUIHarness() as h:
+        h.app._in_respond = True
+        h.app._agent_task = asyncio.Future()
+        h.app.set_command_status("· !find ~/dev/* | grep unified")
+        status = h.app.status_text()
+        assert "thinking...\n\n· !find" in status
+        assert "thinking...\n· !find" not in status
+        assert "thinking...   · !find" not in status
+        h.app._agent_task.cancel()
+
+
+async def test_baseline_command_queue_is_dynamic_not_scrollback():
+    """Queued commands live in dynamic UI state, not transcript scrollback."""
+    async with TUIHarness() as h:
+        h.app.set_command_queue(["/models", "!echo hi"])
+        await h.wait_for(lambda: h.app._command_queue_texts == ["/models", "!echo hi"])
+        assert "/models" not in h.capture_output()
+        assert "!echo hi" not in h.capture_output()
+        h.app.set_command_queue([])
+        await h.wait_for(lambda: h.app._command_queue_texts == [])
+
+
+async def test_command_queue_formatted_has_no_trailing_newline():
+    """The queue formatter does not append a blank row before the session rule."""
+    from prompt_toolkit.formatted_text import fragment_list_to_text
+
+    async with TUIHarness() as h:
+        h.app.set_command_queue(["!ls"])
+        root = h.app._app.layout.container.get_container()
+        queue_container = root.children[1].content
+        queue_control = queue_container.content
+        assert fragment_list_to_text(queue_control.text()) == "│ 1 command queued\n└─ !ls"
+
+
+async def test_baseline_command_queue_renders_below_status():
+    """The dynamic status row stays directly above the queued-command tree."""
+    from prompt_toolkit.formatted_text import fragment_list_to_text
+
+    async with TUIHarness() as h:
+        h.app.set_command_status("· !find ~/dev/* | grep unified")
+        h.app.set_command_queue(["!ls"])
+        root = h.app._app.layout.container.get_container()
+        status_control = root.children[0].content
+        queue_container = root.children[1].content
+        queue_control = queue_container.content
+        assert fragment_list_to_text(status_control.text()) == "· !find ~/dev/* | grep unified"
+        assert fragment_list_to_text(queue_control.text()).startswith("│ 1 command queued")
+
+
 # ╔══════════════════════════════════════════════════════════════════════╗
 # ║ Tier 2 — input mechanics                                              ║
 # ╚══════════════════════════════════════════════════════════════════════╝

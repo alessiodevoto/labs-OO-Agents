@@ -255,6 +255,8 @@ class TUIApplication:
         self._spinner_frame: str = "⠋"
         self._spinner_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
         self._spinner_task: asyncio.Task | None = None
+        self._command_status_text: str = ""
+        self._command_queue_texts: list[str] = []
 
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Future | None = None
@@ -318,18 +320,27 @@ class TUIApplication:
             return q.snapshot()
 
         def _queue_formatted():
-            lines = []
+            rows = []
+            command_queue = list(self._command_queue_texts)
+            if command_queue:
+                noun = "command" if len(command_queue) == 1 else "commands"
+                rows.append(f"│ {len(command_queue)} {noun} queued")
+                for index, text in enumerate(command_queue):
+                    branch = "└─" if index == len(command_queue) - 1 else "├─"
+                    rows.append(f"{branch} {text}")
             for text in _queue_pending():
                 for line in str(text).split("\n"):
-                    lines.append(("class:queue", f"│ {line}\n"))
-            return lines
+                    rows.append(f"│ {line}")
+            if not rows:
+                return []
+            return [("class:queue", "\n".join(rows))]
 
         queue_window = ConditionalContainer(
             Window(
                 FormattedTextControl(_queue_formatted, focusable=False),
                 dont_extend_height=True,
             ),
-            filter=Condition(lambda: bool(_queue_pending())),
+            filter=Condition(lambda: bool(_queue_pending()) or bool(self._command_queue_texts)),
         )
 
         input_window = Window(
@@ -347,7 +358,15 @@ class TUIApplication:
             text = self.status_text()
             return [("class:status", text)] if text else []
 
-        status_window = Window(FormattedTextControl(_status_formatted, focusable=False), height=1)
+        def _status_height() -> Dimension:
+            lines = self.status_text().splitlines()
+            height = max(1, len(lines))
+            return Dimension(min=height, max=height, preferred=height)
+
+        status_window = Window(
+            FormattedTextControl(_status_formatted, focusable=False),
+            height=_status_height,
+        )
 
         # Session rule: right above the input, always visible. Shows the
         # session name + short uuid + context-usage label, right-aligned
@@ -394,15 +413,15 @@ class TUIApplication:
         )
 
         # Active bottom region (top → bottom):
-        #   queued type-ahead lines (only while agent working)
         #   status (spinner + optional badges)
+        #   queued command/type-ahead lines
         #   session rule — always visible while at the transcript tail
         #   input
         #   completions (only while completing)
         main_container = HSplit(
             [
-                queue_window,
                 status_window,
+                queue_window,
                 session_rule,
                 input_window,
                 completions_window,
@@ -1678,6 +1697,20 @@ class TUIApplication:
             result.append(prefix + c.text)
         return result
 
+    def set_command_status(self, text: str) -> None:
+        """Set transient command lifecycle text in the dynamic status area."""
+        self._command_status_text = text
+        app = getattr(self, "_app", None)
+        if app is not None and app.is_running:
+            app.invalidate()
+
+    def set_command_queue(self, commands: list[str]) -> None:
+        """Set queued command text shown in the dynamic queue area."""
+        self._command_queue_texts = list(commands)
+        app = getattr(self, "_app", None)
+        if app is not None and app.is_running:
+            app.invalidate()
+
     def status_text(self) -> str:
         """One-line status area text.
 
@@ -1686,12 +1719,17 @@ class TUIApplication:
 
             ⠋ thinking...    [session-abc]
         """
-        parts: list[str] = []
+        lines: list[str] = []
         if self.is_thinking():
-            parts.append(f"{self._spinner_frame} thinking...")
+            lines.append(f"{self._spinner_frame} thinking...")
+        if self._command_status_text:
+            lines.append(self._command_status_text)
         if self._session_label:
-            parts.append(f"[{self._session_label}]")
-        return "   ".join(parts)
+            if lines:
+                lines[-1] = f"{lines[-1]}   [{self._session_label}]"
+            else:
+                lines.append(f"[{self._session_label}]")
+        return "\n\n".join(lines)
 
     def set_session_label(self, label: str) -> None:
         """Set the bracketed label shown on the right of the status line."""

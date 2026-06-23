@@ -18,7 +18,7 @@ import re
 import shlex
 import sys
 import traceback
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -413,6 +413,7 @@ class Session:
         self._pending_code: dict[str, str] = {}
         self._background_tasks: set[asyncio.Task] = set()  # fire-and-forget tasks
         self._naming_futures: set = set()  # concurrent.futures.Future from agent-loop dispatch
+        self._command_runner = None
 
         # Populated at the start of ``run()``; referenced by the handler
         # methods (``_on_command``, ``_on_user_message_ui``, ``_loud_handler``,
@@ -845,18 +846,43 @@ class Session:
         else:
             self._app.emit_block(rendered, replay=replay, event_id=event_id, tags=tags, keep=keep)
 
-    async def _on_command(self, text: str) -> None:
-        """Handle one slash command submitted via the input or the queue.
+    def _get_command_runner(self):
+        """Return the TUI-local command runner, creating it lazily for tests."""
+        runner = getattr(self, "_command_runner", None)
+        if runner is None:
+            from .command_runner import CommandRunner
 
-        Echoes ``❯ /cmd`` to scrollback so exit commands leave a record
-        (the live input region is erased on shutdown), then dispatches
-        via ``CommandHandler``. Result flags drive session-manager swap,
-        auto-naming, exit, and slash-generated agent turns.
-        """
+            frontend = getattr(self, "frontend", None)
+            render = getattr(frontend, "render", None)
+            if not callable(render):
+
+                async def render(_output):
+                    return None
+
+            app = getattr(self, "_app", None)
+            set_dynamic_status = getattr(app, "set_command_status", None)
+            set_dynamic_queue = getattr(app, "set_command_queue", None)
+            runner = CommandRunner(
+                render,
+                set_dynamic_status=set_dynamic_status if callable(set_dynamic_status) else None,
+                set_dynamic_queue=set_dynamic_queue if callable(set_dynamic_queue) else None,
+            )
+            self._command_runner = runner
+        return runner
+
+    async def _on_command(self, text: str) -> None:
+        """Handle one slash command through the TUI-local command runner."""
+
+        async def _work():
+            return await self._run_command(text)
+
+        await self._get_command_runner().run(kind="slash", text=text, work=_work)
+
+    async def _run_command(self, text: str) -> Callable[[], Awaitable[None]] | None:
+        """Run one slash command body and return any post-done render callback."""
         assert self._app is not None
 
-        self._emit_text(Text(f"❯ {text}", style="bold cyan"))
-        result = await self._handler.handle(text)
+        result = await self._handler.handle(text, render_outputs=False)
         if result.new_session_manager is not None:
             # Cancel the running agent turn so it doesn't keep working
             # in the stale session after /clear or /session new.
@@ -875,11 +901,27 @@ class Session:
             and not self._session_manager.user_named
         ):
             self._name_session_on_agent_loop(self._first_message)
+
+        async def _render_result_outputs() -> None:
+            frontend = getattr(self, "frontend", None)
+            render = getattr(frontend, "render", None)
+            if not callable(render):
+                return
+
+            from .commands import render_command_outputs
+
+            await render_command_outputs(frontend, result.outputs)
+
         if result.exit:
-            self._app.exit()
-            return
-        # NOTE: outputs are already rendered by CommandHandler.handle() — do not
-        # re-render here to avoid double output.
+
+            async def _render_outputs_then_exit() -> None:
+                await _render_result_outputs()
+                self._app.exit()
+
+            return _render_outputs_then_exit
+
+        if result.slash_result is None and result.agent_message is None:
+            return _render_result_outputs
         if result.slash_result is not None:
             # slash-inception: a SwapAgentRequest asks us to hot-swap the agent
             # the dispatcher drives. The skill (running on the UI loop, with no
@@ -897,31 +939,37 @@ class Session:
             ):
                 from .output import AgentMessage
 
-                _text = str(result.slash_result)
-                if _text:
-                    await self.frontend.render(AgentMessage(_text, show_rule=False))
-                assert self._app is not None
-                _new = _swap_req.new_agent
-                # Queue the seed prompt on the SHARED user-messages channel, then
-                # swap+restart the dispatcher onto the new agent (on the agent loop).
-                _q = getattr(_new, "_user_messages_in", None)
-                if _q is not None:
-                    _q.put(_swap_req.seed_prompt)
-                await self._app.agent_run_async(lambda: self._app.swap_agent(_new))
-                return
-            # Show slash-command output to the user immediately. Skill slash
+                async def _render_and_swap() -> None:
+                    _text = str(result.slash_result)
+                    if _text:
+                        await self.frontend.render(AgentMessage(_text, show_rule=False))
+                    assert self._app is not None
+                    _new = _swap_req.new_agent
+                    # Queue the seed prompt on the SHARED user-messages channel, then
+                    # swap+restart the dispatcher onto the new agent (on the agent loop).
+                    _q = getattr(_new, "_user_messages_in", None)
+                    if _q is not None:
+                        _q.put(_swap_req.seed_prompt)
+                    await self._app.agent_run_async(lambda: self._app.swap_agent(_new))
+
+                return _render_and_swap
+
+            # Show slash-command output after the durable done marker. Skill slash
             # commands often return Markdown (tables, lists), so render via the
             # frontend instead of dumping raw text through emit_block.
-            text = str(result.slash_result)
-            if text:
-                from .output import AgentMessage
+            async def _render_slash_output() -> None:
+                await _render_result_outputs()
+                text = str(result.slash_result)
+                if text:
+                    from .output import AgentMessage
 
-                await self.frontend.render(AgentMessage(text, show_rule=False))
+                    await self.frontend.render(AgentMessage(text, show_rule=False))
+
             if not _effective_slash_output_to_agent(self.agent, result.slash_result):
                 # User-only command (e.g. a read-only /mcp list): the human sees
                 # the output above, but it is NOT fed to the agent — no queue
                 # put, no submitted message, no agent turn spent.
-                return
+                return _render_slash_output
             # Post the full SlashCommandResult to the slash_commands queue
             # (agent can access .value for the raw Python object). This put
             # also wakes the dispatcher (qm.race() includes the slash_commands
@@ -948,11 +996,13 @@ class Session:
                         style="yellow",
                     )
                 )
+            return _render_slash_output
         elif result.agent_message is not None:
             # Slash-command-generated agent turn — feed through the same
             # path as a typed message so the user bar, session bookkeeping,
             # and agent dispatch stay consistent.
             self._app.submit_message(result.agent_message)
+            return _render_result_outputs
 
     def _on_text_only_reply(self, event: Any) -> None:
         """Snapshot the failing turn when the agent drifts to a text-only reply.
@@ -982,8 +1032,13 @@ class Session:
         self._fire_and_forget(_snapshot())
 
     async def _on_bang(self, body: str) -> None:
-        """Dispatch a ``!shell-command`` body (leading ``!`` already stripped)."""
-        await self._handle_bang("!" + body)
+        """Dispatch a ``!shell-command`` body through the command runner."""
+        text = "!" + body
+
+        async def _work():
+            return await self._handle_bang(text, defer_render=True)
+
+        await self._get_command_runner().run(kind="bang", text=text, work=_work)
 
     def _session_label(self) -> str:
         """Right-aligned session label on the rule above the input:
@@ -1358,7 +1413,7 @@ class Session:
     # Bang (!) command routing
     # ------------------------------------------------------------------
 
-    async def _handle_bang(self, user_input: str) -> None:
+    async def _handle_bang(self, user_input: str, *, defer_render: bool = False):
         from .output import BashOutput, TextOutput
 
         cmd = user_input[1:].strip()
@@ -1367,27 +1422,39 @@ class Session:
 
         # !commands → run through shell (not recorded as conversation turns)
         if not hasattr(self.agent, "shell"):
-            await self.frontend.render(
-                TextOutput(
-                    "Direct bash commands (!) require an agent with shell support.",
-                    "warning",
-                )
+            output = TextOutput(
+                "Direct bash commands (!) require an agent with shell support.",
+                "warning",
             )
+            if defer_render:
+
+                async def _render_warning() -> None:
+                    await self.frontend.render(output)
+
+                return _render_warning
+            await self.frontend.render(output)
             return
 
         try:
             shell = await self._get_bang_shell()
             result = await shell.run(cmd)
             if result:
-                await self.frontend.render(
-                    BashOutput(
-                        stdout=result.stdout or "",
-                        stderr=result.stderr or "",
-                        return_code=result.returncode,
-                        command=cmd,
-                    )
+                output = BashOutput(
+                    stdout=result.stdout or "",
+                    stderr=result.stderr or "",
+                    return_code=result.returncode,
+                    command=cmd,
                 )
+                if defer_render:
+
+                    async def _render_output() -> None:
+                        await self.frontend.render(output)
+
+                    return _render_output
+                await self.frontend.render(output)
         except Exception as e:
+            if defer_render:
+                raise
             await self.frontend.render(TextOutput(f"Bash error: {e}", "error"))
 
     async def _get_bang_shell(self) -> "ShellTools":
