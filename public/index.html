@@ -851,6 +851,47 @@ self.context.<span class="fn">set_dynamic</span>(<span class="doc">"budget"</spa
       </div>
     </section>
 
+    <!-- §4e — RESULTS · SWE-BENCH VERIFIED -->
+    <section class="slide">
+      <div class="wrap" style="max-width:1040px">
+        <div class="kicker" data-r="1"><span class="num"></span> Results · SWE-bench Verified</div>
+        <h2 data-r="2">Software <span class="accent">repair</span> · 500 tasks.</h2>
+        <table class="cmp" data-r="3">
+          <tr><th>Harness</th><th>GPT-5.5</th><th>Claude Opus 4.6</th><th>Claude Opus 4.5</th><th>Nemotron 3 Ultra</th></tr>
+          <tr><td>Nemotron harness</td><td><span class="em">78.8%</span></td><td><span class="em">76.8%</span></td><td>74.2%</td><td>—</td></tr>
+          <tr><td>PI v0.72.1 <span class="mut">(external)</span></td><td>75.0%</td><td>75.6%</td><td>72.6%</td><td>52.8%</td></tr>
+        </table>
+        <p class="lede" data-r="4" style="max-width:88ch">The Nemotron harness <span class="em">beats the PI reference harness on every shared model</span>. Published SOTA: <span class="em">79.20%</span></p>
+      </div>
+    </section>
+
+    <!-- §4f — RESULTS · TERMINAL-BENCH 1.0 -->
+    <section class="slide">
+      <div class="wrap" style="max-width:1040px">
+        <div class="kicker" data-r="1"><span class="num"></span> Results · Terminal-Bench 1.0</div>
+        <h2 data-r="2">Terminal <span class="accent">tasks</span> · 241 tasks.</h2>
+        <table class="cmp" data-r="3">
+          <tr><th>Harness</th><th>Claude Opus 4.6</th><th>Claude Opus 4.5</th><th>Nemotron 3 Ultra</th></tr>
+          <tr><td>Nemotron harness</td><td><span class="em">52.7%</span></td><td>46.5%</td><td>38.6%</td></tr>
+          <tr><td>react <span class="mut">(baseline)</span></td><td>27.5%</td><td>—</td><td>38.9%</td></tr>
+        </table>
+        <p class="lede" data-r="4" style="max-width:88ch">Full 241/241 runs; react is the prompt-only baseline-to-beat. Published SOTA: <span class="em">64.5%</span> (Apex2 + Claude Sonnet 4.5).</p>
+      </div>
+    </section>
+
+    <!-- §4g — RESULTS · TERMINAL-BENCH 2.0 -->
+    <section class="slide">
+      <div class="wrap" style="max-width:1040px">
+        <div class="kicker" data-r="1"><span class="num"></span> Results · Terminal-Bench 2.0</div>
+        <h2 data-r="2">The harder <span class="accent">suite</span> · 89 tasks.</h2>
+        <table class="cmp" data-r="3">
+          <tr><th>Harness</th><th>Claude Opus 4.6</th><th>Claude Opus 4.5</th><th>Nemotron 3 Ultra</th></tr>
+          <tr><td>Nemotron harness</td><td><span class="em">68.5%</span></td><td>53.9%</td><td>38.2%</td></tr>
+        </table>
+        <p class="lede" data-r="4" style="max-width:88ch">Full 89/89 runs. Published SOTA: <span class="em">84.7%</span> (NexAU-AHE + GPT-5.5).</p>
+      </div>
+    </section>
+
     <!-- QUESTIONS -->
     <section class="slide divider">
       <div class="wrap">
