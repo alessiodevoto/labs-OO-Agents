@@ -376,6 +376,9 @@
   .smallnote{color:var(--dim);font-size:13.5px;line-height:1.45;margin-top:16px;max-width:76ch}
   .srgrid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:28px;align-items:stretch}
   .srgrid .code{font-size:clamp(10.5px,.98vw,13.5px)}
+  .srgrid.compact{grid-template-columns:1.08fr .92fr;gap:18px;margin-top:20px}
+  .srgrid.compact .code{font-size:clamp(10px,.86vw,12px);padding:18px 22px;line-height:1.55}
+  .srgrid.compact .renderbox{font-size:11.8px;line-height:1.5;padding:17px 20px}
   .renderbox{background:linear-gradient(180deg,var(--panel),#0b0c0d);border:1px solid rgba(118,185,0,.38);border-radius:12px;padding:20px 22px;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.6;color:var(--dim);box-shadow:0 24px 60px -30px rgba(0,0,0,.9)}
   .renderbox h3{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--green);margin-bottom:12px;font-weight:500}
   .renderbox .line{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
@@ -404,9 +407,9 @@
           <span class="nv-mark"><span class="nv-eye"></span> NVIDIA · NeMo</span>
         </div>
         <h1 data-r="2">NeMo OO as a<br><span class="accent">self-evolving harness</span></h1>
-        <p class="lede" data-r="3">For a development team building a coding agent: how named queues, skills, context blocks, and ordinary Python turn an agent into a harness that can react, debug, extend itself, and keep working.</p>
+        <p class="lede" data-r="3">How named queues, skills, context blocks, and ordinary Python turn an agent into a harness that can react, debug, extend itself, and keep working.</p>
         <div class="title-foot" data-r="4">
-          <span>Audience: coding-agent builders</span>
+          <span>Reusable harness patterns</span>
           <span>GitLab Pages · <b>self-evolving-harness</b></span>
         </div>
       </div>
@@ -418,7 +421,7 @@
       <div class="wrap split">
         <div>
           <div class="kicker" data-r="1"><span class="num">00</span> Audience frame</div>
-          <h2 data-r="2">If you are building<br><span class="accent">a coding agent</span>...</h2>
+          <h2 data-r="2">Building an<br><span class="accent">agent harness</span>.</h2>
           <p class="lede" data-r="3">The hard part is not one more tool call. It is the harness around the model: intake, background work, long-lived state, extension points, context assembly, and a path for the agent to improve its own tools.</p>
           <ul class="clean" data-r="4">
             <li><span class="em">React to software systems:</span> tests, CI, review, issue trackers, logs, peers.</li>
@@ -427,7 +430,7 @@
             <li><span class="em">Interleave agentic loops and orchestration:</span> let Python own the outer control flow while generation methods handle judgment, synthesis, and code acting.</li>
           </ul>
         </div>
-        <div class="code" data-r="5"><pre><span class="kw">class</span> <span class="ty">CodingAgent</span>(<span class="ty">Agent</span>):
+        <div class="code" data-r="5"><pre><span class="kw">class</span> <span class="ty">HarnessAgent</span>(<span class="ty">Agent</span>):
     shell: <span class="ty">ShellTools</span>
     repo: <span class="ty">RepoTools</span>
     todo: <span class="ty">TodoManager</span>
@@ -436,7 +439,7 @@
     context: <span class="ty">ContextApi</span>
 
     <span class="kw">async def</span> <span class="fn">handle</span>(self, notification):
-        <span class="doc">"""Turn events into useful software work."""</span>
+        <span class="doc">"""Turn events into useful work."""</span>
         <span class="el">...</span></pre></div>
       </div>
     </section>
@@ -446,7 +449,7 @@
       <div class="wrap">
         <div class="kicker" data-r="1"><span class="num">01</span> Refresh</div>
         <h2 data-r="2">What are<br><span class="accent">NeMo OO Agents</span>?</h2>
-        <p class="lede" data-r="3" style="max-width:82ch">NeMo OO Agents is a Python harness for coding agents: an agent is an object, generation methods are methods, tools are attributes, events become rendered context, and skills are editable libraries. The model sees source-shaped APIs and rendered runtime state in the same prompt.</p>
+        <p class="lede" data-r="3" style="max-width:82ch">NeMo OO Agents is a Python harness where an agent is an object, generation methods are methods, tools are attributes, events become rendered context, and skills are editable libraries. The model sees source-shaped APIs and rendered runtime state in the same prompt.</p>
         <div class="grid6" data-r="4">
           <div class="idea"><span class="n">01</span><b>Typed methods</b><span>Signatures and Pydantic models are the task contract: typed inputs, typed outputs, validation, and docs.</span></div>
           <div class="idea"><span class="n">02</span><b>Pass by reference</b><span>Arguments are live Python values — dataframes, meshes, handles — not stringified prompt blobs.</span></div>
@@ -491,89 +494,24 @@
     </section>
 
 
-    <!-- 3b — SOURCE TO RENDERED CONTEXT -->
-    <section class="slide">
-      <div class="wrap">
-        <div class="kicker" data-r="1"><span class="num">02a</span> Source → rendered context</div>
-        <h2 data-r="2">The source code is<br><span class="accent">the prompt contract</span>.</h2>
-        <p class="lede" data-r="3" style="max-width:78ch">For a coding-agent team, this is the design pattern to steal: write ordinary Python APIs, then render their live state into context blocks. The model does not infer a hidden runtime — it sees the source-shaped API and the runtime projection together.</p>
-        <div class="srgrid" data-r="4">
-          <div>
-            <div class="srlabel">source</div>
-            <div class="code"><pre><span class="c"># installed once by the harness</span>
-self.context.set_dynamic(
-    <span class="doc">"queues"</span>,
-    <span class="doc">"self.queue_manager.status()"</span>,
-)
-self.context.set_dynamic(
-    <span class="doc">"skills"</span>,
-    <span class="doc">"self.skills.status()"</span>,
-)
-
-<span class="c"># later, ordinary Python mutates state</span>
-self.queue_manager.queue(<span class="doc">"mr-318"</span>)
-self.skills.activate([<span class="doc">"nvzurich.gitlab_ci"</span>])</pre></div>
-          </div>
-          <div>
-            <div class="srlabel">rendered context</div>
-            <div class="renderbox"><h3>what the model sees next turn</h3>
-<span class="tag">&lt;queues expr="self.queue_manager.status()"&gt;</span><br>
-<span class="val">mr-318: 1 pending</span><br>
-⚡ 1 active background job(s):<br>
-&nbsp;&nbsp;• monitor !318 → mr-318 (running)<br><br>
-<span class="tag">&lt;skills expr="self.skills.status()"&gt;</span><br>
-Active Skills:<br>
-&nbsp;&nbsp;self.gitlab_ci&nbsp;&nbsp;GitLab CI babysitter...<br>
-&nbsp;&nbsp;self.agent_mesh&nbsp;Connect this agent...</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- 3c — EVENTS ARE RENDERED CONTEXT -->
-    <section class="slide">
-      <div class="wrap split">
-        <div>
-          <div class="kicker" data-r="1"><span class="num">02b</span> Events → rendered context</div>
-          <h2 data-r="2">The transcript is not logs.<br>It is <span class="accent">working memory</span>.</h2>
-          <p class="lede" data-r="3">Every tool call, Python output, slash-command result, and queue item becomes an event. On the next render, the relevant slice is back in the prompt with tags, types, stdout, errors, and values.</p>
-          <ul class="clean" data-r="4">
-            <li><span class="em">Source:</span> code emits events by doing normal work.</li>
-            <li><span class="em">Render:</span> events re-enter as structured context, not prose summaries.</li>
-            <li><span class="em">Coding-agent payoff:</span> failures, patches, tests, and CI lines stay inspectable.</li>
-          </ul>
-        </div>
-        <div class="renderbox" data-r="5"><h3>rendered event slice</h3>
-<span class="tag">&lt;agent&gt;</span><br>
-await self.shell.run("uv run pytest tests/foo")<br><br>
-<span class="tag">&lt;sys tag="184"&gt;</span><br>
-PythonOutput(stdout=<span class="val">"2 failed, 41 passed"</span>,<br>
-&nbsp;&nbsp;error=<span class="val">"AssertionError: expected retry"</span>)<br><br>
-<span class="tag">&lt;queues&gt;</span><br>
-ci: 1 pending<br><br>
-<span class="tag">&lt;dynamic&gt;</span><br>
-Todos: [ ] fix retry policy</div>
-      </div>
-    </section>
-
     <!-- §2 — BUILDING DIVIDER -->
     <section class="slide divider">
       <div class="secnum">2</div>
       <div class="wrap">
         <div class="eyebrow" data-r="1">Building</div>
-        <h1 data-r="2">A generic agent<br><span class="accent">with nemo-oo</span>.</h1>
+        <h1 data-r="2">How we built a<br><span class="accent">self-evolving agent with nemo-oo</span></h1>
         <p class="lede" data-r="3">The core is a small async main loop. The power comes from what can plug into it.</p>
       </div>
     </section>
 
-    <!-- 5 — MAIN LOOP -->
     <section class="slide">
-      <div class="wrap split wide-left">
+      <div class="wrap">
         <div>
           <div class="kicker" data-r="1"><span class="num">03</span> Main loop</div>
           <h2 data-r="2">Everything arrives as a<br><span class="accent">named queue</span>.</h2>
-          <p class="lede" data-r="3">For a coding agent, <code>handle(notification)</code> is the async intake point. The important move is source-to-context symmetry: the source reads a Python dict; the rendered turn shows which producer woke the agent.</p>
-          <div class="srgrid" data-r="4">
+          <p class="lede" data-r="3" style="max-width:82ch"><code>handle(notification)</code> is the async intake point. The important move is source-to-context symmetry: the source reads a Python dict; the rendered turn shows which producer woke the agent.</p>
+          <div class="srgrid compact" data-r="4">
             <div>
               <div class="srlabel">source</div>
               <div class="code"><pre><span class="kw">async def</span> <span class="fn">handle</span>(self, notification):
@@ -642,7 +580,7 @@ notification == {<span class="doc">"ci"</span>: [line]}
       <div class="wrap">
         <div class="kicker" data-r="1"><span class="num">05</span> API shape</div>
         <h2 data-r="2">The API is deliberately<br><span class="accent">mid-distribution Python</span>.</h2>
-        <p class="lede" data-r="3" style="max-width:78ch">A coding model should not have to learn your bespoke graph runtime, YAML orchestration language, or new effect system. It already knows objects, methods, docstrings, async, queues, files, tests, and context managers.</p>
+        <p class="lede" data-r="3" style="max-width:78ch">The model should not have to learn your bespoke graph runtime, YAML orchestration language, or new effect system. It already knows objects, methods, docstrings, async, queues, files, tests, and context managers.</p>
         <div class="vs" data-r="4">
           <div class="opt bad"><span class="lab">less fluent</span> invent a new planning DSL, then teach the model the semantics and all the edge cases.</div>
           <div class="opt good"><span class="lab">nemo-oo</span> expose a Python object with real managers: <span class="em">self.todo</span>, <span class="em">self.shell</span>, <span class="em">self.queue_manager</span>, <span class="em">self.context</span>, <span class="em">self.skills</span>.</div>
@@ -657,7 +595,7 @@ notification == {<span class="doc">"ci"</span>: [line]}
       <div class="wrap">
         <div class="eyebrow" data-r="1">Skills</div>
         <h1 data-r="2">Plugins the agent<br><span class="accent">can edit</span>.</h1>
-        <p class="lede" data-r="3">For a coding agent, a skill is not a prompt snippet. It is a Python library with lifecycle, dependencies, commands, context, tests, and source the agent can edit.</p>
+        <p class="lede" data-r="3">A skill is not a prompt snippet. It is a Python library with lifecycle, dependencies, commands, context, tests, and source the agent can edit.</p>
       </div>
     </section>
 
@@ -738,7 +676,7 @@ class AgentMesh:<br>
       <div class="wrap">
         <div class="eyebrow" data-r="1">Case studies</div>
         <h1 data-r="2">Three Skills,<br><span class="accent">one harness pattern</span>.</h1>
-        <p class="lede" data-r="3">GitLab CI, Agent Mesh, and Session Search are patterns a coding-agent team can steal: editable Python plugins using the same types, queues, commands, context, and lifecycle hooks.</p>
+        <p class="lede" data-r="3">GitLab CI, Agent Mesh, and Session Search are agent-built Skills: ordinary Python libraries the agent developed for its own use, tested, hot-reloaded, and activated without restarting the harness.</p>
       </div>
     </section>
 
@@ -764,7 +702,7 @@ class AgentMesh:<br>
             <p>Turns past event logs into a searchable memory layer with typed event objects, FTS ranking, turn navigation, todo search, and repro export.</p>
           </div>
         </div>
-        <p class="smallnote" data-r="4">The punchline for a coding-agent team: these are ordinary libraries, so the agent can inspect, edit, test, and hot-reload its own harness capabilities.</p>
+        <p class="smallnote" data-r="4">The punchline: these were developed by the agent for the agent. Because they are ordinary libraries, the agent can inspect, edit, test, hot-reload, and keep using them in the same running session.</p>
       </div>
     </section>
 
@@ -774,7 +712,7 @@ class AgentMesh:<br>
         <div>
           <div class="kicker" data-r="1"><span class="num">09</span> GitLab CI · goal</div>
           <h2 data-r="2">Make CI and review<br><span class="accent">interrupt-driven</span>.</h2>
-          <p class="lede" data-r="3">For a coding agent, the goal is not “call the GitLab API.” The goal is to babysit an MR until it is merged: surface failing jobs, reviewer comments, conflicts, new pipelines, recovery, and final merge/close — while staying quiet when nothing actionable happened.</p>
+          <p class="lede" data-r="3">The goal is not “call the GitLab API.” The goal is to babysit an MR until it is merged: surface failing jobs, reviewer comments, conflicts, new pipelines, recovery, and final merge/close — while staying quiet when nothing actionable happened.</p>
           <ul class="clean" data-r="4">
             <li><span class="em">The slash command does real work:</span> parses the MR, creates the queue, and starts the monitor.</li>
             <li><span class="em">The agent does not set up plumbing:</span> it just reacts when the monitor returns to the queue.</li>
@@ -850,7 +788,7 @@ class AgentMesh:<br>
         <div>
           <div class="kicker" data-r="1"><span class="num">12</span> Agent Mesh · goal</div>
           <h2 data-r="2">Make agents<br><span class="accent">addressable peers</span>.</h2>
-          <p class="lede" data-r="3">A coding-agent team eventually wants multiple agents: reviewer, fixer, release bot, benchmark bot. The mesh skill gives each one a durable handle, roster, direct messages, shared channels, and reconnection.</p>
+          <p class="lede" data-r="3">Multi-agent systems need addressable peers: reviewer, fixer, release bot, benchmark bot. The mesh skill gives each one a durable handle, roster, direct messages, shared channels, and reconnection.</p>
           <ul class="clean" data-r="4">
             <li><span class="em">Identity:</span> stored handle + ownership token survive restarts.</li>
             <li><span class="em">Topology:</span> send to one agent or to <code>#channels</code>.</li>
@@ -924,7 +862,7 @@ self.agent_mesh.set_server(<span class="doc">"mesh.internal:8765"</span>)
         <div>
           <div class="kicker" data-r="1"><span class="num">15</span> Session Search · goal</div>
           <h2 data-r="2">Make the harness<br><span class="accent">remember its own runs</span>.</h2>
-          <p class="lede" data-r="3">Session Search is the “framework is just Python” case study. It gives a coding agent memory over its own past traces: SQLite FTS over historical event logs and todos, returning structured objects it can navigate, cite, and export.</p>
+          <p class="lede" data-r="3">Session Search is the “framework is just Python” case study. It gives an agent memory over its own past traces: SQLite FTS over historical event logs and todos, returning structured objects it can navigate, cite, and export.</p>
           <ul class="clean" data-r="4">
             <li><span class="em">Find failures:</span> search <code>PythonOutput</code> errors across sessions.</li>
             <li><span class="em">Recover context:</span> jump from one event to the whole turn or call ID.</li>
@@ -1001,7 +939,7 @@ view.export_repro(
       <div class="wrap">
         <div class="kicker" data-r="1"><span class="num">17a</span> Case studies · rendered context</div>
         <h2 data-r="2">Each Skill turns source state<br>into <span class="accent">model-visible context</span>.</h2>
-        <p class="lede" data-r="3" style="max-width:82ch">This is the core harness pattern for coding-agent builders: keep the real state in Python objects, queues, handles, databases, and clients; render the actionable slice into the next turn.</p>
+        <p class="lede" data-r="3" style="max-width:82ch">This is the core harness pattern: keep the real state in Python objects, queues, handles, databases, and clients; render the actionable slice into the next turn.</p>
         <div class="srgrid" data-r="4">
           <div>
             <div class="srlabel">source state</div>
@@ -1047,8 +985,9 @@ Event([1264] PythonOutput | error="KeyError: retry_policy")</div>
           <tr><td>commands</td><td><code>/monitor &lt;mr&gt;</code></td><td><code>/mesh-connect</code>, <code>/mesh-list</code>, cert ops</td><td>ready to add; already API-first</td></tr>
           <tr><td>context</td><td>queue status shows active monitors</td><td>queue status + live roster calls</td><td>retrieved events become context</td></tr>
           <tr><td>lifecycle</td><td>background generator until merged</td><td>attach/resume reconnect, detach cleanup</td><td>open/close DB views, reindex migrations</td></tr>
+          <tr><td>agent-built</td><td>written/tested as a Skill, then hot-reloaded</td><td>extended live with commands + reconnect hooks</td><td>added as searchable memory without restart</td></tr>
         </table>
-        <p class="smallnote" data-r="4">A coding-agent platform does not need bespoke framework support for every integration. Skills grow the harness from the inside.</p>
+        <p class="smallnote" data-r="4">No bespoke framework support or restart is required. The agent grows the harness from the inside: write the Skill, test it, reload it, activate it, then keep working with the new capability on <code>self</code>.</p>
       </div>
     </section>
 
@@ -1058,7 +997,7 @@ Event([1264] PythonOutput | error="KeyError: retry_policy")</div>
         <div>
           <div class="kicker" data-r="1"><span class="num">19</span> Self evolution</div>
           <h2 data-r="2">The harness can<br><span class="accent">teach itself</span>.</h2>
-          <p class="lede" data-r="3">When a coding agent discovers a missing capability, it can write a skill library, add tests, reload it, activate it, and keep working. The new behavior becomes part of <code>self</code>; the new status becomes part of context; the new commands become part of the UI.</p>
+          <p class="lede" data-r="3">This is how the case-study Skills were built: the agent discovered missing capabilities, wrote or edited Skill libraries for itself, added tests, reloaded them, activated them, and kept working. The new behavior becomes part of <code>self</code>; the new status becomes part of context; the new commands become part of the UI — no system restart.</p>
           <ul class="clean" data-r="4">
             <li><span class="em">Reusable learning:</span> save patterns as a <code>Skill</code>, not another prompt note.</li>
             <li><span class="em">Runtime upgrade:</span> hot reload avoids stopping the session.</li>
@@ -1081,11 +1020,11 @@ self.skills.activate([<span class="doc">"local.trace_tools"</span>])</pre></div>
     </section>
 
 
-    <!-- 12b — CODING AGENT TAKEAWAY -->
+    <!-- 12b — HARNESS TAKEAWAY -->
     <section class="slide">
       <div class="wrap split">
         <div>
-          <div class="kicker" data-r="1"><span class="num">19a</span> Takeaway for coding-agent teams</div>
+          <div class="kicker" data-r="1"><span class="num">19a</span> Takeaway for agent harnesses</div>
           <h2 data-r="2">Design the harness as<br><span class="accent">source + renderers</span>.</h2>
           <p class="lede" data-r="3">Do not put everything in the prompt. Put durable facts in source-level abstractions the model already understands, then build narrow renderers that show the live state needed for the next action.</p>
           <ul class="clean" data-r="4">
@@ -1113,7 +1052,7 @@ the next model turn</div>
         <div class="kicker" data-r="1"><span class="num">20</span> Summary</div>
         <h2 data-r="2">Self-evolving harness<br><span class="accent">as an equation</span>.</h2>
         <div class="formula" data-r="3">
-          <code>event queues</code><span class="plus">+</span><code>skills</code><span class="plus">+</span><code>context blocks</code><span class="arrowbig">→</span><br>a coding agent that can extend its own operating system
+          <code>event queues</code><span class="plus">+</span><code>skills</code><span class="plus">+</span><code>context blocks</code><span class="arrowbig">→</span><br>an agent that can extend its own operating system
         </div>
         <div class="cards" data-r="4">
           <div class="card"><div class="big">queues</div><h3>React to the world</h3><p>Every producer enters through the same named-channel contract.</p></div>
