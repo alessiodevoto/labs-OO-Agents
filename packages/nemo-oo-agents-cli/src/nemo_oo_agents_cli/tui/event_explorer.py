@@ -321,13 +321,47 @@ def _format_detail(tag: str, event: Any) -> str:
     return f"tag = {tag!r}\ntype = {event_type!r}\n\nevent = {body}"
 
 
+def _escape_terminal_controls(text: str) -> str:
+    safe: list[str] = []
+    for char in text:
+        codepoint = ord(char)
+        if char in {"\n", "\t"}:
+            safe.append(char)
+        elif char == "\r":
+            safe.append("\\r")
+        elif codepoint < 32 or codepoint == 127 or 0x80 <= codepoint <= 0x9F:
+            safe.append(f"\\x{codepoint:02x}")
+        else:
+            safe.append(char)
+    return "".join(safe)
+
+
+def _markdown_code_block(value: Any) -> str:
+    text = value if isinstance(value, str) else repr(value)
+    text = _escape_terminal_controls(text)
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}\n{text.rstrip()}\n{fence}"
+
+
+def _is_empty_event_field(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _event_field_markdown(value: Any) -> str:
+    if isinstance(value, str) and _extract_fenced_code(value) is not None:
+        return _escape_terminal_controls(value.rstrip())
+    return _markdown_code_block(value)
+
+
 def _event_markdown(event: Any, event_type: str) -> str | None:
-    if event_type != "TUIAgentMessage":
-        return None
-    content = getattr(event, "content", None)
-    if content is None:
-        content = _event_to_mapping(event).get("content")
-    return str(content) if content else ""
+    lines = [f"# {event_type}"]
+    for field, value in _event_to_mapping(event).items():
+        if field == "event_type" or _is_empty_event_field(value):
+            continue
+        lines.extend(["", f"## {field}", "", _event_field_markdown(value)])
+    return "\n".join(lines)
 
 
 def build_event_rows(event_manager: Any) -> list[EventExplorerRow]:

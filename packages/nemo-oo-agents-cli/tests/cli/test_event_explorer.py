@@ -61,6 +61,179 @@ def test_event_explorer_builds_rows_and_full_text_searches() -> None:
     assert [rows[i].tag for i in model.matches] == ["2", "3"]
 
 
+def test_event_explorer_renders_generic_events_as_markdown_sections() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "12",
+                    _FakeEvent(
+                        "ToolCallEvent",
+                        name="execute_python",
+                        arguments={"code": "print(42)"},
+                        result=None,
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    assert "# ToolCallEvent" in markdown
+    assert "## name" in markdown
+    assert "execute_python" in markdown
+    assert "## arguments" in markdown
+    assert "print(42)" in markdown
+    assert "## result" not in markdown
+
+    plain = "\n".join(wrapped_detail_lines(row, width=80))
+    assert "# ToolCallEvent" in plain
+    assert "## arguments" in plain
+    assert "ToolCallEvent(" not in plain
+
+
+def test_event_explorer_renders_python_output_as_markdown_sections() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "7",
+                    _FakeEvent(
+                        "PythonOutput",
+                        tool_call_id="tc_1",
+                        execution_status="complete",
+                        stdout="hello\nworld\n",
+                        stderr="",
+                        error="",
+                        value=None,
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    assert row.markdown is not None
+    assert "# PythonOutput" in row.markdown
+    assert "## stdout" in row.markdown
+    assert "hello" in row.markdown
+    assert "world" in row.markdown
+    assert "## stderr" not in row.markdown
+    assert "## error" not in row.markdown
+    assert "## value" not in row.markdown
+
+    plain = "\n".join(wrapped_detail_lines(row, width=80))
+    assert "# PythonOutput" in plain
+    assert "## stdout" in plain
+    assert "PythonOutput(" not in plain
+
+
+def test_event_explorer_python_output_markdown_keeps_stderr_and_error_when_present() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "8",
+                    _FakeEvent(
+                        "PythonOutput",
+                        execution_status="error",
+                        stdout="partial",
+                        stderr="warning",
+                        error="Traceback: boom",
+                        value={"answer": 42},
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    assert "## stdout" in markdown
+    assert "partial" in markdown
+    assert "## stderr" in markdown
+    assert "warning" in markdown
+    assert "## error" in markdown
+    assert "Traceback: boom" in markdown
+    assert "## value" in markdown
+    assert "answer" in markdown
+
+
+def test_event_explorer_python_output_markdown_code_blocks_render_formatted() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "9",
+                    _FakeEvent(
+                        "PythonOutput",
+                        execution_status="complete",
+                        stdout="for i in range(3):\n    print(i)\n",
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    rendered = "\n".join(highlighted_detail_lines(row, width=80))
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", rendered)
+
+    assert "```" not in stripped
+    assert "for i in range(3):" in stripped
+    assert "print(i)" in stripped
+    assert "\x1b[" in rendered
+
+
+def test_event_explorer_python_output_markdown_escapes_terminal_controls() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "11",
+                    _FakeEvent(
+                        "PythonOutput",
+                        execution_status="complete",
+                        stdout="safe\x1b]52;c;YWJj\x07after",
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    rendered = "\n".join(highlighted_detail_lines(row, width=100))
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", rendered)
+
+    assert "\x1b]" not in markdown
+    assert "\x07" not in markdown
+    assert "\\x1b]52;c;YWJj\\x07" in markdown
+    assert "\x1b]" not in rendered
+    assert "\x07" not in rendered
+    assert "\\x1b]52;c;YWJj\\x07" in stripped
+
+
+def test_event_explorer_existing_markdown_fenced_code_still_renders_formatted() -> None:
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "10",
+                    _FakeEvent(
+                        "TUIAgentMessage",
+                        content="Before\n```python\nfor i in range(3):\n    print(i)\n```\nAfter",
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    rendered = "\n".join(highlighted_detail_lines(row, width=80))
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", rendered)
+
+    assert "```" not in stripped
+    assert "for i in range(3):" in stripped
+    assert "print(i)" in stripped
+    assert "\x1b[" in rendered
+
+
 def test_event_explorer_navigation_and_rendering() -> None:
     rows = build_event_rows(
         SimpleNamespace(
@@ -386,7 +559,7 @@ def test_event_explorer_wraps_long_event_details_and_scrolls_within_event() -> N
     assert "event lines" in rendered
 
 
-def test_event_explorer_highlights_execute_python_code() -> None:
+def test_event_explorer_renders_execute_python_event_as_formatted_markdown() -> None:
     row = build_event_rows(
         SimpleNamespace(
             items=lambda: [
@@ -404,13 +577,17 @@ def test_event_explorer_highlights_execute_python_code() -> None:
 
     lines = highlighted_detail_lines(row, width=50)
     joined = "\n".join(lines)
-    assert "code (python):" in joined
-    assert joined.index("code (python):") < joined.index("event:")
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
+    assert "ToolCallEvent" in stripped
+    assert "name" in stripped
+    assert "arguments" in stripped
+    assert "print" in stripped
+    assert "event:" not in stripped
+    assert "ToolCallEvent(" not in stripped
     assert "\x1b[" in joined
-    assert "print" in joined
 
 
-def test_event_explorer_extracts_fenced_code_blocks_to_top() -> None:
+def test_event_explorer_renders_fenced_code_fields_as_formatted_markdown() -> None:
     row = build_event_rows(
         SimpleNamespace(
             items=lambda: [
@@ -425,11 +602,17 @@ def test_event_explorer_extracts_fenced_code_blocks_to_top() -> None:
         )
     )[0]
 
-    lines = wrapped_detail_lines(row, width=50)
-    joined = "\n".join(lines)
     assert row.code == "value = 42\nprint(value)"
-    assert lines[0] == "code (python):"
-    assert joined.index("value = 42") < joined.index("event:")
+    lines = highlighted_detail_lines(row, width=50)
+    joined = "\n".join(lines)
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
+    assert "AgentMessage" in stripped
+    assert "content" in stripped
+    assert "```" not in stripped
+    assert "value = 42" in stripped
+    assert "print(value)" in stripped
+    assert "event:" not in stripped
+    assert "\x1b[" in joined
 
 
 def test_event_explorer_tab_focus_changes_up_down_semantics() -> None:
@@ -462,20 +645,22 @@ def test_event_explorer_tab_focus_changes_up_down_semantics() -> None:
     assert model.current.tag == "1"
 
 
-def test_event_explorer_highlights_python_repr_event() -> None:
+def test_event_explorer_highlights_markdown_event_detail() -> None:
     row = build_event_rows(
         SimpleNamespace(items=lambda: [("1", _FakeEvent("TUIUserInput", text="hello"))])
     )[0]
     joined = "\n".join(highlighted_detail_lines(row, width=70))
     plain = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
 
-    assert "event:" in joined
+    assert "event:" not in joined
     assert "\x1b[" in joined
-    assert "TUIUserInput(" in plain
+    assert "TUIUserInput" in plain
+    assert "text" in plain
+    assert "TUIUserInput(" not in plain
     assert "hello" in plain
 
 
-def test_event_explorer_renders_tui_agent_message_as_markdown_only() -> None:
+def test_event_explorer_renders_tui_agent_message_as_event_markdown() -> None:
     row = build_event_rows(
         SimpleNamespace(
             items=lambda: [
@@ -494,12 +679,16 @@ def test_event_explorer_renders_tui_agent_message_as_markdown_only() -> None:
     assert row.code is not None
 
     plain = "\n".join(wrapped_detail_lines(row, width=50))
+    assert "# TUIAgentMessage" in plain
+    assert "## content" in plain
     assert "# Answer" in plain
     assert "TUIAgentMessage(" not in plain
     assert "event:" not in plain
 
     highlighted = "\n".join(highlighted_detail_lines(row, width=50))
     stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", highlighted)
+    assert "TUIAgentMessage" in stripped
+    assert "content" in stripped
     assert "Answer" in stripped
     assert "TUIAgentMessage(" not in stripped
     assert "event:" not in stripped
