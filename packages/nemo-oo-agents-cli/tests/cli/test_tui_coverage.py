@@ -1308,7 +1308,8 @@ class TestShowSplash:
         assert mock_console.print.call_count == 1
 
     def test_ascii_art_constant(self):
-        assert "Agent" in NEMO_OO_ASCII or "_" in NEMO_OO_ASCII
+        assert "NEMOTRON" in NEMO_OO_ASCII
+        assert "AGENTS" in NEMO_OO_ASCII
 
 
 # ===========================================================================
