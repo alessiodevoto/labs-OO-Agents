@@ -30,13 +30,13 @@ Writes:
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("Usage: /tdd <umbrella-id>. Run /root-cause first if you don't have one yet.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="usage error: need an umbrella todo id for TDD"))
 
 umbrella_id = arg.split()[0]
 umbrella = self.todo.get(umbrella_id)
 if umbrella is None:
     self.message(f"No todo {umbrella_id}. Start with /brainstorm or /root-cause.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="todo id was not found; need a valid umbrella todo id"))
 
 fix_plan = self.todo.get_var(umbrella.id, "fix_plan")
 failing_test_path = self.todo.get_var(umbrella.id, "failing_test_path")
@@ -45,7 +45,7 @@ if not fix_plan or not failing_test_path:
         f"Todo {umbrella.id} isn't ready for /tdd — missing fix_plan or "
         f"failing_test_path. Run /root-cause first."
     )
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="missing fix plan or failing test path; run /root-cause first"))
 
 show_diffs = bool(self.todo.get_var(umbrella.id, "show_diffs"))
 commits: list[str] = self.todo.get_var(umbrella.id, "commits") or []
@@ -62,7 +62,7 @@ if red.return_code == 0:
     self.todo.comment(umbrella.id, "⚠️ failing test is unexpectedly GREEN — stopping")
     self.message(f"`{failing_test_path}` is already passing. Did someone else fix this? "
                  "Re-run /root-cause to verify.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="failing test already passes; rerun root-cause to verify next step"))
 self.todo.comment(umbrella.id, f"🧪 {failing_test_path} RED as expected — starting TDD loop")
 ```
 
@@ -119,7 +119,7 @@ for step_id in step_todo_ids:
             f"Step `{step.title}` didn't flip the test. Output:\n\n"
             f"```\n{tgt.stdout[-2000:]}\n```"
         )
-        return_result(RespondResult(kind="GET_USER_INPUT"))
+        return_result(RespondResult(kind="NEED_INPUT", explanation="target test still fails; need fix-forward or revised plan"))
 
     # 3. Full suite
     full = await self.bash.run("pytest -x --tb=short")
@@ -130,14 +130,14 @@ for step_id in step_todo_ids:
             f"something else:\n\n```\n{full.stdout[-2000:]}\n```\n\n"
             f"Fix forward or revert?"
         )
-        return_result(RespondResult(kind="GET_USER_INPUT"))
+        return_result(RespondResult(kind="NEED_INPUT", explanation="full suite failed; need fix-forward or revert decision"))
 
     # 4. Commit (or show-and-pause if user opted in)
     if show_diffs:
         diff = await self.bash.run("git diff --stat")
         self.message(f"Step `{step.title}` ready to commit:\n\n```\n{diff.stdout}\n```\n\n"
                      f"Reply `yes` to commit, or describe changes.")
-        return_result(RespondResult(kind="GET_USER_INPUT"))
+        return_result(RespondResult(kind="NEED_INPUT", explanation="diff is ready; waiting for user approval to commit"))
 
     msg = f"{step.title}\n\nPart of TDD for: {umbrella.title}"
     await self.bash.run("git add -A")
@@ -181,7 +181,7 @@ self.message(
     f"**Test suite:** {'✅ all green' if passed else '❌ still failing'}\n\n"
     f"Next: `{next_step}`"
 )
-return_result(RespondResult(kind="GET_USER_INPUT"))
+return_result(RespondResult(kind="DONE", explanation="TDD step completed; next step shown in message"))
 ```
 
 ## Guidelines

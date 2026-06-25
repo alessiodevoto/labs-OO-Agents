@@ -27,6 +27,7 @@ from .output import (
     Output,
     RichOutput,
     StartupInfo,
+    StopReasonOutput,
     TableOutput,
     TextOutput,
     Thinking,
@@ -257,6 +258,7 @@ class TerminalFrontend:
             StartupInfo: self._render_startup,
             ClearScreen: self._render_clear,
             Thinking: self._render_thinking,
+            StopReasonOutput: self._render_stop_reason,
             BashOutput: self._render_bash,
             CommandStatus: self._render_command_status,
             RichOutput: self._render_rich,
@@ -284,6 +286,11 @@ class TerminalFrontend:
             self._console.start_spinner(output.message)
         else:
             self._console.stop_spinner()
+
+    def _render_stop_reason(self, output: StopReasonOutput) -> None:
+        from rich.markup import escape
+
+        self._console.print_status(escape(output.display_text()))
 
     async def get_input(
         self,

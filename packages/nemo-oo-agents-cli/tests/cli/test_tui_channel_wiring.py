@@ -300,8 +300,9 @@ def test_output_queue_get_delegates_to_input_queue():
 class _DispatchResult:
     """Minimal duck of ``RespondResult`` — the dispatcher reads .kind."""
 
-    def __init__(self, kind: str) -> None:
+    def __init__(self, kind: str, explanation: str = "") -> None:
         self.kind = kind
+        self.explanation = explanation
 
 
 def test_submit_message_pushes_to_queue_and_starts_dispatcher():
@@ -397,6 +398,116 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
         await app._agent_task
         assert calls[0] == {"user_messages": ["first"]}
         assert calls[1] == {"job_outputs": [{"id": 7}]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_emits_stop_reason_as_structured_output():
+    """When handle() returns an explanation, the dispatcher emits a
+    StopReasonOutput through the structured output callback.
+    """
+
+    agent = _fresh_agent()
+    outputs: list[Any] = []
+    app = TUIApplication(agent=agent, on_output=outputs.append)
+    blocks: list[str] = []
+    app.emit_block = blocks.append  # type: ignore[method-assign]
+
+    async def _respond(notification):
+        return _DispatchResult(
+            kind="NEED_INPUT",
+            explanation="need the target branch before pushing the MR",
+        )
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("hello")
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if outputs:
+                break
+        assert len(outputs) == 1
+        assert outputs[0].to_json() == {
+            "type": "stop_reason",
+            "kind": "NEED_INPUT",
+            "label": "need input",
+            "explanation": "need the target branch before pushing the MR",
+            "text": "∴ need input: need the target branch before pushing the MR",
+        }
+        assert blocks == []
+        app._agent_task.cancel()
+        try:
+            await app._agent_task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_awaits_async_stop_reason_output_callback():
+    """Async structured output callbacks complete before the dispatcher waits."""
+
+    agent = _fresh_agent()
+    outputs: list[Any] = []
+    callback_finished = asyncio.Event()
+
+    async def _on_output(output):
+        await asyncio.sleep(0)
+        outputs.append(output)
+        callback_finished.set()
+
+    app = TUIApplication(agent=agent, on_output=_on_output)
+
+    async def _respond(notification):
+        return _DispatchResult(kind="NEED_INPUT", explanation="need user approval")
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        await asyncio.wait_for(callback_finished.wait(), timeout=0.5)
+        assert outputs[0].display_text() == "∴ need input: need user approval"
+        assert agent._user_messages_in.has_waiters()
+        app._agent_task.cancel()
+        try:
+            await app._agent_task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_done_waits_for_user_messages_only():
+    """DONE waits for the next user message instead of racing job queues."""
+
+    agent = _fresh_agent()
+    agent._jobs_in = agent.queue_manager.queue("job_outputs")
+    agent.job_outputs = agent._jobs_in.reader
+    app = TUIApplication(agent=agent)
+
+    calls: list[dict] = []
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE", explanation="finished the request")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(20):
+            await asyncio.sleep(0)
+        agent._jobs_in.put({"id": 7})
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert len(calls) == 1
+
+        app.submit_message("second")
+        await app._agent_task
+        assert calls[1] == {"user_messages": ["second"], "job_outputs": [{"id": 7}]}
 
     asyncio.run(_run())
 

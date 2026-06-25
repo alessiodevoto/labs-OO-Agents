@@ -5,9 +5,10 @@
 Uses the new summarization subagent pattern from nemo_oo_agents.agents.
 """
 
+from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from nemo_oo_agents import hidden, strategy
 from nemo_oo_agents.agentdoc import doc, spec
@@ -93,7 +94,16 @@ with hidden:
     )
 
 
-RespondKind = Literal["GET_USER_INPUT", "WAIT"]
+class RespondReason(StrEnum):
+    """Reason/action returned by ``handle()`` at the end of a turn."""
+
+    DONE = "DONE"
+    NEED_INPUT = "NEED_INPUT"
+    WAIT = "WAIT"
+    GET_USER_INPUT = "GET_USER_INPUT"
+
+
+RespondKind = Literal["DONE", "NEED_INPUT", "WAIT", "GET_USER_INPUT"]
 
 
 class RespondResult(BaseModel):
@@ -101,11 +111,20 @@ class RespondResult(BaseModel):
 
     Fields:
 
-    - ``kind`` — one of:
-        * ``"GET_USER_INPUT"`` — dispatcher awaits ``agent.user_messages.get()``
-          and re-enters ``handle(notification)`` with the new message.
-        * ``"WAIT"`` — dispatcher races every ``InputQueue`` declared on
-          the agent (``wait_for_any``) and re-enters with the first arrival.
+    - ``kind`` — reason/action enum:
+        * ``RespondReason.DONE`` — the request is complete; dispatcher waits
+          for the next user message.
+        * ``RespondReason.NEED_INPUT`` — the agent asked a question or needs
+          human input; dispatcher waits for the next user message.
+        * ``RespondReason.WAIT`` — dispatcher races every ``InputQueue``
+          declared on the agent (``wait_for_any``) and re-enters with the
+          first arrival.
+        * ``RespondReason.GET_USER_INPUT`` — legacy spelling for waiting on
+          the next user message; prefer ``DONE`` or ``NEED_INPUT``.
+    - ``explanation`` — required non-empty short reason why the agent is ending this
+      turn, or what external input/background event it is waiting for. The TUI
+      records and renders this line, so make it concrete: name the job/queue
+      being waited on, why it matters, or what user input is needed and why.
 
 
     Use ``self.v.<name> = value`` for state that should survive across
@@ -113,10 +132,29 @@ class RespondResult(BaseModel):
 
     Build from within the LLM's ``execute_python`` code::
 
-        return_result(RespondResult(kind="GET_USER_INPUT"))
+        return_result(
+            RespondReason.DONE,
+            explanation="answered the request; waiting for the next user message",
+        )
+
+    The older explicit model form is still valid::
+
+        return_result(RespondResult(kind="DONE", explanation="answered the request"))
     """
 
-    kind: RespondKind = Field(description="What the outer dispatcher should do next")
+    kind: RespondReason = Field(description="What the outer dispatcher should do next")
+    explanation: str = Field(
+        min_length=1,
+        description=("Required: why handle() returned, or what the dispatcher is waiting for."),
+    )
+
+    @field_validator("explanation")
+    @classmethod
+    def _explanation_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("explanation is required")
+        return value
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -416,15 +454,23 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
 
         ## Returning
 
-        End the turn with exactly one ``return_result(RespondResult(...))``.
+        End the turn with exactly one ``return_result(REASON_ENUM, explanation="...")``.
+        ``explanation`` is required and must be non-empty. The TUI records and renders it as the
+        visible stop reason, so be specific and user-facing: if waiting on a
+        job/queue, name which job and why; if asking for input, say what input
+        is needed and why.
 
-        - Wait for the next user message::
+        - Request complete; wait for the next user message::
 
-              return_result(RespondResult(kind="GET_USER_INPUT"))
+              return_result(RespondReason.DONE, explanation="implemented the feature and verified focused tests")
+
+        - Need human input before proceeding::
+
+              return_result(RespondReason.NEED_INPUT, explanation="need the target branch before pushing the MR")
 
         - Wait for ANY producer queue (user or background job)::
 
-              return_result(RespondResult(kind="WAIT"))
+              return_result(RespondReason.WAIT, explanation="waiting for pytest job ci-42 to finish before reporting results")
 
 
 
@@ -513,7 +559,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
     If the request is ambiguous, send a clarifying question via
     ``self.message(...)`` and end the turn with
-    ``return_result(RespondResult(kind="GET_USER_INPUT"))``.
+    ``return_result(RespondReason.NEED_INPUT, explanation="need clarification from the user before proceeding")``.
     The dispatcher blocks on the next user message and re-enters
     ``handle()`` with their answer.
 
@@ -569,7 +615,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         )
         # → return immediately; result arrives as a notification
         #   on the "doer_results" channel in a future turn
-        return_result(RespondResult(kind="WAIT"))
+        return_result(RespondReason.WAIT, explanation="waiting for a background job or queue event")
 
     The ``<todo_status>`` context block shows current progress every turn.
 
@@ -620,12 +666,16 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     - No ``import`` — every module you need is pre-loaded (np, pd, json,
       asyncio, etc.). Check the execution_context for what's available.
     - **Ending a turn.** Only call
-      ``return_result(RespondResult(kind=...))`` when you are completely
-      done with all work or you need user input:
-        * ``kind="GET_USER_INPUT"`` — use after answering a question,
-          asking a follow-up, or when blocked on human input.
+      ``return_result(RespondReason.<...>, explanation="...")`` when you are completely
+      done with all work or you need user input. ``explanation`` is required and must be non-empty.
+      The TUI records/renders it as the reason you stopped, so make it specific:
+        * ``kind="DONE"`` — use when the request is complete. State what was
+          completed or verified.
+        * ``kind="NEED_INPUT"`` — use after asking a follow-up or when blocked
+          on human input. State what input you need and why.
         * ``kind="WAIT"`` — use when background jobs are running and you
-          want the dispatcher to wake you on the next queue event.
+          want the dispatcher to wake you on the next queue event. State which
+          job/queue/event you are waiting for and why.
 
 
     # Communication mechanics

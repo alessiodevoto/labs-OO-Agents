@@ -559,6 +559,7 @@ class Session:
             agent=self.agent,
             on_command=self._on_command,
             on_bang=self._on_bang,
+            on_output=self._on_app_output,
             completer=SlashCommandCompleter(self.registry),
             session_label=self._session_label,
             config=self.config,
@@ -735,6 +736,32 @@ class Session:
                 self._startup_loop.set_exception_handler(self._prev_exception_handler)
             self._restore_terminal()
             self._print_exit_message()
+
+    async def _on_app_output(self, output: Any) -> None:
+        """Render structured output emitted by ``TUIApplication``.
+
+        The dispatcher can run on the dedicated agent loop thread, while
+        frontend rendering belongs on the UI/startup loop. This bridge keeps
+        the app frontend-agnostic and preserves one structured output path for
+        terminal and non-terminal frontends.
+        """
+        loop = self._startup_loop
+        if loop is None:
+            return
+
+        async def _render() -> None:
+            await self.frontend.render(output)
+
+        try:
+            on_ui_loop = asyncio.get_running_loop() is loop
+        except RuntimeError:
+            on_ui_loop = False
+        if on_ui_loop:
+            await _render()
+            return
+
+        future = asyncio.run_coroutine_threadsafe(_render(), loop)
+        await asyncio.wrap_future(future)
 
     def _restore_terminal(self) -> None:
         """Best-effort restoration of terminal state on exit.
