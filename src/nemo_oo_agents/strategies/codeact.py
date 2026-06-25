@@ -2467,9 +2467,16 @@ Standard Python builtins and agent instance (`self`) are available."""
                 if len(args) > 1:
                     raise ValueError("return_result() takes at most 1 positional argument")
                 if kwargs:
-                    raise ValueError(
-                        "Cannot mix positional and keyword arguments in return_result()"
-                    )
+                    model_fields = getattr(call.return_type, "model_fields", {})
+                    if "kind" not in model_fields:
+                        raise ValueError("Cannot mix positional and keyword arguments")
+                    if "kind" in kwargs:
+                        raise ValueError(
+                            "return_result() got kind both positionally and by keyword"
+                        )
+                    result = dict(kwargs)
+                    result["kind"] = list(args)[0]
+                    raise _ReturnResultSignal(result=result)
                 # Single positional argument - treat as the 'result' field
                 raise _ReturnResultSignal(result={"result": list(args)[0]})
             else:

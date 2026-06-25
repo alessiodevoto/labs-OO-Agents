@@ -13,8 +13,23 @@ and sends the result over the WebSocket.  Adding a new Output type
 automatically works in both frontends as long as ``to_json()`` is defined.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Literal
+
+from nemo_oo_agents.agentdoc import hidden
+
+_STOP_REASON_ESCAPE_SEQUENCE_RE = re.compile(
+    "\x1b(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~]|\\][^\x07\x1b]*(?:\x07|\x1b\\\\)?)"
+)
+_STOP_REASON_CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]+")
+
+
+def _sanitize_stop_reason_text(value: str) -> str:
+    value = _STOP_REASON_ESCAPE_SEQUENCE_RE.sub(" ", str(value))
+    value = _STOP_REASON_CONTROL_RE.sub(" ", value)
+    return " ".join(value.split())
+
 
 # ---------------------------------------------------------------------------
 # Concrete output types
@@ -178,6 +193,43 @@ class Thinking:
         return {
             "type": "thinking_start" if self.active else "thinking_stop",
             "message": self.message,
+        }
+
+
+@dataclass
+class StopReasonOutput:
+    """Why the agent ended the turn or what it is waiting for."""
+
+    kind: str
+    explanation: str = ""
+
+    @property
+    @hidden
+    def label(self) -> str:
+        if str(self.kind) == "WAIT":
+            return "waiting"
+        if str(self.kind) == "DONE":
+            return "done"
+        if str(self.kind) in {"NEED_INPUT", "GET_USER_INPUT"}:
+            return "need input"
+        return "paused"
+
+    @hidden
+    def display_text(self) -> str:
+        explanation = _sanitize_stop_reason_text(self.explanation)
+        if explanation:
+            return f"∴ {self.label}: {explanation}"
+        return f"∴ {self.label}"
+
+    @hidden
+    def to_json(self) -> dict:
+        explanation = _sanitize_stop_reason_text(self.explanation)
+        return {
+            "type": "stop_reason",
+            "kind": str(self.kind),
+            "label": self.label,
+            "explanation": explanation,
+            "text": self.display_text(),
         }
 
 
@@ -354,6 +406,7 @@ Output = (
     | ClearScreen
     | SessionEnd
     | Thinking
+    | StopReasonOutput
     | BashOutput
     | CommandStatus
     | DiffOutput

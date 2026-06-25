@@ -163,6 +163,7 @@ class TUIApplication:
         *,
         on_command: Callable[[str], Awaitable[None] | None] | None = None,
         on_bang: Callable[[str], Awaitable[None] | None] | None = None,
+        on_output: Callable[[Any], Awaitable[None] | None] | None = None,
         completer: Completer | None = None,
         session_label: Callable[[], str] | None = None,
         config: Any = None,
@@ -181,6 +182,9 @@ class TUIApplication:
                 ``!echo hi``). Session wires this to run_in_terminal +
                 bash. If omitted, bang commands are only recorded in
                 ``last_bang_command()``.
+            on_output: Called with structured ``Output`` values emitted by
+                dispatcher-level behavior. Session wires this to
+                ``frontend.render(...)``.
             completer: Optional prompt_toolkit ``Completer`` for Tab
                 completion. When omitted no completion is offered.
             full_screen: Native-scrollback mode. Transcript output is written to
@@ -196,6 +200,7 @@ class TUIApplication:
         self.agent = agent
         self._on_command = on_command
         self._on_bang = on_bang
+        self._on_output = on_output
         self._session_label_fn: Callable[[], str] | None = session_label
         self._config = config
         self.full_screen = full_screen
@@ -1069,6 +1074,8 @@ class TUIApplication:
         """
         from nemo_oo_agents.runtime.channels import Channel
 
+        from .output import StopReasonOutput
+
         agent = self.agent
         assert agent is not None
 
@@ -1091,7 +1098,12 @@ class TUIApplication:
             finally:
                 self._in_respond = False
 
-            logger.info("[DISPATCHER] handle() returned kind=%r", result.kind)
+            result_explanation = getattr(result, "explanation", "")
+            logger.info(
+                "[DISPATCHER] handle() returned kind=%r explanation=%r",
+                result.kind,
+                result_explanation,
+            )
 
             # Goal mode: if enabled, there are open todos, and no real user
             # messages are queued, inject a synthetic notification with the
@@ -1141,29 +1153,39 @@ class TUIApplication:
                 self._on_dispatcher_dequeued()
                 continue
 
-            # Show running background jobs while waiting for the next event.
-            running = [h for h in qm._handles if h.state == "running"]
-            if running:
-                now = datetime.datetime.now().strftime("%H:%M:%S")
-                lines = "".join(f"  ⠿ {h.label}\n" for h in running)
-                self.emit_block(
-                    f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
+            if result_explanation:
+                await self._emit_structured_output(
+                    StopReasonOutput(result.kind, result_explanation)
                 )
 
-            # Race all channels for the next item(s). Returns
-            # [(name, item)] for queue-mode winners or [] for
-            # event-triggered wakes (events already in the prompt).
-            try:
-                items = await qm.race()
-            except ValueError:
-                return
-            # Show which job(s) fired.
-            if running and items:
-                now = datetime.datetime.now().strftime("%H:%M:%S")
-                fired_names = {name for name, _ in items}
-                fired = [h for h in running if h.name in fired_names]
-                for h in fired:
-                    self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
+            # DONE/NEED_INPUT wait specifically for the next user message.
+            # WAIT races every declared queue/event channel.
+            if str(result.kind) in {"DONE", "NEED_INPUT", "GET_USER_INPUT"}:
+                items = [("user_messages", await user_messages_in.get())]
+            else:
+                # Show running background jobs while waiting for the next event.
+                running = [h for h in qm._handles if h.state == "running"]
+                if running:
+                    now = datetime.datetime.now().strftime("%H:%M:%S")
+                    lines = "".join(f"  ⠿ {h.label}\n" for h in running)
+                    self.emit_block(
+                        f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
+                    )
+
+                # Race all channels for the next item(s). Returns
+                # [(name, item)] for queue-mode winners or [] for
+                # event-triggered wakes (events already in the prompt).
+                try:
+                    items = await qm.race()
+                except ValueError:
+                    return
+                # Show which job(s) fired.
+                if running and items:
+                    now = datetime.datetime.now().strftime("%H:%M:%S")
+                    fired_names = {name for name, _ in items}
+                    fired = [h for h in running if h.name in fired_names]
+                    for h in fired:
+                        self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
 
             # Drain all pending items across all channels, grouped by name.
             pending: dict[str, list] = {}
@@ -1178,6 +1200,22 @@ class TUIApplication:
             self._in_respond = True
             self._on_dispatcher_dequeued()
             notification = pending
+
+    async def _emit_structured_output(self, output: Any) -> None:
+        """Emit dispatcher-owned structured output through the frontend path.
+
+        Unit tests and minimal harnesses may construct ``TUIApplication``
+        without a frontend callback; in that case keep the terminal fallback so
+        existing same-loop dispatcher tests can inspect ``emit_block`` output.
+        """
+        if self._on_output is not None:
+            result = self._on_output(output)
+            if result is not None:
+                await result
+            return
+        display_text = getattr(output, "display_text", None)
+        if callable(display_text):
+            self.emit_block(f"\x1b[2m{display_text()}\x1b[0m\n")
 
     def _on_dispatcher_dequeued(self) -> None:
         """React to a just-dequeued item: redraw queue pane, restart spinner.

@@ -37,18 +37,18 @@ issue, suggestion}` dicts. Severity is `blocking` | `major` | `minor`.
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("Usage: /review <umbrella-id>.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="usage error: need an umbrella todo id for review"))
 
 umbrella_id = arg.split()[0]
 umbrella = self.todo.get(umbrella_id)
 if umbrella is None:
     self.message(f"No todo {umbrella_id}.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="todo id was not found; need a valid umbrella todo id"))
 
 commits = self.todo.get_var(umbrella.id, "commits") or []
 if not commits:
     self.message(f"Todo {umbrella.id} has no commits yet — run /tdd first.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="no commits found; run /tdd before review"))
 ```
 
 ## Build reviewer todos + dispatch in parallel
@@ -211,7 +211,7 @@ self.todo.comment(
     f"👁 review complete: {len(blocking)} blocking, {len(major)} major, "
     f"{len(minor)} minor",
 )
-return_result(RespondResult(kind="GET_USER_INPUT"))
+return_result(RespondResult(kind="DONE", explanation="review findings presented; waiting for the next user request"))
 ```
 
 ## Guidelines

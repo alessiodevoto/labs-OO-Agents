@@ -26,13 +26,13 @@ the loop.
 arg = "$ARGUMENTS".strip()
 if not arg:
     self.message("Usage: /ship <umbrella-id>.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="usage error: need an umbrella todo id to ship"))
 
 umbrella_id = arg.split()[0]
 umbrella = self.todo.get(umbrella_id)
 if umbrella is None:
     self.message(f"No todo {umbrella_id}.")
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="todo id was not found; need a valid umbrella todo id"))
 ```
 
 ## Gate 1 — sub-todos all done
@@ -47,7 +47,7 @@ if unfinished:
         "Not shippable — these sub-todos are still open:\n\n"
         + "\n".join(f"- [{t.id}] {t.title} ({t.status})" for t in unfinished)
     )
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="blocked: unfinished sub-todos must be resolved before shipping"))
 ```
 
 ## Gate 2 — test suite green
@@ -62,7 +62,7 @@ if not test_results.get("passed"):
             "Not shippable — test suite is failing:\n\n"
             f"```\n{final.stdout[-2000:]}\n```"
         )
-        return_result(RespondResult(kind="GET_USER_INPUT"))
+        return_result(RespondResult(kind="NEED_INPUT", explanation="test gate failed; fix failures before shipping"))
     self.todo.set_var(umbrella.id, "test_results",
                       {"cmd": "pytest --tb=short", "passed": True,
                        "stdout_tail": final.stdout[-1000:]})
@@ -79,7 +79,7 @@ if blocking:
         lines.append(f"- **{f['reviewer']}** {f.get('location', '')}: {f.get('issue')}")
     lines.append("\nAddress these via /tdd, then re-run /review, then /ship.")
     self.message("\n".join(lines))
-    return_result(RespondResult(kind="GET_USER_INPUT"))
+    return_result(RespondResult(kind="NEED_INPUT", explanation="review found blocking issues to address before shipping"))
 ```
 
 ## Gate 4 — acceptance criteria self-check
@@ -113,7 +113,7 @@ lines = [
 ]
 self.message("\n".join(lines))
 self.todo.comment(umbrella.id, "🚢 ship gate passed — waiting for user OK")
-return_result(RespondResult(kind="GET_USER_INPUT"))
+return_result(RespondResult(kind="NEED_INPUT", explanation="ship gate passed; waiting for user approval to publish"))
 ```
 
 ## On user confirmation
