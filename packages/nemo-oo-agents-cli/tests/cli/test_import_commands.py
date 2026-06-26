@@ -401,7 +401,8 @@ class TestTrialMeta:
         assert meta["task_name"] == "algebra"
         assert meta["agent_name"] == "TestAgent"
         assert meta["score"] == 0.75
-        assert meta["experiment"] == "MyEval__train"
+        assert meta["harbor_eval"] == "MyEval__train"
+        assert meta["experiment"] == "my-job"
         assert meta["job_name"] == "my-job"
 
     def test_missing_result_uses_dir_name(self, tmp_path):
@@ -418,7 +419,7 @@ class TestTrialMeta:
 
         meta = _trial_meta(trace_file)
         assert meta["trial_name"] == "trial-99"
-        assert meta["experiment"] == "harbor"  # fallback
+        assert meta["experiment"] == "job"
 
     def test_reward_txt_fallback(self, tmp_path):
         job_dir = tmp_path / "job"
@@ -775,3 +776,160 @@ class TestPostTracesBatch:
 
         with patch.object(_otlp_helpers, "post_trace", return_value=False):
             assert _otlp_helpers.post_traces_batch("http://x", [{"resourceSpans": [{}]}]) is False
+
+
+class TestImportHarborEvalOnly:
+    def _get_command(self):
+        from nemo_oo_agents_cli.commands.import_harbor import command
+
+        return command
+
+    def test_eval_only_posts_harbor_results_without_trace_files(self, tmp_path):
+        job_dir = tmp_path / "my-job"
+        job_dir.mkdir()
+        trial_dir = job_dir / "trial-001"
+        trial_dir.mkdir()
+        (trial_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "agent": {
+                        "name": "nemo-oo-agents",
+                        "model_name": "gpt-5.5-reasoning-high",
+                        "kwargs": {"agent_type": "bench"},
+                    },
+                    "task": {"source": "swebench_all"},
+                }
+            )
+        )
+        (trial_dir / "result.json").write_text(
+            json.dumps(
+                {
+                    "trial_name": "trial-001",
+                    "task_name": "django__django-12345",
+                    "source": "swebench_all",
+                    "verifier_result": {"rewards": {"reward": 1.0}},
+                    "config": {
+                        "agent": {
+                            "name": "nemo-oo-agents",
+                            "model_name": "gpt-5.5-reasoning-high",
+                            "kwargs": {"agent_type": "bench"},
+                        },
+                        "task": {"source": "swebench_all"},
+                    },
+                }
+            )
+        )
+        (job_dir / "result.json").write_text(
+            json.dumps({"stats": {"evals": {"SWEbench__fixed": {"n_trials": 1}}}})
+        )
+
+        posted = []
+
+        def capture_batch(endpoint, bodies):
+            posted.extend(bodies)
+            return True
+
+        runner = CliRunner()
+        with _mock_harbor_helpers(post_traces_batch_mock=MagicMock(side_effect=capture_batch)):
+            result = runner.invoke(
+                self._get_command(),
+                [str(job_dir), "--endpoint", "http://viewer:5001", "--eval-only"],
+            )
+
+        assert result.exit_code == 0
+        assert "1 imported" in result.output
+        assert "Evaluations:" in result.output
+        assert posted
+        resource_attrs = posted[0]["resourceSpans"][0]["resource"]["attributes"]
+        attrs = {a["key"]: next(iter(a["value"].values())) for a in resource_attrs}
+        assert attrs["session.id"] == "trial-001"
+        assert attrs["experiment"] == "my-job"
+        assert attrs["batch_id"] == "my-job"
+        assert attrs["eval.harbor_eval"] == "SWEbench__fixed"
+        assert attrs["eval.test_id"] == "django__django-12345"
+        assert attrs["eval.model"] == "gpt-5.5-reasoning-high"
+        assert attrs["eval.agent_class"] == "bench"
+        assert attrs["eval.passed"] is True
+
+    def test_eval_only_supports_custom_experiment_and_batch_id(self, tmp_path):
+        job_dir, _ = _make_harbor_job(tmp_path, trial_name="trial-x", score=0.0)
+        # Remove trace file so this exercises metadata-only import.
+        for f in job_dir.rglob("*.jsonl"):
+            f.unlink()
+
+        posted = []
+
+        def capture_batch(endpoint, bodies):
+            posted.extend(bodies)
+            return True
+
+        runner = CliRunner()
+        with _mock_harbor_helpers(post_traces_batch_mock=MagicMock(side_effect=capture_batch)):
+            result = runner.invoke(
+                self._get_command(),
+                [
+                    str(job_dir),
+                    "--eval-only",
+                    "--experiment",
+                    "custom-exp",
+                    "--batch-id",
+                    "batch-1",
+                ],
+            )
+
+        assert result.exit_code == 0
+        resource_attrs = posted[0]["resourceSpans"][0]["resource"]["attributes"]
+        attrs = {a["key"]: next(iter(a["value"].values())) for a in resource_attrs}
+        assert attrs["experiment"] == "custom-exp"
+        assert attrs["batch_id"] == "batch-1"
+        assert attrs["eval.passed"] is False
+
+    def test_eval_only_uses_matching_live_session_when_viewer_finds_one(self, tmp_path):
+        job_dir, _ = _make_harbor_job(
+            tmp_path,
+            trial_name="trial-001",
+            score=1.0,
+            task="django__django-12345",
+        )
+        for f in job_dir.rglob("*.jsonl"):
+            f.unlink()
+
+        posted = []
+
+        def capture_batch(endpoint, bodies):
+            posted.extend(bodies)
+            return True
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({"match": {"session_id": "live-session-123"}}).encode()
+
+        runner = CliRunner()
+        with _mock_harbor_helpers(post_traces_batch_mock=MagicMock(side_effect=capture_batch)):
+            with patch(
+                "nemo_oo_agents_cli.commands.import_harbor.urllib.request.urlopen",
+                return_value=FakeResponse(),
+            ) as urlopen:
+                result = runner.invoke(
+                    self._get_command(),
+                    [str(job_dir), "--endpoint", "http://viewer:5001", "--eval-only"],
+                )
+
+        assert result.exit_code == 0
+        assert "trial-001 -> live-session-123" in result.output
+        assert urlopen.called
+        url = urlopen.call_args.args[0].full_url
+        assert "task_name=django__django-12345" in url
+        assert "experiment=my-job" in url or "experiment=default" in url
+        resource_attrs = posted[0]["resourceSpans"][0]["resource"]["attributes"]
+        attrs = {a["key"]: next(iter(a["value"].values())) for a in resource_attrs}
+        assert attrs["session.id"] == "live-session-123"
+        assert attrs["eval.harbor_trial_name"] == "trial-001"

@@ -14,7 +14,10 @@ Usage:
 """
 
 import json
+import time
 import urllib.parse
+import urllib.request
+import uuid
 from pathlib import Path
 
 import click
@@ -121,26 +124,183 @@ def _trial_meta(jsonl_path: Path) -> dict:
 
     trial_name = trial_result.get("trial_name") or trial_dir.name
     task_name = trial_result.get("task_name", "")
-    agent_name = (trial_result.get("agent_info") or {}).get("name", "")
+    config = trial_result.get("config") if isinstance(trial_result.get("config"), dict) else {}
+    agent_config = config.get("agent") if isinstance(config.get("agent"), dict) else {}
+    task_config = config.get("task") if isinstance(config.get("task"), dict) else {}
+    agent_name = (trial_result.get("agent_info") or {}).get("name", "") or agent_config.get(
+        "name", ""
+    )
+    model_name = agent_config.get("model_name", "")
+    agent_type = ""
+    kwargs = agent_config.get("kwargs") if isinstance(agent_config.get("kwargs"), dict) else {}
+    if kwargs:
+        agent_type = str(kwargs.get("agent_type") or "")
+    source = trial_result.get("source") or task_config.get("source") or ""
 
     # Reward scalar lives in different places across Harbor versions; see _read_score.
     score = _read_score(trial_dir, trial_result)
 
-    # Use the eval key from the job-level result as the experiment name.
-    # There is normally exactly one key (e.g. "WheelAgent__eval_service_train_…").
-    experiment = ""
+    # Keep the Harbor eval key as metadata, but group viewer Evaluations by
+    # Harbor job by default. The eval key is usually broad (for example,
+    # "nemo-oo-agents__swebench_all") and otherwise collapses separate model
+    # jobs into one row.
+    harbor_eval = ""
     evals = (job_result.get("stats") or {}).get("evals") or {}
     if evals:
-        experiment = next(iter(evals))
+        harbor_eval = next(iter(evals))
 
     return {
         "trial_name": trial_name,
         "task_name": task_name,
         "agent_name": agent_name,
+        "agent_type": agent_type,
+        "model_name": model_name,
+        "source": source,
+        "started_at": trial_result.get("started_at", ""),
+        "finished_at": trial_result.get("finished_at", ""),
         "score": score,
-        "experiment": experiment or "harbor",
+        "harbor_eval": harbor_eval,
+        "experiment": job_dir.name or harbor_eval or "harbor",
         "job_name": job_dir.name,
     }
+
+
+def _harbor_resource_attrs(meta: dict, experiment: str, batch_id: str) -> dict[str, str | bool]:
+    """Build viewer resource attrs that make a Harbor trial appear as an eval row."""
+    attrs: dict[str, str | bool] = {
+        "session.id": meta["trial_name"],
+        "experiment": experiment,
+        "batch_id": batch_id,
+        "eval.test_id": meta["task_name"] or meta["trial_name"],
+        "eval.test_name": meta["task_name"] or meta["trial_name"],
+        "eval.display_name": meta["task_name"] or meta["trial_name"],
+        "eval.method": "harbor",
+        "eval.harbor_trial_name": meta["trial_name"],
+    }
+    if meta.get("model_name"):
+        attrs["eval.model"] = str(meta["model_name"])
+    if meta.get("agent_type"):
+        attrs["eval.agent_class"] = str(meta["agent_type"])
+    elif meta.get("agent_name"):
+        attrs["eval.agent_class"] = str(meta["agent_name"])
+    if meta.get("agent_name"):
+        attrs["eval.agent_name"] = str(meta["agent_name"])
+    if meta.get("source"):
+        attrs["eval.suite_name"] = str(meta["source"])
+    if meta.get("harbor_eval"):
+        attrs["eval.harbor_eval"] = str(meta["harbor_eval"])
+    if meta.get("score") is not None:
+        score = meta["score"]
+        attrs["eval.score"] = str(score)
+        attrs["eval.weighted_score"] = str(score)
+        attrs["eval.passed"] = score >= 1.0
+    return attrs
+
+
+def _find_matching_live_session(endpoint: str, meta: dict, experiment: str) -> str | None:
+    """Ask the viewer for the live-streamed session matching this Harbor trial."""
+    task_name = meta.get("task_name")
+    if not task_name:
+        return None
+
+    def request_match(search_experiment: str) -> str | None:
+        query = {
+            "task_name": task_name,
+            "model": meta.get("model_name") or "",
+            "started_at": meta.get("started_at") or "",
+            "finished_at": meta.get("finished_at") or "",
+            "experiment": search_experiment,
+        }
+        url = f"{endpoint.rstrip('/')}/api/eval/match-session?{urllib.parse.urlencode(query)}"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status >= 300:
+                    return None
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+        match = data.get("match") if isinstance(data, dict) else None
+        if not isinstance(match, dict):
+            return None
+        session_id = match.get("session_id")
+        return str(session_id) if session_id else None
+
+    return request_match("default") or request_match(experiment)
+
+
+def _build_eval_only_body(resource_attrs: dict[str, str | bool]) -> dict:
+    """Build a minimal OTLP payload that enriches/creates one viewer eval session."""
+    now_ns = time.time_ns()
+    passed = bool(resource_attrs.get("eval.passed", False))
+    score = resource_attrs.get("eval.score")
+    span_attrs: list[dict] = [{"key": "eval.passed", "value": {"boolValue": passed}}]
+    if score is not None:
+        try:
+            span_attrs.append({"key": "eval.score", "value": {"doubleValue": float(score)}})
+            span_attrs.append(
+                {"key": "eval.weighted_score", "value": {"doubleValue": float(score)}}
+            )
+        except (TypeError, ValueError):
+            span_attrs.append({"key": "eval.score", "value": {"stringValue": str(score)}})
+
+    def value(v: str | bool) -> dict:
+        if isinstance(v, bool):
+            return {"boolValue": v}
+        return {"stringValue": str(v)}
+
+    return {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": key, "value": value(val)} for key, val in resource_attrs.items()
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "scope": {"name": "harbor-import"},
+                        "spans": [
+                            {
+                                "traceId": uuid.uuid4().hex,
+                                "spanId": uuid.uuid4().hex[:16],
+                                "name": "eval",
+                                "kind": 1,
+                                "startTimeUnixNano": str(now_ns),
+                                "endTimeUnixNano": str(now_ns),
+                                "attributes": span_attrs,
+                                "status": {"code": 1 if passed else 2, "message": ""},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _trial_dirs(root: Path) -> list[Path]:
+    """Find Harbor trial directories under a job dir or parent dir."""
+    roots = [root]
+    roots.extend(p.parent for p in root.rglob("result.json") if p.parent != root)
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in roots:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        result = candidate / "result.json"
+        if not result.exists():
+            continue
+        data = _read_json(result)
+        if data.get("trial_name") or (candidate / "config.json").exists():
+            out.append(candidate)
+    return sorted(out)
+
+
+def _trial_meta_from_dir(trial_dir: Path) -> dict:
+    """Extract Harbor metadata when only a trial directory is available."""
+    return _trial_meta(trial_dir / "artifacts" / "traces" / "_synthetic.jsonl")
 
 
 def _import_trace_file(
@@ -214,7 +374,7 @@ def _import_trace_file(
 @click.option(
     "--experiment",
     default=None,
-    help="Override experiment name (default: auto-detected from job result.json).",
+    help="Override experiment name (default: Harbor job directory name).",
 )
 @click.option(
     "--batch-id",
@@ -233,6 +393,11 @@ def _import_trace_file(
     show_default=True,
     help="Max raw input bytes accumulated before flushing a POST (per trace file).",
 )
+@click.option(
+    "--eval-only",
+    is_flag=True,
+    help="Post Harbor result metadata as eval spans without importing trace JSONL files.",
+)
 def command(
     path: str,
     endpoint: str,
@@ -240,6 +405,7 @@ def command(
     batch_id: str | None,
     batch_lines: int,
     batch_bytes: int,
+    eval_only: bool,
 ):
     """Import NeMo OO Agents OTLP traces from a Harbor job directory.
 
@@ -261,62 +427,76 @@ def command(
     root = Path(path)
     files = _find_harbor_traces(root)
 
-    if not files:
-        click.echo(f"No Harbor trace files found under {path}")
-        click.echo("Expected: <job>/<trial>/artifacts/traces/*.jsonl")
-        raise SystemExit(1)
-
     validate_endpoint(endpoint)
 
     if not check_endpoint_reachable(endpoint):
         click.echo(f"Cannot reach viewer at {endpoint}. Is it running?")
         raise SystemExit(1)
 
-    click.echo(f"Found {len(files)} trace file(s)...")
-
     imported = 0
     skipped = 0
     already_exist = 0
     errors = []
 
-    for jsonl_path in files:
-        meta = _trial_meta(jsonl_path)
-        session_id = meta["trial_name"]
-        exp = experiment or meta["experiment"]
-        bid = batch_id or meta["job_name"]
+    if eval_only:
+        trial_dirs = _trial_dirs(root)
+        if not trial_dirs:
+            click.echo(f"No Harbor trial result directories found under {path}")
+            raise SystemExit(1)
+        click.echo(f"Found {len(trial_dirs)} Harbor trial result(s)...")
+        for trial_dir in trial_dirs:
+            meta = _trial_meta_from_dir(trial_dir)
+            session_id = meta["trial_name"]
+            exp = experiment or meta["experiment"]
+            bid = batch_id or meta["job_name"]
+            resource_attrs = _harbor_resource_attrs(meta, exp, bid)
+            matched_session_id = _find_matching_live_session(endpoint, meta, exp)
+            if matched_session_id:
+                resource_attrs["session.id"] = matched_session_id
+            body = _build_eval_only_body(resource_attrs)
+            if post_traces_batch(endpoint, [body]):
+                imported += 1
+                score_str = f"{meta['score']:.3f}" if meta["score"] is not None else "n/a"
+                match_str = f" -> {matched_session_id}" if matched_session_id else ""
+                click.echo(
+                    f"  + {session_id}{match_str}  score={score_str}  task={meta['task_name']}"
+                )
+            else:
+                skipped += 1
+                errors.append(f"{session_id}: failed to post eval metadata")
+    else:
+        if not files:
+            click.echo(f"No Harbor trace files found under {path}")
+            click.echo("Expected: <job>/<trial>/artifacts/traces/*.jsonl")
+            click.echo("Tip: use --eval-only to group Harbor result metadata without trace files")
+            raise SystemExit(1)
 
-        if session_exists(endpoint, session_id):
-            click.echo(f"  ! {session_id}: already exists, skipping")
-            already_exist += 1
-            continue
+        click.echo(f"Found {len(files)} trace file(s)...")
 
-        # Attributes to inject into the OTLP resource.
-        # session.id uses the human-readable trial name rather than the
-        # opaque timestamp filename stem.
-        resource_attrs: dict[str, str | bool] = {
-            "session.id": session_id,
-            "experiment": exp,
-            "batch_id": bid,
-        }
-        if meta["task_name"]:
-            resource_attrs["eval.task_name"] = meta["task_name"]
-        if meta["agent_name"]:
-            resource_attrs["eval.agent_name"] = meta["agent_name"]
-        if meta["score"] is not None:
-            resource_attrs["eval.score"] = str(meta["score"])
-            resource_attrs["eval.passed"] = meta["score"] >= 1.0
+        for jsonl_path in files:
+            meta = _trial_meta(jsonl_path)
+            session_id = meta["trial_name"]
+            exp = experiment or meta["experiment"]
+            bid = batch_id or meta["job_name"]
 
-        file_imported, file_errors = _import_trace_file(
-            endpoint, jsonl_path, resource_attrs, batch_lines, batch_bytes
-        )
-        errors.extend(file_errors)
+            if session_exists(endpoint, session_id):
+                click.echo(f"  ! {session_id}: already exists, skipping")
+                already_exist += 1
+                continue
 
-        if file_imported:
-            imported += 1
-            score_str = f"{meta['score']:.3f}" if meta["score"] is not None else "n/a"
-            click.echo(f"  + {session_id}  score={score_str}  task={meta['task_name']}")
-        else:
-            skipped += 1
+            resource_attrs = _harbor_resource_attrs(meta, exp, bid)
+
+            file_imported, file_errors = _import_trace_file(
+                endpoint, jsonl_path, resource_attrs, batch_lines, batch_bytes
+            )
+            errors.extend(file_errors)
+
+            if file_imported:
+                imported += 1
+                score_str = f"{meta['score']:.3f}" if meta["score"] is not None else "n/a"
+                click.echo(f"  + {session_id}  score={score_str}  task={meta['task_name']}")
+            else:
+                skipped += 1
 
     click.echo(f"\n{imported} imported, {skipped} skipped, {already_exist} already existed")
     if errors:
@@ -327,4 +507,6 @@ def command(
 
     if imported:
         encoded_batch = urllib.parse.quote(bid or "", safe="")
+        encoded_exp = urllib.parse.quote(exp or "", safe="")
         click.echo(f"\nView at: {endpoint}/traces?batch_id={encoded_batch}")
+        click.echo(f"Evaluations: {endpoint}/evaluations/{encoded_exp}")

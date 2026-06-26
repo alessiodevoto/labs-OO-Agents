@@ -600,7 +600,8 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
     batch_size = sum(len(r[10]) + len(r[11]) + len(r[12]) for r in span_rows)
 
     existing = db.execute(
-        "SELECT span_count, total_size, eval_metadata FROM sessions WHERE session_id = ?",
+        """SELECT span_count, total_size, experiment, resource_attrs, eval_metadata
+           FROM sessions WHERE session_id = ?""",
         (session_id,),
     ).fetchone()
 
@@ -620,6 +621,33 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
             "total_size": new_size,
             "modified": now,
         }
+
+        # Post-processing imports may send a small eval span for a session that
+        # was streamed live earlier with only the default experiment.  Treat a
+        # non-default experiment/resource payload as enrichment for the existing
+        # session so it appears under the Evaluations tab with its full trace.
+        if experiment and experiment != "default" and experiment != existing["experiment"]:
+            updates["experiment"] = experiment
+
+        if resource_json:
+            try:
+                new_resource_attrs = otlp_attrs_to_dict(
+                    json.loads(resource_json).get("attributes", [])
+                )
+            except (json.JSONDecodeError, TypeError):
+                new_resource_attrs = {}
+            if new_resource_attrs:
+                existing_resource_attrs = {}
+                if existing["resource_attrs"]:
+                    try:
+                        existing_resource_attrs = json.loads(existing["resource_attrs"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                existing_resource_attrs.update(new_resource_attrs)
+                updates["resource_attrs"] = json.dumps(
+                    existing_resource_attrs, separators=(",", ":")
+                )
+
         if eval_passed is not None:
             updates["eval_passed"] = eval_passed
         if merged_meta:
@@ -630,6 +658,26 @@ def _ingest_one(body: dict, db: sqlite3.Connection) -> dict[str, Any]:
             f"UPDATE sessions SET {set_clause} WHERE session_id = ?",
             (*updates.values(), session_id),
         )
+
+        harbor_trial_name = merged_meta.get("harbor_trial_name")
+        if (
+            harbor_trial_name
+            and isinstance(harbor_trial_name, str)
+            and harbor_trial_name != session_id
+            and experiment
+            and experiment != "default"
+        ):
+            stale_stub = db.execute(
+                """
+                SELECT span_count FROM sessions
+                WHERE session_id = ? AND experiment = ? AND eval_metadata IS NOT NULL
+                """,
+                (harbor_trial_name, experiment),
+            ).fetchone()
+            if stale_stub and (stale_stub["span_count"] or 0) <= 2:
+                db.execute("DELETE FROM spans WHERE session_id = ?", (harbor_trial_name,))
+                db.execute("DELETE FROM sessions WHERE session_id = ?", (harbor_trial_name,))
+                db.execute("DELETE FROM spans_fts WHERE session_id = ?", (harbor_trial_name,))
     else:
         resource_attrs = None
         if resource_json:
@@ -871,6 +919,94 @@ def list_sessions(
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     rows = db.execute(f"SELECT * FROM sessions{where}", params).fetchall()
     return [_row_to_session_dict(r) for r in rows]
+
+
+def find_eval_session_for_task(
+    task_name: str,
+    *,
+    model: str | None = None,
+    started_at: float | None = None,
+    finished_at: float | None = None,
+    experiment: str = "default",
+    slop_seconds: float = 900.0,
+) -> dict[str, Any] | None:
+    """Find the live OTLP session for a Harbor trial.
+
+    Live-streamed Harbor traces historically used timestamp session IDs and
+    the default experiment, while Harbor result metadata uses trial names.
+    Match by task identifier in span content, model metadata, and trial time
+    window so eval-only imports enrich the full trace instead of creating a
+    tiny metadata-only stub session.
+    """
+    if not task_name:
+        return None
+
+    db = _get_db()
+    params: list[Any] = [experiment, f"%{task_name}%", f"%{task_name}%"]
+    model_clause = ""
+    if model:
+        model_like = f"%{model}%"
+        model_clause = """
+          AND (
+            s.resource_attrs LIKE ?
+            OR s.eval_metadata LIKE ?
+          )
+        """
+        params.extend([model_like, model_like])
+
+    rows = db.execute(
+        f"""
+        SELECT
+            s.session_id,
+            s.experiment,
+            s.span_count,
+            MIN(sp.start_time_ns) / 1000000000.0 AS first_s,
+            MAX(sp.end_time_ns) / 1000000000.0 AS last_s
+        FROM sessions s
+        JOIN spans sp ON sp.session_id = s.session_id
+        WHERE s.experiment = ?
+          AND s.span_count > 2
+          AND EXISTS (
+            SELECT 1 FROM spans hit
+            WHERE hit.session_id = s.session_id
+              AND (hit.attributes LIKE ? OR hit.events LIKE ?)
+          )
+          {model_clause}
+        GROUP BY s.session_id
+        """,
+        params,
+    ).fetchall()
+
+    best = None
+    best_score = None
+    for row in rows:
+        first_s = row["first_s"]
+        last_s = row["last_s"]
+        if first_s is None or last_s is None:
+            continue
+        if started_at is not None and last_s < started_at - slop_seconds:
+            continue
+        if finished_at is not None and first_s > finished_at + slop_seconds:
+            continue
+        if started_at is not None:
+            score = abs(first_s - started_at)
+        elif finished_at is not None:
+            score = abs(last_s - finished_at)
+        else:
+            score = -float(row["span_count"] or 0)
+        if best_score is None or score < best_score:
+            best = row
+            best_score = score
+
+    if best is None:
+        return None
+    return {
+        "session_id": best["session_id"],
+        "experiment": best["experiment"],
+        "span_count": best["span_count"],
+        "first_s": best["first_s"],
+        "last_s": best["last_s"],
+    }
 
 
 def get_session_durations_ms(session_ids: list[str]) -> dict[str, float | None]:

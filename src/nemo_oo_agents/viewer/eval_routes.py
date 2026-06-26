@@ -13,7 +13,7 @@ plus a ``metadata_keys`` list so the frontend can dynamically build columns.
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from . import otlp_store
@@ -175,6 +175,39 @@ def health_check():
         "status": "healthy",
         "experiment_count": len(otlp_store.list_experiments()),
     }
+
+
+def _parse_epoch(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/match-session")
+def match_session(
+    task_name: str = Query(..., description="Harbor task name, e.g. django__django-12345"),
+    model: str | None = Query(None, description="Model name from Harbor result metadata"),
+    started_at: str | None = Query(None, description="Harbor trial started_at timestamp or epoch"),
+    finished_at: str | None = Query(
+        None, description="Harbor trial finished_at timestamp or epoch"
+    ),
+    experiment: str = Query("default", description="Live-stream experiment to search"),
+) -> dict[str, Any]:
+    match = otlp_store.find_eval_session_for_task(
+        task_name,
+        model=model,
+        started_at=_parse_epoch(started_at),
+        finished_at=_parse_epoch(finished_at),
+        experiment=experiment,
+    )
+    return {"match": match}
 
 
 @router.get("/experiments")
