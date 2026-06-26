@@ -79,16 +79,18 @@ def test_event_explorer_renders_generic_events_as_markdown_sections() -> None:
     )[0]
 
     markdown = row.markdown or ""
-    assert "# ToolCallEvent" in markdown
-    assert "## name" in markdown
+    assert "**[12]** *ToolCallEvent*" in markdown
+    assert "_metadata:" not in markdown
+    assert "## Tool" in markdown
     assert "execute_python" in markdown
-    assert "## arguments" in markdown
-    assert "print(42)" in markdown
-    assert "## result" not in markdown
+    assert "## Python" in markdown
+    assert "```python\nprint(42)\n```" in markdown
+    assert "## Result" not in markdown
+    assert "## arguments" not in markdown
 
     plain = "\n".join(wrapped_detail_lines(row, width=80))
-    assert "# ToolCallEvent" in plain
-    assert "## arguments" in plain
+    assert "**[12]** *ToolCallEvent*" in plain
+    assert "## Python" in plain
     assert "ToolCallEvent(" not in plain
 
 
@@ -113,17 +115,20 @@ def test_event_explorer_renders_python_output_as_markdown_sections() -> None:
     )[0]
 
     assert row.markdown is not None
-    assert "# PythonOutput" in row.markdown
-    assert "## stdout" in row.markdown
-    assert "hello" in row.markdown
-    assert "world" in row.markdown
-    assert "## stderr" not in row.markdown
-    assert "## error" not in row.markdown
-    assert "## value" not in row.markdown
+    assert "**[7]** *PythonOutput* · tool=tc_1" in row.markdown
+    assert "_metadata:" in row.markdown
+    assert "tool_call_id=tc_1" in row.markdown
+    assert "## Status" in row.markdown
+    assert "`complete`" in row.markdown
+    assert "## Stdout" in row.markdown
+    assert "```text\nhello\nworld\n```" in row.markdown
+    assert "## Stderr" not in row.markdown
+    assert "## Error" not in row.markdown
+    assert "## Value" not in row.markdown
 
     plain = "\n".join(wrapped_detail_lines(row, width=80))
-    assert "# PythonOutput" in plain
-    assert "## stdout" in plain
+    assert "**[7]** *PythonOutput* · tool=tc_1" in plain
+    assert "## Stdout" in plain
     assert "PythonOutput(" not in plain
 
 
@@ -147,14 +152,14 @@ def test_event_explorer_python_output_markdown_keeps_stderr_and_error_when_prese
     )[0]
 
     markdown = row.markdown or ""
-    assert "## stdout" in markdown
-    assert "partial" in markdown
-    assert "## stderr" in markdown
-    assert "warning" in markdown
-    assert "## error" in markdown
-    assert "Traceback: boom" in markdown
-    assert "## value" in markdown
-    assert "answer" in markdown
+    assert "## Stdout" in markdown
+    assert "```text\npartial\n```" in markdown
+    assert "## Stderr" in markdown
+    assert "```text\nwarning\n```" in markdown
+    assert "## Error" in markdown
+    assert "```pytb\nTraceback: boom\n```" in markdown
+    assert "## Value" in markdown
+    assert '"answer": 42' in markdown
 
 
 def test_event_explorer_python_output_markdown_code_blocks_render_formatted() -> None:
@@ -180,6 +185,42 @@ def test_event_explorer_python_output_markdown_code_blocks_render_formatted() ->
     assert "for i in range(3):" in stripped
     assert "print(i)" in stripped
     assert "\x1b[" in rendered
+
+
+def test_event_explorer_uses_compact_header_and_metadata_footer() -> None:
+    """Compact header shows tag/type/date/short-ids; noise fields go to a metadata footer."""
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "42",
+                    _FakeEvent(
+                        "Task",
+                        id="abc",
+                        timestamp="2026-01-02T03:04:05Z",
+                        metadata={"call_id": "c1", "model": "m"},
+                        images=[{"url": "file://large.png"}],
+                        prompt="Do the work",
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    header = markdown.splitlines()[0]
+    footer = markdown.rsplit("\n", 1)[-1]
+
+    assert header.startswith("**[42]** *Task* · 2026-01-02 03:04:05 · id=abc")
+    assert "call=c1" in header
+    assert "## Prompt" in markdown
+    assert "Do the work" in markdown
+    assert "---" in markdown
+    assert footer.startswith("_metadata: id=abc · timestamp=")
+    assert "metadata=" in footer
+    assert "images=" in footer
+    assert "## metadata" not in markdown.lower()
+    assert "## images" not in markdown.lower()
 
 
 def test_event_explorer_python_output_markdown_escapes_terminal_controls() -> None:
@@ -232,6 +273,52 @@ def test_event_explorer_existing_markdown_fenced_code_still_renders_formatted() 
     assert "for i in range(3):" in stripped
     assert "print(i)" in stripped
     assert "\x1b[" in rendered
+
+
+def test_event_explorer_renders_llm_output_as_syntax_highlighted_code() -> None:
+    """LLMOutput events render their content as syntax-highlighted code blocks."""
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [("6", _FakeEvent("LLMOutput", content="def f():\n    return 1"))]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    rendered = "\n".join(highlighted_detail_lines(row, width=70))
+    stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", rendered)
+
+    assert "## LLM output" in markdown
+    assert "```python" in markdown
+    assert "def f():" in stripped
+    assert "\x1b[" in rendered
+
+
+def test_event_explorer_renders_summary_as_readable_markdown() -> None:
+    """Summary events show summary text inline and compact range/children metadata."""
+    row = build_event_rows(
+        SimpleNamespace(
+            items=lambda: [
+                (
+                    "1..5",
+                    _FakeEvent(
+                        "Summary",
+                        summary_tag="1..5",
+                        children_tags=["1", "2", "3", "4", "5"],
+                        summary_text="User asked for a renderer and the agent implemented it.",
+                    ),
+                )
+            ]
+        )
+    )[0]
+
+    markdown = row.markdown or ""
+    plain = "\n".join(wrapped_detail_lines(row, width=90))
+
+    assert "**[1..5]** *Summary*" in markdown
+    assert "children_tags=" in markdown.rsplit("\n", 1)[-1]
+    assert "User asked for a renderer" in plain
+    assert "Summary Tag" in plain
+    assert "Summary(" not in plain
 
 
 def test_event_explorer_navigation_and_rendering() -> None:
@@ -579,8 +666,10 @@ def test_event_explorer_renders_execute_python_event_as_formatted_markdown() -> 
     joined = "\n".join(lines)
     stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
     assert "ToolCallEvent" in stripped
-    assert "name" in stripped
-    assert "arguments" in stripped
+    assert "[2]" in stripped
+    assert "Tool" in stripped
+    assert "execute_python" in stripped
+    assert "Python" in stripped
     assert "print" in stripped
     assert "event:" not in stripped
     assert "ToolCallEvent(" not in stripped
@@ -607,7 +696,7 @@ def test_event_explorer_renders_fenced_code_fields_as_formatted_markdown() -> No
     joined = "\n".join(lines)
     stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
     assert "AgentMessage" in stripped
-    assert "content" in stripped
+    assert "before" in stripped
     assert "```" not in stripped
     assert "value = 42" in stripped
     assert "print(value)" in stripped
@@ -653,9 +742,12 @@ def test_event_explorer_highlights_markdown_event_detail() -> None:
     plain = __import__("re").sub(r"\x1b\[[0-9;]*m", "", joined)
 
     assert "event:" not in joined
+    assert "\x1b[1;38;5;230;48;5;238m" in joined
     assert "\x1b[" in joined
+    assert "[1] TUIUserInput" in plain
     assert "TUIUserInput" in plain
-    assert "text" in plain
+    assert "User input" in plain
+    assert "text=" not in plain
     assert "TUIUserInput(" not in plain
     assert "hello" in plain
 
@@ -679,17 +771,19 @@ def test_event_explorer_renders_tui_agent_message_as_event_markdown() -> None:
     assert row.code is not None
 
     plain = "\n".join(wrapped_detail_lines(row, width=50))
-    assert "# TUIAgentMessage" in plain
-    assert "## content" in plain
+    assert "**[5]** *TUIAgentMessage*" in plain
+    assert "_metadata:" not in plain
     assert "# Answer" in plain
+    assert "## content" not in plain
     assert "TUIAgentMessage(" not in plain
     assert "event:" not in plain
 
     highlighted = "\n".join(highlighted_detail_lines(row, width=50))
     stripped = __import__("re").sub(r"\x1b\[[0-9;]*m", "", highlighted)
     assert "TUIAgentMessage" in stripped
-    assert "content" in stripped
+    assert "[5]" in stripped
     assert "Answer" in stripped
+    assert "content=" not in stripped
     assert "TUIAgentMessage(" not in stripped
     assert "event:" not in stripped
 
