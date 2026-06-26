@@ -154,6 +154,11 @@ async def _stop_litellm_worker() -> None:
         pass
 
 
+def _short_exception_message(exc: BaseException) -> str:
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+    return text[:160]
+
+
 class TUIApplication:
     """Owns a single, long-lived ``prompt_toolkit.Application`` for the TUI."""
 
@@ -278,6 +283,8 @@ class TUIApplication:
         # via await self.user_messages.get()". The latter case had the
         # spinner stop while the agent was genuinely working.
         self._in_respond: bool = False
+        self._keep_going_tasks: set[asyncio.Task] = set()
+        self._keep_going_generation: int = 0
 
         # Single producer-many-consumers path for transcript content:
         # emit_block() enqueues one ANSI chunk; a single background task
@@ -1153,39 +1160,57 @@ class TUIApplication:
                 self._on_dispatcher_dequeued()
                 continue
 
+            keep_going_enabled, keep_going_model = self._keep_going_state(agent)
+            if keep_going_enabled and str(result.kind) == "DONE":
+                if keep_going_model:
+                    generation = self._keep_going_generation
+                    task = asyncio.create_task(
+                        self._run_keep_going_audit(agent, result, keep_going_model, generation),
+                        name="keep-going-audit",
+                    )
+                    self._keep_going_tasks.add(task)
+                    task.add_done_callback(self._keep_going_tasks.discard)
+                    logger.info("[DISPATCHER] keep-going audit scheduled")
+                else:
+                    logger.warning("keep-going enabled without keep_going_model; audit skipped")
+                    await self._emit_structured_output(
+                        StopReasonOutput(
+                            "KEEP_GOING",
+                            "disabled: configure a model with /keep-going model <model-id>",
+                        )
+                    )
+
             if result_explanation:
                 await self._emit_structured_output(
                     StopReasonOutput(result.kind, result_explanation)
                 )
 
-            # DONE/NEED_INPUT wait specifically for the next user message.
-            # WAIT races every declared queue/event channel.
-            if str(result.kind) in {"DONE", "NEED_INPUT", "GET_USER_INPUT"}:
-                items = [("user_messages", await user_messages_in.get())]
-            else:
-                # Show running background jobs while waiting for the next event.
-                running = [h for h in qm._handles if h.state == "running"]
-                if running:
-                    now = datetime.datetime.now().strftime("%H:%M:%S")
-                    lines = "".join(f"  ⠿ {h.label}\n" for h in running)
-                    self.emit_block(
-                        f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
-                    )
+            # Every stop reason uses the same dispatcher wake path: race all
+            # declared channels/events and re-enter with the first arrival.
+            # ``kind`` explains why the agent stopped; it does not select a
+            # different queue primitive.
+            running = [h for h in qm._handles if h.state == "running"]
+            if running:
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                lines = "".join(f"  ⠿ {h.label}\n" for h in running)
+                self.emit_block(
+                    f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
+                )
 
-                # Race all channels for the next item(s). Returns
-                # [(name, item)] for queue-mode winners or [] for
-                # event-triggered wakes (events already in the prompt).
-                try:
-                    items = await qm.race()
-                except ValueError:
-                    return
-                # Show which job(s) fired.
-                if running and items:
-                    now = datetime.datetime.now().strftime("%H:%M:%S")
-                    fired_names = {name for name, _ in items}
-                    fired = [h for h in running if h.name in fired_names]
-                    for h in fired:
-                        self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
+            # Race all channels for the next item(s). Returns
+            # [(name, item)] for queue-mode winners or [] for
+            # event-triggered wakes (events already in the prompt).
+            try:
+                items = await qm.race()
+            except ValueError:
+                return
+            # Show which job(s) fired.
+            if running and items:
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                fired_names = {name for name, _ in items}
+                fired = [h for h in running if h.name in fired_names]
+                for h in fired:
+                    self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
 
             # Drain all pending items across all channels, grouped by name.
             pending: dict[str, list] = {}
@@ -1197,6 +1222,8 @@ class TUIApplication:
                         val = ch._items.popleft()
                         ch._fire_on_get(val)
                         pending.setdefault(ch.name, []).append(val)
+            if "user_messages" in pending or "slash_commands" in pending:
+                self._invalidate_keep_going_audits()
             self._in_respond = True
             self._on_dispatcher_dequeued()
             notification = pending
@@ -1216,6 +1243,76 @@ class TUIApplication:
         display_text = getattr(output, "display_text", None)
         if callable(display_text):
             self.emit_block(f"\x1b[2m{display_text()}\x1b[0m\n")
+
+    def _keep_going_state(self, agent: Any) -> tuple[bool, str | None]:
+        vars_obj = getattr(agent, "vars", None)
+        if vars_obj is not None and "tui_keep_going" in vars_obj:
+            enabled = bool(vars_obj.get("tui_keep_going"))
+        else:
+            enabled = bool(
+                self._config is not None
+                and getattr(getattr(self._config, "tui", None), "keep_going", False)
+            )
+
+        if vars_obj is not None and "tui_keep_going_model" in vars_obj:
+            value = vars_obj.get("tui_keep_going_model")
+        else:
+            value = getattr(getattr(self._config, "tui", None), "keep_going_model", None)
+        model = str(value).strip() if value is not None else ""
+        if not model or model.lower() == "none":
+            model = ""
+        return enabled, model or None
+
+    def _invalidate_keep_going_audits(self) -> None:
+        self._keep_going_generation += 1
+        for task in list(self._keep_going_tasks):
+            task.cancel()
+
+    async def _run_keep_going_audit(
+        self, agent: Any, result: Any, model: str, generation: int
+    ) -> None:
+        """Audit DONE in the background and queue a current system continuation if needed."""
+        from .output import StopReasonOutput
+
+        try:
+            from .keep_going import build_keep_going_prompt
+
+            keep_going_prompt = await build_keep_going_prompt(agent, result, model=model)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if generation != self._keep_going_generation:
+                return
+            message = _short_exception_message(exc)
+            logger.warning("keep-going audit failed: %s", message)
+            await self._emit_structured_output(
+                StopReasonOutput(
+                    "KEEP_GOING",
+                    f"judge failed: {message}; use /keep-going off or /keep-going model <model-id>",
+                )
+            )
+            return
+        if not keep_going_prompt or generation != self._keep_going_generation:
+            return
+        enabled, current_model = self._keep_going_state(agent)
+        if not enabled or current_model != model:
+            return
+
+        prompt_text = getattr(keep_going_prompt, "prompt", keep_going_prompt)
+        display_reason = getattr(keep_going_prompt, "display_reason", "continuing unfinished work")
+        if display_reason:
+            await self._emit_structured_output(StopReasonOutput("KEEP_GOING", str(display_reason)))
+
+        system_messages_in = getattr(agent, "_system_messages_in", None)
+        if system_messages_in is not None:
+            system_messages_in.put(str(prompt_text))
+            logger.info("[DISPATCHER] keep-going queued system continuation prompt")
+            return
+
+        user_messages_in = getattr(agent, "_user_messages_in", None)
+        if user_messages_in is not None:
+            user_messages_in.put(str(prompt_text))
+            logger.info("[DISPATCHER] keep-going queued fallback user continuation prompt")
 
     def _on_dispatcher_dequeued(self) -> None:
         """React to a just-dequeued item: redraw queue pane, restart spinner.

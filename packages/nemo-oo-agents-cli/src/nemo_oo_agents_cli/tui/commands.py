@@ -1164,6 +1164,100 @@ class GoalModeCommand(Command):
         return CommandResult.ok(TextOutput("Goal mode disabled.", "success"))
 
 
+class KeepGoingCommand(Command):
+    """Toggle keep-going mode: audit DONE results and continue when unfinished."""
+
+    _VAR_KEY = "tui_keep_going"
+    _MODEL_VAR_KEY = "tui_keep_going_model"
+
+    @property
+    def name(self) -> str:
+        return "keep-going"
+
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        state = "on" if self._enabled() else "off"
+        model = self._model() or "not configured"
+        return {
+            "/keep-going [on|off]": f"Toggle keep-going mode (currently {state}; model: {model})",
+            "/keep-going model <name>": f"Set keep-going auditor model (currently {model})",
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if not args:
+            return True, None
+        subcmd = args[0].lower()
+        if subcmd in {"on", "off"} and len(args) == 1:
+            return True, None
+        if subcmd == "model" and len(args) == 2 and args[1].strip():
+            return True, None
+        return False, "Usage: /keep-going [on|off] or /keep-going model <name>"
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args:
+            state = "on" if self._enabled() else "off"
+            model = self._model() or "not configured"
+            return CommandResult.ok(TextOutput(f"Keep-going mode: {state}; model: {model}", "info"))
+
+        if args[0].lower() == "model":
+            model = args[1].strip()
+            self.config.keep_going_model = model
+            vars_obj = getattr(self.agent, "vars", None)
+            if vars_obj is not None:
+                vars_obj[self._MODEL_VAR_KEY] = model
+            self._persist_tui_setting("keep_going_model", model)
+            return CommandResult.ok(TextOutput(f"Keep-going model set to {model}.", "success"))
+
+        enabled = args[0].lower() == "on"
+        if enabled and not self._model():
+            return CommandResult.err(
+                "Keep-going model is not configured. Run /keep-going model <model-id> first."
+            )
+        self.config.keep_going = enabled
+        vars_obj = getattr(self.agent, "vars", None)
+        if vars_obj is not None:
+            vars_obj[self._VAR_KEY] = enabled
+        self._persist_tui_setting("keep_going", enabled)
+        state = "enabled" if enabled else "disabled"
+        return CommandResult.ok(TextOutput(f"Keep-going mode {state}.", "success"))
+
+    def _enabled(self) -> bool:
+        vars_obj = getattr(self.agent, "vars", None)
+        if vars_obj is not None and self._VAR_KEY in vars_obj:
+            return bool(vars_obj.get(self._VAR_KEY))
+        return bool(getattr(self.config, "keep_going", False))
+
+    def _model(self) -> str | None:
+        vars_obj = getattr(self.agent, "vars", None)
+        if vars_obj is not None and self._MODEL_VAR_KEY in vars_obj:
+            value = vars_obj.get(self._MODEL_VAR_KEY)
+        else:
+            value = getattr(self.config, "keep_going_model", None)
+        if value is None:
+            return None
+        model = str(value).strip()
+        return model or None
+
+    def _persist_tui_setting(self, key: str, value: object) -> None:
+        import yaml
+
+        from nemo_oo_agents.paths import get_project_dir
+
+        path = get_project_dir("settings.yaml")
+        data: dict[str, Any] = {}
+        if path.exists():
+            loaded = yaml.safe_load(path.read_text())
+            if isinstance(loaded, dict):
+                data = loaded
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        tui = data.get("tui")
+        if not isinstance(tui, dict):
+            tui = {}
+            data["tui"] = tui
+        tui[key] = value
+        path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+
 class ToolbarCommand(Command):
     """Configure the toolbar (rule above the input area).
 
@@ -2397,6 +2491,7 @@ class CommandRegistry:
         "todo": TodoCommand,
         "python": PythonCommand,
         "goal-mode": GoalModeCommand,
+        "keep-going": KeepGoingCommand,
         "session": SessionCommand,
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,

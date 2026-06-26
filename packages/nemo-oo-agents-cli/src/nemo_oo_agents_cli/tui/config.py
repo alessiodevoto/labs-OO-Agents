@@ -117,6 +117,12 @@ class TUIConfig(BaseModel):
     # Goal mode: when on, unresolved todos auto-feed the agent after each turn
     goal_mode: bool = False
 
+    # Keep-going mode: when on, audit DONE results and internally re-prompt if unfinished
+    keep_going: bool = False
+
+    # Model used by the keep-going stop-reason auditor. Required before /keep-going on.
+    keep_going_model: str | None = None
+
     # Custom toolbar Python snippet (evaluated each render to produce label text).
     # Available vars: datetime, config, model, short_model, time, agent.
     toolbar_snippet: str | None = None
