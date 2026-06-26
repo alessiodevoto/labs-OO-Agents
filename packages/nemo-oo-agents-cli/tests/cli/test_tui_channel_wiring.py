@@ -16,9 +16,11 @@ These don't spin up a real LLM — they verify the plumbing:
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 from nemo_oo_agents_cli.tui.agent import TUIAgent
+from nemo_oo_agents_cli.tui.keep_going import KeepGoingDecision
 from nemo_oo_agents_cli.tui.tui_application import DispatcherExit, TUIApplication
 
 from nemo_oo_agents.runtime.channels import Channel, _ChannelReader
@@ -369,23 +371,402 @@ def test_second_message_does_not_spawn_second_dispatcher():
     asyncio.run(_run())
 
 
-def test_dispatcher_wait_kind_races_all_declared_channels():
-    """kind="WAIT" should race every queue-mode channel registered on
-    the agent's ``QueueManager`` and re-enter handle() with whichever
-    fires first."""
+def test_tui_agent_has_system_messages_queue():
+    """Base TUI agents expose system_messages for TUI-owned internal prompts."""
 
     agent = _fresh_agent()
-    # Subclass-style: declare a second queue-mode channel via the manager.
-    agent._jobs_in = agent.queue_manager.queue("job_outputs")
-    agent.job_outputs = agent._jobs_in.reader
-    app = TUIApplication(agent=agent)
+
+    assert isinstance(agent._system_messages_in, Channel)
+    assert agent._system_messages_in.name == "system_messages"
+    assert isinstance(agent.system_messages, _ChannelReader)
+    assert agent.system_messages.name == "system_messages"
+    assert "system_messages" in agent.queue_manager.names()
+
+
+def test_dispatcher_keep_going_queues_assistant_message_before_waiting(monkeypatch):
+    """When /keep-going is on, a DONE audit prompt arrives via system_messages."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = True
+    config.tui.keep_going_model = "test-keep-going-model"
+    app = TUIApplication(agent=agent, config=config)
 
     calls: list[dict] = []
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        assert agent_arg is agent
+        assert result.kind == "DONE"
+        assert model == "test-keep-going-model"
+        return SimpleNamespace(prompt="[keep-going] continue", display_reason="open todo remains")
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
 
     async def _respond(notification):
         calls.append(notification)
         if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"system_messages": ["[keep-going] continue"]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_keep_going_uses_agent_sticky_var(monkeypatch):
+    """A restored agent sticky var can enable keep-going even when config default is off."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    agent.vars["tui_keep_going"] = True
+    agent.vars["tui_keep_going_model"] = "sticky-model"
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = False
+    app = TUIApplication(agent=agent, config=config)
+
+    calls: list[dict] = []
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        assert model == "sticky-model"
+        return SimpleNamespace(
+            prompt="[keep-going] sticky continue", display_reason="sticky work remains"
+        )
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"system_messages": ["[keep-going] sticky continue"]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_keep_going_audit_does_not_block_next_user_message(monkeypatch):
+    """A slow keep-going audit is background work; the next user message is handled immediately."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = True
+    config.tui.keep_going_model = "slow-audit-model"
+    app = TUIApplication(agent=agent, config=config)
+
+    calls: list[dict] = []
+    audit_started = asyncio.Event()
+    release_audit = asyncio.Event()
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        assert model == "slow-audit-model"
+        audit_started.set()
+        await release_audit.wait()
+        return SimpleNamespace(
+            prompt="[keep-going] delayed continue", display_reason="delayed audit"
+        )
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        await asyncio.wait_for(audit_started.wait(), timeout=0.5)
+        app.submit_message("second")
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls == [{"user_messages": ["first"]}, {"user_messages": ["second"]}]
+        release_audit.set()
+        for task in list(app._keep_going_tasks):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_discards_stale_keep_going_audit_after_new_user_message(monkeypatch):
+    """A previous DONE audit must not enqueue a stale system prompt after a newer user turn."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = True
+    config.tui.keep_going_model = "slow-audit-model"
+    app = TUIApplication(agent=agent, config=config)
+
+    calls: list[dict] = []
+    audit_started = asyncio.Event()
+    release_audit = asyncio.Event()
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        audit_started.set()
+        await release_audit.wait()
+        return SimpleNamespace(prompt="[keep-going] stale", display_reason="stale audit")
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        if len(calls) == 2:
             return _DispatchResult(kind="WAIT")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        await asyncio.wait_for(audit_started.wait(), timeout=0.5)
+        app.submit_message("second")
+        for _ in range(50):
+            if len(calls) >= 2:
+                break
+            await asyncio.sleep(0)
+        assert calls == [{"user_messages": ["first"]}, {"user_messages": ["second"]}]
+        release_audit.set()
+        await asyncio.sleep(0.05)
+        assert calls == [{"user_messages": ["first"]}, {"user_messages": ["second"]}]
+        app._agent_task.cancel()
+        try:
+            await app._agent_task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+
+def test_keep_going_judge_output_type_is_minimal():
+    """The judge output stays simple so small models are less likely to emit invalid JSON."""
+
+    assert set(KeepGoingDecision.model_fields) == {"should_reprompt", "reason", "next_action"}
+
+
+def test_build_keep_going_prompt_shapes_reason_and_next_action(monkeypatch):
+    """Prompt builder turns a minimal judge decision into system prompt + one-line reason."""
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+
+    async def fake_judge_keep_going(**kwargs):
+        assert kwargs["model"] == "audit-model"
+        return KeepGoingDecision(
+            should_reprompt=True,
+            reason="open todos remain",
+            next_action="Finish the open todos.",
+        )
+
+    monkeypatch.setattr(keep_going_mod, "judge_keep_going", fake_judge_keep_going)
+
+    async def _run():
+        prompt = await keep_going_mod.build_keep_going_prompt(
+            agent, _DispatchResult(kind="DONE"), model="audit-model"
+        )
+        assert prompt is not None
+        assert prompt.display_reason == "open todos remain"
+        assert "Reason: open todos remain" in prompt.prompt
+        assert "Next action: Finish the open todos." in prompt.prompt
+
+    asyncio.run(_run())
+
+
+def test_build_keep_going_prompt_skips_false_decision(monkeypatch):
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+
+    async def fake_judge_keep_going(**kwargs):
+        return KeepGoingDecision(should_reprompt=False)
+
+    monkeypatch.setattr(keep_going_mod, "judge_keep_going", fake_judge_keep_going)
+
+    async def _run():
+        assert (
+            await keep_going_mod.build_keep_going_prompt(agent, _DispatchResult(kind="DONE"))
+            is None
+        )
+
+    asyncio.run(_run())
+
+
+def test_build_keep_going_prompt_skips_non_done_result():
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    async def _run():
+        assert (
+            await keep_going_mod.build_keep_going_prompt(
+                _fresh_agent(), _DispatchResult(kind="NEED_INPUT")
+            )
+            is None
+        )
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_keep_going_audit_failure_is_user_visible(monkeypatch):
+    """If structured-output parsing fails, show a one-line keep-going failure instead of only logging."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = True
+    config.tui.keep_going_model = "broken-audit-model"
+    outputs: list[Any] = []
+    app = TUIApplication(agent=agent, config=config, on_output=outputs.append)
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        raise RuntimeError("Structured output validation failed after 2 attempts.")
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        if len(outputs) == 0:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if len(outputs) >= 2:
+                break
+        assert any(
+            getattr(output, "display_text", lambda: "")()
+            == "∴ keep going: judge failed: Structured output validation failed after 2 attempts.; use /keep-going off or /keep-going model <model-id>"
+            for output in outputs
+        )
+        app._agent_task.cancel()
+        try:
+            await app._agent_task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_keep_going_enabled_without_model_does_not_audit(monkeypatch):
+    """Layered config can enable keep-going with null model; dispatcher should not call model 'None'."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = True
+    config.tui.keep_going_model = None
+    outputs: list[Any] = []
+    app = TUIApplication(agent=agent, config=config, on_output=outputs.append)
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        raise AssertionError("keep-going audit should not run without a configured model")
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        return _DispatchResult(kind="DONE")
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if outputs:
+                break
+        assert any(
+            getattr(output, "display_text", lambda: "")()
+            == "∴ keep going: disabled: configure a model with /keep-going model <model-id>"
+            for output in outputs
+        )
+        app._agent_task.cancel()
+        try:
+            await app._agent_task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_keep_going_off_does_not_audit(monkeypatch):
+    """When /keep-going is off, DONE proceeds to the unified queue race."""
+
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui import keep_going as keep_going_mod
+
+    agent = _fresh_agent()
+    agent._jobs_in = agent.queue_manager.queue("job_outputs")
+    agent.job_outputs = agent._jobs_in.reader
+    config = MagicMock()
+    config.tui = MagicMock()
+    config.tui.goal_mode = False
+    config.tui.keep_going = False
+    app = TUIApplication(agent=agent, config=config)
+
+    calls: list[dict] = []
+
+    async def fake_build_keep_going_prompt(agent_arg, result, *, model):
+        raise AssertionError("keep-going audit should not run when disabled")
+
+    monkeypatch.setattr(keep_going_mod, "build_keep_going_prompt", fake_build_keep_going_prompt)
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
         raise DispatcherExit()
 
     object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
@@ -395,7 +776,97 @@ def test_dispatcher_wait_kind_races_all_declared_channels():
         for _ in range(5):
             await asyncio.sleep(0)
         agent._jobs_in.put({"id": 7})
-        await app._agent_task
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"job_outputs": [{"id": 7}]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_done_wakes_on_dynamically_registered_queue():
+    """Dynamically registered queues participate in the unified wake path."""
+
+    agent = _fresh_agent()
+    agent._internal_prompts_in = agent.queue_manager.queue("internal_prompts")
+    agent.internal_prompts = agent._internal_prompts_in.reader
+    app = TUIApplication(agent=agent)
+
+    calls: list[dict] = []
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(5):
+            await asyncio.sleep(0)
+        agent._internal_prompts_in.put("continue internally")
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"internal_prompts": ["continue internally"]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_need_input_wakes_on_dynamically_registered_queue():
+    """NEED_INPUT uses the same queue race path as every other stop reason."""
+
+    agent = _fresh_agent()
+    agent._internal_prompts_in = agent.queue_manager.queue("internal_prompts")
+    agent.internal_prompts = agent._internal_prompts_in.reader
+    app = TUIApplication(agent=agent)
+
+    calls: list[dict] = []
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="NEED_INPUT")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(5):
+            await asyncio.sleep(0)
+        agent._internal_prompts_in.put("clarify internally")
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[0] == {"user_messages": ["first"]}
+        assert calls[1] == {"internal_prompts": ["clarify internally"]}
+
+    asyncio.run(_run())
+
+
+def test_dispatcher_done_wakes_on_job_queue_via_unified_race_path():
+    """DONE uses the same QueueManager.race wake path as other stop reasons."""
+
+    agent = _fresh_agent()
+    agent._jobs_in = agent.queue_manager.queue("job_outputs")
+    agent.job_outputs = agent._jobs_in.reader
+    app = TUIApplication(agent=agent)
+
+    calls: list[dict] = []
+
+    async def _respond(notification):
+        calls.append(notification)
+        if len(calls) == 1:
+            return _DispatchResult(kind="DONE")
+        raise DispatcherExit()
+
+    object.__setattr__(agent, "handle", _respond)  # bypass guard for test mock
+
+    async def _run():
+        app.submit_message("first")
+        for _ in range(5):
+            await asyncio.sleep(0)
+        agent._jobs_in.put({"id": 7})
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
         assert calls[0] == {"user_messages": ["first"]}
         assert calls[1] == {"job_outputs": [{"id": 7}]}
 
@@ -468,6 +939,10 @@ def test_dispatcher_awaits_async_stop_reason_output_callback():
         app.submit_message("first")
         await asyncio.wait_for(callback_finished.wait(), timeout=0.5)
         assert outputs[0].display_text() == "∴ need input: need user approval"
+        for _ in range(20):
+            if agent._user_messages_in.has_waiters():
+                break
+            await asyncio.sleep(0)
         assert agent._user_messages_in.has_waiters()
         app._agent_task.cancel()
         try:
@@ -478,8 +953,8 @@ def test_dispatcher_awaits_async_stop_reason_output_callback():
     asyncio.run(_run())
 
 
-def test_dispatcher_done_waits_for_user_messages_only():
-    """DONE waits for the next user message instead of racing job queues."""
+def test_dispatcher_done_uses_unified_race_path_for_job_queues():
+    """DONE is a stop reason, not a special user-message-only wait path."""
 
     agent = _fresh_agent()
     agent._jobs_in = agent.queue_manager.queue("job_outputs")
@@ -501,13 +976,8 @@ def test_dispatcher_done_waits_for_user_messages_only():
         for _ in range(20):
             await asyncio.sleep(0)
         agent._jobs_in.put({"id": 7})
-        for _ in range(20):
-            await asyncio.sleep(0)
-        assert len(calls) == 1
-
-        app.submit_message("second")
-        await app._agent_task
-        assert calls[1] == {"user_messages": ["second"], "job_outputs": [{"id": 7}]}
+        await asyncio.wait_for(app._agent_task, timeout=1.0)
+        assert calls[1] == {"job_outputs": [{"id": 7}]}
 
     asyncio.run(_run())
 

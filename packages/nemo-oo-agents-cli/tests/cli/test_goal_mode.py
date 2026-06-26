@@ -6,7 +6,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
-from nemo_oo_agents_cli.tui.commands import GoalModeCommand
+from nemo_oo_agents_cli.tui.commands import GoalModeCommand, KeepGoingCommand
 from nemo_oo_agents_cli.tui.output import TextOutput
 
 pytestmark = pytest.mark.asyncio
@@ -29,6 +29,8 @@ def mock_frontend():
 def mock_config():
     config = MagicMock()
     config.goal_mode = False
+    config.keep_going = False
+    config.keep_going_model = None
     config.default_model = "test-model"
     return config
 
@@ -86,6 +88,125 @@ class TestGoalModeCommand:
     def test_validate_good(self, goal_cmd):
         for sub in ("on", "off"):
             ok, msg = goal_cmd.validate_args([sub])
+            assert ok
+            assert msg is None
+
+
+@pytest.fixture
+def keep_going_cmd(mock_frontend, mock_config, mock_agent):
+    return KeepGoingCommand(mock_frontend, mock_config, mock_agent)
+
+
+class TestKeepGoingCommand:
+    """Test /keep-going on|off|status."""
+
+    async def test_status_off(self, keep_going_cmd, mock_config):
+        mock_config.keep_going = False
+        result = await keep_going_cmd.execute([])
+        assert result.success
+        assert any("off" in o.content for o in result.outputs if isinstance(o, TextOutput))
+
+    async def test_status_prefers_agent_sticky_var(self, keep_going_cmd, mock_config, mock_agent):
+        mock_config.keep_going = False
+        mock_agent.vars = {"tui_keep_going": True}
+        result = await keep_going_cmd.execute([])
+        assert result.success
+        assert any("on" in o.content for o in result.outputs if isinstance(o, TextOutput))
+
+    async def test_status_on(self, keep_going_cmd, mock_config):
+        mock_config.keep_going = True
+        result = await keep_going_cmd.execute([])
+        assert result.success
+        assert any("on" in o.content for o in result.outputs if isinstance(o, TextOutput))
+
+    async def test_turn_on_fails_without_model(self, keep_going_cmd, mock_config):
+        mock_config.keep_going = False
+        mock_config.keep_going_model = None
+        result = await keep_going_cmd.execute(["on"])
+        assert not result.success
+        assert any(
+            "model is not configured" in o.content
+            for o in result.outputs
+            if isinstance(o, TextOutput)
+        )
+        assert mock_config.keep_going is False
+
+    async def test_turn_on(self, keep_going_cmd, mock_config, monkeypatch, tmp_path):
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        mock_config.keep_going = False
+        mock_config.keep_going_model = "audit-model"
+        result = await keep_going_cmd.execute(["on"])
+        assert result.success
+        assert mock_config.keep_going is True
+
+    async def test_turn_on_sets_agent_sticky_var(
+        self, keep_going_cmd, mock_config, mock_agent, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        mock_config.keep_going_model = "audit-model"
+        mock_agent.vars = {}
+        result = await keep_going_cmd.execute(["on"])
+        assert result.success
+        assert mock_agent.vars["tui_keep_going"] is True
+
+    async def test_turn_off(self, keep_going_cmd, mock_config, monkeypatch, tmp_path):
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        mock_config.keep_going = True
+        result = await keep_going_cmd.execute(["off"])
+        assert result.success
+        assert mock_config.keep_going is False
+
+    def test_validate_no_args(self, keep_going_cmd):
+        ok, msg = keep_going_cmd.validate_args([])
+        assert ok
+
+    async def test_set_model(self, keep_going_cmd, mock_config, mock_agent, monkeypatch, tmp_path):
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        mock_agent.vars = {}
+        result = await keep_going_cmd.execute(["model", "audit-model"])
+        assert result.success
+        assert mock_config.keep_going_model == "audit-model"
+        assert mock_agent.vars["tui_keep_going_model"] == "audit-model"
+
+    async def test_settings_file_persists_model_and_enabled(
+        self, keep_going_cmd, mock_config, monkeypatch, tmp_path
+    ):
+        import yaml
+
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        await keep_going_cmd.execute(["model", "audit-model"])
+        await keep_going_cmd.execute(["on"])
+        settings = yaml.safe_load((tmp_path / "settings.yaml").read_text())
+        assert settings["tui"]["keep_going_model"] == "audit-model"
+        assert settings["tui"]["keep_going"] is True
+
+    async def test_settings_persistence_repairs_non_mapping_tui_section(
+        self, keep_going_cmd, mock_config, monkeypatch, tmp_path
+    ):
+        import yaml
+
+        monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(tmp_path))
+        (tmp_path / "settings.yaml").write_text("tui: broken\n")
+        result = await keep_going_cmd.execute(["model", "audit-model"])
+        assert result.success
+        settings = yaml.safe_load((tmp_path / "settings.yaml").read_text())
+        assert settings["tui"] == {"keep_going_model": "audit-model"}
+
+    async def test_status_prefers_agent_sticky_model(self, keep_going_cmd, mock_config, mock_agent):
+        mock_config.keep_going_model = "config-model"
+        mock_agent.vars = {"tui_keep_going_model": "sticky-model"}
+        result = await keep_going_cmd.execute([])
+        assert result.success
+        assert any("sticky-model" in o.content for o in result.outputs if isinstance(o, TextOutput))
+
+    def test_validate_bad_subcmd(self, keep_going_cmd):
+        ok, msg = keep_going_cmd.validate_args(["maybe"])
+        assert not ok
+        assert "Usage" in msg
+
+    def test_validate_good(self, keep_going_cmd):
+        for args in (["on"], ["off"], ["model", "audit-model"]):
+            ok, msg = keep_going_cmd.validate_args(args)
             assert ok
             assert msg is None
 

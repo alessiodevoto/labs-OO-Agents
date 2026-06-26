@@ -184,3 +184,27 @@ class TestMentionKeyBindings:
         displays = [c.display_text for c in buf.complete_state.completions]
         assert any("alpha.md" in d for d in displays), displays
         assert any("beta.md" in d for d in displays), displays
+
+
+class TestKeepGoingModelCompletion:
+    def test_keep_going_model_completion_uses_model_registry(self, monkeypatch):
+        from nemo_oo_agents_cli.tui.completer import Completer
+
+        import nemo_oo_agents.unifiedllm as unifiedllm
+
+        monkeypatch.setattr(
+            unifiedllm,
+            "MODELS",
+            {"audit-alpha": object(), "audit-beta": object(), "other": object()},
+        )
+        registry = MagicMock()
+        registry.get_completions.return_value = {}
+        items = Completer(registry).complete("/keep-going model audit-")
+        assert [item.text for item in items] == [
+            "/keep-going model audit-alpha",
+            "/keep-going model audit-beta",
+        ]
+        assert [item.description for item in items] == [
+            "Use audit-alpha as keep-going auditor",
+            "Use audit-beta as keep-going auditor",
+        ]

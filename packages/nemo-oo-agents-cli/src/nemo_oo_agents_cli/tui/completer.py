@@ -105,7 +105,11 @@ class Completer:
             return self._theme_completions(text)
 
         # Model completion
-        if lower.startswith("/switch ") or lower.startswith("/model "):
+        if (
+            lower.startswith("/switch ")
+            or lower.startswith("/model ")
+            or lower.startswith("/keep-going model ")
+        ):
             return self._model_completions(text)
 
         # Skill ID completion for /skills activate and /skills deactivate
@@ -216,8 +220,18 @@ class Completer:
 
         # Detect which command triggered this
         lower = text.lower()
-        prefix = "/model " if lower.startswith("/model ") else "/switch "
+        if lower.startswith("/keep-going model "):
+            prefix = "/keep-going model "
+        elif lower.startswith("/model "):
+            prefix = "/model "
+        else:
+            prefix = "/switch "
         partial = text[len(prefix) :]
+        description_template = (
+            "Use {name} as keep-going auditor"
+            if prefix == "/keep-going model "
+            else "Switch to {name}"
+        )
         items = []
         for name in sorted(MODELS.keys()):
             if name.lower().startswith(partial.lower()):
@@ -225,7 +239,7 @@ class Completer:
                     CompletionItem(
                         text=prefix + name,
                         display=prefix + name,
-                        description=f"Switch to {name}",
+                        description=description_template.format(name=name),
                     )
                 )
         return items

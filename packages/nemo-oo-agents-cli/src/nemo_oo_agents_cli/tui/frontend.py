@@ -290,7 +290,7 @@ class TerminalFrontend:
     def _render_stop_reason(self, output: StopReasonOutput) -> None:
         from rich.markup import escape
 
-        self._console.print_status(escape(output.display_text()))
+        self._console.console.print(f"[{COLORS['overlay2']}]{escape(output.display_text())}[/]")
 
     async def get_input(
         self,
