@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import datetime
+import json
 import textwrap
 from dataclasses import dataclass
 from typing import Any
@@ -321,6 +323,55 @@ def _format_detail(tag: str, event: Any) -> str:
     return f"tag = {tag!r}\ntype = {event_type!r}\n\nevent = {body}"
 
 
+_NOISE_FIELDS = {
+    "event_type",
+    "id",
+    "event_id",
+    "uuid",
+    "timestamp",
+    "created_at",
+    "updated_at",
+    "metadata",
+    "children_tags",
+    "images",
+    "execution_count",
+    "explicit_return",
+    "parent_call_id",
+    "call_id",
+    "generation_id",
+    "parent_generation_id",
+    "trace_id",
+    "span_id",
+    "tool_call_id",
+}
+
+_RENDERED_FIELD_ORDER = {
+    "TUIAgentMessage": ("content",),
+    "Message": ("content",),
+    "TUIUserInput": ("text",),
+    "Task": ("prompt",),
+    "Reasoning": ("content",),
+    "Error": ("content",),
+    "Feedback": ("content",),
+    "DebugTrace": ("content",),
+    "TextOnlyReply": ("content", "finish_reason", "route"),
+    "LLMOutput": ("content",),
+    "PythonOutput": ("stdout", "stderr", "error", "value"),
+    "ToolCallEvent": ("name", "arguments", "result"),
+    "Summary": ("summary_text", "summary_tag", "replaced_range"),
+    "TuiSessionResumed": ("session_id", "event_count"),
+    "TuiSessionCleared": ("reason",),
+    "LLMComplete": ("model", "finish_reason", "usage", "content"),
+    "TUISessionStart": ("model", "agent_cls", "working_dir"),
+    "TUISessionRename": ("name", "user_named"),
+}
+
+_MARKDOWN_FIELDS = {"content", "text", "prompt", "summary_text"}
+_CODE_EVENT_FIELDS = {
+    "PythonOutput": {"stdout": "text", "stderr": "text", "error": "pytb"},
+}
+
+
 def _escape_terminal_controls(text: str) -> str:
     safe: list[str] = []
     for char in text:
@@ -336,31 +387,240 @@ def _escape_terminal_controls(text: str) -> str:
     return "".join(safe)
 
 
-def _markdown_code_block(value: Any) -> str:
+def _safe_inline(value: Any, max_len: int = 160) -> str:
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            text = repr(value)
+    text = _escape_terminal_controls(" ".join(str(text).split()))
+    if len(text) > max_len:
+        return text[: max_len - 1] + "…"
+    return text
+
+
+def _short_id(value: Any, max_len: int = 8) -> str:
+    text = _safe_inline(value, 80)
+    if len(text) <= max_len:
+        return text
+    return text[:max_len]
+
+
+def _pretty_timestamp(value: Any) -> str:
+    if isinstance(value, datetime.datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    text = _safe_inline(value, 80)
+    if not text:
+        return ""
+    if "T" in text and len(text) >= 19:
+        return text[:19].replace("T", " ")
+    if text.startswith("datetime.datetime("):
+        parts = text.removeprefix("datetime.datetime(").split(")", 1)[0].split(",")
+        try:
+            nums = [int(part.strip()) for part in parts[:6]]
+        except ValueError:
+            return text
+        while len(nums) < 6:
+            nums.append(0)
+        return (
+            f"{nums[0]:04d}-{nums[1]:02d}-{nums[2]:02d} {nums[3]:02d}:{nums[4]:02d}:{nums[5]:02d}"
+        )
+    return text
+
+
+def _event_header_line(tag: str, event_type: str, data: dict[str, Any]) -> str:
+    parts = [f"**[{tag}]** *{event_type}*"]
+    timestamp = data.get("timestamp") or data.get("created_at") or data.get("updated_at")
+    if not _is_empty_event_field(timestamp):
+        parts.append(_pretty_timestamp(timestamp))
+    event_id = data.get("id") or data.get("event_id") or data.get("uuid")
+    if not _is_empty_event_field(event_id):
+        parts.append(f"id={_short_id(event_id)}")
+    tool_call_id = data.get("tool_call_id")
+    if not _is_empty_event_field(tool_call_id):
+        parts.append(f"tool={_short_id(tool_call_id, 12)}")
+    call_id = data.get("call_id") or (
+        data.get("metadata", {}).get("call_id") if isinstance(data.get("metadata"), dict) else None
+    )
+    if not _is_empty_event_field(call_id):
+        parts.append(f"call={_short_id(call_id)}")
+    return " · ".join(parts)
+
+
+def _metadata_footer_line(data: dict[str, Any]) -> str:
+    parts = []
+    for field, value in data.items():
+        if field == "event_type":
+            continue
+        if field in _NOISE_FIELDS and not _is_empty_event_field(value):
+            parts.append(f"{field}={_safe_inline(value, 96)}")
+    if not parts:
+        return ""
+    return "_metadata: " + " · ".join(parts) + "_"
+
+
+def _append_metadata_footer(lines: list[str], data: dict[str, Any]) -> None:
+    footer = _metadata_footer_line(data)
+    if footer:
+        lines.extend(["", "---", "", footer])
+
+
+def _json_block(value: Any, language: str = "json") -> str:
+    try:
+        text = json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        text = repr(value)
+        language = "python"
+    return _markdown_code_block(text, language)
+
+
+def _markdown_code_block(value: Any, language: str = "") -> str:
     text = value if isinstance(value, str) else repr(value)
     text = _escape_terminal_controls(text)
     fence = "```"
     while fence in text:
         fence += "`"
-    return f"{fence}\n{text.rstrip()}\n{fence}"
+    lang = language.strip()
+    opener = f"{fence}{lang}" if lang else fence
+    return f"{opener}\n{text.rstrip()}\n{fence}"
 
 
 def _is_empty_event_field(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
-def _event_field_markdown(value: Any) -> str:
-    if isinstance(value, str) and _extract_fenced_code(value) is not None:
+def _field_title(field: str) -> str:
+    return field.replace("_", " ").title()
+
+
+def _event_field_markdown(value: Any, *, language: str | None = None) -> str:
+    if isinstance(value, str):
+        extracted = _extract_fenced_code(value)
+        if extracted is not None:
+            return _escape_terminal_controls(value.rstrip())
+        if language is not None:
+            return _markdown_code_block(value, language)
         return _escape_terminal_controls(value.rstrip())
-    return _markdown_code_block(value)
+    if isinstance(value, dict | list | tuple):
+        return _json_block(value)
+    return _markdown_code_block(value, "python")
 
 
-def _event_markdown(event: Any, event_type: str) -> str | None:
-    lines = [f"# {event_type}"]
-    for field, value in _event_to_mapping(event).items():
-        if field == "event_type" or _is_empty_event_field(value):
-            continue
-        lines.extend(["", f"## {field}", "", _event_field_markdown(value)])
+def _ordered_content_fields(data: dict[str, Any], event_type: str) -> list[str]:
+    preferred = [field for field in _RENDERED_FIELD_ORDER.get(event_type, ()) if field in data]
+    remaining = [
+        field
+        for field in data
+        if field not in preferred
+        and field not in _NOISE_FIELDS
+        and not _is_empty_event_field(data[field])
+    ]
+    return preferred + remaining
+
+
+def _append_section(lines: list[str], title: str, body: str) -> None:
+    body = body.rstrip()
+    if not body:
+        return
+    lines.extend(["", f"## {title}", "", body])
+
+
+def _event_markdown(tag: str, event: Any, event_type: str) -> str | None:
+    data = _event_to_mapping(event)
+    lines = [_event_header_line(tag, event_type, data)]
+
+    if event_type in {"TUIAgentMessage", "Message"}:
+        content = data.get("content")
+        if not _is_empty_event_field(content):
+            lines.extend(["", _escape_terminal_controls(str(content).rstrip())])
+        _append_metadata_footer(lines, data)
+        return "\n".join(lines)
+
+    if event_type in {"TUIUserInput", "Task", "Reasoning", "Error", "Feedback", "DebugTrace"}:
+        field = (
+            "prompt"
+            if event_type == "Task"
+            else "text"
+            if event_type == "TUIUserInput"
+            else "content"
+        )
+        value = data.get(field)
+        if not _is_empty_event_field(value):
+            title = "User input" if event_type == "TUIUserInput" else _field_title(field)
+            _append_section(lines, title, _event_field_markdown(value))
+
+    elif event_type == "ToolCallEvent":
+        name = str(data.get("name", "tool"))
+        args = data.get("arguments", {})
+        _append_section(lines, "Tool", f"`{_safe_inline(name)}`")
+        if name == "execute_python" and isinstance(args, dict) and args.get("code"):
+            _append_section(lines, "Python", _markdown_code_block(str(args["code"]), "python"))
+            extras = {k: v for k, v in args.items() if k != "code" and not _is_empty_event_field(v)}
+            if extras:
+                _append_section(lines, "Arguments", _json_block(extras))
+        elif not _is_empty_event_field(args):
+            _append_section(lines, "Arguments", _json_block(args))
+        result = data.get("result")
+        if not _is_empty_event_field(result):
+            _append_section(lines, "Result", _event_field_markdown(result))
+
+    elif event_type == "PythonOutput":
+        status = _safe_inline(data.get("execution_status", ""))
+        if status:
+            _append_section(lines, "Status", f"`{status}`")
+        for field, language in _CODE_EVENT_FIELDS["PythonOutput"].items():
+            value = data.get(field)
+            if not _is_empty_event_field(value):
+                _append_section(
+                    lines, _field_title(field), _event_field_markdown(value, language=language)
+                )
+        value = data.get("value")
+        if not _is_empty_event_field(value):
+            _append_section(lines, "Value", _event_field_markdown(value))
+
+    elif event_type == "LLMOutput":
+        content = data.get("content")
+        if not _is_empty_event_field(content):
+            language = "json" if str(content).lstrip().startswith(("{", "[")) else "python"
+            _append_section(lines, "LLM output", _markdown_code_block(str(content), language))
+
+    elif event_type == "Summary":
+        summary = data.get("summary_text")
+        if not _is_empty_event_field(summary):
+            lines.extend(["", _escape_terminal_controls(str(summary).rstrip())])
+        summary_bits = []
+        for field in ("summary_tag", "replaced_range", "children_tags"):
+            value = data.get(field)
+            if not _is_empty_event_field(value):
+                summary_bits.append(f"**{_field_title(field)}:** `{_safe_inline(value)}`")
+        if summary_bits:
+            lines.extend(["", " ".join(summary_bits)])
+
+    else:
+        for field in _ordered_content_fields(data, event_type):
+            value = data[field]
+            if _is_empty_event_field(value):
+                continue
+            language = _CODE_EVENT_FIELDS.get(event_type, {}).get(field)
+            if field in _MARKDOWN_FIELDS and language is None and isinstance(value, str):
+                body = _escape_terminal_controls(value.rstrip())
+            else:
+                body = _event_field_markdown(value, language=language)
+            _append_section(lines, _field_title(field), body)
+
+    rendered_fields = "\n".join(lines)
+    # Fallback: if no content sections were added (only the header line exists),
+    # render all non-noise fields so unknown event types still show something useful.
+    if rendered_fields.strip() == _event_header_line(tag, event_type, data).strip():
+        for field, value in data.items():
+            if field == "event_type" or field in _NOISE_FIELDS or _is_empty_event_field(value):
+                continue
+            _append_section(lines, _field_title(field), _event_field_markdown(value))
+    _append_metadata_footer(lines, data)
     return "\n".join(lines)
 
 
@@ -378,7 +638,7 @@ def build_event_rows(event_manager: Any) -> list[EventExplorerRow]:
         summary = _event_summary(event, event_type)
         detail = _format_detail(str(tag), event)
         code, code_language = _event_code(event, event_type)
-        markdown = _event_markdown(event, event_type)
+        markdown = _event_markdown(str(tag), event, event_type)
         search_text = f"{tag} {event_type} {summary} {detail} {code or ''} {markdown or ''}"
         rows.append(
             EventExplorerRow(
@@ -583,6 +843,32 @@ def _render_markdown(markdown: str, width: int) -> str:
         return "\n".join(wrapped)
 
 
+_EVENT_HEADER_STYLE = "\x1b[1;38;5;230;48;5;238m"
+
+
+def _strip_ansi(text: str) -> str:
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _style_event_header_line(lines: list[str], width: int) -> list[str]:
+    if not lines:
+        return lines
+    styled = list(lines)
+    for i, line in enumerate(styled):
+        if not line.strip():
+            continue
+        plain = _strip_ansi(line).strip()
+        # Header lines render as "[tag] EventType ..." after Rich strips markdown emphasis.
+        if not plain.startswith("["):
+            return styled
+        banner = f" {plain} "[: max(width, 1)]
+        styled[i] = f"{_EVENT_HEADER_STYLE}{banner.ljust(width)}\x1b[0m"
+        return styled
+    return styled
+
+
 def highlighted_detail_lines(
     row: EventExplorerRow,
     width: int,
@@ -610,7 +896,8 @@ def highlighted_detail_lines(
         return lines
 
     if row.markdown is not None:
-        return _render_markdown(row.markdown, width).splitlines() or [""]
+        rendered_lines = _render_markdown(row.markdown, width).splitlines() or [""]
+        return _style_event_header_line(rendered_lines, width)
     if row.code:
         lines.append(f"code ({row.code_language}):")
         code_lines = _highlight_syntax(
