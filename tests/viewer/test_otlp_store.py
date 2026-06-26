@@ -878,6 +878,69 @@ class TestJournalV2ToV3Migration:
 # ---------------------------------------------------------------------------
 
 
+class TestFindEvalSessionForTask:
+    def _span(self, span_id: str, start_s: int, end_s: int, task: str | None = None) -> dict:
+        attrs = []
+        if task:
+            attrs.append({"key": "task_name", "value": {"stringValue": task}})
+        return {
+            "traceId": "trace-find",
+            "spanId": span_id,
+            "name": "agent.step",
+            "kind": 1,
+            "startTimeUnixNano": str(start_s * 1_000_000_000),
+            "endTimeUnixNano": str(end_s * 1_000_000_000),
+            "attributes": attrs,
+        }
+
+    def test_matches_live_session_by_task_model_and_time_window(self):
+        task = "django__django-12345"
+        store.ingest(
+            _make_body(
+                session_id="wrong-model",
+                experiment="default",
+                resource_extra={"eval.model": "other-model"},
+                spans=[self._span("span001", 100, 101, task), self._span("span002", 101, 102)],
+            )
+        )
+        store.ingest(
+            _make_body(
+                session_id="live-session",
+                experiment="default",
+                resource_extra={"eval.model": "gpt-5.5-reasoning-high"},
+                spans=[
+                    self._span("span003", 200, 201, task),
+                    self._span("span004", 201, 260),
+                    self._span("span005", 260, 261),
+                ],
+            )
+        )
+
+        match = store.find_eval_session_for_task(
+            task,
+            model="gpt-5.5-reasoning-high",
+            started_at=195,
+            finished_at=270,
+        )
+
+        assert match is not None
+        assert match["session_id"] == "live-session"
+        assert match["span_count"] == 3
+
+    def test_ignores_metadata_only_stub_sessions(self):
+        task = "django__django-12345"
+        store.ingest(
+            _make_body(
+                session_id="trial-stub",
+                experiment="default",
+                resource_extra={"eval.model": "gpt-5.5-reasoning-high"},
+                spans=[self._span("span001", 100, 101, task)],
+            )
+        )
+
+        assert store.find_eval_session_for_task(task, model="gpt-5.5-reasoning-high") is None
+
+
 class TestStartupLockCheck:
     """``init_db`` must fail fast when another process is holding a writer
     lock, so the viewer never comes up "healthy" but serving 503s."""
@@ -908,3 +971,105 @@ class TestStartupLockCheck:
         finally:
             blocker.execute("ROLLBACK")
             blocker.close()
+
+
+class TestExistingSessionEvalEnrichment:
+    def test_existing_default_session_can_be_grouped_into_eval_experiment(self):
+        store.ingest(_make_body(session_id="trial-1", experiment="default"))
+
+        store.ingest(
+            _make_body(
+                session_id="trial-1",
+                experiment="SWEbench__fixed",
+                resource_extra={"batch_id": "run-42"},
+                eval_attrs={
+                    "eval.test_id": "django__django-12345",
+                    "eval.test_name": "django__django-12345",
+                    "eval.model": "gpt-5.5-reasoning-high",
+                    "eval.agent_class": "bench",
+                    "eval.score": "1.0",
+                    "eval.passed": True,
+                },
+            )
+        )
+
+        sessions = store.list_sessions(experiment="SWEbench__fixed", eval_only=True)
+        assert len(sessions) == 1
+        session = sessions[0]
+        assert session["id"] == "trial-1"
+        assert session["batch_id"] == "run-42"
+        assert session["eval"]["passed"] is True
+        assert session["eval"]["test_id"] == "django__django-12345"
+        assert session["eval"]["model"] == "gpt-5.5-reasoning-high"
+
+        resource = store.get_session_resource("trial-1")
+        assert resource["batch_id"] == "run-42"
+        assert resource["experiment"] == "SWEbench__fixed"
+
+    def test_matching_live_session_cleanup_removes_prior_eval_only_stub(self):
+        trial_name = "trial-1"
+        task_name = "django__django-12345"
+
+        store.ingest(
+            _make_body(
+                session_id=trial_name,
+                experiment="SWEbench__fixed",
+                eval_attrs={
+                    "eval.test_id": task_name,
+                    "eval.test_name": task_name,
+                    "eval.harbor_trial_name": trial_name,
+                    "eval.passed": True,
+                },
+            )
+        )
+        store.ingest(
+            _make_body(
+                session_id=trial_name,
+                experiment="SWEbench__fixed",
+                eval_attrs={"eval.passed": True},
+            )
+        )
+        store.ingest(_make_body(session_id="live-session", experiment="default"))
+
+        store.ingest(
+            _make_body(
+                session_id="live-session",
+                experiment="SWEbench__fixed",
+                resource_extra={"batch_id": "run-42"},
+                eval_attrs={
+                    "eval.test_id": task_name,
+                    "eval.test_name": task_name,
+                    "eval.harbor_trial_name": trial_name,
+                    "eval.model": "gpt-5.5-reasoning-high",
+                    "eval.passed": True,
+                },
+            )
+        )
+
+        sessions = store.list_sessions(experiment="SWEbench__fixed", eval_only=True)
+        assert [s["id"] for s in sessions] == ["live-session"]
+        assert sessions[0]["span_count"] == 2
+        assert sessions[0]["eval"]["harbor_trial_name"] == trial_name
+        assert not any(s["id"] == trial_name for s in store.list_sessions())
+
+    def test_existing_resource_attrs_are_merged_not_replaced(self):
+        store.ingest(
+            _make_body(
+                session_id="trial-1",
+                experiment="default",
+                resource_extra={"hostname": "z590-0100"},
+            )
+        )
+
+        store.ingest(
+            _make_body(
+                session_id="trial-1",
+                experiment="SWEbench__fixed",
+                resource_extra={"batch_id": "run-42"},
+                eval_attrs={"eval.passed": False, "eval.score": "0.0"},
+            )
+        )
+
+        resource = store.get_session_resource("trial-1")
+        assert resource["hostname"] == "z590-0100"
+        assert resource["batch_id"] == "run-42"
