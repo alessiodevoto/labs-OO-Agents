@@ -116,11 +116,11 @@ class TuiConfigurationSkill(Skill):
     @slash_command(
         "config",
         argument_hint="<action> [key] [value]",
-        completions=("show", "set", "libs", "skills", "path"),
+        completions=("show", "set", "save", "libs", "skills", "path"),
     )
     async def config_command(
         self,
-        action: Literal["show", "set", "libs", "skills", "path"] = "show",
+        action: Literal["show", "set", "save", "libs", "skills", "path"] = "show",
         key: str = "",
         value: str = "",
     ) -> str:
@@ -130,6 +130,7 @@ class TuiConfigurationSkill(Skill):
         /config libs     — list libs_dirs and discovered libraries
         /config skills   — list skills_dirs and discovered skills
         /config set <k> <v> — update a key in settings.yaml
+        /config save [project|user] [--dry-run] — save current runtime settings
         /config path     — show config file path
         """
         if action == "show":
@@ -140,17 +141,17 @@ class TuiConfigurationSkill(Skill):
             return self._show_skills()
         elif action == "set":
             return self._set_config(f"{key} {value}".strip())
+        elif action == "save":
+            return self._save_config(f"{key} {value}".strip())
         elif action == "path":
             return f"Config file: {self._config_path()}"
         return "Unreachable"
 
-    def _config_path(self) -> Path:
-        """Return the path to the project-local settings.yaml (where `set` writes)."""
-        from nemo_oo_agents.paths import get_project_dir
+    def _config_path(self, scope: Literal["project", "user"] = "project") -> Path:
+        """Return the settings.yaml path for a writable scope."""
+        from .settings import settings_path
 
-        from .settings import SETTINGS_FILENAME
-
-        return get_project_dir(SETTINGS_FILENAME)
+        return settings_path(scope)
 
     def _load_raw(self) -> dict[str, Any]:
         """Load the merged, effective settings (all layers, last wins)."""
@@ -284,13 +285,11 @@ class TuiConfigurationSkill(Skill):
     def _set_config(self, args: str) -> str:
         """Set a key in the project settings.yaml.
 
-        Reads the project file (only — not the merged layers), updates one
+        Reads the project file (only -- not the merged layers), updates one
         setting, and writes it back. Friendly aliases (``model``, ``python``,
         ``vi``, ``trace``) map to their ``tui.`` settings paths; dotted keys
         are treated as explicit nested paths.
         """
-        import yaml
-
         parts = args.strip().split(None, 1)
         if len(parts) < 2:
             return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-8"
@@ -302,20 +301,70 @@ class TuiConfigurationSkill(Skill):
             return f"Error: {exc}"
         value = self._parse_value(raw_value)
 
-        path = self._config_path()
-        data: dict[str, Any] = {}
-        if path.exists():
-            loaded = yaml.safe_load(path.read_text())
-            if isinstance(loaded, dict):
-                data = loaded
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
+        from .settings import write_settings_updates
 
-        self._set_mapping_path(data, setting_path, value)
-
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        path, _data = write_settings_updates({tuple(setting_path): value})
         dotted = ".".join(setting_path)
         return f"Set `{dotted} = {value!r}` in {path}\n⚠️ Restart TUI for changes to take effect."
+
+    def _save_config(self, args: str) -> str:
+        """Save safe current runtime TUI settings to a settings.yaml layer."""
+        import yaml
+
+        scope: Literal["project", "user"] = "project"
+        dry_run = False
+        for token in args.split():
+            if token in {"project", "user"}:
+                scope = token  # type: ignore[assignment]
+            elif token == "--dry-run":
+                dry_run = True
+            else:
+                return "Usage: /config save [project|user] [--dry-run]"
+
+        runtime = self._runtime_tui_config()
+        if runtime is None:
+            return "Error: live TUI configuration is not available in this session."
+
+        updates = self._runtime_tui_updates(runtime)
+        from .settings import write_settings_updates
+
+        path, data = write_settings_updates(updates, scope=scope, dry_run=dry_run)
+        changed = ", ".join(".".join(setting_path) for setting_path in updates)
+        rendered = yaml.safe_dump(data, sort_keys=False).rstrip()
+        verb = "Would save" if dry_run else "Saved"
+        return (
+            f"{verb} current TUI settings to {scope} config: {path}\n"
+            f"Keys: {changed}\n\n"
+            f"```yaml\n{rendered}\n```"
+        )
+
+    def _runtime_tui_config(self) -> Any | None:
+        agent = getattr(self, "_agent", None)
+        registry = getattr(agent, "_command_registry", None)
+        config = getattr(registry, "config", None)
+        if config is not None:
+            return config
+        return getattr(agent, "_tui_config", None)
+
+    def _runtime_tui_updates(self, config: Any) -> dict[tuple[str, ...], Any]:
+        fields = (
+            "default_model",
+            "show_python",
+            "goal_mode",
+            "keep_going",
+            "keep_going_model",
+            "toolbar_snippet",
+        )
+        values = {name: getattr(config, name) for name in fields if hasattr(config, name)}
+
+        vars_obj = getattr(getattr(self, "_agent", None), "vars", None)
+        if vars_obj is not None:
+            if "tui_keep_going" in vars_obj:
+                values["keep_going"] = bool(vars_obj.get("tui_keep_going"))
+            if "tui_keep_going_model" in vars_obj:
+                values["keep_going_model"] = vars_obj.get("tui_keep_going_model")
+
+        return {("tui", key): value for key, value in values.items() if value is not None}
 
     @staticmethod
     def _setting_path(raw_key: str) -> list[str]:
@@ -327,18 +376,6 @@ class TuiConfigurationSkill(Skill):
         if len(parts) == 1:
             parts.insert(0, "tui")
         return parts
-
-    @staticmethod
-    def _set_mapping_path(data: dict[str, Any], path: list[str], value: Any) -> None:
-        """Set ``data[path[0]]...[path[-1]]`` creating dictionaries as needed."""
-        current = data
-        for part in path[:-1]:
-            child = current.get(part)
-            if not isinstance(child, dict):
-                child = {}
-                current[part] = child
-            current = child
-        current[path[-1]] = value
 
     @staticmethod
     def _parse_value(raw: str) -> Any:

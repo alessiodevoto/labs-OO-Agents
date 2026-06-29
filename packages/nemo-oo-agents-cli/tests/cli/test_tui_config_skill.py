@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import yaml
-from nemo_oo_agents_cli.tui.config import Config
+from nemo_oo_agents_cli.tui.config import Config, TUIConfig
 from nemo_oo_agents_cli.tui.tui_config_skill import TuiConfigurationSkill
 
 
@@ -75,4 +77,96 @@ def test_config_set_invalid_dotted_key_returns_error(project_dir):
     result = skill._set_config("tui..default_model gpt-5.5")
 
     assert result == "Error: Invalid config key: 'tui..default_model'"
+    assert not _settings_path(project_dir).exists()
+
+
+def _attach_runtime_config(skill: TuiConfigurationSkill, config: TUIConfig, vars=None) -> None:
+    agent = SimpleNamespace(
+        _command_registry=SimpleNamespace(config=config),
+        vars={} if vars is None else vars,
+    )
+    skill.attach(agent)
+
+
+def test_config_save_project_writes_safe_runtime_settings(project_dir):
+    skill = TuiConfigurationSkill()
+    _attach_runtime_config(
+        skill,
+        TUIConfig(
+            default_model="gpt-5.5",
+            show_python=True,
+            goal_mode=True,
+            keep_going=True,
+            keep_going_model="audit-model",
+            toolbar_snippet="short_model",
+        ),
+    )
+
+    result = skill._save_config("")
+    data = yaml.safe_load(_settings_path(project_dir).read_text())
+
+    assert "Saved current TUI settings to project config" in result
+    assert data == {
+        "tui": {
+            "default_model": "gpt-5.5",
+            "show_python": True,
+            "goal_mode": True,
+            "keep_going": True,
+            "keep_going_model": "audit-model",
+            "toolbar_snippet": "short_model",
+        }
+    }
+
+
+def test_config_save_user_writes_user_settings(project_dir):
+    from nemo_oo_agents.paths import get_user_dir
+
+    skill = TuiConfigurationSkill()
+    _attach_runtime_config(skill, TUIConfig(default_model="gpt-5.5"))
+
+    result = skill._save_config("user")
+    user_settings = get_user_dir("settings.yaml")
+    data = yaml.safe_load(user_settings.read_text())
+
+    assert "Saved current TUI settings to user config" in result
+    assert not _settings_path(project_dir).exists()
+    assert data["tui"]["default_model"] == "gpt-5.5"
+
+
+def test_config_save_dry_run_does_not_write_file_or_directory(tmp_path, monkeypatch):
+    """Verify dry-run previews settings without creating files or directories."""
+    project_dir = tmp_path / "missing-project"
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(project_dir))
+    skill = TuiConfigurationSkill()
+    _attach_runtime_config(skill, TUIConfig(default_model="gpt-5.5", show_python=True))
+
+    result = skill._save_config("--dry-run")
+
+    assert "Would save current TUI settings" in result
+    assert "default_model: gpt-5.5" in result
+    assert not project_dir.exists()
+
+
+def test_config_save_prefers_sticky_keep_going_agent_vars(project_dir):
+    skill = TuiConfigurationSkill()
+    _attach_runtime_config(
+        skill,
+        TUIConfig(keep_going=False, keep_going_model="config-model"),
+        vars={"tui_keep_going": True, "tui_keep_going_model": "sticky-model"},
+    )
+
+    skill._save_config("")
+    data = yaml.safe_load(_settings_path(project_dir).read_text())
+
+    assert data["tui"]["keep_going"] is True
+    assert data["tui"]["keep_going_model"] == "sticky-model"
+
+
+def test_config_save_invalid_args_returns_usage(project_dir):
+    skill = TuiConfigurationSkill()
+    _attach_runtime_config(skill, TUIConfig())
+
+    result = skill._save_config("global")
+
+    assert result == "Usage: /config save [project|user] [--dry-run]"
     assert not _settings_path(project_dir).exists()
