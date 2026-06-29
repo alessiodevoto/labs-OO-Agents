@@ -9,7 +9,7 @@ import asyncio
 import pytest
 from nemo_oo_agents_cli.tui.tui_application import TUIApplication
 
-from .tui_app_harness import FakeAgent
+from .tui_app_harness import FakeAgent, ThreadGate
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_swap_agent_redirects_dispatcher_to_new_agent():
 
     # Hot-swap onto the new agent and queue a seed prompt on the shared channel.
     new._user_messages_in.put("for-new")
-    app.swap_agent(new)
+    await app.swap_agent(new)
 
     # The fresh dispatcher (bound to new) drains the shared queue → new.handle.
     for _ in range(100):
@@ -60,3 +60,43 @@ async def test_swap_agent_redirects_dispatcher_to_new_agent():
             await app._agent_task
         except (asyncio.CancelledError, Exception):
             pass
+
+
+@pytest.mark.asyncio
+async def test_swap_agent_restarts_dispatcher_in_two_loop_tui() -> None:
+    """swap_agent restarts the dispatcher when the TUI uses a separate agent loop."""
+    old = FakeAgent()
+    new = FakeAgent()
+    new.queue_manager = old.queue_manager
+    new._user_messages_in = old._user_messages_in
+    new.user_messages = old.user_messages
+
+    step_started = ThreadGate()
+
+    async def step(_self: FakeAgent, _msg: str) -> None:
+        step_started.set()
+        await asyncio.Future()
+
+    old.queue(step)
+    app = TUIApplication(agent=old)
+    agent_loop = app._ensure_agent_loop()
+    try:
+        app.submit_message("for-old")
+        await asyncio.wait_for(step_started.wait(), timeout=1.0)
+        new._user_messages_in.put("for-new")
+        await app.agent_run_async(lambda: app.swap_agent(new))
+        for _ in range(200):
+            if new.messages_received:
+                break
+            await asyncio.sleep(0.01)
+        assert new.messages_received == ["for-new"]
+        assert app.agent is new
+    finally:
+        if app._agent_task is not None and not app._agent_task.done():
+            app._agent_task.cancel()
+            try:
+                await app._agent_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        await app._stop_agent_loop()
+        assert not agent_loop.is_running()
