@@ -923,7 +923,7 @@ def test_event_explorer_has_in_app_mouse_scroll_bindings() -> None:
     assert "open_event_explorer" in source
     assert "Keys.ScrollDown" in source
     assert "Keys.ScrollUp" in source
-    assert "mouse_support=True" in source
+    assert "mouse_support=Condition(lambda: self._active_subview is not None)" in source
     assert "_SuspendedPromptToolkitResize" not in source
 
 

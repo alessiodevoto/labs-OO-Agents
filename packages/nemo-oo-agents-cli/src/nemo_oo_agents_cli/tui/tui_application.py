@@ -479,7 +479,7 @@ class TUIApplication:
             # gets a final redraw right before exit and appears as a
             # ghost prompt above '❯ /exit' in the transcript.
             erase_when_done=True,
-            mouse_support=True,
+            mouse_support=Condition(lambda: self._active_subview is not None),
             # SIGWINCH already invalidates the app; the fallback poll creates a
             # delayed second redraw (~0.5–0.75s later), which is visible in
             # fullscreen subviews after terminal resize.
