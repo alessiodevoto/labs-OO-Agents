@@ -5,9 +5,18 @@
 from __future__ import annotations
 
 import datetime
-import textwrap
 from dataclasses import dataclass
 
+from .explorer_base import (
+    BAR_STYLE,
+    display_line,
+    render_markdown_lines,
+    search_terms,
+    style_bar,
+    style_fts_prompt,
+    style_mode_label,
+    wrap_plain_line,
+)
 from .session_manager import SessionManager, Turn
 from .subapp import SubviewKeyResult
 
@@ -296,95 +305,6 @@ def _format_time(ts: float) -> str:
         return "?"
 
 
-def _wrap_plain_line(line: str, width: int) -> list[str]:
-    if line == "":
-        return [""]
-    indent_len = len(line) - len(line.lstrip(" "))
-    subsequent = " " * min(indent_len, max(width - 1, 0))
-    return textwrap.wrap(
-        line,
-        width=max(width, 1),
-        replace_whitespace=False,
-        drop_whitespace=False,
-        break_long_words=True,
-        break_on_hyphens=False,
-        subsequent_indent=subsequent,
-    ) or [""]
-
-
-def _search_terms(query: str) -> list[str]:
-    return [term for term in query.split() if term.strip()]
-
-
-def _highlight_terms(text: str, terms: list[str], *, current: bool = False) -> str:
-    if not terms:
-        return text
-    import re
-
-    pattern = re.compile(
-        "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True)), re.IGNORECASE
-    )
-    color = "30;106" if current else "30;43"
-    return pattern.sub(lambda m: f"\x1b[{color}m{m.group(0)}\x1b[0m", text)
-
-
-def _display_line(
-    text: str, width: int, terms: list[str], *, ansi: bool, current_match: bool = False
-) -> str:
-    """Fit a plain line before adding ANSI so highlighting cannot bleed."""
-    plain = text.ljust(width)[:width]
-    if ansi:
-        return _highlight_terms(plain, terms, current=current_match)
-    return plain
-
-
-def _render_markdown_lines(markdown: str, width: int) -> list[str]:
-    try:
-        import io
-
-        from rich.console import Console as RichConsole
-        from rich.markdown import Markdown
-
-        render_width = max(int(width), 20)
-        buf = io.StringIO()
-        console = RichConsole(
-            file=buf,
-            force_terminal=True,
-            color_system="256",
-            width=render_width,
-            _environ={"COLUMNS": str(render_width), "LINES": "25"},
-        )
-        console.print(Markdown(markdown))
-        return buf.getvalue().splitlines() or [""]
-    except Exception:
-        lines: list[str] = []
-        for line in markdown.splitlines() or [""]:
-            lines.extend(_wrap_plain_line(line, width))
-        return lines or [""]
-
-
-_BAR_STYLE = "\x1b[48;5;236;38;5;252m"
-
-
-def _style_bar(text: str, *, ansi: bool) -> str:
-    if not ansi:
-        return text
-    return f"{_BAR_STYLE}{text}\x1b[0m"
-
-
-def _style_mode_label(text: str, *, active: bool, ansi: bool) -> str:
-    if not ansi:
-        return text
-    color = "30;45" if active else "30;46"
-    return f"\x1b[1;{color}m{text}\x1b[0m"
-
-
-def _style_fts_prompt(text: str, *, active: bool, ansi: bool) -> str:
-    if not ansi or not active:
-        return text
-    return f"\x1b[1;30;45m{text}\x1b[0m"
-
-
 def _detail_match_lines(lines: list[str], terms: list[str]) -> list[int]:
     if not terms:
         return []
@@ -440,15 +360,15 @@ def wrapped_detail_lines(
             if turn.role == "user":
                 lines.append("You:")
                 for raw in turn.content.splitlines() or [""]:
-                    lines.extend(_wrap_plain_line(f"  {raw}", width))
+                    lines.extend(wrap_plain_line(f"  {raw}", width))
             else:
                 lines.append("OO:")
-                lines.extend(_render_markdown_lines(turn.content, width))
+                lines.extend(render_markdown_lines(turn.content, width))
             lines.append("")
         return lines
     lines: list[str] = []
     for raw in _detail_raw_lines(row):
-        lines.extend(_wrap_plain_line(raw, width))
+        lines.extend(wrap_plain_line(raw, width))
     return lines
 
 
@@ -479,7 +399,7 @@ def _tail_detail_lines(
     # context so Rich can format lists/fences while still avoiding whole-session work.
     target = visible + (8 if markdown else 0)
     for raw in _reversed_detail_raw_lines(row):
-        wrapped = _wrap_plain_line(raw, width)
+        wrapped = wrap_plain_line(raw, width)
         for line in reversed(wrapped):
             if remaining_skip > 0:
                 remaining_skip -= 1
@@ -500,7 +420,7 @@ def _tail_detail_lines(
 
     def flush_chunk() -> None:
         if chunk:
-            rendered.extend(_render_markdown_lines("\n".join(chunk), width))
+            rendered.extend(render_markdown_lines("\n".join(chunk), width))
             chunk.clear()
 
     for line in lines:
@@ -549,7 +469,7 @@ def render_session_explorer(
         if model.session_query and model.search_scope == "sessions" and match_count
         else ""
     )
-    header = _style_bar(
+    header = style_bar(
         f" Session Explorer{pos} of {total}{match_label}{query} ".ljust(width, "─")[:width],
         ansi=ansi,
     )
@@ -577,8 +497,8 @@ def render_session_explorer(
     ]
     if ansi:
         before_mode, after_mode = footer_plain.split(mode_text, 1)
-        styled_mode = _style_mode_label(mode_text, active=model.search_active, ansi=True)
-        footer = f"{_BAR_STYLE}{before_mode}{styled_mode}{_BAR_STYLE}{after_mode}\x1b[0m"
+        styled_mode = style_mode_label(mode_text, active=model.search_active, ansi=True)
+        footer = f"{BAR_STYLE}{before_mode}{styled_mode}{BAR_STYLE}{after_mode}\x1b[0m"
     else:
         footer = footer_plain
 
@@ -593,8 +513,8 @@ def render_session_explorer(
         start = max(0, model.cursor - half)
         end = min(match_count, start + list_count)
         start = max(0, end - list_count)
-        list_terms = _search_terms(model.session_query)
-        detail_terms = _search_terms(
+        list_terms = search_terms(model.session_query)
+        detail_terms = search_terms(
             model.detail_query if model.search_scope == "dialog" else model.session_query
         )
         body = []
@@ -612,7 +532,7 @@ def render_session_explorer(
                 f"{marker} {item.id[:8]:<8} {_format_time(item.last_active):<11} "
                 f"{str(item.turn_count):>4} {item.model.split('/')[-1][:18]:<18} {item.title}"
             )
-            body.append(_display_line(line, width, list_terms, ansi=ansi))
+            body.append(display_line(line, width, list_terms, ansi=ansi))
         divider_label = (
             f"[FTS {model.search_scope}: {model.query}] "
             if model.search_active or model.query
@@ -620,7 +540,7 @@ def render_session_explorer(
         )
         divider_plain = divider_label.ljust(width, "─")[:width]
         if ansi and (model.search_active or model.query):
-            divider = _style_fts_prompt(divider_label, active=model.search_active, ansi=True)
+            divider = style_fts_prompt(divider_label, active=model.search_active, ansi=True)
             divider += "─" * max(width - len(divider_label), 0)
             body.append(divider)
         else:
@@ -662,7 +582,7 @@ def render_session_explorer(
                     else None
                 )
                 visible_detail_lines = [
-                    _display_line(
+                    display_line(
                         line,
                         width,
                         detail_terms,

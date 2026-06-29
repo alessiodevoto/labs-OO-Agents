@@ -1689,7 +1689,7 @@ class _UserSkill:
 
 
 class JobsCommand(Command):
-    """Show background jobs, or inspect one by name."""
+    """Open the job explorer."""
 
     @property
     def name(self) -> str:
@@ -1697,72 +1697,22 @@ class JobsCommand(Command):
 
     @classmethod
     def help_text(cls) -> dict[str, str]:
-        return {
-            "/jobs [name]": "List background jobs, or inspect one by name",
-        }
+        return {"/jobs": "Open the job explorer"}
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if args:
+            return False, "Usage: /jobs"
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
-        qm = getattr(self.agent, "queue_manager", None)
-        if qm is None:
-            return CommandResult.err("No queue manager available.")
-
-        if args:
-            return self._detail(qm, args[0])
-
-        job_states = qm.jobs()
-        if not job_states:
-            return CommandResult.ok(TextOutput("No background jobs.", "info"))
-
-        rows: list[list[str]] = []
-        for channel_name, state in sorted(job_states.items()):
-            handle = qm.job(channel_name)
-            delivered = str(len(handle.values)) if handle and handle.values else "0"
-            ch = qm._channels.get(channel_name)
-            queued = str(ch.qsize()) if ch and hasattr(ch, "qsize") else "0"
-            rows.append([channel_name, state, delivered, queued])
-
-        return CommandResult.ok(
-            TableOutput(
-                title="Background Jobs",
-                columns=["Channel", "State", "Delivered", "Queued"],
-                rows=rows,
-            )
-        )
-
-    @staticmethod
-    def _detail(qm, name: str) -> "CommandResult":
-        handle = qm.job(name)
-        if handle is None:
-            return CommandResult.err(f"No job named '{name}'.")
-
-        outputs: list[Output] = []
-
-        # Job state
-        outputs.append(TextOutput(f"Job '{name}': {handle.state}", "info"))
-
-        # Delivered values (ring-buffer history, last 20 shown)
-        values = handle.values
-        if values:
-            total = len(values)
-            shown = values[-20:]
-            lines = "\n".join(str(v) for v in shown)
-            header = f"Delivered ({total} items)"
-            if total > 20:
-                header += " — showing last 20"
-            outputs.append(TextOutput(f"{header}:\n{lines}", "info"))
-        else:
-            outputs.append(TextOutput("Delivered: none yet", "info"))
-
-        # Queue status
-        ch = qm._channels.get(name)
-        if ch is not None:
-            pending = ch.qsize() if hasattr(ch, "qsize") else 0
-            outputs.append(TextOutput(f"Queue pending: {pending}", "info"))
-
-        return CommandResult.ok(*outputs)
+        open_explorer = getattr(self.frontend, "open_job_explorer", None)
+        if callable(open_explorer):
+            try:
+                await open_explorer()
+            except Exception as exc:
+                return CommandResult.err(f"Job explorer failed: {exc}")
+            return CommandResult.ok(TextOutput("Job explorer closed.", "status"))
+        return CommandResult.err("The job explorer requires the terminal TUI.")
 
 
 # ---------------------------------------------------------------------------
@@ -2461,6 +2411,33 @@ class BugCommand(Command):
         return url or "(issue created)"
 
 
+class TodosCommand(Command):
+    """Open the todo explorer."""
+
+    @property
+    def name(self) -> str:
+        return "todos"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/todos": "Open the todo explorer"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if args:
+            return False, "Usage: /todos"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        open_explorer = getattr(self.frontend, "open_todo_explorer", None)
+        if callable(open_explorer):
+            try:
+                await open_explorer()
+            except Exception as exc:
+                return CommandResult.err(f"Todo explorer failed: {exc}")
+            return CommandResult.ok(TextOutput("Todo explorer closed.", "status"))
+        return CommandResult.err("The todo explorer requires the terminal TUI.")
+
+
 class CommandRegistry:
     """Registry of command instances."""
 
@@ -2479,7 +2456,6 @@ class CommandRegistry:
         "theme": ThemeCommand,
         "history": HistoryCommand,
         "skills": SkillsCommand,
-        "todo": TodoCommand,
         "python": PythonCommand,
         "goal-mode": GoalModeCommand,
         "keep-going": KeepGoingCommand,
@@ -2487,6 +2463,7 @@ class CommandRegistry:
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,
         "events": EventsCommand,
+        "todos": TodosCommand,
         "time-travel": TimeTravelCommand,
         "trace-url": TraceUrlCommand,
         "toolbar": ToolbarCommand,
