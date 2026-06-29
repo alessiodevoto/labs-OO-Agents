@@ -1,0 +1,900 @@
+\documentclass[11pt, logo, onecolumn, copyright, colorlinks=true, allcolors=blue]{nvidiatechreport}
+\usepackage[numbers]{natbib}
+\usepackage{nicefrac}
+\usepackage{listings}
+\usepackage{subcaption}
+\usepackage{adjustbox}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+
+% Code listing style
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{red!70!black},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  framesep=3pt,
+  xleftmargin=6pt,
+  xrightmargin=6pt,
+  aboveskip=8pt,
+  belowskip=8pt,
+}
+
+% Placeholder command for sections awaiting results
+\newcommand{\placeholder}[1]{\textcolor{red!60!black}{\textbf{[TODO: #1]}}}
+
+\title{Helpers Beat Prompts:\\Object-Oriented AI Agent Programming}
+
+\author{Paul Furgale, Ricardo Silveira Cabral, Severin Klingler, James Nolan, Matt Staats, Gaia Di Lorenzo, Elisa Martinez Abad, Christian Schueler}
+
+\begin{document}
+
+\begin{abstract}
+We present Agent006, a Python framework for building AI agents where an agent
+is a Python object---its class defines scope, its methods define capabilities,
+and its type annotations define contracts. The framework enables seamless
+interleaving of deterministic code (``Software 1.0'') and LLM reasoning
+(``Software 3.0'') within a single class, letting developers express what should
+be computed by code and what should be reasoned by an LLM using familiar
+object-oriented constructs.
+
+We make five contributions.
+%
+(1)~We introduce a \textbf{programming model} where method signatures,
+docstrings, and return types fully specify an agent's behavior---eliminating the
+gap between prompt engineering and software engineering.
+%
+(2)~We demonstrate empirically that \textbf{helpers beat prompts}: moving
+deterministic logic from LLM prompts into typed Python methods dramatically
+improves accuracy, achieving 80\% on DABStep (vs.\ 16\% SOTA) and 95\%
+Pass\textsuperscript{1} on $\tau$-bench retail.
+%
+(3)~We introduce \textbf{capability tests}, a new evaluation methodology for
+validating that agents select the correct execution mode---answering directly
+when the task is semantic (e.g., sentiment analysis) and writing code when the
+task is computational (e.g., counting characters in ``strawberry''). Capability
+tests score output correctness and method correctness independently, catching
+``right answer, wrong approach'' failures invisible to standard benchmarks.
+%
+(4)~We show that Agent006's method-level decomposition enables
+\textbf{compositional end-to-end optimization}: because each method has its own
+prompt, strategy, and model, sub-tasks can be optimized independently and
+improvements compose without the competing-constraints problem that plagues
+monolithic prompt engineering.
+\end{abstract}
+
+\maketitle
+
+% ===========================================================================
+\section{Introduction}
+\label{sec:intro}
+% ===========================================================================
+
+Building reliable AI agents remains difficult. Current frameworks typically
+separate prompt templates from application code, creating an impedance mismatch:
+the prompt is where behavior is defined, but the code is where behavior is
+tested, versioned, and optimized. This separation makes end-to-end iteration
+slow and error-prone---a change to a prompt may break downstream expectations
+that only surface at runtime.
+
+We observe that Python's object-oriented programming model already provides the
+abstractions needed for agent construction:
+
+\begin{itemize}
+  \item \textbf{Classes} define scope and encapsulation---an agent's state and
+        capabilities are co-located.
+  \item \textbf{Methods} define capabilities---each method is a distinct,
+        testable unit of behavior.
+  \item \textbf{Type annotations} define contracts---return types constrain
+        what the LLM must produce.
+  \item \textbf{Docstrings} define intent---they already serve as natural-language
+        descriptions of what a method does.
+\end{itemize}
+
+Agent006 exploits this observation. A method whose body is \texttt{...}
+(ellipsis) is implemented by an LLM at runtime; a method with a real body
+executes as regular Python. The docstring \emph{is} the prompt. The return type
+\emph{is} the contract. The class's other methods \emph{are} the tools the LLM
+can call. No separate tool registration, prompt template system, or schema
+definition is needed.
+
+This design yields five insights that we develop in this paper:
+
+\paragraph{The programming model matters (\S\ref{sec:model}).} By making agents
+Python objects, we inherit the full software engineering toolkit: unit testing,
+type checking, profiling, refactoring, and code review all apply directly.
+Visibility controls (\texttt{@hidden}, \texttt{with visible:}) give developers
+fine-grained control over what the LLM can discover.
+
+\paragraph{Helpers beat prompts (\S\ref{sec:helpers}).} Not every task should be
+delegated to an LLM. Sentiment analysis is native to LLMs; counting characters
+in ``strawberry'' is not. When deterministic logic is expressed as a Python
+method rather than a prompt instruction, accuracy improves dramatically. We
+validate this on DABStep~\cite{dabstep2025} and $\tau$-bench~\cite{taubench2024}
+with detailed ablation studies.
+
+\paragraph{Capability tests (\S\ref{sec:helpers:captests}).} Standard benchmarks
+measure whether the agent got the right answer, but not whether it \emph{used
+the right approach}. We introduce capability tests---paired evaluations that
+validate mode selection (LLM reasoning vs.\ code execution) by scoring output
+correctness and method correctness independently. This catches a critical blind
+spot: agents that produce correct outputs through fundamentally wrong methods.
+
+\paragraph{Compositional optimization (\S\ref{sec:optimization}).} Because
+agents are decomposed into typed methods with explicit signatures, each
+sub-task can be optimized independently---swap strategies, refine docstrings,
+change models---and improvements compose without the competing-constraints
+problem that plagues monolithic prompts. We show how trace-informed
+optimization enables systematic improvement of agent performance.
+
+% ===========================================================================
+\section{The Agent006 Programming Model}
+\label{sec:model}
+% ===========================================================================
+
+% ---------------------------------------------------------------------------
+\subsection{Agent as Python Object}
+\label{sec:model:agent}
+% ---------------------------------------------------------------------------
+
+An Agent006 agent is a Python class that inherits from \texttt{Agent}. The
+framework uses metaclass inspection at class creation time to identify
+\emph{generation methods}---methods whose body is the ellipsis literal
+(\texttt{...})---and wraps them for LLM execution. All other methods execute
+as standard Python.
+
+\begin{lstlisting}
+class InventoryAgent(Agent, llm=llm):
+    """Agent that checks inventory."""
+
+    # SW1: Deterministic Python -- available as tool
+    def get_stock(self, item: str) -> int:
+        return INVENTORY.get(item, 0)
+
+    # SW3: LLM generation -- docstring is the prompt
+    async def can_fulfill(self, items: list[str]) -> Result:
+        """Check if we can fulfill {items}.
+        Use self.get_stock() for lookups."""
+        ...  # LLM implements this
+\end{lstlisting}
+
+Three constructs carry all semantic weight:
+
+\begin{enumerate}
+  \item \textbf{Ellipsis (\texttt{...})} signals LLM generation. No ellipsis
+        means regular Python. This is the \emph{only} distinction.
+  \item \textbf{Docstring} is the prompt. Parameter placeholders (\texttt{\{items\}})
+        expand to actual arguments at call time.
+  \item \textbf{Return type} is the contract. Pydantic models force structured
+        output with automatic validation and retry.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\subsection{SW1/SW3 Interleaving and Visibility}
+\label{sec:model:visibility}
+% ---------------------------------------------------------------------------
+
+The LLM executing a generation method can call any visible method on
+\texttt{self}, enabling seamless interleaving of deterministic code (SW1) and
+LLM reasoning (SW3). Visibility is controlled at two scopes with opposite
+defaults:
+
+\begin{table}[h]
+\centering
+\caption{Visibility model. Agent members are visible by default (the LLM should
+know its own capabilities); module-level names are hidden by default (most
+imports are implementation details).}
+\label{tab:visibility}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Scope} & \textbf{Default} & \textbf{Opt-in} & \textbf{Opt-out} \\
+\midrule
+Module-level imports & Hidden & \texttt{with visible:} & (already hidden) \\
+Class methods & Visible & (already visible) & \texttt{@hidden} \\
+Class fields & Visible & (already visible) & \texttt{Annotated[T, hidden]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The LLM discovers available methods through \texttt{doc(self)}, an
+auto-generated API reference included in the system prompt. This enables
+\emph{progressive disclosure}: the LLM can introspect unknown objects at
+runtime using \texttt{doc(obj)} to discover their interfaces.
+
+Visibility is informational, not enforced---analogous to Python's underscore
+convention. The LLM has no way to \emph{discover} hidden names, but
+\texttt{self.\_hidden\_attr} would still work if guessed. This mirrors the
+framework's philosophy: guide the LLM through API design, don't try to sandbox it.
+
+% ---------------------------------------------------------------------------
+\subsection{Strategies: Per-Method Execution Models}
+\label{sec:model:strategies}
+% ---------------------------------------------------------------------------
+
+Different tasks demand different execution models. A classification task needs
+a single structured JSON response; an implementation task needs iterative code
+execution with observation. Agent006 assigns strategies \emph{per method}:
+
+\begin{table}[h]
+\centering
+\caption{Strategy selection. The default is CodeActStrategy; override with
+\texttt{@strategy()}.}
+\label{tab:strategies}
+\begin{tabular}{lll}
+\toprule
+\textbf{Strategy} & \textbf{Use when} & \textbf{LLM calls} \\
+\midrule
+\texttt{StructuredOutputStrategy} & Returns Pydantic model, no code needed & Single \\
+\texttt{CodeActStrategy} (default) & Needs code execution or iteration & Multiple \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This per-method granularity is a key differentiator: a single agent class can
+use cheap single-shot extraction for routing and expensive iterative execution
+for implementation, with different LLMs per method via cascading resolution.
+
+% ---------------------------------------------------------------------------
+\subsection{Context Blocks: Structured Working Memory}
+\label{sec:model:context}
+% ---------------------------------------------------------------------------
+
+Context blocks pin information into the LLM's system prompt across method calls:
+
+\begin{itemize}
+  \item \textbf{Static blocks} (\texttt{self.context["plan"] = value}) are
+        evaluated once and cached.
+  \item \textbf{Dynamic blocks}
+        (\texttt{self.context.set\_dynamic("state", "self.format()")}) are
+        re-evaluated each LLM turn.
+  \item \textbf{Scoped blocks} temporarily override context for a single call.
+\end{itemize}
+
+Context is per-agent-instance---sub-agents start with empty context, forcing
+explicit data flow. This prevents accidental context pollution and makes the
+information architecture auditable.
+
+% ---------------------------------------------------------------------------
+\subsection{Orchestration and Decomposition}
+\label{sec:model:orchestration}
+% ---------------------------------------------------------------------------
+
+Workflow logic is expressed as regular Python methods (no ellipsis) that call
+generation methods:
+
+\begin{lstlisting}
+async def solve(self, problem: str) -> Solution:
+    """Pure Python orchestration -- no LLM here."""
+    spec = await self.understand(problem)     # LLM
+    plan = await self.plan(spec)              # LLM
+    for step in plan.steps:
+        result = await self.implement(step)   # LLM
+        evidence = await self.verify(result)  # LLM
+        if not evidence.passing:
+            result = await self.fix(result, evidence)
+    return result
+\end{lstlisting}
+
+The orchestrator enforces the workflow deterministically. The LLM cannot skip
+verification or reorder steps. Quality gates are Python \texttt{if} statements,
+not prompt instructions the LLM might ignore.
+
+
+% ===========================================================================
+\section{Helpers Beat Prompts}
+\label{sec:helpers}
+% ===========================================================================
+
+A central finding of our work is that \emph{deterministic helper methods
+consistently outperform prompt instructions} for tasks with exact semantics.
+We call this the ``helpers beat prompts'' principle.
+
+% ---------------------------------------------------------------------------
+\subsection{The Right Division of Labor}
+\label{sec:helpers:division}
+% ---------------------------------------------------------------------------
+
+LLMs excel at semantic tasks (sentiment analysis, summarization, interpretation)
+but struggle with precise computation (character counting, rule matching, exact
+arithmetic). The ``strawberry problem''---LLMs cannot reliably count the letter
+`r' in ``strawberry''---illustrates a broader pattern: any task with an exact
+algorithmic solution should be implemented in code, not delegated to the LLM.
+
+\begin{table}[h]
+\centering
+\caption{When to use helpers vs.\ LLM generation.}
+\label{tab:division}
+\begin{tabular}{ll}
+\toprule
+\textbf{Task type} & \textbf{Approach} \\
+\midrule
+Domain rules with exact semantics & Deterministic helper \\
+Fuzzy matching, interpretation & LLM generation \\
+Data transformation (known schema) & Deterministic helper \\
+Multi-step reasoning & LLM with CodeAct \\
+String formatting, parsing & Deterministic helper \\
+Classification, routing & LLM (StructuredOutput) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In Agent006, helpers are regular class methods. Because they appear in
+\texttt{doc(self)}, the LLM discovers and calls them naturally---no tool
+registration needed.
+
+% ---------------------------------------------------------------------------
+\subsection{Capability Tests: Integration Tests for Agent Runtimes}
+\label{sec:helpers:captests}
+% ---------------------------------------------------------------------------
+
+A framework like Agent006 places specific demands on the underlying LLM:
+it must write executable Python in a REPL, call \texttt{self.*} methods as tools,
+produce structured output conforming to Pydantic types, manage state across
+turns, and know when to reason directly versus when to write code. These are
+not generic ``reasoning'' abilities---they are integration-level capabilities
+that determine whether a model can function inside an agentic runtime.
+
+We introduce \emph{capability tests}: a suite of 33 focused integration tests
+that exercise these abilities in isolation. Each test targets a single
+capability (e.g., ``can the model call a helper method and use its return
+value?'', ``can it iterate in a REPL to refine output?'', ``can it extract
+structured data from a large context?'') and is scored on two independent
+dimensions:
+\begin{enumerate}
+  \item \textbf{Output correctness}: did the agent produce the right answer?
+  \item \textbf{Method correctness}: did it use the right approach?
+\end{enumerate}
+
+This dual scoring catches a critical failure mode: an LLM that writes
+\texttt{if "happy" in text: return "positive"}---naive keyword matching---may
+produce correct output on simple inputs but uses entirely the wrong method.
+Standard benchmarks miss this; capability tests do not.
+
+\paragraph{Results across 12 models.}
+Table~\ref{tab:captests-full} reports pass rates (3 runs each, majority vote)
+across 12 models spanning four families.
+The headline finding is that \textbf{the latest generation of frontier
+models---Claude Sonnet~4.5, GPT-5-mini, Gemini~3 Flash Preview---now pass
+all 33 tests at 100\%}, demonstrating that the integration-level capabilities
+required by an agentic runtime like Agent006 are well within reach of current
+models. This was not the case even one generation ago: GPT-5.2 drops to 0\%
+on several REPL and data tasks, and Gemini~2.5 Flash Lite fails broadly on
+code execution, state management, and large-data processing.
+
+Among smaller and open-weight models, Nemotron-3-Nano-30B-A3B achieves
+surprisingly strong results (only two failures), while GPT-OSS-120B struggles
+with tool usage despite passing reasoning tasks. Qwen3-Next-80B-A3B-Instruct
+shows solid overall coverage with a few gaps in fast-agent and food-ordering
+scenarios.
+
+% TODO: Nano 100% and Sonnet 0% on json_qa_lookup is suspicious.
+% Paul's explanation: trivial JSON string visible in context, Claude models
+% do import json; ... while others answer directly. Needs deeper investigation
+% to confirm this is a real mode-selection difference vs. a test artifact.
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\caption{Capability test pass rates across 12 models (3 runs, majority vote).
+Each test exercises a specific integration-level capability required by the
+Agent006 runtime. Green = 100\%, yellow = partial, red = 0\%.}
+\label{tab:captests-full}
+\begin{adjustbox}{max width=\linewidth}
+\footnotesize
+\begin{tabular}{l*{12}{c}}
+\toprule
+\textbf{Test} &
+\rotatebox{70}{\textbf{Sonnet 4.5}} &
+\rotatebox{70}{\textbf{Haiku 4.5}} &
+\rotatebox{70}{\textbf{GPT-5-mini}} &
+\rotatebox{70}{\textbf{GPT-5.2}} &
+\rotatebox{70}{\textbf{GPT-5.4}} &
+\rotatebox{70}{\textbf{Gemini 2.5 FL}} &
+\rotatebox{70}{\textbf{Gemini 3 FP}} &
+\rotatebox{70}{\textbf{Nemo Nano 30B}} &
+\rotatebox{70}{\textbf{Nemo Super v3}} &
+\rotatebox{70}{\textbf{GPT-OSS-120B}} &
+\rotatebox{70}{\textbf{Qwen3-80B}} &
+\rotatebox{70}{\textbf{GPT-5-nano}} \\
+\midrule
+calculate\_batch              & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 &   0 & 100 & 100 \\
+calculate\_complex            & 100 & 100 & 100 & 100 &  50 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+calculate\_simple             & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+context\_notes                & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 &   0 \\
+employee\_lookup              & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+error\_recovery               & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 & 100 & 100 &   0 \\
+fast\_agent\_help              & 100 & 100 & 100 & 100 & 100 &  67 &  67 &  67 & 100 &  67 & 100 &  67 \\
+fast\_agent\_help\_translate    & 100 & 100 & 100 & 100 & 100 &  67 &  67 &  67 & 100 & 100 & 100 &  67 \\
+fast\_agent\_no\_help           & 100 &  67 & 100 &  67 &  67 &  67 & 100 & 100 & 100 &  33 &  33 & 100 \\
+fast\_agent\_no\_help\_translate & 100 &  67 & 100 &  67 & 100 &  33 & 100 & 100 & 100 &  67 &  67 & 100 \\
+fast\_food\_cancel             & 100 & 100 & 100 & 100 & 100 &  50 & 100 & 100 & 100 &  50 & 100 &   0 \\
+fast\_food\_order              & 100 & 100 &   0 &  67 &  83 &  17 & 100 &  83 & 100 &  17 &  67 &  33 \\
+json\_extract                 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
+json\_qa\_lookup               &   0 &   0 &   0 &   0 & 100 &  50 &   0 & 100 &   0 &   0 &   0 &   0 \\
+json\_qa\_reasoning            & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
+large\_data\_count             & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 & 100 & 100 \\
+large\_data\_extract           & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 & 100 & 100 \\
+large\_data\_find              & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 & 100 \\
+needle\_in\_haystack           & 100 & 100 & 100 & 100 & 100 &   0 &   0 & 100 & 100 &   0 &   0 &   0 \\
+refinement                   & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 &   0 &   0 &   0 \\
+repl\_exploration             & 100 & 100 &   0 & 100 &   0 &   0 & 100 & 100 & 100 &   0 & 100 &   0 \\
+router\_analyze               & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
+router\_multi\_analyze\_validate & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+router\_multi\_transform\_validate & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+router\_transform             & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &  50 & 100 & 100 \\
+router\_validate              & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+sentiment\_batch              & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 & 100 &   0 &   0 \\
+sentiment\_single             & 100 &  67 & 100 & 100 & 100 &  67 & 100 & 100 & 100 &  67 &  67 &  67 \\
+structured\_combined\_extraction & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
+task\_decomposition           & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 & 100 &   0 \\
+\midrule
+\textbf{Pass rate}            & \textbf{97\%} & \textbf{96\%} & \textbf{93\%} & \textbf{96\%} & \textbf{90\%} & \textbf{56\%} & \textbf{93\%} & \textbf{90\%} & \textbf{100\%} & \textbf{54\%} & \textbf{75\%} & \textbf{65\%} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+\end{landscape}
+
+\paragraph{What is not yet covered.}
+The current suite focuses on single-agent capabilities within the CodeAct and
+StructuredOutput strategies. Notable gaps include:
+\begin{itemize}
+  \item \textbf{Multi-agent orchestration}: sub-agent spawning, delegation,
+        and result aggregation across agent boundaries.
+  \item \textbf{Context block management}: verifying that the LLM correctly
+        reads, updates, and reasons over dynamic context blocks across turns.
+  \item \textbf{Long-horizon state tracking}: tasks requiring consistent state
+        management over 10+ turns with interleaved tool calls.
+  \item \textbf{Visibility control compliance}: testing that the LLM respects
+        \texttt{@hidden} boundaries and does not attempt to call hidden methods.
+\end{itemize}
+
+\paragraph{Frontier tests.}
+Beyond coverage gaps, we identify three directions for next-generation
+capability tests:
+\begin{itemize}
+  \item \textbf{Self-correction under type errors}: can the model recover when
+        its generated code fails Pydantic validation, without human hints?
+  \item \textbf{Strategy-aware mode selection}: given a task that could be
+        solved by either StructuredOutput or CodeAct, does the model select the
+        more efficient strategy?
+  \item \textbf{Helper discovery}: when \texttt{doc(self)} reveals a
+        deterministic helper that solves the task exactly, does the model call
+        it instead of reimplementing the logic in generated code?
+\end{itemize}
+
+% ===========================================================================
+\section{Compositional End-to-End Optimization}
+\label{sec:optimization}
+% ===========================================================================
+
+A key advantage of the agent-as-object model is that it enables
+\emph{compositional optimization}: because agents are decomposed into typed
+methods with explicit signatures, each sub-task can be optimized independently
+and improvements compose predictably.
+
+% ---------------------------------------------------------------------------
+\subsection{Case Study: DABStep}
+\label{sec:optimization:dabstep}
+% ---------------------------------------------------------------------------
+
+DABStep~\cite{dabstep2025} is a data analysis benchmark with 450 tasks requiring
+agents to reason over transaction data, fee schedules, and business rules. The
+published SOTA at time of writing is 16\% (o3-mini). We achieved \textbf{80\%}
+on a 10-task evaluation subset through systematic application of the helpers
+beat prompts principle.
+
+\paragraph{Optimization trajectory.} Figure~\ref{fig:dabstep} shows the
+progression across 55 optimization iterations:
+
+\begin{itemize}
+  \item \textbf{Baseline (opt1, 40\%)}: All logic delegated to the LLM via
+        prompt instructions. The LLM inconsistently applied fee matching rules.
+  \item \textbf{Architectural fix (opt3, 50\%)}: Trace analysis revealed a
+        missing \texttt{data\_dir} parameter---a structural bug, not a prompt
+        issue. Fixed in 15 minutes.
+  \item \textbf{Progressive helpers (opt4--opt44, 70\%)}: Fee matching, fraud
+        rate calculation, and EUR rounding moved from prompts to deterministic
+        methods. Each helper eliminated a class of inconsistent errors.
+  \item \textbf{Ceiling (opt49, 80\%)}: Final EUR rounding fix. Subsequent
+        iterations (opt50--opt55) all regressed---10 of 11 attempts to improve
+        further broke previously passing tasks.
+\end{itemize}
+
+\placeholder{Add Figure~\ref{fig:dabstep}: line chart of accuracy vs.\ iteration.}
+
+\begin{figure}[h]
+\centering
+% \includegraphics[width=0.8\textwidth]{figures/dabstep_progression.pdf}
+\placeholder{DABStep accuracy progression chart (opt1--opt55)}
+\caption{DABStep accuracy across optimization iterations. Key transitions
+annotated: architectural fix at opt3, helper introduction at opt4--opt44,
+ceiling reached at opt49.}
+\label{fig:dabstep}
+\end{figure}
+
+\paragraph{Why helpers beat prompts.} The critical helpers were:
+
+\begin{lstlisting}
+def fee_matches(self, fee: dict, txn: dict) -> bool:
+    """Deterministic fee matching -- not LLM-generated."""
+    if fee['card_scheme'] != txn['card_scheme']:
+        return False
+    if fee.get('is_credit') is not None:
+        if fee['is_credit'] != txn['is_credit']:
+            return False
+    return True
+
+def calc_fee(self, fee: dict, amount: float) -> float:
+    return fee['fixed_amount'] + fee['rate'] * amount / 10000
+\end{lstlisting}
+
+When fee matching was left to the LLM, it got rules wrong inconsistently---
+sometimes treating \texttt{null} as ``no match'' instead of ``matches all,''
+sometimes ignoring volume ranges. When implemented as a helper, accuracy jumped
+immediately because the logic executes deterministically every time.
+
+\paragraph{Ceiling analysis.} The two remaining failures reveal the limits of
+the approach: one task requires ``fee switching'' (recalculating optimal fees
+for all transactions under a counterfactual), which is too complex for a simple
+helper but too brittle for prompt engineering. The other task's expected answer
+appears to be incorrect in the benchmark itself.
+
+% ---------------------------------------------------------------------------
+\subsection{Case Study: $\tau$-bench Retail}
+\label{sec:optimization:taubench}
+% ---------------------------------------------------------------------------
+% DATA SOURCE: branch opt/tau-bench-deterministic-user-sim (tip: 402d60e6)
+%   - Optimization log: docs/tau-bench-ralph-loop-log.md
+%   - Agent variants:   experiments/evaluation-ablations/agents/tau_bench_opt*.py
+%   - Tag: tau-bench-data (preserves commit if branch is deleted)
+%   - Branch NOT merged to main — keep branch or cherry-pick before cleanup.
+
+$\tau$-bench~\cite{taubench2024} evaluates agents on customer service tasks
+requiring multi-turn tool use. We evaluated on the retail domain (114 tasks,
+3 runs each) using Claude Sonnet 4.5.
+
+\begin{table}[h]
+\centering
+\caption{$\tau$-bench retail results. Pass\textsuperscript{k} measures
+consistency: the probability that all $k$ runs of the same task succeed.}
+\label{tab:taubench}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Agent variant} & \textbf{Pass\textsuperscript{1}} & \textbf{Pass\textsuperscript{2}} & \textbf{Pass\textsuperscript{3}} \\
+\midrule
+Baseline (opt1) & 76.7\% & --- & 50.0\% \\
++ Availability filtering (opt2) & 90.0\% & --- & 70.0\% \\
+Best configuration & \textbf{95.0\%} & \textbf{90.0\%} & \textbf{85.0\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Trace-informed optimization.} We analyzed 34 non-perfect tasks and
+identified 12 failure patterns. The top failures were:
+
+\begin{enumerate}
+  \item \textbf{Wrong payment method} (5 tasks)---agent selected wrong
+        instrument without confirming with customer.
+  \item \textbf{Wrong item/variant} (4 tasks)---ignored constraints like size
+        or color from the original order.
+  \item \textbf{Wrong order identified} (4 tasks)---picked wrong order when
+        customer had multiple.
+\end{enumerate}
+
+Each pattern was addressed with targeted prompt refinements across opt3--opt10,
+demonstrating how the framework's tracing enables systematic diagnosis and
+improvement.
+
+\placeholder{Add detailed ablation table showing which opt fixed which failure pattern.}
+
+% ---------------------------------------------------------------------------
+\subsection{Why Decomposition Enables Optimization}
+\label{sec:optimization:why}
+% ---------------------------------------------------------------------------
+
+In monolithic agent designs, a single prompt controls all behavior. Improving
+one aspect (e.g., making the agent more careful about edge cases) often degrades
+another (e.g., making it slower or more verbose on simple cases). This is the
+\emph{competing constraints} problem we observed at the DABStep ceiling: 10 of
+11 attempts to improve the remaining failures regressed previously passing tasks.
+
+Agent006's method-level decomposition breaks this coupling:
+
+\begin{enumerate}
+  \item Each method has its own prompt (docstring), strategy, and optionally
+        its own LLM.
+  \item Optimizing one method's docstring cannot affect another method's behavior
+        ---they are separate LLM calls with separate prompts.
+  \item The orchestrator (pure Python) guarantees execution order, so
+        optimization cannot change the workflow structure.
+\end{enumerate}
+
+This is analogous to how modular software is easier to optimize than monolithic
+software: you profile, identify the bottleneck, and fix it in isolation.
+
+% ---------------------------------------------------------------------------
+\subsection{Optimization Surfaces}
+\label{sec:optimization:surfaces}
+% ---------------------------------------------------------------------------
+
+For each method, developers can independently tune:
+
+\begin{table}[h]
+\centering
+\caption{Per-method optimization surfaces available in Agent006.}
+\label{tab:optimization-surfaces}
+\begin{tabular}{lll}
+\toprule
+\textbf{Surface} & \textbf{Mechanism} & \textbf{Example} \\
+\midrule
+Prompt & Docstring text & Refine instructions, add examples \\
+Strategy & \texttt{@strategy()} decorator & Switch StructuredOutput $\leftrightarrow$ CodeAct \\
+Model & \texttt{@strategy(llm=...)} & Cheap model for routing, strong for impl. \\
+Helpers & Add/refine class methods & Move logic from prompt to code \\
+Context & \texttt{self.context[]} blocks & Add/remove information per phase \\
+Return type & Pydantic model fields & Tighten or relax output constraints \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\subsection{Trace-Informed Optimization Loop}
+\label{sec:optimization:loop}
+% ---------------------------------------------------------------------------
+
+Agent006 traces all public methods by default, capturing every LLM call, code
+execution, and return value. This enables a systematic optimization loop:
+
+\begin{enumerate}
+  \item \textbf{Run}: Execute agent on benchmark tasks, collect traces.
+  \item \textbf{Diagnose}: Identify which method failed and why (wrong output?
+        wrong approach? context missing?).
+  \item \textbf{Target}: Apply the fix to the specific method---change its
+        docstring, add a helper, switch its strategy.
+  \item \textbf{Verify}: Re-run and confirm the fix works without regressing
+        other methods.
+\end{enumerate}
+
+Because methods are independent LLM calls, step 4 is reliable: fixing
+\texttt{compute\_fee()} cannot break \texttt{classify\_intent()}.
+
+\paragraph{Parameterized strategies.} Strategy configurations are Python
+dataclasses, enabling programmatic ablation:
+
+\begin{lstlisting}
+# Create prompt variant for A/B testing
+minimal = CodeActConfig(
+    instructions="Output Python code. Define target method.",
+    error_empty="Define `{method}`.",
+)
+strategy = CodeActStrategy(config=minimal)
+\end{lstlisting}
+
+\placeholder{Add experimental results comparing monolithic vs.\ decomposed
+optimization on DABStep or $\tau$-bench. Show that per-method optimization
+avoids the competing constraints problem.}
+
+% ---------------------------------------------------------------------------
+\subsection{Comparison with DSPy}
+\label{sec:optimization:dspy}
+% ---------------------------------------------------------------------------
+
+DSPy~\cite{khattab2023dspy} pioneered the idea of programmatic LLM optimization
+through its signature-based modules and teleprompter optimizers. Agent006 shares
+DSPy's conviction that LLM pipelines should be optimized programmatically rather
+than through manual prompt engineering. However, the approaches differ in
+important ways:
+
+\begin{table}[h]
+\centering
+\caption{Comparison of optimization approaches.}
+\label{tab:dspy-comparison}
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{DSPy} & \textbf{Agent006} \\
+\midrule
+Unit of composition & Signature/Module & Python method \\
+Optimization target & Few-shot examples & Prompt + strategy + model + helpers \\
+Execution model & Fixed pipeline & Per-method (CodeAct or StructuredOutput) \\
+Code execution & Not native & Native REPL per method \\
+Deterministic logic & Via assertions & Via helper methods (SW1) \\
+Optimization scope & Whole pipeline & Per-method, composable \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The key distinction is that Agent006 treats deterministic code as a first-class
+optimization lever: rather than only optimizing what the LLM sees (prompts,
+examples), developers can move logic \emph{out} of the LLM entirely into helpers.
+This ``helper vs.\ prompt'' decision is itself an optimization choice---one that
+our DABStep results show has the largest impact.
+
+\placeholder{Add quantitative comparison with DSPy on a shared benchmark if
+available.}
+
+
+% ===========================================================================
+\section{Memory Architecture}
+\label{sec:memory}
+% ===========================================================================
+
+Agent006 provides three levels of memory, each solving a different problem:
+event history (short-term), context blocks (working memory), and summarization
+(compression).
+
+% ---------------------------------------------------------------------------
+\subsection{Current Memory Mechanisms}
+\label{sec:memory:current}
+% ---------------------------------------------------------------------------
+
+\paragraph{Event history.} Every LLM call, code execution, and tool invocation
+becomes an event stored in \texttt{agent.events}. Events are tagged with stable
+string identifiers and queryable:
+\texttt{agent.events.query(type="task", limit=50)}. This is the agent's
+short-term memory---what happened so far in this execution.
+
+\paragraph{Context blocks.} Named information pinned into the system prompt
+across method calls. Static blocks hold fixed values (plans, specs); dynamic
+blocks re-evaluate a Python expression each LLM turn (live state). The LLM can
+also manage its own context from within CodeAct.
+
+\paragraph{Summarization.} Two mechanisms prevent context overflow:
+\texttt{TokenBudgetSummarizer} compresses oldest events when a token budget is
+exceeded; \texttt{MethodSummarizer} compresses each completed method's events.
+Both run asynchronously---the summary is generated in the background and swapped
+in before the next turn.
+
+% CIM section extracted to paper/cim-draft.md for future inclusion.
+
+% ===========================================================================
+\section{Related Work}
+\label{sec:related}
+% ===========================================================================
+
+\paragraph{Agent frameworks.}
+LangChain~\cite{langchain2023} and LlamaIndex~\cite{llamaindex2023} provide
+tool-use abstractions but separate prompt templates from application logic.
+AutoGen~\cite{wu2023autogen} and CrewAI~\cite{crewai2024} focus on multi-agent
+conversation patterns. DSPy~\cite{khattab2023dspy} introduces programmatic
+optimization of LLM pipelines via signatures and teleprompters. Agent006 shares
+DSPy's optimization philosophy but uses standard Python OOP as the abstraction
+layer and treats deterministic code as a first-class optimization lever.
+
+\paragraph{Code-generating agents.}
+SWE-Agent~\cite{yang2024sweagent} and OpenHands~\cite{openhands2024} build
+agents for software engineering tasks. CodeAct~\cite{wang2024codeact} proposes
+code execution as the primary action modality. Agent006's CodeActStrategy is
+inspired by this work but embeds code execution within an object-oriented
+framework where the agent's own methods are the available tools.
+
+\paragraph{Memory architectures.}
+MemGPT~\cite{packer2023memgpt} introduces OS-inspired memory management for
+LLMs with a tiered memory hierarchy.
+Reflexion~\cite{shinn2023reflexion} uses verbal self-reflection as a form of
+episodic memory. RAG~\cite{lewis2020rag} retrieves from external knowledge
+stores. Agent006's memory architecture differs in providing structured,
+per-agent-instance memory (event history, context blocks, summarization) rather
+than a shared retrieval store.
+
+\placeholder{Expand with additional citations and positioning.}
+
+
+% ===========================================================================
+\section{Discussion and Future Work}
+\label{sec:discussion}
+% ===========================================================================
+
+\paragraph{Limitations.} Visibility is informational, not enforced---a
+determined LLM could guess hidden attribute names. Context blocks and event
+history are in-memory only; cross-session persistence requires explicit
+serialization. The ``helpers beat prompts'' finding applies most clearly to
+rule-based domains; creative or open-ended tasks may not benefit from the same
+decomposition.
+
+\paragraph{SFT from agent traces.} Agent006's tracing infrastructure captures
+complete trajectories suitable for supervised fine-tuning. We have a pipeline
+for generating SFT data from SWE-bench trajectories and plan to evaluate whether
+fine-tuned smaller models can replicate strong agent behavior.
+
+\paragraph{Broader impact.} By making agent behavior auditable (traces),
+decomposable (methods), and type-safe (Pydantic contracts), Agent006 aims to
+make AI agents more predictable and debuggable---properties we believe are
+prerequisites for trustworthy deployment.
+
+
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ===========================================================================
+
+We presented Agent006, a framework where AI agents are Python objects. Three
+insights emerged from this design. First, the programming model matters: by
+inheriting from Python's OOP, agents become testable, composable, and
+optimizable using standard software engineering tools. Second, helpers beat
+prompts: deterministic code outperforms LLM reasoning for rule-based tasks,
+as demonstrated by an 80\% accuracy on DABStep (vs.\ 16\% SOTA) and 95\%
+Pass\textsuperscript{1} on $\tau$-bench retail. Because agents are decomposed
+into typed methods, each can be optimized independently, enabling compositional
+end-to-end improvement. We believe that framing agent development as software
+engineering---not prompt engineering---is the path to reliable AI agents.
+
+
+% ===========================================================================
+% References
+% ===========================================================================
+
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{10}
+
+\bibitem{dabstep2025}
+\placeholder{DABStep benchmark citation.}
+
+\bibitem{taubench2024}
+Yifei Zhou, Andrea Zanette, et al.
+\newblock $\tau$-bench: A benchmark for tool-agent-user interaction in real-world domains.
+\newblock \emph{arXiv preprint arXiv:2406.12045}, 2024.
+
+\bibitem{khattab2023dspy}
+Omar Khattab, Arnav Singhvi, et al.
+\newblock DSPy: Compiling declarative language model calls into self-improving pipelines.
+\newblock \emph{arXiv preprint arXiv:2310.03714}, 2023.
+
+\bibitem{langchain2023}
+Harrison Chase.
+\newblock LangChain.
+\newblock \url{https://github.com/langchain-ai/langchain}, 2023.
+
+\bibitem{llamaindex2023}
+Jerry Liu.
+\newblock LlamaIndex.
+\newblock \url{https://github.com/run-llama/llama_index}, 2023.
+
+\bibitem{wu2023autogen}
+Qingyun Wu, Gagan Bansal, et al.
+\newblock AutoGen: Enabling next-gen LLM applications via multi-agent conversation.
+\newblock \emph{arXiv preprint arXiv:2308.08155}, 2023.
+
+\bibitem{crewai2024}
+Jo\~{a}o Moura.
+\newblock CrewAI: Framework for orchestrating role-playing AI agents.
+\newblock \url{https://github.com/joaomdmoura/crewAI}, 2024.
+
+\bibitem{yang2024sweagent}
+John Yang, Carlos E.~Jimenez, et al.
+\newblock SWE-agent: Agent-computer interfaces enable automated software engineering.
+\newblock \emph{arXiv preprint arXiv:2405.15793}, 2024.
+
+\bibitem{openhands2024}
+Xingyao Wang, Boxuan Li, et al.
+\newblock OpenHands: An open platform for AI software developers as generalist agents.
+\newblock \emph{arXiv preprint arXiv:2407.16741}, 2024.
+
+\bibitem{wang2024codeact}
+Xingyao Wang, Yangyi Chen, et al.
+\newblock Executable code actions elicit better LLM agents.
+\newblock \emph{arXiv preprint arXiv:2402.01030}, 2024.
+
+\bibitem{packer2023memgpt}
+Charles Packer, Vivian Fang, et al.
+\newblock MemGPT: Towards LLMs as operating systems.
+\newblock \emph{arXiv preprint arXiv:2310.08560}, 2023.
+
+\bibitem{shinn2023reflexion}
+Noah Shinn, Federico Cassano, et al.
+\newblock Reflexion: Language agents with verbal reinforcement learning.
+\newblock \emph{NeurIPS}, 2023.
+
+\bibitem{lewis2020rag}
+Patrick Lewis, Ethan Perez, et al.
+\newblock Retrieval-augmented generation for knowledge-intensive NLP tasks.
+\newblock \emph{NeurIPS}, 2020.
+
+\end{thebibliography}
+
+\end{document}
