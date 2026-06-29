@@ -6,7 +6,7 @@
 cd src/nemo_oo_agents_cli/commands/
 cp _template.py mycommand.py    # copy the template
 # edit mycommand.py              # add your logic
-nemo_oo_agents mycommand              # it just works
+nemo oo mycommand              # it just works
 ```
 
 That's it. No registration, no config files, no editing other files.
@@ -28,18 +28,18 @@ import click
 @click.command()
 @click.argument("name")
 def command(name: str):
-    """One-line description shown in `nemo_oo_agents --help`."""
+    """One-line description shown in `nemo oo --help`."""
     click.echo(f"Hello, {name}!")
 ```
 
-The filename becomes the subcommand name: `mycommand.py` → `nemo_oo_agents mycommand`.
+The filename becomes the subcommand name: `mycommand.py` → `nemo oo mycommand`.
 
 ### Override the Name
 
 Add `NAME` at module level if the filename doesn't match what you want:
 
 ```python
-NAME = "my-command"  # nemo_oo_agents my-command (instead of nemo_oo_agents mycommand)
+NAME = "my-command"  # nemo oo my-command (instead of nemo oo mycommand)
 ```
 
 ## Patterns
@@ -59,7 +59,7 @@ def command(target: str, verbose: bool):
 
 ### Group with Subcommands
 
-For `nemo_oo_agents things list` / `nemo_oo_agents things create`:
+For `nemo oo things list` / `nemo oo things create`:
 
 ```python
 import click
@@ -144,10 +144,9 @@ src/nemo_oo_agents_cli/
 └── commands/
     ├── __init__.py          # Auto-discovery engine
     ├── _template.py         # Copy-paste starter for new commands
-    ├── eval.py              # nemo_oo_agents eval ...
-    ├── sandbox.py           # nemo_oo_agents sandbox ...
-    ├── traces.py            # nemo_oo_agents traces cleanup/list/stats
-    └── start_dev.py         # nemo_oo_agents start-dev
+    ├── eval.py              # nemo oo eval ...
+    ├── traces.py            # nemo oo traces cleanup/list/stats
+    └── start_dev.py         # nemo oo start-dev
 ```
 
 ## Shell Completion
@@ -155,9 +154,9 @@ src/nemo_oo_agents_cli/
 New commands get tab-completion automatically. To enable it:
 
 ```bash
-nemo_oo_agents completion install   # auto-detects your shell
+nemo oo completion install   # auto-detects your shell
 
 # Or manually:
-eval "$(_NEMO_OO_AGENTS_COMPLETE=zsh_source nemo_oo_agents)"   # zsh
-eval "$(_NEMO_OO_AGENTS_COMPLETE=bash_source nemo_oo_agents)"  # bash
+eval "$(_NEMO_COMPLETE=zsh_source nemo)"   # zsh
+eval "$(_NEMO_COMPLETE=bash_source nemo)"  # bash
 ```
