@@ -10,14 +10,14 @@ Copy this file as a starting point for a new nemo_oo_agents CLI command.
     4. Done — it's automatically discovered.
 
 The filename becomes the subcommand name:
-    mycommand.py  →  nemo_oo_agents mycommand ...
+    mycommand.py  →  nemo oo mycommand ...
 
 To override the name, add at module level:
     NAME = "custom-name"
 
 Usage:
-    nemo_oo_agents mycommand
-    nemo_oo_agents mycommand --verbose
+    nemo oo mycommand
+    nemo oo mycommand --verbose
 """
 
 import click
@@ -35,14 +35,14 @@ import click
 @click.argument("target", default="world")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output.")
 def command(target: str, verbose: bool):
-    """Short description shown in `nemo_oo_agents --help`.
+    """Short description shown in `nemo oo --help`.
 
     TARGET is the thing to operate on.
 
     \b
     Examples:
-        nemo_oo_agents mycommand
-        nemo_oo_agents mycommand foo --verbose
+        nemo oo mycommand
+        nemo oo mycommand foo --verbose
     """
     click.echo(f"Hello, {target}!")
     if verbose:
@@ -51,7 +51,7 @@ def command(target: str, verbose: bool):
 
 # ---------------------------------------------------------------------------
 # GROUP COMMAND — uncomment this instead if you need subcommands
-#                 (e.g. nemo_oo_agents things list / nemo_oo_agents things create)
+#                 (e.g. nemo oo things list / nemo oo things create)
 # ---------------------------------------------------------------------------
 
 # @click.group()

@@ -3,9 +3,9 @@
 """TUI command for nemo_oo_agents CLI.
 
 Usage:
-    nemo_oo_agents tui
-    nemo_oo_agents tui --model gpt-4o
-    nemo_oo_agents tui --working-dir /path/to/project
+    nemo oo tui
+    nemo oo tui --model gpt-4o
+    nemo oo tui --working-dir /path/to/project
 """
 
 import asyncio
@@ -113,12 +113,12 @@ def command(
     skills and MCP servers.
 
     Examples:
-        nemo_oo_agents tui
-        nemo_oo_agents tui --model gpt-4o
-        nemo_oo_agents tui --working-dir /path/to/project
-        nemo_oo_agents tui --mcp-file .mcp.json
-        nemo_oo_agents tui --agent ./my_agent.py:MyAgent
-        nemo_oo_agents tui --vi
+        nemo oo tui
+        nemo oo tui --model gpt-4o
+        nemo oo tui --working-dir /path/to/project
+        nemo oo tui --mcp-file .mcp.json
+        nemo oo tui --agent ./my_agent.py:MyAgent
+        nemo oo tui --vi
     """
     from nemo_oo_agents_cli.tui.config import Config
     from nemo_oo_agents_cli.tui.main import main as tui_main

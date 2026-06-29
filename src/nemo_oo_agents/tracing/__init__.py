@@ -411,7 +411,7 @@ def _default_exporters() -> list[SpanExporter] | None:
 
     When ``OTLP_ENDPOINT`` is explicitly set the user opted in — warn on failure.
     When using the default endpoint, stay silent so tracing is invisible until
-    ``nemo_oo_agents start-dev`` is running.
+    ``nemo oo start-dev`` is running.
     """
     global _probe_failed
 
@@ -476,7 +476,7 @@ def _print_trace_target(exporters: list[SpanExporter], experiment: str | None) -
 
     if has_file_exporter and len(exporters) == 1:
         print(
-            "  Tip: Run `nemo_oo_agents start-dev` to launch the trace viewer for interactive exploration."
+            "  Tip: Run `nemo oo start-dev` to launch the trace viewer for interactive exploration."
         )
 
 

@@ -30,7 +30,7 @@ Optionally, you can set:
 
 The file name (minus ``.py``) becomes the subcommand name by default::
 
-    commands/start_dev.py →  nemo_oo_agents start-dev ...
+    commands/start_dev.py →  nemo oo start-dev ...
 
 Files starting with ``_`` are ignored (private helpers, templates, etc.).
 

@@ -891,12 +891,12 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Launch & Ingest
 
-- **Start the unified trace + eval viewer** — `nemo_oo_agents start-dev` (CLI) or `python -m nemo_oo_agents.viewer` boots the FastAPI app on port 5001 serving the React SPA from `frontend-react/dist`; `start-dev` accepts `--port`/`-p` and `--host`/`-h`, while `python -m nemo_oo_agents.viewer` honors `NEMO_OO_TRACE_VIEWER_PORT` (host fixed to `0.0.0.0`).
+- **Start the unified trace + eval viewer** — `nemo oo start-dev` (CLI) or `python -m nemo_oo_agents.viewer` boots the FastAPI app on port 5001 serving the React SPA from `frontend-react/dist`; `start-dev` accepts `--port`/`-p` and `--host`/`-h`, while `python -m nemo_oo_agents.viewer` honors `NEMO_OO_TRACE_VIEWER_PORT` (host fixed to `0.0.0.0`).
 - **Point the store at a SQLite DB** — traces persist in `traces.db` (in the working directory by default; the `start-dev` CLI resolves it to the user config dir instead); override with `--db` or `NEMO_OO_TRACE_DB`, letting you run side-by-side viewers **(opt-in)**.
 - **Ingest OTLP traces** — `POST /v1/traces` accepts OTLP JSON `ExportTraceServiceRequest`, queued onto an async write queue and committed by a single SQLite-writer thread so parallel eval runs never block ingest.
 - **Block until spans are queryable** — `POST /v1/sync` drains the ingest queue (30s timeout) so a freshly flushed trace is readable before scoring fetches it.
 - **Stream content-addressed LLM message journals** — `POST /v1/journal/messages`, `/v1/journal/blocks` (with `X-Session-Id`), and `/v1/journal/calls` store deduplicated message blocks and per-call input/output hash lists, reconstructed via `GET /api/traces/{session_id}/calls`.
-- **Import .jsonl traces from disk** — `nemo_oo_agents import-traces <file_or_dir> [--endpoint] [--batch-id]` recursively POSTs OTLP-JSON files, derives `session.id` from filenames, and tags each with a `batch_id` resource attribute **(opt-in)**.
+- **Import .jsonl traces from disk** — `nemo oo import-traces <file_or_dir> [--endpoint] [--batch-id]` recursively POSTs OTLP-JSON files, derives `session.id` from filenames, and tags each with a `batch_id` resource attribute **(opt-in)**.
 
 ### Browse, Search & Manage Traces
 

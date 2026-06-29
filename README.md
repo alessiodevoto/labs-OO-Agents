@@ -394,7 +394,7 @@ uv run python examples/quickstart/05_progressive_disclosure.py
 Tracing is automatic. Start the development server and all agent method calls are traced — orchestrators, LLM methods, and private helpers — with parent-child relationships preserved:
 
 ```bash
-nemo_oo_agents start-dev   # start trace viewer on http://localhost:5001
+nemo oo start-dev   # start trace viewer on http://localhost:5001
 ```
 
 ```python
