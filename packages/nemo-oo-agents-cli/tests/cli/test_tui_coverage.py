@@ -526,8 +526,56 @@ class TestCommandBaseValidation:
         assert "/exit" in msg
 
     def test_agent_none_raises(self, mock_console, mock_config):
-        with pytest.raises(ValueError, match="agent cannot be None"):
+        with pytest.raises(ValueError, match="agent cannot be None."):
             ExitCommand(mock_console, mock_config, None)
+
+
+@pytest.mark.parametrize("command_cls", [ModelCommand, SwitchCommand])
+async def test_model_commands_persist_default_model(
+    command_cls, mock_console, mock_config, mock_agent, tmp_path, monkeypatch
+):
+    """Verify successful model-switching commands persist the selected model."""
+    import yaml
+
+    from nemo_oo_agents import unifiedllm
+
+    project_dir = tmp_path / "proj"
+    monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(project_dir))
+    cmd = command_cls(mock_console, mock_config, mock_agent)
+    original_models = unifiedllm.MODELS
+    unifiedllm.MODELS = {"prov/m": None}
+    try:
+        with patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()):
+            result = await cmd.execute(["prov/m"])
+    finally:
+        unifiedllm.MODELS = original_models
+
+    assert result.success is True
+    settings = yaml.safe_load((project_dir / "settings.yaml").read_text())
+    assert settings["tui"]["default_model"] == "prov/m"
+
+
+@pytest.mark.parametrize("command_cls", [ModelCommand, SwitchCommand])
+async def test_model_commands_ignore_persistence_failure(
+    command_cls, mock_console, mock_config, mock_agent
+):
+    """Verify persistence errors do not mask successful in-memory model switches."""
+    from nemo_oo_agents import unifiedllm
+
+    cmd = command_cls(mock_console, mock_config, mock_agent)
+    original_models = unifiedllm.MODELS
+    unifiedllm.MODELS = {"prov/m": None}
+    try:
+        with (
+            patch.object(unifiedllm, "get_llm_client", return_value=MagicMock()),
+            patch.object(cmd, "_persist_tui_setting", side_effect=OSError("read-only")),
+        ):
+            result = await cmd.execute(["prov/m"])
+    finally:
+        unifiedllm.MODELS = original_models
+
+    assert result.success is True
+    assert mock_config.default_model == "prov/m"
 
 
 class TestHelpCommand:

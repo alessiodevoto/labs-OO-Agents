@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
@@ -137,6 +137,59 @@ def settings_present() -> bool:
     from nemo_oo_agents.layered_config import layered_paths
 
     return bool(layered_paths(SETTINGS_FILENAME, SETTINGS_ENV_VAR))
+
+
+def settings_path(scope: Literal["project", "user"] = "project") -> Path:
+    """Return the writable ``settings.yaml`` path for *scope*."""
+    from nemo_oo_agents.paths import get_project_dir, get_user_dir
+
+    if scope == "project":
+        return get_project_dir(SETTINGS_FILENAME)
+    if scope == "user":
+        return get_user_dir(SETTINGS_FILENAME)
+    raise ValueError(f"Unknown settings scope: {scope!r}")
+
+
+def write_settings_updates(
+    updates: dict[tuple[str, ...], Any],
+    *,
+    scope: Literal["project", "user"] = "project",
+    dry_run: bool = False,
+) -> tuple[Path, dict[str, Any]]:
+    """Apply nested setting updates to one writable settings file.
+
+    ``updates`` maps dotted-path tuples like ``("tui", "default_model")``
+    to YAML-friendly values. Existing sibling keys are preserved. When
+    ``dry_run`` is true, the returned data is what would be written.
+    """
+    import yaml
+
+    path = settings_path(scope)
+    data: dict[str, Any] = {}
+    if path.exists():
+        loaded = yaml.safe_load(path.read_text())
+        if isinstance(loaded, dict):
+            data = loaded
+
+    for setting_path, value in updates.items():
+        _set_mapping_path(data, list(setting_path), value)
+
+    if not dry_run:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(data, sort_keys=False))
+    return path, data
+
+
+def _set_mapping_path(data: dict[str, Any], path: list[str], value: Any) -> None:
+    """Set ``data[path[0]]...[path[-1]]`` creating dictionaries as needed."""
+    current = data
+    for part in path[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[path[-1]] = value
 
 
 # Commented scaffold written on first run. Everything is commented out so

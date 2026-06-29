@@ -260,6 +260,11 @@ class Command(abc.ABC):
             return False, f"Usage: /{self.name}"
         return True, None
 
+    def _persist_tui_setting(self, key: str, value: object) -> None:
+        from .settings import write_settings_updates
+
+        write_settings_updates({("tui", key): value})
+
 
 # ---------------------------------------------------------------------------
 # Concrete commands
@@ -475,6 +480,10 @@ class ModelCommand(Command):
             await self.agent_run_async(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
+        try:
+            self._persist_tui_setting("default_model", selected)
+        except Exception as e:
+            logger.warning("Failed to persist selected TUI model %r: %s", selected, e)
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -536,6 +545,10 @@ class SwitchCommand(Command):
             await self.agent_run_async(_switch)
         except Exception as e:
             return CommandResult.err(f"Failed to switch model: {e}")
+        try:
+            self._persist_tui_setting("default_model", selected)
+        except Exception as e:
+            logger.warning("Failed to persist selected TUI model %r: %s", selected, e)
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
@@ -1236,26 +1249,6 @@ class KeepGoingCommand(Command):
             return None
         model = str(value).strip()
         return model or None
-
-    def _persist_tui_setting(self, key: str, value: object) -> None:
-        import yaml
-
-        from nemo_oo_agents.paths import get_project_dir
-
-        path = get_project_dir("settings.yaml")
-        data: dict[str, Any] = {}
-        if path.exists():
-            loaded = yaml.safe_load(path.read_text())
-            if isinstance(loaded, dict):
-                data = loaded
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        tui = data.get("tui")
-        if not isinstance(tui, dict):
-            tui = {}
-            data["tui"] = tui
-        tui[key] = value
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
 class ToolbarCommand(Command):
