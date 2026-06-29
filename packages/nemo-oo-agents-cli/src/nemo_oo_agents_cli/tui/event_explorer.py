@@ -6,11 +6,43 @@ from __future__ import annotations
 
 import datetime
 import json
-import textwrap
 from dataclasses import dataclass
 from typing import Any
 
+from .explorer_base import (
+    BAR_STYLE,
+    highlight_terms,
+    search_terms,
+    style_bar,
+    style_fts_prompt,
+    style_mode_label,
+    wrap_plain_line,
+)
 from .subapp import SubviewKeyResult
+
+
+def highlight_terms_with_current(
+    text: str, terms: list[str], current_occurrence: int | None = None
+) -> str:
+    """ANSI-highlight query terms, using a distinct color for the selected occurrence."""
+    if not terms:
+        return text
+    import re
+
+    pattern = re.compile(
+        "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True)), re.IGNORECASE
+    )
+    seen = -1
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal seen
+        seen += 1
+        color = (
+            "30;106" if current_occurrence is not None and seen == current_occurrence else "30;43"
+        )
+        return f"\x1b[{color}m{match.group(0)}\x1b[0m"
+
+    return pattern.sub(replace, text)
 
 
 @dataclass
@@ -655,86 +687,8 @@ def build_event_rows(event_manager: Any) -> list[EventExplorerRow]:
     return rows
 
 
-def _wrap_plain_line(line: str, width: int) -> list[str]:
-    if line == "":
-        return [""]
-    indent_len = len(line) - len(line.lstrip(" "))
-    subsequent = " " * min(indent_len, max(width - 1, 0))
-    return textwrap.wrap(
-        line,
-        width=max(width, 1),
-        replace_whitespace=False,
-        drop_whitespace=False,
-        break_long_words=True,
-        break_on_hyphens=False,
-        subsequent_indent=subsequent,
-    ) or [""]
-
-
-def _search_terms(query: str) -> list[str]:
-    return [term for term in query.split() if term.strip()]
-
-
-def _highlight_terms(text: str, terms: list[str]) -> str:
-    """ANSI-highlight query terms in plain text."""
-    if not terms:
-        return text
-    import re
-
-    pattern = re.compile(
-        "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True)), re.IGNORECASE
-    )
-    return pattern.sub(lambda m: f"\x1b[30;43m{m.group(0)}\x1b[0m", text)
-
-
-def _highlight_terms_with_current(
-    text: str, terms: list[str], current_occurrence: int | None = None
-) -> str:
-    """ANSI-highlight query terms, using a distinct color for the selected occurrence."""
-    if not terms:
-        return text
-    import re
-
-    pattern = re.compile(
-        "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True)), re.IGNORECASE
-    )
-    seen = -1
-
-    def replace(match: re.Match[str]) -> str:
-        nonlocal seen
-        seen += 1
-        color = (
-            "30;106" if current_occurrence is not None and seen == current_occurrence else "30;43"
-        )
-        return f"\x1b[{color}m{match.group(0)}\x1b[0m"
-
-    return pattern.sub(replace, text)
-
-
-_BAR_STYLE = "\x1b[48;5;236;38;5;252m"
-
-
-def _style_bar(text: str, *, ansi: bool) -> str:
-    if not ansi:
-        return text
-    return f"{_BAR_STYLE}{text}\x1b[0m"
-
-
-def _style_mode_label(text: str, *, active: bool, ansi: bool) -> str:
-    if not ansi:
-        return text
-    color = "30;45" if active else "30;46"
-    return f"\x1b[1;{color}m{text}\x1b[0m"
-
-
-def _style_fts_prompt(text: str, *, active: bool, ansi: bool) -> str:
-    if not ansi or not active:
-        return text
-    return f"\x1b[1;30;45m{text}\x1b[0m"
-
-
 def detail_match_lines(row: EventExplorerRow, width: int, query: str) -> list[int]:
-    terms = _search_terms(query)
+    terms = search_terms(query)
     if not terms:
         return []
     lower_terms = [term.lower() for term in terms]
@@ -750,7 +704,7 @@ def detail_match_lines(row: EventExplorerRow, width: int, query: str) -> list[in
 def detail_match_occurrences(
     row: EventExplorerRow, width: int, query: str
 ) -> list[tuple[int, int]]:
-    terms = _search_terms(query)
+    terms = search_terms(query)
     if not terms:
         return []
     import re
@@ -771,16 +725,16 @@ def wrapped_detail_lines(row: EventExplorerRow, width: int) -> list[str]:
     lines: list[str] = []
     if row.markdown is not None:
         for line in row.markdown.splitlines() or [""]:
-            lines.extend(_wrap_plain_line(line, width))
+            lines.extend(wrap_plain_line(line, width))
         return lines
     if row.code:
         lines.append(f"code ({row.code_language}):")
         for line in row.code.rstrip("\n").splitlines() or [""]:
-            lines.extend(_wrap_plain_line(line, width))
+            lines.extend(wrap_plain_line(line, width))
         lines.append("")
     lines.append("event:")
     for line in row.detail.splitlines():
-        lines.extend(_wrap_plain_line(line, width))
+        lines.extend(wrap_plain_line(line, width))
     return lines
 
 
@@ -814,7 +768,7 @@ def _highlight_syntax(text: str, width: int, language: str = "python") -> str:
     except Exception:
         wrapped: list[str] = []
         for line in text.splitlines():
-            wrapped.extend(_wrap_plain_line(line, width))
+            wrapped.extend(wrap_plain_line(line, width))
         return "\n".join(wrapped)
 
 
@@ -839,7 +793,7 @@ def _render_markdown(markdown: str, width: int) -> str:
     except Exception:
         wrapped: list[str] = []
         for line in markdown.splitlines():
-            wrapped.extend(_wrap_plain_line(line, width))
+            wrapped.extend(wrap_plain_line(line, width))
         return "\n".join(wrapped)
 
 
@@ -879,13 +833,13 @@ def highlighted_detail_lines(
     """Return detail lines with code and Python-repr event syntax highlighted."""
     width = max(int(width), 20)
     lines: list[str] = []
-    terms = _search_terms(query)
+    terms = search_terms(query)
 
     def mark(line: str) -> str:
         line_no = len(lines)
         if current_match_line is not None and line_no == current_match_line:
-            return _highlight_terms_with_current(line, terms, current_match_occurrence)
-        return _highlight_terms(line, terms)
+            return highlight_terms_with_current(line, terms, current_match_occurrence)
+        return highlight_terms(line, terms)
 
     if terms:
         # Search navigation is computed from wrapped plain text. Use the same
@@ -924,7 +878,7 @@ def render_event_explorer(
     query = f" search={model.query!r}" if model.query else ""
     pos = f" {model.cursor + 1}/{match_count}" if match_count else " 0/0"
     match_label = f" match {model.cursor + 1}/{match_count}" if model.query and match_count else ""
-    header = _style_bar(
+    header = style_bar(
         f" {title}{pos} of {total}{match_label}{query} ".ljust(width, "─")[:width], ansi=ansi
     )
     pane_label = "events" if model.focus == "list" else "event text"
@@ -953,8 +907,8 @@ def render_event_explorer(
     ]
     if ansi:
         before_mode, after_mode = footer_plain.split(mode_text, 1)
-        styled_mode = _style_mode_label(mode_text, active=model.search_active, ansi=True)
-        footer = f"{_BAR_STYLE}{before_mode}{styled_mode}{_BAR_STYLE}{after_mode}\x1b[0m"
+        styled_mode = style_mode_label(mode_text, active=model.search_active, ansi=True)
+        footer = f"{BAR_STYLE}{before_mode}{styled_mode}{BAR_STYLE}{after_mode}\x1b[0m"
     else:
         footer = footer_plain
     body_height = max(height - 2, 0)
@@ -981,13 +935,13 @@ def render_event_explorer(
             )
             line = f"{marker} {item.tag:<8} {item.event_type:<22} {item.summary}"
             line = line[:width]
-            body.append(_highlight_terms(line, _search_terms(model.query)) if ansi else line)
+            body.append(highlight_terms(line, search_terms(model.query)) if ansi else line)
         divider_label = (
             f"[FTS: {model.query}] " if model.search_active or model.query else "[/: FTS] "
         )
         divider_plain = divider_label.ljust(width, "─")[:width]
         if ansi and (model.search_active or model.query):
-            divider = _style_fts_prompt(divider_label, active=model.search_active, ansi=True)
+            divider = style_fts_prompt(divider_label, active=model.search_active, ansi=True)
             divider += "─" * max(width - len(divider_label), 0)
             body.append(divider)
         else:

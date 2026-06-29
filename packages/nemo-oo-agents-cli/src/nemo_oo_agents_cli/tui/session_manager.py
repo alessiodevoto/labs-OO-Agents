@@ -206,7 +206,7 @@ class SessionManager:
 
         metas: list[SessionMeta] = []
         db_files = sorted(
-            SESSIONS_DIR.glob("*.db"),
+            (p for p in SESSIONS_DIR.glob("*.db") if not p.stem.endswith("-memory")),
             key=lambda p: -p.stat().st_mtime,
         )[: limit * 2]  # read more than needed in case some are corrupt
 
@@ -332,7 +332,9 @@ class SessionManager:
         """Return session IDs (DB stems) whose ID starts with prefix."""
         if not SESSIONS_DIR.exists():
             return []
-        matches = [p.stem for p in SESSIONS_DIR.glob(f"{prefix}*.db")]
+        matches = [
+            p.stem for p in SESSIONS_DIR.glob(f"{prefix}*.db") if not p.stem.endswith("-memory")
+        ]
         return sorted(matches, key=lambda sid: -(SESSIONS_DIR / f"{sid}.db").stat().st_mtime)
 
     @classmethod
@@ -343,7 +345,7 @@ class SessionManager:
             path.unlink()
         # Clean up WAL-mode auxiliary files regardless — they may be
         # orphaned if the main DB was already removed externally.
-        for suffix in (".db-wal", ".db-shm"):
+        for suffix in (".db-wal", ".db-shm", "-memory.db", "-memory.db-wal", "-memory.db-shm"):
             aux = SESSIONS_DIR / f"{session_id}{suffix}"
             if aux.exists():
                 aux.unlink()

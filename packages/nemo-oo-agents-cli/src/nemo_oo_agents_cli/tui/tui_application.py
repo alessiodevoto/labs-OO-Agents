@@ -506,6 +506,20 @@ class TUIApplication:
 
         await self.open_subview(ActivityOverlayView(outputs))
 
+    async def open_job_explorer(self) -> None:
+        """Open the job explorer as an in-app subview."""
+        from .job_explorer import JobExplorerView
+
+        qm = getattr(self.agent, "queue_manager", None) if self.agent else None
+        await self.open_subview(JobExplorerView(qm))
+
+    async def open_todo_explorer(self) -> None:
+        """Open the todo explorer as an in-app subview."""
+        from .todo_explorer import TodoExplorerView
+
+        todo_mgr = getattr(self.agent, "todo", None) if self.agent else None
+        await self.open_subview(TodoExplorerView(todo_mgr))
+
     async def open_subview(self, view: InAppSubview) -> None:
         """Open *view* inside the existing prompt_toolkit Application.
 
