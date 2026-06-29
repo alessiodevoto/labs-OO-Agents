@@ -168,6 +168,11 @@ class CommandResult:
     agent_message: str | None = None
     # Structured slash command result — passed to the agent on a queue.
     slash_result: "Any | None" = None
+    # Optional callback Session runs after acknowledged cancellation and session
+    # swap, on the agent loop when available. Used by /clear, /session new, and
+    # /session resume for agent-state mutations that must not run on the UI loop
+    # while a turn is active.
+    post_session_swap: "Any | None" = None
 
     # Convenience constructors -------------------------------------------
 
@@ -411,26 +416,15 @@ class ClearCommand(Command):
             except Exception:
                 pass
 
-        # Cancel any background jobs spawned via queue_manager so they
-        # don't keep running in the old session after /clear.
-        # Fixes GitLab #172.
-        qm = getattr(self.agent, "queue_manager", None)
-        if qm is not None and hasattr(qm, "shutdown"):
-            try:
-                await qm.shutdown()
-            except Exception:
-                pass
+        # Session._run_command performs acknowledged turn cancellation and
+        # loop-affine QueueManager shutdown/flush during the actual session
+        # swap. Do not call queue_manager.shutdown() here: spawned jobs live on
+        # the agent loop, while commands run on the UI loop.
 
-        # Reset the agent's in-memory working state so /clear is truly a
-        # fresh start — not just a storage swap. The old session's
-        # snapshotable state (todos, context) is preserved on disk (via
-        # ``Session.run``'s shutdown save_snapshot) and can be re-loaded
-        # via ``/session <id>``.
-        #
-        # /session <id> has its own restore path (``restore_latest_snapshot``
-        # replaces in-memory state wholesale); /clear has no snapshot to
-        # restore, so we explicitly reset the known fresh-start fields.
-        await _reset_agent_working_state(self.agent)
+        # Session._run_command applies the agent working-state reset after
+        # acknowledged turn cancellation and after the storage/session swap, on
+        # the agent loop when available. Doing it here would run on the UI loop
+        # and can race or deadlock with the active turn.
 
         outputs: list[Output] = [
             ClearScreen(),
@@ -441,6 +435,7 @@ class ClearCommand(Command):
         outputs.append(TextOutput("Started new session. Previous session saved.", "success"))
         result = CommandResult(success=True, outputs=outputs)
         result.new_session_manager = new_sm
+        result.post_session_swap = lambda: _reset_agent_working_state(self.agent)
         return result
 
 
@@ -1524,23 +1519,29 @@ class SessionCommand(Command):
                     old_storage.close()
                     return CommandResult.err(f"Session '{session_id}' is empty.")
 
-                # Restore agent state, swap session manager
-                restored = old_storage.restore_latest_snapshot(self.agent)
-                if restored:
-                    outputs.append(
-                        TextOutput(f"Agent state restored from session {full_id[:8]}.", "status")
-                    )
-                # Notify skills the agent was just reconstituted so they can run
-                # post-restore setup (e.g. agent_mesh reconnecting).
-                try:
-                    from nemo_oo_agents.events import TuiSessionResumed
+                # Session._run_command executes this after acknowledged turn
+                # cancellation and after the storage/session swap, on the agent
+                # loop when available. restore_latest_snapshot mutates agent
+                # vars/todos/context/tool state and must not race an active turn.
+                async def _restore_and_emit() -> list[Output]:
+                    restored = old_storage.restore_latest_snapshot(self.agent)
+                    try:
+                        from nemo_oo_agents.events import TuiSessionResumed
 
-                    self.agent.event_manager.register_event_type(TuiSessionResumed)
-                    self.agent.event_manager.add(
-                        TuiSessionResumed(session_id=full_id, restored=restored)
-                    )
-                except Exception:
-                    logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
+                        self.agent.event_manager.register_event_type(TuiSessionResumed)
+                        self.agent.event_manager.add(
+                            TuiSessionResumed(session_id=full_id, restored=restored)
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit TuiSessionResumed", exc_info=True)
+                    if restored:
+                        return [
+                            TextOutput(
+                                f"Agent state restored from session {full_id[:8]}.", "status"
+                            )
+                        ]
+                    return []
+
                 new_sm = SessionManager(
                     storage=old_storage,
                     session_id=full_id,
@@ -1551,6 +1552,7 @@ class SessionCommand(Command):
                 )
                 result = CommandResult.ok(*outputs)
                 result.new_session_manager = new_sm
+                result.post_session_swap = _restore_and_emit
                 return result
             except Exception as e:
                 old_storage.close()
@@ -1625,19 +1627,14 @@ class SessionCommand(Command):
                 except Exception:
                     pass
 
-            # Cancel background jobs so they don't keep running in the
-            # old session — same as /clear. Fixes the same leak that
-            # GitLab #172 fixed for /clear.
-            qm = getattr(self.agent, "queue_manager", None)
-            if qm is not None and hasattr(qm, "shutdown"):
-                try:
-                    await qm.shutdown()
-                except Exception:
-                    pass
+            # Session._run_command performs acknowledged turn cancellation and
+            # loop-affine QueueManager shutdown/flush during the actual session
+            # swap. Do not call queue_manager.shutdown() here: spawned jobs live on
+            # the agent loop, while commands run on the UI loop.
 
-            # Reset the agent's in-memory working state (vars, todos,
-            # context blocks, shell) — same as /clear.
-            await _reset_agent_working_state(self.agent)
+            # Session._run_command applies the agent working-state reset after
+            # acknowledged turn cancellation and after the storage/session swap,
+            # on the agent loop when available.
 
             outputs: list[Output] = [
                 ClearScreen(),
@@ -1648,6 +1645,7 @@ class SessionCommand(Command):
             outputs.append(TextOutput("Started new session. History cleared.", "success"))
             result = CommandResult(success=True, outputs=outputs)
             result.new_session_manager = new_sm
+            result.post_session_swap = lambda: _reset_agent_working_state(self.agent)
             return result
 
         return CommandResult.err(f"Unknown subcommand `{subcmd}`")

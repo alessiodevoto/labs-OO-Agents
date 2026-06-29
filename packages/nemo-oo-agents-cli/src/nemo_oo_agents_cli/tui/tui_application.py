@@ -271,6 +271,7 @@ class TUIApplication:
         self._prompt_processor = BeforeInput(PROMPT_MARKER, style="class:prompt")
         self._agent_task: asyncio.Future | None = None
         self._agent_thread_future: ConcurrentFuture | None = None
+        self._agent_loop_task: asyncio.Task | None = None
         self._agent_loop: asyncio.AbstractEventLoop | None = None
         self._agent_sentinel: asyncio.Task | None = None
         self._agent_thread: threading.Thread | None = None
@@ -283,6 +284,7 @@ class TUIApplication:
         # via await self.user_messages.get()". The latter case had the
         # spinner stop while the agent was genuinely working.
         self._in_respond: bool = False
+        self._agent_cancel_requested: bool = False
         self._keep_going_tasks: set[asyncio.Task] = set()
         self._keep_going_generation: int = 0
 
@@ -682,8 +684,7 @@ class TUIApplication:
         def _(event):
             # If an agent is running, C-c cancels the task and keeps the
             # buffer. Otherwise it exits the app.
-            if self.is_thinking() and self._agent_task is not None:
-                self._agent_task.cancel()
+            if self.request_agent_cancel(source="ctrl-c"):
                 return
             event.app.exit()
 
@@ -742,8 +743,7 @@ class TUIApplication:
         # the next respond() via the done-callback.
         @kb.add("escape", filter=subview_inactive)
         def _(event):
-            if self.is_thinking() and self._agent_task is not None:
-                self._agent_task.cancel()
+            self.request_agent_cancel(source="escape")
 
         # Merge so our bindings (C-c with is_thinking awareness, Tab
         # trigger, Esc cancel, empty-buffer Up/Down for queue+history)
@@ -870,14 +870,14 @@ class TUIApplication:
         self.input_buffer.text = self._history[self._history_cursor]
         self.input_buffer.cursor_position = len(self.input_buffer.text)
 
-    def swap_agent(self, new_agent: Any) -> None:
+    async def swap_agent(self, new_agent: Any) -> None:
         """Hot-swap the agent the dispatcher drives (slash-inception).
 
         The dispatcher loop binds ``agent = self.agent`` once per loop and
         then calls ``agent.handle()`` each turn, so a bare ``self.agent =
         new`` reassignment does NOT redirect a *running* loop. This method
-        performs the supported swap: re-point ``self.agent``, end the current
-        dispatcher task, and lazy-restart it bound to the new agent.
+        performs the supported swap: acknowledge-cancel the current dispatcher,
+        re-point ``self.agent``, and lazy-restart it bound to the new agent.
 
         The new agent is expected to already share the OLD agent's live
         channels (``queue_manager`` / ``_user_messages_in`` / readers) and
@@ -886,21 +886,26 @@ class TUIApplication:
         ``_user_messages_in`` (e.g. an inception seed prompt) are drained by
         the fresh dispatcher and delivered to ``new_agent.handle``.
 
-        Call via ``app.agent_run(lambda: app.swap_agent(new))`` so it runs on
-        the agent-loop thread.
+        Call via ``await app.agent_run_async(lambda: app.swap_agent(new))`` so
+        cancellation is acknowledged before the new dispatcher starts.
         """
-        self.agent = new_agent
-
-        # End the current dispatcher loop; ``_on_agent_done`` (or the explicit
-        # re-arm below) starts a fresh one that re-captures ``self.agent``.
-        # A swap-initiated cancel must be distinguishable from a user Esc-cancel
-        # so _on_agent_done does not flash a false "✗ Interrupted." banner over
-        # the clean inception confirmation.
         self._swapping = True
-        task = self._agent_task
-        if task is not None and not task.done():
-            task.cancel()
-        self._agent_task = None
+        old_task = self._agent_task
+        old_thread_future = self._agent_thread_future
+        await self.cancel_agent_turn(source="swap")
+
+        # In the two-loop TUI, the UI-loop wrapper future's done callback can
+        # lag behind the acknowledged agent-loop cancellation. Detach the old
+        # wrapper before re-arming so a stale callback cannot block or clobber
+        # the dispatcher bound to the new agent.
+        if old_task is self._agent_task:
+            self._agent_task = None
+        if old_thread_future is self._agent_thread_future:
+            self._agent_thread_future = None
+        self._agent_cancel_requested = False
+        self._agent_loop_task = None
+        self._swapping = False
+        self.agent = new_agent
 
         # Re-arm a fresh dispatcher bound to the new agent if there's pending
         # input (the inception seed prompt is already queued by the caller).
@@ -939,7 +944,7 @@ class TUIApplication:
         _coalesce_string_into_queue(inq, user_message)
         self._ensure_dispatcher_task()
 
-    def _ensure_dispatcher_task(self) -> None:
+    def _ensure_dispatcher_task(self, *, start_with_race: bool = False) -> None:
         """Start the per-turn dispatcher if not already live.
 
         The dispatcher is the outer loop around ``agent.handle()``:
@@ -955,15 +960,28 @@ class TUIApplication:
             return
         if self._agent_task is not None and not self._agent_task.done():
             return
+        if self._agent_cancel_requested:
+            return
         if self._loop is None:
             # Unit tests call submit_message() without running the prompt_toolkit
             # app. In that mode there is no UI loop to protect, so preserve the
             # old same-loop dispatcher semantics.
-            self._agent_task = asyncio.ensure_future(self._dispatcher_loop())
+            self._agent_task = asyncio.ensure_future(
+                self._dispatcher_loop(start_with_race=start_with_race)
+            )
+            self._agent_loop_task = self._agent_task
         else:
             agent_loop = self._ensure_agent_loop()
+
+            async def _run_dispatcher() -> None:
+                self._agent_loop_task = asyncio.current_task()
+                try:
+                    await self._dispatcher_loop(start_with_race=start_with_race)
+                finally:
+                    self._agent_loop_task = None
+
             self._agent_thread_future = asyncio.run_coroutine_threadsafe(
-                self._dispatcher_loop(), agent_loop
+                _run_dispatcher(), agent_loop
             )
             self._agent_task = asyncio.wrap_future(self._agent_thread_future)
         self._agent_task.add_done_callback(self._on_agent_done)
@@ -1063,7 +1081,7 @@ class TUIApplication:
         self._agent_thread = None
         self._agent_thread_future = None
 
-    async def _dispatcher_loop(self) -> None:
+    async def _dispatcher_loop(self, *, start_with_race: bool = False) -> None:
         """Drive ``agent.handle()`` turn-by-turn until DispatcherExit or cancellation.
 
         The "queued → accepted" echo (user-bar render, TUIUserInput
@@ -1089,12 +1107,17 @@ class TUIApplication:
         user_messages_in: Channel = agent._user_messages_in
         qm = agent.queue_manager
 
-        # Wait for the first user message (already queued by submit_message
-        # that started us). qsize()>0 → get() returns immediately.
-        item = await user_messages_in.get()
+        if start_with_race:
+            notification = await self._next_race_notification(qm)
+            if not notification:
+                return
+        else:
+            # Wait for the first user message (already queued by submit_message
+            # that started us). qsize()>0 → get() returns immediately.
+            item = await user_messages_in.get()
+            notification: dict[str, list] = {"user_messages": [item]}
         self._in_respond = True
         self._on_dispatcher_dequeued()
-        notification: dict[str, list] = {"user_messages": [item]}
 
         while True:
             self._in_respond = True
@@ -1213,15 +1236,7 @@ class TUIApplication:
                     self.emit_block(f"\x1b[32m  ✓ {h.label} — {now}\x1b[0m\n")
 
             # Drain all pending items across all channels, grouped by name.
-            pending: dict[str, list] = {}
-            for name, value in items:
-                pending.setdefault(name, []).append(value)
-            for ch in qm._channels.values():
-                if ch.mode == "queue":
-                    while not ch.is_empty():
-                        val = ch._items.popleft()
-                        ch._fire_on_get(val)
-                        pending.setdefault(ch.name, []).append(val)
+            pending = self._drain_pending_queue_items(qm, items)
             if "user_messages" in pending or "slash_commands" in pending:
                 self._invalidate_keep_going_audits()
             self._in_respond = True
@@ -1314,6 +1329,148 @@ class TUIApplication:
             user_messages_in.put(str(prompt_text))
             logger.info("[DISPATCHER] keep-going queued fallback user continuation prompt")
 
+    async def _next_race_notification(self, qm: Any) -> dict[str, list]:
+        """Wait for QueueManager output and drain all pending queue items."""
+        try:
+            items = await qm.race()
+        except ValueError:
+            return {}
+        return self._drain_pending_queue_items(qm, items)
+
+    def _drain_pending_queue_items(self, qm: Any, items: list[tuple[str, Any]]) -> dict[str, list]:
+        """Group race winners and already-buffered queue items by channel name."""
+        pending: dict[str, list] = {}
+        for name, value in items:
+            pending.setdefault(name, []).append(value)
+        for ch in qm._channels.values():
+            if ch.mode == "queue":
+                while not ch.is_empty():
+                    val = ch._items.popleft()
+                    ch._fire_on_get(val)
+                    pending.setdefault(ch.name, []).append(val)
+        return pending
+
+    def _has_pending_or_running_non_user_work(self) -> bool:
+        """True when post-cancel background channel work should wake the agent."""
+        agent = self.agent
+        qm = getattr(agent, "queue_manager", None) if agent is not None else None
+        if qm is None:
+            return False
+        if any(h.state == "running" for h in qm._handles):
+            return True
+        for name, ch in qm._channels.items():
+            if name == "user_messages":
+                continue
+            if ch.mode == "queue" and not ch.is_empty():
+                return True
+        return False
+
+    def request_agent_cancel(self, *, source: str = "escape") -> bool:
+        """Request cancellation of the current agent turn.
+
+        Esc/Ctrl-C cancel the active agent turn only. They deliberately do
+        not cancel ``QueueManager.spawn`` jobs: those are background work and
+        remain controlled by ``queue_manager.cancel(...)``/``shutdown()``.
+
+        The TUI runs agent turns on a dedicated event loop in production. Do
+        not cancel the UI-loop ``wrap_future`` proxy directly; that proxy can
+        look done before the real agent-loop task has observed cancellation
+        and finished cleanup. Cancelling the source task keeps the status in
+        ``cancelling...`` until the done callback receives acknowledgement.
+        """
+        task = self._agent_task
+        if task is None or task.done():
+            return False
+        if self._agent_cancel_requested:
+            return source != "ctrl-c"
+        if not self._in_respond and source not in {"swap", "session"}:
+            return False
+
+        self._agent_cancel_requested = True
+        self._invalidate_keep_going_audits()
+        if self._app.is_running:
+            self._app.invalidate()
+        self._ensure_spinner_task()
+
+        loop_task = self._agent_loop_task
+        if loop_task is not None:
+            try:
+                target_loop = loop_task.get_loop()
+            except RuntimeError:
+                target_loop = None
+            if target_loop is not None and target_loop.is_running():
+
+                def _cancel_loop_task() -> None:
+                    if not loop_task.done():
+                        loop_task.cancel()
+
+                target_loop.call_soon_threadsafe(_cancel_loop_task)
+            else:
+                loop_task.cancel()
+        elif self._agent_thread_future is not None and not self._agent_thread_future.done():
+            # The dispatcher coroutine may be running before its task pointer is
+            # published back to the UI thread. Cancel the source future rather
+            # than the UI wrapper so cancellation is still delivered to the
+            # agent loop and acknowledged through _on_agent_done.
+            self._agent_thread_future.cancel()
+        else:
+            task.cancel()
+        return True
+
+    async def cancel_agent_turn(self, *, source: str = "escape") -> bool:
+        """Request turn cancellation and await the dispatcher acknowledgement."""
+        task = self._agent_task
+        if task is None or task.done():
+            return False
+        if not self.request_agent_cancel(source=source):
+            return False
+        try:
+            current_loop = asyncio.get_running_loop()
+            current_task = asyncio.current_task()
+            task_loop = task.get_loop() if hasattr(task, "get_loop") else None
+            loop_task = self._agent_loop_task
+            loop_task_loop = loop_task.get_loop() if loop_task is not None else None
+
+            if task_loop is current_loop and task is not current_task:
+                await task
+            elif (
+                loop_task is not None
+                and loop_task is not current_task
+                and loop_task_loop is current_loop
+            ):
+                await loop_task
+            elif self._agent_thread_future is not None:
+                await asyncio.wrap_future(self._agent_thread_future)
+            elif task is not current_task:
+                while not task.done():
+                    await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            pass
+        return True
+
+    async def shutdown_agent_queue_manager(
+        self, *, agent: Any | None = None, flush: bool = False
+    ) -> None:
+        """Shutdown an agent's QueueManager on the loop that owns spawned jobs."""
+        target = self.agent if agent is None else agent
+        qm = getattr(target, "queue_manager", None) if target is not None else None
+        if qm is None:
+            return
+
+        async def _shutdown_and_flush() -> None:
+            await qm.shutdown()
+            if flush:
+                for name in qm.names():
+                    ch = qm.get_channel(name)
+                    if ch.mode == "queue":
+                        ch.flush()
+
+        loop = self._agent_loop
+        if loop is not None and loop.is_running():
+            await self.agent_run_async(_shutdown_and_flush)
+        else:
+            await _shutdown_and_flush()
+
     def _on_dispatcher_dequeued(self) -> None:
         """React to a just-dequeued item: redraw queue pane, restart spinner.
 
@@ -1343,23 +1500,37 @@ class TUIApplication:
         strands queued input — the user can keep typing and the next
         message wakes the dispatcher again. STOP exits cleanly.
         """
-        if task.cancelled():
-            # A swap-initiated cancel (slash-inception) is not a user interrupt;
-            # suppress the banner once so the swap reads as smooth.
-            if getattr(self, "_swapping", False):
-                self._swapping = False
-            else:
-                self.emit_block("\x1b[33m✗ Interrupted.\x1b[0m\n")
-            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
-            if q is not None and q.qsize() > 0:
-                self._ensure_dispatcher_task()
+        if task is not self._agent_task:
             return
+        if task.cancelled():
+            self._agent_cancel_requested = False
+            self._agent_loop_task = None
+            was_swapping = getattr(self, "_swapping", False)
+            was_session_transition = getattr(self, "_session_transitioning", False)
+            suppress_cancel_restart = was_swapping or was_session_transition
+            if was_swapping:
+                self._swapping = False
+            if not suppress_cancel_restart:
+                self.emit_block("\x1b[33m✗ Interrupted agent turn.\x1b[0m\n")
+            if self._app.is_running:
+                self._app.invalidate()
+            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+            if not suppress_cancel_restart:
+                if q is not None and q.qsize() > 0:
+                    self._ensure_dispatcher_task()
+                elif self._has_pending_or_running_non_user_work():
+                    self._ensure_dispatcher_task(start_with_race=True)
+            return
+        self._agent_cancel_requested = False
+        self._agent_loop_task = None
         exc = task.exception()
         if exc is not None:
             self.emit_block(f"Agent error: {exc}\n")
             q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
             if q is not None and q.qsize() > 0:
                 self._ensure_dispatcher_task()
+            elif self._has_pending_or_running_non_user_work():
+                self._ensure_dispatcher_task(start_with_race=True)
 
     # ── agent_run: dispatch to agent thread ----------------------------
 
@@ -1589,6 +1760,11 @@ class TUIApplication:
                     pass
                 self._uninstall_stream_capture = None
 
+            try:
+                await self.shutdown_agent_queue_manager()
+            except Exception:
+                logger.debug("queue manager shutdown during TUI teardown failed", exc_info=True)
+
             # Drain any blocks queued during teardown (e.g. 'Goodbye!
             # Stay vibing.' from /exit) straight to the real stdout —
             # the consumer task's run_in_terminal no longer works once
@@ -1802,6 +1978,8 @@ class TUIApplication:
         a waiter — but the agent is genuinely thinking, not idle. The
         flag captures the dispatcher → handle() boundary directly.
         """
+        if self._agent_cancel_requested:
+            return True
         if self._agent_task is None or self._agent_task.done():
             return False
         return self._in_respond
@@ -1849,13 +2027,16 @@ class TUIApplication:
     def status_text(self) -> str:
         """One-line status area text.
 
-        Shows ``<spinner> thinking...`` while the agent is working and a
-        bracketed session label when one is set. Example::
+        Shows ``<spinner> thinking...`` while the agent is working,
+        ``<spinner> cancelling agent turn...`` while cancellation is awaiting
+        acknowledgement, and a bracketed session label when one is set. Example::
 
             ⠋ thinking...    [session-abc]
         """
         lines: list[str] = []
-        if self.is_thinking():
+        if self._agent_cancel_requested:
+            lines.append(f"{self._spinner_frame} cancelling agent turn...")
+        elif self.is_thinking():
             lines.append(f"{self._spinner_frame} thinking...")
         if self._command_status_text:
             lines.append(self._command_status_text)

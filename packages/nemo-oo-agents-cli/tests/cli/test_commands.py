@@ -148,11 +148,11 @@ async def test_clear_command_output(handler, mock_agent):
 
 
 @pytest.mark.asyncio
-async def test_clear_command_shuts_down_queue_manager(handler, mock_agent):
-    """Test that /clear cancels background jobs via queue_manager.shutdown().
+async def test_clear_command_defers_queue_manager_shutdown_to_session(handler, mock_agent):
+    """Command parsing must not shutdown QueueManager from the UI loop.
 
-    Regression test for GitLab #172 — /clear did not cancel background jobs,
-    leaving orphaned tasks running after the session was reset.
+    Session._run_command/_swap_session_manager owns acknowledged cancellation
+    and loop-affine QueueManager shutdown once the new session manager is ready.
     """
     mock_agent.queue_manager = MagicMock()
     mock_agent.queue_manager.shutdown = AsyncMock()
@@ -160,7 +160,7 @@ async def test_clear_command_shuts_down_queue_manager(handler, mock_agent):
     result = await handler.handle("/clear")
 
     assert result.success is True
-    mock_agent.queue_manager.shutdown.assert_awaited_once()
+    mock_agent.queue_manager.shutdown.assert_not_called()
 
 
 @pytest.mark.asyncio

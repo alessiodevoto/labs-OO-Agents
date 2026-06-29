@@ -71,6 +71,13 @@ def _make_mock_agent(storage: SQLiteStorageManager) -> MagicMock:
     return agent
 
 
+async def _apply_post_session_swap(result):
+    assert result.post_session_swap is not None
+    value = result.post_session_swap()
+    if hasattr(value, "__await__"):
+        await value
+
+
 # ── /clear preserves old session's SQLite rows ─────────────────────────
 
 
@@ -139,6 +146,7 @@ async def test_clear_resets_in_memory_todos(tmp_path):
             session_manager=old_sm,
         )
         result = await cmd.execute([])
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -306,6 +314,7 @@ async def test_clear_resets_agent_vars(tmp_path):
             session_manager=old_sm,
         )
         result = await cmd.execute([])
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -336,6 +345,7 @@ async def test_clear_resets_user_context_blocks(tmp_path):
             session_manager=old_sm,
         )
         result = await cmd.execute([])
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -362,6 +372,7 @@ async def test_clear_resets_shell(tmp_path):
             session_manager=old_sm,
         )
         result = await cmd.execute([])
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -386,6 +397,7 @@ async def test_clear_resets_workflow_phase(tmp_path):
             session_manager=old_sm,
         )
         result = await cmd.execute([])
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -417,6 +429,7 @@ async def test_session_new_resets_agent_vars(tmp_path):
         handler = CommandHandler(registry=registry, frontend=AsyncMock())
 
         result = await handler.handle("/session new")
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -450,6 +463,7 @@ async def test_session_new_resets_user_context_blocks(tmp_path):
         handler = CommandHandler(registry=registry, frontend=AsyncMock())
 
         result = await handler.handle("/session new")
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()
@@ -479,6 +493,7 @@ async def test_session_new_resets_shell(tmp_path):
         handler = CommandHandler(registry=registry, frontend=AsyncMock())
 
         result = await handler.handle("/session new")
+        await _apply_post_session_swap(result)
 
         if result.new_session_manager is not None:
             result.new_session_manager.close()

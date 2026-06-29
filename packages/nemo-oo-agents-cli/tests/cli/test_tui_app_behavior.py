@@ -27,7 +27,7 @@ import io
 
 import pytest
 
-from .tui_app_harness import FakeAgent, TUIHarness
+from .tui_app_harness import FakeAgent, ThreadGate, TUIHarness
 
 XFAIL = pytest.mark.xfail(strict=True, reason="not yet implemented in Plan-C TUIApplication")
 
@@ -573,6 +573,39 @@ async def test_hard_ctrl_c_emits_interrupted_notice_to_scrollback() -> None:
         await h.wait_output_contains("Interrupted")
 
 
+async def test_session_transition_cancel_suppresses_interrupted_and_restart() -> None:
+    """Session-command cancellations do not render Interrupted or restart old work."""
+    from unittest.mock import MagicMock
+
+    from nemo_oo_agents_cli.tui.tui_application import TUIApplication
+
+    app = TUIApplication.__new__(TUIApplication)
+    task = MagicMock()
+    task.cancelled.return_value = True
+    q = MagicMock()
+    q.qsize.return_value = 1
+    agent = MagicMock()
+    agent._user_messages_in = q
+    app._agent_task = task
+    app._agent_cancel_requested = True
+    app._agent_loop_task = MagicMock()
+    app._session_transitioning = True
+    app._swapping = False
+    app._app = MagicMock()
+    app._app.is_running = True
+    app.agent = agent
+    app.emit_block = MagicMock()
+    app._ensure_dispatcher_task = MagicMock()
+    app._has_pending_or_running_non_user_work = MagicMock(return_value=True)
+
+    app._on_agent_done(task)
+
+    app.emit_block.assert_not_called()
+    app._ensure_dispatcher_task.assert_not_called()
+    assert app._agent_cancel_requested is False
+    assert app._agent_loop_task is None
+
+
 async def test_hard_sync_blocking_agent_keeps_input_responsive() -> None:
     """A bad synchronous agent step must not starve prompt_toolkit.
 
@@ -781,3 +814,214 @@ async def test_non_fullscreen_keeps_native_scrollback_path() -> None:
         h.app.emit_block("plain scrollback\n")
         await h.wait_output_contains("plain scrollback")
         assert h.app._fullscreen_invalidate_count == 0
+
+
+async def test_cancel_status_stays_cancelling_until_agent_cleanup_ack() -> None:
+    """Esc keeps a visible cancelling state until the agent turn unwinds."""
+    agent = FakeAgent()
+    step_started = ThreadGate()
+    cleanup_started = ThreadGate()
+    release_cleanup = ThreadGate()
+    cleanup_done = ThreadGate()
+
+    async def step(_self: FakeAgent, _msg: str) -> None:
+        try:
+            step_started.set()
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            cleanup_done.set()
+            raise
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        await asyncio.wait_for(step_started.wait(), timeout=1.0)
+        assert h.app.request_agent_cancel(source="escape") is True
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        assert "cancelling" in h.capture_status()
+        assert h.app.is_thinking() is True
+        assert cleanup_done.is_set() is False
+        release_cleanup.set()
+        await asyncio.wait_for(cleanup_done.wait(), timeout=1.0)
+        await h.wait_for(lambda: not h.app.is_thinking())
+        await h.wait_output_contains("Interrupted")
+
+
+async def test_cancel_does_not_deliver_queued_message_until_cleanup_ack() -> None:
+    """Queued input starts only after cancelled-turn cleanup completes."""
+    agent = FakeAgent()
+    step_started = ThreadGate()
+    cleanup_started = ThreadGate()
+    release_cleanup = ThreadGate()
+    cleanup_done = ThreadGate()
+
+    async def step(_self: FakeAgent, _msg: str) -> None:
+        try:
+            step_started.set()
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            cleanup_done.set()
+            raise
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await h.wait_for(lambda: h.app.is_thinking())
+        await asyncio.wait_for(step_started.wait(), timeout=1.0)
+        await h.type_keys("queued")
+        await h.press("enter")
+        assert h.app.request_agent_cancel(source="escape") is True
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        assert agent.messages_received == ["first"]
+        assert "cancelling" in h.capture_status()
+        release_cleanup.set()
+        await asyncio.wait_for(cleanup_done.wait(), timeout=1.0)
+        await h.wait_for(lambda: agent.messages_received == ["first", "queued"])
+
+
+async def test_escape_cancels_agent_turn_but_not_spawned_jobs() -> None:
+    """Soft Esc cancels the turn only; QueueManager spawned jobs keep running."""
+    agent = FakeAgent()
+    job_started = ThreadGate()
+    handle_holder = {}
+
+    async def background_job():
+        job_started.set()
+        await asyncio.Future()
+
+    async def step(self: FakeAgent, _msg: str) -> None:
+        self.queue_manager.queue("job")
+        handle_holder["handle"] = self.queue_manager.spawn(background_job(), channel="job")
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await asyncio.wait_for(job_started.wait(), timeout=1.0)
+        await h.press("escape")
+        await h.wait_for(lambda: not h.app.is_thinking())
+        assert handle_holder["handle"].state == "running"
+        await agent.queue_manager.shutdown()
+
+
+async def test_repeated_ctrl_c_exits_while_cancel_is_pending() -> None:
+    """First Ctrl-C requests an acknowledged turn cancel; second Ctrl-C exits."""
+    agent = FakeAgent()
+    step_started = ThreadGate()
+    cleanup_started = ThreadGate()
+
+    async def step(_self: FakeAgent, _msg: str) -> None:
+        try:
+            step_started.set()
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            await asyncio.Future()
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await asyncio.wait_for(step_started.wait(), timeout=1.0)
+        await h.press("c-c")
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        assert "cancelling" in h.capture_status()
+        await h.press("c-c")
+        await h.wait_for(lambda: not h.app.is_running)
+
+
+async def test_spawned_job_output_restarts_dispatcher_after_cancelled_turn() -> None:
+    """Spawned jobs survive Esc, and their later output still wakes the agent."""
+    agent = FakeAgent()
+    job_started = ThreadGate()
+    release_job = ThreadGate()
+    cleanup_started = ThreadGate()
+
+    async def background_job():
+        job_started.set()
+        await release_job.wait()
+        return "job-result"
+
+    async def step(self: FakeAgent, _msg: str) -> None:
+        self.queue_manager.queue("job")
+        self.queue_manager.spawn(background_job(), channel="job")
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            raise
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await asyncio.wait_for(job_started.wait(), timeout=1.0)
+        assert h.app.request_agent_cancel(source="escape") is True
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        await h.wait_for(lambda: not h.app.is_thinking())
+        release_job.set()
+        await h.wait_for(lambda: agent.messages_received == ["first", "job-result"])
+
+
+async def test_session_cancel_agent_turn_is_safe_from_ui_loop() -> None:
+    """Session commands can cancel agent-loop dispatcher turns from the UI loop."""
+    agent = FakeAgent()
+    step_started = ThreadGate()
+    cleanup_started = ThreadGate()
+    cleanup_done = ThreadGate()
+
+    async def step(_self: FakeAgent, _msg: str) -> None:
+        try:
+            step_started.set()
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cleanup_started.set()
+            cleanup_done.set()
+            raise
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await asyncio.wait_for(step_started.wait(), timeout=1.0)
+        assert await h.app.cancel_agent_turn(source="session") is True
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        await asyncio.wait_for(cleanup_done.wait(), timeout=1.0)
+        await h.wait_for(lambda: not h.app.is_thinking())
+
+
+async def test_shutdown_agent_queue_manager_runs_spawn_cleanup_on_agent_loop() -> None:
+    """QueueManager.spawn cleanup runs when shutdown happens on the agent loop."""
+    agent = FakeAgent()
+    job_started = ThreadGate()
+    cleanup_started = ThreadGate()
+    cleanup_done = ThreadGate()
+
+    async def step(self: FakeAgent, _msg: str) -> None:
+        self.queue_manager.queue("job")
+
+        async def background_job():
+            try:
+                job_started.set()
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cleanup_started.set()
+                await asyncio.sleep(0)
+                cleanup_done.set()
+                raise
+
+        self.queue_manager.spawn(background_job(), channel="job")
+
+    agent.queue(step)
+    async with TUIHarness(agent=agent) as h:
+        await h.submit_async("first")
+        await asyncio.wait_for(job_started.wait(), timeout=1.0)
+        await h.app.shutdown_agent_queue_manager(agent=agent)
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+        await asyncio.wait_for(cleanup_done.wait(), timeout=1.0)
+        assert agent.queue_manager._handles == []

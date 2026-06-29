@@ -318,6 +318,17 @@ async def test_on_command_clear_cancels_agent_task() -> None:
 
     app = MagicMock()
     app._agent_task = fake_task
+
+    async def _cancel_agent_turn(*, source: str = "session") -> bool:
+        assert source == "session"
+        fake_task.cancel()
+        try:
+            await fake_task
+        except asyncio.CancelledError:
+            pass
+        return True
+
+    app.cancel_agent_turn = AsyncMock(side_effect=_cancel_agent_turn)
     session._app = app
     session._emit_text = MagicMock()
 
@@ -338,6 +349,7 @@ async def test_on_command_clear_cancels_agent_task() -> None:
 
     await session._on_command("/clear")
 
+    app.cancel_agent_turn.assert_awaited_once_with(source="session")
     assert fake_task.cancelled(), (
         f"_agent_task not cancelled; done={fake_task.done()}, cancelled={fake_task.cancelled()}"
     )
@@ -375,6 +387,7 @@ async def test_on_command_clear_without_running_task() -> None:
 
     app = MagicMock()
     app._agent_task = None  # no running task
+    app.cancel_agent_turn = AsyncMock(return_value=False)
     session._app = app
     session._emit_text = MagicMock()
 
@@ -394,7 +407,109 @@ async def test_on_command_clear_without_running_task() -> None:
 
     # Must not raise
     await session._on_command("/clear")
+    app.cancel_agent_turn.assert_awaited_once_with(source="session")
     assert session._first_message is None
+
+
+async def test_run_command_runs_post_session_swap_on_agent_loop() -> None:
+    """Session-owned post-swap mutations must go through agent_run_async."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.output import ClearScreen, TextOutput
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._first_message = "hello"
+    session.agent = MagicMock()
+    session.registry = MagicMock()
+    session.registry.commands = MagicMock(return_value=[])
+    session._session_manager = MagicMock()
+    session._emit_text = MagicMock()
+
+    calls: list[str] = []
+
+    async def _agent_run_async(fn):
+        calls.append("agent_run_async")
+        value = fn()
+        if hasattr(value, "__await__"):
+            value = await value
+        return value
+
+    app = MagicMock()
+    app.cancel_agent_turn = AsyncMock(return_value=True)
+    app.agent_run_async = AsyncMock(side_effect=_agent_run_async)
+    session._app = app
+
+    new_sm = MagicMock()
+    fake_result = CommandResult(success=True, outputs=[ClearScreen()])
+    fake_result.new_session_manager = new_sm
+
+    async def _post_swap():
+        calls.append("post_swap")
+        return [TextOutput("post swap done", "status")]
+
+    fake_result.post_session_swap = _post_swap
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+    session._swap_session_manager = AsyncMock()
+
+    render_callback = await session._run_command("/clear")
+
+    app.cancel_agent_turn.assert_awaited_once_with(source="session")
+    session._swap_session_manager.assert_awaited_once_with(new_sm)
+    app.agent_run_async.assert_awaited_once()
+    assert calls == ["agent_run_async", "post_swap"]
+    assert any(getattr(o, "content", None) == "post swap done" for o in fake_result.outputs)
+    assert render_callback is not None
+
+
+async def test_run_command_marks_session_transition_while_cancelling() -> None:
+    """Session commands suppress cancelled-turn UX until the swap completes."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_oo_agents_cli.tui.commands import CommandResult
+    from nemo_oo_agents_cli.tui.output import ClearScreen
+    from nemo_oo_agents_cli.tui.session import Session
+
+    session = Session.__new__(Session)
+    session._first_message = "hello"
+    session.agent = MagicMock()
+    session.registry = MagicMock()
+    session.registry.commands = MagicMock(return_value=[])
+    session._session_manager = MagicMock()
+    session._emit_text = MagicMock()
+
+    app = MagicMock()
+    app._session_transitioning = False
+
+    async def _cancel_agent_turn(*, source: str) -> bool:
+        assert source == "session"
+        assert app._session_transitioning is True
+        return True
+
+    async def _swap_session_manager(_new_sm) -> None:
+        assert app._session_transitioning is True
+
+    app.cancel_agent_turn = AsyncMock(side_effect=_cancel_agent_turn)
+    app.agent_run_async = AsyncMock()
+    session._app = app
+
+    new_sm = MagicMock()
+    fake_result = CommandResult(success=True, outputs=[ClearScreen()])
+    fake_result.new_session_manager = new_sm
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=fake_result)
+    session._handler = handler
+    session._swap_session_manager = AsyncMock(side_effect=_swap_session_manager)
+
+    await session._run_command("/clear")
+
+    assert app._session_transitioning is False
+    app.cancel_agent_turn.assert_awaited_once_with(source="session")
+    session._swap_session_manager.assert_awaited_once_with(new_sm)
 
 
 async def test_on_command_slash_result_posts_to_queue_without_double_submit() -> None:

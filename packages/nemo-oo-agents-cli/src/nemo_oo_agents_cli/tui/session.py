@@ -707,7 +707,11 @@ class Session:
             # so generator finally blocks run cleanly.
             qm = getattr(self.agent, "queue_manager", None)
             if qm is not None:
-                await qm.shutdown()
+                app = getattr(self, "_app", None)
+                if app is not None:
+                    await app.shutdown_agent_queue_manager(agent=self.agent)
+                else:
+                    await qm.shutdown()
             await self._cancel_background_tasks()
             if self._bang_shell is not None:
                 await self._bang_shell.close()
@@ -911,16 +915,23 @@ class Session:
 
         result = await self._handler.handle(text, render_outputs=False)
         if result.new_session_manager is not None:
-            # Cancel the running agent turn so it doesn't keep working
-            # in the stale session after /clear or /session new.
-            if self._app._agent_task is not None and not self._app._agent_task.done():
-                self._app._agent_task.cancel()
-                try:
-                    await self._app._agent_task
-                except asyncio.CancelledError:
-                    pass
-            await self._swap_session_manager(result.new_session_manager)
-            self._first_message = None
+            # Suppress normal cancelled-turn UX/restart while the command runner
+            # moves storage/session state; the post-swap render is the user-visible
+            # result for /clear, /session new, and /session resume.
+            self._app._session_transitioning = True
+            try:
+                # Cancel the running agent turn so it doesn't keep working
+                # in the stale session after /clear or /session new.
+                await self._app.cancel_agent_turn(source="session")
+                await self._swap_session_manager(result.new_session_manager)
+                post_swap = getattr(result, "post_session_swap", None)
+                if post_swap is not None:
+                    extra_outputs = await self._app.agent_run_async(post_swap)
+                    if extra_outputs:
+                        result.outputs.extend(extra_outputs)
+                self._first_message = None
+            finally:
+                self._app._session_transitioning = False
         if (
             result.compact_done
             and self._first_message
@@ -1351,11 +1362,15 @@ class Session:
         # items from the old session don't leak into the new one.
         qm = getattr(self.agent, "queue_manager", None)
         if qm is not None:
-            await qm.shutdown()
-            for name in qm.names():
-                ch = qm.get_channel(name)
-                if ch.mode == "queue":
-                    ch.flush()
+            app = getattr(self, "_app", None)
+            if app is not None:
+                await app.shutdown_agent_queue_manager(agent=self.agent, flush=True)
+            else:
+                await qm.shutdown()
+                for name in qm.names():
+                    ch = qm.get_channel(name)
+                    if ch.mode == "queue":
+                        ch.flush()
         if self._session_manager is not None:
             # Save snapshot before closing so /clear, /session new, and
             # /session resume don't lose the current session's self.v/todo.
