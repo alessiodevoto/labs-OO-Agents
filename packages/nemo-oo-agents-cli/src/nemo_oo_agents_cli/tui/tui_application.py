@@ -1649,6 +1649,21 @@ class TUIApplication:
         self._replay_blocks.clear()
         self.output_buffer.set_document(Document(""), bypass_readonly=True)
 
+    def _on_stray_output(self, content: str, disposition: str) -> None:
+        """Record stray stdout/stderr intercepts as hidden runtime events."""
+        agent = self.agent
+        if agent is None:
+            return
+        em = getattr(agent, "event_manager", None)
+        if em is None:
+            return
+        try:
+            from nemo_oo_agents.events import DebugTrace
+
+            em.add(DebugTrace(content=f"[stray:{disposition}] {content[:200]}"))
+        except Exception:
+            pass
+
     def emit_block(
         self,
         text: str,
@@ -1752,7 +1767,9 @@ class TUIApplication:
         # capture layers on top and still works unchanged.
         from .stream_forwarder import install_stray_stream_capture
 
-        self._uninstall_stream_capture = install_stray_stream_capture(self.emit_block)
+        self._uninstall_stream_capture = install_stray_stream_capture(
+            self.emit_block, on_stray=self._on_stray_output
+        )
         try:
             # set_exception_handler=False keeps the handler Session installed
             # (_loud_handler) active for the whole app lifetime. Otherwise
