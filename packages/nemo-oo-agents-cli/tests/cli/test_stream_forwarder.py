@@ -192,3 +192,129 @@ class TestInstallUninstall:
         finally:
             if sys.stdout is not original_out:
                 sys.stdout = original_out
+
+
+class TestDeduplication:
+    """Tests for consecutive line deduplication."""
+
+    def test_repeated_lines_collapsed(self):
+        """Repeated identical lines produce one emit + a dedup summary."""
+        emitted: list[str] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(sys.stdout, emitted.append, prefix="· ", ansi_color="2")
+        fwd.write("rate limit\n")
+        fwd.write("rate limit\n")
+        fwd.write("rate limit\n")
+        fwd.write("different line\n")
+
+        # First "rate limit" emitted immediately, then summary "(×2 more)",
+        # then "different line" emitted.
+        assert len(emitted) == 3
+        assert "rate limit" in emitted[0]
+        assert "×2 more" in emitted[1]
+        assert "different line" in emitted[2]
+
+    def test_single_line_no_dedup_suffix(self):
+        """A single line (no repeats) emits normally without dedup suffix."""
+        emitted: list[str] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(sys.stdout, emitted.append, prefix="· ", ansi_color="2")
+        fwd.write("hello\n")
+        fwd.write("world\n")
+        assert len(emitted) == 2
+        assert "×" not in emitted[0]
+        assert "×" not in emitted[1]
+
+    def test_flush_emits_dedup_summary(self):
+        """Calling flush() emits pending dedup summary."""
+        emitted: list[str] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(sys.stdout, emitted.append, prefix="· ", ansi_color="2")
+        fwd.write("retry\n")
+        fwd.write("retry\n")
+        fwd.write("retry\n")
+        fwd.flush()
+        # First emit + summary
+        assert len(emitted) == 2
+        assert "×2 more" in emitted[1]
+
+
+class TestBlankLineSuppression:
+    """Tests for blank/whitespace-only line suppression."""
+
+    def test_blank_lines_suppressed(self):
+        """Empty lines are not emitted."""
+        emitted: list[str] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(sys.stdout, emitted.append, prefix="· ", ansi_color="2")
+        fwd.write("\n")
+        fwd.write("   \n")
+        fwd.write("\n")
+        assert emitted == []
+
+    def test_whitespace_only_suppressed(self):
+        """Whitespace-only lines are suppressed."""
+        emitted: list[str] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(sys.stdout, emitted.append, prefix="· ", ansi_color="2")
+        fwd.write("  \t  \n")
+        assert emitted == []
+
+
+class TestOnStrayCallback:
+    """Tests for the on_stray callback mechanism."""
+
+    def test_on_stray_called_for_emitted_lines(self):
+        """on_stray receives (content, 'emitted') for lines that are displayed."""
+        emitted: list[str] = []
+        stray_calls: list[tuple[str, str]] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(
+            sys.stdout,
+            emitted.append,
+            prefix="· ",
+            ansi_color="2",
+            on_stray=lambda c, d: stray_calls.append((c, d)),
+        )
+        fwd.write("visible line\n")
+        assert len(stray_calls) == 1
+        assert stray_calls[0] == ("visible line", "emitted")
+
+    def test_on_stray_called_for_repeated_lines(self):
+        """on_stray receives (content, 'repeated') for deduplicated lines."""
+        stray_calls: list[tuple[str, str]] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(
+            sys.stdout,
+            lambda _: None,
+            prefix="· ",
+            ansi_color="2",
+            on_stray=lambda c, d: stray_calls.append((c, d)),
+        )
+        fwd.write("same\n")
+        fwd.write("same\n")
+        assert ("same", "emitted") in stray_calls
+        assert ("same", "repeated") in stray_calls
+
+    def test_on_stray_called_for_suppressed_noise(self):
+        """on_stray receives (content, 'suppressed') for noise-pattern lines."""
+        stray_calls: list[tuple[str, str]] = []
+        from nemo_oo_agents_cli.tui.stream_forwarder import _StrayStreamForwarder
+
+        fwd = _StrayStreamForwarder(
+            sys.stdout,
+            lambda _: None,
+            prefix="· ",
+            ansi_color="2",
+            on_stray=lambda c, d: stray_calls.append((c, d)),
+        )
+        fwd.write("Give Feedback / Get Help: something\n")
+        assert len(stray_calls) == 1
+        assert stray_calls[0][1] == "suppressed"
