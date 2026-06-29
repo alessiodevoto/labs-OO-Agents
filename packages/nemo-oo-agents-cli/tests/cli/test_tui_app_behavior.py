@@ -90,6 +90,16 @@ async def test_baseline_command_status_is_dynamic_not_scrollback():
         await h.wait_for(lambda: "/mesh-list" not in h.capture_status())
 
 
+async def test_mouse_support_only_enabled_for_subviews():
+    """Normal transcript mode must leave native terminal text selection/copy alone."""
+    async with TUIHarness() as h:
+        assert bool(h.app._app.mouse_support()) is False
+        h.app._active_subview = object()
+        assert bool(h.app._app.mouse_support()) is True
+        h.app._active_subview = None
+        assert bool(h.app._app.mouse_support()) is False
+
+
 async def test_status_text_separates_thinking_and_command_status():
     """Thinking and command statuses render as separated status rows."""
     async with TUIHarness() as h:
