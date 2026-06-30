@@ -128,6 +128,7 @@ class HarnessMetrics(BaseModel):
     gpt4o_double_quote_fix_count: int = 0
     gpt4o_double_quote_fix_previews: list[str] = Field(default_factory=list)
     variable_refs_resolved: list[str] = Field(default_factory=list)
+    constructor_strings_coerced: list[str] = Field(default_factory=list)
     json_auto_parse_methods: list[str] = Field(default_factory=list)
     args_normalized_count: int = 0
 
@@ -258,6 +259,9 @@ class HarnessMetrics(BaseModel):
 
     def variable_ref_resolved(self, var_name: str) -> None:
         self._append(self.variable_refs_resolved, var_name)
+
+    def constructor_string_coerced(self, class_name: str) -> None:
+        self._append(self.constructor_strings_coerced, class_name)
 
     def json_auto_parsed(self, method: str) -> None:
         self._append(self.json_auto_parse_methods, method)
@@ -636,6 +640,19 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "Variable ref details",
         "Response Format Fixups",
         lambda m: m.variable_refs_resolved,
+        True,
+    ),
+    SchemaEntry(
+        "harness.constructor_string_coerced.count",
+        "Constructor string coerced",
+        "Response Format Fixups",
+        lambda m: len(m.constructor_strings_coerced),
+    ),
+    SchemaEntry(
+        "harness.constructor_string_coerced.details",
+        "Constructor coercion details",
+        "Response Format Fixups",
+        lambda m: m.constructor_strings_coerced,
         True,
     ),
     SchemaEntry(
