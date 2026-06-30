@@ -288,6 +288,60 @@ def _short_id(full_id: str | None) -> str:
     return full_id[:6]
 
 
+# ---------------------------------------------------------------------------
+# OpenInference-first attribute reads
+#
+# Spans now carry OpenInference-standard I/O attrs (``input.value`` /
+# ``output.value``) as the canonical representation, with the legacy
+# nemo_oo_agents-native attrs (``agent.result``, ``code``, ``tool.arguments``,
+# ``generation.result``, ``agent.args``/``kwargs``, ``result``, …) kept for a
+# deprecation window. These helpers prefer the OI name and fall back to the
+# native name(s), so the explorer renders BOTH new OI-only traces and old
+# native-only traces.
+# ---------------------------------------------------------------------------
+
+
+def _io_value(attrs: dict[str, Any], oi_key: str, *native_keys: str) -> Any:
+    """Return ``attrs[oi_key]`` if present, else the first present native key.
+
+    Uses ``is not None`` (not truthiness) so a deliberately-empty value such as
+    ``output.value == ""`` is preserved rather than skipped.
+    """
+    v = attrs.get(oi_key)
+    if v is not None:
+        return v
+    for k in native_keys:
+        v = attrs.get(k)
+        if v is not None:
+            return v
+    return None
+
+
+def _io_json_field(
+    attrs: dict[str, Any], oi_key: str, field_name: str, *native_keys: str, default: Any = None
+) -> Any:
+    """Prefer ``json.loads(attrs[oi_key])[field_name]``, else first native key.
+
+    The OI I/O value for tool/method/agent/code spans is a JSON object — e.g.
+    agent/method inputs are ``{"args": [...], "kwargs": {...}}`` and code-exec
+    input is ``{"code": "..."}``. This extracts one field from that object,
+    falling back to the legacy flat native attr(s) for old traces.
+    """
+    raw = attrs.get(oi_key)
+    if raw is not None:
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(parsed, dict) and field_name in parsed:
+                return parsed[field_name]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    for k in native_keys:
+        v = attrs.get(k)
+        if v is not None:
+            return v
+    return default
+
+
 def _extract_any_value(value_obj: dict[str, Any]) -> Any:
     """Extract a scalar from an OTLP AnyValue dict."""
     if "stringValue" in value_obj:
@@ -796,8 +850,9 @@ def _parse_trace_from_spans(spans: list[dict[str, Any]]) -> list[AgentSession]:
     span_index = _build_span_index(spans)
 
     # Step 1: Find all AGENT spans and build the tree structure.
-    # Generation spans also carry kind=AGENT but represent internal runs within a session,
-    # not top-level sessions. They are identified by having a "generation.id" attribute.
+    # Generation spans (kind=CHAIN, span name "generation") represent internal runs
+    # within a session, not top-level sessions. They are excluded here both by the
+    # kind check and by carrying a "generation.id" attribute (AGENT spans don't).
     agent_spans = [
         s
         for s in spans
@@ -840,11 +895,19 @@ def _parse_trace_from_spans(spans: list[dict[str, Any]]) -> list[AgentSession]:
         if agent_span.get("status", {}).get("status_code") == "ERROR":
             status = "ERROR"
 
-        # Extract args, kwargs, and result from span attributes
-        # These may be stored as JSON strings, so parse them
-        span_args_raw = attrs.get("agent.args", "[]")
-        span_kwargs_raw = attrs.get("agent.kwargs", "{}")
-        span_result_raw = attrs.get("agent.result")
+        # Extract args, kwargs, and result from span attributes (OI-first, native
+        # fallback). New traces carry input as ``input.value`` =
+        # ``{"args": [...], "kwargs": {...}}`` and output as ``output.value``; old
+        # traces carry ``agent.args``/``agent.kwargs``/``agent.result``.
+        # These may be stored as JSON strings, so parse them downstream.
+        # NOTE: the OI branch returns a pre-parsed list/dict (from input.value JSON)
+        # while the native branch returns a JSON string — both are handled by the
+        # ``isinstance(..., str)`` guard in the parsing block below. Keep that guard.
+        span_args_raw = _io_json_field(attrs, "input.value", "args", "agent.args", default="[]")
+        span_kwargs_raw = _io_json_field(
+            attrs, "input.value", "kwargs", "agent.kwargs", default="{}"
+        )
+        span_result_raw = _io_value(attrs, "output.value", "agent.result")
 
         try:
             span_args = (
@@ -991,7 +1054,7 @@ def _parse_trace_from_generation_spans(
             depth=0,
             start_time=start_time,
             end_time=end_time,
-            result=final_span.get("attributes", {}).get("generation.result"),
+            result=_io_value(final_span.get("attributes", {}), "output.value", "generation.result"),
             status=status,
             span_id=first_span.get("span_id", ""),  # Capture span_id for correlation
         )
@@ -1179,7 +1242,9 @@ def _populate_session_turns_from_generation(
             )
             session.turns.append(turn)
         else:
-            result_str = attrs.get("result", "")
+            # OI-first: code-exec output is ``output.value`` (same JSON as the
+            # legacy ``result`` attr); fall back to ``result`` for old traces.
+            result_str = _io_value(attrs, "output.value", "result") or ""
             stdout, returned, error = _parse_execution_result(result_str)
             status_obj = span.get("status", {})
             error_msg = error or attrs.get("error.message") or status_obj.get("description")
@@ -1187,7 +1252,9 @@ def _populate_session_turns_from_generation(
             status_code = "ERROR" if status_obj.get("status_code") == "ERROR" or error_msg else "OK"
 
             turn = ExecutionTurn(
-                code=attrs.get("code", ""),
+                # OI-first: code lives in ``input.value`` = {"code": ...}; fall
+                # back to the legacy flat ``code`` attr for old traces.
+                code=_io_json_field(attrs, "input.value", "code", "code", default=""),
                 stdout=stdout,
                 error=error_msg,
                 returned_value=returned,
@@ -3028,8 +3095,8 @@ class TraceExplorer:
             if span.get("name", "").startswith("tool_execution.return_result"):
                 span_start = span.get("start_time", 0)
                 if session.start_time <= span_start <= session.end_time:
-                    # Found a return_result call within this session
-                    args = span.get("attributes", {}).get("tool.arguments", "")
+                    # Found a return_result call within this session (OI-first)
+                    args = _io_value(span.get("attributes", {}), "input.value", "tool.arguments")
                     if args:
                         try:
                             args_dict = json.loads(args)
@@ -4568,7 +4635,7 @@ class TraceExplorer:
                         error_type=attrs.get("error.type"),
                         span_id=span_id,
                         tool_name=attrs.get("tool.name", name),
-                        tool_arguments=attrs.get("tool.arguments", "{}"),
+                        tool_arguments=_io_value(attrs, "input.value", "tool.arguments") or "{}",
                     )
                 )
 
@@ -5231,7 +5298,7 @@ class TraceExplorer:
                         tool_name=attrs.get("tool.name", name),
                         error_type=attrs.get("error.type", "Unknown"),
                         error_message=attrs.get("error.message", ""),
-                        arguments=attrs.get("tool.arguments", "{}"),
+                        arguments=_io_value(attrs, "input.value", "tool.arguments") or "{}",
                         agent_name=attrs.get("agent.name", "Unknown"),
                     )
                 )

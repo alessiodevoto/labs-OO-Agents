@@ -27,6 +27,25 @@ from nemo_oo_agents_benchmarks.evaluation.protocol import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_code(attrs: dict[str, Any]) -> str | None:
+    """Return the executed code from a code_execution span (debug context).
+
+    OI-first: new traces carry the code as the OpenInference
+    ``input.value`` = ``{"code": ...}``; older traces used a flat ``code`` attr.
+    """
+    iv = attrs.get("input.value")
+    if isinstance(iv, str):
+        try:
+            obj = json.loads(iv)
+            if isinstance(obj, dict) and isinstance(obj.get("code"), str):
+                return obj["code"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    elif isinstance(iv, dict) and isinstance(iv.get("code"), str):
+        return iv["code"]
+    return attrs.get("code")
+
+
 @dataclass
 class FailurePattern:
     """
@@ -200,7 +219,7 @@ class TraceAnalyzer:
         attrs = span.get("attributes", {})
         return {
             "span_name": span.get("name"),
-            "code": attrs.get("code"),
+            "code": _extract_code(attrs),
             "tool_name": attrs.get("tool_name"),
             "method_name": attrs.get("method_name"),
             "attempt": attrs.get("attempt"),
