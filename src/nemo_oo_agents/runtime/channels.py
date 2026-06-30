@@ -62,6 +62,10 @@ class StreamEnd(EventBase):
     channel_name: str
 
 
+class QueueReadTimeoutError(TimeoutError):
+    """Raised when an LLM-facing queue reader times out waiting for an item."""
+
+
 class JobError(EventBase):
     """Emitted to the agent's event channel when a spawned job fails."""
 
@@ -486,11 +490,9 @@ class Channel[T]:
 class _ChannelReader[T]:
     """LLM-facing read facade for a queue-mode ``Channel``.
 
-    Exposes only ``get()`` / ``status()`` / ``name``. The LLM is free
-    to call ``await self.<channel>.get()`` from inside ``execute_python``
-    whenever it wants the next item now without ending the turn —
-    e.g. asking a clarifying question mid-task and waiting for the
-    answer.
+    Exposes ``get()`` / ``qsize()`` / ``status()`` / ``name``. ``get()``
+    has a short default timeout so generated code cannot accidentally
+    block a turn forever while waiting on an empty queue.
     """
 
     def __init__(self, source: Channel[T]) -> None:
@@ -500,8 +502,29 @@ class _ChannelReader[T]:
     def name(self) -> str:
         return self._source.name
 
-    async def get(self) -> T:
-        return await self._source.get()
+    async def get(self, timeout: float | None = 5.0) -> T:
+        """Return the next item, timing out by default for LLM-facing reads.
+
+        Pass ``timeout=None`` only when an indefinite mid-turn wait is
+        intentional. Framework/dispatcher code should use ``Channel.get()``
+        directly when it owns the wait lifecycle.
+        """
+        if timeout is None:
+            return await self._source.get()
+        try:
+            async with asyncio.timeout(timeout):
+                return await self._source.get()
+        except TimeoutError as exc:
+            raise QueueReadTimeoutError(
+                f"Timed out after {timeout}s waiting for queue {self.name!r}. "
+                "Use status() or qsize() to inspect queued items, or return "
+                "WAIT/NEED_INPUT instead of blocking mid-cell. Pass "
+                "timeout=None only when an indefinite wait is intentional."
+            ) from exc
+
+    def qsize(self) -> int:
+        """Return the number of currently buffered items."""
+        return self._source.qsize()
 
     def status(self, *, max_items: int = 3, max_chars: int = 80) -> str:
         """Delegate to the underlying ``Channel.status()``.
