@@ -37,6 +37,10 @@ function findHeroContent(attrs: Record<string, unknown>): {
     ['code', 'Code', 'python'],
     ['result', 'Result', 'json'],
     ['message', 'Message', 'markdown'],
+    // OI-first fallbacks: for OI-only traces the native attrs above
+    // are absent, so render the OpenInference-standard I/O values instead.
+    ['input.value', 'Input', 'markdown'],
+    ['output.value', 'Output', 'json'],
   ];
 
   for (const [attrKey, label, lang] of candidates) {

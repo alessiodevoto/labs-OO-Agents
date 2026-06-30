@@ -12,7 +12,8 @@ function getToolName(attrs: Record<string, unknown>, eventType: string): string 
 }
 
 function getToolResult(attrs: Record<string, unknown>): unknown {
-  const raw = attrs['tool.result'];
+  // OI-first: output.value; fall back to native tool.result.
+  const raw = attrs['output.value'] ?? attrs['tool.result'];
   if (typeof raw === 'string') {
     try {
       return JSON.parse(raw);

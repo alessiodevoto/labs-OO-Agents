@@ -5,12 +5,19 @@
 import contextlib
 import difflib
 import inspect
+import json
 import os
 import time
 import traceback
 from contextvars import ContextVar
 from typing import Any
 
+from openinference.semconv.trace import (
+    OpenInferenceMimeTypeValues,
+    OpenInferenceSpanKindValues,
+    SpanAttributes,
+    ToolCallAttributes,
+)
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
@@ -110,19 +117,25 @@ def _record_error(span: Span, exception: BaseException) -> None:
     span.set_attribute("exception.stacktrace", _exception_stacktrace(exception))
 
 
-# OpenInference span kinds
+# OpenInference span kinds.
+#
+# Values are sourced from ``OpenInferenceSpanKindValues`` (the
+# openinference-semantic-conventions package) rather than hardcoded literals so
+# the strings we emit track upstream automatically. ``SpanAttributes`` /
+# ``OpenInferenceMimeTypeValues`` constants are likewise used at every
+# ``set_attribute`` site for the spec-defined attribute names.
 class SpanKind:
-    """OpenInference span kinds."""
+    """OpenInference span kinds (values from the semantic-conventions enum)."""
 
-    AGENT = "AGENT"
-    LLM = "LLM"
-    CHAIN = "CHAIN"
-    TOOL = "TOOL"
-    RETRIEVER = "RETRIEVER"
-    EMBEDDING = "EMBEDDING"
-    RERANKER = "RERANKER"
-    GUARDRAIL = "GUARDRAIL"
-    EVALUATOR = "EVALUATOR"
+    AGENT = OpenInferenceSpanKindValues.AGENT.value
+    LLM = OpenInferenceSpanKindValues.LLM.value
+    CHAIN = OpenInferenceSpanKindValues.CHAIN.value
+    TOOL = OpenInferenceSpanKindValues.TOOL.value
+    RETRIEVER = OpenInferenceSpanKindValues.RETRIEVER.value
+    EMBEDDING = OpenInferenceSpanKindValues.EMBEDDING.value
+    RERANKER = OpenInferenceSpanKindValues.RERANKER.value
+    GUARDRAIL = OpenInferenceSpanKindValues.GUARDRAIL.value
+    EVALUATOR = OpenInferenceSpanKindValues.EVALUATOR.value
 
 
 # Viewer plugin hint attribute — tells the trace viewer which rendering plugin to use.
@@ -208,7 +221,7 @@ class OpenInferenceHooks:
         )
 
         # Set OpenInference attributes
-        span.set_attribute("openinference.span.kind", SpanKind.AGENT)
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.AGENT)
         span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.METHOD)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("agent.method", method_name)
@@ -241,10 +254,18 @@ class OpenInferenceHooks:
         except Exception:
             pass
 
-        # Serialize args safely
+        # Emit the agent-method input as the OpenInference-standard ``input.value``
+        # (JSON of args+kwargs). This is the single canonical representation — the
+        # trace viewer/explorer read ``input.value`` (with a native fallback for
+        # older traces that used ``agent.args``/``agent.kwargs``).
         try:
-            span.set_attribute("agent.args", self._safe_serialize(args))
-            span.set_attribute("agent.kwargs", self._safe_serialize(kwargs))
+            span.set_attribute(
+                SpanAttributes.INPUT_VALUE,
+                self._safe_json_value({"args": args, "kwargs": kwargs}),
+            )
+            span.set_attribute(
+                SpanAttributes.INPUT_MIME_TYPE, OpenInferenceMimeTypeValues.JSON.value
+            )
         except Exception:
             pass
 
@@ -292,7 +313,12 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             with contextlib.suppress(Exception):
-                span.set_attribute("agent.result", self._safe_serialize(result))
+                # OpenInference-standard output is the single canonical representation
+                # (the legacy ``agent.result`` attr is no longer emitted).
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, self._safe_serialize(result))
+                span.set_attribute(
+                    SpanAttributes.OUTPUT_MIME_TYPE, OpenInferenceMimeTypeValues.TEXT.value
+                )
 
         # End span
         span.end(end_time=time.time_ns())
@@ -315,7 +341,15 @@ class OpenInferenceHooks:
         agent_call_id: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Create LLM/CHAIN span for generation session."""
+        """Create the CHAIN span for a generation session.
+
+        This is an orchestration step (one strategy "turn"), NOT the provider
+        call itself — it carries no ``llm.*`` attributes. The real ``LLM`` span
+        is the nested ``litellm.acompletion`` span emitted by
+        ``openinference-instrumentation-litellm``. Marking this ``CHAIN`` (rather
+        than ``LLM``) keeps OpenInference backends from expecting
+        ``llm.model_name`` / ``llm.input_messages`` here.
+        """
         from opentelemetry import context
 
         agent_name = type(agent).__name__
@@ -338,8 +372,9 @@ class OpenInferenceHooks:
             start_time=time.time_ns(),
         )
 
-        # Set OpenInference attributes
-        span.set_attribute("openinference.span.kind", SpanKind.LLM)
+        # Set OpenInference attributes. CHAIN (not LLM) — the nested
+        # litellm.acompletion span is the real LLM call.
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.CHAIN)
         span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.GENERATION)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("agent.method", method_name)
@@ -400,9 +435,14 @@ class OpenInferenceHooks:
             _record_error(span, exception)
         else:
             span.set_status(Status(StatusCode.OK))
-            # Capture the generation result
+            # Capture the generation result as the OpenInference-standard output
+            # (the legacy ``generation.result`` attr is no longer emitted). The
+            # ``result.type`` metadata has no OI equivalent and is retained.
             try:
-                span.set_attribute("generation.result", self._safe_serialize(result))
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, self._safe_serialize(result))
+                span.set_attribute(
+                    SpanAttributes.OUTPUT_MIME_TYPE, OpenInferenceMimeTypeValues.TEXT.value
+                )
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -449,13 +489,27 @@ class OpenInferenceHooks:
         )
 
         # Set OpenInference attributes
-        span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.TOOL)
         span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.CODE_EXECUTION)
         span.set_attribute("tool.name", "python_executor")
         span.set_attribute("agent.name", agent_name)
-        span.set_attribute("code", code[:10000])  # Limit code length
+        capped_code = code[:10000]  # Limit code length
         span.set_attribute("code.length", len(code))
         span.set_attribute("execution.id", execution_id)
+        # OpenInference-standard input: JSON {"code": ...} is the single
+        # canonical representation of the executed code (the legacy flat ``code``
+        # attr is no longer emitted; ``code.length`` metadata is retained).
+        code_args_json = self._safe_json_value({"code": capped_code})
+        span.set_attribute(SpanAttributes.INPUT_VALUE, code_args_json)
+        span.set_attribute(SpanAttributes.INPUT_MIME_TYPE, OpenInferenceMimeTypeValues.JSON.value)
+        # Tool-call identity. No model tool-call id here, so fall back to
+        # the execution id.
+        self._set_tool_call_attrs(
+            span,
+            function_name="python_executor",
+            arguments_json=code_args_json,
+            tool_call_id=kwargs.get("tool_call_id") or execution_id,
+        )
 
         # Add generation_id for correlation with LLM turns
         if generation_id:
@@ -534,9 +588,16 @@ class OpenInferenceHooks:
                 # (F1a). Falls back to the generic repr serializer when the
                 # result doesn't look like an ExecutionResult.
                 if any(hasattr(result, attr) for attr in ("stdout", "stderr", "returned_value")):
-                    span.set_attribute("result", self._safe_serialize_execution_result(result))
+                    result_str = self._safe_serialize_execution_result(result)
+                    out_mime = OpenInferenceMimeTypeValues.JSON.value
                 else:
-                    span.set_attribute("result", self._safe_serialize(result))
+                    result_str = self._safe_serialize(result)
+                    out_mime = OpenInferenceMimeTypeValues.TEXT.value
+                # OpenInference-standard output is the single canonical representation
+                # (the legacy ``result`` attr is no longer emitted; ``result.type``
+                # metadata has no OI equivalent and is retained).
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, result_str)
+                span.set_attribute(SpanAttributes.OUTPUT_MIME_TYPE, out_mime)
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -576,17 +637,29 @@ class OpenInferenceHooks:
         )
 
         # Set OpenInference attributes
-        span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.TOOL)
         span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.METHOD)
         span.set_attribute("tool.name", f"generated_method:{method_name}")
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("method.name", method_name)
         span.set_attribute("invocation.id", invocation_id)
 
-        # Serialize args safely
+        # Emit method-call input as the OpenInference-standard input.value (the
+        # legacy ``method.args``/``method.kwargs`` attrs are no longer emitted).
         try:
-            span.set_attribute("method.args", self._safe_serialize(args))
-            span.set_attribute("method.kwargs", self._safe_serialize(kwargs))
+            args_json = self._safe_json_value({"args": args, "kwargs": kwargs})
+            span.set_attribute(SpanAttributes.INPUT_VALUE, args_json)
+            span.set_attribute(
+                SpanAttributes.INPUT_MIME_TYPE, OpenInferenceMimeTypeValues.JSON.value
+            )
+            # Tool-call identity; fall back to the invocation id when the model
+            # provided no tool-call id.
+            self._set_tool_call_attrs(
+                span,
+                function_name=method_name,
+                arguments_json=args_json,
+                tool_call_id=extra_kwargs.get("tool_call_id") or invocation_id,
+            )
         except Exception:
             pass
 
@@ -634,7 +707,12 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             try:
-                span.set_attribute("method.result", self._safe_serialize(result))
+                # OpenInference-standard output is canonical (the legacy
+                # ``method.result`` attr is no longer emitted).
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, self._safe_serialize(result))
+                span.set_attribute(
+                    SpanAttributes.OUTPUT_MIME_TYPE, OpenInferenceMimeTypeValues.TEXT.value
+                )
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -678,15 +756,28 @@ class OpenInferenceHooks:
         )
 
         # Set OpenInference attributes
-        span.set_attribute("openinference.span.kind", SpanKind.TOOL)
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.TOOL)
         span.set_attribute(VIEWER_PLUGIN_ATTR, ViewerPlugin.TOOL_EXECUTION)
         span.set_attribute("tool.name", tool_name)
         span.set_attribute("agent.name", agent_name)
         span.set_attribute("execution.id", execution_id)
 
-        # Serialize arguments
+        # Emit tool arguments as the OpenInference-standard input.value (valid JSON);
+        # the legacy ``tool.arguments`` attr is no longer emitted.
         with contextlib.suppress(Exception):
-            span.set_attribute("tool.arguments", self._safe_serialize(arguments))
+            arguments_json = self._safe_json_value(arguments)
+            span.set_attribute(SpanAttributes.INPUT_VALUE, arguments_json)
+            span.set_attribute(
+                SpanAttributes.INPUT_MIME_TYPE, OpenInferenceMimeTypeValues.JSON.value
+            )
+            # Tool-call identity. Prefer the model-provided
+            # tool_call_id; fall back to execution_id (#12).
+            self._set_tool_call_attrs(
+                span,
+                function_name=tool_name,
+                arguments_json=arguments_json,
+                tool_call_id=kwargs.get("tool_call_id") or execution_id,
+            )
 
         # Add generation_id for correlation with LLM turns
         if generation_id:
@@ -739,7 +830,12 @@ class OpenInferenceHooks:
         else:
             span.set_status(Status(StatusCode.OK))
             try:
-                span.set_attribute("tool.result", self._safe_serialize(result))
+                # OpenInference-standard output is canonical (the legacy
+                # ``tool.result`` attr is no longer emitted).
+                span.set_attribute(SpanAttributes.OUTPUT_VALUE, self._safe_serialize(result))
+                span.set_attribute(
+                    SpanAttributes.OUTPUT_MIME_TYPE, OpenInferenceMimeTypeValues.TEXT.value
+                )
                 span.set_attribute("result.type", type(result).__name__ if result else "None")
             except Exception:
                 pass
@@ -813,10 +909,14 @@ class OpenInferenceHooks:
             context=parent_context,
             start_time=time.time_ns(),
         )
-        span.set_attribute("openinference.span.kind", SpanKind.CHAIN)
+        span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, SpanKind.CHAIN)
         span.set_attribute("nemo_oo_agents.system_message", content)
         span.set_attribute("nemo_oo_agents.system_message.is_diff", is_diff)
         span.set_attribute("nemo_oo_agents.system_message.turn_index", turn_index)
+        # OpenInference-standard input: the system message (full or diff), text/plain.
+        # Reuses ``content`` so the native attr and input.value match.
+        span.set_attribute(SpanAttributes.INPUT_VALUE, content)
+        span.set_attribute(SpanAttributes.INPUT_MIME_TYPE, OpenInferenceMimeTypeValues.TEXT.value)
         span.end(end_time=time.time_ns())
 
     def _find_current_call_id(self) -> str | None:
@@ -839,8 +939,6 @@ class OpenInferenceHooks:
         produces valid JSON because truncation happens on the Python value, not
         on the serialised string.
         """
-        import json
-
         data: dict[str, Any] = {}
         if hasattr(result, "stdout"):
             data["stdout"] = truncating_pformat(
@@ -895,3 +993,71 @@ class OpenInferenceHooks:
             )
         except Exception:
             return "<unserializable>"
+
+    @staticmethod
+    def _safe_json_value(obj: Any, max_chars: int = 50_000) -> str:
+        """Serialize ``obj`` to a **valid JSON** string for ``input.value`` /
+        ``output.value`` attributes tagged ``application/json``.
+
+        Non-JSON-serializable leaves fall back to their truncated pformat repr
+        (via ``_safe_serialize``) so the result is always valid JSON.
+
+        On overflow (encoded length > ``max_chars``) the **top-level dict structure
+        is preserved** — each value is re-serialized with a smaller budget — so a
+        ``{"args": …, "kwargs": …}`` / ``{"code": …}`` input still parses back to a
+        dict with those keys (readers like ``_io_json_field`` and the viewer extract
+        fields by key). Only a non-dict, or a dict that still overflows after
+        per-value bounding, collapses to a JSON string literal as a last resort.
+        """
+        try:
+            encoded = json.dumps(
+                obj,
+                default=lambda o: OpenInferenceHooks._safe_serialize(o, max_chars),
+            )
+            if len(encoded) <= max_chars:
+                return encoded
+            # Overflow: keep the top-level keys so field extraction still works,
+            # bounding each value rather than collapsing the whole object. The
+            # per-value budget leaves headroom for ``_safe_serialize``'s head+tail
+            # truncation (~2x the budget) plus JSON-escaping overhead.
+            if isinstance(obj, dict):
+                per_value = max(256, max_chars // (4 * max(1, len(obj))))
+                shaped = json.dumps(
+                    {
+                        str(k): OpenInferenceHooks._safe_serialize(v, per_value)
+                        for k, v in obj.items()
+                    }
+                )
+                if len(shaped) <= max_chars:
+                    return shaped
+        except Exception:
+            pass
+        # Last resort: a JSON string literal wrapping the bounded human-readable repr.
+        return json.dumps(OpenInferenceHooks._safe_serialize(obj, max_chars))
+
+    @staticmethod
+    def _set_tool_call_attrs(
+        span: Span,
+        *,
+        function_name: str,
+        arguments_json: str,
+        tool_call_id: str,
+    ) -> None:
+        """Emit the OpenInference flat tool-call identity attrs on a TOOL span.
+
+        * ``tool.id`` + ``tool_call.id`` — the call's identity. ``tool_call_id``
+          should be the model-provided id when one exists, falling back to the
+          framework ``execution_id`` / ``invocation_id`` so inline framework tools
+          always have a stable id.
+        * ``tool_call.function.name`` + ``tool_call.function.arguments`` (valid
+          JSON) — mirror how an LLM span records a tool call, so OpenInference
+          backends render these framework TOOL spans as calls.
+
+        ``arguments_json`` must already be a valid-JSON string (use
+        :meth:`_safe_json_value`).
+        """
+        with contextlib.suppress(Exception):
+            span.set_attribute(SpanAttributes.TOOL_ID, tool_call_id)
+            span.set_attribute(ToolCallAttributes.TOOL_CALL_ID, tool_call_id)
+            span.set_attribute(ToolCallAttributes.TOOL_CALL_FUNCTION_NAME, function_name)
+            span.set_attribute(ToolCallAttributes.TOOL_CALL_FUNCTION_ARGUMENTS_JSON, arguments_json)

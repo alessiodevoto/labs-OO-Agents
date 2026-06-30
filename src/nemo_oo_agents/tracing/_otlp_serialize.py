@@ -88,11 +88,24 @@ _STATUS_CODE_MAP = {
 def span_to_otlp(
     span: ReadableSpan,
     exclude_attr_prefixes: tuple[str, ...] = (),
+    exclude_attr_prefixes_llm_only: tuple[str, ...] = (),
 ) -> dict:
-    """Convert a :class:`ReadableSpan` to an OTLP JSON span dict."""
+    """Convert a :class:`ReadableSpan` to an OTLP JSON span dict.
+
+    *exclude_attr_prefixes* are dropped from every span. *exclude_attr_prefixes_llm_only*
+    are dropped only from ``LLM``-kind spans — used for ``input.value`` /
+    ``output.value``, which the viewer reconstructs from the message journal for
+    LLM spans but which are the sole carrier of I/O on framework spans (AGENT /
+    CHAIN / TOOL), so they must survive the wire there.
+    """
     ctx = span.context
     trace_id = format_trace_id(ctx.trace_id) if ctx else "0" * 32
     span_id = format_span_id(ctx.span_id) if ctx else "0" * 16
+    effective_exclude = exclude_attr_prefixes
+    if exclude_attr_prefixes_llm_only:
+        attrs = span.attributes or {}
+        if attrs.get("openinference.span.kind") == "LLM":
+            effective_exclude = (*exclude_attr_prefixes, *exclude_attr_prefixes_llm_only)
     result: dict[str, Any] = {
         "traceId": trace_id,
         "spanId": span_id,
@@ -100,7 +113,7 @@ def span_to_otlp(
         "kind": _SPAN_KIND_MAP.get(span.kind, 0),
         "startTimeUnixNano": str(span.start_time),
         "endTimeUnixNano": str(span.end_time or span.start_time),
-        "attributes": attrs_to_otlp(span.attributes, exclude_prefixes=exclude_attr_prefixes),
+        "attributes": attrs_to_otlp(span.attributes, exclude_prefixes=effective_exclude),
         "status": {},
     }
 
@@ -129,6 +142,7 @@ def build_resource_spans(
     spans: Sequence[ReadableSpan],
     resource_attrs_override: dict[str, Any] | None = None,
     exclude_attr_prefixes: tuple[str, ...] = (),
+    exclude_attr_prefixes_llm_only: tuple[str, ...] = (),
 ) -> list[dict]:
     """Build the ``resourceSpans`` array for an OTLP ``TracesData`` envelope.
 
@@ -137,7 +151,9 @@ def build_resource_spans(
     into (and override) the resource attributes of every group.
 
     When *exclude_attr_prefixes* is non-empty, span attributes whose key starts
-    with any of the given prefixes are dropped from the serialized output.
+    with any of the given prefixes are dropped from every span.
+    *exclude_attr_prefixes_llm_only* are dropped only from ``LLM``-kind spans (see
+    :func:`span_to_otlp`).
     """
     resource_groups: dict[int, list[ReadableSpan]] = defaultdict(list)
     for span in spans:
@@ -168,7 +184,11 @@ def build_resource_spans(
                 {
                     "scope": scope_obj,
                     "spans": [
-                        span_to_otlp(s, exclude_attr_prefixes=exclude_attr_prefixes)
+                        span_to_otlp(
+                            s,
+                            exclude_attr_prefixes=exclude_attr_prefixes,
+                            exclude_attr_prefixes_llm_only=exclude_attr_prefixes_llm_only,
+                        )
                         for s in scope_group
                     ],
                 }

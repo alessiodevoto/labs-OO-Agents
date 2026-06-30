@@ -14,8 +14,26 @@ interface ParsedResult {
   stdout: string | null;
 }
 
+// OI-first code extraction: new traces carry the executed code as
+// input.value = {"code": "..."} (application/json); old traces carry a flat `code`.
+function getExecCode(attrs: Record<string, unknown>): string {
+  const iv = attrs['input.value'];
+  if (typeof iv === 'string') {
+    try {
+      const o = JSON.parse(iv) as { code?: unknown };
+      if (typeof o?.code === 'string') return o.code;
+    } catch {
+      // not JSON
+    }
+  } else if (iv && typeof iv === 'object' && typeof (iv as { code?: unknown }).code === 'string') {
+    return (iv as { code: string }).code;
+  }
+  return (attrs.code as string) || (attrs['code_execution.code'] as string) || '';
+}
+
 function parseResult(attrs: Record<string, unknown>): ParsedResult {
-  const raw = attrs.result ?? attrs['code_execution.result'];
+  // OI-first: output.value; fall back to native result attrs.
+  const raw = attrs['output.value'] ?? attrs.result ?? attrs['code_execution.result'];
   let obj: Record<string, unknown> | null = null;
 
   if (typeof raw === 'string') {
@@ -56,7 +74,7 @@ function parseResult(attrs: Record<string, unknown>): ParsedResult {
 
 export function CodeExecutionPlugin({ event, viewState, rawJsonOpen, viewControls }: PluginProps) {
   const attrs = event.attributes || {};
-  const code = (attrs.code as string) || (attrs['code_execution.code'] as string) || '';
+  const code = getExecCode(attrs);
   const durationNs = (attrs.duration_ns as number) || 0;
   const statusCode = (attrs.status_code as string) || 'UNSET';
   const hasError = !!attrs.error || statusCode === 'ERROR';

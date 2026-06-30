@@ -42,6 +42,38 @@ function attrWithFallback(attrs: Record<string, unknown>, agentKey: string, meth
   return attrs[agentKey] ?? attrs[methodKey];
 }
 
+// OI-first: inputs are carried as input.value = {"args":[...],"kwargs":{...}}
+// on new traces; old traces use flat agent.args/method.args (JSON strings).
+function oiInput(attrs: Record<string, unknown>): { args?: unknown; kwargs?: unknown } | null {
+  const iv = attrs['input.value'];
+  if (iv === undefined) return null;
+  try {
+    return (typeof iv === 'string' ? JSON.parse(iv) : iv) as { args?: unknown; kwargs?: unknown };
+  } catch {
+    return null;
+  }
+}
+
+function getCallArgs(attrs: Record<string, unknown>): unknown[] {
+  const oi = oiInput(attrs);
+  if (oi && Array.isArray(oi.args)) return oi.args;
+  try {
+    return JSON.parse((attrWithFallback(attrs, 'agent.args', 'method.args') as string) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function getCallKwargs(attrs: Record<string, unknown>): Record<string, unknown> {
+  const oi = oiInput(attrs);
+  if (oi && oi.kwargs && typeof oi.kwargs === 'object') return oi.kwargs as Record<string, unknown>;
+  try {
+    return JSON.parse((attrWithFallback(attrs, 'agent.kwargs', 'method.kwargs') as string) || '{}');
+  } catch {
+    return {};
+  }
+}
+
 function buildCallString(attrs: Record<string, unknown>, truncate = true): string | null {
   const method = (attrs['agent.method'] ?? attrs['method.name']) as string | undefined;
   if (!method) return null;
@@ -49,24 +81,11 @@ function buildCallString(attrs: Record<string, unknown>, truncate = true): strin
   const argParts: string[] = [];
   const maxLen = truncate ? 40 : Infinity;
 
-  try {
-    const argsRaw = (attrWithFallback(attrs, 'agent.args', 'method.args') as string) || '[]';
-    const args = JSON.parse(argsRaw) as unknown[];
-    for (const arg of args) {
-      argParts.push(formatPythonValue(arg, maxLen));
-    }
-  } catch {
-    // no positional args
+  for (const arg of getCallArgs(attrs)) {
+    argParts.push(formatPythonValue(arg, maxLen));
   }
-
-  try {
-    const kwargsRaw = (attrWithFallback(attrs, 'agent.kwargs', 'method.kwargs') as string) || '{}';
-    const kwargs = JSON.parse(kwargsRaw) as Record<string, unknown>;
-    for (const [k, v] of Object.entries(kwargs)) {
-      argParts.push(`${k}=${formatPythonValue(v, maxLen)}`);
-    }
-  } catch {
-    // no kwargs
+  for (const [k, v] of Object.entries(getCallKwargs(attrs))) {
+    argParts.push(`${k}=${formatPythonValue(v, maxLen)}`);
   }
 
   return `${method}(${argParts.join(', ')})`;
@@ -122,7 +141,9 @@ export function MethodPlugin({ event, viewState, rawJsonOpen, viewControls }: Pl
   const strategy = (attrs['agent.strategy.name'] as string) || '';
   const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
 
-  const result = ((attrs['agent.result'] ?? attrs['method.result']) as string) ?? null;
+  // OI-first: output.value; fall back to native agent.result/method.result.
+  const result =
+    ((attrs['output.value'] ?? attrs['agent.result'] ?? attrs['method.result']) as string) ?? null;
   const hasError = !!(attrs['error.message'] || statusCode === 'ERROR');
 
   if (viewState === 'collapsed') {

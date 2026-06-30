@@ -69,8 +69,15 @@ class OtlpJsonHttpExporter(SpanExporter):
             by_session[sid].append(span)
 
         exclude = self._LLM_MESSAGE_PREFIXES if self._strip_llm_messages else ()
+        # input.value / output.value are stripped only from LLM spans — the viewer
+        # reconstructs them there from the message journal. On framework spans
+        # (AGENT / CHAIN / TOOL) they are the sole carrier of the method I/O and
+        # executed code, which the journal does NOT capture, so they must survive
+        # the wire (otherwise trace consumers — e.g. capability scorers reading via
+        # the viewer — see empty inputs/outputs).
+        exclude_llm_only: tuple[str, ...] = ()
         if self._strip_llm_messages and not os.environ.get("NEMO_TRACE_KEEP_LLM_VALUES"):
-            exclude = (*exclude, *self._LLM_VALUE_KEYS)
+            exclude_llm_only = self._LLM_VALUE_KEYS
         overall = SpanExportResult.SUCCESS
         for session_id, session_spans in by_session.items():
             override = {"session.id": session_id} if session_id else None
@@ -78,6 +85,7 @@ class OtlpJsonHttpExporter(SpanExporter):
                 session_spans,
                 resource_attrs_override=override,
                 exclude_attr_prefixes=exclude,
+                exclude_attr_prefixes_llm_only=exclude_llm_only,
             )
             result = self._send_payload(session_spans, {"resourceSpans": resource_spans})
             if result != SpanExportResult.SUCCESS:
