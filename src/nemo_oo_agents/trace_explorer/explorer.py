@@ -1332,6 +1332,8 @@ class SessionSummary:
     parent_session_id: str | None
     has_children: bool
     result_preview: str | None
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
     def __str__(self) -> str:
         status_label = "[OK]" if self.status == "OK" else "[ERR]"
@@ -1355,6 +1357,8 @@ class SessionSummary:
             "parent_session_id": self.parent_session_id,
             "has_children": self.has_children,
             "result_preview": self.result_preview,
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
         }
 
 
@@ -3298,6 +3302,14 @@ class TraceExplorer:
         llm_count = sum(1 for t in session.turns if isinstance(t, LLMTurn))
         exec_count = sum(1 for t in session.turns if isinstance(t, ExecutionTurn))
 
+        # Aggregate token counts across all LLM turns
+        total_prompt = 0
+        total_completion = 0
+        for t in session.turns:
+            if isinstance(t, LLMTurn) and t.token_counts:
+                total_prompt += t.token_counts.get("prompt", 0)
+                total_completion += t.token_counts.get("completion", 0)
+
         result_preview = None
         if session.result:
             result_str = str(session.result)
@@ -3315,6 +3327,8 @@ class TraceExplorer:
             parent_session_id=session.parent_session_id,
             has_children=len(session.children) > 0,
             result_preview=result_preview,
+            total_prompt_tokens=total_prompt,
+            total_completion_tokens=total_completion,
         )
 
     async def get_session(
@@ -3516,8 +3530,15 @@ class TraceExplorer:
                     else:
                         code_preview = resp
 
+                # Token info for the summary line
+                tok_str = ""
+                if turn.token_counts:
+                    p = turn.token_counts.get("prompt", 0)
+                    c = turn.token_counts.get("completion", 0)
+                    tok_str = f", {p}→{c}tok"
+
                 lines.append(
-                    f"  Turn {turn_num}: [{turn_type}]{reasoning_marker} {code_preview} → {status} ({duration:.0f}ms)"
+                    f"  Turn {turn_num}: [{turn_type}]{reasoning_marker} {code_preview} → {status} ({duration:.0f}ms{tok_str})"
                 )
 
                 turn_num += 1
@@ -3609,8 +3630,15 @@ class TraceExplorer:
                 # Turn status: whether this turn's execution had an error (not the overall session status)
                 turn_status = "[ERR]" if (exec_turn and exec_turn.error) else "[OK]"
 
+                # Token counts from the LLM generation
+                tokens_str = ""
+                if turn.token_counts:
+                    prompt = turn.token_counts.get("prompt", 0)
+                    completion = turn.token_counts.get("completion", 0)
+                    tokens_str = f' tokens="{prompt}→{completion}"'
+
                 lines.append(
-                    f'<turn n="{turn_num}" duration="{duration:.1f}ms" status="{turn_status}">'
+                    f'<turn n="{turn_num}" duration="{duration:.1f}ms"{tokens_str} status="{turn_status}">'
                 )
 
                 # Show messages once (first LLMTurn) - skip system messages
