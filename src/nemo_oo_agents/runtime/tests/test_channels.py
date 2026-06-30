@@ -16,7 +16,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.runtime.channels import Channel, QueueManager
+from nemo_oo_agents.runtime.channels import Channel, QueueManager, QueueReadTimeoutError
 
 # ---------------------------------------------------------------------------
 # Basic producer/consumer
@@ -167,6 +167,46 @@ def test_clear_empties_the_queue():
     q.clear()
     assert q.qsize() == 0
     assert q.snapshot() == []
+
+
+def test_reader_qsize_tracks_buffered_items():
+    q: Channel[str] = Channel("user_messages", "queue")
+    reader = q.reader
+    assert reader.qsize() == 0
+    q.put("a")
+    q.put("b")
+    assert reader.qsize() == 2
+
+
+@pytest.mark.asyncio
+async def test_reader_get_times_out_with_actionable_error():
+    q: Channel[str] = Channel("user_messages", "queue")
+    reader = q.reader
+
+    with pytest.raises(QueueReadTimeoutError) as exc_info:
+        await reader.get(timeout=0.01)
+
+    message = str(exc_info.value)
+    assert "Timed out after 0.01s waiting for queue 'user_messages'" in message
+    assert "WAIT/NEED_INPUT" in message
+    assert not q.has_waiters()
+
+
+def test_reader_get_default_timeout_is_five_seconds():
+    q: Channel[str] = Channel("user_messages", "queue")
+    assert q.reader.get.__defaults__ == (5.0,)
+
+
+@pytest.mark.asyncio
+async def test_reader_get_timeout_none_preserves_indefinite_wait():
+    q: Channel[str] = Channel("user_messages", "queue")
+    reader = q.reader
+
+    getter = asyncio.create_task(reader.get(timeout=None))
+    await asyncio.sleep(0)
+    assert not getter.done()
+    q.put("hello")
+    assert await asyncio.wait_for(getter, timeout=0.5) == "hello"
 
 
 # ---------------------------------------------------------------------------

@@ -279,7 +279,7 @@ def test_output_queue_exposes_only_get_and_name():
     assert "get" in public
     assert "name" in public
     # Producer / dispatcher methods stay on the InputQueue, not here.
-    for forbidden in ("put", "snapshot", "qsize", "pop_last", "has_waiters"):
+    for forbidden in ("put", "snapshot", "pop_last", "has_waiters"):
         assert forbidden not in public
 
 
