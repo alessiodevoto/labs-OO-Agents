@@ -2167,6 +2167,56 @@ class TestReturnTypeShadowValidator:
             with pytest.raises(ValidationError, match="Cannot redefine 'Answer'"):
                 validator.validate(code, context)
 
+        def test_reject_assignment_shadow_of_return_type(self, validator: UnifiedCodeValidator):
+            """Answer = ... overwrites the return type and must be rejected."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "Answer = None"
+            with pytest.raises(ValidationError, match="Cannot reassign 'Answer'"):
+                validator.validate(code, context)
+
+        def test_reject_assignment_shadow_expression(self, validator: UnifiedCodeValidator):
+            """Answer = <expr> also caught even with complex RHS."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = (
+                "Answer = BaseModel.__getattr__('Answer') if hasattr(BaseModel, 'Answer') else None"
+            )
+            with pytest.raises(ValidationError, match="Cannot reassign 'Answer'"):
+                validator.validate(code, context)
+
+        def test_reject_annotated_assignment_shadow(self, validator: UnifiedCodeValidator):
+            """Answer: type = ... (annotated assignment) also caught."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "Answer: type = type('Answer', (), {})"
+            with pytest.raises(ValidationError, match="Cannot reassign 'Answer'"):
+                validator.validate(code, context)
+
+        def test_reject_tuple_unpack_shadow(self, validator: UnifiedCodeValidator):
+            """Answer, other = ... (tuple unpacking) also caught."""
+            from pydantic import BaseModel
+
+            class Answer(BaseModel):
+                value: int
+
+            context = TestReturnTypeShadowValidator._ctx_with_return_type(Answer)
+            code = "Answer, other = None, 42"
+            with pytest.raises(ValidationError, match="Cannot reassign 'Answer'"):
+                validator.validate(code, context)
+
     class TestPatternsToAllow:
         """Definitions that do not shadow the return type must be accepted."""
 

@@ -38,7 +38,7 @@ Usage:
 # BlockingCallValidator:
 #   E310 — Blocking call that would freeze the event loop
 # ReturnTypeShadowValidator:
-#   E501 — Local class/function definition shadows the method's return type
+#   E501 — Local class/function definition or assignment shadows the method's return type
 # =============================================================================
 import ast
 import inspect
@@ -1063,20 +1063,23 @@ def _collect_type_names(annotation: Any, namespace: dict[str, Any] | None = None
 
 
 class ReturnTypeShadowValidator:
-    """Reject local class/function definitions that shadow the return type.
+    """Reject code that shadows the method's return type name.
+
+    Catches three patterns:
+    1. ``class Answer(BaseModel): ...`` — local class shadows the return type
+       (creates a distinct type that fails isinstance; see gl-143)
+    2. ``def Answer(...): ...`` — local function shadows the name
+    3. ``Answer = ...`` — assignment overwrites the type reference (the model
+       may set it to None or a wrong value, breaking later return_result calls)
 
     Generated code runs inside ``async def __repl_wrapper__():`` (see
-    ``runtime/actor.py``), so a top-level ``class Answer(BaseModel): ...`` becomes
-    ``__repl_wrapper__.<locals>.Answer`` — a structurally identical but distinct
-    class object. ``return_result(...)`` then fails Pydantic's identity-based
-    ``isinstance`` check with an unhelpful ``Expected: Answer / Got: Answer``
-    message, and the LLM cannot recover (see issue gl-143).
+    ``runtime/actor.py``), so any local binding of the return type name
+    creates a scoped shadow that breaks ``return_result()`` validation.
 
     The validator looks up the class names referenced by the method's declared
     return type (via ``ValidationContext.return_type``) and rejects any local
-    ``class <Name>(...)`` or ``def <name>(...)`` definition that would shadow
-    one of them. Helpers with unrelated names (``def gcd(...)``,
-    ``class Helper(...)``) are not affected.
+    definition or assignment that would shadow them. Helpers with unrelated
+    names (``def gcd(...)``, ``x = 42``) are not affected.
     """
 
     def validate(self, tree: ast.AST, context: ValidationContext) -> list[ValidationIssue]:
@@ -1093,40 +1096,92 @@ class ReturnTypeShadowValidator:
         issues: list[ValidationIssue] = []
         for node in tree.body:
             kind: str | None = None
+            name: str | None = None
             if isinstance(node, ast.ClassDef):
                 kind = "class"
+                name = node.name
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 kind = "function"
-            else:
+                name = node.name
+            elif isinstance(node, ast.Assign):
+                # Check if any assignment target shadows a protected name
+                for target in node.targets:
+                    shadowed = self._assignment_target_names(target) & protected
+                    if shadowed:
+                        kind = "assignment"
+                        name = next(iter(shadowed))
+                        break
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if node.target.id in protected:
+                    kind = "assignment"
+                    name = node.target.id
+            if kind is None or name is None:
                 continue
-            if node.name not in protected:
+            if name not in protected:
                 continue
 
             from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 
-            get_harness_metrics().return_type_redefined(node.name)
+            get_harness_metrics().return_type_redefined(name)
 
-            issues.append(
-                ValidationIssue(
-                    line=node.lineno,
-                    col=node.col_offset,
-                    message=(
-                        f"Cannot redefine '{node.name}' here — it is already in scope as "
-                        f"the return type of this method. A local {kind} definition "
-                        f"shadows it with a __repl_wrapper__-scoped {kind}, and "
-                        f"return_result() will reject the resulting value as the wrong "
-                        f"type. Use the existing '{node.name}' (already imported) instead."
-                    ),
-                    code="E501",
-                    severity="error",
-                    fix_hint=(
-                        f"remove the local '{kind} {node.name}(...)' — '{node.name}' is "
-                        f"already available; construct it directly with "
-                        f"{node.name}(...)"
-                    ),
+            if kind == "assignment":
+                issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=(
+                            f"Cannot reassign '{name}' — it is the return type of this "
+                            f"method. Overwriting it will break return_result() validation. "
+                            f"Use '{name}(...)' directly to construct your result."
+                        ),
+                        code="E501",
+                        severity="error",
+                        fix_hint=(
+                            f"remove '{name} = ...' — '{name}' is already available; "
+                            f"construct it directly with {name}(...)"
+                        ),
+                    )
                 )
-            )
+            else:
+                issues.append(
+                    ValidationIssue(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        message=(
+                            f"Cannot redefine '{name}' here — it is already in scope as "
+                            f"the return type of this method. A local {kind} definition "
+                            f"shadows it with a __repl_wrapper__-scoped {kind}, and "
+                            f"return_result() will reject the resulting value as the wrong "
+                            f"type. Use the existing '{name}' (already imported) instead."
+                        ),
+                        code="E501",
+                        severity="error",
+                        fix_hint=(
+                            f"remove the local '{kind} {name}(...)' — '{name}' is "
+                            f"already available; construct it directly with "
+                            f"{name}(...)"
+                        ),
+                    )
+                )
         return issues
+
+    @staticmethod
+    def _assignment_target_names(target: ast.AST) -> set[str]:
+        """Extract all names from an assignment target (handles tuple unpacking and starred)."""
+        names: set[str] = set()
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, ast.Starred):
+            # *Answer in tuple unpacking — unwrap to get the Name
+            if isinstance(target.value, ast.Name):
+                names.add(target.value.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                if isinstance(elt, ast.Name):
+                    names.add(elt.id)
+                elif isinstance(elt, ast.Starred) and isinstance(elt.value, ast.Name):
+                    names.add(elt.value.id)
+        return names
 
 
 # =============================================================================
